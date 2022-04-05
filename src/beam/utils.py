@@ -5,10 +5,22 @@ import torch.distributed as dist
 from fnmatch import fnmatch, filter
 from tqdm import *
 import random
+import torch
 
 from loguru import logger
 logger.remove(handler_id=0)
 logger.add(sys.stdout, colorize=True, format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
+
+
+# def check_type(x):
+#     '''
+#     return one of the types
+#     numeric, string, array, tensor
+#
+#     array type
+#
+#     '''
+
 
 def include_patterns(*patterns):
     """Factory function that can be used with copytree() ignore parameter.
