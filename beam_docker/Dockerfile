@@ -7,7 +7,7 @@
 FROM nvcr.io/nvidia/pytorch:22.03-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 
-RUN apt update
+#RUN apt update
 
 ## ssh server
 #RUN apt install -y openssh-server

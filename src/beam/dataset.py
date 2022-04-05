@@ -1,16 +1,39 @@
 import itertools
 import numpy as np
 import torch
+from sklearn.model_selection import train_test_split
 
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self):
+    def __init__(self, index=None, train_index=None, validation_index=None, test_index=None, other_indices=None,
+                 seed=None):
         super().__init__()
 
-    def dataloader(self, batch_size, length=None, shuffle=True, tail=True, once=False,
+        '''
+        other_indices = {'subset_name': {'size': None, 'index': [...]}
+
+        '''
+
+        # train_test_split
+
+    def train(self):
+        self.index = self.index_dict['train']
+        self.training = True
+
+    def test(self):
+        self.index = self.index_dict['test']
+        self.training = False
+
+    def validation(self):
+        self.index = self.index_dict['validation']
+        self.training = False
+
+    def dataloader(self, batch_size, subset='train', length=None, shuffle=True, tail=True, once=False,
                    num_workers=0, pin_memory=False, timeout=0, collate_fn=None,
-                   worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, persistent_workers=False):
+                   worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
+                   persistent_workers=False):
+        getattr(self, subset)()
 
         sampler = UniversalBatchSampler(len(self), batch_size, length=length, shuffle=shuffle, tail=tail, once=once)
         dataloader = torch.utils.data.DataLoader(self, sampler=sampler, batch_size=None,
