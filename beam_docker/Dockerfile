@@ -120,8 +120,8 @@ RUN mkdir /workspace/beamds/
 ADD ./* /workspace/beamds/
 RUN python -m pip install --upgrade build
 WORKDIR /workspace/beamds/
-RUN python -m build
-RUN pip install dist/*.whl --force-reinstall
+# RUN python -m build
+# RUN pip install dist/*.whl --force-reinstall
 WORKDIR /workspace
 
 # config jupyter notebook
