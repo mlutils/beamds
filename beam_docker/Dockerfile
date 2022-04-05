@@ -1,6 +1,6 @@
 # Build Command:
 # cd /path/to/beam_repo
-# docker build -f beam_docker/Dokerfile --tag beam:220331 .
+# docker build -f beam_docker/Dockerfile --tag beam:220331 .
 # Run command:
 # docker run -p 12000-12999:12000-12999 --gpus=all --ipc=host -itd -v /home/:/home/ --name flame beam:220331
 
@@ -116,7 +116,8 @@ RUN apt update
 
 # install beam
 
-COPY * /workspace/beamds
+RUN mkdir /workspace/beamds/
+COPY * /workspace/beamds/
 RUN python -m pip install --upgrade build
 WORKDIR /workspace/beam
 RUN python -m build
