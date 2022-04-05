@@ -1,5 +1,6 @@
 # Build Command:
-# docker build --tag beam:220331 .
+# cd /path/to/beam_repo
+# docker build -f beam_docker/Dokerfile --tag beam:220331 .
 # Run command:
 # docker run -p 12000-12999:12000-12999 --gpus=all --ipc=host -itd -v /home/:/home/ --name flame beam:220331
 
@@ -8,10 +9,10 @@ LABEL "description"="beam image based on nvidia pytorch docker"
 
 RUN apt update
 
-# ssh server
-RUN apt install -y openssh-server
-RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-
+## ssh server
+#RUN apt install -y openssh-server
+#RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+#
 ## applications
 #RUN apt install -y htop
 #RUN apt install -y tmux
@@ -115,7 +116,7 @@ RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 # install beam
 
-COPY ../../beamds /workspace/beamds
+COPY * /workspace/beamds
 RUN python -m pip install --upgrade build
 WORKDIR /workspace/beam
 RUN python -m build
@@ -124,15 +125,15 @@ WORKDIR /workspace
 
 # config jupyter notebook
 
-RUN jupyter notebook --generate-config
-RUN echo "c.NotebookApp.notebook_dir = '/home/'" >> /root/.jupyter/jupyter_notebook_config.py
-RUN echo "c.NotebookApp.allow_remote_access = True" >> /root/.jupyter/jupyter_notebook_config.py
-RUN echo "c.NotebookApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_notebook_config.py
-RUN echo "c.NotebookApp.token = ''" >> /root/.jupyter/jupyter_notebook_config.py
-
-COPY entrypoint.sh /
-RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["10022", "10088", "12345678"]
+#RUN jupyter notebook --generate-config
+#RUN echo "c.NotebookApp.notebook_dir = '/home/'" >> /root/.jupyter/jupyter_notebook_config.py
+#RUN echo "c.NotebookApp.allow_remote_access = True" >> /root/.jupyter/jupyter_notebook_config.py
+#RUN echo "c.NotebookApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_notebook_config.py
+#RUN echo "c.NotebookApp.token = ''" >> /root/.jupyter/jupyter_notebook_config.py
+#
+#COPY entrypoint.sh /
+#RUN chmod +x /entrypoint.sh
+#ENTRYPOINT ["/entrypoint.sh"]
+#CMD ["10022", "10088", "12345678"]
 
 
