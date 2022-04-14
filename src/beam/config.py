@@ -36,7 +36,7 @@ boolean_feature("override", True, "Override last experiment: active when reload=
 
 
 parser.add_argument('--cpu-workers', type=int, default=0, help='How many CPUs will be used for the data loading')
-parser.add_argument('--cuda', type=int, default=0, help='GPU Number, set -1 for cpu only')
+parser.add_argument('--device', type=str, default=0, help='GPU Number or cpu/cuda string')
 parser.add_argument('--parallel', type=int, default=1, help='Number of parallel gpu workers. Set <=1 for single process')
 
 # booleans
@@ -50,22 +50,22 @@ parser.add_argument('--init', type=str, default='ortho', help='Initialization me
 parser.add_argument('--seed', type=int, default=0, help='Seed for reproducability (zero is saved for random seed)')
 
 parser.add_argument('--total-steps', type=int, default=int(1e6), help='Total number of environment steps')
-parser.add_argument('--epoch-length', type=int, default=1000, help='Length of each epoch')
+
+parser.add_argument('--epoch-length', type=int, default=None, help='Length of each epoch (if None - it is the dataset size)')
+parser.add_argument('--epoch-length-train', type=int, default=None, help='Length of each epoch (if None - it is the dataset size)')
+parser.add_argument('--epoch-length-test', type=int, default=None, help='Length of each epoch (if None - it is the dataset size)')
+parser.add_argument('--n-epochs', type=int, default=None, help='Number of epochs, if None, it uses the total steps to determine the number of iterations')
 
 # environment parameters
 
-# Netwoks parameters
+# Learning parameters
 
 parser.add_argument('--batch-size', type=int, default=256, help='Batch Size')
+parser.add_argument('--batch-size-train', type=int, default=None, help='Batch Size for training iterations')
+parser.add_argument('--batch-size-test', type=int, default=None, help='Batch Size for testing/evaluation iterations')
 
 parser.add_argument('--lr-d', type=float, default=1e-3, metavar='α', help='learning rate for dense optimizers')
 parser.add_argument('--lr-s', type=float, default=1e-2, metavar='α', help='learning rate for sparse optimizers')
 parser.add_argument('--weight-decay', type=float, default=0., help='L2 regularization coefficient for dense optimizers')
-
-parser.add_argument('--dropout', type=float, default=0., help='Dropout regularization coefficient')
-parser.add_argument('--clip-p', type=float, default=0., help='Clip Pi Gradient L2 norm')
-parser.add_argument('--clip-q', type=float, default=0., help='Clip Pi Gradient L2 norm')
-parser.add_argument('--weight-decay-p', type=float, default=0, help='Weight decay coefficient for Q-net')
-parser.add_argument('--weight-decay-q', type=float, default=0, help='Weight decay coefficient for π-net')
-parser.add_argument('--min-std', type=int, default=1e-3, help='min log')
-parser.add_argument('--max-std', type=int, default=1e3, help='max log')
+parser.add_argument('--eps', type=float, default=1e-4, metavar='ɛ', help='Adam\'s epsilon parameter')
+parser.add_argument('--clip', type=float, default=0., help='Clip Pi Gradient L2 norm')

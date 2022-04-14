@@ -140,7 +140,7 @@ def run_covtype(rank, world_size, experiment):
         alg = Alg(net, dataloader, experiment)
 
         # simulate input to the network
-        x = next(alg.data_generator(train=False))[1]['x']
+        x = next(alg.data_generator(training=False))[1]['x']
         x = x.view(len(x), -1)
 
         experiment.writer_control(enable=not (bool(rank)), networks=alg.get_networks(), inputs={'net': x})

@@ -37,15 +37,15 @@ class NATGraphAlg(Algorithm):
 
         super().__init__(networks, dataloader, experiment, rank=rank, optimizers=optimizers)
 
-    def preprocess_epoch(self, aux, epoch, train=True):
+    def preprocess_epoch(self, aux, epoch, training=True):
 
-        train_flag = 'train' if train else 'test'
-        if train:
+        train_flag = 'train' if training else 'test'
+        if training:
             epoch_dir = os.path.join(self.exp.epoch_dir_base, f'epoch_{self.n_lst[epoch % len(self.n_lst)]:04}/{train_flag}')
         else:
             epoch_dir = self.exp.epoch_dir_test
 
-        if epoch == 0 or train:
+        if epoch == 0 or training:
 
             file = open(os.path.join(epoch_dir, 'data.pkl'), 'rb')
             data = pickle.load(file).to(self.device)
@@ -81,7 +81,7 @@ class NATGraphAlg(Algorithm):
 
         return aux
 
-    def iteration(self, sample, aux, results, train=True):
+    def iteration(self, sample, aux, results, training=True):
 
         net = self.networks['model']
         opt_net = self.optimizers['model']
@@ -104,16 +104,16 @@ class NATGraphAlg(Algorithm):
 
         pos_weight = (edge_tags.shape[0] - edge_tags.sum()) / edge_tags.sum()
 
-        if not train in self.pos_track:
-            self.pos_track[train] = Tracker(alpha=1 / 50, x=pos_weight)
+        if not training in self.pos_track:
+            self.pos_track[training] = Tracker(alpha=1 / 50, x=pos_weight)
         else:
-            pos_weight = self.pos_track[train].update(pos_weight)
+            pos_weight = self.pos_track[training].update(pos_weight)
 
         criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight,
                                          reduction='sum')
         loss = criterion(out, edge_tags.float()) / float(sample['n_seq'])
 
-        if train:
+        if training:
             opt_net.zero_grad()
             opt_disc.zero_grad()
             loss.backward()

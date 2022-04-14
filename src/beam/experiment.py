@@ -51,6 +51,8 @@ class Experiment(object):
     :param args:
     '''
 
+
+
     def __init__(self, args):
 
         set_seed(args.seed)
@@ -64,11 +66,13 @@ class Experiment(object):
             logger.info(k + ': ' + str(v))
             setattr(self, k, v)
 
+        # determine the batch size
+
         # parameters
 
         self.start_time = time.time()
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.device = torch.device("cuda:%d" % self.cuda) if self.cuda >= 0 else torch.device('cpu')
+        self.device = torch.device(int(self.device) if x.isnumeric() else self.device)
         self.base_dir = os.path.join(self.root_dir, self.project_name)
 
         for folder in [self.base_dir, self.root_dir]:
@@ -239,7 +243,7 @@ class Experiment(object):
 
     def log_data(self, train_results, test_results, n, print_log=True, alg=None, argv=None):
 
-        for subset, res in {'Train': train_results, 'Test': test_results}:
+        for subset, res in {'Train': train_results, 'Test': test_results}.items():
 
             for param, val in res['scalar'].items():
                 if type(val) is dict or type(val) is defaultdict:
@@ -284,7 +288,7 @@ class Experiment(object):
                     except:
                         pass
 
-        for subset, res in {'train': train_results, 'test': test_results}:
+        for subset, res in {'train': train_results, 'test': test_results}.items():
 
             for log_type in res:
                 log_func = getattr(self.writer, f'add_{log_type}')

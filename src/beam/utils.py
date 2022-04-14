@@ -6,20 +6,35 @@ from fnmatch import fnmatch, filter
 from tqdm import *
 import random
 import torch
+import pandas as pd
 
 from loguru import logger
 logger.remove(handler_id=0)
 logger.add(sys.stdout, colorize=True, format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
 
 
-# def check_type(x):
-#     '''
-#     return one of the types
-#     numeric, string, array, tensor
-#
-#     array type
-#
-#     '''
+def check_type(x):
+    '''
+    return one of the types
+    numeric, string, array, tensor
+
+    array type
+
+    '''
+    if np.isscalar(x):
+        if type(x) is int or type(x) is float:
+            return 'numeric'
+        elif type(x) is str:
+            return 'string'
+        else:
+            return 'other'
+    elif pd.isna(x):
+        return 'none'
+    else:
+        if isinstance(x, torch.Tensor):
+            return 'tensor'
+        else:
+            return 'array'
 
 
 def include_patterns(*patterns):
@@ -88,6 +103,15 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
 
+
+def finite_iterations(iterator, n):
+
+    for i, out in enumerate(iterator):
+
+        if i+1 < n:
+            yield out
+        else:
+            return out
 
 def tqdm_beam(x, *args, enable=True, **argv):
 

@@ -2,7 +2,7 @@
 # cd /path/to/beam_repo
 # docker build -f beam_docker/Dockerfile --tag beam:$(date '+%Y%m%d') .
 # Run command:
-# docker run -p 12000-12999:12000-12999 --gpus=all --ipc=host -itd -v /home/:/home/ --name flame beam:<date>
+# docker run -p 12000-12999:12000-12999 --gpus=all --ipc=host -itd -v /home/:/home/ --name flame beam:<date> 12022 12088
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
@@ -74,7 +74,7 @@ RUN pip install gssapi
 RUN pip install thrift-sasl
 RUN pip install snappy
 RUN pip install python-snappy
-RUN pip install pyshark
+RUN pip install pyshark scapy nfstream
 RUN pip install pyorc
 RUN pip install datatable
 RUN pip install pymongo
@@ -112,12 +112,21 @@ RUN pip install pyspark
 RUN pip install pyspark[sql]
 RUN pip install pyspark[pandas_on_spark] plotly
 
+# instal hfds-fuse
+
+#RUN apt install -y libprotobuf-c-dev
+#RUN apt install -y protobuf-c-compiler
+#RUN apt install -y libfuse-dev
+#RUN apt install -y uncrustify
+
+
 # install tensorflow
 
 RUN pip install --upgrade tensorflow
 
 # install beam
 
+RUN pip install loguru
 RUN mkdir /workspace/beamds/
 COPY . /workspace/beamds/
 RUN python -m pip install --upgrade build
@@ -125,6 +134,12 @@ WORKDIR /workspace/beamds/
 RUN python -m build
 RUN pip install dist/*.whl --force-reinstall
 WORKDIR /workspace
+
+# install db clinets next compilation
+
+RUN apt install -y default-jdk
+RUN pip install mysql-connector-python redis neo4j neo4j-driver splunk-sdk pysolr JPype1 JayDeBeApi PyHive
+RUN pip pymongo[gssapi,aws,ocsp,snappy,srv,tls,zstd,encryption]
 
 # config jupyter notebook
 
@@ -134,7 +149,7 @@ RUN echo "c.NotebookApp.allow_remote_access = True" >> /root/.jupyter/jupyter_no
 RUN echo "c.NotebookApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_notebook_config.py
 RUN echo "c.NotebookApp.token = ''" >> /root/.jupyter/jupyter_notebook_config.py
 
-COPY entrypoint.sh /
+COPY beam_docker/entrypoint.sh /
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["10022", "10088", "12345678"]

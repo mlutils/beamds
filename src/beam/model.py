@@ -189,9 +189,9 @@ class MultipleOptimizer():
             op.load_state_dict(state_dict[k])
 
 
-def Optimizer(net, dense_arrs=None, sparse_args=None):
+def Optimizer(net, dense_args=None, sparse_args=None):
 
-    if dense_arrs is None:
+    if dense_args is None:
         dense_args = {'lr': 1e-3, 'eps': 1e-4}
     if sparse_args is None:
         sparse_args = {'lr': 1e-2, 'eps': 1e-4}

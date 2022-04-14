@@ -40,7 +40,7 @@ class MNISTAlgorithm(Algorithm):
         aux = {}
         return aux, results
 
-    def iteration(self, sample, aux, results, train=True):
+    def iteration(self, sample, aux, results, training=True):
 
         x, y = sample['x'], sample['y']
 
@@ -51,7 +51,7 @@ class MNISTAlgorithm(Algorithm):
         y_hat = net(x)
         loss = F.cross_entropy(y_hat, y, reduction='mean')
 
-        if train:
+        if training:
 
             opt.zero_grad()
             loss.backward()
@@ -82,7 +82,7 @@ def run_mnist(rank, world_size, experiment):
     alg = Alg(net, dataloader, experiment)
 
     # simulate input to the network
-    x = next(alg.data_generator(train=False))[1]['x']
+    x = next(alg.data_generator(training=False))[1]['x']
     x = x.view(len(x), -1)
 
     experiment.writer_control(enable=not(bool(rank)), networks=alg.get_networks(), inputs={'net': x})

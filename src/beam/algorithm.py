@@ -6,11 +6,12 @@ from .utils import tqdm_beam as tqdm
 import numpy as np
 from .model import Optimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
+from .utils import finite_iterations
 
 
 class Algorithm(object):
 
-    def __init__(self, networks, dataloader, experiment, rank=0, optimizers=None):
+    def __init__(self, networks, experiment, dataloader=None, dataset=None, optimizers=None, rank=0):
 
         self.device = experiment.device
         self.rank = rank
@@ -22,16 +23,40 @@ class Algorithm(object):
 
         if optimizers is None:
             self.networks = {k: self.register_network(v) for k, v in networks.items()}
-            optimizers = {k: Optimizer(v, dense_ars={'lr': experiment.lr_d,
-                                                     'weight_decay': experiment.weight_decay, 'eps': 1e-4},
-                                       sparse_args={'lr': experiment.lr_s, 'eps': 1e-4},
+            optimizers = {k: Optimizer(v, dense_args={'lr': experiment.lr_d,
+                                                     'weight_decay': experiment.eps,
+                                                      'eps': experiment.weight_decay},
+                                       sparse_args={'lr': experiment.lr_s, 'eps': experiment.eps},
                                        ) for k, v in self.networks.items()}
 
-        self.optimizers = optimizers
+        if dataloader is None:
+            assert dataset is not None, 'If dataloader is not provided, you must provide a dataset instance'
+
+            dataloader = {}
+            for subset, index in dataset.indices.items():
+
+                batch_size = experiment.batch_size_train if 'train' in subset else experiment.batch_size_test
+                batch_size =  batch_size if batch_size is not None else experiment.batch_size
+
+                dataloader[subset] = dataset.dataloader(subset=subset, batch_size=batch_size,
+                                                        num_workers=experiment.cpu_workers, pin_memory=True)
+
         self.dataloader = dataloader
 
-        self.n_epochs = experiment.total_steps // experiment.epoch_length
-        self.epoch_length = experiment.epoch_length
+        self.optimizers = optimizers
+        self.batch_size_train = self.batch_size if self.batch_size_train is None else self.batch_size_train
+        self.batch_size_test = self.batch_size if self.batch_size_test is None else self.batch_size_test
+
+        self.epoch_length = {}
+
+        for subset, index in dataset.indices.items():
+
+            epoch_length = experiment.epoch_length_train if 'train' in subset else experiment.epoch_length_test
+            epoch_length = experiment.epoch_length if epoch_length is None else epoch_length
+            self.epoch_length[subset] = len(index) if epoch_length is None else epoch_length
+
+        self.n_epochs = experiment.total_steps // experiment.epoch_length_train if experiment.n_epochs is None else experiment.n_epochs
+
 
     def register_network(self, net):
         net = net.to(self.device)
@@ -83,36 +108,37 @@ class Algorithm(object):
             raise NotImplementedError
         return sample
 
-    def data_generator(self, train):
-
-        train = 'train' if train else 'test'
-        for i, sample in enumerate(self.dataloader[train]):
+    def data_generator(self, subset):
+        for i, sample in enumerate(self.dataloader[subset]):
             sample = self.process_sample(sample)
             yield i, sample
 
-    def postprocess_epoch(self, sample, aux, results, epoch, train=True):
+    def postprocess_epoch(self, sample, aux, results, epoch, subset, training=True):
         '''
         :param epoch: epoch number
+        :param subset: name of dataset subset (usually train/validation/test)
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
         return aux, results
 
-    def preprocess_epoch(self, aux, epoch, train=True):
+    def preprocess_epoch(self, aux, epoch, subset, training=True):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param epoch: epoch number
+        :param subset: name of dataset subset (usually train/validation/test)
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
         return aux
 
-    def iteration(self, sample, aux, results, train=True):
+    def iteration(self, sample, aux, results, subset, training=True):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
         :param results: a dictionary of dictionary of lists containing results of
-        :param train: train/test flag
+        :param subset: name of dataset subset (usually train/validation/test)
+        :param training: train/test flag
         :return:
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
@@ -121,37 +147,37 @@ class Algorithm(object):
         aux = {}
         return aux, results
 
-    def inner_loop(self, n_epochs, train=True):
+    def inner_loop(self, n_epochs, subset, training=True):
 
-        aux = self.preprocess_epoch(None, 0, train=train)
-        self.set_mode(train=train)
-        results = defaultdict(lambda: defaultdict(list))
+        for n in range(n_epochs):
 
-        for i, sample in tqdm(self.data_generator(train), enable=train):
+            aux = self.preprocess_epoch(None, 0, subset, training=training)
+            self.set_mode(training=training)
+            results = defaultdict(lambda: defaultdict(list))
 
-            aux, results = self.iteration(sample, aux, results, train=train)
+            data_generator = self.data_generator(subset)
+            for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
+                                  enable=True, desc=subset):
 
-            if not (i + 1) % self.epoch_length:
+                aux, results = self.iteration(sample, aux, results, subset, training=training)
 
-                n = (i + 1) // self.epoch_length
-                aux, results = self.postprocess_epoch(sample, aux, results, n, train=train)
+            aux, results = self.postprocess_epoch(sample, aux, results, subset, n, training=training)
 
-                if n >= n_epochs:
-                    return results
-                else:
-                    yield results
+            yield results
 
-                aux = self.preprocess_epoch(aux, n, train=train)
-                self.set_mode(train=train)
-                results = defaultdict(lambda: defaultdict(list))
+        return
+
+    def evaluate(self, subset='test', training=False):
+        with torch.no_grad():
+            pass
 
     def __iter__(self):
 
         all_train_results = defaultdict(dict)
-        all_test_results = defaultdict(dict)
+        all_validation_results = defaultdict(dict)
 
-        test_generator = self.inner_loop(self.n_epochs + 1, train=False)
-        for train_results in self.inner_loop(self.n_epochs, train=True):
+        validation_generator = self.inner_loop(self.n_epochs + 1, subset='validation', training=False)
+        for train_results in self.inner_loop(self.n_epochs, subset='train', training=True):
 
             for k_type in train_results.keys():
                 for k_name, v in train_results[k_type].items():
@@ -159,34 +185,30 @@ class Algorithm(object):
 
             with torch.no_grad():
 
-                # if not self.rank:
-                #     test_results = next(test_generator)
-                # else:
-                #     test_results = {}
-                test_results = next(test_generator)
+                validation_results = next(validation_generator)
 
-                for k_type in test_results.keys():
-                    for k_name, v in test_results[k_type].items():
-                        all_test_results[k_type][k_name] = v
+                for k_type in validation_results.keys():
+                    for k_name, v in validation_results[k_type].items():
+                        all_validation_results[k_type][k_name] = v
 
-            results = {'train': all_train_results, 'test': all_test_results}
+            results = {'train': all_train_results, 'validation': all_validation_results}
             yield results
 
             all_train_results = defaultdict(dict)
-            all_test_results = defaultdict(dict)
+            all_validation_results = defaultdict(dict)
 
-    def set_mode(self, train=True):
+    def set_mode(self, training=True):
 
         for net in self.networks.values():
 
-            if train:
+            if training:
                 net.train()
             else:
                 net.eval()
 
             for dataloader in self.dataloader.values():
                 if hasattr(dataloader, 'train'):
-                    if train:
+                    if training:
                         dataloader.dataset.train()
                     else:
                         dataloader.dataset.eval()
