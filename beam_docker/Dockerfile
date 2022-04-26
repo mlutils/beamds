@@ -54,7 +54,9 @@ RUN pip install xgboost catboost ipywidgets
 
 RUN jupyter nbextension enable --py widgetsnbextension
 
-RUN pip install lightgbm impyla gssapi thrift-sasl snappy python-snappy pyshark scapy nfstream pyorc datatable pymongo requests_ntlm
+RUN pip install lightgbm impyla gssapi thrift-sasl snappy python-snappy pyshark scapy nfstream pyorc datatable pymongo
+RUN pip install requests_ntlm thriftpy sasl
+
 RUN pip install -U imbalanced-learn
 
 RUN pip install -U scikit-image
