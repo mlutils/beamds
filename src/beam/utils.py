@@ -103,6 +103,16 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
 
+def to_device(data, device='cuda'):
+
+    if type(data) is dict:
+        return {k: to_device(v, device) for k, v in data.items()}
+    elif type(data) is list:
+        return [to_device(s, device) for s in data]
+    elif issubclass(data, torch.Tensor):
+        return data.to(device)
+    else:
+        return data
 
 def finite_iterations(iterator, n):
 
@@ -120,3 +130,40 @@ def tqdm_beam(x, *args, enable=True, **argv):
     else:
         my_tqdm = tqdm_notebook if is_notebook() else tqdm
         return my_tqdm(x, *args, **argv)
+
+def reset_optimizer(optimizer):
+
+    if type(optimizer) is Optimizer:
+        optimizer.reset()
+    else:
+        optimizer.state = defaultdict(dict)
+
+
+def reset_networks_and_optimizers(networks=None, optimizers=None):
+
+
+    if networks is not None:
+        net_iter = networks.keys() if issubclass(type(networks), dict) else range(len(networks))
+        for i in net_iter:
+            for n, m in net_iter[i].named_modules():
+                if hasattr(m, 'reset_parameters'):
+                    m.reset_parameters()
+
+    if optimizers is not None:
+        opt_iter = optimizers.keys() if issubclass(type(optimizers), dict) else range(len(optimizers))
+        for i in opt_iter:
+            for n, m in net_iter[i].named_modules():
+                if hasattr(m, 'reset_parameters'):
+                    m.reset_parameters()
+
+    def init_weights(m):
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            m.reset_parameters()
+
+    for net in networks_dict:
+        net = getattr(self, net)
+        net.apply(init_weights)
+
+    for optim in optimizers_dict:
+        optim = getattr(self, optim)
+        optim.state = defaultdict(dict)

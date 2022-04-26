@@ -32,7 +32,7 @@ def run_worker(rank, world_size, job, experiment, *args):
 
 class Experiment(object):
 
-    '''
+    """
     Experiment name:
     <algorithm name>_<identifier>_exp_<number>_<time>
 
@@ -49,11 +49,13 @@ class Experiment(object):
 
 
     :param args:
-    '''
+    """
 
-
-
-    def __init__(self, args):
+    def __init__(self, args, results_names=None):
+        """
+        args: the parsed arguments
+        results_names: additional results directories (defaults are: train, validation, test)
+        """
 
         set_seed(args.seed)
 
@@ -148,7 +150,12 @@ class Experiment(object):
 
             # make log dirs
             os.makedirs(os.path.join(self.results_dir, 'train'))
+            os.makedirs(os.path.join(self.results_dir, 'validation'))
             os.makedirs(os.path.join(self.results_dir, 'test'))
+
+            if type(results_names) is list:
+                for r in results_names:
+                    os.makedirs(os.path.join(self.results_dir, r))
 
             # copy code to dir
             copytree(os.path.dirname(os.path.realpath(__file__)), self.code_dir,
@@ -163,6 +170,24 @@ class Experiment(object):
 
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
+
+        # update experiment parameters
+
+        if self.batch_size_train is None:
+            self.batch_size_train = self.batch_size
+
+        if self.batch_size_eval is None:
+                self.batch_size_eval = self.batch_size
+
+        if self.batch_size is None:
+                self.batch_size = self.batch_size_train
+
+        if self.epoch_length_train is None:
+            self.epoch_length_train = self.epoch_length
+
+        if self.epoch_length_eval is None:
+            self.epoch_length_eval = self.epoch_length
+
 
     def set_rank(self, rank, world_size):
 
@@ -221,16 +246,15 @@ class Experiment(object):
             decade = int(np.log10(self.epoch) + 1)
             logscale = not (self.epoch - 1) % (10 ** (decade - 1))
 
-            train_results, test_results = results['train'], results['test']
+            for subset, res in results.items():
 
-            if store_results == 'yes' or store_results == 'logscale' and logscale:
-                pd.to_pickle(train_results, os.path.join(self.results_dir, 'train', f'results_{self.epoch:06d}'))
-                pd.to_pickle(test_results, os.path.join(self.results_dir, 'test', f'results_{self.epoch:06d}'))
+                if store_results == 'yes' or store_results == 'logscale' and logscale:
+                    pd.to_pickle(res, os.path.join(self.results_dir, subset, f'results_{self.epoch:06d}'))
 
-            alg = algorithm if visualize_weights else None
+                alg = algorithm if visualize_weights else None
 
             if visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
-                self.log_data(copy.deepcopy(train_results), copy.deepcopy(test_results), self.epoch, print_log=print_results, alg=alg, argv=argv)
+                self.log_data(copy.deepcopy(results), self.epoch, print_log=print_results, alg=alg, argv=argv)
 
             checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_{self.epoch:06d}')
             algorithm.save_checkpoint(checkpoint_file)
@@ -241,9 +265,9 @@ class Experiment(object):
         if self.world_size > 1:
             dist.barrier()
 
-    def log_data(self, train_results, test_results, n, print_log=True, alg=None, argv=None):
+    def log_data(self, results, n, print_log=True, alg=None, argv=None):
 
-        for subset, res in {'Train': train_results, 'Test': test_results}.items():
+        for subset, res in results.items():
 
             for param, val in res['scalar'].items():
                 if type(val) is dict or type(val) is defaultdict:
@@ -261,7 +285,6 @@ class Experiment(object):
                     if not (type(res['scalar'][param]) is dict or type(
                             res['scalar'][param]) is defaultdict):
                         logger.info('%s %g \t|' % (param, res['scalar'][param]))
-
 
         if self.writer is None:
             return
@@ -288,7 +311,7 @@ class Experiment(object):
                     except:
                         pass
 
-        for subset, res in {'train': train_results, 'test': test_results}.items():
+        for subset, res in results.items():
 
             for log_type in res:
                 log_func = getattr(self.writer, f'add_{log_type}')

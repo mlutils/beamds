@@ -143,26 +143,28 @@ class FT_transformer(nn.Module):
         return  out
 
 
-class MultipleOptimizer():
+class MultipleScheduler(object):
+
+    def __init__(self, multiple_optimizer, scheduler, *argc, **argv):
+
+        self.schedulers = {}
+        self.multiple_optimizer = multiple_optimizer
+
+        for op in multiple_optimizer.optimizers.keys():
+            self.schedulers[op] = scheduler(optimizers[op], *argc, **argv)
+
+    def step(self, *argc, **argv):
+        for op in self.multiple_optimizer.optimizers.keys():
+            self.schedulers[op].step(*argc, **argv)
+
+class MultipleOptimizer(object):
     def __init__(self, **op):
         self.optimizers = op
         for k, o in op.items():
             setattr(self, k, o)
 
     def set_scheduler(self, scheduler, *argc, **argv):
-
-        class MultipleScheduler():
-            def __init__(this, scheduler, *argc, **argv):
-
-                this.schedulers = {}
-                for op in self.optimizers.keys():
-                    this.schedulers[op] = scheduler(self.optimizers[op], *argc, **argv)
-
-            def step(this, *argc, **argv):
-                for op in self.optimizers.keys():
-                    this.schedulers[op].step(*argc, **argv)
-
-        return MultipleScheduler(scheduler, **argv)
+        return MultipleScheduler(self, scheduler, *argc, **argv)
 
     def reset(self):
         for op in self.optimizers.values():
@@ -189,7 +191,7 @@ class MultipleOptimizer():
             op.load_state_dict(state_dict[k])
 
 
-def Optimizer(net, dense_args=None, sparse_args=None):
+def beam_optimizer(net, dense_args=None, sparse_args=None):
 
     if dense_args is None:
         dense_args = {'lr': 1e-3, 'eps': 1e-4}

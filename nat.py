@@ -76,8 +76,8 @@ class NATGraphAlg(Algorithm):
 
             datasets = IP_ID_Dataset(data, edge_tags, edges, edge_attribute, self.exp.device, self.feature_map)
 
-            self.dataloader[train_flag] = datasets.dataloader(batch_size=self.exp.batch_size, num_workers=0,
-                                                              collate_fn=ar_collate)
+            self.dataloaders[train_flag] = datasets.dataloader(batch_size=self.exp.batch_size, num_workers=0,
+                                                               collate_fn=ar_collate)
 
         return aux
 

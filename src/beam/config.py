@@ -44,6 +44,9 @@ parser.add_argument('--parallel', type=int, default=1, help='Number of parallel 
 boolean_feature("tensorboard", True, "Log results to tensorboard")
 boolean_feature("lognet", True, 'Log  networks parameters')
 boolean_feature("deterministic", False, 'Use deterministic pytorch optimization for reproducability')
+boolean_feature("scale-epoch-by-batch-size", True, 'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch'
+                                                   'When False: epoch length corresponds to the number of forward passes in each epoch')
+
 
 # experiment parameters
 parser.add_argument('--init', type=str, default='ortho', help='Initialization method [ortho|N02|xavier|]')
@@ -51,9 +54,9 @@ parser.add_argument('--seed', type=int, default=0, help='Seed for reproducabilit
 
 parser.add_argument('--total-steps', type=int, default=int(1e6), help='Total number of environment steps')
 
-parser.add_argument('--epoch-length', type=int, default=None, help='Length of each epoch (if None - it is the dataset size)')
-parser.add_argument('--epoch-length-train', type=int, default=None, help='Length of each epoch (if None - it is the dataset size)')
-parser.add_argument('--epoch-length-test', type=int, default=None, help='Length of each epoch (if None - it is the dataset size)')
+parser.add_argument('--epoch-length', type=int, default=None, help='Length of both train/eval epochs (if None - it is taken from epoch-length-train/epoch-length-eval arguments)')
+parser.add_argument('--epoch-length-train', type=int, default=None, help='Length of each epoch (if None - it is the dataset[train] size)')
+parser.add_argument('--epoch-length-eval', type=int, default=None, help='Length of each evaluation epoch (if None - it is the dataset[validation] size)')
 parser.add_argument('--n-epochs', type=int, default=None, help='Number of epochs, if None, it uses the total steps to determine the number of iterations')
 
 # environment parameters
@@ -62,7 +65,7 @@ parser.add_argument('--n-epochs', type=int, default=None, help='Number of epochs
 
 parser.add_argument('--batch-size', type=int, default=256, help='Batch Size')
 parser.add_argument('--batch-size-train', type=int, default=None, help='Batch Size for training iterations')
-parser.add_argument('--batch-size-test', type=int, default=None, help='Batch Size for testing/evaluation iterations')
+parser.add_argument('--batch-size-eval', type=int, default=None, help='Batch Size for testing/evaluation iterations')
 
 parser.add_argument('--lr-d', type=float, default=1e-3, metavar='α', help='learning rate for dense optimizers')
 parser.add_argument('--lr-s', type=float, default=1e-2, metavar='α', help='learning rate for sparse optimizers')

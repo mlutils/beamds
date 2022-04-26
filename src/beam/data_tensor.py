@@ -68,7 +68,13 @@ class DataTensor(object):
         self.iloc = Iloc(self)
         self.loc = Loc(self)
 
+    def __len__(self):
+        return len(self.index)
+
     def _loc(self, index):
+
+        if type(index) is slice:
+            index = torch.arange(len(self))[index]
 
         if not (hasattr(index, '__len__') and type(index) is not str):
             index = [index]
@@ -81,10 +87,13 @@ class DataTensor(object):
 
     def _iloc(self, ind):
 
+        if type(ind) is slice:
+            ind = torch.arange(len(self))[ind]
+
         if not (hasattr(ind, '__len__') and type(ind) is not str):
             ind = [ind]
 
-        if self.index is torch.Tensor:
+        if issubclass(type(self.index), torch.Tensor):
             index = self.index[ind]
         else:
             index = [self.index[i] for i in ind]
