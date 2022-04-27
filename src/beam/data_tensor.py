@@ -168,8 +168,6 @@ class DataTensor(object):
 
     def __getitem__(self, ind):
 
-        columns = None
-        index = None
         single_row = False
         single_column = False
 

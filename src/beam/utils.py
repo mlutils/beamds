@@ -7,10 +7,24 @@ from tqdm import *
 import random
 import torch
 import pandas as pd
+import multiprocessing as mp
+from .model import BeamOptimizer
 
 from loguru import logger
 logger.remove(handler_id=0)
 logger.add(sys.stdout, colorize=True, format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
+
+
+def process_async(func, args, mp_context='spawn', num_workers=10):
+
+    ctx = mp.get_context(mp_context)
+    with ctx.Pool(num_workers) as pool:
+        res = [pool.apply_async(func, (args,)) for arg in args]
+        results = []
+        for r in tqdm_beam(res):
+            results.append(r.get())
+
+    return results
 
 
 def check_type(x):
@@ -109,7 +123,7 @@ def to_device(data, device='cuda'):
         return {k: to_device(v, device) for k, v in data.items()}
     elif type(data) is list:
         return [to_device(s, device) for s in data]
-    elif issubclass(data, torch.Tensor):
+    elif issubclass(type(data), torch.Tensor):
         return data.to(device)
     else:
         return data
@@ -131,13 +145,6 @@ def tqdm_beam(x, *args, enable=True, **argv):
         my_tqdm = tqdm_notebook if is_notebook() else tqdm
         return my_tqdm(x, *args, **argv)
 
-def reset_optimizer(optimizer):
-
-    if type(optimizer) is Optimizer:
-        optimizer.reset()
-    else:
-        optimizer.state = defaultdict(dict)
-
 
 def reset_networks_and_optimizers(networks=None, optimizers=None):
 
@@ -145,25 +152,17 @@ def reset_networks_and_optimizers(networks=None, optimizers=None):
     if networks is not None:
         net_iter = networks.keys() if issubclass(type(networks), dict) else range(len(networks))
         for i in net_iter:
-            for n, m in net_iter[i].named_modules():
+            for n, m in networks[i].named_modules():
                 if hasattr(m, 'reset_parameters'):
                     m.reset_parameters()
 
     if optimizers is not None:
         opt_iter = optimizers.keys() if issubclass(type(optimizers), dict) else range(len(optimizers))
         for i in opt_iter:
-            for n, m in net_iter[i].named_modules():
-                if hasattr(m, 'reset_parameters'):
-                    m.reset_parameters()
+            opt = optimizers[i]
 
-    def init_weights(m):
-        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
-            m.reset_parameters()
+            if type(opt) is BeamOptimizer:
+                opt.reset()
+            else:
+                opt.state = defaultdict(dict)
 
-    for net in networks_dict:
-        net = getattr(self, net)
-        net.apply(init_weights)
-
-    for optim in optimizers_dict:
-        optim = getattr(self, optim)
-        optim.state = defaultdict(dict)

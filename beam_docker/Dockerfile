@@ -55,17 +55,16 @@ RUN pip install xgboost catboost ipywidgets
 RUN jupyter nbextension enable --py widgetsnbextension
 
 RUN pip install lightgbm impyla gssapi thrift-sasl snappy python-snappy pyshark scapy nfstream pyorc datatable pymongo
-RUN pip install requests_ntlm thriftpy sasl fastparquet openpyxl
+RUN pip install requests_ntlm thriftpy fastparquet openpyxl
+
+# RUN pip install sasl
 
 RUN pip install -U imbalanced-learn
 
 RUN pip install -U scikit-image
 
-#explainability
-RUN pip install lime shap seaborn fastavro
-
-#visualization
-RUN pip install bokeh altair vega_datasets
+#explainability and visualization
+RUN pip install lime shap seaborn fastavro bokeh altair vega_datasets
 
 # hyperparameter optimizations
 RUN pip install -U "ray[tune]"

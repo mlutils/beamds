@@ -70,7 +70,7 @@ class PackedSet(object):
 class LinearNet(nn.Module):
 
     def __init__(self, l_in, l_h=256, l_out=1, n_l=2, bias=True):
-        super(LinearNet, self).__init__()
+        super().__init__()
 
         self.lin = nn.Sequential(*([nn.Linear(l_in, l_h, bias=bias), nn.ReLU()] if n_l > 1 else []),
                                  *sum([[nn.Linear(l_h, l_h, bias=bias), nn.ReLU()] for _ in range(max(n_l-2, 0))], []),
@@ -81,66 +81,6 @@ class LinearNet(nn.Module):
         y = self.lin(x)
         return y.squeeze(1)
 
-class FT_transformer(nn.Module):
-    def __init__(self,N_Classes,N_Numeric,Categoric_numbers, EmbeddingSize = 128,
-                 N_heads = 6,N_transormer_L = 4,dim_ff =512):
-        super(FT_transformer,self).__init__()
-        # N_Classes - number of target classes
-        # N_Numeric-  Number of numric features
-        # Categoric_numbers - np array with size m, where m is the number of categorical features. each element is number of possible values per categorical featur
-        # Rest of parameters are the transformer parameters
-
-        self.N_Numeric = N_Numeric
-        self.N_Embed_features = EmbeddingSize
-        self.N_transormer_L = N_transormer_L
-        self.N_heads = N_heads
-        self.N_features = int(N_Numeric + len(Categoric_numbers))
-
-        self.Numeric_Embed = nn.Parameter(torch.randn((N_Numeric,EmbeddingSize)),requires_grad=True)
-        self.Embed_bias = nn.Parameter(torch.randn((self.N_features+1,EmbeddingSize)),requires_grad=True)
-        #self.Numric_Embed = nn.Conv2d(1,128,kernel_size=(self.NumricEmbed , 1))
-
-        TotCategor = int(np.sum(Categoric_numbers))
-        self.N_categor = len(Categoric_numbers)
-
-        self.CategorIndex = torch.from_numpy( np.cumsum(Categoric_numbers) - Categoric_numbers[0]+1).int().cuda()
-        print(TotCategor+1,EmbeddingSize)
-        self.CategorEmbed = nn.Embedding(TotCategor+1,EmbeddingSize)
-        #self.CategorEmbed = nn.Parameter(torch.randn((TotCategor+1,EmbeddingSize)),requires_grad=True)
-        self.encoderL = nn.TransformerEncoderLayer(EmbeddingSize,self.N_heads,dim_feedforward=dim_ff,batch_first=True)
-        self.Transformer = nn.TransformerEncoder(self.encoderL,self.N_transormer_L)
-
-        self.Classifier = nn.Sequential(
-            nn.LayerNorm(EmbeddingSize),
-            nn.ReLU(),
-            nn.Linear(EmbeddingSize,N_Classes)
-        )
-
-
-    def forward(self,x):
-    # X features order is First numeric features, then catgorical:
-
-        # Numeric features embedding
-        x1 = (x[:,:self.N_Numeric]).unsqueeze(2)
-        Numeric_Embed = (self.Numeric_Embed).unsqueeze(0)
-        x_N = x1 * Numeric_Embed
-        # categorical features index mat:
-        x_cat_ind = x[:,self.N_Numeric:].int()
-        CategorEmbedIndex = x_cat_ind + (self.CategorIndex).unsqueeze(0)
-        # add cls
-        CategorEmbedIndex = torch.cat((torch.zeros(x_cat_ind.shape[0], 1, dtype=torch.int, device=x.device), CategorEmbedIndex), 1)
-        # select embedding rows in cagegorical embedding
-        x_c = self.CategorEmbed(CategorEmbedIndex.long())
-        # concat all features for T
-        x = torch.cat((x_N,x_c),1)
-        # add bias
-        x = x + (self.Embed_bias).unsqueeze(0)
-
-        x = x+ self.Transformer(x)
-        x = x[:,0,:]
-        out = self.Classifier(x)
-
-        return  out
 
 
 class MultipleScheduler(object):
@@ -151,17 +91,37 @@ class MultipleScheduler(object):
         self.multiple_optimizer = multiple_optimizer
 
         for op in multiple_optimizer.optimizers.keys():
-            self.schedulers[op] = scheduler(optimizers[op], *argc, **argv)
+            self.schedulers[op] = scheduler(multiple_optimizer[op], *argc, **argv)
 
     def step(self, *argc, **argv):
         for op in self.multiple_optimizer.optimizers.keys():
             self.schedulers[op].step(*argc, **argv)
 
-class MultipleOptimizer(object):
-    def __init__(self, **op):
-        self.optimizers = op
-        for k, o in op.items():
+class BeamOptimizer(object):
+
+    def __init__(self, net, dense_args=None, sparse_args=None):
+
+        if dense_args is None:
+            dense_args = {'lr': 1e-3, 'eps': 1e-4}
+        if sparse_args is None:
+            sparse_args = {'lr': 1e-2, 'eps': 1e-4}
+
+        self.optimizers = {}
+        sparse_parameters = list(
+            set(list(itertools.chain(*[m.parameters() for m in net.modules() if BeamOptimizer.check_sparse(m)]))))
+
+        dense_parameters = list(set(net.parameters()).difference(sparse_parameters))
+        self.optimizers['dense'] = torch.optim.Adam(dense_parameters, **dense_args)
+
+        if len(sparse_parameters) > 0:
+            self.optimizers['sparse'] = torch.optim.SparseAdam(sparse_parameters, **sparse_args)
+
+        for k, o in self.optimizers.items():
             setattr(self, k, o)
+
+    @staticmethod
+    def check_sparse(m):
+        return (issubclass(type(m), nn.Embedding) or issubclass(type(m), nn.EmbeddingBag)) and m.sparse
 
     def set_scheduler(self, scheduler, *argc, **argv):
         return MultipleScheduler(self, scheduler, *argc, **argv)
@@ -173,6 +133,13 @@ class MultipleOptimizer(object):
     def zero_grad(self):
         for op in self.optimizers.values():
             op.zero_grad()
+
+    def apply(self, loss, training=False, return_grad=False):
+
+        if training:
+            self.zero_grad()
+            loss.backward()
+            self.step()
 
     def step(self):
         for op in self.optimizers.values():
@@ -189,31 +156,6 @@ class MultipleOptimizer(object):
                 state_dict[k]['param_groups'] = op.state_dict()['param_groups']
 
             op.load_state_dict(state_dict[k])
-
-
-def beam_optimizer(net, dense_args=None, sparse_args=None):
-
-    if dense_args is None:
-        dense_args = {'lr': 1e-3, 'eps': 1e-4}
-    if sparse_args is None:
-        sparse_args = {'lr': 1e-2, 'eps': 1e-4}
-
-    def check_sparse(m):
-        return (issubclass(type(m), nn.Embedding) or issubclass(type(m), nn.EmbeddingBag)) and m.sparse
-
-    sparse_parameters = list(
-        set(list(itertools.chain(*[m.parameters() for m in net.modules() if check_sparse(m)]))))
-
-    dense_parameters = list(set(net.parameters()).difference(sparse_parameters))
-    opt_dense = torch.optim.AdamW(dense_parameters, **dense_args)
-
-    if len(sparse_parameters) > 0:
-        opt_sparse = torch.optim.SparseAdam(sparse_parameters, **sparse_args)
-        optimizer = MultipleOptimizer(dense=opt_dense, sparse=opt_sparse)
-    else:
-        optimizer = MultipleOptimizer(dense=opt_dense)
-
-    return optimizer
 
 
 class RuleLayer(nn.Module):

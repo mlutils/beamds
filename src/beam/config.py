@@ -36,7 +36,7 @@ boolean_feature("override", True, "Override last experiment: active when reload=
 
 
 parser.add_argument('--cpu-workers', type=int, default=0, help='How many CPUs will be used for the data loading')
-parser.add_argument('--device', type=str, default=0, help='GPU Number or cpu/cuda string')
+parser.add_argument('--device', type=str, default='0', help='GPU Number or cpu/cuda string')
 parser.add_argument('--parallel', type=int, default=1, help='Number of parallel gpu workers. Set <=1 for single process')
 
 # booleans

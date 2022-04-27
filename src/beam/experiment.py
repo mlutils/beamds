@@ -74,7 +74,8 @@ class Experiment(object):
 
         self.start_time = time.time()
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.device = torch.device(int(self.device) if x.isnumeric() else self.device)
+        self.device = torch.device(int(self.device) if self.device.isnumeric() else self.device)
+
         self.base_dir = os.path.join(self.root_dir, self.project_name)
 
         for folder in [self.base_dir, self.root_dir]:

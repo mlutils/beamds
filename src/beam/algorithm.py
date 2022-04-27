@@ -4,14 +4,14 @@ import torch
 import copy
 from .utils import tqdm_beam as tqdm
 import numpy as np
-from .model import beam_optimizer
+from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device
 
 
 class Algorithm(object):
 
-    def __init__(self, networks, experiment, dataloaders=None, dataset=None, optimizers=None, rank=0, store_initial_weights=False):
+    def __init__(self, networks, dataloaders, experiment, dataset=None, optimizers=None, rank=0, store_initial_weights=False):
 
         self.experiment = experiment
         self.device = experiment.device
@@ -27,9 +27,9 @@ class Algorithm(object):
 
         if optimizers is None:
             self.networks = {k: self.register_network(v) for k, v in networks.items()}
-            optimizers = {k: beam_optimizer(v, dense_args={'lr': experiment.lr_d,
-                                                     'weight_decay': experiment.eps,
-                                                      'eps': experiment.weight_decay},
+            optimizers = {k: BeamOptimizer(v, dense_args={'lr': experiment.lr_d,
+                                                     'weight_decay': experiment.weight_decay,
+                                                      'eps': experiment.eps},
                                        sparse_args={'lr': experiment.lr_s, 'eps': experiment.eps},
                                        ) for k, v in self.networks.items()}
 
@@ -46,15 +46,15 @@ class Algorithm(object):
 
         if self.epoch_length['train'] is None:
             dataset = self.dataloaders['train'].dataset
-            self.epoch_length['train'] = len(dataset.indices['train'])
+            self.epoch_length['train'] = len(dataset.indices_split['train'])
 
         if self.epoch_length[self.eval_subset] is None:
             dataset = self.dataloaders[self.eval_subset].dataset
-            self.epoch_length[self.eval_subset] = len(dataset.indices[self.eval_subset])
+            self.epoch_length[self.eval_subset] = len(dataset.indices_split[self.eval_subset])
 
         self.n_epochs = experiment.n_epochs
         if self.n_epochs is None:
-            self.n_epochs = experiment.total_steps // self.epoch_length_train
+            self.n_epochs = experiment.total_steps // self.epoch_length['train']
 
         if experiment.scale_epoch_by_batch_size:
             self.epoch_length[self.eval_subset] = self.epoch_length[self.eval_subset] // self.batch_size_eval
@@ -83,7 +83,7 @@ class Algorithm(object):
             sample = self.process_sample(sample)
             yield i, sample
 
-    def postprocess_epoch(self, sample, aux, results, epoch, subset, training=True):
+    def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
         '''
         :param epoch: epoch number
         :param subset: name of dataset subset (usually train/validation/test)
@@ -92,7 +92,7 @@ class Algorithm(object):
         '''
         return aux, results
 
-    def preprocess_epoch(self, aux, epoch, subset, training=True):
+    def preprocess_epoch(self, aux=None, epoch=None, subset=None, training=True):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param epoch: epoch number
@@ -102,7 +102,7 @@ class Algorithm(object):
         '''
         return aux
 
-    def iteration(self, sample, aux, results, subset, training=True):
+    def iteration(self, sample=None, aux=None, results=None, subset=None, training=True):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -119,7 +119,7 @@ class Algorithm(object):
 
         for n in range(n_epochs):
 
-            aux = self.preprocess_epoch(None, n, subset, training=training)
+            aux = self.preprocess_epoch(epoch=n, subset=subset, training=training)
             self.set_mode(training=training)
             results = defaultdict(lambda: defaultdict(list))
 
@@ -127,9 +127,10 @@ class Algorithm(object):
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=True, desc=subset):
 
-                aux, results = self.iteration(sample, aux, results, subset, training=training)
+                aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=training)
 
-            aux, results = self.postprocess_epoch(sample, aux, results, subset, n, training=training)
+            aux, results = self.postprocess_epoch(sample=sample, aux=aux, results=results,
+                                                  subset=subset, epoch=n, training=training)
 
             yield results
 

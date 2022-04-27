@@ -93,16 +93,17 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if 'test' in self.samplers:
             sampler = self.samplers['test']
-            dataloaders['test'] = torch.utils.data.DataLoader(self, sampler=sampler,
+            persistent_workers = True if num_workers > 0 else False
+            dataloaders['test'] = torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
                                                  num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
                                                  worker_init_fn=worker_init_fn, collate_fn=collate_fn,
                                                  multiprocessing_context=multiprocessing_context, generator=generator,
-                                                 prefetch_factor=prefetch_factor, persistent_workers=True
+                                                 prefetch_factor=prefetch_factor, persistent_workers=persistent_workers
                                                  )
 
         if 'validation' in self.samplers:
             sampler = self.samplers['validation']
-            dataloaders['validation'] = torch.utils.data.DataLoader(self, sampler=sampler,
+            dataloaders['validation'] = torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
                                                  num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
                                                  worker_init_fn=worker_init_fn, collate_fn=collate_fn,
                                                  multiprocessing_context=multiprocessing_context, generator=generator,
@@ -111,6 +112,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if 'train' in self.samplers:
             sampler = self.samplers['train']
             dataloaders['train'] = torch.utils.data.DataLoader(self, sampler=sampler,
+                                                                    batch_size = None,
                                                                     num_workers=num_workers,
                                                                     pin_memory=pin_memory,
                                                                     timeout=timeout,
