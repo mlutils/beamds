@@ -9,11 +9,12 @@ import torch
 import pandas as pd
 import multiprocessing as mp
 from .model import BeamOptimizer
+import socket
+from contextlib import closing
 
 from loguru import logger
 logger.remove(handler_id=0)
 logger.add(sys.stdout, colorize=True, format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
-
 
 def process_async(func, args, mp_context='spawn', num_workers=10):
 
@@ -77,7 +78,7 @@ def is_notebook():
 def setup(rank, world_size):
 
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ['MASTER_PORT'] = '7438'
 
     # initialize the process group
     dist.init_process_group("gloo", rank=rank, world_size=world_size)

@@ -19,15 +19,19 @@ import torch.distributed as dist
 
 def run_worker(rank, world_size, job, experiment, *args):
 
+    print(f"Worker: {rank+1}/{world_size} is running...")
+
     if world_size > 1:
         setup(rank, world_size)
 
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.seed, constant=rank, increment=False, deterministic=experiment.deterministic)
-    job(rank, world_size, experiment, *args)
+    res = job(rank, world_size, experiment, *args)
 
     if world_size > 1:
         cleanup(rank, world_size)
+
+    return res
 
 
 class Experiment(object):
@@ -77,10 +81,7 @@ class Experiment(object):
         self.device = torch.device(int(self.device) if self.device.isnumeric() else self.device)
 
         self.base_dir = os.path.join(self.root_dir, self.project_name)
-
-        for folder in [self.base_dir, self.root_dir]:
-            if not os.path.exists(folder):
-                os.makedirs(folder)
+        os.makedirs(self.base_dir, exist_ok=True)
 
         dirs = os.listdir(self.base_dir)
         temp_name = "%s_%s_exp" % (self.algorithm, self.identifier)
@@ -242,7 +243,7 @@ class Experiment(object):
 
             if print_results:
                 print()
-                logger.info(f'Finished epoch {self.epoch}:')
+                logger.info(f'Finished epoch {self.epoch}/{algorithm.n_epochs}:')
 
             decade = int(np.log10(self.epoch) + 1)
             logscale = not (self.epoch - 1) % (10 ** (decade - 1))
@@ -315,15 +316,16 @@ class Experiment(object):
         for subset, res in results.items():
 
             for log_type in res:
-                log_func = getattr(self.writer, f'add_{log_type}')
-                for param in res[log_type]:
-                    if type(res[log_type][param]) is dict or type(res[log_type][param]) is defaultdict:
-                        for p, v in res[log_type][param].items():
-                            log_func(f'{subset}_{param}/{p}', v, n, **defaults_argv[log_type][param])
-                    elif type(res[log_type][param]) is list:
-                        log_func(f'{subset}/{param}', *res[log_type][param], n, **defaults_argv[log_type][param])
-                    else:
-                        log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
+                if hasattr(self.writer, f'add_{log_type}'):
+                    log_func = getattr(self.writer, f'add_{log_type}')
+                    for param in res[log_type]:
+                        if type(res[log_type][param]) is dict or type(res[log_type][param]) is defaultdict:
+                            for p, v in res[log_type][param].items():
+                                log_func(f'{subset}_{param}/{p}', v, n, **defaults_argv[log_type][param])
+                        elif type(res[log_type][param]) is list:
+                            log_func(f'{subset}/{param}', *res[log_type][param], n, **defaults_argv[log_type][param])
+                        else:
+                            log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
 
 
     def run(self, job, *args):
@@ -337,9 +339,11 @@ class Experiment(object):
                      join=True)
 
         if self.parallel > 1:
+            logger.info(f'Initializing {self.parallel} parallel workers')
             _run(run_worker, self.parallel)
         else:
-            run_worker(0, 1, *arguments)
+            logger.info(f'Single worker mode')
+            return run_worker(0, 1, *arguments)
 
     def __enter__(self):
         return self

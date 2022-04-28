@@ -17,7 +17,7 @@ RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 # applications
 RUN apt install -y htop -y tmux -y alien -y libtool -y dh-autoreconf -y debhelper -y libaiol -y libaio-dev
-RUN apt install -y telnet -y iputils-ping -y python-dev
+RUN apt install -y telnet -y iputils-ping -y python-dev -y net-tools
 
 
 RUN apt install -y graphviz
@@ -50,7 +50,7 @@ RUN python -m spacy download ru_core_news_sm
 RUN pip install elasticsearch fasttext pandarallel gensim umap-learn pyvis graphviz pygraphviz opencv-python
 RUN python -m pip install "dask[complete]"
 
-RUN pip install xgboost catboost ipywidgets
+RUN pip install xgboost catboost ipywidgets loguru
 
 RUN jupyter nbextension enable --py widgetsnbextension
 
@@ -96,7 +96,6 @@ RUN pip install --upgrade tensorflow
 
 # install beam
 
-RUN pip install loguru
 RUN mkdir /workspace/beamds/
 COPY . /workspace/beamds/
 RUN python -m pip install --upgrade build

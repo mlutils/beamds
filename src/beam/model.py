@@ -99,12 +99,14 @@ class MultipleScheduler(object):
 
 class BeamOptimizer(object):
 
-    def __init__(self, net, dense_args=None, sparse_args=None):
+    def __init__(self, net, dense_args=None, sparse_args=None, clip=0):
 
         if dense_args is None:
             dense_args = {'lr': 1e-3, 'eps': 1e-4}
         if sparse_args is None:
             sparse_args = {'lr': 1e-2, 'eps': 1e-4}
+
+        self.clip = clip
 
         self.optimizers = {}
         sparse_parameters = list(
@@ -134,12 +136,19 @@ class BeamOptimizer(object):
         for op in self.optimizers.values():
             op.zero_grad()
 
-    def apply(self, loss, training=False, return_grad=False):
+    def apply(self, loss, training=False):
 
         if training:
             self.zero_grad()
             loss.backward()
+
+            if self.clip > 0:
+                for op in self.optimizers.values():
+                    for pg in op.param_groups:
+                        torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.clip)
+
             self.step()
+
 
     def step(self):
         for op in self.optimizers.values():

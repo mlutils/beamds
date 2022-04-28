@@ -30,7 +30,7 @@ class Algorithm(object):
             optimizers = {k: BeamOptimizer(v, dense_args={'lr': experiment.lr_d,
                                                      'weight_decay': experiment.weight_decay,
                                                       'eps': experiment.eps},
-                                       sparse_args={'lr': experiment.lr_s, 'eps': experiment.eps},
+                                       sparse_args={'lr': experiment.lr_s, 'eps': experiment.eps}, clip=experiment.clip
                                        ) for k, v in self.networks.items()}
 
         self.optimizers = optimizers
@@ -60,6 +60,9 @@ class Algorithm(object):
             self.epoch_length[self.eval_subset] = self.epoch_length[self.eval_subset] // self.batch_size_eval
             self.epoch_length['train'] = self.epoch_length['train'] // self.batch_size_train
 
+        if 'test' in self.dataloaders.keys():
+            self.epoch_length['test'] = len(self.dataloaders['test'])
+
         if store_initial_weights:
             self.initial_weights = self.save_checkpoint()
 
@@ -82,15 +85,6 @@ class Algorithm(object):
         for i, sample in enumerate(self.dataloaders[subset]):
             sample = self.process_sample(sample)
             yield i, sample
-
-    def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
-        '''
-        :param epoch: epoch number
-        :param subset: name of dataset subset (usually train/validation/test)
-        :return: None
-        a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
-        '''
-        return aux, results
 
     def preprocess_epoch(self, aux=None, epoch=None, subset=None, training=True):
         '''
@@ -115,18 +109,29 @@ class Algorithm(object):
         '''
         return aux, results
 
+    def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
+        '''
+        :param epoch: epoch number
+        :param subset: name of dataset subset (usually train/validation/test)
+        :return: None
+        a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
+        '''
+        return aux, results
+
     def inner_loop(self, n_epochs, subset, training=True):
 
         for n in range(n_epochs):
 
-            aux = self.preprocess_epoch(epoch=n, subset=subset, training=training)
-            self.set_mode(training=training)
+            aux = defaultdict(lambda: defaultdict(list))
             results = defaultdict(lambda: defaultdict(list))
 
+            aux = self.preprocess_epoch(aux=aux, epoch=n, subset=subset, training=training)
+            self.set_mode(training=training)
             data_generator = self.data_generator(subset)
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
-                                  enable=True, desc=subset):
+                                  enable=True, desc=subset, total=self.epoch_length[subset]-1):
 
+                # print(i)
                 aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=training)
 
             aux, results = self.postprocess_epoch(sample=sample, aux=aux, results=results,
@@ -136,16 +141,7 @@ class Algorithm(object):
 
         return
 
-
-    def postprocess_inference(self, sample, aux, results, subset):
-        '''
-        :param subset: name of dataset subset (usually train/validation/test)
-        :return: None
-        a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
-        '''
-        return aux, results
-
-    def preprocess_inference(self, aux, subset):
+    def preprocess_inference(self, aux=None, subset=None):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param subset: name of dataset subset (usually train/validation/test)
@@ -154,7 +150,7 @@ class Algorithm(object):
         '''
         return aux
 
-    def inference(self, sample, aux, results, subset):
+    def inference(self, sample=None, aux=None, results=None, subset=None):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -164,21 +160,33 @@ class Algorithm(object):
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
+        aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=False)
+        return aux, results
+
+    def postprocess_inference(self, sample=None, aux=None, results=None, subset=None):
+        '''
+        :param subset: name of dataset subset (usually train/validation/test)
+        :return: None
+        a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
+        '''
         return aux, results
 
     def __call__(self, subset='test'):
 
         with torch.no_grad():
             self.set_mode(training=False)
-            aux = self.preprocess_inference(None, subset)
 
+            aux = defaultdict(lambda: defaultdict(list))
             results = defaultdict(lambda: defaultdict(list))
 
-            data_generator = self.data_generator(subset)
-            for i, sample in tqdm(data_generator, enable=True, desc=subset):
-                aux, results = self.inference(sample, aux, results, subset)
+            aux = self.preprocess_inference(aux=aux, subset=subset)
 
-            aux, results = self.postprocess_inference(sample, aux, results, subset)
+            data_generator = self.data_generator(subset)
+            for i, sample in tqdm(data_generator, enable=True, desc=subset,
+                                  total=self.epoch_length[subset]-1):
+                aux, results = self.inference(sample=sample, aux=aux, results=results, subset=subset)
+
+            aux, results = self.postprocess_inference(sample=sample, aux=aux, results=results, subset=subset)
 
         return results
 

@@ -1,5 +1,5 @@
 import argparse
-
+import os
 
 def boolean_feature(feature, default, help):
 
@@ -28,8 +28,11 @@ Arguments
     reload = True, resume = <n>: resume to the <n> experiment
     
 '''
+parser.add_argument('--project-name', type=str, default='beam', help='The name of the beam project')
 parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
 parser.add_argument('--algorithm', type=str, default='Algorithm', help='algorithm name')
+parser.add_argument('--root-dir', type=str, default=os.path.join(os.path.expanduser('~'), 'beam_projects'), help='Root directory for Logs and results')
+
 boolean_feature("reload", False, "Load saved model")
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment: active when reload=True')
 boolean_feature("override", True, "Override last experiment: active when reload=False")
