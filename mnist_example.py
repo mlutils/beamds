@@ -67,6 +67,7 @@ class MNISTAlgorithm(Algorithm):
         return aux, results
 
     def iteration(self, sample=None, aux=None, results=None, subset=None, training=True):
+
         x, y = sample['x'], sample['y']
 
         x = x.view(len(x), -1)

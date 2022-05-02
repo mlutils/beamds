@@ -138,12 +138,12 @@ def finite_iterations(iterator, n):
         else:
             return out
 
-def tqdm_beam(x, *args, enable=True, **argv):
+def tqdm_beam(x, *args, enable=True, notebook=True, **argv):
 
     if not enable:
         return x
     else:
-        my_tqdm = tqdm_notebook if is_notebook() else tqdm
+        my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
         return my_tqdm(x, *args, **argv)
 
 

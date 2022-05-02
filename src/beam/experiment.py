@@ -17,7 +17,7 @@ import torch.distributed as dist
 
 # check
 
-def run_worker(rank, world_size, job, experiment, *args):
+def run_worker(rank, world_size, results_queue, job, experiment, *args):
 
     print(f"Worker: {rank+1}/{world_size} is running...")
 
@@ -26,13 +26,16 @@ def run_worker(rank, world_size, job, experiment, *args):
 
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.seed, constant=rank, increment=False, deterministic=experiment.deterministic)
+
     res = job(rank, world_size, experiment, *args)
 
     if world_size > 1:
+
         cleanup(rank, world_size)
+        results_queue.put({'rank': rank, 'results': res})
 
-    return res
-
+    else:
+        return res
 
 class Experiment(object):
 
@@ -332,18 +335,34 @@ class Experiment(object):
 
         arguments = (job, self, *args)
 
+        # def _run(demo_fn, world_size):
+        #     mp.spawn(demo_fn,
+        #              args=(world_size, *arguments),
+        #              nprocs=world_size,
+        #              join=True)
+
         def _run(demo_fn, world_size):
-            mp.spawn(demo_fn,
-                     args=(world_size, *arguments),
-                     nprocs=world_size,
-                     join=True)
+
+            ctx = mp.get_context('spawn')
+            results_queue = ctx.Queue()
+            for rank in range(world_size):
+                ctx.Process(target=demo_fn, args=(rank, world_size, results_queue, *arguments)).start()
+
+            res = []
+            for rank in range(world_size):
+                print("collecting worker:")
+                print(rank)
+                res.append(results_queue.get())
+
+            return res
+
 
         if self.parallel > 1:
             logger.info(f'Initializing {self.parallel} parallel workers')
-            _run(run_worker, self.parallel)
+            return _run(run_worker, self.parallel)
         else:
             logger.info(f'Single worker mode')
-            return run_worker(0, 1, *arguments)
+            return run_worker(0, 1, None, *arguments)
 
     def __enter__(self):
         return self

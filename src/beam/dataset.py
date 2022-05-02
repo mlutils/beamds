@@ -21,9 +21,13 @@ class UniversalDataset(torch.utils.data.Dataset):
         except:
             raise NotImplementedError
 
-    def split(self, validation=None, test=None, seed=None, stratify=False, labels=None):
+    def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None):
         '''
         validation, test can be lists of indices, relative size or absolute size
+
+        The seed is fixed unless explicitly given, to make sure datasets are split the same in all instances.
+        If one wish to obtain random splitting, seed should be None
+
         '''
 
         indices = np.arange(len(self))

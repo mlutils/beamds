@@ -11,12 +11,14 @@ from .utils import finite_iterations, to_device
 
 class Algorithm(object):
 
-    def __init__(self, networks, dataloaders, experiment, dataset=None, optimizers=None, rank=0, store_initial_weights=False):
+    def __init__(self, networks, dataloaders, experiment, dataset=None, optimizers=None, store_initial_weights=False):
 
         self.experiment = experiment
+
         self.device = experiment.device
-        self.rank = rank
         self.world_size = experiment.parallel
+        self.enable_tqdm = True
+
         self.dataloaders = dataloaders
         self.dataset = dataset
 
@@ -67,9 +69,11 @@ class Algorithm(object):
             self.initial_weights = self.save_checkpoint()
 
     def register_network(self, net):
+
         net = net.to(self.device)
         if self.world_size > 1:
-            net = DDP(net, device_ids=[self.rank])
+            net = DDP(net, device_ids=[self.device])
+
         return net
 
     def get_optimizers(self):
@@ -129,7 +133,8 @@ class Algorithm(object):
             self.set_mode(training=training)
             data_generator = self.data_generator(subset)
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
-                                  enable=True, desc=subset, total=self.epoch_length[subset]-1):
+                                  enable=self.enable_tqdm, notebook=(self.world_size == 1),
+                                  desc=subset, total=self.epoch_length[subset]-1):
 
                 # print(i)
                 aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=training)
@@ -182,7 +187,7 @@ class Algorithm(object):
             aux = self.preprocess_inference(aux=aux, subset=subset)
 
             data_generator = self.data_generator(subset)
-            for i, sample in tqdm(data_generator, enable=True, desc=subset,
+            for i, sample in tqdm(data_generator, enable=self.enable_tqdm, notebook=(self.world_size == 1), desc=subset,
                                   total=self.epoch_length[subset]-1):
                 aux, results = self.inference(sample=sample, aux=aux, results=results, subset=subset)
 
