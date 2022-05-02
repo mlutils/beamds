@@ -69,7 +69,7 @@ class Algorithm(object):
     def register_network(self, net):
         net = net.to(self.device)
         if self.world_size > 1:
-            DDP(net, device_ids=[self.rank])
+            net = DDP(net, device_ids=[self.rank])
         return net
 
     def get_optimizers(self):
