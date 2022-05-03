@@ -78,14 +78,6 @@ class LinearNet(nn.Module):
 
     def forward(self, x):
 
-        # print("x")
-        # print(x.device)
-        # print('net')
-        #
-        # for n, p in self.named_parameters():
-        #     print(n)
-        #     print(p.device)
-
         y = self.lin(x)
         return y.squeeze(1)
 

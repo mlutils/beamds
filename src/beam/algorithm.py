@@ -68,6 +68,9 @@ class Algorithm(object):
         if store_initial_weights:
             self.initial_weights = self.save_checkpoint()
 
+        if experiment.load_model:
+            experiment.reload_checkpoint(self)
+
     def register_network(self, net):
 
         net = net.to(self.device)
@@ -267,7 +270,9 @@ class Algorithm(object):
             net.load_state_dict(state[f"{k}_parameters"], strict=strict)
 
         for k, optimizer in self.optimizers.items():
-            optimizer.load_state_dict(state[f"{k}_optimizer"], strict=strict)
+            print(k)
+            print(state[f"{k}_optimizer"])
+            optimizer.load_state_dict(state[f"{k}_optimizer"])
 
         return state['aux']
 

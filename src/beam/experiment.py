@@ -19,7 +19,7 @@ import torch.distributed as dist
 
 def run_worker(rank, world_size, results_queue, job, experiment, *args):
 
-    print(f"Worker: {rank+1}/{world_size} is running...")
+    logger.info(f"Worker: {rank+1}/{world_size} is running...")
 
     if world_size > 1:
         setup(rank, world_size)
@@ -194,6 +194,20 @@ class Experiment(object):
             self.epoch_length_eval = self.epoch_length
 
 
+    def reload_checkpoint(self, alg, iloc=-1):
+
+        checkpoints = os.listdir(self.checkpoints_dir)
+        checkpoints = pd.DataFrame({'name': checkpoints, 'index': [int(c.split('_')[-1]) for c in checkpoints]})
+        checkpoints = checkpoints.sort_values('index')
+
+        chp = checkpoints.iloc[iloc]['name']
+        path = os.path.join(self.checkpoints_dir, chp)
+
+        logger.info(f"Reload experiment from checkpoint: {path}")
+
+        alg.load_checkpoint(path)
+
+
     def set_rank(self, rank, world_size):
 
         self.rank = rank
@@ -350,8 +364,6 @@ class Experiment(object):
 
             res = []
             for rank in range(world_size):
-                print("collecting worker:")
-                print(rank)
                 res.append(results_queue.get())
 
             return res

@@ -2,7 +2,7 @@
 # cd /path/to/beam_repo
 # docker build -f beam_docker/Dockerfile --tag beam:$(date '+%Y%m%d') .
 # Run command:
-# docker run -p 12000-12999:12000-12999 --gpus=all --ipc=host -itd -v /home/:/home/ --name flame beam:<date> 12022 12088
+# docker run -p 12000-12999:12000-12999 --gpus=all --ipc=host -itd -v /home/:/home/ --name flame beam:<date> 12022 12088 <password>
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
