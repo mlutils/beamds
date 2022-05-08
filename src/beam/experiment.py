@@ -15,6 +15,7 @@ import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed
 import torch.distributed as dist
 
+done = mp.Event()
 
 def default_runner(rank, world_size, experiment, algorithm_generator, *args, **kwargs):
 
@@ -50,6 +51,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args):
 
         cleanup(rank, world_size)
         results_queue.put({'rank': rank, 'results': res})
+        done.wait()
 
     else:
         return res
@@ -163,7 +165,13 @@ class Experiment(object):
 
             else:
                 logger.info("Deleting old experiment")
-                shutil.rmtree(self.root)
+
+                root_old = self.root
+                shutil.rmtree(root_old)
+
+                self.root = '_'.join(root_old.split('_')[:-2] + [self.exptime])
+
+            logger.info(f"Experiment directory is: {self.root}")
 
             os.makedirs(self.root)
             os.makedirs(self.tensorboard_dir)
@@ -390,6 +398,8 @@ class Experiment(object):
             res = []
             for rank in range(world_size):
                 res.append(results_queue.get())
+
+            done.set()
 
             return res
 

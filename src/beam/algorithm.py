@@ -50,6 +50,9 @@ class Algorithm(object):
             dataset = self.dataloaders['train'].dataset
             self.epoch_length['train'] = len(dataset.indices_split['train'])
 
+        if self.dataset is None:
+            self.dataset = dataset
+
         if self.epoch_length[self.eval_subset] is None:
             dataset = self.dataloaders[self.eval_subset].dataset
             self.epoch_length[self.eval_subset] = len(dataset.indices_split[self.eval_subset])
@@ -259,7 +262,7 @@ class Algorithm(object):
         else:
             return state
 
-    def load_checkpoint(self, path, strict=False):
+    def load_checkpoint(self, path, strict=True):
 
         if type(path) is str:
             state = torch.load(path, map_location=self.device)
@@ -267,7 +270,13 @@ class Algorithm(object):
             state = path
 
         for k, net in self.networks.items():
-            net.load_state_dict(state[f"{k}_parameters"], strict=strict)
+
+            s = state[f"{k}_parameters"]
+
+            if not self.ddp:
+                torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(s, 'module.')
+
+            net.load_state_dict(s, strict=strict)
 
         for k, optimizer in self.optimizers.items():
             optimizer.load_state_dict(state[f"{k}_optimizer"])

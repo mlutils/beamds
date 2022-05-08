@@ -1,5 +1,7 @@
 import argparse
 import os
+import sys
+from .utils import is_notebook
 
 def boolean_feature(feature, default, help):
 
@@ -86,3 +88,26 @@ boolean_feature("visualize-weights", True, "Visualize network weights on tensorb
 parser.add_argument('--visualize-results', type=str, default='yes', help='when to visualize results on tensorboard [yes|no|logscale]')
 parser.add_argument('--store-results', type=str, default='logscale', help='when to store results to pickle files')
 parser.add_argument('--store-networks', type=str, default='logscale', help='when to store network weights to the log directory')
+
+
+def beam_arguments(*args, **kwargs):
+
+    '''
+    args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
+    kwargs is a dictionary of both defined and undefined arguments
+    '''
+
+    if is_notebook():
+        sys.argv = sys.argv[:1]
+
+    file_name = sys.argv[0] if len(sys.argv) > 0 else '/tmp/tmp.py'
+
+    args = ' '.join(args).split(' ')
+    sys.argv = [file_name] + args
+
+    args = parser.parse_args()
+
+    for k, v in kwargs.items():
+        setattr(args, k, v)
+
+    return args

@@ -1,5 +1,5 @@
 from .dataset import UniversalBatchSampler, UniversalDataset
-from .config import parser
+from .config import parser, beam_arguments
 from .experiment import Experiment
 from .utils import setup, cleanup, process_async
 from .utils import tqdm_beam as tqdm

@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # In[1]:
-
+import collections
 
 import torch
 import torchvision
@@ -17,13 +17,6 @@ from src.beam import Algorithm
 from src.beam import LinearNet
 from src.beam import DataTensor
 from src.beam.utils import is_notebook
-
-import sys
-
-if is_notebook():
-    sys.argv = sys.argv[:1]
-    # get_ipython().run_line_magic('load_ext', 'autoreload')
-    # get_ipython().run_line_magic('autoreload', '2')
 
 
 # In[2]:
@@ -159,7 +152,10 @@ def run_mnist(rank, world_size, experiment):
                                       visualize_weights=True,
                                       argv={'images': {'sample': {'dataformats': 'NCHW'}}})
 
-    return alg
+    if world_size > 1:
+        return results
+    else:
+        return alg, results
 
 
 # ## Training
@@ -182,8 +178,10 @@ if __name__ == '__main__':
 
     experiment = Experiment(args)
 
+    alg = experiment(mnist_algorithm_generator, experiment)
+
     # here we initialize the workers (can be single or multiple workers, depending on the configuration)
-    alg = experiment.run(run_mnist)
+    # alg = experiment.run(run_mnist)
 
     # ## Inference
 
