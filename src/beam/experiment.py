@@ -3,6 +3,7 @@ import time
 import numpy as np
 import os
 import warnings
+
 warnings.filterwarnings('ignore', category=FutureWarning)
 from torch.utils.tensorboard import SummaryWriter
 from shutil import copytree
@@ -18,27 +19,29 @@ import torch.distributed as dist
 
 done = mp.Event()
 
-def default_runner(rank, world_size, experiment, algorithm_generator, *args, **kwargs):
 
+def default_runner(rank, world_size, experiment, algorithm_generator, *args, **kwargs):
     alg = algorithm_generator(*args, **kwargs)
-    save_model_results_arguments = kwargs['save_model_results_arguments'] if 'save_model_results_arguments' in kwargs else None
+    save_model_results_arguments = kwargs[
+        'save_model_results_arguments'] if 'save_model_results_arguments' in kwargs else None
 
     experiment.writer_control(enable=not (bool(rank)))
     for results in iter(alg):
         experiment.save_model_results(results, alg,
-                                print_results=experiment.print_results, visualize_results=experiment.visualize_results,
-                                store_results=experiment.store_results, store_networks=experiment.store_networks,
-                                visualize_weights=experiment.visualize_weights,
-                                argv=save_model_results_arguments)
+                                      print_results=experiment.print_results,
+                                      visualize_results=experiment.visualize_results,
+                                      store_results=experiment.store_results, store_networks=experiment.store_networks,
+                                      visualize_weights=experiment.visualize_weights,
+                                      argv=save_model_results_arguments)
 
     if world_size == 1:
         return alg
 
+
 # check
 
 def run_worker(rank, world_size, results_queue, job, experiment, *args):
-
-    logger.info(f"Worker: {rank+1}/{world_size} is running...")
+    logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
     if world_size > 1:
         setup(rank, world_size, port=experiment.mp_port)
@@ -57,8 +60,8 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args):
     else:
         return res
 
-class Experiment(object):
 
+class Experiment(object):
     """
     Experiment name:
     <algorithm name>_<identifier>_exp_<number>_<time>
@@ -217,17 +220,16 @@ class Experiment(object):
             self.batch_size_train = self.batch_size
 
         if self.batch_size_eval is None:
-                self.batch_size_eval = self.batch_size
+            self.batch_size_eval = self.batch_size
 
         if self.batch_size is None:
-                self.batch_size = self.batch_size_train
+            self.batch_size = self.batch_size_train
 
         if self.epoch_length_train is None:
             self.epoch_length_train = self.epoch_length
 
         if self.epoch_length_eval is None:
             self.epoch_length_eval = self.epoch_length
-
 
     def reload_checkpoint(self, alg, iloc=-1):
 
@@ -241,7 +243,6 @@ class Experiment(object):
         logger.info(f"Reload experiment from checkpoint: {path}")
 
         alg.load_checkpoint(path)
-
 
     def set_rank(self, rank, world_size):
 
@@ -333,7 +334,6 @@ class Experiment(object):
                 else:
                     res['scalar'][param] = np.mean(val)
 
-
             if print_log:
                 logger.info(f'{subset}:')
                 for param in res['scalar']:
@@ -390,7 +390,6 @@ class Experiment(object):
 
         return alg
 
-
     def run(self, job, *args, **kwargs):
 
         arguments = (job, self, *args)
@@ -401,7 +400,7 @@ class Experiment(object):
             results_queue = ctx.Queue()
             for rank in range(world_size):
                 ctx.Process(target=demo_fn, args=(rank, world_size, results_queue, *arguments),
-                                            kwargs=kwargs).start()
+                            kwargs=kwargs).start()
 
             res = []
             for rank in range(world_size):
@@ -411,11 +410,10 @@ class Experiment(object):
 
             return res
 
-
         if self.parallel > 1:
             logger.info(f'Initializing {self.parallel} parallel workers')
 
-            if self.mp_port is None or  check_if_port_is_available(self.mp_port):
+            if self.mp_port is None or check_if_port_is_available(self.mp_port):
                 self.mp_port = find_free_port()
 
             logger.info(f'Multiprocessing port is: {self.mp_port}')

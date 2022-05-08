@@ -3,8 +3,8 @@ import os
 import sys
 from .utils import is_notebook
 
-def boolean_feature(feature, default, help):
 
+def boolean_feature(feature, default, help):
     global parser
     featurename = feature.replace("-", "_")
     feature_parser = parser.add_mutually_exclusive_group(required=False)
@@ -35,26 +35,27 @@ parser.add_argument('--identifier', type=str, default='debug', help='The name of
 parser.add_argument('--algorithm', type=str, default='Algorithm', help='algorithm name')
 parser.add_argument('--mp-port', type=str, default=None, help='Port to be used for multiprocessing')
 
-parser.add_argument('--root-dir', type=str, default=os.path.join(os.path.expanduser('~'), 'beam_projects'), help='Root directory for Logs and results')
+parser.add_argument('--root-dir', type=str, default=os.path.join(os.path.expanduser('~'), 'beam_projects'),
+                    help='Root directory for Logs and results')
 
 boolean_feature("reload", False, "Load saved model")
-parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment: active when reload=True')
+parser.add_argument('--resume', type=int, default=-1,
+                    help='Resume experiment number, set -1 for last experiment: active when reload=True')
 boolean_feature("override", False, "Override last experiment: active when reload=False")
-
 
 parser.add_argument('--cpu-workers', type=int, default=0, help='How many CPUs will be used for the data loading')
 parser.add_argument('--device', type=str, default='0', help='GPU Number or cpu/cuda string')
-parser.add_argument('--parallel', type=int, default=1, help='Number of parallel gpu workers. Set <=1 for single process')
+parser.add_argument('--parallel', type=int, default=1,
+                    help='Number of parallel gpu workers. Set <=1 for single process')
 
 # booleans
 
 boolean_feature("tensorboard", True, "Log results to tensorboard")
 boolean_feature("lognet", True, 'Log  networks parameters')
 boolean_feature("deterministic", False, 'Use deterministic pytorch optimization for reproducability')
-boolean_feature("scale-epoch-by-batch-size", True, 'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch'
-                                                   'When False: epoch length corresponds to the number of forward passes in each epoch')
-
-
+boolean_feature("scale-epoch-by-batch-size", True,
+                'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch'
+                'When False: epoch length corresponds to the number of forward passes in each epoch')
 
 # experiment parameters
 parser.add_argument('--init', type=str, default='ortho', help='Initialization method [ortho|N02|xavier|]')
@@ -62,10 +63,14 @@ parser.add_argument('--seed', type=int, default=0, help='Seed for reproducabilit
 
 parser.add_argument('--total-steps', type=int, default=int(1e6), help='Total number of environment steps')
 
-parser.add_argument('--epoch-length', type=int, default=None, help='Length of both train/eval epochs (if None - it is taken from epoch-length-train/epoch-length-eval arguments)')
-parser.add_argument('--epoch-length-train', type=int, default=None, help='Length of each epoch (if None - it is the dataset[train] size)')
-parser.add_argument('--epoch-length-eval', type=int, default=None, help='Length of each evaluation epoch (if None - it is the dataset[validation] size)')
-parser.add_argument('--n-epochs', type=int, default=None, help='Number of epochs, if None, it uses the total steps to determine the number of iterations')
+parser.add_argument('--epoch-length', type=int, default=None,
+                    help='Length of both train/eval epochs (if None - it is taken from epoch-length-train/epoch-length-eval arguments)')
+parser.add_argument('--epoch-length-train', type=int, default=None,
+                    help='Length of each epoch (if None - it is the dataset[train] size)')
+parser.add_argument('--epoch-length-eval', type=int, default=None,
+                    help='Length of each evaluation epoch (if None - it is the dataset[validation] size)')
+parser.add_argument('--n-epochs', type=int, default=None,
+                    help='Number of epochs, if None, it uses the total steps to determine the number of iterations')
 
 # environment parameters
 
@@ -81,19 +86,19 @@ parser.add_argument('--weight-decay', type=float, default=0., help='L2 regulariz
 parser.add_argument('--eps', type=float, default=1e-4, metavar='ɛ', help='Adam\'s epsilon parameter')
 parser.add_argument('--clip', type=float, default=0., help='Clip Pi Gradient L2 norm')
 
-
 # results printing and visualization
 
 boolean_feature("print-results", True, "Print results after each epoch to screen")
 boolean_feature("visualize-weights", True, "Visualize network weights on tensorboard")
 
-parser.add_argument('--visualize-results', type=str, default='yes', help='when to visualize results on tensorboard [yes|no|logscale]')
+parser.add_argument('--visualize-results', type=str, default='yes',
+                    help='when to visualize results on tensorboard [yes|no|logscale]')
 parser.add_argument('--store-results', type=str, default='logscale', help='when to store results to pickle files')
-parser.add_argument('--store-networks', type=str, default='logscale', help='when to store network weights to the log directory')
+parser.add_argument('--store-networks', type=str, default='logscale',
+                    help='when to store network weights to the log directory')
 
 
 def beam_arguments(*args, **kwargs):
-
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments

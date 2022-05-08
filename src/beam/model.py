@@ -5,6 +5,7 @@ from collections import defaultdict
 import numpy as np
 import math
 
+
 class PackedSet(object):
 
     def __init__(self, data, length=None):
@@ -72,14 +73,13 @@ class LinearNet(nn.Module):
         super().__init__()
 
         self.lin = nn.Sequential(*([nn.Linear(l_in, l_h, bias=bias), nn.ReLU()] if n_l > 1 else []),
-                                 *sum([[nn.Linear(l_h, l_h, bias=bias), nn.ReLU()] for _ in range(max(n_l-2, 0))], []),
+                                 *sum([[nn.Linear(l_h, l_h, bias=bias), nn.ReLU()] for _ in range(max(n_l - 2, 0))],
+                                      []),
                                  nn.Linear(l_h if n_l > 1 else l_in, l_out, bias=bias))
 
     def forward(self, x):
-
         y = self.lin(x)
         return y.squeeze(1)
-
 
 
 class MultipleScheduler(object):
@@ -95,6 +95,7 @@ class MultipleScheduler(object):
     def step(self, *argc, **argv):
         for op in self.multiple_optimizer.optimizers.keys():
             self.schedulers[op].step(*argc, **argv)
+
 
 class BeamOptimizer(object):
 
@@ -159,7 +160,6 @@ class BeamOptimizer(object):
 
             self.step()
 
-
     def step(self):
         for op in self.optimizers.values():
             op.step()
@@ -192,7 +192,6 @@ class RuleLayer(nn.Module):
         self.tau = 1.
 
         if pos_enc is None:
-
             self.pos_enc = nn.Parameter(torch.empty((e_dim_in, e_dim_out)))
             nn.init.kaiming_uniform_(self.pos_enc, a=math.sqrt(5))
 
@@ -234,12 +233,10 @@ class MHRuleLayer(nn.Module):
         self.n_rules = n_rules
 
         if pos_enc is None:
-
             self.pos_enc = nn.Parameter(torch.empty((n_features, e_dim_out)))
             nn.init.kaiming_uniform_(self.pos_enc, a=math.sqrt(5))
 
     def forward(self, x):
-
         b, nf, ne = x.shape
         pos = self.pos_enc.unsqueeze(0).repeat(b, 1, 1)
         x = x + pos

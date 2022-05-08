@@ -30,10 +30,11 @@ class Algorithm(object):
         if optimizers is None:
             self.networks = {k: self.register_network(v) for k, v in networks.items()}
             optimizers = {k: BeamOptimizer(v, dense_args={'lr': experiment.lr_d,
-                                                     'weight_decay': experiment.weight_decay,
-                                                      'eps': experiment.eps},
-                                       sparse_args={'lr': experiment.lr_s, 'eps': experiment.eps}, clip=experiment.clip
-                                       ) for k, v in self.networks.items()}
+                                                          'weight_decay': experiment.weight_decay,
+                                                          'eps': experiment.eps},
+                                           sparse_args={'lr': experiment.lr_s, 'eps': experiment.eps},
+                                           clip=experiment.clip
+                                           ) for k, v in self.networks.items()}
 
         self.optimizers = optimizers
 
@@ -140,8 +141,7 @@ class Algorithm(object):
             data_generator = self.data_generator(subset)
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
-                                  desc=subset, total=self.epoch_length[subset]-1):
-
+                                  desc=subset, total=self.epoch_length[subset] - 1):
                 # print(i)
                 aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=training)
 
@@ -194,7 +194,7 @@ class Algorithm(object):
 
             data_generator = self.data_generator(subset)
             for i, sample in tqdm(data_generator, enable=self.enable_tqdm, notebook=(not self.ddp), desc=subset,
-                                  total=self.epoch_length[subset]-1):
+                                  total=self.epoch_length[subset] - 1):
                 aux, results = self.inference(sample=sample, aux=aux, results=results, subset=subset)
 
             aux, results = self.postprocess_inference(sample=sample, aux=aux, results=results, subset=subset)
@@ -282,4 +282,3 @@ class Algorithm(object):
             optimizer.load_state_dict(state[f"{k}_optimizer"])
 
         return state['aux']
-

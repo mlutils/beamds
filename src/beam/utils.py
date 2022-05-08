@@ -14,8 +14,11 @@ from contextlib import closing
 from random import randint
 
 from loguru import logger
+
 logger.remove(handler_id=0)
-logger.add(sys.stdout, colorize=True, format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
+logger.add(sys.stdout, colorize=True,
+           format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
+
 
 def find_free_port():
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
@@ -24,9 +27,11 @@ def find_free_port():
         p = str(s.getsockname()[1])
     return p
 
+
 def check_if_port_is_available(port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     return sock.connect_ex(('127.0.0.1', int(port))) == 0
+
 
 def get_notebook_name():
     """Execute JS code to save Jupyter notebook name to variable `notebook_name`"""
@@ -35,8 +40,8 @@ def get_notebook_name():
 
     return display_javascript(js)
 
-def process_async(func, args, mp_context='spawn', num_workers=10):
 
+def process_async(func, args, mp_context='spawn', num_workers=10):
     ctx = mp.get_context(mp_context)
     with ctx.Pool(num_workers) as pool:
         res = [pool.apply_async(func, (args,)) for arg in args]
@@ -79,23 +84,22 @@ def include_patterns(*patterns):
     in the file hierarchy rooted at the source directory when used with
     shutil.copytree().
     """
+
     def _ignore_patterns(path, names):
         keep = set(name for pattern in patterns
-                            for name in filter(names, pattern))
+                   for name in filter(names, pattern))
         ignore = set(name for name in names
-                        if name not in keep and not os.path.isdir(os.path.join(path, name)))
+                     if name not in keep and not os.path.isdir(os.path.join(path, name)))
         return ignore
 
     return _ignore_patterns
 
 
 def is_notebook():
-
     return '_' in os.environ and 'jupyter' in os.environ['_']
 
 
 def setup(rank, world_size, port='7463'):
-
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = port
 
@@ -104,12 +108,10 @@ def setup(rank, world_size, port='7463'):
 
 
 def cleanup(rank, world_size):
-
     dist.destroy_process_group()
 
 
 def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
-
     '''
     :param seed: set -1 to avoid change, set 0 to randomly select seed, set [1, 2**32) to get new seed
     :param constant: a constant to be added to the seed
@@ -126,7 +128,7 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
         constant += set_seed.cnt
 
     if seed == 0:
-        seed = np.random.randint(1, 2**32-constant) + constant
+        seed = np.random.randint(1, 2 ** 32 - constant) + constant
 
     if seed > 0:
         random.seed(seed)
@@ -137,8 +139,8 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
 
-def to_device(data, device='cuda'):
 
+def to_device(data, device='cuda'):
     if type(data) is dict:
         return {k: to_device(v, device) for k, v in data.items()}
     elif type(data) is list:
@@ -148,17 +150,17 @@ def to_device(data, device='cuda'):
     else:
         return data
 
-def finite_iterations(iterator, n):
 
+def finite_iterations(iterator, n):
     for i, out in enumerate(iterator):
 
-        if i+1 < n:
+        if i + 1 < n:
             yield out
         else:
             return out
 
-def tqdm_beam(x, *args, enable=True, notebook=True, **argv):
 
+def tqdm_beam(x, *args, enable=True, notebook=True, **argv):
     if not enable:
         return x
     else:
@@ -167,8 +169,6 @@ def tqdm_beam(x, *args, enable=True, notebook=True, **argv):
 
 
 def reset_networks_and_optimizers(networks=None, optimizers=None):
-
-
     if networks is not None:
         net_iter = networks.keys() if issubclass(type(networks), dict) else range(len(networks))
         for i in net_iter:
@@ -185,4 +185,3 @@ def reset_networks_and_optimizers(networks=None, optimizers=None):
                 opt.reset()
             else:
                 opt.state = defaultdict(dict)
-

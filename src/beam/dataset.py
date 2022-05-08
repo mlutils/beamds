@@ -166,7 +166,6 @@ class UniversalBatchSampler(object):
 
             grow_factor = max(expansion_size, len(probs)) / len(probs)
 
-            # TODO: Start here
             probs = (probs * len(probs) * grow_factor).round().astype(np.int)
             m = np.gcd.reduce(probs)
             reps = probs // m
