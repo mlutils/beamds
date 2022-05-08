@@ -115,6 +115,23 @@ class MNISTAlgorithm(Algorithm):
         return aux, results
 
 
+def mnist_algorithm_generator(experiment):
+
+    dataset = MNISTDataset(experiment.path_to_data,
+                           experiment.batch_size_train, experiment.batch_size_eval)
+
+    dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers)
+
+    # choose your network
+    net = LinearNet(784, 256, 10, 4)
+
+    # we recommend using the algorithm argument to determine the type of algorithm to be used
+    Alg = globals()[experiment.algorithm]
+    alg = Alg(net, dataloader, experiment)
+
+    return alg
+
+
 def run_mnist(rank, world_size, experiment):
 
     dataset = MNISTDataset(experiment.path_to_data,

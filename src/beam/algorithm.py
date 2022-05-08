@@ -16,7 +16,7 @@ class Algorithm(object):
         self.experiment = experiment
 
         self.device = experiment.device
-        self.world_size = experiment.parallel
+        self.ddp = experiment.ddp
         self.enable_tqdm = True
 
         self.dataloaders = dataloaders
@@ -74,7 +74,7 @@ class Algorithm(object):
     def register_network(self, net):
 
         net = net.to(self.device)
-        if self.world_size > 1:
+        if self.ddp:
             net = DDP(net, device_ids=[self.device])
 
         return net
@@ -136,7 +136,7 @@ class Algorithm(object):
             self.set_mode(training=training)
             data_generator = self.data_generator(subset)
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
-                                  enable=self.enable_tqdm, notebook=(self.world_size == 1),
+                                  enable=self.enable_tqdm, notebook=(not self.ddp),
                                   desc=subset, total=self.epoch_length[subset]-1):
 
                 # print(i)
@@ -190,7 +190,7 @@ class Algorithm(object):
             aux = self.preprocess_inference(aux=aux, subset=subset)
 
             data_generator = self.data_generator(subset)
-            for i, sample in tqdm(data_generator, enable=self.enable_tqdm, notebook=(self.world_size == 1), desc=subset,
+            for i, sample in tqdm(data_generator, enable=self.enable_tqdm, notebook=(not self.ddp), desc=subset,
                                   total=self.epoch_length[subset]-1):
                 aux, results = self.inference(sample=sample, aux=aux, results=results, subset=subset)
 
@@ -270,8 +270,6 @@ class Algorithm(object):
             net.load_state_dict(state[f"{k}_parameters"], strict=strict)
 
         for k, optimizer in self.optimizers.items():
-            print(k)
-            print(state[f"{k}_optimizer"])
             optimizer.load_state_dict(state[f"{k}_optimizer"])
 
         return state['aux']

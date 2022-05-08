@@ -15,6 +15,23 @@ import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed
 import torch.distributed as dist
 
+
+def default_runner(rank, world_size, experiment, algorithm_generator, *args, **kwargs):
+
+    alg = algorithm_generator(*args, **kwargs)
+    save_model_results_arguments = kwargs['save_model_results_arguments'] if 'save_model_results_arguments' in kwargs else None
+
+    experiment.writer_control(enable=not (bool(rank)))
+    for results in iter(alg):
+        experiment.save_model_results(results, alg,
+                                print_results=experiment.print_results, visualize_results=experiment.visualize_results,
+                                store_results=experiment.store_results, store_networks=experiment.store_networks,
+                                visualize_weights=experiment.visualize_weights,
+                                argv=save_model_results_arguments)
+
+    if world_size == 1:
+        return alg
+
 # check
 
 def run_worker(rank, world_size, results_queue, job, experiment, *args):
@@ -115,9 +132,9 @@ class Experiment(object):
             if self.override:
 
                 self.exp_num = np.argmax(ns) if len(ns) else 0
-                self.load_model = bool(len(ns))
 
-                if self.load_model:
+                self.override = bool(len(ns))
+                if self.override:
                     for d in dirs:
                         if "%s_%04d_" % (temp_name, self.exp_num) in d:
                             self.exp_name = d
@@ -136,12 +153,12 @@ class Experiment(object):
         self.results_dir = os.path.join(self.root, 'results')
         self.code_dir = os.path.join(self.root, 'code')
 
-        if self.load_model and self.reload:
+        if self.load_model:
             logger.info("Resuming existing experiment")
 
         else:
 
-            if not self.load_model:
+            if not self.override:
                 logger.info("Creating new experiment")
 
             else:
@@ -175,6 +192,8 @@ class Experiment(object):
 
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
+
+        self.ddp = False
 
         # update experiment parameters
 
@@ -212,6 +231,7 @@ class Experiment(object):
 
         self.rank = rank
         self.world_size = world_size
+        self.ddp = self.world_size > 1
 
         if self.device.type != 'cpu' and world_size > 1:
             self.device = rank
@@ -344,23 +364,28 @@ class Experiment(object):
                         else:
                             log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
 
+    def __call__(self, algorithm_generator, *args, **kwargs):
 
-    def run(self, job, *args):
+        alg = self.run(default_runner, *(algorithm_generator, *args), **kwargs)
+
+        if alg is None or self.world_size > 1:
+            alg = algorithm_generator(*args, **kwargs)
+            self.reload_checkpoint(alg)
+
+        return alg
+
+
+    def run(self, job, *args, **kwargs):
 
         arguments = (job, self, *args)
-
-        # def _run(demo_fn, world_size):
-        #     mp.spawn(demo_fn,
-        #              args=(world_size, *arguments),
-        #              nprocs=world_size,
-        #              join=True)
 
         def _run(demo_fn, world_size):
 
             ctx = mp.get_context('spawn')
             results_queue = ctx.Queue()
             for rank in range(world_size):
-                ctx.Process(target=demo_fn, args=(rank, world_size, results_queue, *arguments)).start()
+                ctx.Process(target=demo_fn, args=(rank, world_size, results_queue, *arguments),
+                                            kwargs=kwargs).start()
 
             res = []
             for rank in range(world_size):
@@ -374,7 +399,7 @@ class Experiment(object):
             return _run(run_worker, self.parallel)
         else:
             logger.info(f'Single worker mode')
-            return run_worker(0, 1, None, *arguments)
+            return run_worker(0, 1, None, *arguments, **kwargs)
 
     def __enter__(self):
         return self

@@ -66,7 +66,6 @@ class PackedSet(object):
         return repr(self.data)
 
 
-
 class LinearNet(nn.Module):
 
     def __init__(self, l_in, l_h=256, l_out=1, n_l=2, bias=True):
@@ -109,11 +108,22 @@ class BeamOptimizer(object):
         self.clip = clip
 
         self.optimizers = {}
-        sparse_parameters = list(
-            set(list(itertools.chain(*[m.parameters() for m in net.modules() if BeamOptimizer.check_sparse(m)]))))
 
-        dense_parameters = list(set(net.parameters()).difference(sparse_parameters))
-        self.optimizers['dense'] = torch.optim.Adam(dense_parameters, **dense_args)
+        sparse_parameters = []
+        dense_parameters = []
+
+        for m in net.modules():
+            is_sparse = BeamOptimizer.check_sparse(m)
+            if is_sparse:
+                for p in m.parameters():
+                    if not any([p is pi for pi in sparse_parameters]):
+                        sparse_parameters.append(p)
+            else:
+                for p in m.parameters():
+                    if not any([p is pi for pi in dense_parameters]):
+                        dense_parameters.append(p)
+
+        self.optimizers['dense'] = torch.optim.AdamW(dense_parameters, **dense_args)
 
         if len(sparse_parameters) > 0:
             self.optimizers['sparse'] = torch.optim.SparseAdam(sparse_parameters, **sparse_args)

@@ -51,6 +51,7 @@ boolean_feature("scale-epoch-by-batch-size", True, 'When True: epoch length corr
                                                    'When False: epoch length corresponds to the number of forward passes in each epoch')
 
 
+
 # experiment parameters
 parser.add_argument('--init', type=str, default='ortho', help='Initialization method [ortho|N02|xavier|]')
 parser.add_argument('--seed', type=int, default=0, help='Seed for reproducability (zero is saved for random seed)')
@@ -75,3 +76,13 @@ parser.add_argument('--lr-s', type=float, default=1e-2, metavar='α', help='lear
 parser.add_argument('--weight-decay', type=float, default=0., help='L2 regularization coefficient for dense optimizers')
 parser.add_argument('--eps', type=float, default=1e-4, metavar='ɛ', help='Adam\'s epsilon parameter')
 parser.add_argument('--clip', type=float, default=0., help='Clip Pi Gradient L2 norm')
+
+
+# results printing and visualization
+
+boolean_feature("print-results", True, "Print results after each epoch to screen")
+boolean_feature("visualize-weights", True, "Visualize network weights on tensorboard")
+
+parser.add_argument('--visualize-results', type=str, default='yes', help='when to visualize results on tensorboard [yes|no|logscale]')
+parser.add_argument('--store-results', type=str, default='logscale', help='when to store results to pickle files')
+parser.add_argument('--store-networks', type=str, default='logscale', help='when to store network weights to the log directory')
