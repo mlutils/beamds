@@ -11,7 +11,7 @@ from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
-from src.beam import parser, Experiment
+from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm
 from src.beam import LinearNet
@@ -165,16 +165,9 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    args = parser.parse_args()
-
-    # we can set here arguments that are considered as constant for this file (mnist_example.py)
-    args.project_name = 'mnist'
-    args.root_dir = '/home/shared/data/results'
-    args.algorithm = 'MNISTAlgorithm'
-    args.path_to_data = '/home/elad/projects/mnist'
-    args.epoch_length = 100000
-    # args.total_steps = 4000
-    args.n_epochs = 10
+    args = beam_arguments("--project-name=mnist --root-dir=/home/shared/data/results --algorithm=MNISTAlgorithm",
+                          "--epoch-length=100000 --n-epochs=2 --clip=1 --parallel=1 --parallel=2",
+                          path_to_data='/home/elad/projects/mnist')
 
     experiment = Experiment(args)
 

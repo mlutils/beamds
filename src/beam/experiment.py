@@ -1,3 +1,4 @@
+import sys
 import time
 import numpy as np
 import os
@@ -12,7 +13,7 @@ from collections import defaultdict
 from .utils import include_patterns, logger, set_seed
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available
+from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, get_notebook_name
 import torch.distributed as dist
 
 done = mp.Event()
@@ -102,49 +103,45 @@ class Experiment(object):
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.device = torch.device(int(self.device) if self.device.isnumeric() else self.device)
 
-        self.base_dir = os.path.join(self.root_dir, self.project_name)
+        self.base_dir = os.path.join(self.root_dir, self.project_name, self.algorithm, self.identifier)
         os.makedirs(self.base_dir, exist_ok=True)
 
-        dirs = os.listdir(self.base_dir)
-        temp_name = "%s_%s_exp" % (self.algorithm, self.identifier)
         self.exp_name = None
         self.load_model = False
 
-        ds = [d for d in dirs if temp_name in d]
-        ns = np.array([int(d.split("_")[-3]) for d in ds])
+        exp_names = os.listdir(self.base_dir)
+        exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
 
         if self.reload:
 
             if self.resume >= 0:
-                for d in dirs:
-                    if "%s_%04d_" % (temp_name, self.resume) in d:
-                        self.exp_name = d
-                        self.exp_num = self.resume
-                        self.load_model = True
-                        break
+
+                ind = np.nonzero(exp_indices == self.resume)[0]
+                if len(ind):
+                    self.exp_name = exp_names[ind]
+                    self.exp_num = self.resume
+                    self.load_model = True
+
             else:
-                if len(ns):
-                    n_max = np.argmax(ns)
-                    self.exp_name = ds[n_max]
-                    self.exp_num = n_max
+                if len(exp_indices):
+                    ind = np.argmax(exp_indices)
+                    self.exp_name = exp_names[ind]
+                    self.exp_num = exp_indices[ind]
                     self.load_model = True
 
         else:
 
-            if self.override:
+            if self.override and len(exp_indices):
 
-                self.exp_num = np.argmax(ns) if len(ns) else 0
-
-                self.override = bool(len(ns))
-                if self.override:
-                    for d in dirs:
-                        if "%s_%04d_" % (temp_name, self.exp_num) in d:
-                            self.exp_name = d
-                            break
+                ind = np.argmax(exp_indices)
+                self.exp_name = exp_names[ind]
+                self.exp_num = exp_indices[ind]
+            else:
+                self.override = False
 
         if self.exp_name is None:
-            self.exp_num = np.argmax(ns) + 1 if len(ns) else 0
-            self.exp_name = "%s_%04d_%s" % (temp_name, self.exp_num, self.exptime)
+            self.exp_num = np.argmax(exp_indices) + 1 if len(exp_indices) else 0
+            self.exp_name = "%04d_%s" % (self.exp_num, self.exptime)
 
         # init experiment parameters
         self.root = os.path.join(self.base_dir, self.exp_name)
@@ -166,10 +163,15 @@ class Experiment(object):
             else:
                 logger.info("Deleting old experiment")
 
-                root_old = self.root
-                shutil.rmtree(root_old)
+                shutil.rmtree(self.root)
+                self.exp_name = "%04d_%s" % (self.exp_num, self.exptime)
+                self.root = os.path.join(self.base_dir, self.exp_name)
 
-                self.root = '_'.join(root_old.split('_')[:-2] + [self.exptime])
+                # set dirs
+                self.tensorboard_dir = os.path.join(self.root, 'tensorboard')
+                self.checkpoints_dir = os.path.join(self.root, 'checkpoints')
+                self.results_dir = os.path.join(self.root, 'results')
+                self.code_dir = os.path.join(self.root, 'code')
 
             logger.info(f"Experiment directory is: {self.root}")
 
@@ -188,7 +190,13 @@ class Experiment(object):
                     os.makedirs(os.path.join(self.results_dir, r))
 
             # copy code to dir
-            copytree(os.path.dirname(os.path.realpath(__file__)), self.code_dir,
+
+            if is_notebook():
+                code_root_path = os.getcwd()
+            else:
+                code_root_path = sys.argv[0]
+
+            copytree(os.path.dirname(os.path.realpath(code_root_path)), self.code_dir,
                      ignore=include_patterns('*.py', '*.md', '*.ipynb'))
 
             pd.to_pickle(vars(args), os.path.join(self.root, "args.pkl"))

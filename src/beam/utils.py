@@ -28,6 +28,13 @@ def check_if_port_is_available(port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     return sock.connect_ex(('127.0.0.1', int(port))) == 0
 
+def get_notebook_name():
+    """Execute JS code to save Jupyter notebook name to variable `notebook_name`"""
+    from IPython.core.display import Javascript, display_javascript
+    js = Javascript("""IPython.notebook.kernel.execute('notebook_name = "' + IPython.notebook.notebook_name + '"');""")
+
+    return display_javascript(js)
+
 def process_async(func, args, mp_context='spawn', num_workers=10):
 
     ctx = mp.get_context(mp_context)

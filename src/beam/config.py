@@ -39,7 +39,7 @@ parser.add_argument('--root-dir', type=str, default=os.path.join(os.path.expandu
 
 boolean_feature("reload", False, "Load saved model")
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment: active when reload=True')
-boolean_feature("override", True, "Override last experiment: active when reload=False")
+boolean_feature("override", False, "Override last experiment: active when reload=False")
 
 
 parser.add_argument('--cpu-workers', type=int, default=0, help='How many CPUs will be used for the data loading')
