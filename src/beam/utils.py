@@ -11,10 +11,22 @@ import multiprocessing as mp
 from .model import BeamOptimizer
 import socket
 from contextlib import closing
+from random import randint
 
 from loguru import logger
 logger.remove(handler_id=0)
 logger.add(sys.stdout, colorize=True, format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
+
+def find_free_port():
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        p = str(s.getsockname()[1])
+    return p
+
+def check_if_port_is_available(port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    return sock.connect_ex(('127.0.0.1', int(port))) == 0
 
 def process_async(func, args, mp_context='spawn', num_workers=10):
 
@@ -75,10 +87,10 @@ def is_notebook():
     return '_' in os.environ and 'jupyter' in os.environ['_']
 
 
-def setup(rank, world_size):
+def setup(rank, world_size, port='7463'):
 
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '7438'
+    os.environ['MASTER_PORT'] = port
 
     # initialize the process group
     dist.init_process_group("gloo", rank=rank, world_size=world_size)

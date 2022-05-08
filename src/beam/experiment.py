@@ -12,7 +12,7 @@ from collections import defaultdict
 from .utils import include_patterns, logger, set_seed
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup, cleanup, set_seed
+from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available
 import torch.distributed as dist
 
 done = mp.Event()
@@ -40,7 +40,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args):
     logger.info(f"Worker: {rank+1}/{world_size} is running...")
 
     if world_size > 1:
-        setup(rank, world_size)
+        setup(rank, world_size, port=experiment.mp_port)
 
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.seed, constant=rank, increment=False, deterministic=experiment.deterministic)
@@ -406,6 +406,12 @@ class Experiment(object):
 
         if self.parallel > 1:
             logger.info(f'Initializing {self.parallel} parallel workers')
+
+            if self.mp_port is None or  check_if_port_is_available(self.mp_port):
+                self.mp_port = find_free_port()
+
+            logger.info(f'Multiprocessing port is: {self.mp_port}')
+
             return _run(run_worker, self.parallel)
         else:
             logger.info(f'Single worker mode')
