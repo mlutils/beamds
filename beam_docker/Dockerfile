@@ -16,7 +16,8 @@ RUN apt install -y openssh-server
 RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 # applications
-RUN apt install -y htop -y tmux -y alien -y libtool -y dh-autoreconf -y debhelper -y libaiol -y libaio-dev
+#RUN apt install -y htop -y tmux -y alien -y libtool -y dh-autoreconf -y debhelper -y libaiol -y libaio-dev
+RUN apt install -y htop -y tmux -y alien -y libtool -y dh-autoreconf -y debhelper -y libaio-dev
 RUN apt install -y telnet -y iputils-ping -y python-dev -y net-tools -y python3-sphinx
 
 
