@@ -225,3 +225,30 @@ class UniversalBatchSampler(object):
 
     def __len__(self):
         return self.length
+
+
+class HashSplit(object):
+
+    def __init__(self, seed=None, granularity=.001, **argv):
+
+        s = pd.Series(index=list(argv.keys()), data=list(argv.values()))
+        s = s / s.sum() / granularity
+        self.subsets = s.cumsum()
+        self.n = int(1 / granularity)
+        self.seed = seed
+
+    def __call__(self, x):
+
+        if type(x) is pd.Series:
+            return x.apply(self._call)
+        elif type(x) is list:
+            return [self._call(xi) for xi in x]
+        else:
+            return self._call(x)
+
+    def _call(self, x):
+
+        x = hash(f'{x}/{self.seed}')
+        subset = self.subsets.index[x < self.subsets][0]
+
+        return subset

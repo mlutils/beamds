@@ -17,7 +17,7 @@ RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 # applications
 RUN apt install -y htop -y tmux -y alien -y libtool -y dh-autoreconf -y debhelper -y libaiol -y libaio-dev
-RUN apt install -y telnet -y iputils-ping -y python-dev -y net-tools
+RUN apt install -y telnet -y iputils-ping -y python-dev -y net-tools -y python3-sphinx
 
 
 RUN apt install -y graphviz
@@ -50,7 +50,7 @@ RUN python -m spacy download ru_core_news_sm
 RUN pip install elasticsearch fasttext pandarallel gensim umap-learn pyvis graphviz pygraphviz opencv-python
 RUN python -m pip install "dask[complete]"
 
-RUN pip install xgboost catboost ipywidgets loguru
+RUN pip install xgboost catboost ipywidgets loguru sphinx-server gunicorn xeus-python voila
 
 RUN jupyter nbextension enable --py widgetsnbextension
 
@@ -59,12 +59,10 @@ RUN pip install requests_ntlm thriftpy fastparquet openpyxl
 
 # RUN pip install sasl
 
-RUN pip install -U imbalanced-learn
-
-RUN pip install -U scikit-image
+RUN pip install -U imbalanced-learn scapy scikit-image scikit-plot
 
 #explainability and visualization
-RUN pip install lime shap seaborn fastavro bokeh altair vega_datasets
+RUN pip install lime shap seaborn fastavro bokeh altair vega_datasets dython fastai
 
 # hyperparameter optimizations
 RUN pip install -U "ray[tune]"
@@ -92,7 +90,7 @@ RUN pip install pyspark[pandas_on_spark] plotly
 
 # install tensorflow
 
-RUN pip install --upgrade tensorflow
+RUN pip install -U jupyterlab tensorflow ipympl
 
 # install beam
 
