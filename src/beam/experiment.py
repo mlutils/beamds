@@ -382,7 +382,7 @@ class Experiment(object):
 
     def __call__(self, algorithm_generator, *args, **kwargs):
 
-        alg = self.run(default_runner, *(algorithm_generator, *args), **kwargs)
+        alg = self.run(default_runner, *(algorithm_generator, self, *args), **kwargs)
 
         if alg is None or self.world_size > 1:
             alg = algorithm_generator(*args, **kwargs)

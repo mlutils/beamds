@@ -8,6 +8,7 @@
 
 FROM nvcr.io/nvidia/pytorch:22.03-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
+ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt update
 
@@ -17,16 +18,11 @@ RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 # applications
 #RUN apt install -y htop -y tmux -y alien -y libtool -y dh-autoreconf -y debhelper -y libaiol -y libaio-dev
-RUN apt install -y htop -y tmux -y alien -y libtool -y dh-autoreconf -y debhelper -y libaio-dev
+RUN apt install -y htop -y tmux -y libtool -y dh-autoreconf -y debhelper -y libaio-dev
 RUN apt install -y telnet -y iputils-ping -y python-dev -y net-tools -y python3-sphinx
 
 
-RUN apt install -y graphviz
-RUN apt install -y python3-dev graphviz pkg-config
-RUN DEBIAN_FRONTEND=noninteractive apt install -y expect
-RUN DEBIAN_FRONTEND=noninteractive apt install -y libgraphviz-dev
-RUN apt install -y cron
-
+RUN apt install -y graphviz  -y python3-dev graphviz pkg-config -y expect -y libgraphviz-dev -y cron
 
 # pytorch geometric
 
@@ -60,10 +56,10 @@ RUN pip install requests_ntlm thriftpy fastparquet openpyxl
 
 # RUN pip install sasl
 
-RUN pip install -U imbalanced-learn scapy scikit-image scikit-plot
+RUN pip install -U imbalanced-learn scapy scikit-image scikit-plot jupyterhub configurable-http-proxy
 
 #explainability and visualization
-RUN pip install lime shap seaborn fastavro bokeh altair vega_datasets dython fastai
+RUN pip install lime shap seaborn fastavro bokeh altair vega_datasets dython fastai PyQt5 cdlib
 
 # hyperparameter optimizations
 RUN pip install -U "ray[tune]"
@@ -91,7 +87,7 @@ RUN pip install pyspark[pandas_on_spark] plotly
 
 # install tensorflow
 
-RUN pip install -U jupyterlab tensorflow ipympl
+RUN pip install -U jupyterlab tensorflow ipympl notebook
 
 # install beam
 

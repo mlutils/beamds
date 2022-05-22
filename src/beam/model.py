@@ -67,6 +67,28 @@ class PackedSet(object):
         return repr(self.data)
 
 
+class PositionalHarmonicExpansion(object):
+
+    def __init__(self, xs, xe, delta=2, rank='cuda', n=100):
+
+        self.xs = xs
+        self.xe = xe
+
+        delta = delta / (xe - xs)
+        i = torch.arange(n+1, device=rank)[None, :]
+        self.sigma = 2 * ((1 / delta) ** (i / n))
+
+    def transform(self, x):
+
+        x = x.unsqueeze(-1)
+
+        sin = torch.sin(2 * np.pi / self.sigma * x)
+        cos = torch.cos(2 * np.pi / self.sigma * x)
+
+        out = torch.cat([sin, cos], dim=-1)
+        return out
+
+
 class LinearNet(nn.Module):
 
     def __init__(self, l_in, l_h=256, l_out=1, n_l=2, bias=True):
