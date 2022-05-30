@@ -146,7 +146,8 @@ class BeamOptimizer(object):
                     if not any([p is pi for pi in dense_parameters]):
                         dense_parameters.append(p)
 
-        self.optimizers['dense'] = torch.optim.AdamW(dense_parameters, **dense_args)
+        if len(dense_parameters) > 0:
+            self.optimizers['dense'] = torch.optim.AdamW(dense_parameters, **dense_args)
 
         if len(sparse_parameters) > 0:
             self.optimizers['sparse'] = torch.optim.SparseAdam(sparse_parameters, **sparse_args)
@@ -656,3 +657,23 @@ class Sparsemax(nn.Module):
         self.grad_input = nonzeros * (grad_output - sum.expand_as(grad_output))
 
         return self.grad_input
+
+
+class FeatureHasher(object):
+
+    def __init__(self, num_embeddings, embedding_dim, n_classes=None, distribution='uniform', seed=None, device='cpu'):
+
+        manual_seed = seed is not None
+        with torch.random.fork_rng(devices=[device], enabled=manual_seed):
+
+            if manual_seed:
+                torch.random.manual_seed(seed)
+
+            rand_func = torch.rand if distribution == 'uniform' else torch.randn
+            self.weight = rand_func(num_embeddings, embedding_dim, device=device)
+
+            if n_classes is not None:
+                self.weight = (self.weight * n_classes).long()
+
+    def __call__(self, x):
+        return self.weight[x]

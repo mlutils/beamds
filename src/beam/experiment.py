@@ -1,3 +1,4 @@
+import re
 import sys
 import time
 import numpy as np
@@ -112,8 +113,9 @@ class Experiment(object):
         self.exp_name = None
         self.load_model = False
 
+        pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
         exp_names = os.listdir(self.base_dir)
-        exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
+        exp_indices = np.array([int(d.split('_')[0]) for d in exp_names if re.match(pattern, d) is not None])
 
         if self.reload:
 
@@ -385,7 +387,7 @@ class Experiment(object):
         alg = self.run(default_runner, *(algorithm_generator, self, *args), **kwargs)
 
         if alg is None or self.world_size > 1:
-            alg = algorithm_generator(*args, **kwargs)
+            alg = algorithm_generator(self, *args, **kwargs)
             self.reload_checkpoint(alg)
 
         return alg

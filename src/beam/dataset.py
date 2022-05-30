@@ -6,6 +6,7 @@ from sklearn.utils.class_weight import compute_sample_weight
 from .utils import check_type
 import pandas as pd
 import math
+import hashlib
 
 class UniversalDataset(torch.utils.data.Dataset):
 
@@ -248,7 +249,8 @@ class HashSplit(object):
 
     def _call(self, x):
 
-        x = hash(f'{x}/{self.seed}')
+        x = f'{x}/{self.seed}'
+        x = int(hashlib.sha1(x.encode('utf-8')).hexdigest(), 16) % self.n
         subset = self.subsets.index[x < self.subsets][0]
 
         return subset
