@@ -10,17 +10,30 @@ import hashlib
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self):
+    def __init__(self, *args, device='cpu', **kwargs):
         super().__init__()
         self.indices_split = {}
         self.samplers = {}
         self.labels_split = {}
 
+        assert (len(args) and not len(kwargs)) or (not len(args) and len(kwargs)), "Default dataset work either as dictionary or as tuple"
+
+        if len(args):
+            self.data = [torch.tensor(v, device=device) for v in args]
+        else:
+            self.data = {k: torch.tensor(v, device=device) for k, v in kwargs.items()}
+
+    def __getitem__(self, ind):
+
+        if type(self.data) is dict:
+            return {k: v[ind] for k, v in self.data.items()}
+
+        return [v[ind] for k, v in self.data]
+
     def __len__(self):
-        try:
-            return len(self.data)
-        except:
-            raise NotImplementedError
+        if type(self.data) is dict:
+            return len(next(iter(self.data.values())))
+        return len(self.data[0])
 
     def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None):
         '''

@@ -10,13 +10,23 @@ FROM nvcr.io/nvidia/pytorch:22.03-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 ENV DEBIAN_FRONTEND noninteractive
 
-COPY beam_docker/install /workspace/
+COPY beam_docker/install /workspace/install
 
 # apt installs
+RUN chmod +x /workspace/install/apt_installs.sh
 RUN /workspace/install/apt_installs.sh
 
 # pip installs
+RUN chmod +x /workspace/install/pip_installs.sh
 RUN /workspace/install/pip_installs.sh
+
+# add the beam message
+
+RUN cp /workspace/install/motd /etc/motd
+RUN echo "cat /etc/motd" >> /root/.bashrc
+
+# download datasets and models
+RUN python /workspace/install/downloader.py
 
 # pytorch geometric
 
@@ -35,6 +45,9 @@ RUN python -m spacy download zh_core_web_sm
 RUN python -m spacy download en_core_web_sm
 RUN python -m spacy download xx_ent_wiki_sm
 RUN python -m spacy download ru_core_news_sm
+
+# path for pycharm data
+RUN mkdir /root/pycharm/
 
 # install beam
 

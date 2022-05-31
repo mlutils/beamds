@@ -143,7 +143,7 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
 def to_device(data, device='cuda'):
     if type(data) is dict:
         return {k: to_device(v, device) for k, v in data.items()}
-    elif type(data) is list:
+    elif (type(data) is list) or (type(data) is tuple):
         return [to_device(s, device) for s in data]
     elif issubclass(type(data), torch.Tensor):
         return data.to(device)

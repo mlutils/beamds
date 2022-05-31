@@ -12,10 +12,10 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger, set_seed
+from .utils import include_patterns, logger
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, get_notebook_name
+from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
 import torch.distributed as dist
 
 done = mp.Event()

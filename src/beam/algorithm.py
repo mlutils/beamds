@@ -7,6 +7,7 @@ import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device
+from .dataset import UniversalBatchSampler
 
 
 class Algorithm(object):
@@ -93,7 +94,21 @@ class Algorithm(object):
         return to_device(sample, self.device)
 
     def data_generator(self, subset):
-        for i, sample in enumerate(self.dataloaders[subset]):
+
+        if type(subset) is str:
+            dataloader = self.dataloaders[subset]
+        elif issubclass(type(subset), torch.utils.data.DataLoader):
+            dataloader = subset
+        elif issubclass(type(subset), torch.utils.data.Dataset):
+
+            dataset = subset
+            sampler = UniversalBatchSampler(len(dataset), self.experiment.batch_size_eval, shuffle=False,
+                                            tail=True, once=True)
+            dataloader = torch.utils.data.DataLoader(self, sampler=sampler, batch_size=None,
+                                                     num_workers=0, pin_memory=True)
+        else:
+            raise NotImplementedError
+        for i, sample in enumerate(dataloader):
             sample = self.process_sample(sample)
             yield i, sample
 

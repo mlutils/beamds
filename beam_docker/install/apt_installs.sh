@@ -7,7 +7,7 @@ apt install -y telnet -y iputils-ping -y python-dev -y net-tools -y python3-sphi
 apt install -y graphviz  -y python3-dev graphviz pkg-config -y expect -y libgraphviz-dev -y cron
 apt install -y default-jdk
 apt install -y ltrace -y binutils
-apt install -y alien -y libaio1
+apt install -y alien -y libaio1 -y binwalk
 
 
 ## for hfds-fuse installation

@@ -17,7 +17,7 @@ pip install -U imbalanced-learn scapy scikit-image scikit-plot jupyterhub config
 
 #explainability and visualization
 pip install lime shap seaborn fastavro bokeh altair vega_datasets dython fastai PyQt5 cdlib
-pip install nbtop
+pip install nbtop botorch cma six Pillow pytorch-tabnet
 
 # hyperparameter optimizations
 pip install -U "ray[tune]"
