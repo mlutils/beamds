@@ -2,11 +2,11 @@
 # cd /path/to/beam_repo
 # docker build -f beam_docker/Dockerfile --tag beam:$(date '+%Y%m%d') .
 # Run command:
-# docker run -p 12000-12999:12000-12999 --gpus=all --ipc=host -itd -v /home/:/home/ --name flame beam:<date> 12
+# docker run -p 12000-12999:12000-12999 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -itd -v /home/:/home/ --name flame beam:<date> 12
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:22.03-py3
+FROM nvcr.io/nvidia/pytorch:22.04-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 ENV DEBIAN_FRONTEND noninteractive
 
