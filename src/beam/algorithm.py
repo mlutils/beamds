@@ -297,3 +297,14 @@ class Algorithm(object):
             optimizer.load_state_dict(state[f"{k}_optimizer"])
 
         return state['aux']
+
+    def fit(self, *args, **kwargs):
+        def algorithm_generator(experiment):
+            return self
+        return self.experiment(algorithm_generator, *args, **kwargs)
+
+    def predict(self, *args, **kwargs):
+        return self(*args, **kwargs)
+
+    def evaluate(self, *args, **kwargs):
+        return self(*args, **kwargs)

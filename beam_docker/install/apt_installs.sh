@@ -1,6 +1,8 @@
 #!/bin/sh
 
 apt update
+apt update
+
 apt install -y openssh-server
 apt install -y htop -y tmux -y libtool -y dh-autoreconf -y debhelper -y libaio-dev
 apt install -y telnet -y iputils-ping -y python-dev -y net-tools -y python3-sphinx

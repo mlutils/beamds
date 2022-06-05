@@ -16,6 +16,6 @@ export JUPYTER_PORT=$JUPYTER_PORT
 echo "root:$ROOT_PASSWORD" | chpasswd
 
 service ssh start
-jupyter notebook &
+jupyter-lab &
 
 bash

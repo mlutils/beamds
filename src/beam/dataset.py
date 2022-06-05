@@ -16,12 +16,12 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.samplers = {}
         self.labels_split = {}
 
-        assert (len(args) and not len(kwargs)) or (not len(args) and len(kwargs)), "Default dataset work either as dictionary or as tuple"
-
         if len(args):
             self.data = [torch.tensor(v, device=device) for v in args]
-        else:
+        elif len(kwargs):
             self.data = {k: torch.tensor(v, device=device) for k, v in kwargs.items()}
+        else:
+            self.data = None
 
     def __getitem__(self, ind):
 
@@ -31,9 +31,15 @@ class UniversalDataset(torch.utils.data.Dataset):
         return [v[ind] for k, v in self.data]
 
     def __len__(self):
+
         if type(self.data) is dict:
             return len(next(iter(self.data.values())))
-        return len(self.data[0])
+        elif type(self.data) is list:
+            return len(self.data[0])
+        elif check_type(self.data) in ['array', 'tensor']:
+            return len(self.data)
+        else:
+            raise NotImplementedError
 
     def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None):
         '''
