@@ -275,13 +275,16 @@ def decorator(f_str):
 
     return apply
 
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    for p in dir(prototype):
+        try:
+            f = getattr(prototype, p)
+            if callable(f) and p not in dir(DataTensor):
+                setattr(DataTensor, p, decorator(p))
+        except RuntimeError:
+            pass
+        except TypeError:
+            pass
 
-for p in dir(prototype):
-    try:
-        f = getattr(prototype, p)
-        if callable(f) and p not in dir(DataTensor):
-            setattr(DataTensor, p, decorator(p))
-    except RuntimeError:
-        pass
-    except TypeError:
-        pass
+

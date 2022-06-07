@@ -26,8 +26,8 @@ class MNISTDataset(UniversalDataset):
 
     def __init__(self, path, train_batch_size, eval_batch_size):
         super().__init__()
-        dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor())
-        dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor())
+        dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
+        dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
 
         self.data = torch.cat([dataset_train.data, dataset_test.data])
         self.labels = torch.cat([dataset_train.targets, dataset_test.targets])

@@ -1,3 +1,4 @@
+import re
 import sys
 import time
 import numpy as np
@@ -11,10 +12,10 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger, set_seed
+from .utils import include_patterns, logger
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, get_notebook_name
+from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
 import torch.distributed as dist
 
 done = mp.Event()
@@ -112,8 +113,9 @@ class Experiment(object):
         self.exp_name = None
         self.load_model = False
 
+        pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
         exp_names = os.listdir(self.base_dir)
-        exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
+        exp_indices = np.array([int(d.split('_')[0]) for d in exp_names if re.match(pattern, d) is not None])
 
         if self.reload:
 
@@ -382,10 +384,10 @@ class Experiment(object):
 
     def __call__(self, algorithm_generator, *args, **kwargs):
 
-        alg = self.run(default_runner, *(algorithm_generator, *args), **kwargs)
+        alg = self.run(default_runner, *(algorithm_generator, self, *args), **kwargs)
 
         if alg is None or self.world_size > 1:
-            alg = algorithm_generator(*args, **kwargs)
+            alg = algorithm_generator(self, *args, **kwargs)
             self.reload_checkpoint(alg)
 
         return alg

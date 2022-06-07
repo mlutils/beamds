@@ -24,7 +24,7 @@ python -m build
    
 2. reinstall the package with pip:
 ```shell
-pip install dist/beamds-0.0.2-py3-none-any.whl --force-reinstall
+pip install dist/*.whl --force-reinstall
 ```
 
 

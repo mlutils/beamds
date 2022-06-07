@@ -6,19 +6,39 @@ from sklearn.utils.class_weight import compute_sample_weight
 from .utils import check_type
 import pandas as pd
 import math
+import hashlib
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self):
+    def __init__(self, *args, device='cpu', **kwargs):
         super().__init__()
         self.indices_split = {}
         self.samplers = {}
         self.labels_split = {}
 
+        if len(args):
+            self.data = [torch.tensor(v, device=device) for v in args]
+        elif len(kwargs):
+            self.data = {k: torch.tensor(v, device=device) for k, v in kwargs.items()}
+        else:
+            self.data = None
+
+    def __getitem__(self, ind):
+
+        if type(self.data) is dict:
+            return {k: v[ind] for k, v in self.data.items()}
+
+        return [v[ind] for k, v in self.data]
+
     def __len__(self):
-        try:
+
+        if type(self.data) is dict:
+            return len(next(iter(self.data.values())))
+        elif type(self.data) is list:
+            return len(self.data[0])
+        elif check_type(self.data) in ['array', 'tensor']:
             return len(self.data)
-        except:
+        else:
             raise NotImplementedError
 
     def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None):
@@ -248,7 +268,8 @@ class HashSplit(object):
 
     def _call(self, x):
 
-        x = hash(f'{x}/{self.seed}')
+        x = f'{x}/{self.seed}'
+        x = int(hashlib.sha1(x.encode('utf-8')).hexdigest(), 16) % self.n
         subset = self.subsets.index[x < self.subsets][0]
 
         return subset
