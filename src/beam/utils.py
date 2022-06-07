@@ -67,7 +67,7 @@ def check_type(x):
             return 'string'
         else:
             return 'other'
-    elif pd.isna(x):
+    elif pd.isna(x).any():
         return 'none'
     else:
         if isinstance(x, torch.Tensor):
