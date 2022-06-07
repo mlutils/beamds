@@ -77,8 +77,12 @@ class MNISTAlgorithm(Algorithm):
 
         return aux, results
 
-    def inference(self, sample=None, aux=None, results=None, subset=None):
-        x, y = sample['x'], sample['y']
+    def inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
+
+        if with_labels:
+            x, y = sample['x'], sample['y']
+        else:
+            x = sample[0]
 
         x = x.view(len(x), -1)
         net = self.networks['net']
@@ -87,23 +91,25 @@ class MNISTAlgorithm(Algorithm):
 
         # add scalar measurements
         results['predictions']['y_pred'].append(y_hat.detach())
-        results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
 
-        aux['predictions']['target'].append(y)
+        if with_labels:
+            results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
+            aux['predictions']['target'].append(y)
 
         return aux, results
 
-    def postprocess_inference(self, sample=None, aux=None, results=None, subset=None):
+    def postprocess_inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
         y_pred = torch.cat(results['predictions']['y_pred'])
 
         y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
-        y_true = torch.cat(aux['predictions']['target']).data.cpu().numpy()
 
-        precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
-        results['metrics']['precision'] = precision
-        results['metrics']['recall'] = recall
-        results['metrics']['fscore'] = fscore
-        results['metrics']['support'] = support
+        if with_labels:
+            y_true = torch.cat(aux['predictions']['target']).data.cpu().numpy()
+            precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
+            results['metrics']['precision'] = precision
+            results['metrics']['recall'] = recall
+            results['metrics']['fscore'] = fscore
+            results['metrics']['support'] = support
 
         return aux, results
 

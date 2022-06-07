@@ -6,8 +6,8 @@ from .utils import tqdm_beam as tqdm
 import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-from .utils import finite_iterations, to_device
-from .dataset import UniversalBatchSampler
+from .utils import finite_iterations, to_device, check_type
+from .dataset import UniversalBatchSampler, UniversalDataset
 
 
 class Algorithm(object):
@@ -93,7 +93,7 @@ class Algorithm(object):
     def process_sample(self, sample):
         return to_device(sample, self.device)
 
-    def data_generator(self, subset):
+    def build_dataloader(self, subset):
 
         if type(subset) is str:
             dataloader = self.dataloaders[subset]
@@ -104,10 +104,28 @@ class Algorithm(object):
             dataset = subset
             sampler = UniversalBatchSampler(len(dataset), self.experiment.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
-            dataloader = torch.utils.data.DataLoader(self, sampler=sampler, batch_size=None,
+            dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=0, pin_memory=True)
+
         else:
-            raise NotImplementedError
+
+            if check_type(subset).minor in ['list', 'tuple']:
+                dataset = UniversalDataset(*subset)
+            elif check_type(subset).minor in ['dict']:
+                dataset = UniversalDataset(**subset)
+            else:
+                dataset = UniversalDataset(subset)
+
+            sampler = UniversalBatchSampler(len(dataset), self.experiment.batch_size_eval, shuffle=False,
+                                            tail=True, once=True)
+            dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
+                                                     num_workers=0, pin_memory=True)
+
+        return dataloader
+
+    def data_generator(self, subset):
+
+        dataloader = self.build_dataloader(subset)
         for i, sample in enumerate(dataloader):
             sample = self.process_sample(sample)
             yield i, sample
@@ -167,7 +185,7 @@ class Algorithm(object):
 
         return
 
-    def preprocess_inference(self, aux=None, subset=None):
+    def preprocess_inference(self, aux=None, subset=None, with_labels=True):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param subset: name of dataset subset (usually train/validation/test)
@@ -176,7 +194,7 @@ class Algorithm(object):
         '''
         return aux
 
-    def inference(self, sample=None, aux=None, results=None, subset=None):
+    def inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -189,7 +207,7 @@ class Algorithm(object):
         aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=False)
         return aux, results
 
-    def postprocess_inference(self, sample=None, aux=None, results=None, subset=None):
+    def postprocess_inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
         '''
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
@@ -197,7 +215,7 @@ class Algorithm(object):
         '''
         return aux, results
 
-    def __call__(self, subset='test'):
+    def __call__(self, subset='test', with_labels=True):
 
         with torch.no_grad():
             self.set_mode(training=False)
@@ -205,14 +223,20 @@ class Algorithm(object):
             aux = defaultdict(lambda: defaultdict(list))
             results = defaultdict(lambda: defaultdict(list))
 
-            aux = self.preprocess_inference(aux=aux, subset=subset)
+            aux = self.preprocess_inference(aux=aux, subset=subset, with_labels=with_labels)
 
-            data_generator = self.data_generator(subset)
-            for i, sample in tqdm(data_generator, enable=self.enable_tqdm, notebook=(not self.ddp), desc=subset,
-                                  total=self.epoch_length[subset] - 1):
-                aux, results = self.inference(sample=sample, aux=aux, results=results, subset=subset)
+            if type(subset) is str:
+                desc = subset
+            else:
+                desc = 'dataloader'
 
-            aux, results = self.postprocess_inference(sample=sample, aux=aux, results=results, subset=subset)
+            dataloader = self.build_dataloader(subset)
+            data_generator = self.data_generator(dataloader)
+            for i, sample in tqdm(data_generator, enable=self.enable_tqdm, notebook=(not self.ddp), desc=desc,
+                                  total=len(dataloader)):
+                aux, results = self.inference(sample=sample, aux=aux, results=results, subset=subset, with_labels=with_labels)
+
+            aux, results = self.postprocess_inference(sample=sample, aux=aux, results=results, subset=subset, with_labels=with_labels)
 
         return results
 
@@ -299,12 +323,23 @@ class Algorithm(object):
         return state['aux']
 
     def fit(self, *args, **kwargs):
+        '''
+        For training purposes
+        '''
+
         def algorithm_generator(experiment):
             return self
         return self.experiment(algorithm_generator, *args, **kwargs)
 
-    def predict(self, *args, **kwargs):
-        return self(*args, **kwargs)
-
     def evaluate(self, *args, **kwargs):
-        return self(*args, **kwargs)
+        '''
+        For validation and test purposes (when labels are known)
+        '''
+        return self(*args, with_labels=False, **kwargs)
+
+    def predict(self, *args, **kwargs):
+        '''
+        For real data purposes (when labels are unknown)
+        '''
+
+        return self(*args, with_labels=False, **kwargs)

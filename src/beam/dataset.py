@@ -7,6 +7,8 @@ from .utils import check_type
 import pandas as pd
 import math
 import hashlib
+import sys
+import warnings
 
 class UniversalDataset(torch.utils.data.Dataset):
 
@@ -16,12 +18,22 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.samplers = {}
         self.labels_split = {}
 
-        if len(args):
-            self.data = [torch.tensor(v, device=device) for v in args]
-        elif len(kwargs):
-            self.data = {k: torch.tensor(v, device=device) for k, v in kwargs.items()}
-        else:
-            self.data = None
+        # The training label is to be used when one wants to apply some data transformations/augmentations only in training mode
+        self.training = False
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if len(args):
+                self.data = [torch.tensor(v, device=device) for v in args]
+            elif len(kwargs):
+                self.data = {k: torch.tensor(v, device=device) for k, v in kwargs.items()}
+            else:
+                self.data = None
+
+    def train(self):
+        self.training = True
+    def eval(self):
+        self.training = False
 
     def __getitem__(self, ind):
 
@@ -36,7 +48,7 @@ class UniversalDataset(torch.utils.data.Dataset):
             return len(next(iter(self.data.values())))
         elif type(self.data) is list:
             return len(self.data[0])
-        elif check_type(self.data) in ['array', 'tensor']:
+        elif check_type(self.data).major == 'array':
             return len(self.data)
         else:
             raise NotImplementedError
@@ -54,7 +66,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if test is None:
             pass
-        elif check_type(test) in ['array', 'tensor']:
+        elif check_type(test).major == 'array':
             self.indices_split['test'] = torch.LongTensor(test)
             indices = np.sort(np.array(list(set(indices).difference(set(np.array(test))))))
         else:
@@ -70,9 +82,9 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if validation is None:
             pass
-        elif check_type(validation) in ['array', 'tensor']:
+        elif check_type(validation).major == 'array':
             self.indices_split['validation'] = torch.LongTensor(validation)
-            indices = np.sort(np.array(list(set(indices).difference(set(validation)))))
+            indices = np.sort(np.array(list(set(indices).difference(set(np.array(validation))))))
         else:
             if type(validation) is float:
                 validation = len(self) / len(indices) * validation
@@ -172,9 +184,9 @@ class UniversalBatchSampler(object):
     def __init__(self, dataset_size, batch_size, probs=None, length=None, shuffle=True, tail=True,
                  once=False, expansion_size=int(1e7)):
 
-        self.length = int(1e20) if length is None else int(length)
+        self.length = sys.maxsize if length is None else int(length)
 
-        if check_type(dataset_size) in ['array', 'tensor']:
+        if check_type(dataset_size).major == 'array':
             self.indices = torch.LongTensor(dataset_size)
         else:
             self.indices = torch.arange(dataset_size)

@@ -12,6 +12,7 @@ from .model import BeamOptimizer
 import socket
 from contextlib import closing
 from random import randint
+from collections import namedtuple
 
 from loguru import logger
 
@@ -53,28 +54,97 @@ def process_async(func, args, mp_context='spawn', num_workers=10):
     return results
 
 
+def check_element_type(x):
+    t = str(type(x)).lower()
+
+    if pd.isna(x):
+        return 'none'
+    if 'int' in t:
+        return 'int'
+    if 'float' in t:
+        return 'float'
+    if 'str' in t:
+        return 'str'
+    return 'object'
+
+
+def check_minor_type(x):
+    t = type(x)
+
+    if issubclass(t, dict):
+        return 'dict'
+    if isinstance(x, torch.Tensor):
+        return 'tensor'
+    if issubclass(t, list):
+        return 'list'
+    if isinstance(x, np.ndarray):
+        return 'numpy'
+    if isinstance(x, pd.DataFrame) or isinstance(x, pd.Series):
+        return 'pandas'
+    if issubclass(t, tuple):
+        return 'tuple'
+    else:
+        return 'other'
+
+
 def check_type(x):
     '''
-    return one of the types
-    numeric, string, array, tensor
 
-    array type
+    returns:
+
+    <major type>, <minor type>, <elements type>
+
+    major type: array, scalar, dict, none, other
+    minor type: tensor, numpy, pandas, native, list, tuple, none
+    elements type: int, float, str, object, none, unknown
 
     '''
+
+    type_tuple = namedtuple('Type', 'major minor element')
+
+    t = type(x)
+
+    mit = check_minor_type(x)
     if np.isscalar(x):
-        if type(x) is int or type(x) is float:
-            return 'numeric'
-        elif type(x) is str:
-            return 'string'
+        mjt = 'scalar'
+        if type(x) in [int, float, str]:
+            mit = 'native'
+        elt = check_element_type(x)
+
+    elif issubclass(t, dict):
+        mjt = 'dict'
+        mit = 'dict'
+        elt = check_element_type(next(x.values()))
+
+    elif x is None:
+        mjt = 'none'
+        mit = 'none'
+        elt = 'none'
+
+    elif mit != 'other':
+        mjt = 'array'
+        if mit in ['list', 'tuple']:
+            elt = check_element_type(x[0])
+        elif mit in ['numpy', 'tensor', 'pandas']:
+            if mit == 'pandas':
+                dt = str(x.values.dtype)
+            else:
+                dt = str(x.dtype)
+            if 'float' in dt:
+                elt = 'float'
+            elif 'int' in dt:
+                elt = 'int'
+            else:
+                elt = 'object'
         else:
-            return 'other'
-    elif pd.isna(x):
-        return 'none'
+            elt = 'unknown'
+
     else:
-        if isinstance(x, torch.Tensor):
-            return 'tensor'
-        else:
-            return 'array'
+        mjt = 'other'
+        mit = 'other'
+        elt = 'other'
+
+    return type_tuple(major=mjt, minor=mit, element=elt)
 
 
 def include_patterns(*patterns):
