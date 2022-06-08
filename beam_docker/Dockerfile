@@ -6,11 +6,19 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:22.04-py3
+FROM nvcr.io/nvidia/pytorch:22.03-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 ENV DEBIAN_FRONTEND noninteractive
 
 COPY beam_docker/install /workspace/install
+
+# pytorch geometric
+ENV CPATH "/usr/local/cuda/include:$CPATH"
+ENV PATH "/usr/local/cuda/bin:$PATH"
+ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+ENV DYLD_LIBRARY_PATH "/usr/local/cuda/lib:$DYLD_LIBRARY_PATH"
+RUN pip install torch-scatter torch-sparse torch-geometric torch-spline-conv torch-cluster
+
 
 # apt installs
 RUN chmod +x /workspace/install/apt_installs.sh
@@ -27,17 +35,6 @@ RUN echo "cat /etc/motd" >> /root/.bashrc
 
 # download datasets and models
 RUN python /workspace/install/downloader.py
-
-# pytorch geometric
-
-ENV CPATH "/usr/local/cuda/include:$CPATH"
-ENV PATH "/usr/local/cuda/bin:$PATH"
-
-ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
-ENV DYLD_LIBRARY_PATH "/usr/local/cuda/lib:$DYLD_LIBRARY_PATH"
-
-
-RUN pip install torch-scatter torch-sparse torch-geometric torch-spline-conv torch-cluster
 
 ## download nlp data
 RUN python -m nltk.downloader all
@@ -71,6 +68,6 @@ RUN echo "c.NotebookApp.token = ''" >> /root/.jupyter/jupyter_notebook_config.py
 
 RUN chmod +x /workspace/install/entrypoint.sh
 ENTRYPOINT ["/workspace/install/entrypoint.sh"]
-CMD ["10022", "10088", "10123456"]
+CMD ["10"]
 
 

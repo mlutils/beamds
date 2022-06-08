@@ -30,14 +30,21 @@ class Algorithm(object):
 
         if optimizers is None:
             self.networks = {k: self.register_network(v) for k, v in networks.items()}
-            optimizers = {k: BeamOptimizer(v, dense_args={'lr': experiment.lr_d,
+            self.optimizers = {k: BeamOptimizer(v, dense_args={'lr': experiment.lr_d,
                                                           'weight_decay': experiment.weight_decay,
                                                           'eps': experiment.eps},
                                            sparse_args={'lr': experiment.lr_s, 'eps': experiment.eps},
                                            clip=experiment.clip
                                            ) for k, v in self.networks.items()}
 
-        self.optimizers = optimizers
+        elif issubclass(type(optimizers), dict):
+            self.optimizers = optimizers
+
+        elif issubclass(type(optimizers), torch.optim.Optimizer):
+            self.optimizers = {'net': optimizers}
+
+        else:
+            raise NotImplementedError
 
         self.batch_size_train = experiment.batch_size_train
         self.batch_size_eval = experiment.batch_size_eval

@@ -40,7 +40,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if type(self.data) is dict:
             return {k: v[ind] for k, v in self.data.items()}
 
-        return [v[ind] for k, v in self.data]
+        return [v[ind] for v in self.data]
 
     def __len__(self):
 
