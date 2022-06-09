@@ -1,9 +1,13 @@
 #!/bin/bash
 
+pip install --upgrade pip
+
+# install pytorch-geometric
+pip install torch-scatter torch-sparse torch-geometric torch-spline-conv torch-cluster
 
 # additional python packages
 
-pip install elasticsearch fasttext pandarallel gensim umap-learn pyvis graphviz pygraphviz opencv-python
+pip install elasticsearch fasttext pandarallel gensim umap-learn pyvis graphviz pygraphviz opencv-contrib-python-headless
 pip install "dask[complete]"
 
 pip install xgboost catboost ipywidgets loguru sphinx-server gunicorn xeus-python voila
@@ -17,7 +21,7 @@ pip install -U imbalanced-learn scapy scikit-image scikit-plot jupyterhub config
 
 #explainability and visualization
 pip install lime shap seaborn fastavro bokeh altair vega_datasets dython fastai PyQt5 cdlib
-pip install nbtop botorch cma six Pillow pytorch-tabnet
+pip install nbtop botorch cma six Pillow pytorch-tabnet captum
 
 # hyperparameter optimizations
 pip install -U "ray[tune]"

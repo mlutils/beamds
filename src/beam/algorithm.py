@@ -59,9 +59,6 @@ class Algorithm(object):
             dataset = self.dataloaders['train'].dataset
             self.epoch_length['train'] = len(dataset.indices_split['train'])
 
-        if self.dataset is None:
-            self.dataset = dataset
-
         if self.epoch_length[self.eval_subset] is None:
             dataset = self.dataloaders[self.eval_subset].dataset
             self.epoch_length[self.eval_subset] = len(dataset.indices_split[self.eval_subset])
@@ -82,6 +79,9 @@ class Algorithm(object):
 
         if experiment.load_model:
             experiment.reload_checkpoint(self)
+
+        if self.dataset is None:
+            self.dataset = self.dataloaders['train'].dataset
 
     def register_network(self, net):
 
@@ -222,7 +222,7 @@ class Algorithm(object):
         '''
         return aux, results
 
-    def __call__(self, subset='test', with_labels=True):
+    def __call__(self, subset='test', with_labels=True, enable_tqdm=None):
 
         with torch.no_grad():
             self.set_mode(training=False)
@@ -237,10 +237,12 @@ class Algorithm(object):
             else:
                 desc = 'dataloader'
 
+            if enable_tqdm is None:
+                enable_tqdm = self.enable_tqdm
+
             dataloader = self.build_dataloader(subset)
             data_generator = self.data_generator(dataloader)
-            for i, sample in tqdm(data_generator, enable=self.enable_tqdm, notebook=(not self.ddp), desc=desc,
-                                  total=len(dataloader)):
+            for i, sample in tqdm(data_generator, enable=enable_tqdm, notebook=(not self.ddp), desc=desc, total=len(dataloader)):
                 aux, results = self.inference(sample=sample, aux=aux, results=results, subset=subset, with_labels=with_labels)
 
             aux, results = self.postprocess_inference(sample=sample, aux=aux, results=results, subset=subset, with_labels=with_labels)
@@ -282,12 +284,12 @@ class Algorithm(object):
             else:
                 net.eval()
 
-            for dataloader in self.dataloaders.values():
-                if hasattr(dataloader, 'train'):
-                    if training:
-                        dataloader.dataset.train()
-                    else:
-                        dataloader.dataset.eval()
+        for dataloader in self.dataloaders.values():
+            if hasattr(dataloader, 'train'):
+                if training:
+                    dataloader.dataset.train()
+                else:
+                    dataloader.dataset.eval()
 
     def save_checkpoint(self, path=None, aux=None, pickle_model=False):
 
@@ -342,7 +344,7 @@ class Algorithm(object):
         '''
         For validation and test purposes (when labels are known)
         '''
-        return self(*args, with_labels=False, **kwargs)
+        return self(*args, with_labels=True, **kwargs)
 
     def predict(self, *args, **kwargs):
         '''

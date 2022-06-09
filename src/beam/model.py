@@ -100,6 +100,7 @@ class LinearNet(nn.Module):
                                  nn.Linear(l_h if n_l > 1 else l_in, l_out, bias=bias))
 
     def forward(self, x):
+
         y = self.lin(x)
         return y.squeeze(1)
 

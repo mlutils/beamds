@@ -114,7 +114,7 @@ def check_type(x):
     elif issubclass(t, dict):
         mjt = 'dict'
         mit = 'dict'
-        elt = check_element_type(next(x.values()))
+        elt = check_element_type(next(iter(x.values())))
 
     elif x is None:
         mjt = 'none'

@@ -42,34 +42,64 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         return [v[ind] for v in self.data]
 
-    def __len__(self):
+    @property
+    def device(self):
 
         if type(self.data) is dict:
-            return len(next(iter(self.data.values())))
+            t = next(iter(self.data.values()))
         elif type(self.data) is list:
+            t = self.data[0]
+        elif check_type(self.data).major == 'array':
+            t = self.data
+        else:
+            raise NotImplementedError
+
+        if check_type(self.data).minor == 'tensor':
+            device = t.device
+        else:
+            raise NotImplementedError
+
+        return device
+
+
+    def __len__(self):
+        if issubclass(type(self.data), dict):
+            return len(next(iter(self.data.values())))
+        elif issubclass(type(self.data), list):
             return len(self.data[0])
         elif check_type(self.data).major == 'array':
             return len(self.data)
         else:
             raise NotImplementedError
 
-    def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None):
+    def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None,
+                    test_split_method='uniform', time_index=None, window=None):
         '''
         validation, test can be lists of indices, relative size or absolute size
 
         The seed is fixed unless explicitly given, to make sure datasets are split the same in all instances.
         If one wish to obtain random splitting, seed should be None
 
+        test_split_method should be uniform/time_based
+
+        # TODO: add window_based split
         '''
 
         indices = np.arange(len(self))
+        if time_index is None:
+            time_index = indices
 
         if test is None:
             pass
         elif check_type(test).major == 'array':
             self.indices_split['test'] = torch.LongTensor(test)
             indices = np.sort(np.array(list(set(indices).difference(set(np.array(test))))))
-        else:
+
+            if labels is not None:
+                self.labels_split['test'] = labels[self.indices_split['test']]
+                labels = labels[indices]
+
+        elif test_split_method == 'uniform':
             if labels is not None:
                 indices, test, labels, self.labels_split['test'] = train_test_split(indices, labels, random_state=seed,
                                                                                     test_size=test, stratify=labels if stratify else None)
@@ -80,11 +110,28 @@ class UniversalDataset(torch.utils.data.Dataset):
             if seed is not None:
                 seed = seed + 1
 
+        elif test_split_method == 'time_based':
+            ind_sort = np.argsort(time_index)
+            indices = indices[ind_sort]
+
+            self.indices_split['test'] = torch.LongTensor(indices[-int(test * len(indices)):])
+            indices = indices[:-int(test * len(indices))]
+
+            if labels is not None:
+                labels = labels[ind_sort]
+                self.labels_split['test'] = labels[self.indices_split['test']]
+                labels = labels[indices]
+
         if validation is None:
             pass
         elif check_type(validation).major == 'array':
             self.indices_split['validation'] = torch.LongTensor(validation)
             indices = np.sort(np.array(list(set(indices).difference(set(np.array(validation))))))
+
+            if labels is not None:
+                self.labels_split['validation'] = labels[self.indices_split['validation']]
+                labels = labels[indices]
+
         else:
             if type(validation) is float:
                 validation = len(self) / len(indices) * validation
@@ -110,8 +157,12 @@ class UniversalDataset(torch.utils.data.Dataset):
                                                           eval_batch_size, shuffle=False, tail=True, once=True)
 
         if 'validation' in self.indices_split:
+            probs = None
+            if oversample and 'validation' in self.labels_split and self.labels_split['validation'] is not None:
+                probs = compute_sample_weight('balanced', y=self.labels_split['validation']) ** weight_factor
+
             self.samplers['validation'] = UniversalBatchSampler(self.indices_split['validation'],
-                                                          eval_batch_size, shuffle=True, tail=True, once=False)
+                                                          eval_batch_size, probs=probs, shuffle=True, tail=True, once=False)
 
         if 'train' in self.indices_split:
             probs = None
@@ -122,10 +173,16 @@ class UniversalDataset(torch.utils.data.Dataset):
                                                            batch_size, probs=probs, shuffle=True, tail=True,
                                                            once=False, expansion_size=expansion_size)
 
-    def build_dataloaders(self, num_workers=0, pin_memory=True, timeout=0, collate_fn=None,
+    def build_dataloaders(self, num_workers=0, pin_memory=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
 
         dataloaders = {}
+        if pin_memory is None:
+            try:
+                d = str(self.device)
+                pin_memory = False if 'cuda' in d else True
+            except NotImplementedError:
+                pin_memory = True
 
         if 'test' in self.samplers:
             sampler = self.samplers['test']
