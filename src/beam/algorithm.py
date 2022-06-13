@@ -18,7 +18,9 @@ class Algorithm(object):
 
         self.device = experiment.device
         self.ddp = experiment.ddp
+        self.half = experiment.half
         self.enable_tqdm = True
+        self.amp = experiment.amp
 
         self.dataloaders = dataloaders
         self.dataset = dataset
@@ -34,7 +36,7 @@ class Algorithm(object):
                                                           'weight_decay': experiment.weight_decay,
                                                           'eps': experiment.eps},
                                            sparse_args={'lr': experiment.lr_s, 'eps': experiment.eps},
-                                           clip=experiment.clip
+                                           clip=experiment.clip, amp=self.amp,
                                            ) for k, v in self.networks.items()}
 
         elif issubclass(type(optimizers), dict):
@@ -86,6 +88,10 @@ class Algorithm(object):
     def register_network(self, net):
 
         net = net.to(self.device)
+
+        if self.half:
+            net = net.half()
+
         if self.ddp:
             net = DDP(net, device_ids=[self.device])
 
@@ -98,7 +104,7 @@ class Algorithm(object):
         return self.networks
 
     def process_sample(self, sample):
-        return to_device(sample, self.device)
+        return to_device(sample, self.device, half=self.half)
 
     def build_dataloader(self, subset):
 
@@ -285,7 +291,7 @@ class Algorithm(object):
                 net.eval()
 
         for dataloader in self.dataloaders.values():
-            if hasattr(dataloader, 'train'):
+            if hasattr(dataloader.dataset, 'train'):
                 if training:
                     dataloader.dataset.train()
                 else:

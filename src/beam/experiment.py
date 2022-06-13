@@ -62,6 +62,12 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args):
         return res
 
 
+class Study(object):
+
+    def __init__(self):
+        pass
+
+
 class Experiment(object):
     """
     Experiment name:
@@ -92,7 +98,7 @@ class Experiment(object):
 
         # torch.set_num_threads(100)
         logger.info(f"beam project: {args.project_name}")
-        logger.info('Simulation Hyperparameters')
+        logger.info('Experiment Hyperparameters')
 
         self.args = vars(args)
         for k, v in vars(args).items():
@@ -101,6 +107,7 @@ class Experiment(object):
 
         # determine the batch size
 
+        torch.backends.cudnn.benchmark = self.cudnn_benchmark
         # parameters
 
         self.start_time = time.time()
@@ -381,6 +388,7 @@ class Experiment(object):
                             log_func(f'{subset}/{param}', *res[log_type][param], n, **defaults_argv[log_type][param])
                         else:
                             log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
+
 
     def __call__(self, algorithm_generator, *args, **kwargs):
 

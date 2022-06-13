@@ -57,6 +57,10 @@ boolean_feature("scale-epoch-by-batch-size", True,
                 'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch'
                 'When False: epoch length corresponds to the number of forward passes in each epoch')
 
+boolean_feature("cudnn-benchmark", False, "Setting torch.backends.cudnn.benchmark = True before the training loop can accelerate the computation")
+boolean_feature("half", False, "Use FP16 instead of FP32")
+boolean_feature("amp", False, "Use Automatic Mixed Precision")
+
 # experiment parameters
 parser.add_argument('--init', type=str, default='ortho', help='Initialization method [ortho|N02|xavier|]')
 parser.add_argument('--seed', type=int, default=0, help='Seed for reproducability (zero is saved for random seed)')

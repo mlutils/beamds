@@ -39,8 +39,10 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if type(self.data) is dict:
             return {k: v[ind] for k, v in self.data.items()}
-
-        return [v[ind] for v in self.data]
+        elif len(self.data) == 1:
+            return self.data[ind]
+        else:
+            return [v[ind] for v in self.data]
 
     @property
     def device(self):

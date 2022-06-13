@@ -50,9 +50,9 @@ openml_datasets = [d.split('\t')[1] for d in openml_datasets]
 
 downloaded = {}
 
-for d in tqdm(openml_datasets):
-    print(d)
-    downloaded[d] = fetch_openml(d, cache=True)
+# for d in tqdm(openml_datasets):
+#     print(d)
+#     downloaded[d] = fetch_openml(d, cache=True)
 
 from sklearn import datasets
 
@@ -60,22 +60,30 @@ downloaded['20newsgroups'] = datasets.fetch_20newsgroups()
 downloaded['20newsgroups_vectorized'] = datasets.fetch_20newsgroups_vectorized()
 downloaded['california_housing'] = datasets.fetch_california_housing()
 downloaded['covtype'] = datasets.fetch_covtype()
-downloaded['kddcup99'] = datasets.fetch_kddcup99()
-downloaded['lfw_pairs'] = datasets.fetch_lfw_pairs()
-downloaded['lfw_people'] = datasets.fetch_lfw_people()
-downloaded['olivetti_faces'] = datasets.fetch_olivetti_faces()
-downloaded['rcv1'] = datasets.fetch_rcv1()
-downloaded['species_distributions'] = datasets.fetch_species_distributions()
+# downloaded['kddcup99'] = datasets.fetch_kddcup99()
+# downloaded['lfw_pairs'] = datasets.fetch_lfw_pairs()
+# downloaded['lfw_people'] = datasets.fetch_lfw_people()
+# downloaded['olivetti_faces'] = datasets.fetch_olivetti_faces()
+# downloaded['rcv1'] = datasets.fetch_rcv1()
+# downloaded['species_distributions'] = datasets.fetch_species_distributions()
 
-import torchvision
+# import torchvision
+#
+# pytorch_data = '/root/pytorch_data'
+#
+# pytorch_datasets = ['CIFAR10', 'CIFAR100', 'FashionMNIST', 'MNIST']
+#
+# for d in pytorch_datasets:
+#     print(d)
+#     f = getattr(torchvision.datasets, d)
+#     f(pytorch_data, train=True, download=True)
+#     f(pytorch_data, train=False, download=True)
+#
+#
+# # download huggingface models
+# from transformers import AutoModel
+#
+# model = AutoModel.from_pretrained("bert-base-cased")
+# model = AutoModel.from_pretrained("bert-base-arabertv02")
 
-pytorch_data = '/root/pytorch_data'
-
-pytorch_datasets = ['CIFAR10', 'CIFAR100', 'FashionMNIST', 'MNIST']
-
-for d in pytorch_datasets:
-    print(d)
-    f = getattr(torchvision.datasets, d)
-    f(pytorch_data, train=True, download=True)
-    f(pytorch_data, train=False, download=True)
 

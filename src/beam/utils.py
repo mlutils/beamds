@@ -211,12 +211,14 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
             torch.backends.cudnn.benchmark = False
 
 
-def to_device(data, device='cuda'):
+def to_device(data, device='cuda', half=False):
     if type(data) is dict:
-        return {k: to_device(v, device) for k, v in data.items()}
+        return {k: to_device(v, device=device, half=half) for k, v in data.items()}
     elif (type(data) is list) or (type(data) is tuple):
-        return [to_device(s, device) for s in data]
+        return [to_device(s, device=device, half=half) for s in data]
     elif issubclass(type(data), torch.Tensor):
+        if half and data.dtype in [torch.float32, torch.float64]:
+            data = data.half()
         return data.to(device)
     else:
         return data

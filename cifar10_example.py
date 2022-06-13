@@ -17,20 +17,92 @@ from src.beam import Algorithm
 from src.beam import LinearNet
 from src.beam import DataTensor
 from src.beam.utils import is_notebook
+from torchvision import transforms
+import torchvision
+
+
+
+class ResBlock(nn.Module):
+    """
+    Iniialize a residual block with two convolutions followed by batchnorm layers
+    """
+
+    def __init__(self, in_size: int, out_size: int, stride=1, bias=False):
+        super().__init__()
+        self.res = nn.Sequential(nn.BatchNorm2d(in_size), nn.ReLU(),
+                                 nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1, bias=bias))
+        self.stride = stride
+
+    def forward(self, x):
+
+        r = self.res(x)
+        if self.stride > 1:
+            x = x[:, :, ::self.stride, ::self.stride]
+
+        return x + r  # skip connection
+
+
+class Cifar10Network(nn.Module):
+    """Simple Convolutional and Fully Connect network."""
+    def __init__(self, channels=64):
+        super().__init__()
+
+        self.conv = nn.Sequential(nn.Conv2d(3, channels // 2, kernel_size=3, stride=1, padding=1, bias=True),
+                                  nn.BatchNorm2d(channels // 2), nn.ReLU(),
+                                  nn.Conv2d(channels // 2, channels, kernel_size=3, stride=2, padding=1, bias=True),
+                                  nn.BatchNorm2d(channels), nn.ReLU(),
+                                  nn.Conv2d(channels, channels, kernel_size=3, stride=2, padding=1, bias=True),
+                                  nn.BatchNorm2d(channels), nn.ReLU(),
+                                  nn.Conv2d(channels, channels, kernel_size=3, stride=2, padding=1, bias=True),
+                                   nn.AdaptiveMaxPool2d((2, 2)),
+                                   nn.Flatten(),
+                                   nn.ReLU(),
+                                   nn.Linear(256, 10, bias=True)
+                                   )
+
+        # self.conv = nn.Sequential(nn.Conv2d(3, channels, kernel_size=3, stride=1, padding=1, bias=True),
+        #                            ResBlock(channels, channels, stride=2),
+        #                            ResBlock(channels, channels, stride=2),
+        #                            ResBlock(channels, channels, stride=2),
+        #                            nn.AdaptiveMaxPool2d((2, 2)),
+        #                            nn.Flatten(),
+        #                            nn.ReLU(),
+        #                            nn.Linear(512, 10, bias=True)
+        #                            )
+
+    def forward(self, x):
+
+        x = self.conv(x)
+        return x
+
 
 
 # In[2]:
 
+class CIFAR10Dataset(UniversalDataset):
 
-class MNISTDataset(UniversalDataset):
-
-    def __init__(self, path, train_batch_size, eval_batch_size):
+    def __init__(self, path, train_batch_size, eval_batch_size, device='cuda'):
         super().__init__()
-        dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
-        dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
+        dataset_train = torchvision.datasets.CIFAR10(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
+        dataset_test = torchvision.datasets.CIFAR10(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
 
-        self.data = torch.cat([dataset_train.data, dataset_test.data])
-        self.labels = torch.cat([dataset_train.targets, dataset_test.targets])
+        basic_transform = transforms.Compose(
+                            [transforms.ToTensor(),
+                             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+
+        self.augmentations = transforms.Compose(
+                            [transforms.RandomResizedCrop(32, scale=(0.7, 1.0)), transforms.RandomHorizontalFlip()])
+
+        # self.augmentations = transforms.Compose([])
+
+        x_train = torch.stack([basic_transform(di) for di in dataset_train.data])
+        x_test =torch.stack([basic_transform(di) for di in dataset_test.data])
+
+        y_train = torch.LongTensor(dataset_train.targets)
+        y_test = torch.LongTensor(dataset_test.targets)
+
+        self.data = torch.cat([x_train, x_test])
+        self.labels = torch.cat([y_train, y_test])
 
         test_indices = len(dataset_train) + torch.arange(len(dataset_test))
 
@@ -38,23 +110,29 @@ class MNISTDataset(UniversalDataset):
         self.build_samplers(train_batch_size, eval_batch_size)
 
     def __getitem__(self, index):
-        return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
+
+        x = self.data[index]
+        if self.train:
+            x = self.augmentations(x)
+
+        return {'x': x, 'y': self.labels[index]}
 
 
-class MNISTAlgorithm(Algorithm):
+class CIFAR10Algorithm(Algorithm):
 
     def __init__(self, *args, **argv):
         super().__init__(*args, **argv)
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
+        # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
+
         x, y = sample['x'], sample['y']
 
-        results['images']['sample'] = x[:16].view(16, 1, 28, 28).data.cpu()
+        # results['images']['sample'] = x[:16].view(16, 1, 28, 28).data.cpu()
 
-        if training:
-            self.scheduler.step()
-            results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
+        # if training:
+        #     # self.scheduler.step()
+        #     results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
 
         aux = {}
         return aux, results
@@ -63,7 +141,6 @@ class MNISTAlgorithm(Algorithm):
 
         x, y = sample['x'], sample['y']
 
-        x = x.view(len(x), -1)
         net = self.networks['net']
         opt = self.optimizers['net']
 
@@ -87,7 +164,6 @@ class MNISTAlgorithm(Algorithm):
         else:
             x = sample
 
-        x = x.view(len(x), -1)
         net = self.networks['net']
 
         y_hat = net(x)
@@ -117,15 +193,15 @@ class MNISTAlgorithm(Algorithm):
         return aux, results
 
 
-def mnist_algorithm_generator(experiment):
+def cifar10_algorithm_generator(experiment):
 
-    dataset = MNISTDataset(experiment.path_to_data,
-                           experiment.batch_size_train, experiment.batch_size_eval)
+    dataset = CIFAR10Dataset(experiment.path_to_data,
+                           experiment.batch_size_train, experiment.batch_size_eval, device=experiment.device)
 
     dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers)
 
     # choose your network
-    net = LinearNet(784, 256, 10, 4)
+    net = Cifar10Network()
 
     # we recommend using the algorithm argument to determine the type of algorithm to be used
     Alg = globals()[experiment.algorithm]
@@ -134,9 +210,9 @@ def mnist_algorithm_generator(experiment):
     return alg
 
 
-def run_mnist(rank, world_size, experiment):
+def run_cifar10(rank, world_size, experiment):
 
-    dataset = MNISTDataset(experiment.path_to_data,
+    dataset = CIFAR10Dataset(experiment.path_to_data,
                            experiment.batch_size_train, experiment.batch_size_eval)
 
     dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers)
@@ -174,16 +250,16 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    args = beam_arguments("--project-name=mnist --root-dir=/home/shared/data/results --algorithm=MNISTAlgorithm",
+    args = beam_arguments("--project-name=CIFAR10 --root-dir=/home/shared/data/results --algorithm=CIFAR10Algorithm",
                           "--epoch-length=100000 --n-epochs=2 --clip=1 --parallel=1 --parallel=2",
-                          path_to_data='/home/elad/projects/mnist')
+                          path_to_data='/home/elad/projects/CIFAR10')
 
     experiment = Experiment(args)
 
-    alg = experiment(mnist_algorithm_generator, experiment)
+    alg = experiment(CIFAR10_algorithm_generator, experiment)
 
     # here we initialize the workers (can be single or multiple workers, depending on the configuration)
-    # alg = experiment.run(run_mnist)
+    # alg = experiment.run(run_CIFAR10)
 
     # ## Inference
 

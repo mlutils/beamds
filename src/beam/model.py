@@ -122,7 +122,7 @@ class MultipleScheduler(object):
 
 class BeamOptimizer(object):
 
-    def __init__(self, net, dense_args=None, sparse_args=None, clip=0):
+    def __init__(self, net, dense_args=None, sparse_args=None, clip=0, accumulate=1, amp=False):
 
         if dense_args is None:
             dense_args = {'lr': 1e-3, 'eps': 1e-4}
@@ -130,6 +130,11 @@ class BeamOptimizer(object):
             sparse_args = {'lr': 1e-2, 'eps': 1e-4}
 
         self.clip = clip
+        self.accumulate = accumulate
+        self.iteration = 0
+        self.amp = amp
+        if self.amp:
+            self.scaler = torch.cuda.amp.GradScaler()
 
         self.optimizers = {}
 
@@ -164,29 +169,51 @@ class BeamOptimizer(object):
         return MultipleScheduler(self, scheduler, *argc, **argv)
 
     def reset(self):
+        self.iteration = 0
         for op in self.optimizers.values():
             op.state = defaultdict(dict)
 
-    def zero_grad(self):
-        for op in self.optimizers.values():
-            op.zero_grad()
+        self.zero_grad(set_to_none=True)
+        self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
 
-    def apply(self, loss, training=False):
+    def zero_grad(self, set_to_none=True):
+        for op in self.optimizers.values():
+            op.zero_grad(set_to_none=set_to_none)
+
+    def apply(self, loss, training=False, set_to_none=True):
+
+        self.iteration += 1
 
         if training:
-            self.zero_grad()
-            loss.backward()
+
+            if self.amp:
+                self.scaler.scale(loss).backward()
+            else:
+                loss.backward()
 
             if self.clip > 0:
                 for op in self.optimizers.values():
                     for pg in op.param_groups:
+
+                        if self.amp:
+                            for op in self.optimizers.values():
+                                self.scaler.unscale_(op)
+
                         torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.clip)
 
-            self.step()
+            if not (self.iteration % self.accumulate):
+                self.step()
+                self.zero_grad(set_to_none=set_to_none)
 
     def step(self):
         for op in self.optimizers.values():
-            op.step()
+            if self.amp:
+                self.scaler.step(op)
+            else:
+                op.step()
+
+        if self.amp:
+            self.scaler.update()
 
     def state_dict(self):
         return {k: op.state_dict() for k, op in self.optimizers.items()}
