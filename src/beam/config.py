@@ -84,11 +84,14 @@ parser.add_argument('--batch-size', type=int, default=256, help='Batch Size')
 parser.add_argument('--batch-size-train', type=int, default=None, help='Batch Size for training iterations')
 parser.add_argument('--batch-size-eval', type=int, default=None, help='Batch Size for testing/evaluation iterations')
 
-parser.add_argument('--lr-d', type=float, default=1e-3, metavar='α', help='learning rate for dense optimizers')
-parser.add_argument('--lr-s', type=float, default=1e-2, metavar='α', help='learning rate for sparse optimizers')
+parser.add_argument('--lr-dense', type=float, default=1e-3, metavar='α', help='learning rate for dense optimizers')
+parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='α', help='learning rate for sparse optimizers')
 parser.add_argument('--weight-decay', type=float, default=0., help='L2 regularization coefficient for dense optimizers')
 parser.add_argument('--eps', type=float, default=1e-4, metavar='ɛ', help='Adam\'s epsilon parameter')
+parser.add_argument('--beta1', type=float, default=0.9, metavar='β', help='Adam\'s β1 parameter')
+parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
 parser.add_argument('--clip', type=float, default=0., help='Clip Pi Gradient L2 norm')
+parser.add_argument('--accumulate', type=int, default=1, help='Accumulate gradients for this number of backward iterations')
 
 # results printing and visualization
 

@@ -123,10 +123,10 @@ class MultipleScheduler(object):
 class BeamOptimizer(object):
 
     def __init__(self, net, dense_args=None, clip=0, accumulate=1, amp=False,
-                 sparse_args=None, clip=0, dense_optimizer='AdamW', sparse_optimizer='SparseAdam'):
+                 sparse_args=None, dense_optimizer='AdamW', sparse_optimizer='SparseAdam'):
 
-        sparse_optimizer = getattr(sparse_optimizer, torch.optim)
-        dense_optimizer = getattr(dense_optimizer, torch.optim)
+        sparse_optimizer = getattr(torch.optim, sparse_optimizer)
+        dense_optimizer = getattr(torch.optim, dense_optimizer)
 
         if dense_args is None:
             dense_args = {'lr': 1e-3, 'eps': 1e-4}
