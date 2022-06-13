@@ -53,19 +53,60 @@ class Cifar10Network(nn.Module):
     def __init__(self, channels=128):
         super().__init__()
 
+        # activation = nn.CELU(alpha=0.3)
+        activation = nn.GELU()
+
         self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
-                                  nn.BatchNorm2d(channels // 4), nn.CELU(alpha=0.3),
-                                  nn.Conv2d(channels // 4, channels // 2, kernel_size=3, stride=2, padding=1, bias=False),
-                                  nn.BatchNorm2d(channels // 2), nn.CELU(alpha=0.3),
-                                  nn.Conv2d(channels // 2, channels, kernel_size=3, stride=2, padding=1, bias=False),
-                                  nn.BatchNorm2d(channels), nn.CELU(alpha=0.3),
-                                  nn.Conv2d(channels, channels, kernel_size=3, stride=2, padding=1, bias=False),
-                                   nn.AdaptiveMaxPool2d((2, 2)),
-                                   nn.Flatten(),
-                                   nn.CELU(alpha=0.3),
-                                   nn.Dropout(.25),
-                                   nn.Linear(channels * 4, 10, bias=True)
-                                   )
+                                  nn.BatchNorm2d(channels // 4), activation,
+                                  nn.Conv2d(channels // 4, channels // 2, kernel_size=3, stride=1, padding=1, bias=False),
+                                  nn.MaxPool2d(2),
+                                  nn.BatchNorm2d(channels // 2), activation,
+                                  nn.Conv2d(channels // 2, channels, kernel_size=3, stride=1, padding=1, bias=False),
+                                  nn.MaxPool2d(2),
+                                  nn.BatchNorm2d(channels), activation,
+                                  nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1, bias=False),
+                                  nn.MaxPool2d(4),
+                                  nn.Flatten(),
+                                  nn.BatchNorm1d(channels * 4),
+                                  activation,
+                                  nn.Dropout(.5),
+                                  nn.Linear(channels * 4, 32, bias=False),
+                                  nn.BatchNorm1d(32),
+                                  activation,
+                                  nn.Linear(32, 10, bias=True),
+                                  )
+
+        # self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
+        #                           nn.BatchNorm2d(channels // 4), nn.CELU(alpha=0.3),
+        #                           nn.Conv2d(channels // 4, channels // 2, kernel_size=3, stride=2, padding=1, bias=False),
+        #                           nn.BatchNorm2d(channels // 2), nn.CELU(alpha=0.3),
+        #                           nn.Conv2d(channels // 2, channels, kernel_size=3, stride=2, padding=1, bias=False),
+        #                           nn.BatchNorm2d(channels), nn.CELU(alpha=0.3),
+        #                           nn.Conv2d(channels, channels, kernel_size=3, stride=2, padding=1, bias=False),
+        #                            nn.AdaptiveMaxPool2d((2, 2)),
+        #                            nn.Flatten(),
+        #                           nn.BatchNorm1d(channels * 4),
+        #                            nn.CELU(alpha=0.3),
+        #                            nn.Dropout(.25),
+        #                            nn.Linear(channels * 4, 10, bias=True)
+        #                            )
+
+        # self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
+        #                           nn.BatchNorm2d(channels // 4), nn.CELU(alpha=0.3),
+        #                           nn.Conv2d(channels // 4, channels // 2, kernel_size=3, stride=1, padding=1, bias=False),
+        #                           nn.MaxPool2d(2),
+        #                           nn.BatchNorm2d(channels // 2), nn.CELU(alpha=0.3),
+        #                           nn.Conv2d(channels // 2, channels, kernel_size=3, stride=1, padding=1, bias=False),
+        #                           nn.MaxPool2d(2),
+        #                           nn.BatchNorm2d(channels), nn.CELU(alpha=0.3),
+        #                           nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1, bias=False),
+        #                           nn.MaxPool2d(2),
+        #                           nn.AdaptiveMaxPool2d((2, 2)),
+        #                           nn.Flatten(),
+        #                           nn.CELU(alpha=0.3),
+        #                           nn.Dropout(.25),
+        #                           nn.Linear(channels * 4, 10, bias=True)
+        #                           )
 
         # self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
         #                           ResBlock(channels // 4, channels // 2, stride=2, bias=False),
@@ -96,6 +137,32 @@ class Cifar10Network(nn.Module):
 
 
 # In[2]:
+
+def initialize_weights(m):
+    if isinstance(m, nn.Conv2d):
+        nn.init.kaiming_uniform_(m.weight.data,nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias.data, 0)
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight.data, 1)
+        nn.init.constant_(m.bias.data, 0)
+    elif isinstance(m, nn.Linear):
+        nn.init.kaiming_uniform_(m.weight.data)
+        if m.bias is not None:
+            nn.init.constant_(m.bias.data, 0)
+
+# def initialize_weights(m):
+#     if isinstance(m, nn.Conv2d):
+#         nn.init.orthogonal_(m.weight.data)
+#         if m.bias is not None:
+#             nn.init.constant_(m.bias.data, 0)
+#     elif isinstance(m, nn.BatchNorm2d):
+#         nn.init.constant_(m.weight.data, 1)
+#         nn.init.constant_(m.bias.data, 0)
+#     elif isinstance(m, nn.Linear):
+#         nn.init.orthogonal_(m.weight.data)
+#         if m.bias is not None:
+#             nn.init.constant_(m.bias.data, 0)
 
 class CIFAR10Dataset(UniversalDataset):
 
@@ -148,7 +215,7 @@ class CIFAR10Algorithm(Algorithm):
 
     def __init__(self, *args, **argv):
         super().__init__(*args, **argv)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizers['net'].dense, 5, gamma=0.1)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizers['net'].dense, 1, gamma=1/np.sqrt(10))
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
@@ -228,6 +295,8 @@ def cifar10_algorithm_generator(experiment):
 
     # choose your network
     net = Cifar10Network()
+
+    net.apply(initialize_weights)
     # optimizer = BeamOptimizer(net, dense_args={'lr': experiment.lr_dense,
     #                                            'momentum': .9}, clip=0, accumulate=1, amp=experiment.amp,
     #                           sparse_args=None, dense_optimizer='SGD', sparse_optimizer='SparseAdam')
