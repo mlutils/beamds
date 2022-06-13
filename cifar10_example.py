@@ -44,20 +44,20 @@ class ResBlock(nn.Module):
 
 class Cifar10Network(nn.Module):
     """Simple Convolutional and Fully Connect network."""
-    def __init__(self, channels=64):
+    def __init__(self, channels=128):
         super().__init__()
 
-        self.conv = nn.Sequential(nn.Conv2d(3, channels // 2, kernel_size=3, stride=1, padding=1, bias=True),
+        self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
+                                  nn.BatchNorm2d(channels // 4), nn.ReLU(),
+                                  nn.Conv2d(channels // 4, channels // 2, kernel_size=3, stride=2, padding=1, bias=True),
                                   nn.BatchNorm2d(channels // 2), nn.ReLU(),
                                   nn.Conv2d(channels // 2, channels, kernel_size=3, stride=2, padding=1, bias=True),
-                                  nn.BatchNorm2d(channels), nn.ReLU(),
-                                  nn.Conv2d(channels, channels, kernel_size=3, stride=2, padding=1, bias=True),
                                   nn.BatchNorm2d(channels), nn.ReLU(),
                                   nn.Conv2d(channels, channels, kernel_size=3, stride=2, padding=1, bias=True),
                                    nn.AdaptiveMaxPool2d((2, 2)),
                                    nn.Flatten(),
                                    nn.ReLU(),
-                                   nn.Linear(256, 10, bias=True)
+                                   nn.Linear(512, 10, bias=True)
                                    )
 
         # self.conv = nn.Sequential(nn.Conv2d(3, channels, kernel_size=3, stride=1, padding=1, bias=True),
@@ -91,7 +91,8 @@ class CIFAR10Dataset(UniversalDataset):
                              transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
 
         self.augmentations = transforms.Compose(
-                            [transforms.RandomResizedCrop(32, scale=(0.7, 1.0)), transforms.RandomHorizontalFlip()])
+                            [transforms.RandomResizedCrop(32, scale=(0.64, 1.0),
+                                                   ratio=(1.0, 1.0)), transforms.RandomHorizontalFlip()])
 
         # self.augmentations = transforms.Compose([])
 
@@ -122,7 +123,7 @@ class CIFAR10Algorithm(Algorithm):
 
     def __init__(self, *args, **argv):
         super().__init__(*args, **argv)
-        # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizers['net'].dense, 15, gamma=0.33)
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
@@ -130,9 +131,9 @@ class CIFAR10Algorithm(Algorithm):
 
         # results['images']['sample'] = x[:16].view(16, 1, 28, 28).data.cpu()
 
-        # if training:
-        #     # self.scheduler.step()
-        #     results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
+        if training:
+            self.scheduler.step()
+            results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
 
         aux = {}
         return aux, results
