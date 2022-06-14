@@ -50,7 +50,7 @@ class ResBlock(nn.Module):
 
 class Cifar10Network(nn.Module):
     """Simple Convolutional and Fully Connect network."""
-    def __init__(self, channels=128):
+    def __init__(self, channels=256):
         super().__init__()
 
         # activation = nn.CELU(alpha=0.3)
@@ -225,6 +225,7 @@ class CIFAR10Algorithm(Algorithm):
 
         if training:
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
+            self.optimizers['net'].reset()
             self.scheduler.step()
 
         aux = {}
