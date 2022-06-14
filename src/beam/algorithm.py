@@ -19,8 +19,10 @@ class Algorithm(object):
         self.device = experiment.device
         self.ddp = experiment.ddp
         self.half = experiment.half
-        self.enable_tqdm = True
+        self.enable_tqdm = experiment.enable_tqdm
         self.amp = experiment.amp
+        self.hpo = experiment.hpo
+        self.trial = experiment.trial
 
         self.dataloaders = dataloaders
         self.dataset = dataset
@@ -231,6 +233,13 @@ class Algorithm(object):
         '''
         return aux, results
 
+    def report(self, results, i):
+        '''
+        Use this function to report results to hyperparameter optimization frameworks
+        also you can add key 'objective' to the results dictionary to report the final scores.
+        '''
+        return results
+
     def __call__(self, subset='test', with_labels=True, enable_tqdm=None):
 
         with torch.no_grad():
@@ -264,7 +273,7 @@ class Algorithm(object):
         all_eval_results = defaultdict(dict)
 
         eval_generator = self.inner_loop(self.n_epochs + 1, subset=self.eval_subset, training=False)
-        for train_results in self.inner_loop(self.n_epochs, subset='train', training=True):
+        for i, train_results in enumerate(self.inner_loop(self.n_epochs, subset='train', training=True)):
 
             for k_type in train_results.keys():
                 for k_name, v in train_results[k_type].items():
@@ -279,6 +288,10 @@ class Algorithm(object):
                         all_eval_results[k_type][k_name] = v
 
             results = {'train': all_train_results, self.eval_subset: all_eval_results}
+
+            if self.hpo is not None:
+                results = self.report(results, i)
+
             yield results
 
             all_train_results = defaultdict(dict)

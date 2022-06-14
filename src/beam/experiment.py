@@ -17,6 +17,10 @@ import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
 import torch.distributed as dist
+from ray import tune
+import optuna
+from functools import partial
+import ray
 
 done = mp.Event()
 
@@ -36,8 +40,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, **k
                                       argv=save_model_results_arguments)
 
     if world_size == 1:
-        return alg
-
+        return alg, results
 
 # check
 
@@ -64,8 +67,89 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args):
 
 class Study(object):
 
-    def __init__(self):
-        pass
+    def __init__(self, algorithm_generator, args):
+
+        args.reload = False
+        args.override = False
+        args.print_results = False
+        args.visualize_weights = False
+        args.enable_tqdm = False
+
+        start_time = time.time()
+        exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+        args.identifier = f'{args.identifier}_hp_optimization_{exptime}'
+
+        self.ag = algorithm_generator
+        self.args = args
+
+        logger.info('Hyperparameter Optimization')
+        logger.info(f"beam project: {args.project_name}")
+        logger.info('Experiment Hyperparameters')
+
+        for k, v in vars(args).items():
+            logger.info(k + ': ' + str(v))
+
+    def runner_tune(self, config):
+
+        args = copy.deepcopy(self.args)
+
+        for k, v in config.items():
+            setattr(args, k, v)
+
+        experiment = Experiment(args, results_names='objective', hpo='tune', print_hyperparameters=False)
+        alg, results = experiment(self.ag, return_results=True)
+
+        if 'objective' in results:
+            if type('objective') is tuple:
+                return results['objective']
+            elif issubclass(type(results['objective']), dict):
+                tune.report(**results['objective'])
+            else:
+                return results['objective']
+
+    def runner_optuna(self, trial, suggest):
+
+        config = suggest(trial)
+
+        logger.info('Next Hyperparameter suggestion:')
+        for k, v in config.items():
+            logger.info(k + ': ' + str(v))
+
+        args = copy.deepcopy(self.args)
+
+        for k, v in config.items():
+            setattr(args, k, v)
+
+        experiment = Experiment(args, hpo='optuna', results_names='objective',
+                                trial=trial, print_hyperparameters=False)
+        alg, results = experiment(self.ag, return_results=True)
+
+        if 'objective' in results:
+            if type('objective') is tuple:
+                return results['objective']
+            elif issubclass(type(results['objective']), dict):
+                tune.report(**results['objective'])
+            else:
+                return results['objective']
+
+    def tune(self, config, *args, **kwargs):
+
+        analysis = tune.run(self.runner_tune, config=config, *args, **kwargs)
+
+        return analysis
+
+    def optuna(self, suggest, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
+               load_if_exists=False, directions=None, *args, **kwargs):
+
+        if study_name is None:
+            study_name = f'{self.args.project_name}/{self.args.algorithm}/{self.args.identifier}'
+
+        runner = partial(self.runner_optuna, suggest=suggest)
+        study = optuna.create_study(storage=storage, sampler=sampler, pruner=pruner, study_name=study_name,
+                                    direction=direction, load_if_exists=load_if_exists, directions=directions)
+        study.optimize(runner, *args, **kwargs)
+
+        return study
 
 
 class Experiment(object):
@@ -88,7 +172,7 @@ class Experiment(object):
     :param args:
     """
 
-    def __init__(self, args, results_names=None):
+    def __init__(self, args, results_names=None, hpo=None, trial=None, print_hyperparameters=True):
         """
         args: the parsed arguments
         results_names: additional results directories (defaults are: train, validation, test)
@@ -97,14 +181,19 @@ class Experiment(object):
         set_seed(args.seed)
 
         # torch.set_num_threads(100)
-        logger.info(f"beam project: {args.project_name}")
-        logger.info('Experiment Hyperparameters')
+
+        if print_hyperparameters:
+            logger.info(f"beam project: {args.project_name}")
+            logger.info('Experiment Hyperparameters')
 
         self.args = vars(args)
         for k, v in vars(args).items():
-            logger.info(k + ': ' + str(v))
+            if print_hyperparameters:
+                logger.info(k + ': ' + str(v))
             setattr(self, k, v)
 
+        self.hpo = hpo
+        self.trial = trial
         # determine the batch size
 
         torch.backends.cudnn.benchmark = self.cudnn_benchmark
@@ -200,6 +289,8 @@ class Experiment(object):
             if type(results_names) is list:
                 for r in results_names:
                     os.makedirs(os.path.join(self.results_dir, r))
+            elif type(results_names) is str:
+                os.makedirs(os.path.join(self.results_dir, results_names))
 
             # copy code to dir
 
@@ -334,21 +425,29 @@ class Experiment(object):
 
         for subset, res in results.items():
 
-            for param, val in res['scalar'].items():
-                if type(val) is dict or type(val) is defaultdict:
-                    for p, v in val.items():
-                        val[p] = np.mean(v)
-                elif isinstance(res['scalar'][param], torch.Tensor):
-                    res['scalar'][param] = torch.mean(val)
+            report = None
+            if issubclass(type(res), dict):
+                if 'scalar' in res:
+                    report = res['scalar']
                 else:
-                    res['scalar'][param] = np.mean(val)
+                    report = res
 
-            if print_log:
-                logger.info(f'{subset}:')
-                for param in res['scalar']:
-                    if not (type(res['scalar'][param]) is dict or type(
-                            res['scalar'][param]) is defaultdict):
-                        logger.info('%s %g \t|' % (param, res['scalar'][param]))
+            if report is not None:
+                for param, val in report.items():
+                    if type(val) is dict or type(val) is defaultdict:
+                        for p, v in val.items():
+                            val[p] = np.mean(v)
+                    elif isinstance(report[param], torch.Tensor):
+                        report[param] = torch.mean(val)
+                    else:
+                        report[param] = np.mean(val)
+
+                if print_log:
+                    logger.info(f'{subset}:')
+                    for param in report:
+                        if not (type(report[param]) is dict or type(
+                                report[param]) is defaultdict):
+                            logger.info('%s %g \t|' % (param, report[param]))
 
         if self.writer is None:
             return
@@ -376,29 +475,51 @@ class Experiment(object):
                         pass
 
         for subset, res in results.items():
+            if issubclass(type(res), dict) and subset != 'objective':
+                for log_type in res:
+                    if hasattr(self.writer, f'add_{log_type}'):
+                        log_func = getattr(self.writer, f'add_{log_type}')
+                        for param in res[log_type]:
+                            if type(res[log_type][param]) is dict or type(res[log_type][param]) is defaultdict:
+                                for p, v in res[log_type][param].items():
+                                    log_func(f'{subset}_{param}/{p}', v, n, **defaults_argv[log_type][param])
+                            elif type(res[log_type][param]) is list:
+                                log_func(f'{subset}/{param}', *res[log_type][param], n, **defaults_argv[log_type][param])
+                            else:
+                                log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
 
-            for log_type in res:
-                if hasattr(self.writer, f'add_{log_type}'):
-                    log_func = getattr(self.writer, f'add_{log_type}')
-                    for param in res[log_type]:
-                        if type(res[log_type][param]) is dict or type(res[log_type][param]) is defaultdict:
-                            for p, v in res[log_type][param].items():
-                                log_func(f'{subset}_{param}/{p}', v, n, **defaults_argv[log_type][param])
-                        elif type(res[log_type][param]) is list:
-                            log_func(f'{subset}/{param}', *res[log_type][param], n, **defaults_argv[log_type][param])
-                        else:
-                            log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
 
+    def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False, **kwargs):
 
-    def __call__(self, algorithm_generator, *args, **kwargs):
+        res = self.run(default_runner, *(algorithm_generator, self, *args), **kwargs)
 
-        alg = self.run(default_runner, *(algorithm_generator, self, *args), **kwargs)
-
-        if alg is None or self.world_size > 1:
+        if res is None or self.world_size > 1:
             alg = algorithm_generator(self, *args, **kwargs)
             self.reload_checkpoint(alg)
 
-        return alg
+            if reload_results:
+                results = {}
+                for subset in os.listdir(alg.results_dir):
+
+                    res = os.listdir(os.path.join(alg.results_dir, subset))
+                    res = pd.DataFrame({'name': res, 'index': [int(c.split('_')[-1]) for c in res]})
+                    res = res.sort_values('index')
+
+                    res = res.iloc[iloc]['name']
+                    path = os.path.join(alg.results_dir, subset, res)
+
+                    results[subset] = path
+
+                if reload_results:
+                    results = {subset: pd.read_pickle(path) for subset, path in results.items()}
+
+        else:
+            alg, results = res
+
+        if return_results:
+            return alg, results
+        else:
+            return alg
 
     def run(self, job, *args, **kwargs):
 

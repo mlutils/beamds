@@ -1,6 +1,6 @@
 from .dataset import UniversalBatchSampler, UniversalDataset
 from .config import parser, beam_arguments
-from .experiment import Experiment
+from .experiment import Experiment, Study
 from .utils import setup, cleanup, process_async, check_type
 from .utils import tqdm_beam as tqdm
 from .algorithm import Algorithm

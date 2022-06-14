@@ -97,6 +97,7 @@ parser.add_argument('--accumulate', type=int, default=1, help='Accumulate gradie
 
 boolean_feature("print-results", True, "Print results after each epoch to screen")
 boolean_feature("visualize-weights", True, "Visualize network weights on tensorboard")
+boolean_feature("enable-tqdm", True, "Print tqdm progress bar when training")
 
 parser.add_argument('--visualize-results', type=str, default='yes',
                     help='when to visualize results on tensorboard [yes|no|logscale]')

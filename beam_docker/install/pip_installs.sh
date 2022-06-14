@@ -10,14 +10,14 @@ pip install torch-scatter torch-sparse torch-geometric torch-spline-conv torch-c
 pip install elasticsearch fasttext pandarallel gensim umap-learn pyvis graphviz pygraphviz opencv-contrib-python-headless
 pip install "dask[complete]"
 
-pip install xgboost catboost ipywidgets loguru sphinx-server gunicorn xeus-python voila thop setuptools
+pip install xgboost catboost ipywidgets loguru sphinx-server gunicorn xeus-python voila thop setuptools seldon-core
 
 pip install lightgbm impyla gssapi thrift-sasl python-snappy pyshark scapy nfstream pyorc datatable pymongo
-pip install requests_ntlm thriftpy fastparquet openpyxl
+pip install requests_ntlm thriftpy fastparquet openpyxl mlflow
 
 # RUN pip install sasl
 
-pip install -U scikit-learn pandas
+pip install -U scikit-learn pandas -U zoopt scikit-optimize nevergrad HEBO flaml 'flaml[blendsearch]'
 pip install -U imbalanced-learn scapy scikit-image scikit-plot jupyterhub configurable-http-proxy
 
 #explainability and visualization
