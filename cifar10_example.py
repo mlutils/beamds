@@ -21,25 +21,28 @@ from src.beam.utils import is_notebook
 from torchvision import transforms
 import torchvision
 from ray import tune
-
+from functools import partial
 
 class ResBlock(nn.Module):
     """
     Iniialize a residual block with two convolutions followed by batchnorm layers
     """
 
-    def __init__(self, in_size: int, out_size: int, stride=1, bias=False):
+    def __init__(self, in_size: int, out_size: int, stride=1, bias=False, activation=None):
         super().__init__()
 
-        activation = nn.GELU()
+        if activation is None:
+            activation = nn.GELU()
 
         self.res = nn.Sequential(nn.BatchNorm2d(in_size), activation,
+                                 nn.Conv2d(in_size, in_size, kernel_size=3, stride=stride, padding=1, bias=bias),
+                                 nn.BatchNorm2d(in_size), activation,
                                  nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1, bias=bias))
         self.stride = stride
         self.repeat = out_size // in_size
 
         if self.stride > 1:
-            self.identity = nn.MaxPool2d(2)
+            self.identity = nn.MaxPool2d(self.stride)
         else:
             self.identity = nn.Identity()
 
@@ -62,20 +65,26 @@ class ResBlock(nn.Module):
 
 class Cifar10Network(nn.Module):
     """Simple Convolutional and Fully Connect network."""
-    def __init__(self, channels=256, dropout=.5):
+    def __init__(self, channels=256, dropout=.5, activation='gelu'):
         super().__init__()
 
-        # activation = nn.CELU(alpha=0.3)
-        activation = nn.GELU()
+        if activation == 'gelu':
+            activation = nn.GELU()
+        elif activation == 'celu':
+            activation = nn.CELU(alpha=0.3)
+        elif activation == 'relu':
+            activation = nn.ReLU()
+        else:
+            raise NotImplementedError
 
         self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
                                   ResBlock(channels // 4, channels // 2, stride=1, bias=False),
                                   nn.MaxPool2d(2),
-                                  ResBlock(channels // 2, channels // 2, stride=1, bias=False),
-                                  nn.MaxPool2d(2),
                                   ResBlock(channels // 2, channels, stride=1, bias=False),
                                   nn.MaxPool2d(2),
                                   ResBlock(channels, channels, stride=1, bias=False),
+                                  nn.MaxPool2d(2),
+                                  ResBlock(channels, channels, stride=1, bias=False, activation=activation),
                                   nn.MaxPool2d(2),
                                   nn.Flatten(),
                                   nn.BatchNorm1d(channels * 4),
@@ -149,31 +158,40 @@ class CIFAR10Dataset(UniversalDataset):
                  device='cuda', scale=(0.6, 1.1), ratio=(.95, 1.05)):
         super().__init__()
 
-        file = os.path.join(path, 'dataset.pt')
+        # augmentations = transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10)
+        augmentations = transforms.Compose([transforms.RandomResizedCrop(32, scale=scale, ratio=ratio),
+                                            transforms.RandomHorizontalFlip()])
+
+        self.t_basic =  transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
+                                            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+
+        self.t_train = transforms.Compose([augmentations, self.t_basic])
+
+        file = os.path.join(path, 'dataset_uint8.pt')
         if os.path.exists(file):
             x_train, x_test, y_train, y_test = torch.load(file, map_location=device)
 
         else:
-            dataset_train = torchvision.datasets.CIFAR10(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
-            dataset_test = torchvision.datasets.CIFAR10(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
+            dataset_train = torchvision.datasets.CIFAR10(root=path, train=True,
+                                                         transform=torchvision.transforms.PILToTensor(), download=True)
+            dataset_test = torchvision.datasets.CIFAR10(root=path, train=False,
+                                                        transform=torchvision.transforms.PILToTensor(), download=True)
 
-            basic_transform = transforms.Compose(
-                                [transforms.ToTensor(),
-                                 transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+            x_train = torch.stack([dataset_train[i][0] for i in range(len(dataset_train))]).to(device)
+            x_test = torch.stack([dataset_test[i][0] for i in range(len(dataset_test))]).to(device)
 
-            x_train = torch.stack([basic_transform(di) for di in dataset_train.data]).to(device)
-            x_test = torch.stack([basic_transform(di) for di in dataset_test.data]).to(device)
-
-            y_train = torch.LongTensor(dataset_train.targets)
-            y_test = torch.LongTensor(dataset_test.targets)
+            y_train = torch.LongTensor(dataset_train.targets).to(device)
+            y_test = torch.LongTensor(dataset_test.targets).to(device)
 
             torch.save((x_train, x_test, y_train, y_test), file)
 
 
-        self.augmentations = transforms.Compose(
-                            [transforms.RandomResizedCrop(32,
-                                                   scale=scale,
-                                                   ratio=ratio), transforms.RandomHorizontalFlip()])
+        # self.augmentations = transforms.Compose(
+        #                     [transforms.RandomResizedCrop(32,
+        #                                            scale=scale,
+        #                                            ratio=ratio), transforms.RandomHorizontalFlip()])
+
+        # self.augmentations = transforms.Compose([transforms.RandomHorizontalFlip()])
 
         self.data = torch.cat([x_train, x_test])
         self.labels = torch.cat([y_train, y_test])
@@ -186,8 +204,11 @@ class CIFAR10Dataset(UniversalDataset):
     def __getitem__(self, index):
 
         x = self.data[index]
-        if self.train:
-            x = self.augmentations(x)
+
+        if self.training:
+            x = self.t_train(x)
+        else:
+            x = self.t_basic(x)
 
         return {'x': x, 'y': self.labels[index]}
 
@@ -196,7 +217,8 @@ class CIFAR10Algorithm(Algorithm):
 
     def __init__(self, *args, **argv):
         super().__init__(*args, **argv)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizers['net'].dense, 1, gamma=self.experiment.gamma)
+        self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.StepLR,
+                                                              1, gamma=self.experiment.gamma)
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
@@ -295,16 +317,18 @@ def cifar10_algorithm_generator(experiment):
     dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers)
 
     # choose your network
-    net = Cifar10Network(experiment.channels, dropout=experiment.dropout)
+    net = Cifar10Network(experiment.channels, dropout=experiment.dropout, activation=experiment.activation)
 
     net.apply(initialize_weights)
-    # optimizer = BeamOptimizer(net, dense_args={'lr': experiment.lr_dense,
-    #                                            'momentum': .9}, clip=0, accumulate=1, amp=experiment.amp,
+    optimizer = None
+    # optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense,
+    #                                            'momentum': .9}, clip=experiment.clip, accumulate=experiment.accumulate,
+    #                                                             amp=experiment.amp,
     #                           sparse_args=None, dense_optimizer='SGD', sparse_optimizer='SparseAdam')
 
     # we recommend using the algorithm argument to determine the type of algorithm to be used
     Alg = globals()[experiment.algorithm]
-    alg = Alg(net, dataloader, experiment, optimizers=None)
+    alg = Alg(net, dataloader, experiment, optimizers=optimizer)
 
     return alg
 

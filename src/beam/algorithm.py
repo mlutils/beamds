@@ -45,11 +45,20 @@ class Algorithm(object):
                                            ) for k, v in self.networks.items()}
 
         elif issubclass(type(optimizers), dict):
-            self.optimizers = optimizers
+            self.optimizers = {}
+            for k, o in optimizers.items():
+                if callable(o):
+                    self.networks[k] = self.register_network(self.networks[k])
+                    self.optimizers[k] = self.networks[k]
+                else:
+                    self.optimizers[k] = o
 
         elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
             self.optimizers = {'net': optimizers}
 
+        elif callable(optimizers):
+            self.networks['net'] = self.register_network(self.networks['net'])
+            self.optimizers = {'net': optimizers(self.networks['net'])}
         else:
             raise NotImplementedError
 

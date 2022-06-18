@@ -4,7 +4,7 @@ from torch import nn
 import warnings
 from collections import namedtuple
 import numpy as np
-
+from .utils import check_type, slice_to_array, as_tensor, is_boolean
 
 class Iloc(object):
 
@@ -25,44 +25,77 @@ class Loc(object):
 
 
 class DataTensor(object):
-    def __init__(self, data, columns=None, index=None, requires_grad=False, device=None, **kwargs):
+    def __init__(self, data, columns=None, index=None, requires_grad=False, device=None, series=False, **kwargs):
         super().__init__(**kwargs)
 
+        self.series = series
+
+        if isinstance(data, pd.DataFrame):
+            columns = data.columns
+            index = data.index
+            data = data.values
+        elif issubclass(type(data), dict):
+            columns = list(data.keys())
+            data = torch.stack([data[c] for c in columns], dim=1)
+
         if not isinstance(data, torch.Tensor):
-            data = torch.tensor(data, **kwargs)
+            data = as_tensor(data, **kwargs)
 
-        if device is not None:
-            data = data.to(device)
+        self.device = data.device if device is None else device
 
-        if requires_grad:
-            data = nn.Parameter(data)
+        data = data.to(self.device)
+
+        if requires_grad and not data.requires_grad:
+            data.requires_grad_()
 
         assert len(data.shape) == 2, "DataTensor must be two-dimensional"
         n_rows, n_columns = data.shape
 
+        index_type = check_type(index)
+        if index is None:
+            index = torch.arange(n_rows)
+            self.index_map = None
+            self.mapping_method = 'simple'
+        elif index_type.major == 'array' and index_type.element == 'int':
+            index = as_tensor(index)
+            ind = torch.stack([index, torch.zeros_like(index)])
+
+            self.index_map = torch.sparse_coo_tensor(indices=ind, values=torch.arange(n_rows))
+            self.mapping_method = 'sparse'
+        else:
+            self.index_map = {str(k): i for i, k in enumerate(index)}
+            self.mapping_method = 'dict'
+
+        columns_type = check_type(columns)
         if columns is None:
+
             if data.shape[1] == 1:
                 columns = ['']
+                self.columns_format = 'str'
+
             else:
-                columns = [i for i in range(data.shape[1])]
+                columns = [int(i) for i in torch.arange(n_columns)]
+                self.columns_format = 'int'
 
-        assert len(columns) == n_columns, "Number of keys must be equal to the tensor 2nd dim"
+        elif columns_type.major == 'array' and columns_type.element == 'int':
 
-        self.casting_type = int
-        if index is None or type(index) is slice:
-            index = torch.arange(n_rows, device=data.device)
+            columns = [int(i) for i in columns]
+            self.columns_format = 'int'
+
+        elif columns_type.major == 'array':
+
+            columns = [str(i) for i in columns]
+            self.columns_format = 'str'
+
         else:
-            assert hasattr(index, '__len__') and type(index) is not str, 'index must be a sequnce of strings or numbers'
-            if type(index[0]) is str:
-                self.casting_type = str
+            raise ValueError
 
-        self.index_map = {self.casting_type(k): i for i, k in enumerate(index)}
+        self.columns_map = {str(k): i for i, k in enumerate(columns)}
+        assert len(columns) == n_columns, "Number of keys must be equal to the tensor 2nd dim"
 
         self.index = index
         self.data = data
-
         self.columns = columns
-        self.columns_map = {k: i for i, k in enumerate(columns)}
 
         self.iloc = Iloc(self)
         self.loc = Loc(self)
@@ -70,32 +103,82 @@ class DataTensor(object):
     def __len__(self):
         return len(self.index)
 
-    def _loc(self, index):
+    def inverse_columns_map(self, columns):
 
-        if type(index) is slice:
-            index = torch.arange(len(self))[index]
+        cast = int if self.columns_format == 'int' else str
 
-        if not (hasattr(index, '__len__') and type(index) is not str):
-            index = [index]
+        if check_type(columns).major == 'scalar':
+            columns = self.columns_map[cast(columns)]
+        else:
+            columns = [self.columns_map[cast(i)] for i in columns]
 
-        ind = [self.index_map[self.casting_type(i)] for i in index]
+        return columns
 
-        data = self.data[ind]
+    def inverse_map(self, ind):
 
-        return DataTensor(data, columns=self.columns, index=index)
+        ind = slice_to_array(ind, l=self.data.shape[0])
+        index_type = check_type(ind)
+
+        if self.mapping_method == 'simple':
+            pass
+        elif self.mapping_method == 'sparse':
+
+            if index_type.major == 'scalar':
+                ind = self.index_map[ind, 0]
+            else:
+                ind = torch.index_select(self.index_map, 0, ind).coalesce().values()
+
+        elif self.mapping_method == 'dict':
+            if index_type.major == 'scalar':
+                ind = self.index_map[str(ind)]
+            else:
+                ind = [self.index_map[str(i)] for i in ind]
+        else:
+            return NotImplementedError
+
+        return ind
+
+    def apply(self, func, dim=0):
+
+        def remove_dt(d):
+            if type(d) is DataTensor:
+                return d.sort_values
+            return d
+
+        if dim == 1:
+            data = torch.concat([remove_dt(func(DataTensor(di.unsqueeze(0), columns=self.columns)))
+                                        for di in self.data], dim=0)
+        elif dim == 0:
+            data = torch.concat([remove_dt(func(DataTensor(di.unsqueeze(0), index=self.index)) )
+                                           for di in self.data.T], dim=1)
+
+        return DataTensor(data, columns=self.columns, index=self.index)
+
+    @property
+    def values(self):
+
+        data = self.data
+        if self.series:
+            data = data.squeeze(1)
+
+        return data
 
     def _iloc(self, ind):
 
-        if type(ind) is slice:
-            ind = torch.arange(len(self))[ind]
+        ind = slice_to_array(ind, l=self.data.shape[0])
+        index_type = check_type(ind)
 
-        if not (hasattr(ind, '__len__') and type(ind) is not str):
+        if index_type.major == 'scalar':
             ind = [ind]
 
-        if issubclass(type(self.index), torch.Tensor):
+        if self.mapping_method == 'simple':
+            index = ind
+        elif self.mapping_method == 'sparse':
             index = self.index[ind]
+        elif self.mapping_method == 'dict':
+            index = [self.index[str(i)] for i in ind]
         else:
-            index = [self.index[i] for i in ind]
+            raise NotImplementedError
 
         data = self.data[ind]
 
@@ -135,80 +218,92 @@ class DataTensor(object):
             index = ind[0]
             columns = ind[1]
 
-            if hasattr(index, '__len__') and type(index) is not str:
-                ind_index = [self.index_map[self.casting_type(i)] for i in index]
-
-            elif type(index) is not slice:
-                ind_index = self.index_map[self.casting_type(index)]
-                single_row = True
-            else:
-                ind_index = index
-
-            if hasattr(columns, '__len__') and type(columns) is not str:
-                ind_columns = [self.columns_map[i] for i in columns]
-            else:
-                ind_columns = self.columns_map[columns]
-                single_column = True
+            ind_index = self.inverse_map(index)
+            ind_columns = self.inverse_columns_map(columns)
 
             self.data[ind_index, ind_columns] = data
+            return
 
         else:
 
             columns = ind
-            data = torch.cat([self.data, data], dim=1)
 
-            if not (hasattr(columns, '__len__') and type(columns) is not str):
-                columns = [columns]
+            existing_columns = set(self.columns).difference(columns)
+            new_columns = set(columns).difference(self.columns)
 
-            columns = sum([self.columns, columns], [])
-            index = self.index
+            assert not len(existing_columns) * len(new_columns), "Cannot assign new and existing columns in a single operations"
 
-            self.__init__(data, columns=columns, index=index)
+            if len(existing_columns):
 
-    def __getitem__(self, ind):
+                ind_columns = self.inverse_columns_map(columns)
+                self.data[:, ind_columns] = data
+                return
 
-        single_row = False
-        single_column = False
+            if len(existing_columns):
 
+                if check_type(columns).major == 'scalar':
+
+                    data = data.unsqueeze(1)
+                    columns = [columns]
+
+                data = torch.cat([self.data, data], dim=1)
+                columns = self.columns + columns
+
+                self.__init__(data, columns=columns, index=self.index)
+
+        raise ValueError
+
+    def _loc(self, ind):
+
+        series = False
         if type(ind) is tuple:
 
             index = ind[0]
             columns = ind[1]
 
-            if hasattr(index, '__len__') and type(index) is not str:
-                ind_index = [self.index_map[self.casting_type(i)] for i in index]
-
-            elif type(index) is not slice:
-                ind_index = self.index_map[self.casting_type(index)]
-                single_row = True
-            else:
-                ind_index = index
+            ind_columns = self.inverse_columns_map(columns)
+            if check_type(ind_columns).major == 'scalar':
+                ind_columns = [int(ind_columns)]
+                columns = [columns]
+                series = True
 
         else:
-            columns = ind
-            ind_index = slice(None)
-            index = self.index
 
-        if hasattr(columns, '__len__') and type(columns) is not str:
-            ind_columns = [self.columns_map[i] for i in columns]
-        else:
-            ind_columns = self.columns_map[columns]
-            single_column = True
+            index = ind
+            columns = self.columns
+            ind_columns = slice(None)
+
+        index = slice_to_array(index, l=self.data.shape[0])
+        ind_index = self.inverse_map(index)
+        if check_type(ind_index).major == 'scalar':
+            index = [index]
+            ind_index = [int(ind_index)]
+
+        data = self.data[ind_index][slice(None), ind_columns]
+        return DataTensor(data, columns=columns, index=index, series=series)
+
+
+    def __getitem__(self, ind):
+
+        series = False
+        ind_type = check_type(ind)
+
+        if (len(ind) == self.data.shape[0]) and is_boolean(ind):
+
+            data = self.data[ind]
+            index = self.index[ind]
+
+            return DataTensor(data, columns=self.columns, index=index)
+
+        columns = ind
+        ind_columns = self.inverse_columns_map(columns)
+        if check_type(ind_columns).major == 'scalar':
+            ind_columns = [int(ind_columns)]
+            columns = [columns]
+            series = True
 
         data = self.data[slice(None), ind_columns]
-        data = data[ind_index]
-
-        if single_column:
-            data = data.unsqueeze(1)
-            columns = ['']
-
-        if single_row:
-            data = data.unsqueeze(0)
-            index = [index]
-
-        x = DataTensor(data, columns=columns, index=index)
-
-        return x
+        return DataTensor(data, columns=columns, index=self.index, series=series)
 
 
 prototype = torch.Tensor([0])
@@ -221,7 +316,7 @@ def decorator(f_str):
 
         args = list(args)
         for i, a in enumerate(args):
-            if type(a) is DataTensor:
+            if type(a) is DataTensor :
                 args[i] = a.data
 
         for k, v in kargs.items():

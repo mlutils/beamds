@@ -4,6 +4,7 @@ import itertools
 from collections import defaultdict
 import numpy as np
 import math
+from .utils import slice_to_array
 
 
 class PackedSet(object):
@@ -39,13 +40,11 @@ class PackedSet(object):
 
     def __getitem__(self, index):
 
+        index = slice_to_array(index)
         if issubclass(type(index), np.ndarray):
             index = torch.LongTensor(index)
         elif type(index) is int:
             index = torch.scalar_tensor(index, dtype=torch.int64)
-        elif type(index) is slice:
-            index = torch.arange(len(self)).__getitem__(index)
-
         if issubclass(type(index), torch.Tensor):
             shape = index.shape
             if len(shape) == 0:
@@ -113,7 +112,7 @@ class MultipleScheduler(object):
         self.multiple_optimizer = multiple_optimizer
 
         for op in multiple_optimizer.optimizers.keys():
-            self.schedulers[op] = scheduler(multiple_optimizer[op], *argc, **argv)
+            self.schedulers[op] = scheduler(multiple_optimizer.optimizers[op], *argc, **argv)
 
     def step(self, *argc, **argv):
         for op in self.multiple_optimizer.optimizers.keys():
@@ -709,3 +708,22 @@ class FeatureHasher(object):
 
     def __call__(self, x):
         return self.weight[x]
+
+
+def reset_networks_and_optimizers(networks=None, optimizers=None):
+    if networks is not None:
+        net_iter = networks.keys() if issubclass(type(networks), dict) else range(len(networks))
+        for i in net_iter:
+            for n, m in networks[i].named_modules():
+                if hasattr(m, 'reset_parameters'):
+                    m.reset_parameters()
+
+    if optimizers is not None:
+        opt_iter = optimizers.keys() if issubclass(type(optimizers), dict) else range(len(optimizers))
+        for i in opt_iter:
+            opt = optimizers[i]
+
+            if type(opt) is BeamOptimizer:
+                opt.reset()
+            else:
+                opt.state = defaultdict(dict)

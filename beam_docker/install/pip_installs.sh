@@ -3,7 +3,7 @@
 pip install --upgrade pip
 
 # install pytorch-geometric
-pip install torch-scatter torch-sparse torch-geometric torch-spline-conv torch-cluster
+pip install torch-scatter torch-sparse torch-geometric torch-spline-conv torch-cluster torch-geometric-temporal
 
 # additional python packages
 
@@ -13,7 +13,7 @@ pip install "dask[complete]"
 pip install xgboost catboost ipywidgets loguru sphinx-server gunicorn xeus-python voila thop setuptools seldon-core
 
 pip install lightgbm impyla gssapi thrift-sasl python-snappy pyshark scapy nfstream pyorc datatable pymongo
-pip install requests_ntlm thriftpy fastparquet openpyxl mlflow
+pip install requests_ntlm thriftpy fastparquet openpyxl mlflow pykg2vec pykeen
 
 # RUN pip install sasl
 

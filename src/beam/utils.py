@@ -8,7 +8,6 @@ import random
 import torch
 import pandas as pd
 import multiprocessing as mp
-from .model import BeamOptimizer
 import socket
 from contextlib import closing
 from random import randint
@@ -20,6 +19,46 @@ from loguru import logger
 logger.remove()
 logger.add(sys.stdout, colorize=True,
            format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
+
+def is_boolean(x):
+
+    x_type = check_type(x)
+    if x_type.minor in ['numpy', 'pandas', 'tensor'] and 'bool' in str(x.dtype).lower():
+        return True
+    if x_type.minor == 'list' and type(x[0]) is bool:
+        return True
+
+    return False
+
+
+def as_tensor(x, device=None):
+    if type(x) is not torch.Tensor:
+        x = torch.tensor(x)
+
+    if device is not None:
+        x = x.to(device)
+
+    return x
+
+
+def slice_to_array(s, l=None, arr_type='tensor'):
+    f = torch.arange if arr_type == 'tensor' else np.arange
+    if type(s) is slice:
+
+        step = s.step
+        if step is None:
+            step = 1
+
+        start = s.start
+        if start is None:
+            start = 0
+
+        stop = s.stop
+        if stop is None:
+            stop = l
+
+        return f(start, stop, step)
+    return s
 
 
 def find_free_port():
@@ -79,7 +118,7 @@ def check_minor_type(x):
         return 'list'
     if isinstance(x, np.ndarray):
         return 'numpy'
-    if isinstance(x, pd.DataFrame) or isinstance(x, pd.Series):
+    if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
     if issubclass(t, tuple):
         return 'tuple'
@@ -105,7 +144,7 @@ def check_type(x):
     t = type(x)
 
     mit = check_minor_type(x)
-    if np.isscalar(x):
+    if np.isscalar(x) or (torch.is_tensor(x) and (not len(x.shape))):
         mjt = 'scalar'
         if type(x) in [int, float, str]:
             mit = 'native'
@@ -240,21 +279,3 @@ def tqdm_beam(x, *args, enable=True, notebook=True, **argv):
         my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
         return my_tqdm(x, *args, **argv)
 
-
-def reset_networks_and_optimizers(networks=None, optimizers=None):
-    if networks is not None:
-        net_iter = networks.keys() if issubclass(type(networks), dict) else range(len(networks))
-        for i in net_iter:
-            for n, m in networks[i].named_modules():
-                if hasattr(m, 'reset_parameters'):
-                    m.reset_parameters()
-
-    if optimizers is not None:
-        opt_iter = optimizers.keys() if issubclass(type(optimizers), dict) else range(len(optimizers))
-        for i in opt_iter:
-            opt = optimizers[i]
-
-            if type(opt) is BeamOptimizer:
-                opt.reset()
-            else:
-                opt.state = defaultdict(dict)

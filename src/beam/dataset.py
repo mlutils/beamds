@@ -3,12 +3,160 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type
+from .utils import check_type, slice_to_array, as_tensor
 import pandas as pd
 import math
 import hashlib
 import sys
 import warnings
+from .data_tensor import DataTensor
+
+
+class PackedFolds(object):
+
+    def __init__(self, data, index=None, names=None, fold=None, fold_index=None, device='cpu'):
+
+        self.names_dict = None
+        self.names = None
+        
+        if names is not None:
+            self.names = names
+            self.names_dict = {n: i for i, n in enumerate(self.names)}
+
+        data_type = check_type(data)
+
+        if data_type.minor == 'list':
+            self.data = [as_tensor(v, device=device) for v in data]
+            
+        elif data_type.minor == 'dict':
+            if names is None:
+                self.names = list(data.keys())
+                self.names_dict = {n: i for i, n in enumerate(self.names)}
+                
+            self.data = [as_tensor(data[k], device=device) for k in self.names]
+
+        else:
+            raise ValueError
+
+        fold_type = check_type(fold)
+
+        if fold_type.element == 'str':
+            fold, names_map = pd.factorize(fold)
+
+            if self.names_dict is not None:
+                assert all([i == self.names_dict[n] for i, n in enumerate(names_map)]), "fold and data maps must match"
+            
+            else:
+                self.names = list(names_map)
+                self.names_dict = {n: i for i, n in enumerate(self.names)}
+
+            fold = as_tensor(fold)
+            
+        elif fold_type.element == 'int':   
+            fold = as_tensor(fold)
+            
+        elif fold is None:
+            fold = torch.cat([i * torch.ones(len(d), dtype=torch.int64) for i, d in enumerate(self.data)])
+
+        else:
+            raise ValueError
+
+        if names is None:
+            self.names = list(range(len(self.data)))
+            self.names_dict = {n: i for i, n in enumerate(self.names)}
+
+    
+        if fold_index is not None:
+            fold_index = as_tensor(fold_index)
+        else:
+            fold_index = torch.cat([torch.arange(len(d)) for d in self.data])
+
+        index_type = check_type(index)
+
+        if index_type.minor == 'list':
+            index = torch.stack([as_tensor(v) for v in index])
+
+        elif index_type.minor == 'dict':
+            index = [as_tensor(index[k]) for k in self.names]
+
+        elif  index_type.major == 'array':
+            index = as_tensor(index)
+            
+        elif index is None:
+            index = torch.arange(sum([len(d) for d in self.data]))
+            
+        else:
+            raise ValueError
+
+        lengths = torch.LongTensor([len(self.get_fold(k)) for k in self.names])
+        cumsum =  torch.cumsum(lengths, dim=0)
+        offset =  cumsum - lengths
+        offset = offset[fold] + fold_index
+
+        self.device = device
+
+        info = {'fold': fold, 'fold_index': fold_index, 'offset': offset}
+        self.info = DataTensor(info, index=index, device=device)
+
+    def __len__(self):
+        return len(self.info)
+
+    def get_fold(self, name):
+        return self.data[self.names_dict[name]]
+
+    def apply(self, functions):
+
+        functions_type = check_type(functions)
+
+        if functions_type.minor == 'list':
+            data = [f(d) for d, f in zip(self.data, functions)]
+
+        elif functions_type.minor == 'dict':
+            data = [f(self.get_fold(k)) for k, f in functions.items()]
+        else:
+            raise ValueError
+
+        return PackedFolds(data=data, index=self.index, names=self.names, device=self.device)
+
+    @property
+    def values(self):
+
+        data = torch.cat(self.data)
+        return data[self.info['offset'].values]
+
+    @property
+    def fold(self):
+        if len(self.names) == 1:
+            return self.names[0]
+        return 'hetrogenous'
+
+    def to(self, device):
+
+        self.data = [di.to(device) for di in self.data]
+        self.info = self.info.to(device)
+        self.device = device
+
+    def __repr__(self):
+        return repr({k: self.get_fold(k) for k in self.names})
+
+    def __getitem__(self, ind):
+
+        ind = slice_to_array(ind, l=len(self))
+        info = self.info.loc[ind]
+
+        fold, fold_index = info[['fold', 'fold_index']].values.T
+
+        uq = torch.sort(torch.unique(fold)).values
+        names = [self.names[i] for i in uq]
+
+        if len(uq) == 1:
+            return PackedFolds(data=[self.data[uq[0]][fold_index]], names=names, index=ind, device=self.device)
+
+        fold_index = [fold_index[fold==i] for i in uq]
+        data = [self.data[i][j] for i, j in zip(uq, fold_index)]
+
+        return PackedFolds(data=data, names=names, index=ind, device=self.device)
+
 
 class UniversalDataset(torch.utils.data.Dataset):
 
@@ -24,9 +172,9 @@ class UniversalDataset(torch.utils.data.Dataset):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if len(args):
-                self.data = [torch.tensor(v, device=device) for v in args]
+                self.data = [as_tensor(v, device=device) for v in args]
             elif len(kwargs):
-                self.data = {k: torch.tensor(v, device=device) for k, v in kwargs.items()}
+                self.data = {k: as_tensor(v, device=device) for k, v in kwargs.items()}
             else:
                 self.data = None
 
