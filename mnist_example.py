@@ -15,8 +15,7 @@ from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm
 from src.beam import LinearNet
-from src.beam import DataTensor
-from src.beam.utils import is_notebook
+from src.beam import DataTensor, PackedFolds
 
 
 # In[2]:
@@ -29,16 +28,14 @@ class MNISTDataset(UniversalDataset):
         dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
         dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
 
-        self.data = torch.cat([dataset_train.data, dataset_test.data])
-        self.labels = torch.cat([dataset_train.targets, dataset_test.targets])
+        self.data = PackedFolds({'train': dataset_train.data, 'test': dataset_test.data})
+        self.labels = PackedFolds({'train': dataset_train.targets, 'test': dataset_test.targets})
 
-        test_indices = len(dataset_train) + torch.arange(len(dataset_test))
-
-        self.split(validation=.2, test=test_indices)
+        self.split(validation=.2, test=self.labels['test'].index)
         self.build_samplers(train_batch_size, eval_batch_size)
 
     def __getitem__(self, index):
-        return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
+        return {'x': self.data[index].values.float() / 255, 'y': self.labels.values[index]}
 
 
 class MNISTAlgorithm(Algorithm):

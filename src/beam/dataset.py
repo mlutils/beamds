@@ -14,7 +14,8 @@ from .data_tensor import DataTensor
 
 class PackedFolds(object):
 
-    def __init__(self, data, index=None, names=None, fold=None, fold_index=None, device='cpu'):
+    def __init__(self, data, index=None, names=None, fold=None, fold_index=None, device='cpu',
+                 sort_index=False):
 
         self.names_dict = None
         self.names = None
@@ -61,7 +62,7 @@ class PackedFolds(object):
         else:
             raise ValueError
 
-        if names is None:
+        if self.names is None:
             self.names = list(range(len(self.data)))
             self.names_dict = {n: i for i, n in enumerate(self.names)}
 
@@ -74,10 +75,10 @@ class PackedFolds(object):
         index_type = check_type(index)
 
         if index_type.minor == 'list':
-            index = torch.stack([as_tensor(v) for v in index])
+            index = torch.concat([as_tensor(v) for v in index])
 
         elif index_type.minor == 'dict':
-            index = [as_tensor(index[k]) for k in self.names]
+            index = torch.concat([as_tensor(index[k]) for k in self.names])
 
         elif  index_type.major == 'array':
             index = as_tensor(index)
@@ -88,7 +89,7 @@ class PackedFolds(object):
         else:
             raise ValueError
 
-        lengths = torch.LongTensor([len(self.get_fold(k)) for k in self.names])
+        lengths = torch.LongTensor([len(di) for di in self.data])
         cumsum =  torch.cumsum(lengths, dim=0)
         offset =  cumsum - lengths
         offset = offset[fold] + fold_index
@@ -98,11 +99,24 @@ class PackedFolds(object):
         info = {'fold': fold, 'fold_index': fold_index, 'offset': offset}
         self.info = DataTensor(info, index=index, device=device)
 
+        if sort_index:
+            self.sort_index()
+
+    def sort_index(self, ascending=True):
+
+        self.info = self.info.sort_index(ascending=ascending)
+
+        return self
+
     def __len__(self):
         return len(self.info)
 
     def get_fold(self, name):
-        return self.data[self.names_dict[name]]
+
+        fold = self.names_dict[name]
+        index = self.info[(self.info['fold'] == fold)].index
+
+        return PackedFolds(data=[self.data[fold]], index=index, names=[name], device=self.device)
 
     def apply(self, functions):
 
@@ -119,13 +133,29 @@ class PackedFolds(object):
         return PackedFolds(data=data, index=self.index, names=self.names, device=self.device)
 
     @property
+    def index(self):
+        return self.info.index
+
+    @property
+    def fold(self):
+        return self.info['fold'].values
+
+    @property
+    def fold_index(self):
+        return self.info['fold_index'].values
+
+    @property
+    def offset(self):
+        return self.info['offset'].values
+
+    @property
     def values(self):
 
         data = torch.cat(self.data)
         return data[self.info['offset'].values]
 
     @property
-    def fold(self):
+    def tag(self):
         if len(self.names) == 1:
             return self.names[0]
         return 'hetrogenous'
@@ -137,11 +167,16 @@ class PackedFolds(object):
         self.device = device
 
     def __repr__(self):
-        return repr({k: self.get_fold(k) for k in self.names})
+        return repr({k: self.data[self.names_dict[k]] for k in self.names})
 
     def __getitem__(self, ind):
 
         ind = slice_to_array(ind, l=len(self))
+
+        ind_type = check_type(ind)
+        if ind_type.major == 'scalar' and ind_type.element == 'str':
+            return self.get_fold(ind)
+
         info = self.info.loc[ind]
 
         fold, fold_index = info[['fold', 'fold_index']].values.T
@@ -214,11 +249,14 @@ class UniversalDataset(torch.utils.data.Dataset):
 
 
     def __len__(self):
+
         if issubclass(type(self.data), dict):
             return len(next(iter(self.data.values())))
         elif issubclass(type(self.data), list):
             return len(self.data[0])
         elif check_type(self.data).major == 'array':
+            return len(self.data)
+        elif isinstance(self.data, PackedFolds):
             return len(self.data)
         else:
             raise NotImplementedError
@@ -387,10 +425,10 @@ class UniversalDataset(torch.utils.data.Dataset):
         return dataloader
 
 
-class KnowledgeGraphDataset(UniversalDataset):
-
-    def __init__(self, nodes, nodes_mapping, edges, edges_mapping):
-        super().__init__()
+# class KnowledgeGraphDataset(UniversalDataset):
+#
+#     def __init__(self, nodes, nodes_mapping, edges, edges_mapping):
+#         super().__init__()
 
 class UniversalBatchSampler(object):
 

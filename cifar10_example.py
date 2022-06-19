@@ -14,7 +14,7 @@ import os
 
 from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm
+from src.beam import Algorithm, PackedFolds
 from src.beam import LinearNet
 from src.beam import DataTensor, BeamOptimizer
 from src.beam.utils import is_notebook
@@ -53,9 +53,6 @@ class ResBlock(nn.Module):
         r = self.res(x)
 
         x = self.identity(x)
-
-        # if self.stride > 1:
-        #     x = x[:, :, ::self.stride, ::self.stride]
 
         if self.repeat > 1:
             x = torch.repeat_interleave(x, self.repeat, dim=1)
@@ -96,26 +93,6 @@ class Cifar10Network(nn.Module):
                                   nn.Linear(32, 10, bias=True),
                                   )
 
-        # self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
-        #                           nn.BatchNorm2d(channels // 4), activation,
-        #                           nn.Conv2d(channels // 4, channels // 2, kernel_size=3, stride=1, padding=1, bias=False),
-        #                           nn.MaxPool2d(2),
-        #                           nn.BatchNorm2d(channels // 2), activation,
-        #                           nn.Conv2d(channels // 2, channels, kernel_size=3, stride=1, padding=1, bias=False),
-        #                           nn.MaxPool2d(2),
-        #                           nn.BatchNorm2d(channels), activation,
-        #                           nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1, bias=False),
-        #                           nn.MaxPool2d(4),
-        #                           nn.Flatten(),
-        #                           nn.BatchNorm1d(channels * 4),
-        #                           activation,
-        #                           nn.Dropout(.5),
-        #                           nn.Linear(channels * 4, 32, bias=False),
-        #                           nn.BatchNorm1d(32),
-        #                           activation,
-        #                           nn.Linear(32, 10, bias=True),
-        #                           )
-
 
     def forward(self, x):
 
@@ -139,18 +116,6 @@ def initialize_weights(m):
         if m.bias is not None:
             nn.init.constant_(m.bias.data, 0)
 
-# def initialize_weights(m):
-#     if isinstance(m, nn.Conv2d):
-#         nn.init.orthogonal_(m.weight.data)
-#         if m.bias is not None:
-#             nn.init.constant_(m.bias.data, 0)
-#     elif isinstance(m, nn.BatchNorm2d):
-#         nn.init.constant_(m.weight.data, 1)
-#         nn.init.constant_(m.bias.data, 0)
-#     elif isinstance(m, nn.Linear):
-#         nn.init.orthogonal_(m.weight.data)
-#         if m.bias is not None:
-#             nn.init.constant_(m.bias.data, 0)
 
 class CIFAR10Dataset(UniversalDataset):
 
@@ -186,13 +151,6 @@ class CIFAR10Dataset(UniversalDataset):
             torch.save((x_train, x_test, y_train, y_test), file)
 
 
-        # self.augmentations = transforms.Compose(
-        #                     [transforms.RandomResizedCrop(32,
-        #                                            scale=scale,
-        #                                            ratio=ratio), transforms.RandomHorizontalFlip()])
-
-        # self.augmentations = transforms.Compose([transforms.RandomHorizontalFlip()])
-
         self.data = torch.cat([x_train, x_test])
         self.labels = torch.cat([y_train, y_test])
 
@@ -211,6 +169,61 @@ class CIFAR10Dataset(UniversalDataset):
             x = self.t_basic(x)
 
         return {'x': x, 'y': self.labels[index]}
+
+
+
+# class CIFAR10Dataset(UniversalDataset):
+#
+#     def __init__(self, path, train_batch_size, eval_batch_size,
+#                  device='cuda', scale=(0.6, 1.1), ratio=(.95, 1.05)):
+#         super().__init__()
+#
+#         # augmentations = transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10)
+#         augmentations = transforms.Compose([transforms.RandomResizedCrop(32, scale=scale, ratio=ratio),
+#                                             transforms.RandomHorizontalFlip()])
+#
+#         self.t_basic =  transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
+#                                             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+#
+#         self.t_train = transforms.Compose([augmentations, self.t_basic])
+#
+#         file = os.path.join(path, 'dataset_uint8.pt')
+#         if os.path.exists(file):
+#             x_train, x_test, y_train, y_test = torch.load(file, map_location=device)
+#
+#         else:
+#
+#             dataset_train = torchvision.datasets.CIFAR10(root=path, train=True,
+#                                                          transform=torchvision.transforms.PILToTensor(), download=True)
+#             dataset_test = torchvision.datasets.CIFAR10(root=path, train=False,
+#                                                         transform=torchvision.transforms.PILToTensor(), download=True)
+#
+#
+#             x_train = torch.stack([dataset_train[i][0] for i in range(len(dataset_train))]).to(device)
+#             x_test = torch.stack([dataset_test[i][0] for i in range(len(dataset_test))]).to(device)
+#
+#             y_train = torch.LongTensor(dataset_train.targets).to(device)
+#             y_test = torch.LongTensor(dataset_test.targets).to(device)
+#
+#             torch.save((x_train, x_test, y_train, y_test), file)
+#
+#
+#         self.data = PackedFolds({'train': x_train, 'test': x_test})
+#         self.labels = PackedFolds({'train': y_train, 'test': y_test})
+#
+#         self.split(validation=.2, test=self.labels['test'].index)
+#         self.build_samplers(train_batch_size, eval_batch_size)
+#
+#     def __getitem__(self, index):
+#
+#         x = self.data[index].values
+#
+#         if self.training:
+#             x = self.t_train(x)
+#         else:
+#             x = self.t_basic(x)
+#
+#         return {'x': x, 'y': self.labels[index].values}
 
 
 class CIFAR10Algorithm(Algorithm):
@@ -346,7 +359,8 @@ if __name__ == '__main__':
 
     experiment = Experiment(args)
 
-    alg = experiment(CIFAR10_algorithm_generator, experiment)
+    raise NotImplementedError
+    # alg = experiment(CIFAR10_algorithm_generator, experiment)
 
     # here we initialize the workers (can be single or multiple workers, depending on the configuration)
     # alg = experiment.run(run_CIFAR10)

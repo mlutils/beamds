@@ -100,6 +100,24 @@ class DataTensor(object):
         self.iloc = Iloc(self)
         self.loc = Loc(self)
 
+    def __eq__(self, other):
+        return self.values.__eq__(other)
+
+    def __ge__(self, other):
+        return self.values.__ge__(other)
+
+    def __ne__(self, other):
+        return self.values.__ne__(other)
+
+    def __lt__(self, other):
+        return self.values.__lt__(other)
+
+    def __gt__(self, other):
+        return self.values.__gt__(other)
+
+    def __le__(self, other):
+        return self.values.__le__(other)
+
     def __len__(self):
         return len(self.index)
 
@@ -252,6 +270,11 @@ class DataTensor(object):
                 self.__init__(data, columns=columns, index=self.index)
 
         raise ValueError
+
+    def sort_index(self, ascending=True):
+
+        sorted_index = torch.sort(self.index, descending=not ascending).values
+        return self.loc[sorted_index]
 
     def _loc(self, ind):
 

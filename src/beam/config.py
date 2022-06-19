@@ -1,8 +1,8 @@
 import argparse
 import os
 import sys
-from .utils import is_notebook
-
+from .utils import is_notebook, check_type
+import re
 
 def boolean_feature(feature, default, help):
     global parser
@@ -117,12 +117,30 @@ def beam_arguments(*args, **kwargs):
 
     file_name = sys.argv[0] if len(sys.argv) > 0 else '/tmp/tmp.py'
 
-    args = ' '.join(args).split(' ')
-    sys.argv = [file_name] + args
+    args_str = []
+    args_dict = []
+
+    for ar in args:
+
+        ar_type = check_type(ar)
+
+        if ar_type.major == 'dict':
+            args_dict.append(ar)
+        elif ar_type.major == 'scalar' and ar_type.element == 'str':
+            args_str.append(ar)
+        else:
+            raise ValueError
+
+    args_str = re.split(r"\s+", ' '.join([ar.strip() for ar in args_str]))
+    sys.argv = [file_name] + args_str
 
     args = parser.parse_args()
 
     for k, v in kwargs.items():
         setattr(args, k, v)
+
+    for ar in args_dict:
+        for k, v in ar.items():
+            setattr(args, k, v)
 
     return args
