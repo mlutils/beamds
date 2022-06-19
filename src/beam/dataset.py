@@ -158,6 +158,7 @@ class PackedFolds(object):
         return PackedFolds(data=data, names=names, index=ind, device=self.device)
 
 
+
 class UniversalDataset(torch.utils.data.Dataset):
 
     def __init__(self, *args, device='cpu', **kwargs):
@@ -385,6 +386,11 @@ class UniversalDataset(torch.utils.data.Dataset):
                                                  )
         return dataloader
 
+
+class KnowledgeGraphDataset(UniversalDataset):
+
+    def __init__(self, nodes, nodes_mapping, edges, edges_mapping):
+        super().__init__()
 
 class UniversalBatchSampler(object):
 
