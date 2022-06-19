@@ -15,10 +15,12 @@ from .data_tensor import DataTensor
 class PackedFolds(object):
 
     def __init__(self, data, index=None, names=None, fold=None, fold_index=None, device='cpu',
-                 sort_index=False):
+                 sort_index=False, quick_getitem=True):
 
+        self.quick_getitem = quick_getitem
         self.names_dict = None
         self.names = None
+        self.sampling_method = 'folds'
         
         if names is not None:
             self.names = names
@@ -36,6 +38,9 @@ class PackedFolds(object):
                 
             self.data = [as_tensor(data[k], device=device) for k in self.names]
 
+        elif data_type.major == 'array':
+            self.data = as_tensor(data, device=device)
+            self.sampling_method = 'no_folds'
         else:
             raise ValueError
 
@@ -52,25 +57,51 @@ class PackedFolds(object):
                 self.names_dict = {n: i for i, n in enumerate(self.names)}
 
             fold = as_tensor(fold)
+
+            if self.sampling_method == 'no_folds':
+                self.sampling_method = 'foldable'
             
         elif fold_type.element == 'int':   
             fold = as_tensor(fold)
-            
+
+            if self.sampling_method == 'no_folds':
+                self.sampling_method = 'foldable'
+
         elif fold is None:
-            fold = torch.cat([i * torch.ones(len(d), dtype=torch.int64) for i, d in enumerate(self.data)])
+            if self.sampling_method == 'no_folds':
+                assert len(names) == 1, "this is the single fold case"
+                fold = torch.zeros(len(self.data), dtype=torch.int64)
+                self.sampling_method = 'foldable'
+            else:
+                fold = torch.cat([i * torch.ones(len(d), dtype=torch.int64) for i, d in enumerate(self.data)])
 
         else:
             raise ValueError
 
-        if self.names is None:
-            self.names = list(range(len(self.data)))
-            self.names_dict = {n: i for i, n in enumerate(self.names)}
-
+        if self.sampling_method != 'foldable':
+            lengths = torch.LongTensor([len(di) for di in self.data])
+        else:
+            lengths = torch.bincount(fold)
     
         if fold_index is not None:
             fold_index = as_tensor(fold_index)
         else:
-            fold_index = torch.cat([torch.arange(len(d)) for d in self.data])
+            fold_index = torch.cat([torch.arange(l) for l in lengths])
+
+        if self.sampling_method != 'foldable':
+            dtype = [di.dtype for di in self.data]
+            shape = [di.shape[1:] for di in self.data]
+            if all([d == dtype[0] for d in dtype]) and all([s == shape[0] for s in shape]):
+                self.data = torch.cat(self.data)
+                self.sampling_method = 'offset'
+
+        if self.names is None:
+            if self.sampling_method != 'foldable':
+                self.names = list(range(len(self.data)))
+            else:
+                self.names = torch.sort(torch.unique(fold)).values
+
+            self.names_dict = {n: i for i, n in enumerate(self.names)}
 
         index_type = check_type(index)
 
@@ -84,12 +115,19 @@ class PackedFolds(object):
             index = as_tensor(index)
             
         elif index is None:
-            index = torch.arange(sum([len(d) for d in self.data]))
+
+            if self.sampling_method in ['offset', 'foldable']:
+                index = torch.arange(len(self.data))
+                self.sampling_method = 'index'
+            else:
+                index = torch.arange(sum([len(d) for d in self.data]))
             
         else:
             raise ValueError
 
-        lengths = torch.LongTensor([len(di) for di in self.data])
+        if self.sampling_method  == 'foldable':
+            self.sampling_method = 'folds'
+
         cumsum =  torch.cumsum(lengths, dim=0)
         offset =  cumsum - lengths
         offset = offset[fold] + fold_index
@@ -114,9 +152,19 @@ class PackedFolds(object):
     def get_fold(self, name):
 
         fold = self.names_dict[name]
-        index = self.info[(self.info['fold'] == fold)].index
+        info = self.info[(self.info['fold'] == fold)]
+        index = info.index
 
-        return PackedFolds(data=[self.data[fold]], index=index, names=[name], device=self.device)
+        if self.sampling_method == 'fold':
+            data = self.data[fold]
+        elif  self.sampling_method == 'index':
+            data = self.data[index]
+        elif self.sampling_method == 'offset':
+            data = self.data[info['offset'].values]
+        else:
+            raise Exception
+
+        return PackedFolds(data=data, index=index, names=[name], device=self.device)
 
     def apply(self, functions):
 
@@ -176,21 +224,41 @@ class PackedFolds(object):
         ind_type = check_type(ind)
         if ind_type.major == 'scalar' and ind_type.element == 'str':
             return self.get_fold(ind)
+        if self.sampling_method == 'index' and self.quick_getitem:
+            return self.data[ind]
 
         info = self.info.loc[ind]
 
-        fold, fold_index = info[['fold', 'fold_index']].values.T
+        if self.sampling_method == 'folds':
+            fold, fold_index = info[['fold', 'fold_index']].values.T
 
-        uq = torch.sort(torch.unique(fold)).values
-        names = [self.names[i] for i in uq]
+            uq = torch.sort(torch.unique(fold)).values
+            names = [self.names[i] for i in uq]
 
-        if len(uq) == 1:
-            return PackedFolds(data=[self.data[uq[0]][fold_index]], names=names, index=ind, device=self.device)
+            if len(uq) == 1:
+                return PackedFolds(data=[self.data[uq[0]][fold_index]], names=names, index=ind, device=self.device)
 
-        fold_index = [fold_index[fold==i] for i in uq]
-        data = [self.data[i][j] for i, j in zip(uq, fold_index)]
+            fold_index = [fold_index[fold==i] for i in uq]
+            data = [self.data[i][j] for i, j in zip(uq, fold_index)]
 
-        return PackedFolds(data=data, names=names, index=ind, device=self.device)
+            fold = None
+
+        else:
+
+            index, fold, offset = info[['index', 'fold', 'offset']].values.T
+            ind = index if self.sampling_method == 'index' else offset
+
+            data = self.data[ind]
+
+            uq = torch.sort(torch.unique(fold)).values
+            names = [self.names[i] for i in uq]
+
+            if self.sampling_method == 'index':
+                ind = None
+            else:
+                ind = index
+
+        return PackedFolds(data=data, names=names, index=ind, fold=fold, device=self.device)
 
 
 
@@ -259,7 +327,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         elif isinstance(self.data, PackedFolds):
             return len(self.data)
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"For data type: {print(type(self.data))}")
 
     def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None,
                     test_split_method='uniform', time_index=None, window=None):

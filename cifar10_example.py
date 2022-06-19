@@ -62,18 +62,19 @@ class ResBlock(nn.Module):
 
 class Cifar10Network(nn.Module):
     """Simple Convolutional and Fully Connect network."""
-    def __init__(self, channels=256, dropout=.5, activation='gelu'):
+    def __init__(self, channels=256, dropout=.5, activation='gelu', temperature=.125):
         super().__init__()
 
         if activation == 'gelu':
             activation = nn.GELU()
         elif activation == 'celu':
-            activation = nn.CELU(alpha=0.3)
+            activation = nn.CELU()
         elif activation == 'relu':
             activation = nn.ReLU()
         else:
             raise NotImplementedError
 
+        self.temperature = temperature
         self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
                                   ResBlock(channels // 4, channels // 2, stride=1, bias=False),
                                   nn.MaxPool2d(2),
@@ -96,7 +97,7 @@ class Cifar10Network(nn.Module):
 
     def forward(self, x):
 
-        x = self.conv(x)
+        x = self.conv(x) * self.temperature
         return x
 
 
@@ -117,6 +118,61 @@ def initialize_weights(m):
             nn.init.constant_(m.bias.data, 0)
 
 
+# class CIFAR10Dataset(UniversalDataset):
+#
+#     def __init__(self, path, train_batch_size, eval_batch_size,
+#                  device='cuda', scale=(0.6, 1.1), ratio=(.95, 1.05)):
+#         super().__init__()
+#
+#         # augmentations = transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10)
+#         augmentations = transforms.Compose([transforms.RandomResizedCrop(32, scale=scale, ratio=ratio),
+#                                             transforms.RandomHorizontalFlip()])
+#
+#         self.t_basic =  transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
+#                                             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+#
+#         self.t_train = transforms.Compose([augmentations, self.t_basic])
+#
+#         file = os.path.join(path, 'dataset_uint8.pt')
+#         if os.path.exists(file):
+#             x_train, x_test, y_train, y_test = torch.load(file, map_location=device)
+#
+#         else:
+#             dataset_train = torchvision.datasets.CIFAR10(root=path, train=True,
+#                                                          transform=torchvision.transforms.PILToTensor(), download=True)
+#             dataset_test = torchvision.datasets.CIFAR10(root=path, train=False,
+#                                                         transform=torchvision.transforms.PILToTensor(), download=True)
+#
+#             x_train = torch.stack([dataset_train[i][0] for i in range(len(dataset_train))]).to(device)
+#             x_test = torch.stack([dataset_test[i][0] for i in range(len(dataset_test))]).to(device)
+#
+#             y_train = torch.LongTensor(dataset_train.targets).to(device)
+#             y_test = torch.LongTensor(dataset_test.targets).to(device)
+#
+#             torch.save((x_train, x_test, y_train, y_test), file)
+#
+#
+#         self.data = torch.cat([x_train, x_test])
+#         self.labels = torch.cat([y_train, y_test])
+#
+#         test_indices = len(x_train) + torch.arange(len(x_test))
+#
+#         self.split(validation=None, test=test_indices)
+#         self.build_samplers(train_batch_size, eval_batch_size)
+#
+#     def __getitem__(self, index):
+#
+#         x = self.data[index]
+#
+#         if self.training:
+#             x = self.t_train(x)
+#         else:
+#             x = self.t_basic(x)
+#
+#         return {'x': x, 'y': self.labels[index]}
+
+
+
 class CIFAR10Dataset(UniversalDataset):
 
     def __init__(self, path, train_batch_size, eval_batch_size,
@@ -124,7 +180,10 @@ class CIFAR10Dataset(UniversalDataset):
         super().__init__()
 
         # augmentations = transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10)
-        augmentations = transforms.Compose([transforms.RandomResizedCrop(32, scale=scale, ratio=ratio),
+        # augmentations = transforms.Compose([transforms.RandomResizedCrop(32, scale=scale, ratio=ratio),
+        #                                     transforms.RandomHorizontalFlip()])
+
+        augmentations = transforms.Compose([transforms.RandomCrop(32),
                                             transforms.RandomHorizontalFlip()])
 
         self.t_basic =  transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
@@ -150,9 +209,11 @@ class CIFAR10Dataset(UniversalDataset):
 
             torch.save((x_train, x_test, y_train, y_test), file)
 
+        # self.data = torch.cat([x_train, x_test])
+        # self.labels = torch.cat([y_train, y_test])
 
-        self.data = torch.cat([x_train, x_test])
-        self.labels = torch.cat([y_train, y_test])
+        self.data = PackedFolds({'train': x_train, 'test': x_test})
+        self.labels = PackedFolds({'train': y_train, 'test': y_test})
 
         test_indices = len(x_train) + torch.arange(len(x_test))
 
@@ -170,68 +231,36 @@ class CIFAR10Dataset(UniversalDataset):
 
         return {'x': x, 'y': self.labels[index]}
 
+# Maximum learing rate at epoch 5
+# linear increase from start and linear decay from epoch 5 to end of epochs
+class LRPolicy(object):
+    def __init__(self, n_epochs=24):
+        if n_epochs < 5:
+            n_epochs = 6
+        self.n_epochs = n_epochs
 
+    def __call__(self, epoch):
 
-# class CIFAR10Dataset(UniversalDataset):
-#
-#     def __init__(self, path, train_batch_size, eval_batch_size,
-#                  device='cuda', scale=(0.6, 1.1), ratio=(.95, 1.05)):
-#         super().__init__()
-#
-#         # augmentations = transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10)
-#         augmentations = transforms.Compose([transforms.RandomResizedCrop(32, scale=scale, ratio=ratio),
-#                                             transforms.RandomHorizontalFlip()])
-#
-#         self.t_basic =  transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
-#                                             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
-#
-#         self.t_train = transforms.Compose([augmentations, self.t_basic])
-#
-#         file = os.path.join(path, 'dataset_uint8.pt')
-#         if os.path.exists(file):
-#             x_train, x_test, y_train, y_test = torch.load(file, map_location=device)
-#
-#         else:
-#
-#             dataset_train = torchvision.datasets.CIFAR10(root=path, train=True,
-#                                                          transform=torchvision.transforms.PILToTensor(), download=True)
-#             dataset_test = torchvision.datasets.CIFAR10(root=path, train=False,
-#                                                         transform=torchvision.transforms.PILToTensor(), download=True)
-#
-#
-#             x_train = torch.stack([dataset_train[i][0] for i in range(len(dataset_train))]).to(device)
-#             x_test = torch.stack([dataset_test[i][0] for i in range(len(dataset_test))]).to(device)
-#
-#             y_train = torch.LongTensor(dataset_train.targets).to(device)
-#             y_test = torch.LongTensor(dataset_test.targets).to(device)
-#
-#             torch.save((x_train, x_test, y_train, y_test), file)
-#
-#
-#         self.data = PackedFolds({'train': x_train, 'test': x_test})
-#         self.labels = PackedFolds({'train': y_train, 'test': y_test})
-#
-#         self.split(validation=.2, test=self.labels['test'].index)
-#         self.build_samplers(train_batch_size, eval_batch_size)
-#
-#     def __getitem__(self, index):
-#
-#         x = self.data[index].values
-#
-#         if self.training:
-#             x = self.t_train(x)
-#         else:
-#             x = self.t_basic(x)
-#
-#         return {'x': x, 'y': self.labels[index].values}
+        if epoch == 0:
+            return 1
+
+        # steps = np.array([0]*15+ [0.44,0,0,0,0] * int(self.n_epochs/4))
+        piecewiselin = np.interp(epoch ,[0,5,self.n_epochs], [0,0.4, 0])
+        print(piecewiselin)
+        return piecewiselin
+        # return np.interp(epoch ,[0,7,9,self.n_epochs], [0.1,0.44,0.01, 0])
+        #return np.interp(epoch ,[0, 7, 9, 14, 15, 17, 24, 25, 27, self.n_epochs], [0.1, 0.44, 0.01, 0.008, 0.44, 0.006, 0.04, 0.44, 0.04, 0])
 
 
 class CIFAR10Algorithm(Algorithm):
 
     def __init__(self, *args, **argv):
         super().__init__(*args, **argv)
-        self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.StepLR,
-                                                              1, gamma=self.experiment.gamma)
+        # self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.StepLR,
+        #                                                       1, gamma=self.experiment.gamma)
+
+        self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
+                                                              lr_lambda=LRPolicy(self.n_epochs))
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
@@ -241,7 +270,7 @@ class CIFAR10Algorithm(Algorithm):
 
         if training:
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
-            self.optimizers['net'].reset()
+            # self.optimizers['net'].reset()
             self.scheduler.step()
 
         aux = {}
@@ -256,7 +285,7 @@ class CIFAR10Algorithm(Algorithm):
 
         with torch.cuda.amp.autocast(enabled=self.amp):
             y_hat = net(x)
-            loss = F.cross_entropy(y_hat, y, reduction='sum')
+            loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=0.2)
 
         opt.apply(loss, training=training)
 
@@ -334,10 +363,10 @@ def cifar10_algorithm_generator(experiment):
 
     net.apply(initialize_weights)
     optimizer = None
-    # optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense,
-    #                                            'momentum': .9}, clip=experiment.clip, accumulate=experiment.accumulate,
-    #                                                             amp=experiment.amp,
-    #                           sparse_args=None, dense_optimizer='SGD', sparse_optimizer='SparseAdam')
+    optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense, 'weight_decay': experiment.weight_decay,
+                                               'momentum': .9, 'nesterov': True}, clip=experiment.clip, accumulate=experiment.accumulate,
+                                                                amp=experiment.amp,
+                              sparse_args=None, dense_optimizer='SGD', sparse_optimizer='SparseAdam')
 
     # we recommend using the algorithm argument to determine the type of algorithm to be used
     Alg = globals()[experiment.algorithm]
