@@ -96,7 +96,9 @@ def process_async(func, args, mp_context='spawn', num_workers=10):
 def check_element_type(x):
     t = str(type(x)).lower()
 
-    if pd.isna(x):
+    if not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
+        return 'array'
+    elif pd.isna(x):
         return 'none'
     if 'int' in t:
         return 'int'

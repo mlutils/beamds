@@ -199,7 +199,11 @@ class PackedFolds(object):
     @property
     def values(self):
 
-        data = torch.cat(self.data)
+        if self.sampling_method == 'fold':
+            data = torch.cat(self.data)
+        else:
+            data = self.data
+
         return data[self.info['offset'].values]
 
     @property
@@ -245,7 +249,8 @@ class PackedFolds(object):
 
         else:
 
-            index, fold, offset = info[['index', 'fold', 'offset']].values.T
+            fold, offset = info[['fold', 'offset']].values.T
+            index = info.index
             ind = index if self.sampling_method == 'index' else offset
 
             data = self.data[ind]
