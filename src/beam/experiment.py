@@ -505,7 +505,7 @@ class Experiment(object):
                     res = pd.DataFrame({'name': res, 'index': [int(c.split('_')[-1]) for c in res]})
                     res = res.sort_values('index')
 
-                    res = res.iloc[iloc]['name']
+                    res = res.iloc['name']
                     path = os.path.join(alg.results_dir, subset, res)
 
                     results[subset] = path
