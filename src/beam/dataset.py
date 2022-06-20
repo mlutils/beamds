@@ -458,12 +458,17 @@ class UniversalDataset(torch.utils.data.Dataset):
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
 
         dataloaders = {}
+
+        try:
+            d = str(self.device)
+            pin_memory_ = ('cpu' in str(d))
+        except NotImplementedError:
+            pin_memory_ = True
+
         if pin_memory is None:
-            try:
-                d = str(self.device)
-                pin_memory = ('cpu' not in str(d))
-            except NotImplementedError:
-                pin_memory = True
+            pin_memory = pin_memory_
+        else:
+            pin_memory = pin_memory and pin_memory_
 
         if 'test' in self.samplers:
             sampler = self.samplers['test']

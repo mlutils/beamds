@@ -152,82 +152,6 @@ class Cifar10Network(nn.Module):
         return x
 
 
-# class ResBlock(nn.Module):
-#     """
-#     Iniialize a residual block with two convolutions followed by batchnorm layers
-#     """
-#
-#     def __init__(self, in_size: int, out_size: int, stride=1, bias=False, activation=None):
-#         super().__init__()
-#
-#         if activation is None:
-#             activation = nn.GELU()
-#
-#         self.res = nn.Sequential(nn.BatchNorm2d(in_size), activation,
-#                                  nn.Conv2d(in_size, in_size, kernel_size=3, stride=stride, padding=1, bias=bias),
-#                                  nn.BatchNorm2d(in_size), activation,
-#                                  nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1, bias=bias))
-#         self.stride = stride
-#         self.repeat = out_size // in_size
-#
-#         if self.stride > 1:
-#             self.identity = nn.MaxPool2d(self.stride)
-#         else:
-#             self.identity = nn.Identity()
-#
-#
-#
-#     def forward(self, x):
-#
-#         r = self.res(x)
-#
-#         x = self.identity(x)
-#
-#         if self.repeat > 1:
-#             x = torch.repeat_interleave(x, self.repeat, dim=1)
-#
-#         return x + r  # skip connection
-#
-#
-# class Cifar10Network(nn.Module):
-#     """Simple Convolutional and Fully Connect network."""
-#     def __init__(self, channels=256, dropout=.5, activation='gelu', temperature=.125):
-#         super().__init__()
-#
-#         if activation == 'gelu':
-#             activation = nn.GELU()
-#         elif activation == 'celu':
-#             activation = nn.CELU()
-#         elif activation == 'relu':
-#             activation = nn.ReLU()
-#         else:
-#             raise NotImplementedError
-#
-#         self.temperature = temperature
-#         self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
-#                                   ResBlock(channels // 4, channels // 2, stride=1, bias=False),
-#                                   nn.MaxPool2d(2),
-#                                   ResBlock(channels // 2, channels, stride=1, bias=False),
-#                                   nn.MaxPool2d(2),
-#                                   ResBlock(channels, channels, stride=1, bias=False),
-#                                   nn.MaxPool2d(2),
-#                                   ResBlock(channels, channels, stride=1, bias=False, activation=activation),
-#                                   nn.MaxPool2d(2),
-#                                   nn.Flatten(),
-#                                   nn.BatchNorm1d(channels * 4),
-#                                   activation,
-#                                   nn.Dropout(dropout),
-#                                   nn.Linear(channels * 4, 32, bias=False),
-#                                   nn.BatchNorm1d(32),
-#                                   activation,
-#                                   nn.Linear(32, 10, bias=True),
-#                                   )
-#
-#
-#     def forward(self, x):
-#
-#         x = self.conv(x) * self.temperature
-#         return x
 
 class Cutout(namedtuple('Cutout', ('h', 'w'))):
     def __call__(self, x, x0, y0):
@@ -241,11 +165,11 @@ class Cutout(namedtuple('Cutout', ('h', 'w'))):
 class CIFAR10Dataset(UniversalDataset):
 
     def __init__(self, path, train_batch_size, eval_batch_size,
-                 device='cuda', scale=(0.6, 1.1), ratio=(.95, 1.05)):
+                 device='cuda', padding=4):
         super().__init__()
 
-        augmentations = transforms.Compose([transforms.RandomCrop(32),
-                                            transforms.RandomHorizontalFlip()])
+        augmentations = transforms.Compose([transforms.RandomHorizontalFlip(),
+                                            transforms.RandomCrop(32, padding=padding, padding_mode='edge'),])
 
         self.t_basic =  transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
                                             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
@@ -270,15 +194,15 @@ class CIFAR10Dataset(UniversalDataset):
 
             torch.save((x_train, x_test, y_train, y_test), file)
 
-        self.data = torch.cat([x_train, x_test])
-        self.labels = torch.cat([y_train, y_test])
+        # self.data = torch.cat([x_train, x_test])
+        # self.labels = torch.cat([y_train, y_test])
 
-        # self.data = PackedFolds({'train': x_train, 'test': x_test})
-        # self.labels = PackedFolds({'train': y_train, 'test': y_test})
+        self.data = PackedFolds({'train': x_train, 'test': x_test})
+        self.labels = PackedFolds({'train': y_train, 'test': y_test})
 
         test_indices = len(x_train) + torch.arange(len(x_test))
 
-        self.split(validation=None, test=test_indices)
+        self.split(validation=.2, test=test_indices)
         self.build_samplers(train_batch_size, eval_batch_size)
         # self.cutout = Cutout(8, 8)
 
@@ -298,10 +222,12 @@ class CIFAR10Dataset(UniversalDataset):
 # Maximum learing rate at epoch 5
 # linear increase from start and linear decay from epoch 5 to end of epochs
 class LRPolicy(object):
-    def __init__(self, n_epochs=24):
-        if n_epochs < 5:
-            n_epochs = 6
-        self.n_epochs = n_epochs
+    def __init__(self, gain=.4, turn_point=500, final_point=3000, minimal_gain=1e-2):
+
+        self.gain = gain
+        self.turn_point = turn_point
+        self.final_point = final_point
+        self.minimal_gain = minimal_gain
 
     def __call__(self, epoch):
 
@@ -309,8 +235,9 @@ class LRPolicy(object):
             return 1
 
         # steps = np.array([0]*15+ [0.44,0,0,0,0] * int(self.n_epochs/4))
-        piecewiselin = np.interp(epoch ,[0,5,self.n_epochs], [0,0.4, 0])
-        print(piecewiselin)
+        piecewiselin = np.interp(epoch ,[0, self.turn_point, self.final_point], [0, self.gain, 0])
+        piecewiselin = np.clip(piecewiselin, a_min=self.minimal_gain, a_max=None)
+
         return piecewiselin
         # return np.interp(epoch ,[0,7,9,self.n_epochs], [0.1,0.44,0.01, 0])
         #return np.interp(epoch ,[0, 7, 9, 14, 15, 17, 24, 25, 27, self.n_epochs], [0.1, 0.44, 0.01, 0.008, 0.44, 0.006, 0.04, 0.44, 0.04, 0])
@@ -320,11 +247,14 @@ class CIFAR10Algorithm(Algorithm):
 
     def __init__(self, *args, **argv):
         super().__init__(*args, **argv)
-        # self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.StepLR,
-        #                                                       1, gamma=self.experiment.gamma)
+
+        networks, dataloaders, experiment = args
 
         self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
-                                                              lr_lambda=LRPolicy(self.n_epochs))
+                                                              lr_lambda=LRPolicy(gain=experiment.gain,
+                                                                                 turn_point=experiment.turn_point,
+                                                                                 final_point=experiment.final_point,
+                                                                                 minimal_gain=experiment.minimal_gain))
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
@@ -335,7 +265,7 @@ class CIFAR10Algorithm(Algorithm):
         if training:
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
             # self.optimizers['net'].reset()
-            self.scheduler.step()
+            # self.scheduler.step()
 
         aux = {}
         return aux, results
@@ -357,11 +287,14 @@ class CIFAR10Algorithm(Algorithm):
         results['scalar']['loss'].append(float(loss))
         results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
 
+        if training:
+            self.scheduler.step()
+
         return aux, results
 
     def report(self, results, i):
 
-        acc = np.mean(results['test']['scalar']['acc'])
+        acc = np.mean(results['validation']['scalar']['acc'])
 
         if self.hpo == 'tune':
             tune.report(mean_accuracy=acc)
@@ -416,11 +349,10 @@ def cifar10_algorithm_generator(experiment):
 
     dataset = CIFAR10Dataset(experiment.path_to_data,
                            experiment.batch_size_train, experiment.batch_size_eval,
-                           scale=(experiment.scale_down, experiment.scale_up),
-                           ratio=(experiment.ratio_down, experiment.ratio_up),
-                             device=experiment.device)
+                           padding=experiment.padding, device=experiment.device)
 
-    dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers)
+    pin_memory = 'cpu' not in str(experiment.device)
+    dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers, pin_memory=pin_memory)
 
     # choose your network
     net = Cifar10Network(experiment.channels, dropout=experiment.dropout, activation=experiment.activation)
@@ -428,7 +360,7 @@ def cifar10_algorithm_generator(experiment):
     # net.apply(initialize_weights)
     optimizer = None
     optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense, 'weight_decay': experiment.weight_decay,
-                                               'momentum': .9, 'nesterov': True}, clip=experiment.clip, accumulate=experiment.accumulate,
+                                               'momentum': experiment.beta1, 'nesterov': True}, clip=experiment.clip, accumulate=experiment.accumulate,
                                                                 amp=experiment.amp,
                               sparse_args=None, dense_optimizer='SGD', sparse_optimizer='SparseAdam')
 
