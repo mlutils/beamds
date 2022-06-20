@@ -20,9 +20,10 @@ class Algorithm(object):
         self.ddp = experiment.ddp
         self.half = experiment.half
         self.enable_tqdm = experiment.enable_tqdm
-        self.amp = experiment.amp
         self.hpo = experiment.hpo
         self.trial = experiment.trial
+        self.pin_memory = ('cpu' not in str(self.device))
+        self.amp = experiment.amp if self.pin_memory else False
 
         self.dataloaders = dataloaders
         self.dataset = dataset
@@ -132,7 +133,7 @@ class Algorithm(object):
             sampler = UniversalBatchSampler(len(dataset), self.experiment.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
-                                                     num_workers=0, pin_memory=True)
+                                                     num_workers=0, pin_memory=self.pin_memory)
 
         else:
 
@@ -146,7 +147,7 @@ class Algorithm(object):
             sampler = UniversalBatchSampler(len(dataset), self.experiment.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
-                                                     num_workers=0, pin_memory=True)
+                                                     num_workers=0, pin_memory=self.pin_memory)
 
         return dataloader
 

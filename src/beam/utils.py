@@ -41,9 +41,14 @@ def as_tensor(x, device=None):
     return x
 
 
-def slice_to_array(s, l=None, arr_type='tensor'):
-    f = torch.arange if arr_type == 'tensor' else np.arange
+def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
+
     if type(s) is slice:
+
+        if sliced is not None and s == slice(None):
+            return sliced
+
+        f = torch.arange if arr_type == 'tensor' else np.arange
 
         step = s.step
         if step is None:
@@ -51,11 +56,15 @@ def slice_to_array(s, l=None, arr_type='tensor'):
 
         start = s.start
         if start is None:
-            start = 0
+            start = 0 if step > 0 else l-1
+        elif start < 0:
+            start = l + start
 
         stop = s.stop
         if stop is None:
-            stop = l
+            stop = l if step > 0 else -1
+        elif stop < 0:
+            stop = l + stop
 
         return f(start, stop, step)
     return s

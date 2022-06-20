@@ -35,7 +35,7 @@ class MNISTDataset(UniversalDataset):
         self.build_samplers(train_batch_size, eval_batch_size)
 
     def __getitem__(self, index):
-        return {'x': self.data[index].values.float() / 255, 'y': self.labels.values[index]}
+        return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
 
 
 class MNISTAlgorithm(Algorithm):

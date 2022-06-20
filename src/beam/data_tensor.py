@@ -4,7 +4,7 @@ from torch import nn
 import warnings
 from collections import namedtuple
 import numpy as np
-from .utils import check_type, slice_to_array, as_tensor, is_boolean
+from .utils import check_type, slice_to_index, as_tensor, is_boolean
 
 class Iloc(object):
 
@@ -134,7 +134,8 @@ class DataTensor(object):
 
     def inverse_map(self, ind):
 
-        ind = slice_to_array(ind, l=self.data.shape[0])
+        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+
         index_type = check_type(ind)
 
         if self.mapping_method == 'simple':
@@ -183,7 +184,7 @@ class DataTensor(object):
 
     def _iloc(self, ind):
 
-        ind = slice_to_array(ind, l=self.data.shape[0])
+        ind = slice_to_index(ind, l=self.data.shape[0])
         index_type = check_type(ind)
 
         if index_type.major == 'scalar':
@@ -296,13 +297,15 @@ class DataTensor(object):
             columns = self.columns
             ind_columns = slice(None)
 
-        index = slice_to_array(index, l=self.data.shape[0])
+        index = slice_to_index(index, l=len(self), sliced=self.index)
+
         ind_index = self.inverse_map(index)
         if check_type(ind_index).major == 'scalar':
             index = [index]
             ind_index = [int(ind_index)]
 
         data = self.data[ind_index][slice(None), ind_columns]
+
         return DataTensor(data, columns=columns, index=index, series=series)
 
 

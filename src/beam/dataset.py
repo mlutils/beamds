@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type, slice_to_array, as_tensor
+from .utils import check_type, slice_to_index, as_tensor
 import pandas as pd
 import math
 import hashlib
@@ -135,6 +135,10 @@ class PackedFolds(object):
         self.device = device
 
         info = {'fold': fold, 'fold_index': fold_index, 'offset': offset}
+
+        if self.sampling_method == 'index':
+            index = None
+
         self.info = DataTensor(info, index=index, device=device)
 
         if sort_index:
@@ -155,14 +159,14 @@ class PackedFolds(object):
         info = self.info[(self.info['fold'] == fold)]
         index = info.index
 
-        if self.sampling_method == 'fold':
+        if self.sampling_method == 'folds':
             data = self.data[fold]
         elif  self.sampling_method == 'index':
             data = self.data[index]
         elif self.sampling_method == 'offset':
             data = self.data[info['offset'].values]
         else:
-            raise Exception
+            raise Exception(f"Sampling method unsupported: {self.sampling_method}")
 
         return PackedFolds(data=data, index=index, names=[name], device=self.device)
 
@@ -178,7 +182,7 @@ class PackedFolds(object):
         else:
             raise ValueError
 
-        return PackedFolds(data=data, index=self.index, names=self.names, device=self.device)
+        return PackedFolds(data=[data], index=self.index, names=self.names, device=self.device)
 
     @property
     def index(self):
@@ -223,7 +227,14 @@ class PackedFolds(object):
 
     def __getitem__(self, ind):
 
-        ind = slice_to_array(ind, l=len(self))
+        if type(ind) is tuple:
+            print(ind)
+            ind_rest = ind[1:]
+            ind = ind[0]
+        else:
+            ind_rest =tuple()
+
+        ind = slice_to_index(ind, l=len(self), sliced=self.index)
 
         ind_type = check_type(ind)
         if ind_type.major == 'scalar' and ind_type.element == 'str':
@@ -240,10 +251,14 @@ class PackedFolds(object):
             names = [self.names[i] for i in uq]
 
             if len(uq) == 1:
-                return PackedFolds(data=[self.data[uq[0]][fold_index]], names=names, index=ind, device=self.device)
+
+                print((fold_index, *ind_rest))
+                print(self.data)
+
+                return PackedFolds(data=[self.data[uq[0]].__getitem__((fold_index, *ind_rest))], names=names, index=ind, device=self.device)
 
             fold_index = [fold_index[fold==i] for i in uq]
-            data = [self.data[i][j] for i, j in zip(uq, fold_index)]
+            data = [self.data[i].__getitem__((j, *ind_rest)) for i, j in zip(uq, fold_index)]
 
             fold = None
 
@@ -253,7 +268,7 @@ class PackedFolds(object):
             index = info.index
             ind = index if self.sampling_method == 'index' else offset
 
-            data = self.data[ind]
+            data = self.data.__getitem__((ind, *ind_rest))
 
             uq = torch.sort(torch.unique(fold)).values
             names = [self.names[i] for i in uq]
@@ -304,21 +319,25 @@ class UniversalDataset(torch.utils.data.Dataset):
     @property
     def device(self):
 
-        if type(self.data) is dict:
+        data_type = check_type(self.data)
+
+        if data_type.major == 'dict':
             t = next(iter(self.data.values()))
-        elif type(self.data) is list:
+        elif data_type.major == 'list':
             t = self.data[0]
         elif check_type(self.data).major == 'array':
             t = self.data
+        elif type(self.data) is PackedFolds:
+            return self.data.device
+        elif type(self.data) is DataTensor:
+            return self.data.device
         else:
             raise NotImplementedError
 
-        if check_type(self.data).minor == 'tensor':
-            device = t.device
+        if hasattr(t, 'device'):
+            return t.device
         else:
             raise NotImplementedError
-
-        return device
 
 
     def __len__(self):
@@ -442,7 +461,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if pin_memory is None:
             try:
                 d = str(self.device)
-                pin_memory = False if 'cuda' in d else True
+                pin_memory = ('cpu' not in str(d))
             except NotImplementedError:
                 pin_memory = True
 

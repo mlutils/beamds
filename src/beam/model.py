@@ -4,7 +4,7 @@ import itertools
 from collections import defaultdict
 import numpy as np
 import math
-from .utils import slice_to_array
+from .utils import slice_to_index
 
 
 class PackedSet(object):
@@ -40,7 +40,7 @@ class PackedSet(object):
 
     def __getitem__(self, index):
 
-        index = slice_to_array(index)
+        index = slice_to_index(index)
         if issubclass(type(index), np.ndarray):
             index = torch.LongTensor(index)
         elif type(index) is int:
