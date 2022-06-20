@@ -710,6 +710,20 @@ class FeatureHasher(object):
         return self.weight[x]
 
 
+def beam_weights_initializer(m, method='none'):
+    if isinstance(m, nn.Conv2d):
+        nn.init.kaiming_uniform_(m.weight.data,nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias.data, 0)
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight.data, 1)
+        nn.init.constant_(m.bias.data, 0)
+    elif isinstance(m, nn.Linear):
+        nn.init.kaiming_uniform_(m.weight.data)
+        if m.bias is not None:
+            nn.init.constant_(m.bias.data, 0)
+
+
 def reset_networks_and_optimizers(networks=None, optimizers=None):
     if networks is not None:
         net_iter = networks.keys() if issubclass(type(networks), dict) else range(len(networks))

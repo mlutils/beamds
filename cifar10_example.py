@@ -22,166 +22,227 @@ from torchvision import transforms
 import torchvision
 from ray import tune
 from functools import partial
+from collections import namedtuple
+
+class ReBlock(nn.Module):
+    def __init__(self, in_planes, planes, stride=1, rezero=True, activation='celu'):
+        super(ReBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.rezero = rezero
+        if self.rezero:
+            self.resweight = self.resweight = nn.Parameter(torch.Tensor([0]), requires_grad=True)
+
+        if activation == 'gelu':
+            self.activation = nn.GELU()
+        elif activation == 'celu':
+            self.activation = nn.CELU()
+        elif activation == 'relu':
+            self.activation = nn.ReLU()
+
+    def forward(self, x):
+        out = self.activation(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+
+        # With or witout ReZero connection is after the nonlinearity
+        if self.rezero == True:
+            # ReZero
+            out = self.resweight * self.activation(out) + x
+        elif self.rezero == False:
+            # Nominal
+            out = self.activation(out) + x
+        return out
+
 
 class ResBlock(nn.Module):
     """
     Iniialize a residual block with two convolutions followed by batchnorm layers
     """
 
-    def __init__(self, in_size: int, out_size: int, stride=1, bias=False, activation=None):
+    def __init__(self, in_size: int, out_size: int, stride=1, activation='celu'):
         super().__init__()
+        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1)
+        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, stride=stride, padding=1)
+        self.batchnorm1 = nn.BatchNorm2d(out_size)
+        self.batchnorm2 = nn.BatchNorm2d(out_size)
 
-        if activation is None:
-            activation = nn.GELU()
+        if activation == 'gelu':
+            self.activation = nn.GELU()
+        elif activation == 'celu':
+            self.activation = nn.CELU()
+        elif activation == 'relu':
+            self.activation = nn.ReLU()
 
-        self.res = nn.Sequential(nn.BatchNorm2d(in_size), activation,
-                                 nn.Conv2d(in_size, in_size, kernel_size=3, stride=stride, padding=1, bias=bias),
-                                 nn.BatchNorm2d(in_size), activation,
-                                 nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1, bias=bias))
-        self.stride = stride
-        self.repeat = out_size // in_size
-
-        if self.stride > 1:
-            self.identity = nn.MaxPool2d(self.stride)
-        else:
-            self.identity = nn.Identity()
-
-
+    def convblock(self, x):
+        x = self.activation(self.batchnorm1(self.conv1(x)))
+        x = self.activation(self.batchnorm2(self.conv2(x)))
+        return x
 
     def forward(self, x):
+        return x + self.convblock(x)  # skip connection
 
-        r = self.res(x)
 
-        x = self.identity(x)
-
-        if self.repeat > 1:
-            x = torch.repeat_interleave(x, self.repeat, dim=1)
-
-        return x + r  # skip connection
+class BatchNorm(nn.BatchNorm2d):
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, weight_freeze=False, bias_freeze=False, weight_init=1.0,
+                 bias_init=0.0):
+        super().__init__(num_features, eps=eps, momentum=momentum)
+        if weight_init is not None: self.weight.data.fill_(weight_init)
+        if bias_init is not None: self.bias.data.fill_(bias_init)
+        self.weight.requires_grad = not weight_freeze
+        self.bias.requires_grad = not bias_freeze
 
 
 class Cifar10Network(nn.Module):
     """Simple Convolutional and Fully Connect network."""
-    def __init__(self, channels=256, dropout=.5, activation='gelu', temperature=.125):
+
+    def __init__(self, channels, dropout=.0, weight=0.125, bn_weight_init=1.0, rezero=False, param_knob=None, activation='celu'):
+
         super().__init__()
+        channels = {'prep': channels // 8, 'layer1': channels // 4, 'layer2': channels // 2, 'layer3': channels}
 
         if activation == 'gelu':
-            activation = nn.GELU()
+            self.activation = nn.GELU()
         elif activation == 'celu':
-            activation = nn.CELU()
+            self.activation = nn.CELU()
         elif activation == 'relu':
-            activation = nn.ReLU()
-        else:
-            raise NotImplementedError
+            self.activation = nn.ReLU()
 
-        self.temperature = temperature
-        self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
-                                  ResBlock(channels // 4, channels // 2, stride=1, bias=False),
-                                  nn.MaxPool2d(2),
-                                  ResBlock(channels // 2, channels, stride=1, bias=False),
-                                  nn.MaxPool2d(2),
-                                  ResBlock(channels, channels, stride=1, bias=False),
-                                  nn.MaxPool2d(2),
-                                  ResBlock(channels, channels, stride=1, bias=False, activation=activation),
-                                  nn.MaxPool2d(2),
-                                  nn.Flatten(),
-                                  nn.BatchNorm1d(channels * 4),
-                                  activation,
-                                  nn.Dropout(dropout),
-                                  nn.Linear(channels * 4, 32, bias=False),
-                                  nn.BatchNorm1d(32),
-                                  activation,
-                                  nn.Linear(32, 10, bias=True),
-                                  )
+        self.weight = weight
+        self.rezero = rezero
+        # Layers
+        self.conv_prep = nn.Conv2d(3, channels['prep'], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn_prep = BatchNorm(channels['prep'], weight_init=bn_weight_init)
+        self.conv1 = nn.Conv2d(channels['prep'], channels['layer1'], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = BatchNorm(channels['layer1'], weight_init=bn_weight_init)
+        self.layer1_resblock = ReBlock(channels['layer1'], channels['layer1'], rezero=self.rezero)
+        self.conv2 = nn.Conv2d(channels['layer1'], channels['layer2'], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = BatchNorm(channels['layer2'], weight_init=bn_weight_init)
+        self.conv3 = nn.Conv2d(channels['layer2'], channels['layer3'], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn3 = BatchNorm(channels['layer3'], weight_init=bn_weight_init)
+        self.layer3_resblock = ReBlock(channels['layer3'], channels['layer3'], rezero=self.rezero)
+        self.pool = nn.MaxPool2d(2)
+        self.classifier_pool = nn.MaxPool2d(4)
+        # self.drop = nn.Dropout(p=drop_p)
+        self.classifier_fc = nn.Linear(channels['layer3'], 10, bias=False)
 
+        # self.t_resblock1 = ReBlock(64, 128, rezero=self.rezero)
 
     def forward(self, x):
-
-        x = self.conv(x) * self.temperature
+        # cuda0 = torch.device('cuda:0')
+        """Compute a forward pass."""
+        # Prep
+        # x = self.drop(x)
+        x = self.activation(self.bn_prep(self.conv_prep(x)))
+        # Layer1 + ResBlock
+        x = self.activation(self.bn1(self.pool(self.conv1(x))))
+        x = self.layer1_resblock(x)
+        # Layer 2
+        x = self.activation(self.bn2(self.pool(self.conv2(x))))
+        # Layer3 + ResBlock
+        x = self.activation(self.bn3(self.pool(self.conv3(x))))
+        x = self.layer3_resblock(x)
+        # Classifier
+        x = self.classifier_pool(x)
+        x = x.view(x.size(0), x.size(1))
+        # x = self.drop(x)
+        x = self.classifier_fc(x)
+        x = x * self.weight
         return x
 
 
-
-# In[2]:
-
-def initialize_weights(m):
-    if isinstance(m, nn.Conv2d):
-        nn.init.kaiming_uniform_(m.weight.data,nonlinearity='relu')
-        if m.bias is not None:
-            nn.init.constant_(m.bias.data, 0)
-    elif isinstance(m, nn.BatchNorm2d):
-        nn.init.constant_(m.weight.data, 1)
-        nn.init.constant_(m.bias.data, 0)
-    elif isinstance(m, nn.Linear):
-        nn.init.kaiming_uniform_(m.weight.data)
-        if m.bias is not None:
-            nn.init.constant_(m.bias.data, 0)
-
-
-# class CIFAR10Dataset(UniversalDataset):
+# class ResBlock(nn.Module):
+#     """
+#     Iniialize a residual block with two convolutions followed by batchnorm layers
+#     """
 #
-#     def __init__(self, path, train_batch_size, eval_batch_size,
-#                  device='cuda', scale=(0.6, 1.1), ratio=(.95, 1.05)):
+#     def __init__(self, in_size: int, out_size: int, stride=1, bias=False, activation=None):
 #         super().__init__()
 #
-#         # augmentations = transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10)
-#         augmentations = transforms.Compose([transforms.RandomResizedCrop(32, scale=scale, ratio=ratio),
-#                                             transforms.RandomHorizontalFlip()])
+#         if activation is None:
+#             activation = nn.GELU()
 #
-#         self.t_basic =  transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
-#                                             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+#         self.res = nn.Sequential(nn.BatchNorm2d(in_size), activation,
+#                                  nn.Conv2d(in_size, in_size, kernel_size=3, stride=stride, padding=1, bias=bias),
+#                                  nn.BatchNorm2d(in_size), activation,
+#                                  nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1, bias=bias))
+#         self.stride = stride
+#         self.repeat = out_size // in_size
 #
-#         self.t_train = transforms.Compose([augmentations, self.t_basic])
-#
-#         file = os.path.join(path, 'dataset_uint8.pt')
-#         if os.path.exists(file):
-#             x_train, x_test, y_train, y_test = torch.load(file, map_location=device)
-#
+#         if self.stride > 1:
+#             self.identity = nn.MaxPool2d(self.stride)
 #         else:
-#             dataset_train = torchvision.datasets.CIFAR10(root=path, train=True,
-#                                                          transform=torchvision.transforms.PILToTensor(), download=True)
-#             dataset_test = torchvision.datasets.CIFAR10(root=path, train=False,
-#                                                         transform=torchvision.transforms.PILToTensor(), download=True)
-#
-#             x_train = torch.stack([dataset_train[i][0] for i in range(len(dataset_train))]).to(device)
-#             x_test = torch.stack([dataset_test[i][0] for i in range(len(dataset_test))]).to(device)
-#
-#             y_train = torch.LongTensor(dataset_train.targets).to(device)
-#             y_test = torch.LongTensor(dataset_test.targets).to(device)
-#
-#             torch.save((x_train, x_test, y_train, y_test), file)
+#             self.identity = nn.Identity()
 #
 #
-#         self.data = torch.cat([x_train, x_test])
-#         self.labels = torch.cat([y_train, y_test])
 #
-#         test_indices = len(x_train) + torch.arange(len(x_test))
+#     def forward(self, x):
 #
-#         self.split(validation=None, test=test_indices)
-#         self.build_samplers(train_batch_size, eval_batch_size)
+#         r = self.res(x)
 #
-#     def __getitem__(self, index):
+#         x = self.identity(x)
 #
-#         x = self.data[index]
+#         if self.repeat > 1:
+#             x = torch.repeat_interleave(x, self.repeat, dim=1)
 #
-#         if self.training:
-#             x = self.t_train(x)
+#         return x + r  # skip connection
+#
+#
+# class Cifar10Network(nn.Module):
+#     """Simple Convolutional and Fully Connect network."""
+#     def __init__(self, channels=256, dropout=.5, activation='gelu', temperature=.125):
+#         super().__init__()
+#
+#         if activation == 'gelu':
+#             activation = nn.GELU()
+#         elif activation == 'celu':
+#             activation = nn.CELU()
+#         elif activation == 'relu':
+#             activation = nn.ReLU()
 #         else:
-#             x = self.t_basic(x)
+#             raise NotImplementedError
 #
-#         return {'x': x, 'y': self.labels[index]}
+#         self.temperature = temperature
+#         self.conv = nn.Sequential(nn.Conv2d(3, channels // 4, kernel_size=3, stride=1, padding=1, bias=True),
+#                                   ResBlock(channels // 4, channels // 2, stride=1, bias=False),
+#                                   nn.MaxPool2d(2),
+#                                   ResBlock(channels // 2, channels, stride=1, bias=False),
+#                                   nn.MaxPool2d(2),
+#                                   ResBlock(channels, channels, stride=1, bias=False),
+#                                   nn.MaxPool2d(2),
+#                                   ResBlock(channels, channels, stride=1, bias=False, activation=activation),
+#                                   nn.MaxPool2d(2),
+#                                   nn.Flatten(),
+#                                   nn.BatchNorm1d(channels * 4),
+#                                   activation,
+#                                   nn.Dropout(dropout),
+#                                   nn.Linear(channels * 4, 32, bias=False),
+#                                   nn.BatchNorm1d(32),
+#                                   activation,
+#                                   nn.Linear(32, 10, bias=True),
+#                                   )
+#
+#
+#     def forward(self, x):
+#
+#         x = self.conv(x) * self.temperature
+#         return x
 
+class Cutout(namedtuple('Cutout', ('h', 'w'))):
+    def __call__(self, x, x0, y0):
+        x[..., y0:y0+self.h, x0:x0+self.w] = 0.0
+        return x
 
+    def options(self, shape):
+        *_, H, W = shape
+        return [{'x0': x0, 'y0': y0} for x0 in range(W+1-self.w) for y0 in range(H+1-self.h)]
 
 class CIFAR10Dataset(UniversalDataset):
 
     def __init__(self, path, train_batch_size, eval_batch_size,
                  device='cuda', scale=(0.6, 1.1), ratio=(.95, 1.05)):
         super().__init__()
-
-        # augmentations = transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10)
-        # augmentations = transforms.Compose([transforms.RandomResizedCrop(32, scale=scale, ratio=ratio),
-        #                                     transforms.RandomHorizontalFlip()])
 
         augmentations = transforms.Compose([transforms.RandomCrop(32),
                                             transforms.RandomHorizontalFlip()])
@@ -209,16 +270,17 @@ class CIFAR10Dataset(UniversalDataset):
 
             torch.save((x_train, x_test, y_train, y_test), file)
 
-        # self.data = torch.cat([x_train, x_test])
-        # self.labels = torch.cat([y_train, y_test])
+        self.data = torch.cat([x_train, x_test])
+        self.labels = torch.cat([y_train, y_test])
 
-        self.data = PackedFolds({'train': x_train, 'test': x_test})
-        self.labels = PackedFolds({'train': y_train, 'test': y_test})
+        # self.data = PackedFolds({'train': x_train, 'test': x_test})
+        # self.labels = PackedFolds({'train': y_train, 'test': y_test})
 
         test_indices = len(x_train) + torch.arange(len(x_test))
 
         self.split(validation=None, test=test_indices)
         self.build_samplers(train_batch_size, eval_batch_size)
+        # self.cutout = Cutout(8, 8)
 
     def __getitem__(self, index):
 
@@ -228,6 +290,8 @@ class CIFAR10Dataset(UniversalDataset):
             x = self.t_train(x)
         else:
             x = self.t_basic(x)
+
+        x = x.to(memory_format=torch.channels_last)
 
         return {'x': x, 'y': self.labels[index]}
 
@@ -361,7 +425,7 @@ def cifar10_algorithm_generator(experiment):
     # choose your network
     net = Cifar10Network(experiment.channels, dropout=experiment.dropout, activation=experiment.activation)
 
-    net.apply(initialize_weights)
+    # net.apply(initialize_weights)
     optimizer = None
     optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense, 'weight_decay': experiment.weight_decay,
                                                'momentum': .9, 'nesterov': True}, clip=experiment.clip, accumulate=experiment.accumulate,
