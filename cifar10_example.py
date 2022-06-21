@@ -124,43 +124,25 @@ class Cifar10Network(nn.Module):
         self.layer3_resblock = ReBlock(channels['layer3'], channels['layer3'], rezero=self.rezero)
         self.pool = nn.MaxPool2d(2)
         self.classifier_pool = nn.MaxPool2d(4)
-        # self.drop = nn.Dropout(p=drop_p)
         self.classifier_fc = nn.Linear(channels['layer3'], 10, bias=False)
-
-        # self.t_resblock1 = ReBlock(64, 128, rezero=self.rezero)
 
     def forward(self, x):
         # cuda0 = torch.device('cuda:0')
         """Compute a forward pass."""
         # Prep
-        # x = self.drop(x)
         x = self.activation(self.bn_prep(self.conv_prep(x)))
-        # Layer1 + ResBlock
         x = self.activation(self.bn1(self.pool(self.conv1(x))))
         x = self.layer1_resblock(x)
-        # Layer 2
         x = self.activation(self.bn2(self.pool(self.conv2(x))))
-        # Layer3 + ResBlock
         x = self.activation(self.bn3(self.pool(self.conv3(x))))
         x = self.layer3_resblock(x)
         # Classifier
         x = self.classifier_pool(x)
         x = x.view(x.size(0), x.size(1))
-        # x = self.drop(x)
         x = self.classifier_fc(x)
         x = x * self.weight
         return x
 
-
-
-class Cutout(namedtuple('Cutout', ('h', 'w'))):
-    def __call__(self, x, x0, y0):
-        x[..., y0:y0+self.h, x0:x0+self.w] = 0.0
-        return x
-
-    def options(self, shape):
-        *_, H, W = shape
-        return [{'x0': x0, 'y0': y0} for x0 in range(W+1-self.w) for y0 in range(H+1-self.h)]
 
 class CIFAR10Dataset(UniversalDataset):
 
@@ -196,15 +178,14 @@ class CIFAR10Dataset(UniversalDataset):
 
         # self.data = torch.cat([x_train, x_test])
         # self.labels = torch.cat([y_train, y_test])
+        # test_indices = len(x_train) + torch.arange(len(x_test))
+
 
         self.data = PackedFolds({'train': x_train, 'test': x_test})
         self.labels = PackedFolds({'train': y_train, 'test': y_test})
 
-        test_indices = len(x_train) + torch.arange(len(x_test))
-
-        self.split(validation=.2, test=test_indices)
+        self.split(validation=.2, test=self.labels['test'].index)
         self.build_samplers(train_batch_size, eval_batch_size)
-        # self.cutout = Cutout(8, 8)
 
     def __getitem__(self, index):
 
@@ -219,8 +200,6 @@ class CIFAR10Dataset(UniversalDataset):
 
         return {'x': x, 'y': self.labels[index]}
 
-# Maximum learing rate at epoch 5
-# linear increase from start and linear decay from epoch 5 to end of epochs
 class LRPolicy(object):
     def __init__(self, gain=.4, turn_point=500, final_point=3000, minimal_gain=1e-2):
 
@@ -234,13 +213,10 @@ class LRPolicy(object):
         if epoch == 0:
             return 1
 
-        # steps = np.array([0]*15+ [0.44,0,0,0,0] * int(self.n_epochs/4))
         piecewiselin = np.interp(epoch ,[0, self.turn_point, self.final_point], [0, self.gain, 0])
         piecewiselin = np.clip(piecewiselin, a_min=self.minimal_gain, a_max=None)
 
         return piecewiselin
-        # return np.interp(epoch ,[0,7,9,self.n_epochs], [0.1,0.44,0.01, 0])
-        #return np.interp(epoch ,[0, 7, 9, 14, 15, 17, 24, 25, 27, self.n_epochs], [0.1, 0.44, 0.01, 0.008, 0.44, 0.006, 0.04, 0.44, 0.04, 0])
 
 
 class CIFAR10Algorithm(Algorithm):
@@ -260,12 +236,10 @@ class CIFAR10Algorithm(Algorithm):
 
         x, y = sample['x'], sample['y']
 
-        # results['images']['sample'] = x[:16].view(16, 1, 28, 28).data.cpu()
+        results['images']['sample'] = x[:16].view(16, 3, 32, 32).data.cpu()
 
         if training:
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
-            # self.optimizers['net'].reset()
-            # self.scheduler.step()
 
         aux = {}
         return aux, results
@@ -345,7 +319,7 @@ class CIFAR10Algorithm(Algorithm):
         return aux, results
 
 
-def cifar10_algorithm_generator(experiment):
+def cifar10_algorithm_generator(experiment, **kwargs):
 
     dataset = CIFAR10Dataset(experiment.path_to_data,
                            experiment.batch_size_train, experiment.batch_size_eval,
@@ -357,7 +331,6 @@ def cifar10_algorithm_generator(experiment):
     # choose your network
     net = Cifar10Network(experiment.channels, dropout=experiment.dropout, activation=experiment.activation)
 
-    # net.apply(initialize_weights)
     optimizer = None
     optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense, 'weight_decay': experiment.weight_decay,
                                                'momentum': experiment.beta1, 'nesterov': True}, clip=experiment.clip, accumulate=experiment.accumulate,
@@ -378,20 +351,21 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    args = beam_arguments("--project-name=CIFAR10 --root-dir=/home/shared/data/results --algorithm=CIFAR10Algorithm",
-                          "--epoch-length=100000 --n-epochs=2 --clip=1 --parallel=1 --parallel=2",
-                          path_to_data='/home/elad/projects/CIFAR10')
+    path_to_data = '/home/shared/data/dataset/cifar10'
+    root_dir = '/home/shared/data/results/cifar10'
+
+    args = beam_arguments(
+        f"--project-name=cifar10 --root-dir={root_dir} --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
+        "--n-epochs=2 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
+        "--weight-decay=.00256 --beta1=0.9 --beta2=0.9",
+        path_to_data=path_to_data, gamma=1., dropout=.0, activation='celu', channels=512,
+        scale_down=.7, scale_up=1.4, ratio_down=.7, ratio_up=1.4)
+
 
     experiment = Experiment(args)
-
-    raise NotImplementedError
-    # alg = experiment(CIFAR10_algorithm_generator, experiment)
-
-    # here we initialize the workers (can be single or multiple workers, depending on the configuration)
-    # alg = experiment.run(run_CIFAR10)
+    alg = experiment(cifar10_algorithm_generator, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})
 
     # ## Inference
-
     inference = alg('test')
 
     print('Test inference results:')

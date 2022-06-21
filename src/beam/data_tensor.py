@@ -56,15 +56,12 @@ class DataTensor(object):
             index = torch.arange(n_rows)
             self.index_map = None
             self.mapping_method = 'simple'
-        elif index_type.major == 'array' and index_type.element == 'int':
-            index = as_tensor(index)
-            ind = torch.stack([index, torch.zeros_like(index)])
-
-            self.index_map = torch.sparse_coo_tensor(indices=ind, values=torch.arange(n_rows))
-            self.mapping_method = 'sparse'
         else:
-            self.index_map = {str(k): i for i, k in enumerate(index)}
-            self.mapping_method = 'dict'
+            if index_type.minor == 'tensor':
+                index = index.cpu().numpy()
+
+            self.index_map = pd.Series(index=index, data=np.arange(len(index)))
+            self.mapping_method = 'series'
 
         columns_type = check_type(columns)
         if columns is None:
@@ -140,18 +137,10 @@ class DataTensor(object):
 
         if self.mapping_method == 'simple':
             pass
-        elif self.mapping_method == 'sparse':
-
-            if index_type.major == 'scalar':
-                ind = self.index_map[ind, 0]
-            else:
-                ind = torch.index_select(self.index_map, 0, ind).coalesce().values()
-
-        elif self.mapping_method == 'dict':
-            if index_type.major == 'scalar':
-                ind = self.index_map[str(ind)]
-            else:
-                ind = [self.index_map[str(i)] for i in ind]
+        elif self.mapping_method == 'series':
+            if index_type.minor == 'tensor':
+                ind = ind.cpu().numpy()
+            ind = as_tensor(self.index_map[ind].values)
         else:
             return NotImplementedError
 
@@ -190,15 +179,7 @@ class DataTensor(object):
         if index_type.major == 'scalar':
             ind = [ind]
 
-        if self.mapping_method == 'simple':
-            index = ind
-        elif self.mapping_method == 'sparse':
-            index = self.index[ind]
-        elif self.mapping_method == 'dict':
-            index = [self.index[str(i)] for i in ind]
-        else:
-            raise NotImplementedError
-
+        index = self.inverse_map(ind)
         data = self.data[ind]
 
         return DataTensor(data, columns=self.columns, index=index)
@@ -312,7 +293,6 @@ class DataTensor(object):
     def __getitem__(self, ind):
 
         series = False
-        ind_type = check_type(ind)
 
         if (len(ind) == self.data.shape[0]) and is_boolean(ind):
 

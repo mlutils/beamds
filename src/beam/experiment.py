@@ -25,10 +25,8 @@ import ray
 done = mp.Event()
 
 
-def default_runner(rank, world_size, experiment, algorithm_generator, *args, **kwargs):
+def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
     alg = algorithm_generator(*args, **kwargs)
-    save_model_results_arguments = kwargs[
-        'save_model_results_arguments'] if 'save_model_results_arguments' in kwargs else None
 
     experiment.writer_control(enable=not (bool(rank)))
     for results in iter(alg):
@@ -37,14 +35,14 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, **k
                                       visualize_results=experiment.visualize_results,
                                       store_results=experiment.store_results, store_networks=experiment.store_networks,
                                       visualize_weights=experiment.visualize_weights,
-                                      argv=save_model_results_arguments)
+                                      argv=tensorboard_arguments)
 
     if world_size == 1:
         return alg, results
 
 # check
 
-def run_worker(rank, world_size, results_queue, job, experiment, *args):
+def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
     if world_size > 1:
@@ -53,7 +51,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args):
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.seed, constant=rank, increment=False, deterministic=experiment.deterministic)
 
-    res = job(rank, world_size, experiment, *args)
+    res = job(rank, world_size, experiment, *args, **kwargs)
 
     if world_size > 1:
 
@@ -489,9 +487,11 @@ class Experiment(object):
                                 log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
 
 
-    def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False, **kwargs):
+    def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False,
+                  tensorboard_arguments=None, **kwargs):
 
-        res = self.run(default_runner, *(algorithm_generator, self, *args), **kwargs)
+        res = self.run(default_runner, *(algorithm_generator, self, *args),
+                       tensorboard_arguments=tensorboard_arguments, **kwargs)
 
         if res is None or self.world_size > 1:
             alg = algorithm_generator(self, *args, **kwargs)

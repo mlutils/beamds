@@ -42,7 +42,7 @@ class PackedFolds(object):
             self.data = as_tensor(data, device=device)
             self.sampling_method = 'no_folds'
         else:
-            raise ValueError
+            raise ValueError("data should be either dict/list/array")
 
         fold_type = check_type(fold)
 
@@ -71,14 +71,14 @@ class PackedFolds(object):
             if self.sampling_method == 'no_folds':
                 assert len(names) == 1, "this is the single fold case"
                 fold = torch.zeros(len(self.data), dtype=torch.int64)
-                self.sampling_method = 'foldable'
+                self.sampling_method = 'offset'
             else:
                 fold = torch.cat([i * torch.ones(len(d), dtype=torch.int64) for i, d in enumerate(self.data)])
 
         else:
             raise ValueError
 
-        if self.sampling_method != 'foldable':
+        if data_type.minor in ['dict', 'list']:
             lengths = torch.LongTensor([len(di) for di in self.data])
         else:
             lengths = torch.bincount(fold)
@@ -88,20 +88,22 @@ class PackedFolds(object):
         else:
             fold_index = torch.cat([torch.arange(l) for l in lengths])
 
-        if self.sampling_method != 'foldable':
-            dtype = [di.dtype for di in self.data]
-            shape = [di.shape[1:] for di in self.data]
-            if all([d == dtype[0] for d in dtype]) and all([s == shape[0] for s in shape]):
-                self.data = torch.cat(self.data)
-                self.sampling_method = 'offset'
-
+        # update names
         if self.names is None:
-            if self.sampling_method != 'foldable':
+            if data_type.minor in ['dict', 'list']:
                 self.names = list(range(len(self.data)))
             else:
                 self.names = torch.sort(torch.unique(fold)).values
 
             self.names_dict = {n: i for i, n in enumerate(self.names)}
+
+        # merge data if possible for faster slicing
+        if data_type.minor in ['dict', 'list']:
+            dtype = [di.dtype for di in self.data]
+            shape = [di.shape[1:] for di in self.data]
+            if all([d == dtype[0] for d in dtype]) and all([s == shape[0] for s in shape]):
+                self.data = torch.cat(self.data)
+                self.sampling_method = 'offset'
 
         index_type = check_type(index)
 
@@ -124,9 +126,6 @@ class PackedFolds(object):
             
         else:
             raise ValueError
-
-        if self.sampling_method  == 'foldable':
-            self.sampling_method = 'folds'
 
         cumsum =  torch.cumsum(lengths, dim=0)
         offset =  cumsum - lengths
@@ -182,7 +181,7 @@ class PackedFolds(object):
         else:
             raise ValueError
 
-        return PackedFolds(data=[data], index=self.index, names=self.names, device=self.device)
+        return PackedFolds(data=data, index=self.index, names=self.names, device=self.device)
 
     @property
     def index(self):
@@ -227,20 +226,19 @@ class PackedFolds(object):
 
     def __getitem__(self, ind):
 
+        ind_type = check_type(ind)
+        if ind_type.major == 'scalar' and ind_type.element == 'str':
+            return self.get_fold(ind)
+        if self.sampling_method == 'index' and self.quick_getitem:
+            return self.data[ind]
+
         if type(ind) is tuple:
-            print(ind)
             ind_rest = ind[1:]
             ind = ind[0]
         else:
             ind_rest =tuple()
 
         ind = slice_to_index(ind, l=len(self), sliced=self.index)
-
-        ind_type = check_type(ind)
-        if ind_type.major == 'scalar' and ind_type.element == 'str':
-            return self.get_fold(ind)
-        if self.sampling_method == 'index' and self.quick_getitem:
-            return self.data[ind]
 
         info = self.info.loc[ind]
 
@@ -251,10 +249,6 @@ class PackedFolds(object):
             names = [self.names[i] for i in uq]
 
             if len(uq) == 1:
-
-                print((fold_index, *ind_rest))
-                print(self.data)
-
                 return PackedFolds(data=[self.data[uq[0]].__getitem__((fold_index, *ind_rest))], names=names, index=ind, device=self.device)
 
             fold_index = [fold_index[fold==i] for i in uq]
@@ -351,7 +345,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         elif isinstance(self.data, PackedFolds):
             return len(self.data)
         else:
-            raise NotImplementedError(f"For data type: {print(type(self.data))}")
+            raise NotImplementedError(f"For data type: {type(self.data)}")
 
     def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None,
                     test_split_method='uniform', time_index=None, window=None):

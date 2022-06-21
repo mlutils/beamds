@@ -22,6 +22,7 @@ class Algorithm(object):
         self.enable_tqdm = experiment.enable_tqdm
         self.hpo = experiment.hpo
         self.trial = experiment.trial
+        self.n_epochs = experiment.n_epochs
         self.pin_memory = ('cpu' not in str(self.device))
         self.amp = experiment.amp if self.pin_memory else False
 
@@ -66,39 +67,39 @@ class Algorithm(object):
         self.batch_size_train = experiment.batch_size_train
         self.batch_size_eval = experiment.batch_size_eval
 
-        self.epoch_length = {}
-
-        self.eval_subset = 'validation' if 'validation' in self.dataloaders.keys() else 'test'
-        self.epoch_length['train'] = experiment.epoch_length_train
-        self.epoch_length[self.eval_subset] = experiment.epoch_length_eval
-
-        if self.epoch_length['train'] is None:
-            dataset = self.dataloaders['train'].dataset
-            self.epoch_length['train'] = len(dataset.indices_split['train'])
-
-        if self.epoch_length[self.eval_subset] is None:
-            dataset = self.dataloaders[self.eval_subset].dataset
-            self.epoch_length[self.eval_subset] = len(dataset.indices_split[self.eval_subset])
-
-        self.n_epochs = experiment.n_epochs
-        if self.n_epochs is None:
-            self.n_epochs = experiment.total_steps // self.epoch_length['train']
-
-        if experiment.scale_epoch_by_batch_size:
-            self.epoch_length[self.eval_subset] = self.epoch_length[self.eval_subset] // self.batch_size_eval
-            self.epoch_length['train'] = self.epoch_length['train'] // self.batch_size_train
-
-        if 'test' in self.dataloaders.keys():
-            self.epoch_length['test'] = len(self.dataloaders['test'])
-
         if store_initial_weights:
             self.initial_weights = self.save_checkpoint()
 
         if experiment.load_model:
             experiment.reload_checkpoint(self)
 
+        self.epoch_length = {}
+
+        self.eval_subset = 'validation' if 'validation' in dataloaders.keys() else 'test'
+        self.epoch_length['train'] = experiment.epoch_length_train
+        self.epoch_length[self.eval_subset] = experiment.epoch_length_eval
+
+        if self.epoch_length['train'] is None:
+            dataset = dataloaders['train'].dataset
+            self.epoch_length['train'] = len(dataset.indices_split['train'])
+
+        if self.epoch_length[self.eval_subset] is None:
+            dataset = dataloaders[self.eval_subset].dataset
+            self.epoch_length[self.eval_subset] = len(dataset.indices_split[self.eval_subset])
+
+        if experiment.scale_epoch_by_batch_size:
+            self.epoch_length[self.eval_subset] = self.epoch_length[self.eval_subset] // self.batch_size_eval
+            self.epoch_length['train'] = self.epoch_length['train'] // self.batch_size_train
+
+        if 'test' in dataloaders.keys():
+            self.epoch_length['test'] = len(dataloaders['test'])
+
+        if self.n_epochs is None:
+            self.n_epochs = experiment.total_steps // self.epoch_length['train']
+
         if self.dataset is None:
             self.dataset = self.dataloaders['train'].dataset
+
 
     def register_network(self, net):
 
