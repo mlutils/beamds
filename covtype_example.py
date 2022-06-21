@@ -1,174 +1,329 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+import collections
+
 import torch
 import torchvision
 import torch.nn.functional as F
-
-from sklearn.datasets import fetch_covtype
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import QuantileTransformer
-
-from beam import parser, Experiment
-from beam import UniversalDataset
-from beam import Algorithm
-from beam import LinearNet
-#from temp import  FT_transformer,Embed_fc
-from Models_new import FT_transformer
+from torch import nn
+from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
-import ray
+import os
+
+from src.beam import beam_arguments, Experiment
+from src.beam import UniversalDataset, UniversalBatchSampler
+from src.beam import Algorithm, PackedFolds
+from src.beam import LinearNet
+from src.beam import DataTensor, BeamOptimizer
+from src.beam.utils import is_notebook
+from torchvision import transforms
+import torchvision
 from ray import tune
-from fast_transformers.builders import TransformerEncoderBuilder
-
-#roy
-
-def load_split_cov_data(SplitFreq = [0.8, 0.1, 0.1], randomstate = 0):
-    # X_all, y_all = fetch_covtype(return_X_y=True)
-    # X, y = {}, {}
-    # X['train'], X['val'], y['train'], y['val'] = train_test_split(X_all, y_all, train_size=SplitFreq[0],
-    #                                                               random_state=randomstate, stratify=y_all)
-    # X['val'], X['test'], y['val'], y['test'] = train_test_split(X['val'], y['val'],
-    #                                                             train_size=SplitFreq[1] / (1 - SplitFreq[0]),
-    #                                                             random_state=randomstate, stratify=y['val'])
-
-    X = {}
-    y = {}
-    dataset_name = 'covtype'
-    for part in ['train', 'test', 'val']:
-        X[part] = np.load(f'/home/elad/projects/rulnet/data/data/{dataset_name}/N_{part}.npy')
-        y[part] = np.load(f'/home/elad/projects/rulnet/data/data/{dataset_name}/y_{part}.npy')
-
-    # y_all = np.concatenate(list(y.values()))
-    # X_all = np.concatenate(list(X.values()))
-
-    return  X, y
-
-def Transfrom_data(X,N_Numric = 10):
-    Data_transformer = QuantileTransformer()
-    X['train'][:,:N_Numric] = Data_transformer.fit_transform(X['train'][:,:N_Numric])
-    X['val'][:,:N_Numric] = Data_transformer.transform(X['val'][:,:N_Numric])
-    X['test'][:,:N_Numric] = Data_transformer.transform(X['test'][:,:N_Numric])
-    return  X
+from functools import partial
+from collections import namedtuple
+from sklearn.datasets import fetch_covtype
 
 
-class covtype_dataset(UniversalDataset):
+class ReBlock(nn.Module):
+    def __init__(self, in_planes, planes, stride=1, rezero=True, activation='celu'):
+        super(ReBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.rezero = rezero
+        if self.rezero:
+            self.resweight = self.resweight = nn.Parameter(torch.Tensor([0]), requires_grad=True)
 
-    def __init__(self,Data,target,Datatype = 'train'):
+        if activation == 'gelu':
+            self.activation = nn.GELU()
+        elif activation == 'celu':
+            self.activation = nn.CELU()
+        elif activation == 'relu':
+            self.activation = nn.ReLU()
+
+    def forward(self, x):
+        out = self.activation(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+
+        # With or witout ReZero connection is after the nonlinearity
+        if self.rezero == True:
+            # ReZero
+            out = self.resweight * self.activation(out) + x
+        elif self.rezero == False:
+            # Nominal
+            out = self.activation(out) + x
+        return out
+
+
+class ResBlock(nn.Module):
+    """
+    Iniialize a residual block with two convolutions followed by batchnorm layers
+    """
+
+    def __init__(self, in_size: int, out_size: int, stride=1, activation='celu'):
         super().__init__()
+        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1)
+        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, stride=stride, padding=1)
+        self.batchnorm1 = nn.BatchNorm2d(out_size)
+        self.batchnorm2 = nn.BatchNorm2d(out_size)
 
-        self.data = {'data':Data[Datatype],'targets':target[Datatype]}
+        if activation == 'gelu':
+            self.activation = nn.GELU()
+        elif activation == 'celu':
+            self.activation = nn.CELU()
+        elif activation == 'relu':
+            self.activation = nn.ReLU()
 
-    def __getitem__(self, index):
+    def convblock(self, x):
+        x = self.activation(self.batchnorm1(self.conv1(x)))
+        x = self.activation(self.batchnorm2(self.conv2(x)))
+        return x
 
-        return {'x': torch.tensor(self.data['data'][index],dtype=torch.float) , 'y': torch.from_numpy(self.data['targets'][index]).long()}
-
-    def __len__(self):
-        s = len(self.data['data'])
-        return s
+    def forward(self, x):
+        return x + self.convblock(x)  # skip connection
 
 
-class CovNetAlgorithm(Algorithm):
+class BatchNorm(nn.BatchNorm2d):
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, weight_freeze=False, bias_freeze=False, weight_init=1.0,
+                 bias_init=0.0):
+        super().__init__(num_features, eps=eps, momentum=momentum)
+        if weight_init is not None: self.weight.data.fill_(weight_init)
+        if bias_init is not None: self.bias.data.fill_(bias_init)
+        self.weight.requires_grad = not weight_freeze
+        self.bias.requires_grad = not bias_freeze
+
+
+class Cifar10Network(nn.Module):
+    """Simple Convolutional and Fully Connect network."""
+
+    def __init__(self, channels, dropout=.0, weight=0.125, bn_weight_init=1.0, rezero=False, param_knob=None, activation='celu'):
+
+        super().__init__()
+        channels = {'prep': channels // 8, 'layer1': channels // 4, 'layer2': channels // 2, 'layer3': channels}
+
+        if activation == 'gelu':
+            self.activation = nn.GELU()
+        elif activation == 'celu':
+            self.activation = nn.CELU()
+        elif activation == 'relu':
+            self.activation = nn.ReLU()
+
+        self.weight = weight
+        self.rezero = rezero
+        # Layers
+        self.conv_prep = nn.Conv2d(3, channels['prep'], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn_prep = BatchNorm(channels['prep'], weight_init=bn_weight_init)
+        self.conv1 = nn.Conv2d(channels['prep'], channels['layer1'], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = BatchNorm(channels['layer1'], weight_init=bn_weight_init)
+        self.layer1_resblock = ReBlock(channels['layer1'], channels['layer1'], rezero=self.rezero)
+        self.conv2 = nn.Conv2d(channels['layer1'], channels['layer2'], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = BatchNorm(channels['layer2'], weight_init=bn_weight_init)
+        self.conv3 = nn.Conv2d(channels['layer2'], channels['layer3'], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn3 = BatchNorm(channels['layer3'], weight_init=bn_weight_init)
+        self.layer3_resblock = ReBlock(channels['layer3'], channels['layer3'], rezero=self.rezero)
+        self.pool = nn.MaxPool2d(2)
+        self.classifier_pool = nn.MaxPool2d(4)
+        self.classifier_fc = nn.Linear(channels['layer3'], 10, bias=False)
+
+    def forward(self, x):
+        # cuda0 = torch.device('cuda:0')
+        """Compute a forward pass."""
+        # Prep
+        x = self.activation(self.bn_prep(self.conv_prep(x)))
+        x = self.activation(self.bn1(self.pool(self.conv1(x))))
+        x = self.layer1_resblock(x)
+        x = self.activation(self.bn2(self.pool(self.conv2(x))))
+        x = self.activation(self.bn3(self.pool(self.conv3(x))))
+        x = self.layer3_resblock(x)
+        # Classifier
+        x = self.classifier_pool(x)
+        x = x.view(x.size(0), x.size(1))
+        x = self.classifier_fc(x)
+        x = x * self.weight
+        return x
+
+
+class CovtypeDataset(UniversalDataset):
+
+    def __init__(self, path,
+                 train_batch_size, eval_batch_size, device='cuda', weight_factor=.5, seed=5782):
+
+        dataset = fetch_covtype(data_home=path)
+        data = dataset['data']
+        columns = dataset['feature_names']
+        y = dataset['target']
+        df = pd.DataFrame(data=data, columns=columns, index=np.arange(len(data)))
+
+        soils_columns = [c for c in df.columns if 'Soil' in c]
+        soil = np.where(df[soils_columns])[1]
+
+        wilderness_columns = [c for c in df.columns if 'Wilderness' in c]
+        wilderness = np.where(df[wilderness_columns])[1]
+
+        df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
+        df_num = df.drop(columns=(soils_columns+wilderness_columns))
+
+        covtype = pd.concat([df_num, df_cat], axis=1)
+        super().__init__(x=covtype.values, y=y)
+
+        self.split(validation=.2, test=.2, seed=seed, stratify=True, labels=self.data['y'])
+        self.build_samplers(train_batch_size, eval_batch_size, oversample=True, weight_factor=weight_factor)
+
+
+class CovtypeAlgorithm(Algorithm):
 
     def __init__(self, *args, **argv):
         super().__init__(*args, **argv)
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
 
-    def postprocess_epoch(self, sample, aux, results, epoch, train=True):
+        networks, dataloaders, experiment = args
+
+        self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.ReduceLROnPlatue, last_epoch=- 1,
+                                                              lr_lambda=LRPolicy(gain=experiment.gain,
+                                                                                 turn_point=experiment.turn_point,
+                                                                                 final_point=experiment.final_point,
+                                                                                 minimal_gain=experiment.minimal_gain))
+
+    def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
         x, y = sample['x'], sample['y']
 
-        #results['images']['sample'] = x[:16].view(16, 1, 28, 28).data.cpu()
+        results['images']['sample'] = x[:16].view(16, 3, 32, 32).data.cpu()
 
-        if train:
-            self.scheduler.step()
+        if training:
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
 
         aux = {}
         return aux, results
 
-    def iteration(self, sample, aux, results, train=True):
+    def iteration(self, sample=None, aux=None, results=None, subset=None, training=True):
 
         x, y = sample['x'], sample['y']
 
-        x = x.view(len(x), -1)
         net = self.networks['net']
         opt = self.optimizers['net']
 
-        y_hat = net(x)
+        with torch.cuda.amp.autocast(enabled=self.amp):
+            y_hat = net(x)
+            loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=0.2)
 
-        loss = F.cross_entropy(y_hat, y, reduction='mean')
-
-        if train:
-
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
+        opt.apply(loss, training=training)
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
         results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
-        aux = {}
+
+        if training:
+            self.scheduler.step()
+
+        return aux, results
+
+    def report(self, results, i):
+
+        acc = np.mean(results['validation']['scalar']['acc'])
+
+        if self.hpo == 'tune':
+            tune.report(mean_accuracy=acc)
+        elif self.hpo == 'optuna':
+
+            self.trial.report(acc, i)
+            results['objective'] = acc
+
+        else:
+            raise NotImplementedError
+
+        return results
+
+    def inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
+
+        if with_labels:
+            x, y = sample['x'], sample['y']
+
+        else:
+            x = sample
+
+        net = self.networks['net']
+
+        y_hat = net(x)
+
+        # add scalar measurements
+        results['predictions']['y_pred'].append(y_hat.detach())
+
+        if with_labels:
+            results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
+            aux['predictions']['target'].append(y)
+
+        return aux, results
+
+    def postprocess_inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
+        y_pred = torch.cat(results['predictions']['y_pred'])
+
+        y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
+
+        if with_labels:
+            y_true = torch.cat(aux['predictions']['target']).data.cpu().numpy()
+            precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
+            results['metrics']['precision'] = precision
+            results['metrics']['recall'] = recall
+            results['metrics']['fscore'] = fscore
+            results['metrics']['support'] = support
 
         return aux, results
 
 
-def run_covtype(rank, world_size, experiment):
+def covtype_algorithm_generator(experiment, **kwargs):
 
+    dataset = CovtypeDataset(experiment.path_to_data,
+                             experiment.batch_size_train, experiment.batch_size_eval,
+                             padding=experiment.padding, device=experiment.device)
 
-    X, y = load_split_cov_data([0.8,0.1,0.1])
-    X = Transfrom_data(X)
-    dataloader = {}
-    for  v in ['train','test']:
-
-        dataloader[v] = covtype_dataset(X,y,Datatype=v).dataloader(batch_size=experiment.batch_size,
-                                                                       num_workers=experiment.cpu_workers,
-                                                                       pin_memory=True)
+    pin_memory = 'cpu' not in str(experiment.device)
+    dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers, pin_memory=pin_memory)
 
     # choose your network
-    N_classes = len(set(y['train']))
-    N_numeric = 10
-    Categoric_numbers = np.max(X['train'][:,N_numeric:],axis=0) + 1  # assume max number is number of categories -1
+    net = Cifar10Network(experiment.channels, dropout=experiment.dropout, activation=experiment.activation)
 
-
-
-    #net = LinearNet(54, 256, N_classes, 4)
-    net = FT_transformer(N_classes,N_numeric,Categoric_numbers,EmbeddingSize=experiment.emb_size,
-                         N_heads=experiment.n_heads,N_transormer_L=experiment.nlayers_transformer,
-                         dim_ff=experiment.dim_ff,Fast_Transformer=True)
+    optimizer = None
+    optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense, 'weight_decay': experiment.weight_decay,
+                                                   'momentum': experiment.beta1, 'nesterov': True}, clip=experiment.clip, accumulate=experiment.accumulate,
+                        amp=experiment.amp,
+                        sparse_args=None, dense_optimizer='SGD', sparse_optimizer='SparseAdam')
 
     # we recommend using the algorithm argument to determine the type of algorithm to be used
     Alg = globals()[experiment.algorithm]
-    alg = Alg(net, dataloader, experiment)
+    alg = Alg(net, dataloader, experiment, optimizers=optimizer)
 
-    # simulate input to the network
-    x = next(alg.data_generator(training=False))[1]['x']
-    x = x.view(len(x), -1)
+    return alg
 
-    experiment.writer_control(enable=not(bool(rank)), networks=alg.get_networks(), inputs={'net': x})
 
-    for results in iter(alg):
-        experiment.save_model_results(results, alg,
-                                      print_results=True, visualize_results='yes',
-                                      store_results='logscale', store_networks='logscale',
-                                      visualize_weights=True,
-                                                    argv={'images': {'sample': {'dataformats': 'NCHW'}}})
-
+# ## Training
 
 if __name__ == '__main__':
 
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
-    parser.add_argument('--emb-size', type=int, default=128, help='Size of embedding')
-    parser.add_argument('--n-heads', type=int, default=4, help='Number of attention heads')
-    parser.add_argument('--nlayers_transformer', type=int, default=4, help='Number of transformer layes')
-    parser.add_argument('--dim-ff', type=int, default=2048, help='Transformer feed forward dimention')
 
-    args = parser.parse_args()
+    path_to_data = '/home/shared/data/dataset/covtype'
+    root_dir = '/home/shared/data/results/covtype'
 
-    # we can set here arguments that are considered as constant for this file (mnist_example.py)
-    args.project_name = 'covtype'
-    args.root_dir = '/home/shared/data/results'
-    args.algorithm = 'CovNetAlgorithm'
-    args.identifier = 'check'
-    args.path_to_data = '/home/elad/projects/covtype'
+    args = beam_arguments(
+        f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
+        "--n-epochs=2 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
+        "--weight-decay=.00256 --beta1=0.9 --beta2=0.9",
+        path_to_data=path_to_data, gamma=1., dropout=.0, activation='celu', channels=512,
+        scale_down=.7, scale_up=1.4, ratio_down=.7, ratio_up=1.4)
+
 
     experiment = Experiment(args)
-    # here we initialize the workers (can be single or multiple workers, depending on the configuration)
-    experiment.run(run_covtype)
+    alg = experiment(covtype_algorithm_generator, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})
+
+    # ## Inference
+    inference = alg('test')
+
+    print('Test inference results:')
+    for n, v in inference['metrics'].items():
+        print(f'{n}:')
+        print(v)
+
