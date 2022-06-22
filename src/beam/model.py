@@ -144,14 +144,14 @@ class BeamOptimizer(object):
         sparse_parameters = []
         dense_parameters = []
 
-        for m in net.modules():
+        for n, m in net.named_modules(remove_duplicate=True):
             is_sparse = BeamOptimizer.check_sparse(m)
             if is_sparse:
                 for p in m.parameters():
                     if not any([p is pi for pi in sparse_parameters]):
                         sparse_parameters.append(p)
             else:
-                for p in m.parameters():
+                for p in m.parameters(recurse=False):
                     if not any([p is pi for pi in dense_parameters]):
                         dense_parameters.append(p)
 
@@ -234,7 +234,7 @@ class BeamOptimizer(object):
 class RuleLayer(nn.Module):
 
     def __init__(self, n_rules, e_dim_in, e_dim_out, bias=True, pos_enc=None, dropout=0.0):
-        super(RuleLayer, self).__init__()
+        super().__init__()
 
         self.query = nn.Parameter(torch.empty((n_rules, e_dim_out)))
         nn.init.kaiming_uniform_(self.query, a=math.sqrt(5))
@@ -271,7 +271,7 @@ class MHRuleLayer(nn.Module):
 
     def __init__(self, n_rules, n_features, e_dim_out, bias=True, pos_enc=None, dropout=0.0, n_head=8,
                  static_attention=False):
-        super(MHRuleLayer, self).__init__()
+        super().__init__()
 
         self.query = nn.Parameter(torch.empty((n_rules, e_dim_out)))
         nn.init.kaiming_uniform_(self.query, a=math.sqrt(5))
@@ -293,6 +293,7 @@ class MHRuleLayer(nn.Module):
     def forward(self, x):
         b, nf, ne = x.shape
         pos = self.pos_enc.unsqueeze(0).repeat(b, 1, 1)
+
         x = x + pos
         v = self.value(x)
 
@@ -316,7 +317,7 @@ class MHRuleLayer(nn.Module):
 class LazyLinearRegression(nn.Module):
 
     def __init__(self, quantiles, lr=0.001):
-        super(LazyLinearRegression, self).__init__()
+        super().__init__()
 
         self.lr = lr
         self.quantiles = quantiles
@@ -347,8 +348,8 @@ class LazyLinearRegression(nn.Module):
 
 class SplineEmbedding(nn.Module):
 
-    def __init__(self, n_features, n_quantiles, emb_dim, n_tables=1, enable=True, init_weights=None):
-        super(SplineEmbedding, self).__init__()
+    def __init__(self, n_features, n_quantiles, emb_dim, n_tables=1, enable=True, init_weights=None, sparse=False):
+        super().__init__()
 
         self.n_quantiles = n_quantiles
         self.n_features = n_features
@@ -360,7 +361,7 @@ class SplineEmbedding(nn.Module):
         self.register_buffer('ind_offset', (n_quantiles + 2) * torch.arange(n_features, dtype=torch.int64).unsqueeze(0))
 
         if init_weights is None:
-            self.emb = nn.Embedding(self.n_emb * n_tables, emb_dim, sparse=False)
+            self.emb = nn.Embedding(self.n_emb * n_tables, emb_dim, sparse=sparse)
         else:
 
             none_val, base_1, base_0 = init_weights
@@ -370,7 +371,7 @@ class SplineEmbedding(nn.Module):
 
             weights = torch.cat([none_val.unsqueeze(2), weights], dim=2).reshape(-1, emb_dim)
 
-            self.emb = nn.Embedding.from_pretrained(weights, sparse=False, freeze=False)
+            self.emb = nn.Embedding.from_pretrained(weights, sparse=sparse, freeze=False)
 
     def forward(self, x, mask, rand_table):
 
@@ -402,7 +403,8 @@ class SplineEmbedding(nn.Module):
 class PID(object):
 
     def __init__(self, k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005):
-        super(PID, self).__init__()
+        super().__init__()
+
         self.k_p = k_p
         self.k_i = k_i
         self.k_d = k_d
@@ -434,7 +436,7 @@ class LazyQuantileNorm(nn.Module):
 
     def __init__(self, quantiles=100, momentum=.001,
                  track_running_stats=True, use_stats_for_train=True, boost=True, predefined=None, scale=True):
-        super(LazyQuantileNorm, self).__init__()
+        super().__init__()
 
         quantiles = torch.arange(quantiles) / (quantiles - 1)
 
@@ -497,9 +499,9 @@ class BetterEmbedding(torch.nn.Module):
                  momentum=.001, track_running_stats=True, noise=0.2, n_tables=15, initial_mask=1.,
                  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, quantile_resolution=1e-4,
                  use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=True, tokenizer=True,
-                 qnorm_flag=False, kaiming_init=False, init_spline_equally=True):
+                 qnorm_flag=False, kaiming_init=False, init_spline_equally=True, sparse=True):
 
-        super(BetterEmbedding, self).__init__()
+        super().__init__()
 
         self.categorical_indices = categorical_indices
         self.numerical_indices = numerical_indices
@@ -520,7 +522,7 @@ class BetterEmbedding(torch.nn.Module):
         self.br = initial_mask
 
         if len(categorical_indices):
-            self.emb_cat = nn.Embedding(1 + self.n_emb * n_tables, emb_dim, sparse=True)
+            self.emb_cat = nn.Embedding(1 + self.n_emb * n_tables, emb_dim, sparse=sparse)
         else:
             self.emb_cat = lambda x: torch.FloatTensor(len(x), 0, emb_dim).to(x.device)
 
@@ -534,7 +536,7 @@ class BetterEmbedding(torch.nn.Module):
             weights = None
 
         self.emb_num = SplineEmbedding(n_feature_num, n_quantiles, emb_dim, n_tables=n_tables,
-                                       enable=quantile_embedding, init_weights=weights)
+                                       enable=quantile_embedding, init_weights=weights, sparse=sparse)
 
         self.llr = LazyLinearRegression(n_quantiles, lr=0.001)
         self.lambda_llr = 0
@@ -602,12 +604,10 @@ class BetterEmbedding(torch.nn.Module):
 
         e = torch.cat([e_cat, e_num], dim=1)
         e = e + self.bias
-        #         print(e[0,100])
         if self.tokenizer:
             x = torch.cat([torch.zeros_like(x_cat), x_num * mask_num], dim=1)
             y = self.weight * x.unsqueeze(-1)
             e = e + y
-        #             print(e[0,100])
         if self.flatten:
             e = e.view(len(e), -1)
 
@@ -628,7 +628,7 @@ class GBN(torch.nn.Module):
     """
 
     def __init__(self, input_dim, virtual_batch_size=128, momentum=0.01):
-        super(GBN, self).__init__()
+        super().__init__()
 
         self.input_dim = input_dim
         self.virtual_batch_size = virtual_batch_size
@@ -650,7 +650,7 @@ class Sparsemax(nn.Module):
         Args:
             dim (int, optional): The dimension over which to apply the sparsemax function.
         """
-        super(Sparsemax, self).__init__()
+        super().__init__()
 
         self.dim = -1 if dim is None else dim
 

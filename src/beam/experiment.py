@@ -20,7 +20,6 @@ import torch.distributed as dist
 from ray import tune
 import optuna
 from functools import partial
-import ray
 
 done = mp.Event()
 

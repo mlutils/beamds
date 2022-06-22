@@ -19,6 +19,7 @@ from src.beam import LinearNet
 from src.beam import DataTensor, BeamOptimizer
 from src.beam.utils import is_notebook
 from src.beam.config import parser
+from src.beam.model import GBN, MHRuleLayer, BetterEmbedding, mySequential
 
 from torchvision import transforms
 import torchvision
@@ -27,6 +28,11 @@ from functools import partial
 from collections import namedtuple
 from sklearn.datasets import fetch_covtype
 import pandas as pd
+from torch import Tensor
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
+import math
+
+ModuleType = Union[str, Callable[..., nn.Module]]
 
 
 def _is_glu_activation(activation: ModuleType):
@@ -155,10 +161,10 @@ class ResRuleLayer(nn.Module):
                  ffn_activation='ReGLU', head_activation='ReLU',head_normalization='LayerNorm'):
         super(ResRuleLayer, self).__init__()
 
-        self.bn1 = GBN(e_dim, virtual_batch_size=256, momentum=0.1)
-        self.rl1 = MHRuleLayer(n_rules, e_dim, e_dim, bias=bias, dropout=dropout)
-        self.sl1 = MHRuleLayer(n_rules, e_dim, e_dim, bias=bias, dropout=dropout)
-        self.bn2 = GBN(e_dim, virtual_batch_size=256, momentum=0.1)
+        self.bn1 = GBN(e_dim, virtual_batch_size=64, momentum=0.1)
+        self.rl1 = MHRuleLayer(n_rules, n_rules, e_dim, bias=bias, dropout=dropout)
+        self.sl1 = MHRuleLayer(n_rules, n_rules, e_dim, bias=bias, dropout=dropout)
+        self.bn2 = GBN(e_dim, virtual_batch_size=64, momentum=0.1)
 
         self.FFN = FFN(d_token=e_dim,
                        d_hidden=int(4/3 * e_dim),
@@ -195,53 +201,49 @@ class ResRuleLayer(nn.Module):
 
 class RuleNet(nn.Module):
 
-    def __init__(self, n_features, features_offset, embedding_dim=256, n_rules=128,
-                 n_layers=5, dropout=0.2, n_out=1, bias=True, activation='gelu', noise=0.1,
-                 quantiles=50, predefined_boundaries=None, n_tables=15):
-        super(RuleNet, self).__init__()
+    def __init__(self, numerical_indices, categorical_indices, n_categories,
+                 embedding_dim=256, n_rules=128, n_layers=5, dropout=0.2, n_out=1, bias=True,
+                 activation='gelu', noise=0., n_quantiles=50, n_tables=15, ):
+        super().__init__()
 
-        self.q_norm = LazyQuantileNorm(quantiles=quantiles, predefined=predefined_boundaries, noise=noise)
-        self.register_buffer('features_offset', features_offset)
+        self.emb = BetterEmbedding(numerical_indices, categorical_indices, n_quantiles, n_categories, embedding_dim,
+                 momentum=.001, track_running_stats=True, noise=noise, n_tables=n_tables, initial_mask=1.,
+                 k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, quantile_resolution=1e-4,
+                 use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=True, tokenizer=True,
+                 qnorm_flag=True, kaiming_init=False, init_spline_equally=True, sparse=True)
 
-        self.emb = nn.Embedding(n_features * n_tables, embedding_dim, sparse=True)
-
-        self.first_rule = MHRuleLayer(n_rules, embedding_dim, embedding_dim,
+        n_features = len(numerical_indices) + len(categorical_indices)
+        self.first_rule = MHRuleLayer(n_rules, n_features, embedding_dim,
                                       bias=bias, dropout=dropout)
         self.rules = mySequential(*[ResRuleLayer(n_rules, embedding_dim,
                                                  bias=bias, activation=activation,
                                                  dropout=dropout, n_out=n_out)
                                     for _ in range(n_layers)],
                                   )
-        self.n_tables = n_tables
-        self.n_features = n_features
 
-    def forward(self, x_num, x_cat):
+    def forward(self, x):
 
-        x_num = self.q_norm(x_num)
+        e = self.emb(x )
 
-        x = torch.cat([x_num, x_cat], dim=1) + self.features_offset
-
-        table = np.random.randint(self.n_tables)
-        e = self.emb(x + self.n_features * table)
         x, _ = self.first_rule(e)
 
         x, _, y = self.rules(x, e, [])
 
         y = torch.stack(y, dim=1).sum(dim=1)
 
-        return y, None, None
+        return y
 
 
 
 class CovtypeDataset(UniversalDataset):
 
     def __init__(self, path,
-                 train_batch_size, eval_batch_size, device='cuda', weight_factor=.5, seed=5782):
+                 train_batch_size, eval_batch_size, device='cpu', weight_factor=.5, seed=5782):
 
         dataset = fetch_covtype(data_home=path)
         data = dataset['data']
         columns = dataset['feature_names']
-        y = dataset['target']
+        y = np.array(dataset['target'], dtype=np.int64)
         df = pd.DataFrame(data=data, columns=columns, index=np.arange(len(data)))
 
         soils_columns = [c for c in df.columns if 'Soil' in c]
@@ -254,11 +256,15 @@ class CovtypeDataset(UniversalDataset):
         df_num = df.drop(columns=(soils_columns+wilderness_columns))
 
         covtype = pd.concat([df_num, df_cat], axis=1)
-        super().__init__(x=covtype.values, y=y)
+        super().__init__(x=covtype.values, y=y, device=device)
 
-        self.split(validation=.2, test=.2, seed=seed, stratify=True, labels=self.data['y'])
+        self.split(validation=.2, test=.2, seed=seed, stratify=True, labels=self.data['y'].cpu())
         self.build_samplers(train_batch_size, eval_batch_size, oversample=True, weight_factor=weight_factor)
 
+        self.categorical_indices = torch.arange(10, 12)
+        self.numerical_indices = torch.arange(10)
+        self.n_categories = torch.tensor(df_cat.nunique().values)
+        self.n_classes = int(y.max() + 1)
 
 class CovtypeAlgorithm(Algorithm):
 
@@ -267,20 +273,23 @@ class CovtypeAlgorithm(Algorithm):
 
         networks, dataloaders, experiment = args
 
-        self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.ReduceLROnPlatue, last_epoch=- 1,
-                                                              lr_lambda=LRPolicy(gain=experiment.gain,
-                                                                                 turn_point=experiment.turn_point,
-                                                                                 final_point=experiment.final_point,
-                                                                                 minimal_gain=experiment.minimal_gain))
+        self.label_smoothing = experiment.label_smoothing
+        self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.ReduceLROnPlateau,
+                                                              mode='min', factor=1 / math.sqrt(10), patience=16,
+                                                              threshold=0, threshold_mode='rel', cooldown=0, min_lr=0,
+                                                              eps=1e-08, verbose=True)
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
         x, y = sample['x'], sample['y']
 
-        results['images']['sample'] = x[:16].view(16, 3, 32, 32).data.cpu()
+
 
         if training:
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
+        else:
+            val_loss = float(np.mean(results['scalar']['loss']))
+            self.scheduler.step(val_loss)
 
         aux = {}
         return aux, results
@@ -294,16 +303,13 @@ class CovtypeAlgorithm(Algorithm):
 
         with torch.cuda.amp.autocast(enabled=self.amp):
             y_hat = net(x)
-            loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=0.2)
+            loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=self.label_smoothing)
 
         opt.apply(loss, training=training)
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
         results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
-
-        if training:
-            self.scheduler.step()
 
         return aux, results
 
@@ -369,13 +375,10 @@ def covtype_algorithm_generator(experiment, **kwargs):
     dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers, pin_memory=pin_memory)
 
     # choose your network
-    net = RuleNet(experiment.channels, dropout=experiment.dropout, activation=experiment.activation)
+    net = RuleNet(dataset.numerical_indices, dataset.categorical_indices,
+                  dataset.n_categories, n_out=dataset.n_classes)
 
     optimizer = None
-    optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense, 'weight_decay': experiment.weight_decay,
-                                                   'momentum': experiment.beta1, 'nesterov': True}, clip=experiment.clip, accumulate=experiment.accumulate,
-                        amp=experiment.amp,
-                        sparse_args=None, dense_optimizer='SGD', sparse_optimizer='SparseAdam')
 
     # we recommend using the algorithm argument to determine the type of algorithm to be used
     Alg = globals()[experiment.algorithm]
@@ -391,8 +394,6 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
-    parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
     parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
 
     path_to_data = '/home/shared/data/dataset/covtype'
