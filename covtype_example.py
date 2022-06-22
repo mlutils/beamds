@@ -18,132 +18,219 @@ from src.beam import Algorithm, PackedFolds
 from src.beam import LinearNet
 from src.beam import DataTensor, BeamOptimizer
 from src.beam.utils import is_notebook
+from src.beam.config import parser
+
 from torchvision import transforms
 import torchvision
 from ray import tune
 from functools import partial
 from collections import namedtuple
 from sklearn.datasets import fetch_covtype
+import pandas as pd
 
 
-class ReBlock(nn.Module):
-    def __init__(self, in_planes, planes, stride=1, rezero=True, activation='celu'):
-        super(ReBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.rezero = rezero
-        if self.rezero:
-            self.resweight = self.resweight = nn.Parameter(torch.Tensor([0]), requires_grad=True)
-
-        if activation == 'gelu':
-            self.activation = nn.GELU()
-        elif activation == 'celu':
-            self.activation = nn.CELU()
-        elif activation == 'relu':
-            self.activation = nn.ReLU()
-
-    def forward(self, x):
-        out = self.activation(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-
-        # With or witout ReZero connection is after the nonlinearity
-        if self.rezero == True:
-            # ReZero
-            out = self.resweight * self.activation(out) + x
-        elif self.rezero == False:
-            # Nominal
-            out = self.activation(out) + x
-        return out
+def _is_glu_activation(activation: ModuleType):
+    return (
+            isinstance(activation, str)
+            and activation.endswith('GLU')
+            or activation in [ReGLU, GEGLU]
+    )
 
 
-class ResBlock(nn.Module):
+def reglu(x: Tensor) -> Tensor:
+    """The ReGLU activation function from [1].
+
+    References:
+
+        [1] Noam Shazeer, "GLU Variants Improve Transformer", 2020
     """
-    Iniialize a residual block with two convolutions followed by batchnorm layers
+    assert x.shape[-1] % 2 == 0
+    a, b = x.chunk(2, dim=-1)
+    return a * F.relu(b)
+
+def geglu(x: Tensor) -> Tensor:
+    """The GEGLU activation function from [1].
+
+    References:
+
+        [1] Noam Shazeer, "GLU Variants Improve Transformer", 2020
+    """
+    assert x.shape[-1] % 2 == 0
+    a, b = x.chunk(2, dim=-1)
+    return a * F.gelu(b)
+
+
+class ReGLU(nn.Module):
+    """The ReGLU activation function from [shazeer2020glu].
+
+    Examples:
+        .. testcode::
+
+            module = ReGLU()
+            x = torch.randn(3, 4)
+            assert module(x).shape == (3, 2)
+
+    References:
+        * [shazeer2020glu] Noam Shazeer, "GLU Variants Improve Transformer", 2020
     """
 
-    def __init__(self, in_size: int, out_size: int, stride=1, activation='celu'):
+    def forward(self, x: Tensor) -> Tensor:
+        return reglu(x)
+
+
+def _make_nn_module(module_type: ModuleType, *args) -> nn.Module:
+    if isinstance(module_type, str):
+        if module_type == 'ReGLU':
+            return ReGLU()
+        elif module_type == 'GEGLU':
+            return GEGLU()
+        else:
+            try:
+                cls = getattr(nn, module_type)
+            except AttributeError as err:
+                raise ValueError(
+                    f'Failed to construct the module {module_type} with the arguments {args}'
+                ) from err
+            return cls(*args)
+    else:
+        return module_type(*args)
+
+
+class FFN(nn.Module):
+    """The Feed-Forward Network module used in every `Transformer` block."""
+
+    def __init__(
+            self,
+            *,
+            d_token: int,
+            d_hidden: int,
+            bias_first: bool,
+            bias_second: bool,
+            activation: ModuleType,
+    ):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1)
-        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, stride=stride, padding=1)
-        self.batchnorm1 = nn.BatchNorm2d(out_size)
-        self.batchnorm2 = nn.BatchNorm2d(out_size)
+        self.linear_first = nn.Linear(
+            d_token,
+            d_hidden * (2 if _is_glu_activation(activation) else 1),
+            bias_first,
+            )
+        self.activation = _make_nn_module(activation)
+        self.linear_second = nn.Linear(d_hidden, d_token, bias_second)
 
-        if activation == 'gelu':
-            self.activation = nn.GELU()
-        elif activation == 'celu':
-            self.activation = nn.CELU()
-        elif activation == 'relu':
-            self.activation = nn.ReLU()
-
-    def convblock(self, x):
-        x = self.activation(self.batchnorm1(self.conv1(x)))
-        x = self.activation(self.batchnorm2(self.conv2(x)))
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.linear_first(x)
+        x = self.activation(x)
+        x = self.linear_second(x)
         return x
 
-    def forward(self, x):
-        return x + self.convblock(x)  # skip connection
 
+class Head(nn.Module):
+    """The final module of the `Transformer` that performs BERT-like inference."""
 
-class BatchNorm(nn.BatchNorm2d):
-    def __init__(self, num_features, eps=1e-05, momentum=0.1, weight_freeze=False, bias_freeze=False, weight_init=1.0,
-                 bias_init=0.0):
-        super().__init__(num_features, eps=eps, momentum=momentum)
-        if weight_init is not None: self.weight.data.fill_(weight_init)
-        if bias_init is not None: self.bias.data.fill_(bias_init)
-        self.weight.requires_grad = not weight_freeze
-        self.bias.requires_grad = not bias_freeze
-
-
-class Cifar10Network(nn.Module):
-    """Simple Convolutional and Fully Connect network."""
-
-    def __init__(self, channels, dropout=.0, weight=0.125, bn_weight_init=1.0, rezero=False, param_knob=None, activation='celu'):
-
+    def __init__(
+            self,
+            *,
+            d_in: int,
+            bias: bool,
+            activation: ModuleType,
+            normalization: ModuleType,
+            d_out: int,
+    ):
         super().__init__()
-        channels = {'prep': channels // 8, 'layer1': channels // 4, 'layer2': channels // 2, 'layer3': channels}
+        self.normalization = _make_nn_module(normalization, d_in)
+        self.activation = _make_nn_module(activation)
+        self.linear = nn.Linear(d_in, d_out, bias)
 
-        if activation == 'gelu':
-            self.activation = nn.GELU()
-        elif activation == 'celu':
-            self.activation = nn.CELU()
-        elif activation == 'relu':
-            self.activation = nn.ReLU()
-
-        self.weight = weight
-        self.rezero = rezero
-        # Layers
-        self.conv_prep = nn.Conv2d(3, channels['prep'], kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn_prep = BatchNorm(channels['prep'], weight_init=bn_weight_init)
-        self.conv1 = nn.Conv2d(channels['prep'], channels['layer1'], kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = BatchNorm(channels['layer1'], weight_init=bn_weight_init)
-        self.layer1_resblock = ReBlock(channels['layer1'], channels['layer1'], rezero=self.rezero)
-        self.conv2 = nn.Conv2d(channels['layer1'], channels['layer2'], kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = BatchNorm(channels['layer2'], weight_init=bn_weight_init)
-        self.conv3 = nn.Conv2d(channels['layer2'], channels['layer3'], kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn3 = BatchNorm(channels['layer3'], weight_init=bn_weight_init)
-        self.layer3_resblock = ReBlock(channels['layer3'], channels['layer3'], rezero=self.rezero)
-        self.pool = nn.MaxPool2d(2)
-        self.classifier_pool = nn.MaxPool2d(4)
-        self.classifier_fc = nn.Linear(channels['layer3'], 10, bias=False)
-
-    def forward(self, x):
-        # cuda0 = torch.device('cuda:0')
-        """Compute a forward pass."""
-        # Prep
-        x = self.activation(self.bn_prep(self.conv_prep(x)))
-        x = self.activation(self.bn1(self.pool(self.conv1(x))))
-        x = self.layer1_resblock(x)
-        x = self.activation(self.bn2(self.pool(self.conv2(x))))
-        x = self.activation(self.bn3(self.pool(self.conv3(x))))
-        x = self.layer3_resblock(x)
-        # Classifier
-        x = self.classifier_pool(x)
-        x = x.view(x.size(0), x.size(1))
-        x = self.classifier_fc(x)
-        x = x * self.weight
+    def forward(self, x: Tensor) -> Tensor:
+        x = x[:, -1]
+        x = self.normalization(x)
+        x = self.activation(x)
+        x = self.linear(x)
         return x
+
+
+class ResRuleLayer(nn.Module):
+
+    def __init__(self, n_rules, e_dim, bias=True, activation='gelu', dropout=0.0, n_out=1, n_features=None,
+                 ffn_activation='ReGLU', head_activation='ReLU',head_normalization='LayerNorm'):
+        super(ResRuleLayer, self).__init__()
+
+        self.bn1 = GBN(e_dim, virtual_batch_size=256, momentum=0.1)
+        self.rl1 = MHRuleLayer(n_rules, e_dim, e_dim, bias=bias, dropout=dropout)
+        self.sl1 = MHRuleLayer(n_rules, e_dim, e_dim, bias=bias, dropout=dropout)
+        self.bn2 = GBN(e_dim, virtual_batch_size=256, momentum=0.1)
+
+        self.FFN = FFN(d_token=e_dim,
+                       d_hidden=int(4/3 * e_dim),
+                       bias_first=True,
+                       bias_second=True,
+                       activation=ffn_activation)
+        self.activation = getattr(F, activation)
+        self.Head = Head( d_in=e_dim,
+                          d_out=n_out,
+                          bias=True,
+                          activation=head_activation,  # type: ignore
+                          normalization=head_normalization)
+
+    def forward(self, x, e, y):
+
+        r = x
+        r = self.bn1(r.transpose(1, 2)).transpose(1, 2)
+        r = self.activation(r)
+
+        r1, ai = self.rl1(r)
+        s1, ai = self.sl1(r)
+
+        r = torch.sigmoid(s1) * r1
+        x = r + x
+        r = self.bn2(x.transpose(1, 2)).transpose(1, 2)
+        r = self.activation(r)
+        r = self.FFN(r)
+
+        r = r + x
+
+        y.append(self.Head(r))
+
+        return r, e, y
+
+class RuleNet(nn.Module):
+
+    def __init__(self, n_features, features_offset, embedding_dim=256, n_rules=128,
+                 n_layers=5, dropout=0.2, n_out=1, bias=True, activation='gelu', noise=0.1,
+                 quantiles=50, predefined_boundaries=None, n_tables=15):
+        super(RuleNet, self).__init__()
+
+        self.q_norm = LazyQuantileNorm(quantiles=quantiles, predefined=predefined_boundaries, noise=noise)
+        self.register_buffer('features_offset', features_offset)
+
+        self.emb = nn.Embedding(n_features * n_tables, embedding_dim, sparse=True)
+
+        self.first_rule = MHRuleLayer(n_rules, embedding_dim, embedding_dim,
+                                      bias=bias, dropout=dropout)
+        self.rules = mySequential(*[ResRuleLayer(n_rules, embedding_dim,
+                                                 bias=bias, activation=activation,
+                                                 dropout=dropout, n_out=n_out)
+                                    for _ in range(n_layers)],
+                                  )
+        self.n_tables = n_tables
+        self.n_features = n_features
+
+    def forward(self, x_num, x_cat):
+
+        x_num = self.q_norm(x_num)
+
+        x = torch.cat([x_num, x_cat], dim=1) + self.features_offset
+
+        table = np.random.randint(self.n_tables)
+        e = self.emb(x + self.n_features * table)
+        x, _ = self.first_rule(e)
+
+        x, _, y = self.rules(x, e, [])
+
+        y = torch.stack(y, dim=1).sum(dim=1)
+
+        return y, None, None
+
 
 
 class CovtypeDataset(UniversalDataset):
@@ -275,15 +362,14 @@ class CovtypeAlgorithm(Algorithm):
 
 def covtype_algorithm_generator(experiment, **kwargs):
 
-    dataset = CovtypeDataset(experiment.path_to_data,
-                             experiment.batch_size_train, experiment.batch_size_eval,
-                             padding=experiment.padding, device=experiment.device)
+    dataset = CovtypeDataset(experiment.path_to_data, experiment.batch_size_train, experiment.batch_size_eval,
+                             device=experiment.device, weight_factor=experiment.weight_factor, seed=experiment.seed)
 
     pin_memory = 'cpu' not in str(experiment.device)
     dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers, pin_memory=pin_memory)
 
     # choose your network
-    net = Cifar10Network(experiment.channels, dropout=experiment.dropout, activation=experiment.activation)
+    net = RuleNet(experiment.channels, dropout=experiment.dropout, activation=experiment.activation)
 
     optimizer = None
     optimizer = partial(BeamOptimizer, dense_args={'lr': experiment.lr_dense, 'weight_decay': experiment.weight_decay,
@@ -305,6 +391,10 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
+    parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
+    parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
+    parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
+
     path_to_data = '/home/shared/data/dataset/covtype'
     root_dir = '/home/shared/data/results/covtype'
 
@@ -317,7 +407,7 @@ if __name__ == '__main__':
 
 
     experiment = Experiment(args)
-    alg = experiment(covtype_algorithm_generator, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})
+    alg = experiment(covtype_algorithm_generator, tensorboard_arguments=None)
 
     # ## Inference
     inference = alg('test')
