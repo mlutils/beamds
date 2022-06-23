@@ -5,6 +5,7 @@ from collections import defaultdict
 import numpy as np
 import math
 from .utils import slice_to_index
+from .utils import logger
 
 
 class PackedSet(object):
@@ -144,14 +145,16 @@ class BeamOptimizer(object):
         sparse_parameters = []
         dense_parameters = []
 
-        for n, m in net.named_modules(remove_duplicate=True):
+        for nm, m in net.named_modules(remove_duplicate=True):
             is_sparse = BeamOptimizer.check_sparse(m)
             if is_sparse:
-                for p in m.parameters():
+                for n, p in m.named_parameters(recurse=False):
+                    # print(f"sparse: {nm}/{n}")
                     if not any([p is pi for pi in sparse_parameters]):
                         sparse_parameters.append(p)
             else:
-                for p in m.parameters(recurse=False):
+                for n, p in m.named_parameters(recurse=False):
+                    # print(f"dense: {nm}/{n}")
                     if not any([p is pi for pi in dense_parameters]):
                         dense_parameters.append(p)
 
@@ -351,7 +354,6 @@ class SplineEmbedding(nn.Module):
     def __init__(self, n_features, n_quantiles, emb_dim, n_tables=1, enable=True, init_weights=None, sparse=False):
         super().__init__()
 
-        self.n_quantiles = n_quantiles
         self.n_features = n_features
         self.emb_dim = emb_dim
         self.enable = enable
@@ -359,6 +361,7 @@ class SplineEmbedding(nn.Module):
         self.n_tables = n_tables
         self.n_emb = (n_quantiles + 2) * n_features
         self.register_buffer('ind_offset', (n_quantiles + 2) * torch.arange(n_features, dtype=torch.int64).unsqueeze(0))
+        self.register_buffer("n_quantiles", torch.FloatTensor([n_quantiles]))
 
         if init_weights is None:
             self.emb = nn.Embedding(self.n_emb * n_tables, emb_dim, sparse=sparse)
@@ -377,11 +380,12 @@ class SplineEmbedding(nn.Module):
 
         if self.enable:
             if not self.n_features:
-                return torch.FloatTensor(len(x), 0, self.emb_dim).to(x.device)
+                return torch.Tensor(len(x), 0, self.emb_dim, device=x.device, dtype=x.dtype)
         else:
-            return torch.zeros(*x.shape, self.emb_dim).to(x.device)
+            return torch.zeros(*x.shape, self.emb_dim, device=x.device, dtype=x.dtype)
 
-        x = torch.clamp(x, min=1e-6, max=1 - 1e-6)
+        th = 1e-3 if x.dtype == torch.float16 else 1e-6
+        x = torch.clamp(x, min=th, max=1-th)
 
         offset = self.ind_offset + self.n_emb * rand_table
 
@@ -440,7 +444,8 @@ class LazyQuantileNorm(nn.Module):
 
         quantiles = torch.arange(quantiles) / (quantiles - 1)
 
-        self.n_quantiles = len(quantiles) if predefined is None else predefined.shape[-1]
+        n_quantiles = len(quantiles) if predefined is None else predefined.shape[-1]
+        self.register_buffer("n_quantiles", torch.FloatTensor([n_quantiles]))
 
         boundaries = None if predefined is None else predefined
         self.predefined = False if predefined is None else True
@@ -459,8 +464,13 @@ class LazyQuantileNorm(nn.Module):
 
     def forward(self, x):
 
+        dtype = x.dtype
+
         if not self.track_running_stats or self.boundaries is None:
-            boundaries = torch.quantile(x, self.quantiles, dim=0).transpose(0, 1)
+
+            boundaries = torch.quantile(x.float(), self.quantiles.float(), dim=0).transpose(0, 1)
+            boundaries = boundaries.type(dtype)
+
             if self.boundaries is None:
                 self.boundaries = boundaries
         else:
@@ -469,8 +479,8 @@ class LazyQuantileNorm(nn.Module):
                 q = self.quantiles.view(1, 1, -1)
                 b = self.boundaries.unsqueeze(0)
                 xv = x.unsqueeze(-1).detach()
-                q_th = (q * (xv - b) > (1 - q) * (b - xv)).float()
-                q_grad = (- q * q_th + (1 - q) * (1 - q_th)) * (~torch.isinf(xv)).float()
+                q_th = (q * (xv - b) > (1 - q) * (b - xv)).type(dtype)
+                q_grad = (- q * q_th + (1 - q) * (1 - q_th)) * (~torch.isinf(xv)).type(dtype)
                 q_grad = q_grad.sum(dim=0)
 
                 if self.boost:
@@ -481,6 +491,7 @@ class LazyQuantileNorm(nn.Module):
 
                 self.boundaries = self.boundaries - self.lr * torch.std(x, dim=0).unsqueeze(-1) * factor * q_grad
                 self.boundaries = self.boundaries.sort(dim=1).values
+
 
         if (self.training and self.use_stats_for_train) or (
                 not self.training and self.track_running_stats) or self.predefined:
@@ -496,7 +507,7 @@ class LazyQuantileNorm(nn.Module):
 class BetterEmbedding(torch.nn.Module):
 
     def __init__(self, numerical_indices, categorical_indices, n_quantiles, n_categories, emb_dim,
-                 momentum=.001, track_running_stats=True, noise=0.2, n_tables=15, initial_mask=1.,
+                 momentum=.001, track_running_stats=True, n_tables=15, initial_mask=1.,
                  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, quantile_resolution=1e-4,
                  use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=True, tokenizer=True,
                  qnorm_flag=False, kaiming_init=False, init_spline_equally=True, sparse=True):
@@ -512,6 +523,7 @@ class BetterEmbedding(torch.nn.Module):
         n_categories = n_categories + 1
         cat_offset = n_categories.cumsum(0) - n_categories
         self.register_buffer("cat_offset", cat_offset.unsqueeze(0))
+        self.register_buffer("null_emb_cat", torch.FloatTensor(1, 0, emb_dim))
 
         self.flatten = flatten
         self.n_tables = n_tables
@@ -524,7 +536,7 @@ class BetterEmbedding(torch.nn.Module):
         if len(categorical_indices):
             self.emb_cat = nn.Embedding(1 + self.n_emb * n_tables, emb_dim, sparse=sparse)
         else:
-            self.emb_cat = lambda x: torch.FloatTensor(len(x), 0, emb_dim).to(x.device)
+            self.emb_cat = lambda x: self.null_emb_cat.repeat(len(x), 1, 1)
 
         if init_spline_equally:
 
@@ -569,15 +581,15 @@ class BetterEmbedding(torch.nn.Module):
 
         self.br = min(max(0, self.br + self.pid((train_loss - val_loss) / val_loss)), 1)
         self.lambda_llr = min(max(0, self.lambda_llr - self.pid_llr((train_loss - val_loss) / val_loss)), 1)
-        print(f"br was changed to {self.br}")
-        print(f"lambda_llr was changed to {self.lambda_llr}")
+        logger.info(f"br was changed to {self.br}")
+        logger.info(f"lambda_llr was changed to {self.lambda_llr}")
 
     def get_llr(self):
         return self.llr(self.emb_num.emb.weight) * self.lambda_llr
 
     def forward(self, x, ensemble=True):
 
-        x_num = x[:, self.numerical_indices].float()
+        x_num = x[:, self.numerical_indices]
         if self.qnorm_flag:
             x_num = self.qnorm(x_num)
         x_cat = x[:, self.categorical_indices].long()
@@ -593,17 +605,19 @@ class BetterEmbedding(torch.nn.Module):
             mask_cat = 1
 
         if self.training:
-            rand_table = torch.randint(self.n_tables, size=(1, 1)).to(x_cat.device)
+            rand_table = torch.randint(self.n_tables, size=(1, 1), device=x_cat.device)
         else:
-            rand_table = torch.randint(self.n_tables, size=(len(x), 1)).to(x_cat.device)
+            rand_table = torch.randint(self.n_tables, size=(len(x), 1), device=x_cat.device)
 
         x_cat = (x_cat + 1) * mask_cat + self.cat_offset + self.n_emb * rand_table
 
         e_cat = self.emb_cat(x_cat)
-        e_num = self.emb_num(x_num, mask_num, rand_table)
 
+        e_num = self.emb_num(x_num, mask_num, rand_table)
         e = torch.cat([e_cat, e_num], dim=1)
+
         e = e + self.bias
+
         if self.tokenizer:
             x = torch.cat([torch.zeros_like(x_cat), x_num * mask_num], dim=1)
             y = self.weight * x.unsqueeze(-1)

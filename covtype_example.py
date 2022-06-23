@@ -18,7 +18,7 @@ from src.beam import Algorithm, PackedFolds
 from src.beam import LinearNet
 from src.beam import DataTensor, BeamOptimizer
 from src.beam.utils import is_notebook
-from src.beam.config import parser
+from src.beam.config import get_beam_parser
 from src.beam.model import GBN, MHRuleLayer, BetterEmbedding, mySequential
 
 from torchvision import transforms
@@ -202,13 +202,15 @@ class ResRuleLayer(nn.Module):
 class RuleNet(nn.Module):
 
     def __init__(self, numerical_indices, categorical_indices, n_categories,
-                 embedding_dim=256, n_rules=128, n_layers=5, dropout=0.2, n_out=1, bias=True,
-                 activation='gelu', noise=0., n_quantiles=50, n_tables=15, ):
+                 embedding_dim=256, n_rules=128, n_layers=5, dropout=0., n_out=1, bias=True,
+                 activation='gelu', n_quantiles=20, n_tables=15,
+                 initial_mask=1., qnorm_momentum=.001, k_p=0.05, k_i=0.005,
+                 k_d=0.005, T=20, clip=0.005, quantile_resolution=1e-4):
         super().__init__()
 
         self.emb = BetterEmbedding(numerical_indices, categorical_indices, n_quantiles, n_categories, embedding_dim,
-                 momentum=.001, track_running_stats=True, noise=noise, n_tables=n_tables, initial_mask=1.,
-                 k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, quantile_resolution=1e-4,
+                 momentum=qnorm_momentum, track_running_stats=True, n_tables=n_tables, initial_mask=initial_mask,
+                 k_p=k_p, k_i=k_i, k_d=k_d, T=T, clip=clip, quantile_resolution=quantile_resolution,
                  use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=True, tokenizer=True,
                  qnorm_flag=True, kaiming_init=False, init_spline_equally=True, sparse=True)
 
@@ -266,6 +268,7 @@ class CovtypeDataset(UniversalDataset):
         self.n_categories = torch.tensor(df_cat.nunique().values)
         self.n_classes = int(y.max() + 1)
 
+
 class CovtypeAlgorithm(Algorithm):
 
     def __init__(self, *args, **argv):
@@ -273,22 +276,26 @@ class CovtypeAlgorithm(Algorithm):
 
         networks, dataloaders, experiment = args
 
+        self.eval_ensembles = experiment.eval_ensembles
+
         self.label_smoothing = experiment.label_smoothing
         self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.ReduceLROnPlateau,
-                                                              mode='min', factor=1 / math.sqrt(10), patience=16,
+                                                              mode='min', factor=experiment.scheduler_factor,
+                                                              patience=experiment.scheduler_patience,
                                                               threshold=0, threshold_mode='rel', cooldown=0, min_lr=0,
-                                                              eps=1e-08, verbose=True)
+                                                              eps=1e-06, verbose=True)
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
         x, y = sample['x'], sample['y']
 
 
-
         if training:
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
+            self.last_train_loss = float(np.mean(results['scalar']['loss']))
         else:
             val_loss = float(np.mean(results['scalar']['loss']))
+            self.networks['net'].emb.step(self.last_train_loss, val_loss)
             self.scheduler.step(val_loss)
 
         aux = {}
@@ -304,6 +311,7 @@ class CovtypeAlgorithm(Algorithm):
         with torch.cuda.amp.autocast(enabled=self.amp):
             y_hat = net(x)
             loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=self.label_smoothing)
+                   # + net.emb.get_llr()
 
         opt.apply(loss, training=training)
 
@@ -339,7 +347,16 @@ class CovtypeAlgorithm(Algorithm):
 
         net = self.networks['net']
 
-        y_hat = net(x)
+        if subset == 'validation':
+            y_hat = net(x)
+
+        else:
+            net.train()
+            y_hat = []
+            for i in range(self.eval_ensembles):
+                y_hat.append(net(x))
+
+            y_hat = torch.stack(y_hat).mean(dim=0)
 
         # add scalar measurements
         results['predictions']['y_pred'].append(y_hat.detach())
@@ -376,7 +393,11 @@ def covtype_algorithm_generator(experiment, **kwargs):
 
     # choose your network
     net = RuleNet(dataset.numerical_indices, dataset.categorical_indices,
-                  dataset.n_categories, n_out=dataset.n_classes)
+                  dataset.n_categories, n_out=dataset.n_classes, embedding_dim=experiment.channels,
+                  n_rules=experiment.n_rules, n_layers=experiment.n_layers, dropout=experiment.dropout,
+                 activation=experiment.activation, n_quantiles=experiment.n_quantiles, n_tables=experiment.n_tables,
+                  initial_mask=experiment.initial_mask, qnorm_momentum=experiment.qnorm_momentum, k_p=experiment.k_p,
+                  k_i=experiment.k_i, k_d=experiment.k_d, T=experiment.T_pid, clip=experiment.clip_pid)
 
     optimizer = None
 
@@ -387,24 +408,51 @@ def covtype_algorithm_generator(experiment, **kwargs):
     return alg
 
 
-# ## Training
+# Add experiment hyperparameter arguments
+
+def get_covtype_parser():
+
+    parser = get_beam_parser()
+
+    parser.add_argument('--weight-factor', type=float, default=0.5, help='Squashing factor for the oversampling probabilities')
+    parser.add_argument('--label-smoothing', type=float, default=0.05, help='Smoothing factor in the Cross Entropy loss')
+    parser.add_argument('--activation', type=str, default='gelu', help='Activation function in RuleNet')
+    parser.add_argument('--channels', type=int, default=256, help='Size of embedding')
+    parser.add_argument('--Dropout', type=float, default=0.0, help='Dropout value for rule layers')
+    parser.add_argument('--n-rules', type=int, default=128, help='Number of rules')
+    parser.add_argument('--n-layers', type=int, default=5, help='Number of Residual Rule layers')
+    parser.add_argument('--n-quantiles', type=int, default=20, help='Number of quantiles for the BetterEmbedding')
+    parser.add_argument('--n-tables', type=int, default=15, help='Number of tables for the BetterEmbedding')
+
+    parser.add_argument('--scheduler-factor', type=float, default=1 / math.sqrt(10), help='Reduce factor on Plateau')
+    parser.add_argument('--scheduler-patience', type=int, default=16, help='Patience for plateau identification')
+    parser.add_argument('--eval-ensembles', type=int, default=64, help='Number of repetitions of eval passes for each example (to build the ensemble)')
+
+    parser.add_argument('--initial-mask', type=float, default=1., help='Initial PID masking')
+    parser.add_argument('--qnorm-momentum', type=float, default=.001, help='Momentum for the quantile normalization')
+    parser.add_argument('--k_p', type=float, default=.05, help='Kp PID coefficient')
+    parser.add_argument('--k_i', type=float, default=.005, help='Ki PID coefficient')
+    parser.add_argument('--k_d', type=float, default=.005, help='Kd PID coefficient')
+    parser.add_argument('--T-pid', type=int, default=20, help='PID integration memory')
+    parser.add_argument('--clip-pid', type=int, default=.005, help='PID clipping value')
+
+
+    return parser
+
 
 if __name__ == '__main__':
 
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
-
     path_to_data = '/home/shared/data/dataset/covtype'
     root_dir = '/home/shared/data/results/covtype'
 
-    args = beam_arguments(
-        f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
-        "--n-epochs=2 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
-        "--weight-decay=.00256 --beta1=0.9 --beta2=0.9",
-        path_to_data=path_to_data, gamma=1., dropout=.0, activation='celu', channels=512,
-        scale_down=.7, scale_up=1.4, ratio_down=.7, ratio_up=1.4)
+    args = beam_arguments(get_covtype_parser(),
+        f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1 --amp --lr-d=1e-3 --batch-size=256",
+        "--n-epochs=100 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark --identifier=half_precision",
+        "--weight-decay=1e-5 --beta1=0.9 --beta2=0.999", label_smoothing=.05, weight_factor=.5,
+        path_to_data=path_to_data, dropout=.0, activation='gelu', channels=512)
 
 
     experiment = Experiment(args)
