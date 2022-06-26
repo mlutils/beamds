@@ -372,12 +372,16 @@ class UniversalDataset(torch.utils.data.Dataset):
 
             if labels is not None:
                 self.labels_split['test'] = labels[self.indices_split['test']]
-                labels = labels[indices]
+                # labels = labels[indices]
 
         elif test_split_method == 'uniform':
+
             if labels is not None:
-                indices, test, labels, self.labels_split['test'] = train_test_split(indices, labels, random_state=seed,
-                                                                                    test_size=test, stratify=labels if stratify else None)
+                labels_to_split = labels[indices]
+                indices, test, _, self.labels_split['test'] = train_test_split(indices, labels_to_split,
+                                                                               random_state=seed,
+                                                                               test_size=test,
+                                                                               stratify=labels_to_split if stratify else None)
             else:
                 indices, test = train_test_split(indices, random_state=seed, test_size=test)
 
@@ -389,13 +393,13 @@ class UniversalDataset(torch.utils.data.Dataset):
             ind_sort = np.argsort(time_index)
             indices = indices[ind_sort]
 
-            self.indices_split['test'] = torch.LongTensor(indices[-int(test * len(indices)):])
-            indices = indices[:-int(test * len(indices))]
+            test_size = int(test * len(self)) if type(test) is float else test
+            self.indices_split['test'] = torch.LongTensor(indices[-test_size:])
+            indices = indices[:-test_size]
 
             if labels is not None:
                 labels = labels[ind_sort]
                 self.labels_split['test'] = labels[self.indices_split['test']]
-                labels = labels[indices]
 
         if validation is None:
             pass
@@ -405,22 +409,23 @@ class UniversalDataset(torch.utils.data.Dataset):
 
             if labels is not None:
                 self.labels_split['validation'] = labels[self.indices_split['validation']]
-                labels = labels[indices]
 
         else:
             if type(validation) is float:
                 validation = len(self) / len(indices) * validation
 
-            if stratify and labels is not None:
-                indices, validation, labels, self.labels_split['validation'] = train_test_split(indices, labels, random_state=seed,
-                                                                                                test_size=validation, stratify=labels if stratify else None)
+            if labels is not None:
+
+                labels_to_split = labels[indices]
+                indices, validation, _, self.labels_split['validation'] = train_test_split(indices, labels_to_split, random_state=seed,
+                                                                                                test_size=validation, stratify=labels_to_split if stratify else None)
             else:
                 indices, validation = train_test_split(indices, random_state=seed, test_size=validation)
 
             self.indices_split['validation'] = torch.LongTensor(validation)
 
         self.indices_split['train'] = torch.LongTensor(indices)
-        self.labels_split['train'] = labels
+        self.labels_split['train'] = labels[indices]
 
     def build_samplers(self, batch_size, eval_batch_size=None, oversample=False, weight_factor=1., expansion_size=int(1e7)):
 
