@@ -80,10 +80,18 @@ downloaded['covtype'] = datasets.fetch_covtype()
 #     f(pytorch_data, train=False, download=True)
 #
 #
-# # download huggingface models
-# from transformers import AutoModel
-#
-# model = AutoModel.from_pretrained("bert-base-cased")
-# model = AutoModel.from_pretrained("bert-base-arabertv02")
+
+from transformers import AutoTokenizer, AutoModelForMaskedLM
+
+model_names = ["bert-base-cased", "aubmindlab/bert-base-arabertv02", ]
+
+for m in model_names:
+    tokenizer = AutoTokenizer.from_pretrained(m)
+    print(tokenizer)
+    try:
+        model = AutoModelForMaskedLM.from_pretrained(m)
+        print(model)
+    except Exception as e:
+        print(e)
 
 
