@@ -378,11 +378,11 @@ class SplineEmbedding(nn.Module):
 
     def forward(self, x, mask, rand_table):
 
-        if self.enable:
-            if not self.n_features:
-                return torch.Tensor(len(x), 0, self.emb_dim, device=x.device, dtype=x.dtype)
-        else:
-            return torch.zeros(*x.shape, self.emb_dim, device=x.device, dtype=x.dtype)
+        # if self.enable:
+        #     if not self.n_features:
+        #         return torch.Tensor(len(x), 0, self.emb_dim, device=x.device, dtype=x.dtype)
+        # else:
+        #     return torch.zeros(*x.shape, self.emb_dim, device=x.device, dtype=x.dtype)
 
         th = 1e-3 if x.dtype == torch.float16 else 1e-6
         x = torch.clamp(x, min=th, max=1-th)
@@ -510,7 +510,7 @@ class BetterEmbedding(torch.nn.Module):
                  momentum=.001, track_running_stats=True, n_tables=15, initial_mask=1.,
                  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, quantile_resolution=1e-4,
                  use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=True, tokenizer=True,
-                 qnorm_flag=False, kaiming_init=False, init_spline_equally=True, sparse=True):
+                 qnorm_flag=False, kaiming_init=False, init_spline_equally=True, sparse=True, spline=True):
 
         super().__init__()
 
@@ -547,7 +547,9 @@ class BetterEmbedding(torch.nn.Module):
         else:
             weights = None
 
-        self.emb_num = SplineEmbedding(n_feature_num, n_quantiles, emb_dim, n_tables=n_tables,
+        self.emb_num = None
+        if spline:
+            self.emb_num = SplineEmbedding(n_feature_num, n_quantiles, emb_dim, n_tables=n_tables,
                                        enable=quantile_embedding, init_weights=weights, sparse=sparse)
 
         self.llr = LazyLinearRegression(n_quantiles, lr=0.001)
@@ -557,10 +559,12 @@ class BetterEmbedding(torch.nn.Module):
         else:
             self.pid_llr = PID(k_p=1e-4, k_i=0, k_d=0, T=T, clip=0)
 
-        self.qnorm = LazyQuantileNorm(quantiles=int(1 / quantile_resolution), momentum=momentum,
+        self.qnorm = None
+        if qnorm_flag:
+            self.qnorm = LazyQuantileNorm(quantiles=int(1 / quantile_resolution), momentum=momentum,
                                       track_running_stats=track_running_stats,
                                       use_stats_for_train=use_stats_for_train, boost=boost)
-        self.qnorm_flag = qnorm_flag
+
         self.tokenizer = tokenizer
         if tokenizer:
             self.weight = nn.Parameter(torch.empty((1, n_features, emb_dim)))
@@ -577,6 +581,8 @@ class BetterEmbedding(torch.nn.Module):
         else:
             nn.init.normal_(self.bias)
 
+        self.emb_dim = emb_dim
+
     def step(self, train_loss, val_loss):
 
         self.br = min(max(0, self.br + self.pid((train_loss - val_loss) / val_loss)), 1)
@@ -590,7 +596,8 @@ class BetterEmbedding(torch.nn.Module):
     def forward(self, x, ensemble=True):
 
         x_num = x[:, self.numerical_indices]
-        if self.qnorm_flag:
+
+        if self.qnorm is not None:
             x_num = self.qnorm(x_num)
         x_cat = x[:, self.categorical_indices].long()
 
@@ -613,9 +620,12 @@ class BetterEmbedding(torch.nn.Module):
 
         e_cat = self.emb_cat(x_cat)
 
-        e_num = self.emb_num(x_num, mask_num, rand_table)
-        e = torch.cat([e_cat, e_num], dim=1)
+        if self.emb_num is not None:
+            e_num = self.emb_num(x_num, mask_num, rand_table)
+        else:
+            e_num = torch.zeros(*x_num.shape, self.emb_dim, device=x_num.device, dtype=x_num.dtype)
 
+        e = torch.cat([e_cat, e_num], dim=1)
         e = e + self.bias
 
         if self.tokenizer:

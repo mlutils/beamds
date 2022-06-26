@@ -31,6 +31,7 @@ import pandas as pd
 from torch import Tensor
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 import math
+from sklearn.preprocessing import QuantileTransformer
 
 ModuleType = Union[str, Callable[..., nn.Module]]
 
@@ -208,11 +209,17 @@ class RuleNet(nn.Module):
                  k_d=0.005, T=20, clip=0.005, quantile_resolution=1e-4):
         super().__init__()
 
+        # self.emb = BetterEmbedding(numerical_indices, categorical_indices, n_quantiles, n_categories, embedding_dim,
+        #          momentum=qnorm_momentum, track_running_stats=True, n_tables=n_tables, initial_mask=initial_mask,
+        #          k_p=k_p, k_i=k_i, k_d=k_d, T=T, clip=clip, quantile_resolution=quantile_resolution,
+        #          use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=True, tokenizer=True,
+        #          qnorm_flag=True, kaiming_init=False, init_spline_equally=True, sparse=True)
+
         self.emb = BetterEmbedding(numerical_indices, categorical_indices, n_quantiles, n_categories, embedding_dim,
                  momentum=qnorm_momentum, track_running_stats=True, n_tables=n_tables, initial_mask=initial_mask,
                  k_p=k_p, k_i=k_i, k_d=k_d, T=T, clip=clip, quantile_resolution=quantile_resolution,
-                 use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=True, tokenizer=True,
-                 qnorm_flag=True, kaiming_init=False, init_spline_equally=True, sparse=True)
+                 use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=False, tokenizer=True,
+                 qnorm_flag=False, kaiming_init=False, init_spline_equally=True, sparse=True, spline=False)
 
         n_features = len(numerical_indices) + len(categorical_indices)
         self.first_rule = MHRuleLayer(n_rules, n_features, embedding_dim,
@@ -237,11 +244,42 @@ class RuleNet(nn.Module):
 
 
 
+# class CovtypeDataset(UniversalDataset):
+#
+#     def __init__(self, path,
+#                  train_batch_size, eval_batch_size, device='cpu', weight_factor=.5, seed=5782):
+#
+#         dataset = fetch_covtype(data_home=path)
+#         data = dataset['data']
+#         columns = dataset['feature_names']
+#         y = np.array(dataset['target'], dtype=np.int64)
+#         df = pd.DataFrame(data=data, columns=columns, index=np.arange(len(data)))
+#
+#         soils_columns = [c for c in df.columns if 'Soil' in c]
+#         soil = np.where(df[soils_columns])[1]
+#
+#         wilderness_columns = [c for c in df.columns if 'Wilderness' in c]
+#         wilderness = np.where(df[wilderness_columns])[1]
+#
+#         df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
+#         df_num = df.drop(columns=(soils_columns+wilderness_columns))
+#
+#         covtype = pd.concat([df_num, df_cat], axis=1)
+#         super().__init__(x=covtype.values, y=y, device=device)
+#
+#         self.split(validation=.2, test=.2, seed=seed, stratify=True, labels=self.data['y'].cpu())
+#         self.build_samplers(train_batch_size, eval_batch_size, oversample=True, weight_factor=weight_factor)
+#
+#         self.categorical_indices = torch.arange(10, 12)
+#         self.numerical_indices = torch.arange(10)
+#         self.n_categories = torch.tensor(df_cat.nunique().values)
+#         self.n_classes = int(y.max() + 1)
+
+
 class CovtypeDataset(UniversalDataset):
 
     def __init__(self, path,
                  train_batch_size, eval_batch_size, device='cpu', weight_factor=.5, seed=5782):
-
         dataset = fetch_covtype(data_home=path)
         data = dataset['data']
         columns = dataset['feature_names']
@@ -255,16 +293,33 @@ class CovtypeDataset(UniversalDataset):
         wilderness = np.where(df[wilderness_columns])[1]
 
         df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
-        df_num = df.drop(columns=(soils_columns+wilderness_columns))
+        df_num = df.drop(columns=(soils_columns + wilderness_columns))
 
-        covtype = pd.concat([df_num, df_cat], axis=1)
-        super().__init__(x=covtype.values, y=y, device=device)
+        # covtype = pd.concat([df_num, df_cat], axis=1)
+        # super().__init__(x=covtype.values, y=y, device=device)
+
+        super().__init__(y=y, device=device)
 
         self.split(validation=.2, test=.2, seed=seed, stratify=True, labels=self.data['y'].cpu())
         self.build_samplers(train_batch_size, eval_batch_size, oversample=True, weight_factor=weight_factor)
 
         self.categorical_indices = torch.arange(10, 12)
         self.numerical_indices = torch.arange(10)
+
+        qt = QuantileTransformer(n_quantiles=1000,
+                                 output_distribution='uniform',
+                                 ignore_implicit_zeros=False,
+                                 subsample=100000,
+                                 random_state=None,
+                                 copy=True)
+
+        self.qt = qt.fit(df_num.iloc[self.indices_split['train']])
+
+        df_num = pd.DataFrame(self.qt.transform(df_num))
+
+        covtype = pd.concat([df_num, df_cat], axis=1)
+        super().__init__(x=covtype.values.astype(np.float32), y=y, device=device)
+
         self.n_categories = torch.tensor(df_cat.nunique().values)
         self.n_classes = int(y.max() + 1)
 
@@ -449,10 +504,13 @@ if __name__ == '__main__':
     root_dir = '/home/shared/data/results/covtype'
 
     args = beam_arguments(get_covtype_parser(),
-        f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1 --amp --lr-d=1e-3 --batch-size=256",
-        "--n-epochs=100 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark --identifier=half_precision",
-        "--weight-decay=1e-5 --beta1=0.9 --beta2=0.999", label_smoothing=.05, weight_factor=.5,
-        path_to_data=path_to_data, dropout=.0, activation='gelu', channels=512)
+                          f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1 --no-half --lr-d=1e-3 --lr-s=.02 --batch-size=512",
+                          "--n-epochs=100 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
+                          "--weight-decay=1e-5 --beta1=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
+                          weight_decay=1e-3, label_smoothing=.2,
+                          k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
+                          path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
+                          n_layers=4, scheduler_factor=1 / math.sqrt(10))
 
 
     experiment = Experiment(args)

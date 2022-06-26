@@ -280,9 +280,13 @@ class UniversalDataset(torch.utils.data.Dataset):
 
     def __init__(self, *args, device='cpu', **kwargs):
         super().__init__()
-        self.indices_split = {}
-        self.samplers = {}
-        self.labels_split = {}
+
+        if not hasattr(self, 'indices_split'):
+            self.indices_split = {}
+        if not hasattr(self, 'samplers'):
+            self.samplers = {}
+        if not hasattr(self, 'labels_split'):
+            self.labels_split = {}
 
         # The training label is to be used when one wants to apply some data transformations/augmentations only in training mode
         self.training = False
