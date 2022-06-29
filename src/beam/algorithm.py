@@ -207,15 +207,13 @@ class Algorithm(object):
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
                                   desc=subset, total=self.epoch_length[subset] - 1):
-                # print(i)
+
                 aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=training)
 
             aux, results = self.postprocess_epoch(sample=sample, aux=aux, results=results,
                                                   subset=subset, epoch=n, training=training)
 
             yield results
-
-        return
 
     def preprocess_inference(self, aux=None, subset=None, with_labels=True):
         '''
@@ -253,6 +251,12 @@ class Algorithm(object):
         also you can add key 'objective' to the results dictionary to report the final scores.
         '''
         return results
+
+    def early_stopping(self, results, i):
+        '''
+        Use this function to early stop your model based on the results or any other metric in the algorithm class
+        '''
+        return False
 
     def __call__(self, subset='test', with_labels=True, enable_tqdm=None):
 
@@ -307,9 +311,12 @@ class Algorithm(object):
                 results = self.report(results, i)
 
             yield results
+            if self.early_stopping(results, i):
+                return
 
             all_train_results = defaultdict(dict)
             all_eval_results = defaultdict(dict)
+
 
     def set_mode(self, training=True):
 

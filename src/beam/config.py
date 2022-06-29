@@ -32,8 +32,9 @@ def get_beam_parser():
         
     '''
     parser.add_argument('--project-name', type=str, default='beam', help='The name of the beam project')
-    parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
     parser.add_argument('--algorithm', type=str, default='Algorithm', help='algorithm name')
+    parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
+
     parser.add_argument('--mp-port', type=str, default=None, help='Port to be used for multiprocessing')
 
     parser.add_argument('--root-dir', type=str, default=os.path.join(os.path.expanduser('~'), 'beam_projects'),

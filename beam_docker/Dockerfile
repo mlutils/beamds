@@ -31,6 +31,11 @@ RUN /workspace/install/apt_installs.sh
 # pip installs
 RUN pip install --upgrade pip
 RUN pip install -U -r /workspace/install/requirements.txt
+RUN pip install -U -r /workspace/install/requirements.txt
+RUN pip install -U -r /workspace/install/requirements.txt
+RUN pip install -U -r /workspace/install/requirements.txt
+RUN pip install -U -r /workspace/install/requirements.txt
+RUN pip install -U -r /workspace/install/requirements.txt
 # RUN chmod +x /workspace/install/pip_installs.sh
 # RUN /workspace/install/pip_installs.sh
 

@@ -328,14 +328,20 @@ class Experiment(object):
         if self.epoch_length_eval is None:
             self.epoch_length_eval = self.epoch_length
 
-    def reload_checkpoint(self, alg, iloc=-1):
+    def reload_checkpoint(self, alg, iloc=-1, loc=None, name=None):
 
         checkpoints = os.listdir(self.checkpoints_dir)
         checkpoints = pd.DataFrame({'name': checkpoints, 'index': [int(c.split('_')[-1]) for c in checkpoints]})
         checkpoints = checkpoints.sort_values('index')
 
-        chp = checkpoints.iloc[iloc]['name']
-        path = os.path.join(self.checkpoints_dir, chp)
+        if name is not None:
+            path = os.path.join(self.checkpoints_dir, name)
+        elif loc is not None:
+            chp = checkpoints.loc[loc]['name']
+            path = os.path.join(self.checkpoints_dir, chp)
+        else:
+            chp = checkpoints.iloc[iloc]['name']
+            path = os.path.join(self.checkpoints_dir, chp)
 
         logger.info(f"Reload experiment from checkpoint: {path}")
 

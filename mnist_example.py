@@ -43,6 +43,11 @@ class MNISTAlgorithm(Algorithm):
     def __init__(self, *args, **argv):
         super().__init__(*args, **argv)
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
+        self.stop_at = .97
+
+    def early_stopping(self, results, i):
+        acc = np.mean(results['validation']['scalar']['acc'])
+        return acc > self.stop_at
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
         x, y = sample['x'], sample['y']
@@ -172,19 +177,20 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    args = beam_arguments("--project-name=mnist --root-dir=/home/shared/data/results --algorithm=MNISTAlgorithm",
-                          "--epoch-length=100000 --n-epochs=2 --clip=1 --parallel=1 --parallel=2",
-                          path_to_data='/home/elad/projects/mnist')
+    path_to_data = '/home/shared/data//dataset/mnist'
+    root_dir = '/home/shared/data/results'
+
+
+    args = beam_arguments(
+        f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cpu   ",
+        "--epoch-length=200000 --n-epochs=10 --clip=1 --parallel=1", path_to_data=path_to_data)
 
     experiment = Experiment(args)
 
-    alg = experiment(mnist_algorithm_generator, experiment)
-
-    # here we initialize the workers (can be single or multiple workers, depending on the configuration)
-    # alg = experiment.run(run_mnist)
+    # train
+    alg = experiment(mnist_algorithm_generator)
 
     # ## Inference
-
     inference = alg('test')
 
     print('Test inference results:')

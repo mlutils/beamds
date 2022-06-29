@@ -353,16 +353,25 @@ class UniversalDataset(torch.utils.data.Dataset):
 
     def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None,
                     test_split_method='uniform', time_index=None, window=None):
-        '''
-        validation, test can be lists of indices, relative size or absolute size
-
-        The seed is fixed unless explicitly given, to make sure datasets are split the same in all instances.
-        If one wish to obtain random splitting, seed should be None
-
-        test_split_method should be uniform/time_based
-
-        # TODO: add window_based split
-        '''
+        """
+                partition the data into train/validation/split folds.
+                Parameters
+                ----------
+                validation : float/int/array/tensor
+                    If float, the ratio of the data to be used for validation. If int, should represent the total number of
+                    validation samples. If array or tensor, the elements are the indices for the validation part of the data
+                test :  float/int/array/tensor
+                   If float, the ratio of the data to be used for test. If int, should represent the total number of
+                   test samples. If array or tensor, the elements are the indices for the test part of the data
+                seed : int
+                    The random seed passed to sklearn's train_test_split function to ensure reproducibility. Passing seed=None
+                    will produce randomized results.
+                stratify: bool
+                    If True, and labels is not None, partition the data such that the distribution of the labels in each part
+                    is the same as the distribution of the labels in the whole dataset.
+                labels: iterable
+                    The corresponding ground truth for the examples in data
+                """
 
         indices = np.arange(len(self))
         if time_index is None:
@@ -429,7 +438,8 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.indices_split['validation'] = torch.LongTensor(validation)
 
         self.indices_split['train'] = torch.LongTensor(indices)
-        self.labels_split['train'] = labels[indices]
+        if labels is not None:
+            self.labels_split['train'] = labels[indices]
 
     def build_samplers(self, batch_size, eval_batch_size=None, oversample=False, weight_factor=1., expansion_size=int(1e7)):
 
@@ -525,15 +535,58 @@ class UniversalDataset(torch.utils.data.Dataset):
         return dataloader
 
 
-# class KnowledgeGraphDataset(UniversalDataset):
-#
-#     def __init__(self, nodes, nodes_mapping, edges, edges_mapping):
-#         super().__init__()
-
 class UniversalBatchSampler(object):
+    """
+         A class used to generate batches of indices, to be used in drawing samples from a dataset
+         ...
+         Attributes
+         ----------
+         indices : tensor
+             The array of indices that can be sampled.
+         length : int
+               Maximum number of batches that can be returned by the sampler
+         size : int
+               The length of indices
+         batch: int
+               size of batch
+         minibatches : int
+             number of batches in one iteration over the array of indices
+         once : bool
+             If true, perform only 1 iteration over the indices array.
+         tail : bool
+             If true, run over the tail elements of indices array (the remainder left
+             when dividing len(indices) by batch size). If once, return a minibatch. Else
+             sample elements from the rest of the array to supplement the tail elements.
+          shuffle : bool
+             If true, shuffle the indices after each epoch
+         """
 
     def __init__(self, dataset_size, batch_size, probs=None, length=None, shuffle=True, tail=True,
                  once=False, expansion_size=int(1e7)):
+
+        """
+               Parameters
+               ----------
+               dataset_size : array/tensor/int
+                   If array or tensor, represents the indices of the examples contained in a subset of the whole data
+                   (train/validation/test). If int, generates an array of indices [0, ..., dataset_size].
+               batch_size : int
+                   number of elements in a batch
+               probs : array, optional
+                   An array the length of indices, with probability/"importance" values to determine
+                   how to perform oversampling (duplication of indices to change data distribution).
+               length : int, optional
+                  see descrtiption in class docstring
+               shuffle : bool, optional
+                  see description in class docstring
+               tail : bool, optional
+                  see description in class docstring
+               once: bool, optional
+                  see description in class docstring
+               expansion_size : int
+                    Limit on the length of indices (when oversampling, the final result can't be longer than
+                    expansion_size).``
+         """
 
         self.length = sys.maxsize if length is None else int(length)
 
