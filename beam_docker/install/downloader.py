@@ -1,5 +1,8 @@
 from sklearn.datasets import fetch_openml
 from tqdm import tqdm
+from sklearn import datasets
+import torchvision
+from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 openml_datasets = [
     "123123\tone-hundred-plants-margin	1	ARFF	1600	65	100	0	143808	1	17	18	418	active	2015-05-25 20:51:03	https://www.openml.org/data/download/1592283/phpCsX3fx",
@@ -54,7 +57,6 @@ downloaded = {}
 #     print(d)
 #     downloaded[d] = fetch_openml(d, cache=True)
 
-from sklearn import datasets
 
 downloaded['20newsgroups'] = datasets.fetch_20newsgroups()
 downloaded['20newsgroups_vectorized'] = datasets.fetch_20newsgroups_vectorized()
@@ -67,21 +69,17 @@ downloaded['covtype'] = datasets.fetch_covtype()
 # downloaded['rcv1'] = datasets.fetch_rcv1()
 # downloaded['species_distributions'] = datasets.fetch_species_distributions()
 
-# import torchvision
-#
-# pytorch_data = '/root/pytorch_data'
-#
-# pytorch_datasets = ['CIFAR10', 'CIFAR100', 'FashionMNIST', 'MNIST']
-#
-# for d in pytorch_datasets:
-#     print(d)
-#     f = getattr(torchvision.datasets, d)
-#     f(pytorch_data, train=True, download=True)
-#     f(pytorch_data, train=False, download=True)
-#
-#
 
-from transformers import AutoTokenizer, AutoModelForMaskedLM
+pytorch_data = '/root/pytorch_data'
+
+pytorch_datasets = ['CIFAR10', 'CIFAR100', 'FashionMNIST', 'MNIST']
+
+for d in pytorch_datasets:
+    print(d)
+    f = getattr(torchvision.datasets, d)
+    f(pytorch_data, train=True, download=True)
+    f(pytorch_data, train=False, download=True)
+
 
 model_names = ["bert-base-cased", "aubmindlab/bert-base-arabertv02", ]
 

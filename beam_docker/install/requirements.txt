@@ -1,0 +1,164 @@
+
+# pytorch geometric
+torch-scatter
+torch-sparse
+torch-geometric
+torch-spline-conv
+torch-cluster
+torch-geometric-temporal
+
+
+# gradient boosting tree algorithms
+xgboost
+catboost
+lightgbm
+
+
+# Database and formats
+elasticsearch
+impyla
+pyorc
+fastparquet
+openpyxl
+fastavro
+pymongo[gssapi,aws,ocsp,snappy,srv,tls,zstd,encryption]
+mysql-connector-python
+redis
+neo4j
+neo4j-driver
+splunk-sdk
+pysolr
+JPype1
+JayDeBeApi
+PyHive
+
+
+# pandas and alternative packages
+pandas
+pandarallel
+dask[complete]
+datatable
+pyspark
+pyspark[sql]
+pyspark[pandas_on_spark]
+
+
+# graph packages
+pyvis
+graphviz
+pygraphviz
+gensim
+networkx
+cdlib
+stellargraph
+pykeen
+
+
+# nlp packages
+fasttext
+
+
+# vision and image Packages
+opencv-contrib-python-headless
+scikit-image
+Pillow
+
+
+# utilities and documentation
+loguru
+sphinx-server
+gunicorn
+xeus-python
+setuptools
+thop
+nbtop
+requests_ntlm
+twine
+
+
+# visualization
+voila
+bokeh
+seaborn
+plotly
+scikit-plot
+tabulate
+altair
+vega_datasets
+PyQt5
+
+
+# project deployment
+seldon-core
+mlflow
+onnx
+onnxruntime
+
+
+# network analysis
+pyshark
+scapy
+nfstream
+
+
+# derivative free optimization
+zoopt
+scikit-optimize
+nevergrad
+HEBO
+flaml
+flaml[blendsearch]
+cma
+
+
+# hyperparameter optimizations
+ray[tune,rllib,serve]
+optuna
+hyperopt
+bayesian-optimization
+botorch
+
+
+# ml and algorithms
+umap-learn
+imbalanced-learn
+fastai
+scikit-learn
+
+
+# deep learning
+tensorflow
+pytorch-tabnet
+pytorch-lightning
+pytorch-forecasting
+deepchecks
+torchensemble
+rtdl
+transformers
+
+
+# explainability
+lime
+shap
+dython
+captum
+
+
+# jupyter ipywidgets
+jupyterhub
+jupyterlab
+configurable-http-proxy
+notebook
+jupyter-resource-usage
+ipywidgets
+ipympl
+
+
+# others
+gssapi
+thrift-sasl
+python-snappy
+thriftpy
+
+
+

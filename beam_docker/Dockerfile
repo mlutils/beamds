@@ -13,6 +13,12 @@ ENV DEBIAN_FRONTEND noninteractive
 COPY beam_docker/install /workspace/install
 
 # pytorch geometric
+
+#export CPATH="/usr/local/cuda/include:$CPATH"
+#export PATH="/usr/local/cuda/bin:$PATH"
+#export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+#export DYLD_LIBRARY_PATH="/usr/local/cuda/lib:$DYLD_LIBRARY_PATH"
+
 ENV CPATH "/usr/local/cuda/include:$CPATH"
 ENV PATH "/usr/local/cuda/bin:$PATH"
 ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
@@ -23,8 +29,10 @@ RUN chmod +x /workspace/install/apt_installs.sh
 RUN /workspace/install/apt_installs.sh
 
 # pip installs
-RUN chmod +x /workspace/install/pip_installs.sh
-RUN /workspace/install/pip_installs.sh
+RUN pip install --upgrade pip
+RUN pip install -U -r /workspace/install/requirements.txt
+# RUN chmod +x /workspace/install/pip_installs.sh
+# RUN /workspace/install/pip_installs.sh
 
 # add the beam message
 

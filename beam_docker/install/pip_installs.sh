@@ -15,7 +15,7 @@ pip install dask[complete]
 pip install loguru sphinx-server gunicorn xeus-python voila thop setuptools seldon-core
 
 pip install impyla gssapi thrift-sasl python-snappy pyshark scapy nfstream pyorc datatable
-pip install requests_ntlm thriftpy fastparquet openpyxl mlflow pykeen
+pip install requests_ntlm thriftpy fastparquet openpyxl mlflow pykeen tabulate onnx onnxruntime
 
 # RUN pip install sasl
 
@@ -31,6 +31,7 @@ pip install -U ray[tune,rllib,serve]
 pip install optuna hyperopt bayesian-optimization deepchecks
 
 # more torch packages
+
 pip install pytorch-lightning pytorch-forecasting torchensemble rtdl transformers
 
 # install pyspark
@@ -43,6 +44,7 @@ pip install -U tensorflow
 pip install -U jupyterlab ipympl notebook jupyterhub jupyter-resource-usage ipywidgets
 
 # install db clinets next compilation
+
 pip install mysql-connector-python redis neo4j neo4j-driver splunk-sdk pysolr JPype1 JayDeBeApi PyHive
 pip install pymongo[gssapi,aws,ocsp,snappy,srv,tls,zstd,encryption]
 
