@@ -436,22 +436,26 @@ class Experiment(object):
                     report = res
 
             if report is not None:
+
                 for param, val in report.items():
+
+                    stat = None
+
                     if type(val) is dict or type(val) is defaultdict:
                         for p, v in val.items():
                             val[p] = np.mean(v)
                     elif isinstance(report[param], torch.Tensor):
-                        report[param] = val.cpu().numpy()
+                        stat = pd.Series(report[param].cpu().numpy()).describe()
+                        report[param] = torch.mean(val)
                     else:
+                        stat = pd.Series(report[param]).describe()
                         report[param] = np.mean(val)
 
-                if print_log:
-                    logger.info(f'{subset}:')
-                    for param in report:
+                    if print_log:
+                        logger.info(f'{subset}:')
                         if not (type(report[param]) is dict or type(
                                 report[param]) is defaultdict):
-                            s = pd.Series(report[param]).describe()
-                            stat = '  |  '.join([f'{k}: {v}' for k, v in dict(s).items() if k != 'count'])
+                            stat = '  |  '.join([f'{k}: {v}' for k, v in dict(stat).items() if k != 'count'])
                             logger.trace(f'{param}:\t| {stat}')
 
         if self.writer is None:
