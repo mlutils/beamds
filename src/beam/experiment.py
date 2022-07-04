@@ -441,7 +441,7 @@ class Experiment(object):
                         for p, v in val.items():
                             val[p] = np.mean(v)
                     elif isinstance(report[param], torch.Tensor):
-                        report[param] = torch.mean(val)
+                        report[param] = val.cpu().numpy()
                     else:
                         report[param] = np.mean(val)
 
@@ -450,7 +450,9 @@ class Experiment(object):
                     for param in report:
                         if not (type(report[param]) is dict or type(
                                 report[param]) is defaultdict):
-                            logger.info('%s %g \t|' % (param, report[param]))
+                            s = pd.Series(report[param]).describe()
+                            stat = '  |  '.join([f'{k}: {v}' for k, v in dict(s).items() if k != 'count'])
+                            logger.trace(f'{param}:\t| {stat}')
 
         if self.writer is None:
             return

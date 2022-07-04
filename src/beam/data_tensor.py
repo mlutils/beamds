@@ -162,6 +162,22 @@ class DataTensor(object):
 
         return DataTensor(data, columns=self.columns, index=self.index)
 
+    def save(self, path):
+
+        index = None if self.mapping_method == 'simple' else self.index
+
+        state = {'data': self.data, 'index': index, 'columns': self.columns,
+                 'requires_grad': self.data.requires_grad, 'device': self.data.device, 'series': self.series}
+        torch.save(state, path)
+
+    @staticmethod
+    def load(path, map_location=None):
+
+        state = torch.load(path)
+        device = map_location if map_location is not None else state['device']
+        return DataTensor(state['data'], index=state['index'], device=device, columns=state['columns'],
+                          series=state['series'], requires_grad=state['requires_grad'])
+
     @property
     def values(self):
 

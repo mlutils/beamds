@@ -6,11 +6,11 @@
 FROM nvcr.io/nvidia/pytorch:22.04-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="docker run -p 12000-12099:12000-12099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -itd -v /home/:/home/ --name flame beam:<date> 12"
-LABEL "build_command"="docker build -f beam_docker/Dockerfile --tag beam:$(date '+%Y%m%d') ."
+LABEL "build_command"="docker build -f docker/Dockerfile --tag beam:$(date '+%Y%m%d') ."
 
 ENV DEBIAN_FRONTEND noninteractive
 
-COPY beam_docker/install /workspace/install
+COPY docker/install /workspace/install
 
 # pytorch geometric
 
