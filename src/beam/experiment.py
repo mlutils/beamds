@@ -428,6 +428,7 @@ class Experiment(object):
 
         for subset, res in results.items():
 
+            logger.info(f'{subset}:')
             report = None
             if issubclass(type(res), dict):
                 if 'scalar' in res:
@@ -452,11 +453,10 @@ class Experiment(object):
                         report[param] = np.mean(val)
 
                     if print_log:
-                        logger.info(f'{subset}:')
                         if not (type(report[param]) is dict or type(
                                 report[param]) is defaultdict):
-                            stat = '  |  '.join([f'{k}: {v}' for k, v in dict(stat).items() if k != 'count'])
-                            logger.trace(f'{param}:\t| {stat}')
+                            stat = '\t|  '.join([f'{k}:{v: .4}' for k, v in dict(stat).items() if k != 'count'])
+                            logger.info(f'{param}:\t| {stat}')
 
         if self.writer is None:
             return
