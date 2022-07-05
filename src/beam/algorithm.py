@@ -54,7 +54,7 @@ class Algorithm(object):
                                            sparse_args={'lr': self.args.lr_sparse,
                                                         'betas': (self.args.beta1, self.args.beta2),
                                                         'eps': self.args.eps},
-                                           clip=self.args.clip, amp=self.amp, accumulate=self.args.accumulate
+                                           clip=self.args.clip_gradient, amp=self.amp, accumulate=self.args.accumulate
                                            ) for k, v in self.networks.items()}
 
         elif issubclass(type(optimizers), dict):
@@ -81,14 +81,24 @@ class Algorithm(object):
         if experiment.load_model:
             experiment.reload_checkpoint(self)
 
-    def load_dataset(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
-                   worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
+    def load_dataset(self, dataset=None, dataloaders=None, train_batch_size=None, eval_batch_size=None,
+                     oversample=False, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
+                     worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
 
         assert dataloaders is not None or dataset is not None, "Either dataset or dataloader must be supplied"
-
         self.dataset = dataset
 
         if dataloaders is None:
+
+            train_batch_size = self.experiment.args.train_batch_size if train_batch_size is None else train_batch_size
+            eval_batch_size = self.experiment.args.eval_batch_size if eval_batch_size is None else eval_batch_size
+            oversample = self.experiment.args.oversample if oversample is None else oversample
+            weight_factor = self.experiment.args.weight_factor if weight_factor is None else weight_factor
+            expansion_size = self.experiment.args.expansion_size if expansion_size is None else expansion_size
+
+            dataset.build_samplers(train_batch_size, eval_batch_size=eval_batch_size,
+                                   oversample=oversample, weight_factor=weight_factor, expansion_size=expansion_size)
+
             pin_memory = 'cpu' not in str(self.experiment.args.device)
             dataloaders = dataset.build_dataloaders(num_workers=self.experiment.args.cpu_workers, pin_memory=pin_memory,
                                                    timeout=timeout, collate_fn=collate_fn,

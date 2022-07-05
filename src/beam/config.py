@@ -63,6 +63,7 @@ def get_beam_parser():
     boolean_feature(parser, "half", False, "Use FP16 instead of FP32")
     boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision")
     boolean_feature(parser, "store-initial-weights", False, "Store the network's initial weights")
+    boolean_feature(parser, "oversample", False, "oversample dataset according to the labels probability")
 
     # experiment parameters
     parser.add_argument('--init', type=str, default='ortho', help='Initialization method [ortho|N02|xavier|]')
@@ -93,8 +94,13 @@ def get_beam_parser():
     parser.add_argument('--eps', type=float, default=1e-4, metavar='ɛ', help='Adam\'s epsilon parameter')
     parser.add_argument('--beta1', type=float, default=0.9, metavar='β', help='Adam\'s β1 parameter')
     parser.add_argument('--beta2', type=float, default=0.999, metavar='β', help='Adam\'s β2 parameter')
-    parser.add_argument('--clip', type=float, default=0., help='Clip Pi Gradient L2 norm')
+    parser.add_argument('--clip-gradient', type=float, default=0., help='Clip Gradient L2 norm')
     parser.add_argument('--accumulate', type=int, default=1, help='Accumulate gradients for this number of backward iterations')
+    parser.add_argument('--oversampling-weight-factor', type=float, default=1.,
+                        help='A factor [0, 1] that controls how much to oversample where'
+                             '0-no oversampling and 1-full oversampling')
+    parser.add_argument('--expansion-size', type=int, default=int(1e7),
+                        help='largest expanded index size for oversampling')
 
     # results printing and visualization
 

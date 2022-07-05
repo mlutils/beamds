@@ -23,16 +23,14 @@ from src.beam import DataTensor, PackedFolds
 
 class MNISTDataset(UniversalDataset):
 
-    def __init__(self, path, train_batch_size, eval_batch_size, seed=None):
+    def __init__(self, path, seed=None):
         super().__init__()
         dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
         dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
 
         self.data = PackedFolds({'train': dataset_train.data, 'test': dataset_test.data})
         self.labels = PackedFolds({'train': dataset_train.targets, 'test': dataset_test.targets})
-
         self.split(validation=.2, test=self.labels['test'].index, seed=seed)
-        self.build_samplers(train_batch_size, eval_batch_size)
 
     def __getitem__(self, index):
         return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
@@ -124,12 +122,8 @@ class MNISTAlgorithm(Algorithm):
 
 def mnist_algorithm_generator(experiment):
 
-    dataset = MNISTDataset(experiment.args.path_to_data,
-                           experiment.args.batch_size_train, experiment.args.batch_size_eval)
-
-    # we recommend using the algorithm argument to determine the type of algorithm to be used
-    Alg = globals()[experiment.args.algorithm]
-    alg = Alg(experiment)
+    dataset = MNISTDataset(experiment.args.path_to_data)
+    alg = MNISTAlgorithm(experiment)
     alg.load_dataset(dataset)
 
     return alg
@@ -137,12 +131,8 @@ def mnist_algorithm_generator(experiment):
 
 def run_mnist(rank, world_size, experiment):
 
-    dataset = MNISTDataset(experiment.args.path_to_data,
-                           experiment.args.batch_size_train, experiment.args.batch_size_eval)
-
-    # we recommend using the algorithm argument to determine the type of algorithm to be used
-    Alg = globals()[experiment.args.algorithm]
-    alg = Alg(experiment)
+    dataset = MNISTDataset(experiment.args.path_to_data)
+    alg = MNISTAlgorithm(experiment)
     alg.load_dataset(dataset)
 
     # simulate input to the network
@@ -173,7 +163,6 @@ if __name__ == '__main__':
 
     path_to_data = '/home/shared/data//dataset/mnist'
     root_dir = '/home/shared/data/results'
-
 
     args = beam_arguments(
         f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cpu   ",

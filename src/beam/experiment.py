@@ -23,10 +23,21 @@ from functools import partial
 
 done = mp.Event()
 
-
 class Bunch(object):
   def __init__(self, adict):
     self.__dict__.update(adict)
+
+def default_algorithm_generator(experiment, Alg, Dataset):
+
+    def ag(experiment):
+
+        dataset = Dataset(experiment)
+        alg = Alg(experiment)
+        alg.load_dataset(dataset)
+
+        return alg
+
+    return ag
 
 
 def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
