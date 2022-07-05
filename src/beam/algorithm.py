@@ -3,6 +3,7 @@ from torch import nn
 import torch
 import copy
 from .utils import tqdm_beam as tqdm
+from .utils import logger
 import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -12,38 +13,48 @@ from .dataset import UniversalBatchSampler, UniversalDataset
 
 class Algorithm(object):
 
-    def __init__(self, networks, dataloaders, experiment, dataset=None, optimizers=None, store_initial_weights=False):
+    def __init__(self, experiment, networks=None, optimizers=None):
 
         self.experiment = experiment
 
+        self.args = experiment.args
+
         self.device = experiment.device
         self.ddp = experiment.ddp
-        self.half = experiment.half
-        self.enable_tqdm = experiment.enable_tqdm
         self.hpo = experiment.hpo
+
+        # some experiment hyperparameters
+        self.half = experiment.args.half
+        self.enable_tqdm = experiment.args.enable_tqdm
         self.trial = experiment.trial
-        self.n_epochs = experiment.n_epochs
+        self.n_epochs = experiment.args.n_epochs
+        self.batch_size_train = experiment.args.batch_size_train
+        self.batch_size_eval = experiment.args.batch_size_eval
+
         self.pin_memory = ('cpu' not in str(self.device))
-        self.amp = experiment.amp if self.pin_memory else False
+        self.amp = experiment.args.amp if self.pin_memory else False
 
-        self.dataloaders = dataloaders
-        self.dataset = dataset
-
-        if type(networks) is not dict:
+        if networks is None:
+            networks = {}
+        elif issubclass(type(networks), nn.Module):
             networks = {'net': networks}
+        elif check_type(networks).major == 'dict':
+            pass
+        else:
+            raise NotImplementedError("Network type is unsupported")
 
         self.networks = networks
 
         if optimizers is None:
             self.networks = {k: self.register_network(v) for k, v in networks.items()}
-            self.optimizers = {k: BeamOptimizer(v, dense_args={'lr': experiment.lr_dense,
-                                                          'weight_decay': experiment.weight_decay,
-                                                           'betas': (experiment.beta1, experiment.beta2),
-                                                          'eps': experiment.eps},
-                                           sparse_args={'lr': experiment.lr_sparse,
-                                                        'betas': (experiment.beta1, experiment.beta2),
-                                                        'eps': experiment.eps},
-                                           clip=experiment.clip, amp=self.amp, accumulate=experiment.accumulate
+            self.optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.args.lr_dense,
+                                                          'weight_decay': self.args.weight_decay,
+                                                           'betas': (self.args.beta1, self.args.beta2),
+                                                          'eps': self.args.eps},
+                                           sparse_args={'lr': self.args.lr_sparse,
+                                                        'betas': (self.args.beta1, self.args.beta2),
+                                                        'eps': self.args.eps},
+                                           clip=self.args.clip, amp=self.amp, accumulate=self.args.accumulate
                                            ) for k, v in self.networks.items()}
 
         elif issubclass(type(optimizers), dict):
@@ -64,20 +75,33 @@ class Algorithm(object):
         else:
             raise NotImplementedError
 
-        self.batch_size_train = experiment.batch_size_train
-        self.batch_size_eval = experiment.batch_size_eval
-
-        if store_initial_weights:
+        if experiment.args.store_initial_weights:
             self.initial_weights = self.save_checkpoint()
 
         if experiment.load_model:
             experiment.reload_checkpoint(self)
 
+    def load_dataset(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
+                   worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
+
+        assert dataloaders is not None or dataset is not None, "Either dataset or dataloader must be supplied"
+
+        self.dataset = dataset
+
+        if dataloaders is None:
+            pin_memory = 'cpu' not in str(self.experiment.args.device)
+            dataloaders = dataset.build_dataloaders(num_workers=self.experiment.args.cpu_workers, pin_memory=pin_memory,
+                                                   timeout=timeout, collate_fn=collate_fn,
+                                                   worker_init_fn=worker_init_fn,
+                                                   multiprocessing_context=multiprocessing_context, generator=generator,
+                                                   prefetch_factor=prefetch_factor)
+
+        self.dataloaders = dataloaders
         self.epoch_length = {}
 
         self.eval_subset = 'validation' if 'validation' in dataloaders.keys() else 'test'
-        self.epoch_length['train'] = experiment.epoch_length_train
-        self.epoch_length[self.eval_subset] = experiment.epoch_length_eval
+        self.epoch_length['train'] = self.experiment.args.epoch_length_train
+        self.epoch_length[self.eval_subset] = self.experiment.args.epoch_length_eval
 
         if self.epoch_length['train'] is None:
             dataset = dataloaders['train'].dataset
@@ -87,7 +111,7 @@ class Algorithm(object):
             dataset = dataloaders[self.eval_subset].dataset
             self.epoch_length[self.eval_subset] = len(dataset.indices_split[self.eval_subset])
 
-        if experiment.scale_epoch_by_batch_size:
+        if self.experiment.args.scale_epoch_by_batch_size:
             self.epoch_length[self.eval_subset] = self.epoch_length[self.eval_subset] // self.batch_size_eval
             self.epoch_length['train'] = self.epoch_length['train'] // self.batch_size_train
 
@@ -95,11 +119,10 @@ class Algorithm(object):
             self.epoch_length['test'] = len(dataloaders['test'])
 
         if self.n_epochs is None:
-            self.n_epochs = experiment.total_steps // self.epoch_length['train']
+            self.n_epochs = self.experiment.args.total_steps // self.epoch_length['train']
 
         if self.dataset is None:
-            self.dataset = self.dataloaders['train'].dataset
-
+            self.dataset = next(iter(self.dataloaders.values())).dataset
 
     def register_network(self, net):
 
@@ -133,7 +156,7 @@ class Algorithm(object):
             dataset = subset
 
             pin_memory = self.pin_memory if 'cpu' in str(dataset.device) else False
-            sampler = UniversalBatchSampler(len(dataset), self.experiment.batch_size_eval, shuffle=False,
+            sampler = UniversalBatchSampler(len(dataset), self.experiment.args.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=0, pin_memory=pin_memory)
@@ -148,7 +171,7 @@ class Algorithm(object):
                 dataset = UniversalDataset(subset)
 
             pin_memory = self.pin_memory if 'cpu' in str(dataset.device) else False
-            sampler = UniversalBatchSampler(len(dataset), self.experiment.batch_size_eval, shuffle=False,
+            sampler = UniversalBatchSampler(len(dataset), self.experiment.args.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=0, pin_memory=pin_memory)
@@ -162,7 +185,7 @@ class Algorithm(object):
             sample = self.process_sample(sample)
             yield i, sample
 
-    def preprocess_epoch(self, aux=None, epoch=None, subset=None, training=True):
+    def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param epoch: epoch number
@@ -170,9 +193,9 @@ class Algorithm(object):
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
-        return aux
+        return results
 
-    def iteration(self, sample=None, aux=None, results=None, subset=None, training=True):
+    def iteration(self, sample=None, results=None, subset=None, training=True):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -183,48 +206,47 @@ class Algorithm(object):
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
-        return aux, results
+        return results
 
-    def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
+    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True):
         '''
         :param epoch: epoch number
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
-        return aux, results
+        return results
 
     def inner_loop(self, n_epochs, subset, training=True):
 
         for n in range(n_epochs):
 
-            aux = defaultdict(lambda: defaultdict(list))
             results = defaultdict(lambda: defaultdict(list))
 
-            aux = self.preprocess_epoch(aux=aux, epoch=n, subset=subset, training=training)
+            results = self.preprocess_epoch(results=results, epoch=n, subset=subset, training=training)
             self.set_mode(training=training)
             data_generator = self.data_generator(subset)
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
                                   desc=subset, total=self.epoch_length[subset] - 1):
 
-                aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=training)
+                results = self.iteration(sample=sample, results=results, subset=subset, training=training)
 
-            aux, results = self.postprocess_epoch(sample=sample, aux=aux, results=results,
+            results = self.postprocess_epoch(sample=sample, results=results,
                                                   subset=subset, epoch=n, training=training)
 
             yield results
 
-    def preprocess_inference(self, aux=None, subset=None, with_labels=True):
+    def preprocess_inference(self, results=None, subset=None, with_labels=True):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
-        return aux
+        return results
 
-    def inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
+    def inference(self, sample=None, results=None, subset=None, with_labels=True):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -234,16 +256,16 @@ class Algorithm(object):
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
-        aux, results = self.iteration(sample=sample, aux=aux, results=results, subset=subset, training=False)
-        return aux, results
+        results = self.iteration(sample=sample, results=results, subset=subset, training=False)
+        return results
 
-    def postprocess_inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
+    def postprocess_inference(self, sample=None, results=None, subset=None, with_labels=True):
         '''
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
-        return aux, results
+        return results
 
     def report(self, results, i):
         '''
@@ -263,10 +285,9 @@ class Algorithm(object):
         with torch.no_grad():
             self.set_mode(training=False)
 
-            aux = defaultdict(lambda: defaultdict(list))
             results = defaultdict(lambda: defaultdict(list))
 
-            aux = self.preprocess_inference(aux=aux, subset=subset, with_labels=with_labels)
+            results = self.preprocess_inference(results=results, subset=subset, with_labels=with_labels)
 
             if type(subset) is str:
                 desc = subset
@@ -279,9 +300,9 @@ class Algorithm(object):
             dataloader = self.build_dataloader(subset)
             data_generator = self.data_generator(dataloader)
             for i, sample in tqdm(data_generator, enable=enable_tqdm, notebook=(not self.ddp), desc=desc, total=len(dataloader)):
-                aux, results = self.inference(sample=sample, aux=aux, results=results, subset=subset, with_labels=with_labels)
+                results = self.inference(sample=sample, results=results, subset=subset, with_labels=with_labels)
 
-            aux, results = self.postprocess_inference(sample=sample, aux=aux, results=results, subset=subset, with_labels=with_labels)
+            results = self.postprocess_inference(sample=sample, results=results, subset=subset, with_labels=with_labels)
 
         return results
 
@@ -290,33 +311,39 @@ class Algorithm(object):
         all_train_results = defaultdict(dict)
         all_eval_results = defaultdict(dict)
 
-        eval_generator = self.inner_loop(self.n_epochs + 1, subset=self.eval_subset, training=False)
-        for i, train_results in enumerate(self.inner_loop(self.n_epochs, subset='train', training=True)):
+        try:
 
-            for k_type in train_results.keys():
-                for k_name, v in train_results[k_type].items():
-                    all_train_results[k_type][k_name] = v
+            eval_generator = self.inner_loop(self.n_epochs + 1, subset=self.eval_subset, training=False)
+            for i, train_results in enumerate(self.inner_loop(self.n_epochs, subset='train', training=True)):
 
-            with torch.no_grad():
+                for k_type in train_results.keys():
+                    for k_name, v in train_results[k_type].items():
+                        all_train_results[k_type][k_name] = v
 
-                validation_results = next(eval_generator)
+                with torch.no_grad():
 
-                for k_type in validation_results.keys():
-                    for k_name, v in validation_results[k_type].items():
-                        all_eval_results[k_type][k_name] = v
+                    validation_results = next(eval_generator)
 
-            results = {'train': all_train_results, self.eval_subset: all_eval_results}
+                    for k_type in validation_results.keys():
+                        for k_name, v in validation_results[k_type].items():
+                            all_eval_results[k_type][k_name] = v
 
-            if self.hpo is not None:
-                results = self.report(results, i)
+                results = {'train': all_train_results, self.eval_subset: all_eval_results}
 
-            yield results
-            if self.early_stopping(results, i):
-                return
+                if self.hpo is not None:
+                    results = self.report(results, i)
 
-            all_train_results = defaultdict(dict)
-            all_eval_results = defaultdict(dict)
+                yield results
+                if self.early_stopping(results, i):
+                    return
 
+                all_train_results = defaultdict(dict)
+                all_eval_results = defaultdict(dict)
+
+        except KeyboardInterrupt:
+            logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint and exits")
+            self.experiment.reload_checkpoint(self)
+            return
 
     def set_mode(self, training=True):
 
@@ -374,14 +401,26 @@ class Algorithm(object):
 
         return state['aux']
 
-    def fit(self, *args, **kwargs):
+    def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
+                   worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, **kwargs):
         '''
         For training purposes
         '''
 
-        def algorithm_generator(experiment):
+        def algorithm_generator_single(experiment, *args, **kwargs):
+
+            self.load_dataset(dataset=dataset, dataloaders=dataloaders, timeout=0, collate_fn=None,
+                              worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2)
+
             return self
-        return self.experiment(algorithm_generator, *args, **kwargs)
+
+        if self.experiment.args.parallel == 1:
+            algorithm_generator = algorithm_generator_single
+        else:
+            raise NotImplementedError("To continue training in parallel mode: please re-run experiment() with "
+                                      "your own algorithm generator and a new dataset")
+
+        return self.experiment(algorithm_generator, **kwargs)
 
     def evaluate(self, *args, **kwargs):
         '''

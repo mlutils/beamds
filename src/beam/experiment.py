@@ -24,16 +24,21 @@ from functools import partial
 done = mp.Event()
 
 
+class Bunch(object):
+  def __init__(self, adict):
+    self.__dict__.update(adict)
+
+
 def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
     alg = algorithm_generator(*args, **kwargs)
 
     experiment.writer_control(enable=not (bool(rank)))
     for results in iter(alg):
         experiment.save_model_results(results, alg,
-                                      print_results=experiment.print_results,
-                                      visualize_results=experiment.visualize_results,
-                                      store_results=experiment.store_results, store_networks=experiment.store_networks,
-                                      visualize_weights=experiment.visualize_weights,
+                                      print_results=experiment.args.print_results,
+                                      visualize_results=experiment.args.visualize_results,
+                                      store_results=experiment.args.store_results, store_networks=experiment.args.store_networks,
+                                      visualize_weights=experiment.args.visualize_weights,
                                       argv=tensorboard_arguments)
 
     if world_size == 1:
@@ -45,10 +50,10 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
     if world_size > 1:
-        setup(rank, world_size, port=experiment.mp_port)
+        setup(rank, world_size, port=experiment.args.mp_port)
 
     experiment.set_rank(rank, world_size)
-    set_seed(seed=experiment.seed, constant=rank, increment=False, deterministic=experiment.deterministic)
+    set_seed(seed=experiment.args.seed, constant=rank, increment=False, deterministic=experiment.args.deterministic)
 
     res = job(rank, world_size, experiment, *args, **kwargs)
 
@@ -179,28 +184,20 @@ class Experiment(object):
 
         # torch.set_num_threads(100)
 
-        if print_hyperparameters:
-            logger.info(f"beam project: {args.project_name}")
-            logger.info('Experiment Hyperparameters')
-
-        self.args = vars(args)
-        for k, v in vars(args).items():
-            if print_hyperparameters:
-                logger.info(k + ': ' + str(v))
-            setattr(self, k, v)
+        self.args = args
 
         self.hpo = hpo
         self.trial = trial
         # determine the batch size
 
-        torch.backends.cudnn.benchmark = self.cudnn_benchmark
+        torch.backends.cudnn.benchmark = self.args.cudnn_benchmark
         # parameters
 
         self.start_time = time.time()
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.device = torch.device(int(self.device) if self.device.isnumeric() else self.device)
+        self.device = torch.device(int(self.args.device) if self.args.device.isnumeric() else self.args.device)
 
-        self.base_dir = os.path.join(self.root_dir, self.project_name, self.algorithm, self.identifier)
+        self.base_dir = os.path.join(self.args.root_dir, self.args.project_name, self.args.algorithm, self.args.identifier)
         os.makedirs(self.base_dir, exist_ok=True)
 
         self.exp_name = None
@@ -210,14 +207,14 @@ class Experiment(object):
         exp_names = os.listdir(self.base_dir)
         exp_indices = np.array([int(d.split('_')[0]) for d in exp_names if re.match(pattern, d) is not None])
 
-        if self.reload:
+        if self.args.reload:
 
-            if self.resume >= 0:
+            if self.args.resume >= 0:
 
-                ind = np.nonzero(exp_indices == self.resume)[0]
+                ind = np.nonzero(exp_indices == self.args.resume)[0]
                 if len(ind):
                     self.exp_name = exp_names[ind]
-                    self.exp_num = self.resume
+                    self.exp_num = self.args.resume
                     self.load_model = True
 
             else:
@@ -229,13 +226,13 @@ class Experiment(object):
 
         else:
 
-            if self.override and len(exp_indices):
+            if self.args.override and len(exp_indices):
 
                 ind = np.argmax(exp_indices)
                 self.exp_name = exp_names[ind]
                 self.exp_num = exp_indices[ind]
             else:
-                self.override = False
+                self.args.override = False
 
         if self.exp_name is None:
             self.exp_num = np.argmax(exp_indices) + 1 if len(exp_indices) else 0
@@ -255,7 +252,7 @@ class Experiment(object):
 
         else:
 
-            if not self.override:
+            if not self.args.override:
                 logger.info("Creating new experiment")
 
             else:
@@ -304,29 +301,50 @@ class Experiment(object):
         self.epoch = 0
         self.writer = None
         self.rank = 0
-        self.world_size = self.parallel
+        self.world_size = args.parallel
 
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
 
         self.ddp = False
 
+        log_file = os.path.join(self.root, "experiment.log")
+        logger.add(log_file, level='INFO', colorize=True,
+                   format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
+
+        if print_hyperparameters:
+            logger.info(f"beam project: {args.project_name}")
+            logger.info('Experiment Hyperparameters')
+
+            for k, v in vars(args).items():
+                logger.info(k + ': ' + str(v))
+
         # update experiment parameters
 
-        if self.batch_size_train is None:
-            self.batch_size_train = self.batch_size
+        if self.args.batch_size_train is None:
+            self.args.batch_size_train = self.args.batch_size
 
-        if self.batch_size_eval is None:
-            self.batch_size_eval = self.batch_size
+        if self.args.batch_size_eval is None:
+            self.args.batch_size_eval = self.args.batch_size
 
-        if self.batch_size is None:
-            self.batch_size = self.batch_size_train
+        if self.args.batch_size is None:
+            self.args.batch_size = self.args.batch_size_train
 
-        if self.epoch_length_train is None:
-            self.epoch_length_train = self.epoch_length
+        if self.args.epoch_length_train is None:
+            self.args.epoch_length_train = self.args.epoch_length
 
-        if self.epoch_length_eval is None:
-            self.epoch_length_eval = self.epoch_length
+        if self.args.epoch_length_eval is None:
+            self.args.epoch_length_eval = self.args.epoch_length
+
+    @staticmethod
+    def reload_from_path(path):
+
+        logger.info(f"Reload experiment from path: {path}")
+        args = pd.read_pickle(os.path.join(path, "args.pkl"))
+        args = Bunch(args)
+        args.override = False
+        args.reload = True
+
 
     def reload_checkpoint(self, alg, iloc=-1, loc=None, name=None):
 
@@ -358,14 +376,14 @@ class Experiment(object):
 
     def writer_control(self, enable=True, add_hyperparameters=True, networks=None, inputs=None):
 
-        if enable and self.writer is None:
-            self.writer = SummaryWriter(log_dir=self.tensorboard_dir, comment=self.identifier)
+        if enable and self.writer is None and self.args.tensorboard:
+            self.writer = SummaryWriter(log_dir=self.tensorboard_dir, comment=self.args.identifier)
 
         if not enable:
             self.writer = None
 
         if add_hyperparameters and self.writer is not None:
-            self.writer.add_hparams(self.args, {}, run_name=self.exp_name)
+            self.writer.add_hparams(vars(self.args), {}, run_name=self.exp_name)
 
         if networks is not None and self.writer is not None:
             for k, net in networks.items():
@@ -455,7 +473,7 @@ class Experiment(object):
                     if print_log:
                         if not (type(report[param]) is dict or type(
                                 report[param]) is defaultdict):
-                            stat = '\t|  '.join([f'{k}:{v: .4}' for k, v in dict(stat).items() if k != 'count'])
+                            stat = '\t|  '.join([f"{k if k != 'mean' else 'avg'}:{v: .4}"[:12] for k, v in dict(stat).items() if k != 'count'])
                             logger.info(f'{param}:\t| {stat}')
 
         if self.writer is None:
@@ -552,15 +570,15 @@ class Experiment(object):
 
             return res
 
-        if self.parallel > 1:
-            logger.info(f'Initializing {self.parallel} parallel workers')
+        if self.world_size > 1:
+            logger.info(f'Initializing {self.world_size} parallel workers')
 
-            if self.mp_port is None or check_if_port_is_available(self.mp_port):
-                self.mp_port = find_free_port()
+            if self.args.mp_port == 'random' or check_if_port_is_available(self.args.mp_port):
+                self.args.mp_port = find_free_port()
 
-            logger.info(f'Multiprocessing port is: {self.mp_port}')
+            logger.info(f'Multiprocessing port is: {self.args.mp_port}')
 
-            return _run(run_worker, self.parallel)
+            return _run(run_worker, self.world_size)
         else:
             logger.info(f'Single worker mode')
             return run_worker(0, 1, None, *arguments, **kwargs)
@@ -569,6 +587,6 @@ class Experiment(object):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.tensorboard:
+        if self.args.tensorboard:
             self.writer.export_scalars_to_json(os.path.join(self.tensorboard_dir, "all_scalars.json"))
             self.writer.close()

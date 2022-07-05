@@ -127,8 +127,8 @@ class PackedFolds(object):
         else:
             raise ValueError
 
-        cumsum =  torch.cumsum(lengths, dim=0)
-        offset =  cumsum - lengths
+        cumsum = torch.cumsum(lengths, dim=0)
+        offset = cumsum - lengths
         offset = offset[fold] + fold_index
 
         self.device = device
@@ -275,7 +275,6 @@ class PackedFolds(object):
         return PackedFolds(data=data, names=names, index=ind, fold=fold, device=self.device)
 
 
-
 class UniversalDataset(torch.utils.data.Dataset):
 
     def __init__(self, *args, device='cpu', **kwargs):
@@ -288,65 +287,68 @@ class UniversalDataset(torch.utils.data.Dataset):
         if not hasattr(self, 'labels_split'):
             self.labels_split = {}
 
-        # The training label is to be used when one wants to apply some data transformations/augmentations only in training mode
+        # The training label is to be used when one wants to apply some data transformations/augmentations
+        # only in training mode
         self.training = False
+        self.data_type = None
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if len(args):
                 self.data = [as_tensor(v, device=device) for v in args]
+                self.data_type = 'list'
             elif len(kwargs):
                 self.data = {k: as_tensor(v, device=device) for k, v in kwargs.items()}
+                self.data_type = 'dict'
             else:
                 self.data = None
 
     def train(self):
         self.training = True
+
     def eval(self):
         self.training = False
 
     def __getitem__(self, ind):
 
-        if type(self.data) is dict:
+        if self.data_type is None:
+            self.data_type = check_type(self.data).minor
+
+        if self.data_type == 'dict':
             return {k: v[ind] for k, v in self.data.items()}
-        elif len(self.data) == 1:
-            return self.data[ind]
+        elif self.data_type == 'list':
+            if len(self.data) == 1:
+                return self.data[0][ind]
+            else:
+                return [v[ind] for v in self.data]
         else:
-            return [v[ind] for v in self.data]
+            return self.data[ind]
 
     @property
     def device(self):
 
-        data_type = check_type(self.data)
+        if self.data_type is None:
+            self.data_type = check_type(self.data).minor
 
-        if data_type.major == 'dict':
-            t = next(iter(self.data.values()))
-        elif data_type.major == 'list':
-            t = self.data[0]
-        elif check_type(self.data).major == 'array':
-            t = self.data
-        elif type(self.data) is PackedFolds:
-            return self.data.device
-        elif type(self.data) is DataTensor:
+        if self.data_type == 'dict':
+            return next(iter(self.data.values())).device
+        elif self.data_type == 'list':
+            return self.data[0].device
+        elif hasattr(self.data, 'device'):
             return self.data.device
         else:
-            raise NotImplementedError
-
-        if hasattr(t, 'device'):
-            return t.device
-        else:
-            raise NotImplementedError
-
+            raise NotImplementedError(f"For data type: {type(self.data)}")
 
     def __len__(self):
 
-        if issubclass(type(self.data), dict):
+        if self.data_type is None:
+            self.data_type = check_type(self.data).minor
+
+        if self.data_type == 'dict':
             return len(next(iter(self.data.values())))
-        elif issubclass(type(self.data), list):
+        elif self.data_type == 'list':
             return len(self.data[0])
-        elif check_type(self.data).major == 'array':
-            return len(self.data)
-        elif isinstance(self.data, PackedFolds):
+        elif hasattr(self.data, '__len__'):
             return len(self.data)
         else:
             raise NotImplementedError(f"For data type: {type(self.data)}")

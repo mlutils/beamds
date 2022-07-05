@@ -17,8 +17,6 @@ from loguru import logger
 
 # logger.remove(handler_id=0)
 logger.remove()
-# logger.add(sys.stdout, level='INFO', colorize=True,
-#            format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
 logger.add(sys.stdout, level='INFO', colorize=True,
            format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>')
 

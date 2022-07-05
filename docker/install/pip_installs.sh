@@ -12,7 +12,7 @@ pip install xgboost catboost lightgbm
 pip install elasticsearch fasttext pandarallel gensim umap-learn pyvis graphviz pygraphviz opencv-contrib-python-headless
 pip install dask[complete]
 
-pip install loguru sphinx-server gunicorn xeus-python voila thop setuptools seldon-core
+pip install loguru sphinx-server gunicorn xeus-python voila thop setuptools seldon-core build
 
 pip install impyla gssapi thrift-sasl python-snappy pyshark scapy nfstream pyorc datatable
 pip install requests_ntlm thriftpy fastparquet openpyxl mlflow pykeen tabulate onnx onnxruntime

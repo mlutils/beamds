@@ -23,7 +23,7 @@ from src.beam import DataTensor, PackedFolds
 
 class MNISTDataset(UniversalDataset):
 
-    def __init__(self, path, train_batch_size, eval_batch_size):
+    def __init__(self, path, train_batch_size, eval_batch_size, seed=None):
         super().__init__()
         dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
         dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
@@ -31,7 +31,7 @@ class MNISTDataset(UniversalDataset):
         self.data = PackedFolds({'train': dataset_train.data, 'test': dataset_test.data})
         self.labels = PackedFolds({'train': dataset_train.targets, 'test': dataset_test.targets})
 
-        self.split(validation=.2, test=self.labels['test'].index)
+        self.split(validation=.2, test=self.labels['test'].index, seed=seed)
         self.build_samplers(train_batch_size, eval_batch_size)
 
     def __getitem__(self, index):
@@ -40,8 +40,12 @@ class MNISTDataset(UniversalDataset):
 
 class MNISTAlgorithm(Algorithm):
 
-    def __init__(self, *args, **argv):
-        super().__init__(*args, **argv)
+    def __init__(self, experiment):
+
+        # choose your network
+        net = LinearNet(784, 256, 10, 4)
+        super().__init__(experiment, networks=net)
+
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
         self.stop_at = .97
 
@@ -49,7 +53,7 @@ class MNISTAlgorithm(Algorithm):
         acc = np.mean(results['validation']['scalar']['acc'])
         return acc > self.stop_at
 
-    def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
+    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True):
         x, y = sample['x'], sample['y']
 
         results['images']['sample'] = x[:16].view(16, 1, 28, 28).data.cpu()
@@ -58,10 +62,9 @@ class MNISTAlgorithm(Algorithm):
             self.scheduler.step()
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
 
-        aux = {}
-        return aux, results
+        return results
 
-    def iteration(self, sample=None, aux=None, results=None, subset=None, training=True):
+    def iteration(self, sample=None, results=None, subset=None, training=True):
 
         x, y = sample['x'], sample['y']
 
@@ -79,9 +82,9 @@ class MNISTAlgorithm(Algorithm):
         results['scalar']['loss'].append(float(loss))
         results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
 
-        return aux, results
+        return results
 
-    def inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
+    def inference(self, sample=None, results=None, subset=None, with_labels=True):
 
         if with_labels:
             x, y = sample['x'], sample['y']
@@ -99,57 +102,48 @@ class MNISTAlgorithm(Algorithm):
 
         if with_labels:
             results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
-            aux['predictions']['target'].append(y)
+            results['predictions']['target'].append(y)
 
-        return aux, results
+        return results
 
-    def postprocess_inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
+    def postprocess_inference(self, sample=None, results=None, subset=None, with_labels=True):
         y_pred = torch.cat(results['predictions']['y_pred'])
 
         y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
 
         if with_labels:
-            y_true = torch.cat(aux['predictions']['target']).data.cpu().numpy()
+            y_true = torch.cat(results['predictions']['target']).data.cpu().numpy()
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
             results['metrics']['recall'] = recall
             results['metrics']['fscore'] = fscore
             results['metrics']['support'] = support
 
-        return aux, results
+        return results
 
 
 def mnist_algorithm_generator(experiment):
 
-    dataset = MNISTDataset(experiment.path_to_data,
-                           experiment.batch_size_train, experiment.batch_size_eval)
-
-    dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers)
-
-    # choose your network
-    net = LinearNet(784, 256, 10, 4)
+    dataset = MNISTDataset(experiment.args.path_to_data,
+                           experiment.args.batch_size_train, experiment.args.batch_size_eval)
 
     # we recommend using the algorithm argument to determine the type of algorithm to be used
-    Alg = globals()[experiment.algorithm]
-    alg = Alg(net, dataloader, experiment)
+    Alg = globals()[experiment.args.algorithm]
+    alg = Alg(experiment)
+    alg.load_dataset(dataset)
 
     return alg
 
 
 def run_mnist(rank, world_size, experiment):
 
-    dataset = MNISTDataset(experiment.path_to_data,
-                           experiment.batch_size_train, experiment.batch_size_eval)
-
-    pin_memory = 'cpu' not in str(experiment.device)
-    dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers, pin_memory=pin_memory)
-
-    # choose your network
-    net = LinearNet(784, 256, 10, 4)
+    dataset = MNISTDataset(experiment.args.path_to_data,
+                           experiment.args.batch_size_train, experiment.args.batch_size_eval)
 
     # we recommend using the algorithm argument to determine the type of algorithm to be used
-    Alg = globals()[experiment.algorithm]
-    alg = Alg(net, dataloader, experiment)
+    Alg = globals()[experiment.args.algorithm]
+    alg = Alg(experiment)
+    alg.load_dataset(dataset)
 
     # simulate input to the network
     x = next(alg.data_generator('validation'))[1]['x']
