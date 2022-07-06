@@ -54,12 +54,14 @@ def get_beam_parser():
 
     boolean_feature(parser, "tensorboard", True, "Log results to tensorboard")
     boolean_feature(parser, "lognet", True, 'Log  networks parameters')
-    boolean_feature(parser, "deterministic", False, 'Use deterministic pytorch optimization for reproducability')
+    boolean_feature(parser, "deterministic", False, 'Use deterministic pytorch optimization for reproducability'
+                                                    'when enabling non-deterministic behavior, it sets '
+                                                    'torch.backends.cudnn.benchmark = True which'
+                                                    'accelerates the computation')
     boolean_feature(parser, "scale-epoch-by-batch-size", True,
                     'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch'
                     'When False: epoch length corresponds to the number of forward passes in each epoch')
 
-    boolean_feature(parser, "cudnn-benchmark", False, "Setting torch.backends.cudnn.benchmark = True before the training loop can accelerate the computation")
     boolean_feature(parser, "half", False, "Use FP16 instead of FP32")
     boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision")
     boolean_feature(parser, "store-initial-weights", False, "Store the network's initial weights")
@@ -68,6 +70,8 @@ def get_beam_parser():
     # experiment parameters
     parser.add_argument('--init', type=str, default='ortho', help='Initialization method [ortho|N02|xavier|]')
     parser.add_argument('--seed', type=int, default=0, help='Seed for reproducability (zero is saved for random seed)')
+    parser.add_argument('--split-dataset-seed', type=int, default=5782,
+                        help='Seed dataset split (set to zero to get random split)')
 
     parser.add_argument('--total-steps', type=int, default=int(1e6), help='Total number of environment steps')
 

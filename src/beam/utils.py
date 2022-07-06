@@ -261,9 +261,14 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
         torch.manual_seed(seed)
         np.random.seed(seed)
 
-        if deterministic:
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = False
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
+        torch.backends.cudnn.benchmark = False
+    else:
+        torch.backends.cudnn.deterministic = False
+        torch.use_deterministic_algorithms(False)
+        torch.backends.cudnn.benchmark = True
 
 
 def to_device(data, device='cuda', half=False):

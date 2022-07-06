@@ -69,7 +69,8 @@ extensions = ['myst_parser',
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
-    'sphinx.ext.napoleon',]
+    'sphinx.ext.napoleon',
+              "nbsphinx",]
 
 # Napoleon settings
 napoleon_google_docstring = True

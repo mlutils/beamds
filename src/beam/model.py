@@ -4,9 +4,8 @@ import itertools
 from collections import defaultdict
 import numpy as np
 import math
-from .utils import slice_to_index
-from .utils import logger
-
+from .utils import slice_to_index, logger
+from functools import partial
 
 class PackedSet(object):
 
@@ -137,6 +136,8 @@ class BeamOptimizer(object):
         self.accumulate = accumulate
         self.iteration = 0
         self.amp = amp
+        self.autocast_device = 'cpu' if 'cpu' in str(next(net.parameters()).device) else 'cuda'
+
         if self.amp:
             self.scaler = torch.cuda.amp.GradScaler()
 
@@ -149,12 +150,10 @@ class BeamOptimizer(object):
             is_sparse = BeamOptimizer.check_sparse(m)
             if is_sparse:
                 for n, p in m.named_parameters(recurse=False):
-                    # print(f"sparse: {nm}/{n}")
                     if not any([p is pi for pi in sparse_parameters]):
                         sparse_parameters.append(p)
             else:
                 for n, p in m.named_parameters(recurse=False):
-                    # print(f"dense: {nm}/{n}")
                     if not any([p is pi for pi in dense_parameters]):
                         dense_parameters.append(p)
 
@@ -166,6 +165,12 @@ class BeamOptimizer(object):
 
         for k, o in self.optimizers.items():
             setattr(self, k, o)
+
+    @staticmethod
+    def prototype(dense_args=None, clip=0, accumulate=1, amp=False,
+                  sparse_args=None, dense_optimizer='AdamW', sparse_optimizer='SparseAdam'):
+        return partial(BeamOptimizer, dense_args=dense_args, clip=clip, accumulate=accumulate, amp=amp,
+                       sparse_args=sparse_args, dense_optimizer=dense_optimizer, sparse_optimizer=sparse_optimizer)
 
     @staticmethod
     def check_sparse(m):
@@ -188,28 +193,29 @@ class BeamOptimizer(object):
 
     def apply(self, loss, training=False, set_to_none=True):
 
-        self.iteration += 1
+        with torch.autocast(self.autocast_device, enabled=False):
+            self.iteration += 1
 
-        if training:
+            if training:
 
-            if self.amp:
-                self.scaler.scale(loss).backward()
-            else:
-                loss.backward()
+                if self.amp:
+                    self.scaler.scale(loss).backward()
+                else:
+                    loss.backward()
 
-            if self.clip > 0:
-                for op in self.optimizers.values():
-                    for pg in op.param_groups:
+                if self.clip > 0:
+                    for op in self.optimizers.values():
+                        for pg in op.param_groups:
 
-                        if self.amp:
-                            for op in self.optimizers.values():
-                                self.scaler.unscale_(op)
+                            if self.amp:
+                                for op in self.optimizers.values():
+                                    self.scaler.unscale_(op)
 
-                        torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.clip)
+                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.clip)
 
-            if not (self.iteration % self.accumulate):
-                self.step()
-                self.zero_grad(set_to_none=set_to_none)
+                if not (self.iteration % self.accumulate):
+                    self.step()
+                    self.zero_grad(set_to_none=set_to_none)
 
     def step(self):
         for op in self.optimizers.values():

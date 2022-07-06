@@ -23,7 +23,11 @@ from src.beam import DataTensor, PackedFolds
 
 class MNISTDataset(UniversalDataset):
 
-    def __init__(self, path, seed=None):
+    def __init__(self, experiment):
+
+        path = experiment.args.path_to_data
+        seed = experiment.args.split_dataset_seed
+
         super().__init__()
         dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
         dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
@@ -62,7 +66,7 @@ class MNISTAlgorithm(Algorithm):
 
         return results
 
-    def iteration(self, sample=None, results=None, subset=None, training=True):
+    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True):
 
         x, y = sample['x'], sample['y']
 
@@ -82,13 +86,12 @@ class MNISTAlgorithm(Algorithm):
 
         return results
 
-    def inference(self, sample=None, results=None, subset=None, with_labels=True):
+    def inference(self, sample=None, results=None, subset=None, predicting=True):
 
-        if with_labels:
-            x, y = sample['x'], sample['y']
-
-        else:
+        if predicting:
             x = sample
+        else:
+            x, y = sample['x'], sample['y']
 
         x = x.view(len(x), -1)
         net = self.networks['net']
@@ -98,18 +101,18 @@ class MNISTAlgorithm(Algorithm):
         # add scalar measurements
         results['predictions']['y_pred'].append(y_hat.detach())
 
-        if with_labels:
+        if not predicting:
             results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
             results['predictions']['target'].append(y)
 
         return results
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, with_labels=True):
-        y_pred = torch.cat(results['predictions']['y_pred'])
+    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True):
 
+        y_pred = torch.cat(results['predictions']['y_pred'])
         y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
 
-        if with_labels:
+        if not predicting:
             y_true = torch.cat(results['predictions']['target']).data.cpu().numpy()
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
@@ -122,7 +125,7 @@ class MNISTAlgorithm(Algorithm):
 
 def mnist_algorithm_generator(experiment):
 
-    dataset = MNISTDataset(experiment.args.path_to_data)
+    dataset = MNISTDataset(experiment)
     alg = MNISTAlgorithm(experiment)
     alg.load_dataset(dataset)
 
@@ -131,7 +134,7 @@ def mnist_algorithm_generator(experiment):
 
 def run_mnist(rank, world_size, experiment):
 
-    dataset = MNISTDataset(experiment.args.path_to_data)
+    dataset = MNISTDataset(experiment)
     alg = MNISTAlgorithm(experiment)
     alg.load_dataset(dataset)
 

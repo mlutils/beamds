@@ -17,27 +17,23 @@ import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
 import torch.distributed as dist
-from ray import tune
-import optuna
 from functools import partial
 
 done = mp.Event()
+
 
 class Bunch(object):
   def __init__(self, adict):
     self.__dict__.update(adict)
 
+
 def default_algorithm_generator(experiment, Alg, Dataset):
 
-    def ag(experiment):
+    dataset = Dataset(experiment)
+    alg = Alg(experiment)
+    alg.load_dataset(dataset)
 
-        dataset = Dataset(experiment)
-        alg = Alg(experiment)
-        alg.load_dataset(dataset)
-
-        return alg
-
-    return ag
+    return alg
 
 
 def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
@@ -64,7 +60,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
         setup(rank, world_size, port=experiment.args.mp_port)
 
     experiment.set_rank(rank, world_size)
-    set_seed(seed=experiment.args.seed, constant=rank, increment=False, deterministic=experiment.args.deterministic)
+    set_seed(seed=experiment.args.seed, constant=rank+1, increment=False, deterministic=experiment.args.deterministic)
 
     res = job(rank, world_size, experiment, *args, **kwargs)
 
@@ -76,93 +72,6 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
 
     else:
         return res
-
-
-class Study(object):
-
-    def __init__(self, algorithm_generator, args):
-
-        args.reload = False
-        args.override = False
-        args.print_results = False
-        args.visualize_weights = False
-        args.enable_tqdm = False
-
-        start_time = time.time()
-        exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        args.identifier = f'{args.identifier}_hp_optimization_{exptime}'
-
-        self.ag = algorithm_generator
-        self.args = args
-
-        logger.info('Hyperparameter Optimization')
-        logger.info(f"beam project: {args.project_name}")
-        logger.info('Experiment Hyperparameters')
-
-        for k, v in vars(args).items():
-            logger.info(k + ': ' + str(v))
-
-    def runner_tune(self, config):
-
-        args = copy.deepcopy(self.args)
-
-        for k, v in config.items():
-            setattr(args, k, v)
-
-        experiment = Experiment(args, results_names='objective', hpo='tune', print_hyperparameters=False)
-        alg, results = experiment(self.ag, return_results=True)
-
-        if 'objective' in results:
-            if type('objective') is tuple:
-                return results['objective']
-            elif issubclass(type(results['objective']), dict):
-                tune.report(**results['objective'])
-            else:
-                return results['objective']
-
-    def runner_optuna(self, trial, suggest):
-
-        config = suggest(trial)
-
-        logger.info('Next Hyperparameter suggestion:')
-        for k, v in config.items():
-            logger.info(k + ': ' + str(v))
-
-        args = copy.deepcopy(self.args)
-
-        for k, v in config.items():
-            setattr(args, k, v)
-
-        experiment = Experiment(args, hpo='optuna', results_names='objective',
-                                trial=trial, print_hyperparameters=False)
-        alg, results = experiment(self.ag, return_results=True)
-
-        if 'objective' in results:
-            if type('objective') is tuple:
-                return results['objective']
-            elif issubclass(type(results['objective']), dict):
-                tune.report(**results['objective'])
-            else:
-                return results['objective']
-
-    def tune(self, config, *args, **kwargs):
-
-        analysis = tune.run(self.runner_tune, config=config, *args, **kwargs)
-
-        return analysis
-
-    def optuna(self, suggest, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
-               load_if_exists=False, directions=None, *args, **kwargs):
-
-        if study_name is None:
-            study_name = f'{self.args.project_name}/{self.args.algorithm}/{self.args.identifier}'
-
-        runner = partial(self.runner_optuna, suggest=suggest)
-        study = optuna.create_study(storage=storage, sampler=sampler, pruner=pruner, study_name=study_name,
-                                    direction=direction, load_if_exists=load_if_exists, directions=directions)
-        study.optimize(runner, *args, **kwargs)
-
-        return study
 
 
 class Experiment(object):
@@ -191,19 +100,13 @@ class Experiment(object):
         results_names: additional results directories (defaults are: train, validation, test)
         """
 
-        set_seed(args.seed)
-
-        # torch.set_num_threads(100)
+        set_seed(seed=args.seed, constant=0, increment=False, deterministic=args.deterministic)
 
         self.args = args
-
         self.hpo = hpo
         self.trial = trial
-        # determine the batch size
 
-        torch.backends.cudnn.benchmark = self.args.cudnn_benchmark
         # parameters
-
         self.start_time = time.time()
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.device = torch.device(int(self.args.device) if self.args.device.isnumeric() else self.args.device)
@@ -215,24 +118,29 @@ class Experiment(object):
         self.load_model = False
 
         pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
-        exp_names = os.listdir(self.base_dir)
-        exp_indices = np.array([int(d.split('_')[0]) for d in exp_names if re.match(pattern, d) is not None])
+        exp_names = list(filter(lambda x: re.match(pattern, x) is not None, os.listdir(self.base_dir)))
+        exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
 
         if self.args.reload:
 
-            if self.args.resume >= 0:
+            if type(self.args.resume) is str:
+                if os.path.isdir(os.path.join(self.base_dir, self.args.resume)):
+                    self.exp_name = self.args.resume
+                    exp_num = int(self.exp_name.split('_')[0])
+                    self.load_model = True
 
+            elif self.args.resume >= 0:
                 ind = np.nonzero(exp_indices == self.args.resume)[0]
                 if len(ind):
-                    self.exp_name = exp_names[ind]
-                    self.exp_num = self.args.resume
+                    self.exp_name = exp_names[ind[0]]
+                    exp_num = self.args.resume
                     self.load_model = True
 
             else:
                 if len(exp_indices):
                     ind = np.argmax(exp_indices)
                     self.exp_name = exp_names[ind]
-                    self.exp_num = exp_indices[ind]
+                    exp_num = exp_indices[ind]
                     self.load_model = True
 
         else:
@@ -241,13 +149,13 @@ class Experiment(object):
 
                 ind = np.argmax(exp_indices)
                 self.exp_name = exp_names[ind]
-                self.exp_num = exp_indices[ind]
+                exp_num = exp_indices[ind]
             else:
                 self.args.override = False
 
         if self.exp_name is None:
-            self.exp_num = np.argmax(exp_indices) + 1 if len(exp_indices) else 0
-            self.exp_name = "%04d_%s" % (self.exp_num, self.exptime)
+            exp_num = np.max(exp_indices) + 1 if len(exp_indices) else 0
+            self.exp_name = "%04d_%s" % (exp_num, self.exptime)
 
         # init experiment parameters
         self.root = os.path.join(self.base_dir, self.exp_name)
@@ -270,7 +178,7 @@ class Experiment(object):
                 logger.info("Deleting old experiment")
 
                 shutil.rmtree(self.root)
-                self.exp_name = "%04d_%s" % (self.exp_num, self.exptime)
+                self.exp_name = "%04d_%s" % (exp_num, self.exptime)
                 self.root = os.path.join(self.base_dir, self.exp_name)
 
                 # set dirs
@@ -330,7 +238,11 @@ class Experiment(object):
             for k, v in vars(args).items():
                 logger.info(k + ': ' + str(v))
 
-        # update experiment parameters
+        # replace zero split_dataset_seed to none (non-deterministic split) - if zero
+        if self.args.split_dataset_seed == 0:
+            self.args.split_dataset_seed = None
+
+        # fill the batch size
 
         if self.args.batch_size_train is None:
             self.args.batch_size_train = self.args.batch_size
@@ -356,6 +268,12 @@ class Experiment(object):
         args.override = False
         args.reload = True
 
+        path, d = os.path.split(path)
+        if not d:
+            path, d = os.path.split(path)
+        args.resume = d
+
+        return Experiment(args)
 
     def reload_checkpoint(self, alg, iloc=-1, loc=None, name=None):
 
@@ -383,7 +301,7 @@ class Experiment(object):
         self.ddp = self.world_size > 1
 
         if self.device.type != 'cpu' and world_size > 1:
-            self.device = rank
+            self.device = torch.device(rank)
 
     def writer_control(self, enable=True, add_hyperparameters=True, networks=None, inputs=None):
 
@@ -428,7 +346,7 @@ class Experiment(object):
         if not self.rank:
 
             if print_results:
-                print()
+                logger.info('')
                 logger.info(f'Finished epoch {self.epoch}/{algorithm.n_epochs}:')
 
             decade = int(np.log10(self.epoch) + 1)
@@ -484,8 +402,9 @@ class Experiment(object):
                     if print_log:
                         if not (type(report[param]) is dict or type(
                                 report[param]) is defaultdict):
-                            stat = '\t|  '.join([f"{k if k != 'mean' else 'avg'}:{v: .4}"[:12] for k, v in dict(stat).items() if k != 'count'])
-                            logger.info(f'{param}:\t| {stat}')
+                            stat = '| '.join([f"{k if k != 'mean' else 'avg'}:{v: .4}".ljust(15) for k, v in dict(stat).items() if k != 'count'])
+                            paramp = f'{param}:'
+                            logger.info(f'{paramp: <15} | {stat}')
 
         if self.writer is None:
             return
@@ -526,6 +445,12 @@ class Experiment(object):
                             else:
                                 log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
 
+    def fit(self, Alg, Dataset, *args, return_results=False, reload_results=False,
+            tensorboard_arguments=None, **kwargs):
+
+        ag = partial(default_algorithm_generator, Alg=Alg, Dataset=Dataset)
+        return self(ag, *args, return_results=return_results, reload_results=reload_results,
+                    tensorboard_arguments=tensorboard_arguments, **kwargs)
 
     def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False,
                   tensorboard_arguments=None, **kwargs):

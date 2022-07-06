@@ -31,8 +31,10 @@ class Algorithm(object):
         self.batch_size_train = experiment.args.batch_size_train
         self.batch_size_eval = experiment.args.batch_size_eval
 
-        self.pin_memory = ('cpu' not in str(self.device))
-        self.amp = experiment.args.amp if self.pin_memory else False
+        self.cuda = ('cpu' not in str(self.device))
+        self.pin_memory = self.cuda
+        self.autocast_device = 'cuda' if self.cuda else 'cpu'
+        self.amp = experiment.args.amp if self.cuda else False
 
         if networks is None:
             networks = {}
@@ -43,6 +45,8 @@ class Algorithm(object):
         else:
             raise NotImplementedError("Network type is unsupported")
 
+        for k in networks.keys():
+            networks[k] = self.register_network(networks[k])
         self.networks = networks
 
         if optimizers is None:
@@ -61,16 +65,16 @@ class Algorithm(object):
             self.optimizers = {}
             for k, o in optimizers.items():
                 if callable(o):
-                    self.networks[k] = self.register_network(self.networks[k])
                     self.optimizers[k] = self.networks[k]
                 else:
+                    o.load_state_dict(o.state_dict())
                     self.optimizers[k] = o
 
         elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+            optimizers.load_state_dict(optimizers.state_dict())
             self.optimizers = {'net': optimizers}
 
         elif callable(optimizers):
-            self.networks['net'] = self.register_network(self.networks['net'])
             self.optimizers = {'net': optimizers(self.networks['net'])}
         else:
             raise NotImplementedError
@@ -81,7 +85,7 @@ class Algorithm(object):
         if experiment.load_model:
             experiment.reload_checkpoint(self)
 
-    def load_dataset(self, dataset=None, dataloaders=None, train_batch_size=None, eval_batch_size=None,
+    def load_dataset(self, dataset=None, dataloaders=None, batch_size_train=None, batch_size_eval=None,
                      oversample=False, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
                      worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
 
@@ -90,17 +94,17 @@ class Algorithm(object):
 
         if dataloaders is None:
 
-            train_batch_size = self.experiment.args.train_batch_size if train_batch_size is None else train_batch_size
-            eval_batch_size = self.experiment.args.eval_batch_size if eval_batch_size is None else eval_batch_size
+            batch_size_train = self.experiment.args.batch_size_train if batch_size_train is None else batch_size_train
+            batch_size_eval = self.experiment.args.batch_size_eval if batch_size_eval is None else batch_size_eval
             oversample = self.experiment.args.oversample if oversample is None else oversample
-            weight_factor = self.experiment.args.weight_factor if weight_factor is None else weight_factor
+            weight_factor = self.experiment.args.oversampling_weight_factor if weight_factor is None else weight_factor
             expansion_size = self.experiment.args.expansion_size if expansion_size is None else expansion_size
 
-            dataset.build_samplers(train_batch_size, eval_batch_size=eval_batch_size,
+            dataset.build_samplers(batch_size_train, eval_batch_size=batch_size_eval,
                                    oversample=oversample, weight_factor=weight_factor, expansion_size=expansion_size)
 
-            pin_memory = 'cpu' not in str(self.experiment.args.device)
-            dataloaders = dataset.build_dataloaders(num_workers=self.experiment.args.cpu_workers, pin_memory=pin_memory,
+            dataloaders = dataset.build_dataloaders(num_workers=self.experiment.args.cpu_workers,
+                                                    pin_memory=self.pin_memory,
                                                    timeout=timeout, collate_fn=collate_fn,
                                                    worker_init_fn=worker_init_fn,
                                                    multiprocessing_context=multiprocessing_context, generator=generator,
@@ -136,10 +140,10 @@ class Algorithm(object):
 
     def register_network(self, net):
 
-        net = net.to(self.device)
-
         if self.half:
             net = net.half()
+
+        net = net.to(self.device)
 
         if self.ddp:
             net = DDP(net, device_ids=[self.device])
@@ -165,11 +169,10 @@ class Algorithm(object):
 
             dataset = subset
 
-            pin_memory = self.pin_memory if 'cpu' in str(dataset.device) else False
             sampler = UniversalBatchSampler(len(dataset), self.experiment.args.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
-                                                     num_workers=0, pin_memory=pin_memory)
+                                                     num_workers=0, pin_memory=self.pin_memory)
 
         else:
 
@@ -180,11 +183,10 @@ class Algorithm(object):
             else:
                 dataset = UniversalDataset(subset)
 
-            pin_memory = self.pin_memory if 'cpu' in str(dataset.device) else False
             sampler = UniversalBatchSampler(len(dataset), self.experiment.args.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
-                                                     num_workers=0, pin_memory=pin_memory)
+                                                     num_workers=0, pin_memory=self.pin_memory)
 
         return dataloader
 
@@ -205,7 +207,7 @@ class Algorithm(object):
         '''
         return results
 
-    def iteration(self, sample=None, results=None, subset=None, training=True):
+    def iteration(self, sample=None, results=None, counter=None, subset=None, training=True):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -227,27 +229,28 @@ class Algorithm(object):
         '''
         return results
 
-    def inner_loop(self, n_epochs, subset, training=True):
+    def epoch_iterator(self, n_epochs, subset, training):
 
         for n in range(n_epochs):
 
             results = defaultdict(lambda: defaultdict(list))
 
-            results = self.preprocess_epoch(results=results, epoch=n, subset=subset, training=training)
             self.set_mode(training=training)
+            results = self.preprocess_epoch(results=results, epoch=n, training=training)
+
             data_generator = self.data_generator(subset)
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
                                   desc=subset, total=self.epoch_length[subset] - 1):
 
-                results = self.iteration(sample=sample, results=results, subset=subset, training=training)
+                with torch.autocast(self.autocast_device, enabled=self.amp):
+                    results = self.iteration(sample=sample, results=results, counter=i, training=training)
 
-            results = self.postprocess_epoch(sample=sample, results=results,
-                                                  subset=subset, epoch=n, training=training)
+            results = self.postprocess_epoch(sample=sample, results=results, epoch=n, training=training)
 
             yield results
 
-    def preprocess_inference(self, results=None, subset=None, with_labels=True):
+    def preprocess_inference(self, results=None, subset=None, predicting=False):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param subset: name of dataset subset (usually train/validation/test)
@@ -256,7 +259,7 @@ class Algorithm(object):
         '''
         return results
 
-    def inference(self, sample=None, results=None, subset=None, with_labels=True):
+    def inference(self, sample=None, results=None, subset=None, predicting=False):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -266,10 +269,10 @@ class Algorithm(object):
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
-        results = self.iteration(sample=sample, results=results, subset=subset, training=False)
+        results = self.iteration(sample=sample, results=results, subset=subset, counter=0, training=False)
         return results
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, with_labels=True):
+    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=False):
         '''
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
@@ -290,19 +293,15 @@ class Algorithm(object):
         '''
         return False
 
-    def __call__(self, subset='test', with_labels=True, enable_tqdm=None):
+    def __call__(self, subset, predicting=False, enable_tqdm=None):
 
         with torch.no_grad():
+
             self.set_mode(training=False)
-
             results = defaultdict(lambda: defaultdict(list))
+            results = self.preprocess_inference(results=results, subset=subset, predicting=predicting)
 
-            results = self.preprocess_inference(results=results, subset=subset, with_labels=with_labels)
-
-            if type(subset) is str:
-                desc = subset
-            else:
-                desc = 'dataloader'
+            desc = subset if type(subset) is str else ('predict' if predicting else 'evaluate')
 
             if enable_tqdm is None:
                 enable_tqdm = self.enable_tqdm
@@ -310,9 +309,9 @@ class Algorithm(object):
             dataloader = self.build_dataloader(subset)
             data_generator = self.data_generator(dataloader)
             for i, sample in tqdm(data_generator, enable=enable_tqdm, notebook=(not self.ddp), desc=desc, total=len(dataloader)):
-                results = self.inference(sample=sample, results=results, subset=subset, with_labels=with_labels)
+                results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting)
 
-            results = self.postprocess_inference(sample=sample, results=results, subset=subset, with_labels=with_labels)
+            results = self.postprocess_inference(sample=sample, results=results, subset=subset, predicting=predicting)
 
         return results
 
@@ -323,8 +322,8 @@ class Algorithm(object):
 
         try:
 
-            eval_generator = self.inner_loop(self.n_epochs + 1, subset=self.eval_subset, training=False)
-            for i, train_results in enumerate(self.inner_loop(self.n_epochs, subset='train', training=True)):
+            eval_generator = self.epoch_iterator(self.n_epochs + 1, subset=self.eval_subset, training=False)
+            for i, train_results in enumerate(self.epoch_iterator(self.n_epochs, subset='train', training=True)):
 
                 for k_type in train_results.keys():
                     for k_name, v in train_results[k_type].items():
@@ -436,11 +435,11 @@ class Algorithm(object):
         '''
         For validation and test purposes (when labels are known)
         '''
-        return self(*args, with_labels=True, **kwargs)
+        return self(*args, predicting=False, **kwargs)
 
     def predict(self, *args, **kwargs):
         '''
         For real data purposes (when labels are unknown)
         '''
 
-        return self(*args, with_labels=False, **kwargs)
+        return self(*args, predicting=True, **kwargs)
