@@ -1,0 +1,10 @@
+# visualization
+voila
+bokeh
+seaborn
+plotly
+scikit-plot
+tabulate
+altair
+vega_datasets
+PyQt5

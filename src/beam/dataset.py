@@ -155,7 +155,7 @@ class PackedFolds(object):
     def get_fold(self, name):
 
         fold = self.names_dict[name]
-        info = self.info[(self.info['fold'] == fold)]
+        info = self.info[self.info['fold'] == fold]
         index = info.index
 
         if self.sampling_method == 'folds':
@@ -200,6 +200,15 @@ class PackedFolds(object):
         return self.info['offset'].values
 
     @property
+    def shape(self):
+
+        if self.sampling_method == 'fold':
+            shape = {k: d.shape for k, d in zip(self.names, self.data)}
+        else:
+            shape = self.data.shape
+        return shape
+
+    @property
     def values(self):
 
         if self.sampling_method == 'fold':
@@ -222,7 +231,15 @@ class PackedFolds(object):
         self.device = device
 
     def __repr__(self):
-        return repr({k: self.data[self.names_dict[k]] for k in self.names})
+        if self.sampling_method == 'folds':
+            data = {k: self.data[self.names_dict[k]] for k in self.names}
+        else:
+            data = {k: self.get_fold(k).data for k in self.names}
+
+        if len(data) == 1:
+            data = next(iter(data.values()))
+
+        return repr(data)
 
     def __getitem__(self, ind):
 

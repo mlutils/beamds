@@ -1,0 +1,12 @@
+# tensorflow
+tensorflow
+
+# graph packages
+pyvis
+graphviz
+pygraphviz
+gensim
+networkx
+cdlib
+stellargraph
+pykeen

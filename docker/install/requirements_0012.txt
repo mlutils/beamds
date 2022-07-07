@@ -1,0 +1,8 @@
+# deep learning
+pytorch-tabnet
+pytorch-lightning
+pytorch-forecasting
+deepchecks
+torchensemble
+rtdl
+transformers

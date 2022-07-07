@@ -1,0 +1,7 @@
+# nlp packages
+fasttext
+
+# vision and image Packages
+opencv-contrib-python-headless
+scikit-image
+Pillow

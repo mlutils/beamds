@@ -1,0 +1,16 @@
+# derivative free optimization
+zoopt
+scikit-optimize
+nevergrad
+HEBO
+flaml
+flaml[blendsearch]
+cma
+
+
+# hyperparameter optimizations
+ray[tune,rllib,serve]
+optuna
+hyperopt
+bayesian-optimization
+botorch

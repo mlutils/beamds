@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:22.04-py3
+FROM nvcr.io/nvidia/pytorch:22.06-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="docker run -p 12000-12099:12000-12099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -itd -v /home/:/home/ --name flame beam:<date> 12"
 LABEL "build_command"="docker build -f docker/Dockerfile --tag beam:$(date '+%Y%m%d') ."
@@ -54,17 +54,13 @@ RUN python -m spacy download en_core_web_sm
 RUN python -m spacy download xx_ent_wiki_sm
 RUN python -m spacy download ru_core_news_sm
 
-# path for pycharm data
-RUN mkdir /root/pycharm/
-
 # install beam
 
 RUN mkdir /workspace/beamds/
 COPY . /workspace/beamds/
-RUN python -m pip install --upgrade build
 WORKDIR /workspace/beamds/
 RUN python -m build
-RUN pip install dist/*.whl --force-reinstall
+RUN pip install --no-deps dist/*.whl
 WORKDIR /workspace
 
 # config jupyter notebook

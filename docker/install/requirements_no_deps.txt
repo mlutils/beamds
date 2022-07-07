@@ -1,0 +1,6 @@
+# no deps package installation
+
+fastai
+fastcore
+fastdownload
+fastprogress

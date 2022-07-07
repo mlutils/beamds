@@ -1,0 +1,17 @@
+# Database and formats
+elasticsearch
+impyla
+pyorc
+fastparquet
+openpyxl
+fastavro
+pymongo[gssapi,aws,ocsp,snappy,srv,tls,zstd,encryption]
+mysql-connector-python
+redis
+neo4j
+neo4j-driver
+splunk-sdk
+pysolr
+JPype1
+JayDeBeApi
+PyHive

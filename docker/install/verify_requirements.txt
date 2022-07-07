@@ -1,3 +1,11 @@
 pyarrow
 six
 tqdm
+
+
+xgboost>=1.6.1
+optuna>=2.10.1
+jinja2>=3.0.3
+cryptography>=35.0
+plotly>=5.9.0
+ipython>=8.4.0

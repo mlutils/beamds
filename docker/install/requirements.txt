@@ -43,6 +43,9 @@ pyspark[sql]
 pyspark[pandas_on_spark]
 
 
+# tensorflow
+tensorflow
+
 # graph packages
 pyvis
 graphviz
@@ -56,7 +59,6 @@ pykeen
 
 # nlp packages
 fasttext
-
 
 # vision and image Packages
 opencv-contrib-python-headless
@@ -92,17 +94,12 @@ vega_datasets
 PyQt5
 
 
-# project deployment
-seldon-core
-mlflow
-onnx
-onnxruntime
-
 
 # network analysis
 pyshark
 scapy
 nfstream
+
 
 
 # derivative free optimization
@@ -129,16 +126,12 @@ imbalanced-learn
 fastai
 scikit-learn
 
+# others
+gssapi
+thrift-sasl
+python-snappy
+thriftpy
 
-# deep learning
-tensorflow
-pytorch-tabnet
-pytorch-lightning
-pytorch-forecasting
-deepchecks
-torchensemble
-rtdl
-transformers
 
 
 # explainability
@@ -146,6 +139,23 @@ lime
 shap
 dython
 captum
+
+
+# project deployment
+seldon-core
+mlflow
+onnx
+onnxruntime
+
+
+# deep learning
+pytorch-tabnet
+pytorch-lightning
+pytorch-forecasting
+deepchecks
+torchensemble
+rtdl
+transformers
 
 
 # jupyter ipywidgets
@@ -156,13 +166,6 @@ notebook
 jupyter-resource-usage
 ipywidgets
 ipympl
-
-
-# others
-gssapi
-thrift-sasl
-python-snappy
-thriftpy
 
 
 
