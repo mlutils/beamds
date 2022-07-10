@@ -74,9 +74,8 @@ class MNISTAlgorithm(Algorithm):
         net = self.networks['net']
         opt = self.optimizers['net']
 
-        with torch.cuda.amp.autocast(enabled=self.amp):
-            y_hat = net(x)
-            loss = F.cross_entropy(y_hat, y, reduction='mean')
+        y_hat = net(x)
+        loss = F.cross_entropy(y_hat, y, reduction='mean')
 
         opt.apply(loss, training=training)
 

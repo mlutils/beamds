@@ -26,11 +26,11 @@ done = mp.Event()
 class Bunch(object):
 
     def __init__(self, adict):
-        self.__dict__ = defaultdict(lambda: None)
+        # self.__dict__ = defaultdict(lambda: None)
         self.__dict__.update(adict)
 
-    def __getattr__(self, key):
-        return self.__dict__[key]
+    # def __getattr__(self, key):
+    #     return self.__dict__[key]
 
 
 def beam_algorithm_generator(experiment, Alg, Dataset):
@@ -55,6 +55,8 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     alg = algorithm_generator(*args, **kwargs)
 
     experiment.writer_control(enable=not (bool(rank)))
+    results = {}
+
     try:
         for results in iter(alg):
             experiment.save_model_results(results, alg,
@@ -65,56 +67,38 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
                                           argv=tensorboard_arguments)
 
     except KeyboardInterrupt:
-        logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint and exits")
-        experiment.reload_checkpoint(alg)
+
+        logger.error(f"KeyboardInterrupt: Training was interrupted, Worker terminates")
+        if world_size == 1:
+            logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
+            experiment.reload_checkpoint(alg)
 
     if world_size == 1:
         return alg, results
 
 
-def run_worker(rank, world_size, results_queue, *args, **kwargs):
+
+def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
 
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
     if world_size > 1:
-        setup(rank, world_size, port='23423')
+        setup(rank, world_size, port=experiment.args.mp_port)
 
-    # experiment.set_rank(rank, world_size)
-    # set_seed(seed=experiment.args.seed, constant=rank + 1, increment=False, deterministic=experiment.args.deterministic)
+    experiment.set_rank(rank, world_size)
+    set_seed(seed=experiment.args.seed, constant=rank+1, increment=False, deterministic=experiment.args.deterministic)
 
-    res = 0
-    # res = job(rank, world_size, experiment, *args, **kwargs)
+    res = job(rank, world_size, experiment, *args, **kwargs)
 
     if world_size > 1:
 
         cleanup(rank, world_size)
         results_queue.put({'rank': rank, 'results': res})
+
         done.wait()
 
     else:
         return res
-
-
-# check
-# def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
-#     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
-#
-#     if world_size > 1:
-#         setup(rank, world_size, port=experiment.args.mp_port)
-#
-#     experiment.set_rank(rank, world_size)
-#     set_seed(seed=experiment.args.seed, constant=rank+1, increment=False, deterministic=experiment.args.deterministic)
-#
-#     res = job(rank, world_size, experiment, *args, **kwargs)
-#
-#     if world_size > 1:
-#
-#         cleanup(rank, world_size)
-#         results_queue.put({'rank': rank, 'results': res})
-#         done.wait()
-#
-#     else:
-#         return res
 
 
 class Experiment(object):
@@ -516,8 +500,14 @@ class Experiment(object):
     def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False,
                   tensorboard_arguments=None, **kwargs):
 
-        res = self.run(default_runner, *(algorithm_generator, self, *args),
-                       tensorboard_arguments=tensorboard_arguments, **kwargs)
+        try:
+            res = self.run(default_runner, *(algorithm_generator, self, *args),
+                           tensorboard_arguments=tensorboard_arguments, **kwargs)
+
+        except KeyboardInterrupt:
+
+            res = None
+            logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
 
         if res is None or self.world_size > 1:
             alg = algorithm_generator(self, *args, **kwargs)
@@ -556,14 +546,8 @@ class Experiment(object):
             ctx = mp.get_context('spawn')
             results_queue = ctx.Queue()
             for rank in range(world_size):
-
-                # print('args')
-                # print(arguments)
-
-                ctx.Process(target=demo_fn, args=(rank, world_size, results_queue),
+                ctx.Process(target=demo_fn, args=(rank, world_size, results_queue, *arguments),
                             kwargs=kwargs).start()
-
-                # ctx.Process(target=demo_fn, args=(rank, world_size, results_queue)).start()
 
             res = []
             for rank in range(world_size):

@@ -50,7 +50,6 @@ class Algorithm(object):
         self.networks = networks
 
         if optimizers is None:
-            self.networks = {k: self.register_network(v) for k, v in networks.items()}
             self.optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
                                                           'weight_decay': self.hparams.weight_decay,
                                                            'betas': (self.hparams.beta1, self.hparams.beta2),
