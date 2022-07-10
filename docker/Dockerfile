@@ -31,13 +31,22 @@ RUN /workspace/install/apt_installs.sh
 # pip installs
 RUN pip install --upgrade pip
 RUN pip install -U -r /workspace/install/requirements.txt
-RUN pip install -U -r /workspace/install/requirements.txt
-RUN pip install -U -r /workspace/install/requirements.txt
-RUN pip install -U -r /workspace/install/requirements.txt
-RUN pip install -U -r /workspace/install/requirements.txt
-RUN pip install -U -r /workspace/install/requirements.txt
-# RUN chmod +x /workspace/install/pip_installs.sh
-# RUN /workspace/install/pip_installs.sh
+RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
+RUN pip install -U -r /workspace/install/requirements_0001.txt
+RUN pip install -U -r /workspace/install/requirements_0002.txt
+RUN pip install -U -r /workspace/install/requirements_0003.txt
+RUN pip install -U -r /workspace/install/requirements_0004.txt
+RUN pip install -U -r /workspace/install/requirements_0005.txt
+RUN pip install -U -r /workspace/install/requirements_0006.txt
+RUN pip install -U -r /workspace/install/requirements_0007.txt
+RUN pip install -U -r /workspace/install/requirements_0008.txt
+RUN pip install -U -r /workspace/install/requirements_0009.txt
+RUN pip install -U -r /workspace/install/requirements_0010.txt
+RUN pip install -U -r /workspace/install/requirements_0011.txt
+RUN pip install -U -r /workspace/install/requirements_0012.txt
+RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
+RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
+
 
 # add the beam message
 
@@ -60,11 +69,10 @@ RUN mkdir /workspace/beamds/
 COPY . /workspace/beamds/
 WORKDIR /workspace/beamds/
 RUN python -m build
-RUN pip install --no-deps dist/*.whl
+RUN pip install --no-deps "dist/beam-$(python -c 'import src.beam as beam; print(beam.__version__)')-py3-none-any.whl"
 WORKDIR /workspace
 
 # config jupyter notebook
-
 RUN jupyter nbextension enable --py widgetsnbextension
 
 RUN jupyter notebook --generate-config

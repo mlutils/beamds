@@ -81,7 +81,8 @@ for d in pytorch_datasets:
     f(pytorch_data, train=False, download=True)
 
 
-model_names = ["bert-base-cased", "aubmindlab/bert-base-arabertv02", ]
+model_names = ["bert-base-cased", "aubmindlab/bert-base-arabertv02", "xlm-roberta-base",
+               "bert-base-multilingual-cased", "asafaya/bert-mini-arabic"]
 
 for m in model_names:
     tokenizer = AutoTokenizer.from_pretrained(m)
