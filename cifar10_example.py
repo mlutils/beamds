@@ -143,12 +143,12 @@ class Cifar10Network(nn.Module):
 
 class CIFAR10Dataset(UniversalDataset):
 
-    def __init__(self, experiment):
+    def __init__(self, hparams):
         super().__init__()
 
-        path = experiment.args.path_to_data
-        device = experiment.device
-        padding = experiment.args.padding
+        path = hparams.path_to_data
+        device = hparams.device
+        padding = hparams.padding
 
         augmentations = transforms.Compose([transforms.RandomHorizontalFlip(),
                                             transforms.RandomCrop(32, padding=padding, padding_mode='edge'),])
@@ -179,11 +179,11 @@ class CIFAR10Dataset(UniversalDataset):
         # self.data = torch.cat([x_train, x_test])
         # self.labels = torch.cat([y_train, y_test])
         # test_indices = len(x_train) + torch.arange(len(x_test))
-        # self.split(validation=.2, test=test_indices, seed=experiment.args.split_dataset_seed)
+        # self.split(validation=.2, test=test_indices, seed=hparams.split_dataset_seed)
 
         self.data = PackedFolds({'train': x_train, 'test': x_test})
         self.labels = PackedFolds({'train': y_train, 'test': y_test})
-        self.split(validation=.2, test=self.labels['test'].index, seed=experiment.args.split_dataset_seed)
+        self.split(validation=.2, test=self.labels['test'].index, seed=hparams.split_dataset_seed)
 
     def __getitem__(self, index):
 
@@ -220,25 +220,25 @@ class LRPolicy(object):
 
 class CIFAR10Algorithm(Algorithm):
 
-    def __init__(self, experiment):
+    def __init__(self, hparams):
 
         # choose your network
-        net = Cifar10Network(experiment.args.channels, dropout=experiment.args.dropout,
-                             activation=experiment.args.activation, weight=experiment.args.temperature)
+        net = Cifar10Network(hparams.channels, dropout=hparams.dropout,
+                             activation=hparams.activation, weight=hparams.temperature)
 
-        optimizer = BeamOptimizer.prototype(dense_args={'lr': experiment.args.lr_dense,
-                                                        'weight_decay': experiment.args.weight_decay,
-                                                       'momentum': experiment.args.beta1, 'nesterov': True},
-                                            clip=experiment.args.clip_gradient, accumulate=experiment.args.accumulate,
-                                            amp=experiment.args.amp,
+        optimizer = BeamOptimizer.prototype(dense_args={'lr': hparams.lr_dense,
+                                                        'weight_decay': hparams.weight_decay,
+                                                       'momentum': hparams.beta1, 'nesterov': True},
+                                            clip=hparams.clip_gradient, accumulate=hparams.accumulate,
+                                            amp=hparams.amp,
                                             sparse_args=None, dense_optimizer='SGD')
 
-        super().__init__(experiment, networks=net, optimizers=optimizer)
+        super().__init__(hparams, networks=net, optimizers=optimizer)
         self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
-                                                              lr_lambda=LRPolicy(gain=experiment.args.gain,
-                                                                                 turn_point=experiment.args.turn_point,
-                                                                                 final_point=experiment.args.final_point,
-                                                                                 minimal_gain=experiment.args.minimal_gain))
+                                                              lr_lambda=LRPolicy(gain=hparams.gain,
+                                                                                 turn_point=hparams.turn_point,
+                                                                                 final_point=hparams.final_point,
+                                                                                 minimal_gain=hparams.minimal_gain))
 
     def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True):
 

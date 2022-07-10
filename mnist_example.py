@@ -11,7 +11,7 @@ from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
-from src.beam import beam_arguments, Experiment
+from src.beam import beam_arguments, Experiment, beam_algorithm_generator
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm
 from src.beam import LinearNet
@@ -23,10 +23,10 @@ from src.beam import DataTensor, PackedFolds
 
 class MNISTDataset(UniversalDataset):
 
-    def __init__(self, experiment):
+    def __init__(self, hparams):
 
-        path = experiment.args.path_to_data
-        seed = experiment.args.split_dataset_seed
+        path = hparams.path_to_data
+        seed = hparams.split_dataset_seed
 
         super().__init__()
         dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
@@ -42,11 +42,11 @@ class MNISTDataset(UniversalDataset):
 
 class MNISTAlgorithm(Algorithm):
 
-    def __init__(self, experiment):
+    def __init__(self, hparams):
 
         # choose your network
         net = LinearNet(784, 256, 10, 4)
-        super().__init__(experiment, networks=net)
+        super().__init__(hparams, networks=net)
 
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
         self.stop_at = .97
@@ -125,18 +125,18 @@ class MNISTAlgorithm(Algorithm):
 
 def mnist_algorithm_generator(experiment):
 
-    dataset = MNISTDataset(experiment)
-    alg = MNISTAlgorithm(experiment)
-    alg.load_dataset(dataset)
-
-    return alg
+    dataset = MNISTDataset(experiment.hparams)
+    alg = MNISTAlgorithm(experiment.hparams)
+    return beam_algorithm_generator(experiment, alg, dataset)
 
 
 def run_mnist(rank, world_size, experiment):
 
-    dataset = MNISTDataset(experiment)
-    alg = MNISTAlgorithm(experiment)
+    dataset = MNISTDataset(experiment.hparams)
+
+    alg = MNISTAlgorithm(experiment.hparams)
     alg.load_dataset(dataset)
+    alg.experiment = experiment
 
     # simulate input to the network
     x = next(alg.data_generator('validation'))[1]['x']

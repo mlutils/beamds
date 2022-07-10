@@ -19,7 +19,7 @@ import torch.distributed as dist
 from ray import tune
 import optuna
 from functools import partial
-from .experiment import Experiment, default_algorithm_generator
+from .experiment import Experiment, beam_algorithm_generator
 
 
 class Study(object):
@@ -37,7 +37,7 @@ class Study(object):
         args.identifier = f'{args.identifier}_hp_optimization_{exptime}'
 
         if algorithm_generator is None:
-            self.ag = partial(default_algorithm_generator, Alg=Alg, Dataset=Dataset)
+            self.ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset)
         else:
             self.ag = algorithm_generator
         self.args = args

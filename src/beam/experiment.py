@@ -13,6 +13,7 @@ import copy
 import shutil
 from collections import defaultdict
 from .utils import include_patterns, logger
+from .algorithm import Algorithm
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
@@ -23,15 +24,29 @@ done = mp.Event()
 
 
 class Bunch(object):
-  def __init__(self, adict):
-    self.__dict__.update(adict)
+
+    def __init__(self, adict):
+        self.__dict__ = defaultdict(lambda: None)
+        self.__dict__.update(adict)
+
+    def __getattr__(self, key):
+        return self.__dict__[key]
 
 
-def default_algorithm_generator(experiment, Alg, Dataset):
+def beam_algorithm_generator(experiment, Alg, Dataset):
 
-    dataset = Dataset(experiment)
-    alg = Alg(experiment)
+    if issubclass(type(Dataset), torch.utils.data.Dataset):
+        dataset = Dataset
+    else:
+        dataset = Dataset(experiment.hparams)
+
+    if issubclass(type(Alg), Algorithm):
+        alg = Alg
+    else:
+        alg = Alg(experiment.hparams)
+
     alg.load_dataset(dataset)
+    alg.experiment = experiment
 
     return alg
 
@@ -40,29 +55,35 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     alg = algorithm_generator(*args, **kwargs)
 
     experiment.writer_control(enable=not (bool(rank)))
-    for results in iter(alg):
-        experiment.save_model_results(results, alg,
-                                      print_results=experiment.args.print_results,
-                                      visualize_results=experiment.args.visualize_results,
-                                      store_results=experiment.args.store_results, store_networks=experiment.args.store_networks,
-                                      visualize_weights=experiment.args.visualize_weights,
-                                      argv=tensorboard_arguments)
+    try:
+        for results in iter(alg):
+            experiment.save_model_results(results, alg,
+                                          print_results=experiment.args.print_results,
+                                          visualize_results=experiment.args.visualize_results,
+                                          store_results=experiment.args.store_results, store_networks=experiment.args.store_networks,
+                                          visualize_weights=experiment.args.visualize_weights,
+                                          argv=tensorboard_arguments)
+
+    except KeyboardInterrupt:
+        logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint and exits")
+        experiment.reload_checkpoint(alg)
 
     if world_size == 1:
         return alg, results
 
-# check
 
-def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
+def run_worker(rank, world_size, results_queue, *args, **kwargs):
+
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
     if world_size > 1:
-        setup(rank, world_size, port=experiment.args.mp_port)
+        setup(rank, world_size, port='23423')
 
-    experiment.set_rank(rank, world_size)
-    set_seed(seed=experiment.args.seed, constant=rank+1, increment=False, deterministic=experiment.args.deterministic)
+    # experiment.set_rank(rank, world_size)
+    # set_seed(seed=experiment.args.seed, constant=rank + 1, increment=False, deterministic=experiment.args.deterministic)
 
-    res = job(rank, world_size, experiment, *args, **kwargs)
+    res = 0
+    # res = job(rank, world_size, experiment, *args, **kwargs)
 
     if world_size > 1:
 
@@ -72,6 +93,28 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
 
     else:
         return res
+
+
+# check
+# def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
+#     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
+#
+#     if world_size > 1:
+#         setup(rank, world_size, port=experiment.args.mp_port)
+#
+#     experiment.set_rank(rank, world_size)
+#     set_seed(seed=experiment.args.seed, constant=rank+1, increment=False, deterministic=experiment.args.deterministic)
+#
+#     res = job(rank, world_size, experiment, *args, **kwargs)
+#
+#     if world_size > 1:
+#
+#         cleanup(rank, world_size)
+#         results_queue.put({'rank': rank, 'results': res})
+#         done.wait()
+#
+#     else:
+#         return res
 
 
 class Experiment(object):
@@ -103,8 +146,6 @@ class Experiment(object):
         set_seed(seed=args.seed, constant=0, increment=False, deterministic=args.deterministic)
 
         self.args = args
-        self.hpo = hpo
-        self.trial = trial
 
         # parameters
         self.start_time = time.time()
@@ -225,8 +266,6 @@ class Experiment(object):
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
 
-        self.ddp = False
-
         log_file = os.path.join(self.root, "experiment.log")
         logger.add(log_file, level='INFO', colorize=True,
                    format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
@@ -259,6 +298,20 @@ class Experiment(object):
         if self.args.epoch_length_eval is None:
             self.args.epoch_length_eval = self.args.epoch_length
 
+        # build the hyperparamter class which will be sent to the dataset and algorithm classes
+
+        self.hparams = Bunch(vars(self.args))
+        self.hparams.device = self.device
+
+        if self.load_model:
+            self.hparams.reload_path = self.reload_checkpoint()
+        else:
+            self.hparams.reload_path = None
+
+        self.trial = trial
+        self.hparams.hpo = hpo
+        self.hparams.ddp = False
+
     @staticmethod
     def reload_from_path(path):
 
@@ -275,9 +328,13 @@ class Experiment(object):
 
         return Experiment(args)
 
-    def reload_checkpoint(self, alg, iloc=-1, loc=None, name=None):
+    def reload_checkpoint(self, alg=None, iloc=-1, loc=None, name=None):
 
         checkpoints = os.listdir(self.checkpoints_dir)
+        if not(len(checkpoints)):
+            logger.error(f"Directory of checkpoints is empty")
+            return
+
         checkpoints = pd.DataFrame({'name': checkpoints, 'index': [int(c.split('_')[-1]) for c in checkpoints]})
         checkpoints = checkpoints.sort_values('index')
 
@@ -292,13 +349,17 @@ class Experiment(object):
 
         logger.info(f"Reload experiment from checkpoint: {path}")
 
-        alg.load_checkpoint(path)
+        if alg is not None:
+            alg.load_checkpoint(path)
+
+        else:
+            return path
 
     def set_rank(self, rank, world_size):
 
         self.rank = rank
         self.world_size = world_size
-        self.ddp = self.world_size > 1
+        self.hparams.ddp = self.world_size > 1
 
         if self.device.type != 'cpu' and world_size > 1:
             self.device = torch.device(rank)
@@ -448,7 +509,7 @@ class Experiment(object):
     def fit(self, Alg, Dataset, *args, return_results=False, reload_results=False,
             tensorboard_arguments=None, **kwargs):
 
-        ag = partial(default_algorithm_generator, Alg=Alg, Dataset=Dataset)
+        ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset)
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
 
@@ -495,8 +556,14 @@ class Experiment(object):
             ctx = mp.get_context('spawn')
             results_queue = ctx.Queue()
             for rank in range(world_size):
-                ctx.Process(target=demo_fn, args=(rank, world_size, results_queue, *arguments),
+
+                # print('args')
+                # print(arguments)
+
+                ctx.Process(target=demo_fn, args=(rank, world_size, results_queue),
                             kwargs=kwargs).start()
+
+                # ctx.Process(target=demo_fn, args=(rank, world_size, results_queue)).start()
 
             res = []
             for rank in range(world_size):

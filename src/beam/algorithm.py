@@ -13,28 +13,28 @@ from .dataset import UniversalBatchSampler, UniversalDataset
 
 class Algorithm(object):
 
-    def __init__(self, experiment, networks=None, optimizers=None):
+    def __init__(self, hparams, networks=None, optimizers=None):
 
-        self.experiment = experiment
+        self._experiment = None
+        self.trial = None
 
-        self.args = experiment.args
+        self.hparams = hparams
 
-        self.device = experiment.device
-        self.ddp = experiment.ddp
-        self.hpo = experiment.hpo
+        self.device = hparams.device
+        self.ddp = hparams.ddp
+        self.hpo = hparams.hpo
 
         # some experiment hyperparameters
-        self.half = experiment.args.half
-        self.enable_tqdm = experiment.args.enable_tqdm
-        self.trial = experiment.trial
-        self.n_epochs = experiment.args.n_epochs
-        self.batch_size_train = experiment.args.batch_size_train
-        self.batch_size_eval = experiment.args.batch_size_eval
+        self.half = hparams.half
+        self.enable_tqdm = hparams.enable_tqdm
+        self.n_epochs = hparams.n_epochs
+        self.batch_size_train = hparams.batch_size_train
+        self.batch_size_eval = hparams.batch_size_eval
 
         self.cuda = ('cpu' not in str(self.device))
         self.pin_memory = self.cuda
         self.autocast_device = 'cuda' if self.cuda else 'cpu'
-        self.amp = experiment.args.amp if self.cuda else False
+        self.amp = hparams.amp if self.cuda else False
 
         if networks is None:
             networks = {}
@@ -51,14 +51,14 @@ class Algorithm(object):
 
         if optimizers is None:
             self.networks = {k: self.register_network(v) for k, v in networks.items()}
-            self.optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.args.lr_dense,
-                                                          'weight_decay': self.args.weight_decay,
-                                                           'betas': (self.args.beta1, self.args.beta2),
-                                                          'eps': self.args.eps},
-                                           sparse_args={'lr': self.args.lr_sparse,
-                                                        'betas': (self.args.beta1, self.args.beta2),
-                                                        'eps': self.args.eps},
-                                           clip=self.args.clip_gradient, amp=self.amp, accumulate=self.args.accumulate
+            self.optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
+                                                          'weight_decay': self.hparams.weight_decay,
+                                                           'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                          'eps': self.hparams.eps},
+                                           sparse_args={'lr': self.hparams.lr_sparse,
+                                                        'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                        'eps': self.hparams.eps},
+                                           clip=self.hparams.clip_gradient, amp=self.amp, accumulate=self.hparams.accumulate
                                            ) for k, v in self.networks.items()}
 
         elif issubclass(type(optimizers), dict):
@@ -79,11 +79,27 @@ class Algorithm(object):
         else:
             raise NotImplementedError
 
-        if experiment.args.store_initial_weights:
+        if hparams.store_initial_weights:
             self.initial_weights = self.save_checkpoint()
 
-        if experiment.load_model:
-            experiment.reload_checkpoint(self)
+        if hparams.reload_path is not None:
+            self.load_checkpoint(hparams.reload_path)
+
+    @property
+    def experiment(self):
+
+        if self._experiment is None:
+            raise ValueError('No experiment is currently linked with the algorithm')
+
+        logger.debug(f"Fetching the experiment which is currently associated with the algorithm")
+        return self._experiment
+
+    # a setter function
+    @experiment.setter
+    def experiment(self, experiment):
+        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root}")
+        self.trial = experiment.trial
+        self._experiment = experiment
 
     def load_dataset(self, dataset=None, dataloaders=None, batch_size_train=None, batch_size_eval=None,
                      oversample=False, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
@@ -94,16 +110,16 @@ class Algorithm(object):
 
         if dataloaders is None:
 
-            batch_size_train = self.experiment.args.batch_size_train if batch_size_train is None else batch_size_train
-            batch_size_eval = self.experiment.args.batch_size_eval if batch_size_eval is None else batch_size_eval
-            oversample = self.experiment.args.oversample if oversample is None else oversample
-            weight_factor = self.experiment.args.oversampling_weight_factor if weight_factor is None else weight_factor
-            expansion_size = self.experiment.args.expansion_size if expansion_size is None else expansion_size
+            batch_size_train = self.hparams.batch_size_train if batch_size_train is None else batch_size_train
+            batch_size_eval = self.hparams.batch_size_eval if batch_size_eval is None else batch_size_eval
+            oversample = self.hparams.oversample if oversample is None else oversample
+            weight_factor = self.hparams.oversampling_weight_factor if weight_factor is None else weight_factor
+            expansion_size = self.hparams.expansion_size if expansion_size is None else expansion_size
 
             dataset.build_samplers(batch_size_train, eval_batch_size=batch_size_eval,
                                    oversample=oversample, weight_factor=weight_factor, expansion_size=expansion_size)
 
-            dataloaders = dataset.build_dataloaders(num_workers=self.experiment.args.cpu_workers,
+            dataloaders = dataset.build_dataloaders(num_workers=self.hparams.cpu_workers,
                                                     pin_memory=self.pin_memory,
                                                    timeout=timeout, collate_fn=collate_fn,
                                                    worker_init_fn=worker_init_fn,
@@ -114,8 +130,8 @@ class Algorithm(object):
         self.epoch_length = {}
 
         self.eval_subset = 'validation' if 'validation' in dataloaders.keys() else 'test'
-        self.epoch_length['train'] = self.experiment.args.epoch_length_train
-        self.epoch_length[self.eval_subset] = self.experiment.args.epoch_length_eval
+        self.epoch_length['train'] = self.hparams.epoch_length_train
+        self.epoch_length[self.eval_subset] = self.hparams.epoch_length_eval
 
         if self.epoch_length['train'] is None:
             dataset = dataloaders['train'].dataset
@@ -125,7 +141,7 @@ class Algorithm(object):
             dataset = dataloaders[self.eval_subset].dataset
             self.epoch_length[self.eval_subset] = len(dataset.indices_split[self.eval_subset])
 
-        if self.experiment.args.scale_epoch_by_batch_size:
+        if self.hparams.scale_epoch_by_batch_size:
             self.epoch_length[self.eval_subset] = self.epoch_length[self.eval_subset] // self.batch_size_eval
             self.epoch_length['train'] = self.epoch_length['train'] // self.batch_size_train
 
@@ -133,7 +149,7 @@ class Algorithm(object):
             self.epoch_length['test'] = len(dataloaders['test'])
 
         if self.n_epochs is None:
-            self.n_epochs = self.experiment.args.total_steps // self.epoch_length['train']
+            self.n_epochs = self.hparams.total_steps // self.epoch_length['train']
 
         if self.dataset is None:
             self.dataset = next(iter(self.dataloaders.values())).dataset
@@ -169,7 +185,7 @@ class Algorithm(object):
 
             dataset = subset
 
-            sampler = UniversalBatchSampler(len(dataset), self.experiment.args.batch_size_eval, shuffle=False,
+            sampler = UniversalBatchSampler(len(dataset), self.hparams.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=0, pin_memory=self.pin_memory)
@@ -183,7 +199,7 @@ class Algorithm(object):
             else:
                 dataset = UniversalDataset(subset)
 
-            sampler = UniversalBatchSampler(len(dataset), self.experiment.args.batch_size_eval, shuffle=False,
+            sampler = UniversalBatchSampler(len(dataset), self.hparams.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=0, pin_memory=self.pin_memory)
@@ -320,39 +336,32 @@ class Algorithm(object):
         all_train_results = defaultdict(dict)
         all_eval_results = defaultdict(dict)
 
-        try:
+        eval_generator = self.epoch_iterator(self.n_epochs + 1, subset=self.eval_subset, training=False)
+        for i, train_results in enumerate(self.epoch_iterator(self.n_epochs, subset='train', training=True)):
 
-            eval_generator = self.epoch_iterator(self.n_epochs + 1, subset=self.eval_subset, training=False)
-            for i, train_results in enumerate(self.epoch_iterator(self.n_epochs, subset='train', training=True)):
+            for k_type in train_results.keys():
+                for k_name, v in train_results[k_type].items():
+                    all_train_results[k_type][k_name] = v
 
-                for k_type in train_results.keys():
-                    for k_name, v in train_results[k_type].items():
-                        all_train_results[k_type][k_name] = v
+            with torch.no_grad():
 
-                with torch.no_grad():
+                validation_results = next(eval_generator)
 
-                    validation_results = next(eval_generator)
+                for k_type in validation_results.keys():
+                    for k_name, v in validation_results[k_type].items():
+                        all_eval_results[k_type][k_name] = v
 
-                    for k_type in validation_results.keys():
-                        for k_name, v in validation_results[k_type].items():
-                            all_eval_results[k_type][k_name] = v
+            results = {'train': all_train_results, self.eval_subset: all_eval_results}
 
-                results = {'train': all_train_results, self.eval_subset: all_eval_results}
+            if self.hpo is not None:
+                results = self.report(results, i)
 
-                if self.hpo is not None:
-                    results = self.report(results, i)
+            yield results
+            if self.early_stopping(results, i):
+                return
 
-                yield results
-                if self.early_stopping(results, i):
-                    return
-
-                all_train_results = defaultdict(dict)
-                all_eval_results = defaultdict(dict)
-
-        except KeyboardInterrupt:
-            logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint and exits")
-            self.experiment.reload_checkpoint(self)
-            return
+            all_train_results = defaultdict(dict)
+            all_eval_results = defaultdict(dict)
 
     def set_mode(self, training=True):
 
@@ -392,6 +401,7 @@ class Algorithm(object):
     def load_checkpoint(self, path, strict=True):
 
         if type(path) is str:
+            logger.info(f"Loading network state from: {path}")
             state = torch.load(path, map_location=self.device)
         else:
             state = path
@@ -423,13 +433,15 @@ class Algorithm(object):
 
             return self
 
-        if self.experiment.args.parallel == 1:
+        if self.hparams.parallel == 1:
             algorithm_generator = algorithm_generator_single
         else:
             raise NotImplementedError("To continue training in parallel mode: please re-run experiment() with "
                                       "your own algorithm generator and a new dataset")
 
-        return self.experiment(algorithm_generator, **kwargs)
+        assert self._experiment is not None, "No experiment is linked with the current algorithm"
+
+        return self._experiment(algorithm_generator, **kwargs)
 
     def evaluate(self, *args, **kwargs):
         '''
