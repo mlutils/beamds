@@ -125,7 +125,7 @@ class Experiment(object):
         # parameters
         self.start_time = time.time()
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.hparams.device = torch.device(int(self.hparams.device) if self.hparams.device.isnumeric() else self.hparams.device)
+        self.hparams.device = beam_device()
 
         self.base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name,
                                      self.hparams.algorithm, self.hparams.identifier)

@@ -107,6 +107,13 @@ def process_async(func, args, mp_context='spawn', num_workers=10):
     return results
 
 
+def beam_device(device):
+    if type(device) is torch.device:
+        return device
+    device = str(device)
+    return torch.device(int(device) if device.isnumeric() else device)
+
+
 def check_element_type(x):
     t = str(type(x)).lower()
 
