@@ -12,4 +12,5 @@ gssapi
 thrift-sasl
 python-snappy
 thriftpy
+faiss
 

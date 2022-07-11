@@ -12,25 +12,16 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger
+from .utils import include_patterns, logger, check_type
 from .algorithm import Algorithm
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
 import torch.distributed as dist
 from functools import partial
+from argparse import Namespace
 
 done = mp.Event()
-
-
-class Bunch(object):
-
-    def __init__(self, adict):
-        # self.__dict__ = defaultdict(lambda: None)
-        self.__dict__.update(adict)
-
-    # def __getattr__(self, key):
-    #     return self.__dict__[key]
 
 
 def beam_algorithm_generator(experiment, Alg, Dataset):
@@ -60,10 +51,10 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     try:
         for results in iter(alg):
             experiment.save_model_results(results, alg,
-                                          print_results=experiment.args.print_results,
-                                          visualize_results=experiment.args.visualize_results,
-                                          store_results=experiment.args.store_results, store_networks=experiment.args.store_networks,
-                                          visualize_weights=experiment.args.visualize_weights,
+                                          print_results=experiment.hparams.print_results,
+                                          visualize_results=experiment.hparams.visualize_results,
+                                          store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
+                                          visualize_weights=experiment.hparams.visualize_weights,
                                           argv=tensorboard_arguments)
 
     except KeyboardInterrupt:
@@ -73,9 +64,9 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
             logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
             experiment.reload_checkpoint(alg)
 
+    experiment.writer_cleanup()
     if world_size == 1:
         return alg, results
-
 
 
 def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
@@ -83,10 +74,10 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
     if world_size > 1:
-        setup(rank, world_size, port=experiment.args.mp_port)
+        setup(rank, world_size, port=experiment.hparams.mp_port)
 
     experiment.set_rank(rank, world_size)
-    set_seed(seed=experiment.args.seed, constant=rank+1, increment=False, deterministic=experiment.args.deterministic)
+    set_seed(seed=experiment.hparams.seed, constant=rank+1, increment=False, deterministic=experiment.hparams.deterministic)
 
     res = job(rank, world_size, experiment, *args, **kwargs)
 
@@ -127,16 +118,17 @@ class Experiment(object):
         results_names: additional results directories (defaults are: train, validation, test)
         """
 
-        set_seed(seed=args.seed, constant=0, increment=False, deterministic=args.deterministic)
+        self.hparams = copy.deepcopy(args)
 
-        self.args = args
+        set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 
         # parameters
         self.start_time = time.time()
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.device = torch.device(int(self.args.device) if self.args.device.isnumeric() else self.args.device)
+        self.hparams.device = torch.device(int(self.hparams.device) if self.hparams.device.isnumeric() else self.hparams.device)
 
-        self.base_dir = os.path.join(self.args.root_dir, self.args.project_name, self.args.algorithm, self.args.identifier)
+        self.base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name,
+                                     self.hparams.algorithm, self.hparams.identifier)
         os.makedirs(self.base_dir, exist_ok=True)
 
         self.exp_name = None
@@ -146,19 +138,19 @@ class Experiment(object):
         exp_names = list(filter(lambda x: re.match(pattern, x) is not None, os.listdir(self.base_dir)))
         exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
 
-        if self.args.reload:
+        if self.hparams.reload:
 
-            if type(self.args.resume) is str:
-                if os.path.isdir(os.path.join(self.base_dir, self.args.resume)):
-                    self.exp_name = self.args.resume
+            if type(self.hparams.resume) is str:
+                if os.path.isdir(os.path.join(self.base_dir, self.hparams.resume)):
+                    self.exp_name = self.hparams.resume
                     exp_num = int(self.exp_name.split('_')[0])
                     self.load_model = True
 
-            elif self.args.resume >= 0:
-                ind = np.nonzero(exp_indices == self.args.resume)[0]
+            elif self.hparams.resume >= 0:
+                ind = np.nonzero(exp_indices == self.hparams.resume)[0]
                 if len(ind):
                     self.exp_name = exp_names[ind[0]]
-                    exp_num = self.args.resume
+                    exp_num = self.hparams.resume
                     self.load_model = True
 
             else:
@@ -170,13 +162,13 @@ class Experiment(object):
 
         else:
 
-            if self.args.override and len(exp_indices):
+            if self.hparams.override and len(exp_indices):
 
                 ind = np.argmax(exp_indices)
                 self.exp_name = exp_names[ind]
                 exp_num = exp_indices[ind]
             else:
-                self.args.override = False
+                self.hparams.override = False
 
         if self.exp_name is None:
             exp_num = np.max(exp_indices) + 1 if len(exp_indices) else 0
@@ -196,7 +188,7 @@ class Experiment(object):
 
         else:
 
-            if not self.args.override:
+            if not self.hparams.override:
                 logger.info("Creating new experiment")
 
             else:
@@ -262,30 +254,27 @@ class Experiment(object):
                 logger.info(k + ': ' + str(v))
 
         # replace zero split_dataset_seed to none (non-deterministic split) - if zero
-        if self.args.split_dataset_seed == 0:
-            self.args.split_dataset_seed = None
+        if self.hparams.split_dataset_seed == 0:
+            self.hparams.split_dataset_seed = None
 
         # fill the batch size
 
-        if self.args.batch_size_train is None:
-            self.args.batch_size_train = self.args.batch_size
+        if self.hparams.batch_size_train is None:
+            self.hparams.batch_size_train = self.hparams.batch_size
 
-        if self.args.batch_size_eval is None:
-            self.args.batch_size_eval = self.args.batch_size
+        if self.hparams.batch_size_eval is None:
+            self.hparams.batch_size_eval = self.hparams.batch_size
 
-        if self.args.batch_size is None:
-            self.args.batch_size = self.args.batch_size_train
+        if self.hparams.batch_size is None:
+            self.hparams.batch_size = self.hparams.batch_size_train
 
-        if self.args.epoch_length_train is None:
-            self.args.epoch_length_train = self.args.epoch_length
+        if self.hparams.epoch_length_train is None:
+            self.hparams.epoch_length_train = self.hparams.epoch_length
 
-        if self.args.epoch_length_eval is None:
-            self.args.epoch_length_eval = self.args.epoch_length
+        if self.hparams.epoch_length_eval is None:
+            self.hparams.epoch_length_eval = self.hparams.epoch_length
 
         # build the hyperparamter class which will be sent to the dataset and algorithm classes
-
-        self.hparams = Bunch(vars(self.args))
-        self.hparams.device = self.device
 
         if self.load_model:
             self.hparams.reload_path = self.reload_checkpoint()
@@ -301,7 +290,7 @@ class Experiment(object):
 
         logger.info(f"Reload experiment from path: {path}")
         args = pd.read_pickle(os.path.join(path, "args.pkl"))
-        args = Bunch(args)
+        args = Namespace(**args)
         args.override = False
         args.reload = True
 
@@ -345,21 +334,28 @@ class Experiment(object):
         self.world_size = world_size
         self.hparams.ddp = self.world_size > 1
 
-        if self.device.type != 'cpu' and world_size > 1:
-            self.device = torch.device(rank)
+        if self.hparams.device.type != 'cpu' and world_size > 1:
+            self.hparams.device = torch.device(rank)
 
     def writer_control(self, enable=True, add_hyperparameters=True, networks=None, inputs=None):
 
-        if enable and self.writer is None and self.args.tensorboard:
-            self.writer = SummaryWriter(log_dir=self.tensorboard_dir, comment=self.args.identifier)
+        if enable and self.writer is None and self.hparams.tensorboard:
+            self.writer = SummaryWriter(log_dir=self.tensorboard_dir, comment=self.hparams.identifier)
+        elif enable and self.hparams.tensorboard:
+            self.writer.reopen()
 
-        if not enable:
-            self.writer = None
+        if add_hyperparameters and enable and self.writer is not None:
 
-        if add_hyperparameters and self.writer is not None:
-            self.writer.add_hparams(vars(self.args), {}, run_name=self.exp_name)
+            hparams = {}
+            for k, v in vars(self.hparams).items():
+                param_type = check_type(v)
+                if param_type.element not in ['bool', 'str', 'int', 'float', 'none']:
+                    v = str(v)
+                hparams[k] =v
 
-        if networks is not None and self.writer is not None:
+            self.writer.add_hparams(hparams, {}, run_name=self.exp_name)
+
+        if networks is not None and enable and self.writer is not None:
             for k, net in networks.items():
                 self.writer.add_graph(net, inputs[k])
 
@@ -560,20 +556,16 @@ class Experiment(object):
         if self.world_size > 1:
             logger.info(f'Initializing {self.world_size} parallel workers')
 
-            if self.args.mp_port == 'random' or check_if_port_is_available(self.args.mp_port):
-                self.args.mp_port = find_free_port()
+            if self.hparams.mp_port == 'random' or check_if_port_is_available(self.hparams.mp_port):
+                self.hparams.mp_port = find_free_port()
 
-            logger.info(f'Multiprocessing port is: {self.args.mp_port}')
+            logger.info(f'Multiprocessing port is: {self.hparams.mp_port}')
 
             return _run(run_worker, self.world_size)
         else:
             logger.info(f'Single worker mode')
             return run_worker(0, 1, None, *arguments, **kwargs)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.args.tensorboard:
-            self.writer.export_scalars_to_json(os.path.join(self.tensorboard_dir, "all_scalars.json"))
+    def writer_cleanup(self):
+        if self.writer is not None:
             self.writer.close()

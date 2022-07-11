@@ -116,6 +116,8 @@ def check_element_type(x):
         return 'none'
     if 'int' in t:
         return 'int'
+    if 'bool' in t:
+        return 'bool'
     if 'float' in t:
         return 'float'
     if 'str' in t:

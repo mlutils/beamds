@@ -153,7 +153,9 @@ def beam_arguments(*args, **kwargs):
             raise ValueError
 
     args_str = re.split(r"\s+", ' '.join([ar.strip() for ar in args_str]))
+
     sys.argv = [file_name] + args_str
+    sys.argv = list(filter(lambda x: bool(x), sys.argv))
 
     args = pr.parse_args()
 
