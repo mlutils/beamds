@@ -75,11 +75,15 @@ WORKDIR /workspace
 # config jupyter notebook
 RUN jupyter nbextension enable --py widgetsnbextension
 
-RUN jupyter notebook --generate-config
-RUN echo "c.NotebookApp.notebook_dir = '/home/'" >> /root/.jupyter/jupyter_notebook_config.py
-RUN echo "c.NotebookApp.allow_remote_access = True" >> /root/.jupyter/jupyter_notebook_config.py
-RUN echo "c.NotebookApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_notebook_config.py
-RUN echo "c.NotebookApp.token = ''" >> /root/.jupyter/jupyter_notebook_config.py
+RUN jupyter lab --generate-config
+RUN echo "c.ServerApp.notebook_dir = '/home/'" >> /root/.jupyter/jupyter_lab_config.py
+RUN echo "c.ServerApp.allow_remote_access = True" >> /root/.jupyter/jupyter_lab_config.py
+RUN echo "c.ServerApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_lab_config.py
+RUN echo "c.ServerApp.token = ''" >> /root/.jupyter/jupyter_lab_config.py
+RUN echo "c.ServerApp.allow_root = True" >> /root/.jupyter/jupyter_lab_config.py
+
+RUN pip install git+https://github.com/cliffwoolley/jupyter_tensorboard.git
+RUN pip install git+https://github.com/chaoleili/jupyterlab_tensorboard.git
 
 RUN chmod +x /workspace/install/entrypoint.sh
 ENTRYPOINT ["/workspace/install/entrypoint.sh"]
