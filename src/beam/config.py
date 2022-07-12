@@ -4,6 +4,7 @@ import sys
 from .utils import is_notebook, check_type
 import re
 
+
 def boolean_feature(parser, feature, default, help):
     featurename = feature.replace("-", "_")
     feature_parser = parser.add_mutually_exclusive_group(required=False)

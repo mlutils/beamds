@@ -12,7 +12,7 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger, check_type
+from .utils import include_patterns, logger, check_type, beam_device
 from .algorithm import Algorithm
 import pandas as pd
 import torch.multiprocessing as mp
@@ -35,6 +35,9 @@ def beam_algorithm_generator(experiment, Alg, Dataset):
         alg = Alg
     else:
         alg = Alg(experiment.hparams)
+        # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
+        # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
+        experiment.writer_cleanup()
 
     alg.load_dataset(dataset)
     alg.experiment = experiment
@@ -64,7 +67,6 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
             logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
             experiment.reload_checkpoint(alg)
 
-    experiment.writer_cleanup()
     if world_size == 1:
         return alg, results
 
@@ -125,7 +127,7 @@ class Experiment(object):
         # parameters
         self.start_time = time.time()
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.hparams.device = beam_device()
+        self.hparams.device = beam_device(self.hparams.device)
 
         self.base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name,
                                      self.hparams.algorithm, self.hparams.identifier)
@@ -234,7 +236,6 @@ class Experiment(object):
 
             pd.to_pickle(vars(args), os.path.join(self.root, "args.pkl"))
 
-        self.epoch = 0
         self.writer = None
         self.rank = 0
         self.world_size = args.parallel
@@ -333,16 +334,15 @@ class Experiment(object):
         self.rank = rank
         self.world_size = world_size
         self.hparams.ddp = self.world_size > 1
+        self.hparams.enable_tqdm = self.hparams.enable_tqdm and (rank == 0)
 
-        if self.hparams.device.type != 'cpu' and world_size > 1:
-            self.hparams.device = torch.device(rank)
+        if 'cpu' not in str(self.hparams.device) and world_size > 1:
+            self.hparams.device = beam_device(rank)
 
     def writer_control(self, enable=True, add_hyperparameters=True, networks=None, inputs=None):
 
         if enable and self.writer is None and self.hparams.tensorboard:
             self.writer = SummaryWriter(log_dir=self.tensorboard_dir, comment=self.hparams.identifier)
-        elif enable and self.hparams.tensorboard:
-            self.writer.reopen()
 
         if add_hyperparameters and enable and self.writer is not None:
 
@@ -382,32 +382,32 @@ class Experiment(object):
         :return:
         '''
 
-        self.epoch += 1
+        epoch = algorithm.epoch + 1
 
         if not self.rank:
 
             if print_results:
                 logger.info('')
-                logger.info(f'Finished epoch {self.epoch}/{algorithm.n_epochs}:')
+                logger.info(f'Finished epoch {epoch}/{algorithm.n_epochs}:')
 
-            decade = int(np.log10(self.epoch) + 1)
-            logscale = not (self.epoch - 1) % (10 ** (decade - 1))
+            decade = int(np.log10(epoch) + 1)
+            logscale = not (epoch - 1) % (10 ** (decade - 1))
 
             for subset, res in results.items():
 
                 if store_results == 'yes' or store_results == 'logscale' and logscale:
-                    pd.to_pickle(res, os.path.join(self.results_dir, subset, f'results_{self.epoch:06d}'))
+                    pd.to_pickle(res, os.path.join(self.results_dir, subset, f'results_{epoch:06d}'))
 
                 alg = algorithm if visualize_weights else None
 
             if visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
-                self.log_data(copy.deepcopy(results), self.epoch, print_log=print_results, alg=alg, argv=argv)
+                self.log_data(copy.deepcopy(results), epoch, print_log=print_results, alg=alg, argv=argv)
 
-            checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_{self.epoch:06d}')
+            checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_{epoch:06d}')
             algorithm.save_checkpoint(checkpoint_file)
 
             if store_networks == 'no' or store_networks == 'logscale' and not logscale:
-                os.remove(os.path.join(self.checkpoints_dir, f'checkpoint_{self.epoch - 1:06d}'))
+                os.remove(os.path.join(self.checkpoints_dir, f'checkpoint_{epoch - 1:06d}'))
 
         if self.world_size > 1:
             dist.barrier()
@@ -569,3 +569,4 @@ class Experiment(object):
     def writer_cleanup(self):
         if self.writer is not None:
             self.writer.close()
+            self.writer = None

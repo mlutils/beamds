@@ -35,6 +35,7 @@ class Algorithm(object):
         self.pin_memory = self.cuda
         self.autocast_device = 'cuda' if self.cuda else 'cpu'
         self.amp = hparams.amp if self.cuda else False
+        self.epoch = 0
 
         if networks is None:
             networks = {}
@@ -246,8 +247,12 @@ class Algorithm(object):
 
     def epoch_iterator(self, n_epochs, subset, training):
 
+        if training:
+            self.epoch -= 1
         for n in range(n_epochs):
 
+            if training:
+                self.epoch += 1
             results = defaultdict(lambda: defaultdict(list))
 
             self.set_mode(training=training)
@@ -380,7 +385,7 @@ class Algorithm(object):
 
     def save_checkpoint(self, path=None, aux=None, pickle_model=False):
 
-        state = {'aux': aux}
+        state = {'aux': aux, 'epoch': self.epoch}
 
         wrapper = copy.deepcopy if path is None else (lambda x: x)
 
@@ -417,6 +422,7 @@ class Algorithm(object):
         for k, optimizer in self.optimizers.items():
             optimizer.load_state_dict(state[f"{k}_optimizer"])
 
+        self.epoch = state['epoch']
         return state['aux']
 
     def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,

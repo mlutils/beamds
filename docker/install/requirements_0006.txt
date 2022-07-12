@@ -10,3 +10,4 @@ myst-parser
 sphinx[myst-parser]
 sphinx-rtd-theme
 sphinx_mdinclude
+jdc

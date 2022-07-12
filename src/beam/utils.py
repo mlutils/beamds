@@ -135,23 +135,26 @@ def check_element_type(x):
 def check_minor_type(x):
     t = type(x)
 
-    if issubclass(t, dict):
-        return 'dict'
     if isinstance(x, torch.Tensor):
         return 'tensor'
-    if issubclass(t, list):
-        return 'list'
     if isinstance(x, np.ndarray):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
+    if issubclass(t, dict):
+        return 'dict'
+    if issubclass(t, list):
+        return 'list'
     if issubclass(t, tuple):
         return 'tuple'
     else:
         return 'other'
 
 
-def check_type(x):
+type_tuple = namedtuple('Type', 'major minor element')
+
+
+def check_type(x, check_minor=True, check_element=True):
     '''
 
     returns:
@@ -164,49 +167,50 @@ def check_type(x):
 
     '''
 
-    type_tuple = namedtuple('Type', 'major minor element')
-
     t = type(x)
 
-    mit = check_minor_type(x)
     if np.isscalar(x) or (torch.is_tensor(x) and (not len(x.shape))):
         mjt = 'scalar'
         if type(x) in [int, float, str]:
             mit = 'native'
-        elt = check_element_type(x)
+        else:
+            mit = check_minor_type(x) if check_minor else 'na'
+        elt = check_element_type(x) if check_element else 'na'
 
     elif issubclass(t, dict):
         mjt = 'dict'
         mit = 'dict'
-        elt = check_element_type(next(iter(x.values())))
+        elt = check_element_type(next(iter(x.values()))) if check_element else 'na'
 
     elif x is None:
         mjt = 'none'
         mit = 'none'
         elt = 'none'
 
-    elif mit != 'other':
-        mjt = 'array'
-        if mit in ['list', 'tuple']:
-            elt = check_element_type(x[0])
-        elif mit in ['numpy', 'tensor', 'pandas']:
-            if mit == 'pandas':
-                dt = str(x.values.dtype)
-            else:
-                dt = str(x.dtype)
-            if 'float' in dt:
-                elt = 'float'
-            elif 'int' in dt:
-                elt = 'int'
-            else:
-                elt = 'object'
-        else:
-            elt = 'unknown'
-
     else:
-        mjt = 'other'
-        mit = 'other'
-        elt = 'other'
+
+        mit = check_minor_type(x) if check_minor else 'na'
+        if mit != 'other':
+            mjt = 'array'
+            if mit in ['list', 'tuple']:
+                elt = check_element_type(x[0]) if check_element else 'na'
+            elif mit in ['numpy', 'tensor', 'pandas']:
+                if mit == 'pandas':
+                    dt = str(x.values.dtype)
+                else:
+                    dt = str(x.dtype)
+                if 'float' in dt:
+                    elt = 'float'
+                elif 'int' in dt:
+                    elt = 'int'
+                else:
+                    elt = 'object'
+            else:
+                elt = 'unknown'
+        else:
+            mjt = 'other'
+            mit = 'other'
+            elt = 'other'
 
     return type_tuple(major=mjt, minor=mit, element=elt)
 

@@ -53,34 +53,6 @@ class ReBlock(nn.Module):
         return out
 
 
-class ResBlock(nn.Module):
-    """
-    Iniialize a residual block with two convolutions followed by batchnorm layers
-    """
-
-    def __init__(self, in_size: int, out_size: int, stride=1, activation='celu'):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, stride=stride, padding=1)
-        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, stride=stride, padding=1)
-        self.batchnorm1 = nn.BatchNorm2d(out_size)
-        self.batchnorm2 = nn.BatchNorm2d(out_size)
-
-        if activation == 'gelu':
-            self.activation = nn.GELU()
-        elif activation == 'celu':
-            self.activation = nn.CELU()
-        elif activation == 'relu':
-            self.activation = nn.ReLU()
-
-    def convblock(self, x):
-        x = self.activation(self.batchnorm1(self.conv1(x)))
-        x = self.activation(self.batchnorm2(self.conv2(x)))
-        return x
-
-    def forward(self, x):
-        return x + self.convblock(x)  # skip connection
-
-
 class BatchNorm(nn.BatchNorm2d):
     def __init__(self, num_features, eps=1e-05, momentum=0.1, weight_freeze=False, bias_freeze=False, weight_init=1.0,
                  bias_init=0.0):
@@ -226,12 +198,20 @@ class CIFAR10Algorithm(Algorithm):
         net = Cifar10Network(hparams.channels, dropout=hparams.dropout,
                              activation=hparams.activation, weight=hparams.temperature)
 
-        optimizer = BeamOptimizer.prototype(dense_args={'lr': hparams.lr_dense,
-                                                        'weight_decay': hparams.weight_decay,
-                                                       'momentum': hparams.beta1, 'nesterov': True},
-                                            clip=hparams.clip_gradient, accumulate=hparams.accumulate,
-                                            amp=hparams.amp,
-                                            sparse_args=None, dense_optimizer='SGD')
+        if 'prototype' in hparams and hparams.prototype:
+            optimizer = BeamOptimizer.prototype(dense_args={'lr': hparams.lr_dense,
+                                                            'weight_decay': hparams.weight_decay,
+                                                           'momentum': hparams.beta1, 'nesterov': True},
+                                                clip=hparams.clip_gradient, accumulate=hparams.accumulate,
+                                                amp=hparams.amp,
+                                                sparse_args=None, dense_optimizer='SGD')
+        else:
+            optimizer = BeamOptimizer(net, dense_args={'lr': hparams.lr_dense,
+                                                            'weight_decay': hparams.weight_decay,
+                                                           'momentum': hparams.beta1, 'nesterov': True},
+                                                clip=hparams.clip_gradient, accumulate=hparams.accumulate,
+                                                amp=hparams.amp,
+                                                sparse_args=None, dense_optimizer='SGD')
 
         super().__init__(hparams, networks=net, optimizers=optimizer)
         self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
@@ -259,7 +239,7 @@ class CIFAR10Algorithm(Algorithm):
         opt = self.optimizers['net']
 
         y_hat = net(x)
-        loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=self.args.label_smoothing)
+        loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=self.hparams.label_smoothing)
 
         opt.apply(loss, training=training)
 

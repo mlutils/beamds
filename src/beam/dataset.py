@@ -14,7 +14,7 @@ from .data_tensor import DataTensor
 
 class PackedFolds(object):
 
-    def __init__(self, data, index=None, names=None, fold=None, fold_index=None, device='cpu',
+    def __init__(self, data, index=None, names=None, fold=None, fold_index=None, device=None,
                  sort_index=False, quick_getitem=True):
 
         self.quick_getitem = quick_getitem
@@ -243,7 +243,7 @@ class PackedFolds(object):
 
     def __getitem__(self, ind):
 
-        ind_type = check_type(ind)
+        ind_type = check_type(ind, check_minor=False)
         if ind_type.major == 'scalar' and ind_type.element == 'str':
             return self.get_fold(ind)
         if self.sampling_method == 'index' and self.quick_getitem:
