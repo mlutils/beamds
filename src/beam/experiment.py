@@ -20,6 +20,7 @@ from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_av
 import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
+from tensorboard.notebook import start as start_tensorboard
 
 done = mp.Event()
 
@@ -485,6 +486,65 @@ class Experiment(object):
                                 log_func(f'{subset}/{param}', *res[log_type][param], n, **defaults_argv[log_type][param])
                             else:
                                 log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
+
+    def tensorboard(self, port=None, add_all_of_same_identifier=False, add_all_of_same_algorithm=False,
+                          add_all_of_same_project=False, more_experiments=None, more_identifiers=None,
+                          more_algorithms=None, get_port_from_beam_port_range=True):
+
+        if port is not None:
+            if get_port_from_beam_port_range:
+                base_range = int(os.environ['JUPYTER_PORT']) // 1000
+                port_range = range(base_range * 1000, (base_range + 1) * 1000)
+
+            else:
+                port_range = range(10000, 2**16)
+
+            for p in port_range:
+                if check_if_port_is_available(p):
+                    port = str(p)
+                    break
+
+            if port is None:
+                logger.error("Cannot find free port in the specified range")
+                return
+
+        else:
+            if not check_if_port_is_available(port):
+                logger.error(f"Port {port} is not available")
+                return
+
+        def path_depth(path):
+            return len(os.path.normpath(path).split(os.sep))
+
+        if add_all_of_same_project:
+            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name)
+            depth = 3
+        elif add_all_of_same_algorithm:
+            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm)
+            depth = 2
+        elif add_all_of_same_identifier:
+            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
+            depth = 1
+        else:
+            base_dir = self.root
+            depth = 0
+
+        experiments = [d[0] for d in list(os.walk(base_dir)) if (path_depth(d[0]) - path_depth(base_dir)) <= depth]
+
+        if more_experiments is not None:
+            if type(more_experiments) is str:
+                more_experiments = [more_experiments]
+                experiments = experiments + more_experiments
+
+        if more_identifiers is not None:
+            if type(more_identifiers) is str:
+                more_identifiers = [more_identifiers]
+                for identifier in more_identifiers:
+                    more_experiments = [d[0] for d in list(os.walk(base_dir)) if (path_depth(d[0]) - path_depth(base_dir)) <= depth]
+
+
+
+
 
     def fit(self, Alg, Dataset, *args, return_results=False, reload_results=False,
             tensorboard_arguments=None, **kwargs):
