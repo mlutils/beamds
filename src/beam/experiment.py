@@ -6,7 +6,8 @@ import os
 import warnings
 
 warnings.filterwarnings('ignore', category=FutureWarning)
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 from shutil import copytree
 import torch
 import copy
@@ -122,6 +123,9 @@ class Experiment(object):
         """
 
         self.hparams = copy.deepcopy(args)
+        vars_args = copy.copy(vars(args))
+        if 'parser' in vars_args:
+            vars_args.pop('parser')
 
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 
@@ -209,10 +213,9 @@ class Experiment(object):
 
             logger.info(f"Experiment directory is: {self.root}")
 
-            os.makedirs(self.root)
-            os.makedirs(self.tensorboard_dir)
+            os.makedirs(os.path.join(self.tensorboard_dir, 'logs'))
+            os.makedirs(os.path.join(self.tensorboard_dir, 'hparams'))
             os.makedirs(self.checkpoints_dir)
-            os.makedirs(self.results_dir)
 
             # make log dirs
             os.makedirs(os.path.join(self.results_dir, 'train'))
@@ -235,7 +238,7 @@ class Experiment(object):
             copytree(os.path.dirname(os.path.realpath(code_root_path)), self.code_dir,
                      ignore=include_patterns('*.py', '*.md', '*.ipynb'))
 
-            pd.to_pickle(vars(args), os.path.join(self.root, "args.pkl"))
+            pd.to_pickle(vars_args, os.path.join(self.root, "args.pkl"))
 
         self.writer = None
         self.rank = 0
@@ -252,7 +255,7 @@ class Experiment(object):
             logger.info(f"beam project: {args.project_name}")
             logger.info('Experiment Hyperparameters')
 
-            for k, v in vars(args).items():
+            for k, v in vars_args.items():
                 logger.info(k + ': ' + str(v))
 
         # replace zero split_dataset_seed to none (non-deterministic split) - if zero
@@ -287,8 +290,19 @@ class Experiment(object):
         self.hparams.hpo = hpo
         self.hparams.ddp = False
 
+        self.tensorboard_hparams = {}
+        pa = args.parser._actions
+        pa = {pai.dest: pai.metavar for pai in pa}
+
+        for k, v in vars_args.items():
+            param_type = check_type(v)
+            if param_type.element in ['bool', 'str', 'int', 'float'] and k in pa and pa[k] == 'hparam':
+                self.tensorboard_hparams[k] =v
+
+        pd.to_pickle(self.tensorboard_hparams, os.path.join(self.root, "hparams.pkl"))
+
     @staticmethod
-    def reload_from_path(path):
+    def reload_from_path(path, **argv):
 
         logger.info(f"Reload experiment from path: {path}")
         args = pd.read_pickle(os.path.join(path, "args.pkl"))
@@ -301,7 +315,7 @@ class Experiment(object):
             path, d = os.path.split(path)
         args.resume = d
 
-        return Experiment(args)
+        return Experiment(args, **argv)
 
     def reload_checkpoint(self, alg=None, iloc=-1, loc=None, name=None):
 
@@ -340,22 +354,11 @@ class Experiment(object):
         if 'cpu' not in str(self.hparams.device) and world_size > 1:
             self.hparams.device = beam_device(rank)
 
-    def writer_control(self, enable=True, add_hyperparameters=True, networks=None, inputs=None):
+    def writer_control(self, enable=True, networks=None, inputs=None):
 
         if enable and self.writer is None and self.hparams.tensorboard:
-            self.writer = SummaryWriter(log_dir=self.tensorboard_dir, comment=self.hparams.identifier)
-
-        if add_hyperparameters and enable and self.writer is not None:
-
-            hparams = {}
-            for k, v in vars(self.hparams).items():
-                param_type = check_type(v)
-                if param_type.element not in ['bool', 'str', 'int', 'float', 'none']:
-                    v = str(v)
-                hparams[k] =v
-
-            # self.writer.add_hparams(hparams, {}, run_name=self.exp_name)
-            self.writer.add_hparams(hparams, {})
+            self.writer = SummaryWriter(log_dir=os.path.join(self.tensorboard_dir, 'logs'),
+                                        comment=self.hparams.identifier)
 
         if networks is not None and enable and self.writer is not None:
             for k, net in networks.items():
@@ -473,7 +476,7 @@ class Experiment(object):
                                                       bins='tensorflow')
                     except:
                         pass
-
+        metrics = {}
         for subset, res in results.items():
             if issubclass(type(res), dict) and subset != 'objective':
                 for log_type in res:
@@ -487,10 +490,18 @@ class Experiment(object):
                                 log_func(f'{subset}/{param}', *res[log_type][param], n, **defaults_argv[log_type][param])
                             else:
                                 log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
+                                if log_type == 'scalar':
+                                    metrics[f"{subset}/{param}"] = float(res[log_type][param])
+
+        if len(metrics):
+            self.writer.add_hparams(self.tensorboard_hparams, metrics, name=os.path.join('..', 'hparams'), global_step=n)
+            # self.writer.add_hparams(self.tensorboard_hparams, metrics, run_name=os.path.join('..', 'hparams'))
 
     def tensorboard(self, port=None, add_all_of_same_identifier=False, add_all_of_same_algorithm=False,
                           add_all_of_same_project=False, more_experiments=None, more_identifiers=None,
-                          more_algorithms=None, get_port_from_beam_port_range=True):
+                          more_algorithms=None, get_port_from_beam_port_range=True, hparams=False):
+
+        suffix = 'hparams' if hparams else 'logs'
 
         if port is None:
             if get_port_from_beam_port_range:
@@ -514,7 +525,11 @@ class Experiment(object):
                 logger.error(f"Port {port} is not available")
                 return
 
-        print(port)
+        logger.info(f"Opening a tensorboard server on port: {port}")
+
+        def gen_hparams_string(e):
+            tensorboard_hparams = pd.read_pickle(os.path.join(e, "hparams.pkl"))
+            return '/'.join([f"{k}_{v}" for k, v in tensorboard_hparams.items()])
 
         def path_depth(path):
             return len(os.path.normpath(path).split(os.sep))
@@ -540,35 +555,46 @@ class Experiment(object):
             base_dir = self.root
             depth = 0
 
-        experiments = [d[0] for d in list(os.walk(base_dir)) if (path_depth(d[0]) - path_depth(base_dir)) <= depth]
+        experiments = [d[0] for d in list(os.walk(base_dir)) if (path_depth(d[0]) - path_depth(base_dir)) == depth]
 
         if more_experiments is not None:
+            if hparams:
+                logger.error("hparams visualization does not support adding additional experiments")
             if type(more_experiments) is str:
                 more_experiments = [more_experiments]
                 experiments = experiments + [normalize_path(e, level=0) for e in more_experiments]
 
         if more_identifiers is not None:
+            if hparams:
+                logger.error("hparams visualization does not support adding additional experiments")
             if type(more_identifiers) is str:
                 more_identifiers = [more_identifiers]
                 depth = 1
                 for identifier in more_identifiers:
                     identifier = normalize_path(identifier, level=depth)
-                    experiments = experiments + [d[0] for d in list(os.walk(identifier)) if (path_depth(d[0]) - path_depth(identifier)) <= depth]
+                    experiments = experiments + [d[0] for d in list(os.walk(identifier)) if (path_depth(d[0]) - path_depth(identifier)) == depth]
 
         if more_algorithms is not None:
+            if hparams:
+                logger.error("hparams visualization does not support adding additional experiments")
             if type(more_algorithms) is str:
                 more_algorithms = [more_algorithms]
                 depth = 2
                 for algorithm in more_algorithms:
                     algorithm = normalize_path(algorithm, level=depth)
-                    experiments = experiments + [d[0] for d in list(os.walk(algorithm)) if (path_depth(d[0]) - path_depth(algorithm)) <= depth]
+                    experiments = experiments + [d[0] for d in list(os.walk(algorithm)) if (path_depth(d[0]) - path_depth(algorithm)) == depth]
 
         experiments = [os.path.normpath(e) for e in experiments]
         names = ['/'.join(e.split(os.sep)[-3:]) for e in experiments]
-        log_dirs = ','.join([f'{n}:{e}' for n, e in zip(names, experiments)])
+        names = [f"{n}/{gen_hparams_string(e)}" for n, e in zip(names, experiments)]
 
-        command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
+        experiments = [os.path.join(e, 'tensorboard', suffix) for e in experiments]
+        log_dirs = ','.join([f"{n}:{e}" for n, e in zip(names, experiments)])
 
+        if hparams:
+            command_argument = f"--bind_all --logdir {base_dir} --port {port}"
+        else:
+            command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
         start_tensorboard(command_argument)
 
     def fit(self, Alg, Dataset, *args, return_results=False, reload_results=False,
@@ -652,6 +678,9 @@ class Experiment(object):
             return run_worker(0, 1, None, *arguments, **kwargs)
 
     def writer_cleanup(self):
+
         if self.writer is not None:
             self.writer.close()
             self.writer = None
+
+
