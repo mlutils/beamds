@@ -85,7 +85,7 @@ def find_free_port():
 
 def check_if_port_is_available(port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    return sock.connect_ex(('127.0.0.1', int(port))) == 0
+    return sock.connect_ex(('127.0.0.1', int(port))) != 0
 
 
 def get_notebook_name():

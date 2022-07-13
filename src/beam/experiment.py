@@ -354,7 +354,8 @@ class Experiment(object):
                     v = str(v)
                 hparams[k] =v
 
-            self.writer.add_hparams(hparams, {}, run_name=self.exp_name)
+            # self.writer.add_hparams(hparams, {}, run_name=self.exp_name)
+            self.writer.add_hparams(hparams, {})
 
         if networks is not None and enable and self.writer is not None:
             for k, net in networks.items():
@@ -491,7 +492,7 @@ class Experiment(object):
                           add_all_of_same_project=False, more_experiments=None, more_identifiers=None,
                           more_algorithms=None, get_port_from_beam_port_range=True):
 
-        if port is not None:
+        if port is None:
             if get_port_from_beam_port_range:
                 base_range = int(os.environ['JUPYTER_PORT']) // 1000
                 port_range = range(base_range * 1000, (base_range + 1) * 1000)
@@ -513,8 +514,18 @@ class Experiment(object):
                 logger.error(f"Port {port} is not available")
                 return
 
+        print(port)
+
         def path_depth(path):
             return len(os.path.normpath(path).split(os.sep))
+
+        def normalize_path(path, level=0):
+
+            normal_path = [self.hparams.root_dir, self.hparams.project_name,
+                           self.hparams.algorithm, self.hparams.identifier]
+            pd = path_depth(self.hparams.root_dir)
+
+            return os.path.join(*normal_path[:len(normal_path)-pd-level], path)
 
         if add_all_of_same_project:
             base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name)
@@ -534,17 +545,31 @@ class Experiment(object):
         if more_experiments is not None:
             if type(more_experiments) is str:
                 more_experiments = [more_experiments]
-                experiments = experiments + more_experiments
+                experiments = experiments + [normalize_path(e, level=0) for e in more_experiments]
 
         if more_identifiers is not None:
             if type(more_identifiers) is str:
                 more_identifiers = [more_identifiers]
+                depth = 1
                 for identifier in more_identifiers:
-                    more_experiments = [d[0] for d in list(os.walk(base_dir)) if (path_depth(d[0]) - path_depth(base_dir)) <= depth]
+                    identifier = normalize_path(identifier, level=depth)
+                    experiments = experiments + [d[0] for d in list(os.walk(identifier)) if (path_depth(d[0]) - path_depth(identifier)) <= depth]
 
+        if more_algorithms is not None:
+            if type(more_algorithms) is str:
+                more_algorithms = [more_algorithms]
+                depth = 2
+                for algorithm in more_algorithms:
+                    algorithm = normalize_path(algorithm, level=depth)
+                    experiments = experiments + [d[0] for d in list(os.walk(algorithm)) if (path_depth(d[0]) - path_depth(algorithm)) <= depth]
 
+        experiments = [os.path.normpath(e) for e in experiments]
+        names = ['/'.join(e.split(os.sep)[-3:]) for e in experiments]
+        log_dirs = ','.join([f'{n}:{e}' for n, e in zip(names, experiments)])
 
+        command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
 
+        start_tensorboard(command_argument)
 
     def fit(self, Alg, Dataset, *args, return_results=False, reload_results=False,
             tensorboard_arguments=None, **kwargs):
