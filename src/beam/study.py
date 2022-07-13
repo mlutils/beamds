@@ -60,17 +60,15 @@ class TimeoutStopper(Stopper):
         now = time.time()
 
         if trial_id in self.start_time:
-            taken = now - self.start_time[trial_id]
-            self._budget -= taken
+            if now - self.start_time[trial_id] >= self._budget:
+                logger.info(
+                    f"Reached timeout of {self._timeout_seconds} seconds. "
+                    f"Stopping this trials."
+                )
+                return True
         else:
             self.start_time[trial_id] = now
 
-        if self._budget <= 0:
-            logger.info(
-                f"Reached timeout of {self._timeout_seconds} seconds. "
-                f"Stopping this trials."
-            )
-            return True
         return False
 
 
