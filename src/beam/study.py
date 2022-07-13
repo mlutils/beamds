@@ -51,9 +51,7 @@ class TimeoutStopper(Stopper):
 
         self._budget = self._timeout_seconds
 
-        # To account for setup overhead, set the last check time only after
-        # the first call to `stop_all()`.
-        self._last_check = None
+        self.start_time = {}
 
     def stop_all(self):
         return False
@@ -61,11 +59,11 @@ class TimeoutStopper(Stopper):
     def __call__(self, trial_id, result):
         now = time.time()
 
-        if self._last_check:
-            taken = now - self._last_check
+        if trial_id in self.start_time:
+            taken = now - self.start_time[trial_id]
             self._budget -= taken
-
-        self._last_check = now
+        else:
+            self.start_time[trial_id] = now
 
         if self._budget <= 0:
             logger.info(
@@ -74,10 +72,6 @@ class TimeoutStopper(Stopper):
             )
             return True
         return False
-
-    def __setstate__(self, state: dict):
-        state["_last_check"] = None
-        self.__dict__.update(state)
 
 
 class Study(object):
