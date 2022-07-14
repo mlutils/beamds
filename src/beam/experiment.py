@@ -122,10 +122,21 @@ class Experiment(object):
         results_names: additional results directories (defaults are: train, validation, test)
         """
 
-        self.hparams = copy.deepcopy(args)
+        self.tensorboard_hparams = {}
+
+        pa = None
+        if hasattr(args, 'parser'):
+            pa = args.parser._actions
+            pa = {pai.dest: pai.metavar for pai in pa}
+            delattr(args, 'parser')
+
         vars_args = copy.copy(vars(args))
-        if 'parser' in vars_args:
-            vars_args.pop('parser')
+        for k, v in vars_args.items():
+            param_type = check_type(v)
+            if param_type.element in ['bool', 'str', 'int', 'float'] and pa is not None and k in pa and pa[k] == 'hparam':
+                self.tensorboard_hparams[k] =v
+
+        self.hparams = copy.copy(args)
 
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 
@@ -289,15 +300,6 @@ class Experiment(object):
         self.trial = trial
         self.hparams.hpo = hpo
         self.hparams.ddp = False
-
-        self.tensorboard_hparams = {}
-        pa = args.parser._actions
-        pa = {pai.dest: pai.metavar for pai in pa}
-
-        for k, v in vars_args.items():
-            param_type = check_type(v)
-            if param_type.element in ['bool', 'str', 'int', 'float'] and k in pa and pa[k] == 'hparam':
-                self.tensorboard_hparams[k] =v
 
         pd.to_pickle(self.tensorboard_hparams, os.path.join(self.root, "hparams.pkl"))
 
