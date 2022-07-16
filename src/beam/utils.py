@@ -12,13 +12,19 @@ import socket
 from contextlib import closing
 from random import randint
 from collections import namedtuple
-
+from timeit import default_timer as timer
 from loguru import logger
 
 # logger.remove(handler_id=0)
 logger.remove()
 logger.add(sys.stdout, level='INFO', colorize=True,
            format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>')
+
+
+def rate_string_format(n, t):
+    if n / t > 1:
+        return f"{n / t: .4} [iter/sec]"
+    return f"{t / n: .4} [sec/iter]"
 
 
 def beam_logger():
@@ -306,10 +312,53 @@ def finite_iterations(iterator, n):
             return out
 
 
-def tqdm_beam(x, *args, enable=True, notebook=True, **argv):
-    if not enable:
+def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=None, notebook=True, **argv):
+
+    my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
+
+    if enable is False:
         return x
+
+    elif enable is True:
+
+        pb = my_tqdm(x, *args, **argv)
+        for xi in pb:
+            if message_func is not None:
+                pb.set_description(message_func(xi))
+            yield xi
+
     else:
-        my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
-        return my_tqdm(x, *args, **argv)
+
+        iter_x = iter(x)
+
+        if 'total' in argv:
+            l = argv['total']
+            argv.pop('total')
+        else:
+            try:
+                l = len(x)
+            except TypeError:
+                l = None
+
+        t0 = timer()
+
+        stats_period = stats_period if l is not None else threshold
+        n = 0
+        while (te := timer()) - t0 <= stats_period:
+            n += 1
+            yield next(iter_x)
+
+        long_iter = None
+        if l is not None:
+            long_iter = (te - t0) / n * l > threshold
+
+        if l is None or long_iter:
+            pb = my_tqdm(iter_x, *args, initial=n, total=l, **argv)
+            for xi in pb:
+                if message_func is not None:
+                    pb.set_description(message_func(xi))
+                yield xi
+        else:
+            for xi in iter_x:
+                yield xi
 

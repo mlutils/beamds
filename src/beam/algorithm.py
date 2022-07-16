@@ -7,9 +7,9 @@ from .utils import logger
 import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-from .utils import finite_iterations, to_device, check_type
+from .utils import finite_iterations, to_device, check_type, rate_string_format
 from .dataset import UniversalBatchSampler, UniversalDataset
-
+from timeit import default_timer as timer
 
 class Algorithm(object):
 
@@ -26,7 +26,7 @@ class Algorithm(object):
 
         # some experiment hyperparameters
         self.half = hparams.half
-        self.enable_tqdm = hparams.enable_tqdm
+        self.enable_tqdm = hparams.enable_tqdm if hparams.tqdm_threshold == 0 else None
         self.n_epochs = hparams.n_epochs
         self.batch_size_train = hparams.batch_size_train
         self.batch_size_eval = hparams.batch_size_eval
@@ -251,6 +251,7 @@ class Algorithm(object):
             self.epoch -= 1
         for n in range(n_epochs):
 
+            t0 = timer()
             if training:
                 self.epoch += 1
             results = defaultdict(lambda: defaultdict(list))
@@ -261,12 +262,23 @@ class Algorithm(object):
             data_generator = self.data_generator(subset)
             for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
+                                  threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
                                   desc=subset, total=self.epoch_length[subset] - 1):
 
                 with torch.autocast(self.autocast_device, enabled=self.amp):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training)
 
             results = self.postprocess_epoch(sample=sample, results=results, epoch=n, training=training)
+
+            delta = timer() - t0
+            n_iter = i + 1
+            batch_size = self.batch_size_train if training else self.batch_size_eval
+
+            results['stats']['seconds'] = delta
+            results['stats']['batches'] = n_iter
+            results['stats']['samples'] = n_iter * batch_size
+            results['stats']['batch_rate'] = rate_string_format(n_iter, delta)
+            results['stats']['sample_rate'] = rate_string_format(n_iter * batch_size, delta)
 
             yield results
 
@@ -328,7 +340,9 @@ class Algorithm(object):
 
             dataloader = self.build_dataloader(subset)
             data_generator = self.data_generator(dataloader)
-            for i, sample in tqdm(data_generator, enable=enable_tqdm, notebook=(not self.ddp), desc=desc, total=len(dataloader)):
+            for i, sample in tqdm(data_generator, enable=enable_tqdm,
+                                  threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
+                                  notebook=(not self.ddp), desc=desc, total=len(dataloader)):
                 results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting)
 
             results = self.postprocess_inference(sample=sample, results=results, subset=subset, predicting=predicting)

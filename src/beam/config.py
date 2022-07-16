@@ -117,6 +117,9 @@ def get_beam_parser():
     boolean_feature(parser, "print-results", True, "Print results after each epoch to screen")
     boolean_feature(parser, "visualize-weights", True, "Visualize network weights on tensorboard")
     boolean_feature(parser, "enable-tqdm", True, "Print tqdm progress bar when training")
+    parser.add_argument('--tqdm-threshold', type=float, default=10., help='Minimal expected epoch time to print tqdm bar'
+                                                                         'set 0 to ignore and determine tqdm bar with tqdm-enable flag')
+    parser.add_argument('--tqdm-stats', type=float, default=1., help='Take this period to calculate the experted epoch time')
 
     parser.add_argument('--visualize-results', type=str, default='yes',
                         help='when to visualize results on tensorboard [yes|no|logscale]')

@@ -126,6 +126,7 @@ def mnist_algorithm_generator(experiment):
 
     dataset = MNISTDataset(experiment.hparams)
     alg = MNISTAlgorithm(experiment.hparams)
+
     return beam_algorithm_generator(experiment, alg, dataset)
 
 

@@ -13,7 +13,7 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger, check_type, beam_device
+from .utils import include_patterns, logger, check_type, beam_device, check_element_type
 from .algorithm import Algorithm
 import pandas as pd
 import torch.multiprocessing as mp
@@ -423,7 +423,23 @@ class Experiment(object):
 
         for subset, res in results.items():
 
+            def format(v):
+                v_type = check_element_type(v)
+                if v_type == 'int':
+                    if v >= 1000:
+                        return f"{float(v): .4}"
+                    else:
+                        return str(v)
+                elif v_type == 'float':
+                    return f"{v: .4}"
+                else:
+                    return v
+
             logger.info(f'{subset}:')
+
+            if print_log and 'stats' in res:
+                logger.info('| '.join([f"{k}: {format(v)} " for k, v in res['stats'].items()]))
+
             report = None
             if issubclass(type(res), dict):
                 if 'scalar' in res:
