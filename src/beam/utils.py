@@ -346,7 +346,10 @@ def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=
         n = 0
         while (te := timer()) - t0 <= stats_period:
             n += 1
-            yield next(iter_x)
+            try:
+                yield next(iter_x)
+            except StopIteration:
+                return
 
         long_iter = None
         if l is not None:
