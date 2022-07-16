@@ -18,7 +18,7 @@ from loguru import logger
 # logger.remove(handler_id=0)
 logger.remove()
 logger.add(sys.stdout, level='INFO', colorize=True,
-           format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>')
+           format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>')
 
 
 def rate_string_format(n, t):

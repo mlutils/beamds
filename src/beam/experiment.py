@@ -468,7 +468,7 @@ class Experiment(object):
                                 report[param]) is defaultdict):
                             stat = '| '.join([f"{k if k != 'mean' else 'avg'}:{v: .4}".ljust(15) for k, v in dict(stat).items() if k != 'count'])
                             paramp = f'{param}:'
-                            logger.info(f'{paramp: <15} | {stat}')
+                            logger.info(f'{paramp: <12} | {stat}')
 
         if self.writer is None:
             return
