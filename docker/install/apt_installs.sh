@@ -25,3 +25,7 @@ apt install -y alien -y libaio1 -y binwalk -y
 
 # ssh server
 echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+
+# ssh connection immediately disconnects after session start with exit code 254:
+# https://unix.stackexchange.com/questions/148714/cant-ssh-connection-terminates-immediately-with-exit-status-254
+sed -i 's/UsePAM yes/UsePAM no/g' /etc/ssh/sshd_config

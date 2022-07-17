@@ -56,10 +56,15 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
 
     if type(s) is slice:
 
-        if sliced is not None and s == slice(None):
-            return sliced
-
         f = torch.arange if arr_type == 'tensor' else np.arange
+
+        if s == slice(None):
+            if sliced is not None:
+                return sliced
+            elif l is not None:
+                return f(l)
+            else:
+                return ValueError(f"Cannot slice: {s} without length info")
 
         step = s.step
         if step is None:
@@ -291,7 +296,8 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
 
 
 def to_device(data, device='cuda', half=False):
-    if type(data) is dict:
+
+    if issubclass(type(data), dict):
         return {k: to_device(v, device=device, half=half) for k, v in data.items()}
     elif (type(data) is list) or (type(data) is tuple):
         return [to_device(s, device=device, half=half) for s in data]
@@ -299,6 +305,19 @@ def to_device(data, device='cuda', half=False):
         if half and data.dtype in [torch.float32, torch.float64]:
             data = data.half()
         return data.to(device)
+    else:
+        return data
+
+
+def concat_data(data):
+
+    d0 = data[0]
+    if issubclass(type(d0), dict):
+        return {k: concat_data([di[k] for di in data]) for k in d0.keys()}
+    elif (type(d0) is list) or (type(d0) is tuple):
+        return [concat_data([di[n] for di in data]) for n in range(len(d0))]
+    elif issubclass(type(d0), torch.Tensor):
+        return torch.cat(data)
     else:
         return data
 

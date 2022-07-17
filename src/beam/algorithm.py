@@ -7,9 +7,10 @@ from .utils import logger
 import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-from .utils import finite_iterations, to_device, check_type, rate_string_format
-from .dataset import UniversalBatchSampler, UniversalDataset
+from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data
+from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from timeit import default_timer as timer
+
 
 class Algorithm(object):
 
@@ -185,7 +186,12 @@ class Algorithm(object):
 
             dataset = subset
 
-            sampler = UniversalBatchSampler(len(dataset), self.hparams.batch_size_eval, shuffle=False,
+            if hasattr(dataset, 'index') and dataset.index is not None:
+                index = dataset.index.index.values
+            else:
+                index = len(dataset)
+
+            sampler = UniversalBatchSampler(index, self.hparams.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=0, pin_memory=self.pin_memory)
@@ -209,11 +215,11 @@ class Algorithm(object):
     def data_generator(self, subset):
 
         dataloader = self.build_dataloader(subset)
-        for i, sample in enumerate(dataloader):
+        for i, (ind, sample) in enumerate(dataloader):
             sample = self.process_sample(sample)
-            yield i, sample
+            yield i, (ind, sample)
 
-    def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True):
+    def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param epoch: epoch number
@@ -223,7 +229,7 @@ class Algorithm(object):
         '''
         return results
 
-    def iteration(self, sample=None, results=None, counter=None, subset=None, training=True):
+    def iteration(self, sample=None, results=None, counter=None, subset=None, training=True, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -236,7 +242,7 @@ class Algorithm(object):
         '''
         return results
 
-    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True):
+    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
         '''
         :param epoch: epoch number
         :param subset: name of dataset subset (usually train/validation/test)
@@ -260,15 +266,15 @@ class Algorithm(object):
             results = self.preprocess_epoch(results=results, epoch=n, training=training)
 
             data_generator = self.data_generator(subset)
-            for i, sample in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
+            for i, (ind, sample) in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
                                   threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
                                   desc=subset, total=self.epoch_length[subset] - 1):
 
                 with torch.autocast(self.autocast_device, enabled=self.amp):
-                    results = self.iteration(sample=sample, results=results, counter=i, training=training)
+                    results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
 
-            results = self.postprocess_epoch(sample=sample, results=results, epoch=n, training=training)
+            results = self.postprocess_epoch(sample=sample, index=ind, results=results, epoch=n, training=training)
 
             delta = timer() - t0
             n_iter = i + 1
@@ -282,7 +288,7 @@ class Algorithm(object):
 
             yield results
 
-    def preprocess_inference(self, results=None, subset=None, predicting=False):
+    def preprocess_inference(self, results=None, subset=None, predicting=False, **argv):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param subset: name of dataset subset (usually train/validation/test)
@@ -291,7 +297,7 @@ class Algorithm(object):
         '''
         return results
 
-    def inference(self, sample=None, results=None, subset=None, predicting=False):
+    def inference(self, sample=None, results=None, subset=None, predicting=False, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -301,10 +307,10 @@ class Algorithm(object):
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
-        results = self.iteration(sample=sample, results=results, subset=subset, counter=0, training=False)
-        return results
+        results = self.iteration(sample=sample, results=results, subset=subset, counter=0, training=False, **kwargs)
+        return {}, results
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=False):
+    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=False, **kwargs):
         '''
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
@@ -312,14 +318,14 @@ class Algorithm(object):
         '''
         return results
 
-    def report(self, results, i):
+    def report(self, results=None, epoch=None, **argv):
         '''
         Use this function to report results to hyperparameter optimization frameworks
         also you can add key 'objective' to the results dictionary to report the final scores.
         '''
         return results
 
-    def early_stopping(self, results, i):
+    def early_stopping(self, results=None, epoch=None, **kwargs):
         '''
         Use this function to early stop your model based on the results or any other metric in the algorithm class
         '''
@@ -331,6 +337,8 @@ class Algorithm(object):
 
             self.set_mode(training=False)
             results = defaultdict(lambda: defaultdict(list))
+            transforms = []
+            index = []
             results = self.preprocess_inference(results=results, subset=subset, predicting=predicting)
 
             desc = subset if type(subset) is str else ('predict' if predicting else 'evaluate')
@@ -340,14 +348,24 @@ class Algorithm(object):
 
             dataloader = self.build_dataloader(subset)
             data_generator = self.data_generator(dataloader)
-            for i, sample in tqdm(data_generator, enable=enable_tqdm,
+            for i, (ind, sample) in tqdm(data_generator, enable=enable_tqdm,
                                   threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
                                   notebook=(not self.ddp), desc=desc, total=len(dataloader)):
-                results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting)
+                transform, results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting,
+                                         index=ind)
+                transforms.append(transform)
+                index.append(ind)
 
-            results = self.postprocess_inference(sample=sample, results=results, subset=subset, predicting=predicting)
+            index = torch.cat(index)
+            transforms = concat_data(transforms)
+            results = self.postprocess_inference(sample=sample, index=ind, transforms=transforms,
+                                                 results=results, subset=subset, predicting=predicting)
 
-        return results
+            dataset = UniversalDataset(transforms, index=index)
+            # results = concat_results(results)
+            dataset.set_statistics(results)
+
+        return dataset
 
     def __iter__(self):
 
@@ -468,9 +486,10 @@ class Algorithm(object):
         '''
         return self(*args, predicting=False, **kwargs)
 
-    def predict(self, *args, **kwargs):
+    def predict(self, dataset, *args, lazy=False, **kwargs):
         '''
         For real data purposes (when labels are unknown)
         '''
-
-        return self(*args, predicting=True, **kwargs)
+        if lazy:
+            return TransformedDataset(dataset, self, *args, **kwargs)
+        return self(dataset, *args, predicting=True, **kwargs)

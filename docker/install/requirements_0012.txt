@@ -6,3 +6,4 @@ deepchecks
 torchensemble
 rtdl
 transformers
+tensorboardX
