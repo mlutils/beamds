@@ -103,7 +103,7 @@ class Algorithm(object):
         self._experiment = experiment
 
     def load_dataset(self, dataset=None, dataloaders=None, batch_size_train=None, batch_size_eval=None,
-                     oversample=False, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
+                     oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
                      worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
 
         assert dataloaders is not None or dataset is not None, "Either dataset or dataloader must be supplied"
@@ -113,8 +113,8 @@ class Algorithm(object):
 
             batch_size_train = self.hparams.batch_size_train if batch_size_train is None else batch_size_train
             batch_size_eval = self.hparams.batch_size_eval if batch_size_eval is None else batch_size_eval
-            oversample = self.hparams.oversample if oversample is None else oversample
-            weight_factor = self.hparams.oversampling_weight_factor if weight_factor is None else weight_factor
+            oversample = (self.hparams.oversampling_factor > 0) if oversample is None else oversample
+            weight_factor = self.hparams.oversampling_factor if weight_factor is None else weight_factor
             expansion_size = self.hparams.expansion_size if expansion_size is None else expansion_size
 
             dataset.build_samplers(batch_size_train, eval_batch_size=batch_size_eval,

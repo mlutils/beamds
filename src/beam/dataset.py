@@ -637,9 +637,9 @@ class TransformedDataset(torch.utils.data.Dataset):
         ind, data = self.dataset[ind]
         dataset = UniversalDataset(data)
         res = self.alg.predict(dataset, *self.args, **self.kwargs)
-        res.set_index(ind)
+        # res.set_index(ind)
 
-        return res
+        return ind, res.values
 
 
 class UniversalBatchSampler(object):
