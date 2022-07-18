@@ -19,7 +19,7 @@ from src.beam import LinearNet
 from src.beam import DataTensor, PackedFolds
 from functools import partial
 import math
-
+import matplotlib.pyplot as plt
 
 # In[2]:
 
@@ -32,11 +32,27 @@ def pairwise_distance(a, b, p=2):
     if p == 1:
         r = torch.abs(r).sum(dim=-1)
     elif p == 2:
-        r = torch.sqrt(torch.pow(r, 2).sum(dim=-1))
+        # r = torch.sqrt(torch.pow(r, 2).sum(dim=-1))
+        r = torch.pow(r, 2).sum(dim=-1)
     else:
         raise NotImplementedError
 
     return r
+
+
+class DeepTSNENet(nn.Module):
+    def __init__(self, net, eps=1e-05, momentum=0.1):
+        super().__init__()
+        self.net = net
+        # self.norm = nn.LazyBatchNorm1d(eps=eps, momentum=momentum)
+
+    def forward(self, x):
+
+        z = self.net(x)
+        # ztag = self.norm(z)
+        ztag = z
+
+        return z, ztag
 
 
 class MNISTDataset(UniversalDataset):
@@ -63,12 +79,15 @@ class DeepTSNE(Algorithm):
     def __init__(self, hparams):
 
         # choose your network
-        net = LinearNet(784, 256, hparams.emb_size, 4)
+        net = LinearNet(784, 256, hparams.emb_size, 6, activation='GELU')
+        net = DeepTSNENet(net)
         super().__init__(hparams, networks=net)
 
         self.pdist = partial(pairwise_distance, p=hparams.p_norm)
         self.reduction = hparams.reduction
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizers['net'].dense,
+                                                                    factor=1/math.sqrt(10),
+                                                                    patience=2)
 
     # def early_stopping(self, results=None, epoch=None, **kwargs):
     #     acc = np.mean(results['validation']['scalar']['acc'])
@@ -76,9 +95,31 @@ class DeepTSNE(Algorithm):
 
     def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
 
-        if not training:
-            # self.scheduler.step()
+        if training:
+            loss = np.mean(results['scalar']['loss'])
+            self.scheduler.step(float(loss))
             results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
+
+        else:
+            predictions = self.evaluate('test')
+
+            z = predictions.data['z']
+            y = predictions.data['y']
+
+            y = y.detach().cpu().numpy()
+            z = z.detach().cpu().numpy()
+
+            fig, ax = plt.subplots()
+            sc = ax.scatter(z[:, 0], z[:, 1], c=y, cmap='tab10')
+
+            size = 30
+            lp = lambda i: plt.plot([],color=sc.cmap(sc.norm(i)), ms=np.sqrt(size), mec="none",
+                                    label="{:g}".format(i), ls="", marker="o")[0]
+            handles = [lp(i) for i in np.arange(10)]
+            plt.legend(handles=handles)
+
+            ax.grid(True)
+            plt.show()
 
         return results
 
@@ -93,30 +134,52 @@ class DeepTSNE(Algorithm):
         opt = self.optimizers['net']
 
         dx = self.pdist(x, x)
-        # rx = torch.norm(x, p=self.hparams.p_norm, dim=-1, keepdim=True)
-        # dx / rx
 
-        z = net(x)
+        z, z_scaled = net(x)
 
-        lz = z.shape[-1]
-        dz = self.pdist(z, z)
+        dz = self.pdist(z_scaled, z_scaled)
 
-        # w = 1 / (dx + 1e-3)
-        # w
+        # w = (1 / (dx + 1)) ** (.2)
+        # w = w - torch.diag(w.diag())
+        #
+        # w = w / w.sum(dim=1, keepdim=True)
 
-        loss_dist = F.smooth_l1_loss(dz / lz, dx / lx, reduction='none')
-        loss_dist = loss_dist.sum(dim=-1)
+        # w = 1
+
+        # w = (dx / lx < .2)
+
+        # loss_dist = (loss_dist * w).sum(dim=-1)
+
+        topk = torch.topk(dx, int(len(x) * self.hparams.perplexity_top), dim=-1, largest=False)
+        bottomk = torch.topk(dx, int(len(x) * self.hparams.perplexity_bottom), dim=-1, largest=True)
+
+        dz_local = dz[torch.arange(len(dz)).unsqueeze(1), topk.indices]
+        dz_global = dz[torch.arange(len(dz)).unsqueeze(1), bottomk.indices]
+
+        dx_local = topk.values
+        # scale = math.sqrt(lx)
+        scale = 1
+
+        loss_dist_top = F.l1_loss(dz_local, dx_local / scale, reduction='none')
+
+        th = 4 * float(torch.quantile(dx_local, q=.95)) / scale
+        loss_dist_all = torch.clip(th - dz_global, min=0)
 
         mu = z.mean(dim=0)
         sig2 = z.var(dim=0)
 
-        loss_reg = torch.pow(mu, 2) + sig2 - .5 * torch.log(sig2)
+        loss_reg = (torch.pow(mu, 2) + sig2) / 2 - .5 * torch.log(sig2) - 0.5
         loss_reg = loss_reg.sum()
 
         if self.reduction == 'sum':
-            loss_dist = loss_dist.sum()
+            loss_dist = loss_dist_top.sum() + loss_dist_all.sum()
         else:
-            loss_dist = loss_dist.mean()
+            loss_dist = loss_dist_top.mean() + loss_dist_all.mean()
+
+        # if self.reduction == 'sum':
+        #     loss_dist = loss_dist_top.sum()
+        # else:
+        #     loss_dist = loss_dist_top.mean()
 
         loss = loss_dist + self.hparams.reg_weight * loss_reg
 
@@ -126,6 +189,8 @@ class DeepTSNE(Algorithm):
         results['scalar']['loss'].append(float(loss))
         results['scalar']['loss_reg'].append(float(loss_reg / self.hparams.emb_size))
         results['scalar']['loss_dist'].append(float(loss_dist))
+        results['scalar']['loss_dist_top'].append(float(loss_dist_top.mean()))
+        results['scalar']['loss_dist_all'].append(float(loss_dist_all.mean()))
         results['scalar']['mu'].append(float(mu.mean()))
         results['scalar']['sig2'].append(float(sig2.mean()))
 
@@ -141,12 +206,12 @@ class DeepTSNE(Algorithm):
         x = x.view(len(x), -1)
         net = self.networks['net']
 
-        z = net(x)
+        z, z_scaled = net(x)
 
         if predicting:
-            transforms = z
+            transforms = {'z': z, 'z_scaled': z_scaled}
         else:
-            transforms = {'z': z, 'y': y}
+            transforms = {'z': z, 'y': y, 'z_scaled': z_scaled}
 
         return transforms, results
 
@@ -159,8 +224,12 @@ def get_deep_tsne_parser():
 
     parser = get_beam_parser()
     parser.add_argument('--emb-size', type=int, default=2, help='Size of embedding dimension')
-    parser.add_argument('--p-norm', type=int, default=1, help='The norm degree')
-    parser.add_argument('--reg-weight', type=float, default=200., help='Regularization weight factor')
+    parser.add_argument('--p-norm', type=int, default=2, help='The norm degree')
+    parser.add_argument('--perplexity-top', type=int, default=.02, help='The number of nearest neighbors that is used in'
+                                                                  ' other manifold learning algorithms')
+    parser.add_argument('--perplexity-bottom', type=int, default=.9, help='The number of farest neighbors that is used in'
+                                                                   ' other manifold learning algorithms')
+    parser.add_argument('--reg-weight', type=float, default=.0, help='Regularization weight factor')
     parser.add_argument('--reduction', type=str, default='sum', help='The reduction to apply')
 
     return parser

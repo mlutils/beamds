@@ -465,8 +465,9 @@ class Algorithm(object):
 
         def algorithm_generator_single(experiment, *args, **kwargs):
 
-            self.load_dataset(dataset=dataset, dataloaders=dataloaders, timeout=0, collate_fn=None,
-                              worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2)
+            if dataset is not None:
+                self.load_dataset(dataset=dataset, dataloaders=dataloaders, timeout=0, collate_fn=None,
+                                  worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2)
 
             return self
 

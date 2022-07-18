@@ -90,11 +90,12 @@ class PositionalHarmonicExpansion(object):
 
 class LinearNet(nn.Module):
 
-    def __init__(self, l_in, l_h=256, l_out=1, n_l=2, bias=True):
+    def __init__(self, l_in, l_h=256, l_out=1, n_l=2, bias=True, activation='ReLU'):
         super().__init__()
 
-        self.lin = nn.Sequential(*([nn.Linear(l_in, l_h, bias=bias), nn.ReLU()] if n_l > 1 else []),
-                                 *sum([[nn.Linear(l_h, l_h, bias=bias), nn.ReLU()] for _ in range(max(n_l - 2, 0))],
+        activation = getattr(nn, activation)
+        self.lin = nn.Sequential(*([nn.Linear(l_in, l_h, bias=bias), activation()] if n_l > 1 else []),
+                                 *sum([[nn.Linear(l_h, l_h, bias=bias), activation()] for _ in range(max(n_l - 2, 0))],
                                       []),
                                  nn.Linear(l_h if n_l > 1 else l_in, l_out, bias=bias))
 

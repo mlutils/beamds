@@ -414,7 +414,10 @@ class Experiment(object):
             algorithm.save_checkpoint(checkpoint_file)
 
             if store_networks == 'no' or store_networks == 'logscale' and not logscale:
-                os.remove(os.path.join(self.checkpoints_dir, f'checkpoint_{epoch - 1:06d}'))
+                try:
+                    os.remove(os.path.join(self.checkpoints_dir, f'checkpoint_{epoch - 1:06d}'))
+                except OSError:
+                    pass
 
         if self.world_size > 1:
             dist.barrier()
