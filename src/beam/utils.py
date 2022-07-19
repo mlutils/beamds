@@ -335,6 +335,26 @@ def finite_iterations(iterator, n):
 
 def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=None, notebook=True, **argv):
 
+    """
+    Beam's wrapper for the tqdm progress bar. It features a universal interface for both jupyter notebooks and .py files.
+    In addition, it provides a "lazy progress bar initialization". The progress bar is initialized only if its estimated
+    duration is longer than a threshold.
+
+    Parameters
+    ----------
+        threshold : float
+            The smallest expected duration (in Seconds) to generate a progress bar. This feature is used only if enable
+            is set to None.
+        stats_period: float
+            The initial time period (in seconds) to calculate the ineration statistics (iters/sec). This statistics is used to estimate the expected duction of the entire iteration.
+        message_func: func
+            A dynamic message to add to the progress bar. For example, this message can plot the instantaneous loss.
+        enable: boolean/None
+            Whether to enable the progress bar, disable it or when set to None, use lazy progress bar.
+        notebook: boolean
+            A boolean that overrides the internal calculation of is_notebook. Set to False when you want to avoid printing notebook styled tqdm bars (for example, due to multiprocessing).
+    """
+
     my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
 
     if enable is False:

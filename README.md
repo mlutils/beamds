@@ -48,6 +48,10 @@ https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.
 4. Install and configure NVIDIA container runtime:
 https://stackoverflow.com/a/61737404
 
+## Build the sphinx documentation
+
+Follow https://github.com/cimarieta/sphinx-autodoc-example
+
 
 
 
