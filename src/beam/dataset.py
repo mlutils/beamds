@@ -108,12 +108,12 @@ class PackedFolds(object):
         index_type = check_type(index)
 
         if index_type.minor == 'list':
-            index = torch.concat([as_tensor(v) for v in index])
+            index = torch.concat([as_tensor(v, return_vector=True) for v in index])
 
         elif index_type.minor == 'dict':
-            index = torch.concat([as_tensor(index[k]) for k in self.names])
+            index = torch.concat([as_tensor(index[k], return_vector=True) for k in self.names])
 
-        elif  index_type.major == 'array':
+        elif index_type.major == 'array':
             index = as_tensor(index)
             
         elif index is None:
@@ -253,9 +253,11 @@ class PackedFolds(object):
             ind_rest = ind[1:]
             ind = ind[0]
         else:
-            ind_rest =tuple()
+            ind_rest = tuple()
 
         ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        if ind_type.major == 'scalar':
+            ind = [ind]
 
         info = self.info.loc[ind]
 
@@ -266,9 +268,14 @@ class PackedFolds(object):
             names = [self.names[i] for i in uq]
 
             if len(uq) == 1:
-                return PackedFolds(data=[self.data[uq[0]].__getitem__((fold_index, *ind_rest))], names=names, index=ind, device=self.device)
 
-            fold_index = [fold_index[fold==i] for i in uq]
+                data = self.data[uq[0]].__getitem__((fold_index, *ind_rest))
+                if len(ind) == 1:
+                    return data[0]
+
+                return PackedFolds(data=[data], names=names, index=ind, device=self.device)
+
+            fold_index = [fold_index[fold == i] for i in uq]
             data = [self.data[i].__getitem__((j, *ind_rest)) for i, j in zip(uq, fold_index)]
 
             fold = None

@@ -42,9 +42,13 @@ def is_boolean(x):
     return False
 
 
-def as_tensor(x, device=None):
+def as_tensor(x, device=None, return_vector=False):
     if type(x) is not torch.Tensor:
         x = torch.tensor(x)
+
+    if return_vector:
+        if not len(x.shape):
+            x = x.unsqueeze(0)
 
     if device is not None:
         x = x.to(device)

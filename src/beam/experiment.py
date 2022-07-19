@@ -619,6 +619,9 @@ class Experiment(object):
             command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
         start_tensorboard(command_argument)
 
+    def algorithm_generator(self, Alg, Dataset=None):
+        return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset)
+
     def fit(self, Alg, Dataset=None, *args, return_results=False, reload_results=False,
             tensorboard_arguments=None, **kwargs):
 
