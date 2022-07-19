@@ -225,9 +225,9 @@ def get_deep_tsne_parser():
     parser = get_beam_parser()
     parser.add_argument('--emb-size', type=int, default=2, help='Size of embedding dimension')
     parser.add_argument('--p-norm', type=int, default=2, help='The norm degree')
-    parser.add_argument('--perplexity-top', type=int, default=.02, help='The number of nearest neighbors that is used in'
+    parser.add_argument('--perplexity-top', type=float, default=.02, help='The number of nearest neighbors that is used in'
                                                                   ' other manifold learning algorithms')
-    parser.add_argument('--perplexity-bottom', type=int, default=.9, help='The number of farest neighbors that is used in'
+    parser.add_argument('--perplexity-bottom', type=float, default=.9, help='The number of farest neighbors that is used in'
                                                                    ' other manifold learning algorithms')
     parser.add_argument('--reg-weight', type=float, default=.0, help='Regularization weight factor')
     parser.add_argument('--reduction', type=str, default='sum', help='The reduction to apply')

@@ -324,11 +324,9 @@ def concat_data(data):
 
 def finite_iterations(iterator, n):
     for i, out in enumerate(iterator):
-
-        if i + 1 < n:
-            yield out
-        else:
-            return out
+        yield out
+        if i + 1 == n:
+            break
 
 
 def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=None, notebook=True, **argv):

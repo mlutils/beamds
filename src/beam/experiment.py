@@ -26,12 +26,7 @@ from tensorboard.notebook import start as start_tensorboard
 done = mp.Event()
 
 
-def beam_algorithm_generator(experiment, Alg, Dataset):
-
-    if issubclass(type(Dataset), torch.utils.data.Dataset):
-        dataset = Dataset
-    else:
-        dataset = Dataset(experiment.hparams)
+def beam_algorithm_generator(experiment, Alg, Dataset=None):
 
     if issubclass(type(Alg), Algorithm):
         alg = Alg
@@ -40,6 +35,13 @@ def beam_algorithm_generator(experiment, Alg, Dataset):
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
+
+    if issubclass(type(Dataset), torch.utils.data.Dataset):
+        dataset = Dataset
+    elif Dataset is None:
+        dataset = alg.dataset
+    else:
+        dataset = Dataset(experiment.hparams)
 
     alg.load_dataset(dataset)
     alg.experiment = experiment
@@ -54,8 +56,8 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     results = {}
 
     try:
-        for results in iter(alg):
-            experiment.save_model_results(results, alg,
+        for i, results in enumerate(iter(alg)):
+            experiment.save_model_results(results, alg, i,
                                           print_results=experiment.hparams.print_results,
                                           visualize_results=experiment.hparams.visualize_results,
                                           store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
@@ -366,7 +368,7 @@ class Experiment(object):
             for k, net in networks.items():
                 self.writer.add_graph(net, inputs[k])
 
-    def save_model_results(self, results, algorithm, visualize_results='yes',
+    def save_model_results(self, results, algorithm, iteration, visualize_results='yes',
                            store_results='logscale', store_networks='logscale', print_results=True,
                            visualize_weights=False, argv=None):
 
@@ -389,13 +391,12 @@ class Experiment(object):
         :return:
         '''
 
-        epoch = algorithm.epoch + 1
-
+        epoch = algorithm.epoch
         if not self.rank:
 
             if print_results:
                 logger.info('')
-                logger.info(f'Finished epoch {epoch}/{algorithm.n_epochs}:')
+                logger.info(f'Finished epoch {iteration+1}/{algorithm.n_epochs} (Total trained epochs {epoch}).')
 
             decade = int(np.log10(epoch) + 1)
             logscale = not (epoch - 1) % (10 ** (decade - 1))
@@ -618,7 +619,7 @@ class Experiment(object):
             command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
         start_tensorboard(command_argument)
 
-    def fit(self, Alg, Dataset, *args, return_results=False, reload_results=False,
+    def fit(self, Alg, Dataset=None, *args, return_results=False, reload_results=False,
             tensorboard_arguments=None, **kwargs):
 
         ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset)

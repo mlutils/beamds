@@ -253,13 +253,10 @@ class Algorithm(object):
 
     def epoch_iterator(self, n_epochs, subset, training):
 
-        if training:
-            self.epoch -= 1
         for n in range(n_epochs):
 
             t0 = timer()
-            if training:
-                self.epoch += 1
+
             results = defaultdict(lambda: defaultdict(list))
 
             self.set_mode(training=training)
@@ -269,7 +266,7 @@ class Algorithm(object):
             for i, (ind, sample) in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
                                   threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
-                                  desc=subset, total=self.epoch_length[subset] - 1):
+                                  desc=subset, total=self.epoch_length[subset]):
 
                 with torch.autocast(self.autocast_device, enabled=self.amp):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
@@ -372,7 +369,7 @@ class Algorithm(object):
         all_train_results = defaultdict(dict)
         all_eval_results = defaultdict(dict)
 
-        eval_generator = self.epoch_iterator(self.n_epochs + 1, subset=self.eval_subset, training=False)
+        eval_generator = self.epoch_iterator(self.n_epochs, subset=self.eval_subset, training=False)
         for i, train_results in enumerate(self.epoch_iterator(self.n_epochs, subset='train', training=True)):
 
             for k_type in train_results.keys():
@@ -392,12 +389,16 @@ class Algorithm(object):
             if self.hpo is not None:
                 results = self.report(results, i)
 
+            self.epoch += 1
             yield results
+
             if self.early_stopping(results, i):
                 return
 
             all_train_results = defaultdict(dict)
             all_eval_results = defaultdict(dict)
+
+
 
     def set_mode(self, training=True):
 
