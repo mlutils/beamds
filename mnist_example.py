@@ -36,7 +36,7 @@ class MNISTDataset(UniversalDataset):
         self.labels = PackedFolds({'train': dataset_train.targets, 'test': dataset_test.targets})
         self.split(validation=.2, test=self.labels['test'].index, seed=seed)
 
-    def __getitem__(self, index):
+    def getitem(self, index):
         return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
 
 
@@ -49,13 +49,13 @@ class MNISTAlgorithm(Algorithm):
         super().__init__(hparams, networks=net)
 
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
-        self.stop_at = .97
+        self.stop_at = hparams.stop_at
 
-    def early_stopping(self, results, i):
+    def early_stopping(self, results=None, epoch=None, **kwargs):
         acc = np.mean(results['validation']['scalar']['acc'])
         return acc > self.stop_at
 
-    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True):
+    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
         x, y = sample['x'], sample['y']
 
         results['images']['sample'] = x[:16].view(16, 1, 28, 28).data.cpu()
@@ -66,7 +66,7 @@ class MNISTAlgorithm(Algorithm):
 
         return results
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True):
+    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x, y = sample['x'], sample['y']
 
@@ -85,7 +85,7 @@ class MNISTAlgorithm(Algorithm):
 
         return results
 
-    def inference(self, sample=None, results=None, subset=None, predicting=True):
+    def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
@@ -103,10 +103,11 @@ class MNISTAlgorithm(Algorithm):
         if not predicting:
             results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
             results['predictions']['target'].append(y)
+            return {'y': y, 'y_hat': y_hat}, results
 
-        return results
+        return y_hat, results
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True):
+    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
         y_pred = torch.cat(results['predictions']['y_pred'])
         y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
@@ -126,6 +127,7 @@ def mnist_algorithm_generator(experiment):
 
     dataset = MNISTDataset(experiment.hparams)
     alg = MNISTAlgorithm(experiment.hparams)
+
     return beam_algorithm_generator(experiment, alg, dataset)
 
 
@@ -143,8 +145,8 @@ def run_mnist(rank, world_size, experiment):
 
     experiment.writer_control(enable=not (bool(rank)), networks=alg.get_networks(), inputs={'net': x})
 
-    for results in iter(alg):
-        experiment.save_model_results(results, alg,
+    for i, results in enumerate(iter(alg)):
+        experiment.save_model_results(results, alg, i,
                                       print_results=True, visualize_results='yes',
                                       store_results='logscale', store_networks='logscale',
                                       visualize_weights=True,
@@ -168,7 +170,7 @@ if __name__ == '__main__':
 
     args = beam_arguments(
         f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cpu   ",
-        "--epoch-length=200000 --n-epochs=10 --clip=1 --parallel=1", path_to_data=path_to_data)
+        "--epoch-length=200000 --n-epochs=10 --clip=1 --parallel=1", path_to_data=path_to_data, stop_at=.97)
 
     experiment = Experiment(args)
 

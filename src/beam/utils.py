@@ -12,13 +12,19 @@ import socket
 from contextlib import closing
 from random import randint
 from collections import namedtuple
-
+from timeit import default_timer as timer
 from loguru import logger
 
 # logger.remove(handler_id=0)
 logger.remove()
 logger.add(sys.stdout, level='INFO', colorize=True,
-           format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>')
+           format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>')
+
+
+def rate_string_format(n, t):
+    if n / t > 1:
+        return f"{n / t: .4} [iter/sec]"
+    return f"{t / n: .4} [sec/iter]"
 
 
 def beam_logger():
@@ -36,9 +42,13 @@ def is_boolean(x):
     return False
 
 
-def as_tensor(x, device=None):
+def as_tensor(x, device=None, return_vector=False):
     if type(x) is not torch.Tensor:
         x = torch.tensor(x)
+
+    if return_vector:
+        if not len(x.shape):
+            x = x.unsqueeze(0)
 
     if device is not None:
         x = x.to(device)
@@ -50,10 +60,15 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
 
     if type(s) is slice:
 
-        if sliced is not None and s == slice(None):
-            return sliced
-
         f = torch.arange if arr_type == 'tensor' else np.arange
+
+        if s == slice(None):
+            if sliced is not None:
+                return sliced
+            elif l is not None:
+                return f(l)
+            else:
+                return ValueError(f"Cannot slice: {s} without length info")
 
         step = s.step
         if step is None:
@@ -285,7 +300,8 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
 
 
 def to_device(data, device='cuda', half=False):
-    if type(data) is dict:
+
+    if issubclass(type(data), dict):
         return {k: to_device(v, device=device, half=half) for k, v in data.items()}
     elif (type(data) is list) or (type(data) is tuple):
         return [to_device(s, device=device, half=half) for s in data]
@@ -297,19 +313,76 @@ def to_device(data, device='cuda', half=False):
         return data
 
 
+def concat_data(data):
+
+    d0 = data[0]
+    if issubclass(type(d0), dict):
+        return {k: concat_data([di[k] for di in data]) for k in d0.keys()}
+    elif (type(d0) is list) or (type(d0) is tuple):
+        return [concat_data([di[n] for di in data]) for n in range(len(d0))]
+    elif issubclass(type(d0), torch.Tensor):
+        return torch.cat(data)
+    else:
+        return data
+
+
 def finite_iterations(iterator, n):
     for i, out in enumerate(iterator):
-
-        if i + 1 < n:
-            yield out
-        else:
-            return out
+        yield out
+        if i + 1 == n:
+            break
 
 
-def tqdm_beam(x, *args, enable=True, notebook=True, **argv):
-    if not enable:
+def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=None, notebook=True, **argv):
+
+    my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
+
+    if enable is False:
         return x
+
+    elif enable is True:
+
+        pb = my_tqdm(x, *args, **argv)
+        for xi in pb:
+            if message_func is not None:
+                pb.set_description(message_func(xi))
+            yield xi
+
     else:
-        my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
-        return my_tqdm(x, *args, **argv)
+
+        iter_x = iter(x)
+
+        if 'total' in argv:
+            l = argv['total']
+            argv.pop('total')
+        else:
+            try:
+                l = len(x)
+            except TypeError:
+                l = None
+
+        t0 = timer()
+
+        stats_period = stats_period if l is not None else threshold
+        n = 0
+        while (te := timer()) - t0 <= stats_period:
+            n += 1
+            try:
+                yield next(iter_x)
+            except StopIteration:
+                return
+
+        long_iter = None
+        if l is not None:
+            long_iter = (te - t0) / n * l > threshold
+
+        if l is None or long_iter:
+            pb = my_tqdm(iter_x, *args, initial=n, total=l, **argv)
+            for xi in pb:
+                if message_func is not None:
+                    pb.set_description(message_func(xi))
+                yield xi
+        else:
+            for xi in iter_x:
+                yield xi
 

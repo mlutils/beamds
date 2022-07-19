@@ -157,9 +157,9 @@ class CIFAR10Dataset(UniversalDataset):
         self.labels = PackedFolds({'train': y_train, 'test': y_test})
         self.split(validation=.2, test=self.labels['test'].index, seed=hparams.split_dataset_seed)
 
-    def __getitem__(self, index):
+    def getitem(self, ind):
 
-        x = self.data[index]
+        x = self.data[ind]
 
         if self.training:
             x = self.t_train(x)
@@ -168,7 +168,7 @@ class CIFAR10Dataset(UniversalDataset):
 
         x = x.to(memory_format=torch.channels_last)
 
-        return {'x': x, 'y': self.labels[index]}
+        return {'x': x, 'y': self.labels[ind]}
 
 
 class LRPolicy(object):
@@ -220,7 +220,7 @@ class CIFAR10Algorithm(Algorithm):
                                                                                  final_point=hparams.final_point,
                                                                                  minimal_gain=hparams.minimal_gain))
 
-    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True):
+    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
 
         x, y = sample['x'], sample['y']
 
@@ -231,7 +231,7 @@ class CIFAR10Algorithm(Algorithm):
 
         return results
 
-    def iteration(self, sample=None, results=None, counter=None, subset=None, training=True):
+    def iteration(self, sample=None, results=None, counter=None, subset=None, training=True, **kwargs):
 
         x, y = sample['x'], sample['y']
 
@@ -252,7 +252,7 @@ class CIFAR10Algorithm(Algorithm):
 
         return results
 
-    def report(self, results, i):
+    def report(self, results=None, epoch=None, **kwargs):
 
         acc = np.mean(results['validation']['scalar']['acc'])
 
@@ -260,7 +260,7 @@ class CIFAR10Algorithm(Algorithm):
             tune.report(mean_accuracy=acc)
         elif self.hpo == 'optuna':
 
-            self.trial.report(acc, i)
+            self.trial.report(acc, epoch)
             results['objective'] = acc
 
         else:
@@ -268,7 +268,7 @@ class CIFAR10Algorithm(Algorithm):
 
         return results
 
-    def inference(self, sample=None, results=None, subset=None, predicting=True):
+    def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
@@ -276,7 +276,6 @@ class CIFAR10Algorithm(Algorithm):
             x, y = sample['x'], sample['y']
 
         net = self.networks['net']
-
         y_hat = net(x)
 
         # add scalar measurements
@@ -285,10 +284,11 @@ class CIFAR10Algorithm(Algorithm):
         if not predicting:
             results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
             results['predictions']['target'].append(y)
+            return {'y': y, 'y_hat': y_hat}, results
 
-        return results
+        return y_hat, results
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True):
+    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
         y_pred = torch.cat(results['predictions']['y_pred'])
 
         y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()

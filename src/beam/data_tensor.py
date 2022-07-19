@@ -59,6 +59,8 @@ class DataTensor(object):
         else:
             if index_type.minor == 'tensor':
                 index = index.cpu().numpy()
+            elif index_type.major == 'scalar':
+                index = [index]
 
             self.index_map = pd.Series(index=index, data=np.arange(len(index)))
             self.mapping_method = 'series'
@@ -140,7 +142,7 @@ class DataTensor(object):
         elif self.mapping_method == 'series':
             if index_type.minor == 'tensor':
                 ind = ind.cpu().numpy()
-            ind = as_tensor(self.index_map[ind].values)
+            ind = as_tensor(self.index_map[ind].values, return_vector=True)
         else:
             return NotImplementedError
 
@@ -295,22 +297,22 @@ class DataTensor(object):
             ind_columns = slice(None)
 
         index = slice_to_index(index, l=len(self), sliced=self.index)
+        if check_type(index).major == 'scalar':
+            index = [index]
 
         ind_index = self.inverse_map(index)
-        if check_type(ind_index).major == 'scalar':
-            index = [index]
-            ind_index = [int(ind_index)]
-
         data = self.data[ind_index][slice(None), ind_columns]
 
         return DataTensor(data, columns=columns, index=index, series=series)
-
 
     def __getitem__(self, ind):
 
         series = False
 
         if (len(ind) == self.data.shape[0]) and is_boolean(ind):
+
+            if len(ind) == 1:
+                ind = torch.where(ind)[0]
 
             data = self.data[ind]
             index = self.index[ind]

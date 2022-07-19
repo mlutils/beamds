@@ -108,12 +108,12 @@ class PackedFolds(object):
         index_type = check_type(index)
 
         if index_type.minor == 'list':
-            index = torch.concat([as_tensor(v) for v in index])
+            index = torch.concat([as_tensor(v, return_vector=True) for v in index])
 
         elif index_type.minor == 'dict':
-            index = torch.concat([as_tensor(index[k]) for k in self.names])
+            index = torch.concat([as_tensor(index[k], return_vector=True) for k in self.names])
 
-        elif  index_type.major == 'array':
+        elif index_type.major == 'array':
             index = as_tensor(index)
             
         elif index is None:
@@ -253,9 +253,11 @@ class PackedFolds(object):
             ind_rest = ind[1:]
             ind = ind[0]
         else:
-            ind_rest =tuple()
+            ind_rest = tuple()
 
         ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        if ind_type.major == 'scalar':
+            ind = [ind]
 
         info = self.info.loc[ind]
 
@@ -266,9 +268,14 @@ class PackedFolds(object):
             names = [self.names[i] for i in uq]
 
             if len(uq) == 1:
-                return PackedFolds(data=[self.data[uq[0]].__getitem__((fold_index, *ind_rest))], names=names, index=ind, device=self.device)
 
-            fold_index = [fold_index[fold==i] for i in uq]
+                data = self.data[uq[0]].__getitem__((fold_index, *ind_rest))
+                if len(ind) == 1:
+                    return data[0]
+
+                return PackedFolds(data=[data], names=names, index=ind, device=self.device)
+
+            fold_index = [fold_index[fold == i] for i in uq]
             data = [self.data[i].__getitem__((j, *ind_rest)) for i, j in zip(uq, fold_index)]
 
             fold = None
@@ -294,8 +301,11 @@ class PackedFolds(object):
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self, *args, device='cpu', **kwargs):
+    def __init__(self, *args, index=None, device='cpu', **kwargs):
         super().__init__()
+
+        self.index = None
+        self.set_index(index)
 
         if not hasattr(self, 'indices_split'):
             self.indices_split = {}
@@ -308,10 +318,22 @@ class UniversalDataset(torch.utils.data.Dataset):
         # only in training mode
         self.training = False
         self.data_type = None
+        self.statistics = None
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            if len(args):
+            if len(args) == 1:
+                d = args[0]
+                if issubclass(type(d), dict):
+                    self.data = {k: as_tensor(v, device=device) for k, v in d.items()}
+                    self.data_type = 'dict'
+                elif (type(d) is list) or (type(d) is tuple):
+                    self.data = [as_tensor(v, device=device) for v in d]
+                    self.data_type = 'list'
+                else:
+                    self.data = d
+                    self.data_type = 'simple'
+            elif len(args):
                 self.data = [as_tensor(v, device=device) for v in args]
                 self.data_type = 'list'
             elif len(kwargs):
@@ -320,13 +342,25 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 self.data = None
 
+    def set_index(self, index):
+
+        self.index = None
+        if index is not None:
+            index_type = check_type(index)
+            if index_type.minor == 'tensor':
+                index = index.detach().cpu().numpy()
+            index = pd.Series(data=np.arange(len(index)), index=index)
+            # check if index is not a simple arange
+            if np.abs(index.index.values - np.arange(len(index))).sum() > 0:
+                self.index = index
+
     def train(self):
         self.training = True
 
     def eval(self):
         self.training = False
 
-    def __getitem__(self, ind):
+    def getitem(self, ind):
 
         if self.data_type is None:
             self.data_type = check_type(self.data).minor
@@ -334,12 +368,33 @@ class UniversalDataset(torch.utils.data.Dataset):
         if self.data_type == 'dict':
             return {k: v[ind] for k, v in self.data.items()}
         elif self.data_type == 'list':
-            if len(self.data) == 1:
-                return self.data[0][ind]
-            else:
-                return [v[ind] for v in self.data]
+            return [v[ind] for v in self.data]
+        elif self.data_type == 'simple':
+            return self.data[ind]
         else:
             return self.data[ind]
+
+    def __getitem__(self, ind):
+
+        if self.index is not None:
+
+            ind = slice_to_index(ind, l=self.index.index.max()+1)
+
+            ind_type = check_type(ind, check_element=False)
+            if ind_type.minor == 'tensor':
+                loc = ind.detach().cpu().numpy()
+            else:
+                loc = ind
+                ind = as_tensor(ind)
+
+            iloc = self.index.loc[loc].values
+
+        else:
+
+            ind = slice_to_index(ind, l=len(self))
+            iloc = ind
+
+        return ind, self.getitem(iloc)
 
     @property
     def device(self):
@@ -351,10 +406,19 @@ class UniversalDataset(torch.utils.data.Dataset):
             return next(iter(self.data.values())).device
         elif self.data_type == 'list':
             return self.data[0].device
+        elif self.data_type == 'simple':
+            return self.data.device
         elif hasattr(self.data, 'device'):
             return self.data.device
         else:
             raise NotImplementedError(f"For data type: {type(self.data)}")
+
+    def __repr__(self):
+        return repr(self.data)
+
+    @property
+    def values(self):
+        return self.data
 
     def __len__(self):
 
@@ -365,6 +429,8 @@ class UniversalDataset(torch.utils.data.Dataset):
             return len(next(iter(self.data.values())))
         elif self.data_type == 'list':
             return len(self.data[0])
+        elif self.data_type == 'simple':
+            return len(self.data)
         elif hasattr(self.data, '__len__'):
             return len(self.data)
         else:
@@ -460,6 +526,9 @@ class UniversalDataset(torch.utils.data.Dataset):
         if labels is not None:
             self.labels_split['train'] = labels[indices]
 
+    def set_statistics(self, stats):
+        self.statistics = stats
+
     def build_samplers(self, batch_size, eval_batch_size=None, oversample=False, weight_factor=1., expansion_size=int(1e7)):
 
         if eval_batch_size is None:
@@ -552,6 +621,32 @@ class UniversalDataset(torch.utils.data.Dataset):
                                                  persistent_workers=persistent_workers
                                                  )
         return dataloader
+
+
+class TransformedDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset, alg, *args, **kwargs):
+        super().__init__()
+
+        if type(dataset) != UniversalDataset:
+            dataset = UniversalDataset(dataset)
+
+        self.dataset = dataset
+        self.alg = alg
+        self.args = args
+        self.kwargs = kwargs
+
+    def __getitem__(self, ind):
+
+        ind_type = check_type(ind, check_element=False)
+        if ind_type.major == 'scalar':
+            ind = [ind]
+
+        ind, data = self.dataset[ind]
+        dataset = UniversalDataset(data)
+        res = self.alg.predict(dataset, *self.args, **self.kwargs)
+        # res.set_index(ind)
+
+        return ind, res.values
 
 
 class UniversalBatchSampler(object):

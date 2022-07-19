@@ -13,7 +13,7 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger, check_type, beam_device
+from .utils import include_patterns, logger, check_type, beam_device, check_element_type
 from .algorithm import Algorithm
 import pandas as pd
 import torch.multiprocessing as mp
@@ -26,12 +26,7 @@ from tensorboard.notebook import start as start_tensorboard
 done = mp.Event()
 
 
-def beam_algorithm_generator(experiment, Alg, Dataset):
-
-    if issubclass(type(Dataset), torch.utils.data.Dataset):
-        dataset = Dataset
-    else:
-        dataset = Dataset(experiment.hparams)
+def beam_algorithm_generator(experiment, Alg, Dataset=None):
 
     if issubclass(type(Alg), Algorithm):
         alg = Alg
@@ -40,6 +35,13 @@ def beam_algorithm_generator(experiment, Alg, Dataset):
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
+
+    if issubclass(type(Dataset), torch.utils.data.Dataset):
+        dataset = Dataset
+    elif Dataset is None:
+        dataset = alg.dataset
+    else:
+        dataset = Dataset(experiment.hparams)
 
     alg.load_dataset(dataset)
     alg.experiment = experiment
@@ -54,8 +56,8 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     results = {}
 
     try:
-        for results in iter(alg):
-            experiment.save_model_results(results, alg,
+        for i, results in enumerate(iter(alg)):
+            experiment.save_model_results(results, alg, i,
                                           print_results=experiment.hparams.print_results,
                                           visualize_results=experiment.hparams.visualize_results,
                                           store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
@@ -122,10 +124,21 @@ class Experiment(object):
         results_names: additional results directories (defaults are: train, validation, test)
         """
 
-        self.hparams = copy.deepcopy(args)
+        self.tensorboard_hparams = {}
+
+        pa = None
+        if hasattr(args, 'parser'):
+            pa = args.parser._actions
+            pa = {pai.dest: pai.metavar for pai in pa}
+            delattr(args, 'parser')
+
         vars_args = copy.copy(vars(args))
-        if 'parser' in vars_args:
-            vars_args.pop('parser')
+        for k, v in vars_args.items():
+            param_type = check_type(v)
+            if param_type.element in ['bool', 'str', 'int', 'float'] and pa is not None and k in pa and pa[k] == 'hparam':
+                self.tensorboard_hparams[k] =v
+
+        self.hparams = copy.copy(args)
 
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 
@@ -290,15 +303,6 @@ class Experiment(object):
         self.hparams.hpo = hpo
         self.hparams.ddp = False
 
-        self.tensorboard_hparams = {}
-        pa = args.parser._actions
-        pa = {pai.dest: pai.metavar for pai in pa}
-
-        for k, v in vars_args.items():
-            param_type = check_type(v)
-            if param_type.element in ['bool', 'str', 'int', 'float'] and k in pa and pa[k] == 'hparam':
-                self.tensorboard_hparams[k] =v
-
         pd.to_pickle(self.tensorboard_hparams, os.path.join(self.root, "hparams.pkl"))
 
     @staticmethod
@@ -364,7 +368,7 @@ class Experiment(object):
             for k, net in networks.items():
                 self.writer.add_graph(net, inputs[k])
 
-    def save_model_results(self, results, algorithm, visualize_results='yes',
+    def save_model_results(self, results, algorithm, iteration, visualize_results='yes',
                            store_results='logscale', store_networks='logscale', print_results=True,
                            visualize_weights=False, argv=None):
 
@@ -387,13 +391,12 @@ class Experiment(object):
         :return:
         '''
 
-        epoch = algorithm.epoch + 1
-
+        epoch = algorithm.epoch
         if not self.rank:
 
             if print_results:
                 logger.info('')
-                logger.info(f'Finished epoch {epoch}/{algorithm.n_epochs}:')
+                logger.info(f'Finished epoch {iteration+1}/{algorithm.n_epochs} (Total trained epochs {epoch}).')
 
             decade = int(np.log10(epoch) + 1)
             logscale = not (epoch - 1) % (10 ** (decade - 1))
@@ -412,7 +415,10 @@ class Experiment(object):
             algorithm.save_checkpoint(checkpoint_file)
 
             if store_networks == 'no' or store_networks == 'logscale' and not logscale:
-                os.remove(os.path.join(self.checkpoints_dir, f'checkpoint_{epoch - 1:06d}'))
+                try:
+                    os.remove(os.path.join(self.checkpoints_dir, f'checkpoint_{epoch - 1:06d}'))
+                except OSError:
+                    pass
 
         if self.world_size > 1:
             dist.barrier()
@@ -421,7 +427,23 @@ class Experiment(object):
 
         for subset, res in results.items():
 
+            def format(v):
+                v_type = check_element_type(v)
+                if v_type == 'int':
+                    if v >= 1000:
+                        return f"{float(v): .4}"
+                    else:
+                        return str(v)
+                elif v_type == 'float':
+                    return f"{v: .4}"
+                else:
+                    return v
+
             logger.info(f'{subset}:')
+
+            if print_log and 'stats' in res:
+                logger.info('| '.join([f"{k}: {format(v)} " for k, v in res['stats'].items()]))
+
             report = None
             if issubclass(type(res), dict):
                 if 'scalar' in res:
@@ -450,7 +472,7 @@ class Experiment(object):
                                 report[param]) is defaultdict):
                             stat = '| '.join([f"{k if k != 'mean' else 'avg'}:{v: .4}".ljust(15) for k, v in dict(stat).items() if k != 'count'])
                             paramp = f'{param}:'
-                            logger.info(f'{paramp: <15} | {stat}')
+                            logger.info(f'{paramp: <12} | {stat}')
 
         if self.writer is None:
             return
@@ -597,7 +619,10 @@ class Experiment(object):
             command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
         start_tensorboard(command_argument)
 
-    def fit(self, Alg, Dataset, *args, return_results=False, reload_results=False,
+    def algorithm_generator(self, Alg, Dataset=None):
+        return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset)
+
+    def fit(self, Alg, Dataset=None, *args, return_results=False, reload_results=False,
             tensorboard_arguments=None, **kwargs):
 
         ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset)
