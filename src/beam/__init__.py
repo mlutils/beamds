@@ -8,4 +8,4 @@ from .algorithm import Algorithm
 from .model import LinearNet, BeamOptimizer, PackedSet, BetterEmbedding, SplineEmbedding
 from .data_tensor import DataTensor
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
