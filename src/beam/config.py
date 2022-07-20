@@ -89,6 +89,12 @@ def get_beam_parser():
     parser.add_argument('--n-epochs', type=int, default=None, metavar='hparam',
                         help='Number of epochs, if None, it uses the total steps to determine the number of iterations')
 
+    boolean_feature(parser, "dynamic-sampler", False, 'Whether to use a dynamic sampler (mainly for rl/optimization)')
+    parser.add_argument('--buffer-size', type=int, default=None, metavar='hparam',
+                        help='Maximal Dataset size in dynamic problems')
+    parser.add_argument('--probs-normalization', type=str, default='sum',
+                        help='Sampler\'s probabilities normalization method [sum/softmax]')
+    parser.add_argument('--sample-size', type=int, default=100000, help='Periodic sample size for the dynamic sampler')
     # environment parameters
 
     # Learning parameters

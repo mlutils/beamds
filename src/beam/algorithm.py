@@ -104,7 +104,8 @@ class Algorithm(object):
 
     def load_dataset(self, dataset=None, dataloaders=None, batch_size_train=None, batch_size_eval=None,
                      oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
-                     worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
+                     worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
+                     dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
 
         assert dataloaders is not None or dataset is not None, "Either dataset or dataloader must be supplied"
         self.dataset = dataset
@@ -116,16 +117,23 @@ class Algorithm(object):
             oversample = (self.hparams.oversampling_factor > 0) if oversample is None else oversample
             weight_factor = self.hparams.oversampling_factor if weight_factor is None else weight_factor
             expansion_size = self.hparams.expansion_size if expansion_size is None else expansion_size
+            dynamic = self.hparams.dynamic_sampler if dynamic is None else dynamic
+            buffer_size = self.hparams.buffer_size if buffer_size is None else buffer_size
+            probs_normalization = self.hparams.probs_normalization if probs_normalization is None else probs_normalization
+            sample_size = self.hparams.sample_size if sample_size is None else sample_size
 
             dataset.build_samplers(batch_size_train, eval_batch_size=batch_size_eval,
                                    oversample=oversample, weight_factor=weight_factor, expansion_size=expansion_size)
 
             dataloaders = dataset.build_dataloaders(num_workers=self.hparams.cpu_workers,
                                                     pin_memory=self.pin_memory,
-                                                   timeout=timeout, collate_fn=collate_fn,
-                                                   worker_init_fn=worker_init_fn,
-                                                   multiprocessing_context=multiprocessing_context, generator=generator,
-                                                   prefetch_factor=prefetch_factor)
+                                                    timeout=timeout, collate_fn=collate_fn,
+                                                    worker_init_fn=worker_init_fn,
+                                                    multiprocessing_context=multiprocessing_context, generator=generator,
+                                                    prefetch_factor=prefetch_factor,
+                                                    dynamic=dynamic, buffer_size=buffer_size,
+                                                    probs_normalization=probs_normalization,
+                                                    sample_size=sample_size)
 
         self.dataloaders = dataloaders
         self.epoch_length = {}
