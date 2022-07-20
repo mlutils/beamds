@@ -57,7 +57,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     try:
         for i, results in enumerate(iter(alg)):
-            experiment.save_model_results(results, alg, i,
+            experiment.save_model_results(copy.deepcopy(results), alg, i,
                                           print_results=experiment.hparams.print_results,
                                           visualize_results=experiment.hparams.visualize_results,
                                           store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
@@ -409,7 +409,7 @@ class Experiment(object):
                 alg = algorithm if visualize_weights else None
 
             if visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
-                self.log_data(copy.deepcopy(results), epoch, print_log=print_results, alg=alg, argv=argv)
+                self.log_data(results, epoch, print_log=print_results, alg=alg, argv=argv)
 
             checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_{epoch:06d}')
             algorithm.save_checkpoint(checkpoint_file)
@@ -460,12 +460,12 @@ class Experiment(object):
                     if type(val) is dict or type(val) is defaultdict:
                         for p, v in val.items():
                             val[p] = np.mean(v)
-                    elif isinstance(report[param], torch.Tensor):
-                        stat = pd.Series(report[param].cpu().numpy()).describe()
-                        report[param] = torch.mean(val)
                     else:
-                        stat = pd.Series(report[param]).describe()
-                        report[param] = np.mean(val)
+
+                        v = [report[param]] if np.isscalar(report[param]) else report[param]
+                        v = np.stack(v).flatten()
+                        stat = pd.Series(v).describe()
+                        report[param] = np.mean(v)
 
                     if print_log:
                         if not (type(report[param]) is dict or type(

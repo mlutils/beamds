@@ -777,6 +777,89 @@ class UniversalBatchSampler(object):
         return self.length
 
 
+# class DynamicBatchSampler(object):
+#
+#     def __init__(self, indices, batch_size, probs=None, length=None):
+#
+#         self.length = sys.maxsize if length is None else int(length)
+#
+#         if check_type(indices).major == 'array':
+#             self.indices = torch.LongTensor(indices)
+#         else:
+#             self.indices = torch.arange(indices)
+#
+#         if probs is not None:
+#             self.expanded_indices = self.calc_probs(self.indices, probs)
+#         else:
+#             self.expanded_indices = self.indices
+#
+#         self.size = len(self.expanded_indices)
+#
+#         self.batch_size = batch_size
+#         self.minibatches = int(self.size / self.batch_size)
+#
+#         self.shuffle = shuffle
+#         self.tail = tail
+#         self.fresh_data = False
+#
+#     def replace_buffer(self, indices, probs=None):
+#
+#     def calc_probs(self, indices, probs):
+#
+#         probs = np.array(probs)
+#         probs = probs / probs.sum()
+#
+#         grow_factor = max(self.expansion_size, len(probs)) / len(probs)
+#
+#         probs = (probs * len(probs) * grow_factor).round().astype(np.int)
+#         m = np.gcd.reduce(probs)
+#         reps = probs // m
+#         indices = pd.DataFrame({'index': indices, 'times': reps})
+#
+#         return torch.LongTensor(indices.loc[indices.index.repeat(indices['times'])]['index'].values)
+#
+#     def __iter__(self):
+#
+#         self.n = 0
+#         indices = self.indices.clone()
+#
+#         for _ in itertools.count():
+#
+#             if self.shuffle:
+#                 indices = indices[torch.randperm(len(indices))]
+#
+#             indices_batched = indices[:self.minibatches * self.batch_size]
+#             indices_tail = indices[self.minibatches * self.batch_size:]
+#
+#             if self.tail and not self.once:
+#
+#                 to_sample = max(0, self.batch_size - (self.size - self.minibatches * self.batch_size))
+#
+#                 fill_batch = np.random.choice(len(indices_batched), to_sample, replace=(to_sample > self.size))
+#                 fill_batch = indices_batched[torch.LongTensor(fill_batch)]
+#                 indices_tail = torch.cat([indices_tail, fill_batch])
+#
+#                 indices_batched = torch.cat([indices_batched, indices_tail])
+#
+#             indices_batched = indices_batched.reshape((-1, self.batch_size))
+#
+#             for samples in indices_batched:
+#                 self.n += 1
+#                 if self.n >= self.length:
+#                     yield samples
+#                     return
+#                 else:
+#                     yield samples
+#
+#             if self.once:
+#                 if self.tail:
+#                     yield indices_tail
+#                 return
+#
+#     def __len__(self):
+#         return self.length
+
+
 class HashSplit(object):
 
     def __init__(self, seed=None, granularity=.001, **argv):

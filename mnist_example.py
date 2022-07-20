@@ -81,6 +81,7 @@ class MNISTAlgorithm(Algorithm):
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
+        results['scalar']['ones'].append(x.sum(dim=-1).detach().cpu().numpy())
         results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
 
         return results
@@ -170,7 +171,7 @@ if __name__ == '__main__':
 
     args = beam_arguments(
         f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cpu   ",
-        "--epoch-length=200000 --n-epochs=10 --clip=1 --parallel=1", path_to_data=path_to_data, stop_at=.97)
+        "--epoch-length=20000 --n-epochs=10 --clip=1 --parallel=1", path_to_data=path_to_data, stop_at=.97)
 
     experiment = Experiment(args)
 
