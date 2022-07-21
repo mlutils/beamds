@@ -123,17 +123,18 @@ class Algorithm(object):
             sample_size = self.hparams.sample_size if sample_size is None else sample_size
 
             dataset.build_samplers(batch_size_train, eval_batch_size=batch_size_eval,
-                                   oversample=oversample, weight_factor=weight_factor, expansion_size=expansion_size)
+                                   oversample=oversample, weight_factor=weight_factor, expansion_size=expansion_size,
+                                   dynamic=dynamic, buffer_size=buffer_size,
+                                   probs_normalization=probs_normalization,
+                                   sample_size=sample_size
+                                   )
 
             dataloaders = dataset.build_dataloaders(num_workers=self.hparams.cpu_workers,
                                                     pin_memory=self.pin_memory,
                                                     timeout=timeout, collate_fn=collate_fn,
                                                     worker_init_fn=worker_init_fn,
                                                     multiprocessing_context=multiprocessing_context, generator=generator,
-                                                    prefetch_factor=prefetch_factor,
-                                                    dynamic=dynamic, buffer_size=buffer_size,
-                                                    probs_normalization=probs_normalization,
-                                                    sample_size=sample_size)
+                                                    prefetch_factor=prefetch_factor)
 
         self.dataloaders = dataloaders
         self.epoch_length = {}
