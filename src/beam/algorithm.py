@@ -221,10 +221,12 @@ class Algorithm(object):
 
         return dataloader
 
-    def data_generator(self, subset):
+    def data_generator(self, subset, max_iterations=None):
 
         dataloader = self.build_dataloader(subset)
         for i, (ind, sample) in enumerate(dataloader):
+            if max_iterations is not None and i >= max_iterations:
+                break
             sample = self.process_sample(sample)
             yield i, (ind, sample)
 
@@ -337,7 +339,7 @@ class Algorithm(object):
         '''
         return False
 
-    def __call__(self, subset, predicting=False, enable_tqdm=None):
+    def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None):
 
         with torch.no_grad():
 
@@ -353,10 +355,11 @@ class Algorithm(object):
                 enable_tqdm = self.enable_tqdm
 
             dataloader = self.build_dataloader(subset)
-            data_generator = self.data_generator(dataloader)
+            data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
+            total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
             for i, (ind, sample) in tqdm(data_generator, enable=enable_tqdm,
                                   threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
-                                  notebook=(not self.ddp), desc=desc, total=len(dataloader)):
+                                  notebook=(not self.ddp), desc=desc, total=total_iterations):
                 transform, results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting,
                                          index=ind)
                 transforms.append(transform)

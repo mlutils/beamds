@@ -5,3 +5,6 @@ fasttext
 opencv-contrib-python-headless
 scikit-image
 Pillow
+
+albumentations
+timm

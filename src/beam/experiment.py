@@ -459,7 +459,12 @@ class Experiment(object):
 
                     if type(val) is dict or type(val) is defaultdict:
                         for p, v in val.items():
-                            val[p] = np.mean(v)
+                            try:
+                                val[p] = np.mean(v)
+                            except:
+                                print(p)
+                                print(v)
+                                print(param)
                     else:
 
                         v = [report[param]] if np.isscalar(report[param]) else report[param]
