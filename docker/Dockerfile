@@ -35,7 +35,7 @@ RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
 RUN pip install -U -r /workspace/install/requirements_0001.txt
 RUN pip install -U -r /workspace/install/requirements_0002.txt
 RUN pip install -U -r /workspace/install/requirements_0003.txt
-RUN pip install -U -r /workspace/install/requirements_0004.txt
+RUN pip install -U -r /workspace/install/requirements_0004.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 RUN pip install -U -r /workspace/install/requirements_0005.txt
 RUN pip install -U -r /workspace/install/requirements_0006.txt
 RUN pip install -U -r /workspace/install/requirements_0007.txt

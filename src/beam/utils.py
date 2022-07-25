@@ -358,7 +358,8 @@ def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=
     my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
 
     if enable is False:
-        return x
+        for xi in x:
+            yield xi
 
     elif enable is True:
 

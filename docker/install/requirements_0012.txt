@@ -1,6 +1,7 @@
 # deep learning
 pytorch-tabnet
 pytorch-lightning
+lightning-bolts
 pytorch-forecasting
 deepchecks
 torchensemble

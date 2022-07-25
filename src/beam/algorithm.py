@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 from torch import nn
 import torch
@@ -27,7 +28,7 @@ class Algorithm(object):
 
         # some experiment hyperparameters
         self.half = hparams.half
-        self.enable_tqdm = hparams.enable_tqdm if hparams.tqdm_threshold == 0 else None
+        self.enable_tqdm = hparams.enable_tqdm if hparams.tqdm_threshold == 0 or not hparams.enable_tqdm else None
         self.n_epochs = hparams.n_epochs
         self.batch_size_train = hparams.batch_size_train
         self.batch_size_eval = hparams.batch_size_eval
@@ -339,7 +340,7 @@ class Algorithm(object):
         '''
         return False
 
-    def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None):
+    def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None):
 
         with torch.no_grad():
 
@@ -355,6 +356,11 @@ class Algorithm(object):
                 enable_tqdm = self.enable_tqdm
 
             dataloader = self.build_dataloader(subset)
+
+            batch_size = self.batch_size_eval
+            if head is not None:
+                max_iterations = math.ceil(head / batch_size)
+
             data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
             total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
             for i, (ind, sample) in tqdm(data_generator, enable=enable_tqdm,
