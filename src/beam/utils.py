@@ -14,6 +14,7 @@ from random import randint
 from collections import namedtuple
 from timeit import default_timer as timer
 from loguru import logger
+from torchvision import transforms
 
 # logger.remove(handler_id=0)
 logger.remove()
@@ -324,6 +325,10 @@ def concat_data(data):
         return torch.cat(data)
     else:
         return data
+
+
+def batch_augmentation(augmentations):
+    return transforms.Lambda(lambda x: torch.stack([augmentations(xi) for xi in x]))
 
 
 def finite_iterations(iterator, n):

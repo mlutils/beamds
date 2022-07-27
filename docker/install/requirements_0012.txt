@@ -6,6 +6,8 @@ pytorch-forecasting
 deepchecks
 torchensemble
 rtdl
+
 byol-pytorch
 transformers
 tensorboardX
+normflows

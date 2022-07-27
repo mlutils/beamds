@@ -5,7 +5,7 @@
 
 FROM nvcr.io/nvidia/pytorch:22.06-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
-LABEL "run_command"="docker run -p 12000-12099:12000-12099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -itd -v /home/:/home/ --name flame beam:<date> 12"
+LABEL "run_command"="docker run -p 12000-12099:12000-12099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -itd -v /home/:/home/ -v /mnt/:/mnt/ --name flame beam:<date> 12"
 LABEL "build_command"="docker build -f docker/Dockerfile --tag beam:$(date '+%Y%m%d') ."
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -24,7 +24,7 @@ ENV PATH "/usr/local/cuda/bin:$PATH"
 ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 ENV DYLD_LIBRARY_PATH "/usr/local/cuda/lib:$DYLD_LIBRARY_PATH"
 
-# apt installs
+## apt installs
 RUN chmod +x /workspace/install/apt_installs.sh
 RUN /workspace/install/apt_installs.sh
 

@@ -160,7 +160,7 @@ class PackedFolds(object):
 
         if self.sampling_method == 'folds':
             data = self.data[fold]
-        elif  self.sampling_method == 'index':
+        elif self.sampling_method == 'index':
             data = self.data[index]
         elif self.sampling_method == 'offset':
             data = self.data[info['offset'].values]
@@ -229,6 +229,8 @@ class PackedFolds(object):
         self.data = [di.to(device) for di in self.data]
         self.info = self.info.to(device)
         self.device = device
+
+        return self
 
     def __repr__(self):
         if self.sampling_method == 'folds':
