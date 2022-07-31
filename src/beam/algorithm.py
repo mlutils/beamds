@@ -33,10 +33,13 @@ class Algorithm(object):
         self.batch_size_train = hparams.batch_size_train
         self.batch_size_eval = hparams.batch_size_eval
 
-        self.cuda = ('cpu' not in str(self.device))
+        self.cuda = (self.device.type == 'cuda')
         self.pin_memory = self.cuda
         self.autocast_device = 'cuda' if self.cuda else 'cpu'
         self.amp = hparams.amp if self.cuda else False
+        if self.amp:
+            self.scaler = torch.cuda.amp.GradScaler()
+
         self.epoch = 0
 
         if networks is None:
@@ -102,6 +105,38 @@ class Algorithm(object):
         logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root}")
         self.trial = experiment.trial
         self._experiment = experiment
+
+    def apply(self, loss, optimizers=None, training=False, set_to_none=True, gradient=None,
+              retain_graph=None, create_graph=False, inputs=None):
+
+        if optimizers is None:
+            optimizers = self.optimizers
+        elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+            optimizers = [optimizers]
+
+        if training:
+            with torch.autocast(self.autocast_device, enabled=False):
+                self.iteration += 1
+
+                if self.amp:
+                    self.scaler.scale(loss).backward()
+                else:
+                    loss.backward(gradient=gradient, retain_graph=retain_graph,
+                                  create_graph=create_graph, inputs=inputs)
+
+                if self.hparams.clip > 0:
+                    for op in self.optimizers.values():
+                        for pg in op.param_groups:
+                            if self.amp:
+                                for op in self.optimizers.values():
+                                    self.scaler.unscale_(op)
+
+                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.hparams.clip)
+
+                if not (self.iteration % self.hparams.accumulate):
+                    for op in optimizers:
+                        op.step()
+                        op.zero_grad(set_to_none=set_to_none)
 
     def load_dataset(self, dataset=None, dataloaders=None, batch_size_train=None, batch_size_eval=None,
                      oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
@@ -173,7 +208,7 @@ class Algorithm(object):
         net = net.to(self.device)
 
         if self.ddp:
-            net = DDP(net, device_ids=[self.device])
+            net = DDP(net, device_ids=[self.device], find_unused_parameters=True)
 
         return net
 
@@ -415,8 +450,6 @@ class Algorithm(object):
 
             all_train_results = defaultdict(dict)
             all_eval_results = defaultdict(dict)
-
-
 
     def set_mode(self, training=True):
 

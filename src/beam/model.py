@@ -137,7 +137,7 @@ class BeamOptimizer(object):
         self.accumulate = accumulate
         self.iteration = 0
         self.amp = amp
-        self.autocast_device = 'cpu' if 'cpu' in str(next(net.parameters()).device) else 'cuda'
+        self.autocast_device = next(net.parameters()).device.type
 
         if self.amp:
             self.scaler = torch.cuda.amp.GradScaler()

@@ -135,7 +135,9 @@ class Experiment(object):
         vars_args = copy.copy(vars(args))
         for k, v in vars_args.items():
             param_type = check_type(v)
-            if param_type.element in ['bool', 'str', 'int', 'float'] and pa is not None and k in pa and pa[k] == 'hparam':
+            if param_type.major == 'scalar' and \
+                    param_type.element in ['bool', 'str', 'int', 'float'] and \
+                    pa is not None and k in pa and pa[k] == 'hparam':
                 self.tensorboard_hparams[k] =v
 
         self.hparams = copy.copy(args)
@@ -303,6 +305,12 @@ class Experiment(object):
         self.hparams.hpo = hpo
         self.hparams.ddp = False
 
+        if self.hparams.device.type == 'cuda':
+            if self.hparams.device_list is not None:
+                self.hparams.device_list = [beam_device(di) for di in self.hparams.device_list]
+            else:
+                self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.parallel)]
+
         pd.to_pickle(self.tensorboard_hparams, os.path.join(self.root, "hparams.pkl"))
 
     @staticmethod
@@ -355,8 +363,10 @@ class Experiment(object):
         self.hparams.ddp = self.world_size > 1
         self.hparams.enable_tqdm = self.hparams.enable_tqdm and (rank == 0)
 
-        if 'cpu' not in str(self.hparams.device) and world_size > 1:
-            self.hparams.device = beam_device(rank)
+        if self.hparams.device.type != 'cpu' and world_size > 1:
+            self.hparams.device = beam_device(self.hparams.device_list[rank])
+
+        logger.info(f'Worker {rank + 1} will be running on device={str(self.hparams.device)}')
 
     def writer_control(self, enable=True, networks=None, inputs=None):
 

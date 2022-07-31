@@ -52,6 +52,12 @@ def get_beam_parser():
 
     parser.add_argument('--cpu-workers', type=int, default=0, help='How many CPUs will be used for the data loading')
     parser.add_argument('--device', type=str, default='0', help='GPU Number or cpu/cuda string')
+    parser.add_argument("--device-list", nargs="+", default=None,
+                        help='Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
+                        'when passing --parallel=2 and will use GPUs 2 1 3 when passing --parallel=3. '
+                        'If None, will use an ascending order starting from the GPU passed in the --device parameter.'
+                        'e.g. when --device=1 will use GPUs 1,2,3,4 when --parallel=4')
+
     parser.add_argument('--parallel', type=int, default=1, metavar='hparam',
                         help='Number of parallel gpu workers. Set <=1 for single process')
 
