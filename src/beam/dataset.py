@@ -226,7 +226,11 @@ class PackedFolds(object):
 
     def to(self, device):
 
-        self.data = [di.to(device) for di in self.data]
+        if self.sampling_method == 'folds':
+            self.data = [di.to(device) for di in self.data]
+        else:
+            self.data = self.data.to(device)
+
         self.info = self.info.to(device)
         self.device = device
 

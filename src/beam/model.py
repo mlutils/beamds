@@ -194,10 +194,9 @@ class BeamOptimizer(object):
 
     def apply(self, loss, training=False, set_to_none=True):
 
-        with torch.autocast(self.autocast_device, enabled=False):
-            self.iteration += 1
-
-            if training:
+        if training:
+            with torch.autocast(self.autocast_device, enabled=False):
+                self.iteration += 1
 
                 if self.amp:
                     self.scaler.scale(loss).backward()
@@ -207,7 +206,6 @@ class BeamOptimizer(object):
                 if self.clip > 0:
                     for op in self.optimizers.values():
                         for pg in op.param_groups:
-
                             if self.amp:
                                 for op in self.optimizers.values():
                                     self.scaler.unscale_(op)

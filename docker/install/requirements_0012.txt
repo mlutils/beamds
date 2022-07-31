@@ -1,13 +1,14 @@
 # deep learning
 pytorch-tabnet
 pytorch-lightning
-lightning-bolts
 pytorch-forecasting
 deepchecks
 torchensemble
 rtdl
-
-byol-pytorch
 transformers
 tensorboardX
+
+lightning-bolts
+lightning-flash[all]
+byol-pytorch
 normflows
