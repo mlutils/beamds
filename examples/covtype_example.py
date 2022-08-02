@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # In[1]:
-from utils import add_beam_to_path
+from examples.utils import add_beam_to_path
 add_beam_to_path()
 
 import torch
@@ -316,7 +316,7 @@ class CovtypeDataset(UniversalDataset):
                                  random_state=None,
                                  copy=True)
 
-        self.qt = qt.fit(df_num.iloc[self.indices_split['train']])
+        self.qt = qt.fit(df_num.iloc[self.indices['train']])
 
         df_num = pd.DataFrame(self.qt.transform(df_num))
 
@@ -371,7 +371,8 @@ class CovtypeAlgorithm(Algorithm):
             loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=self.label_smoothing)
                    # + net.emb.get_llr()
 
-        opt.apply(loss, training=training)
+        if training:
+            opt.apply(loss)
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))

@@ -3,7 +3,7 @@
 
 # In[1]:
 
-from utils import add_beam_to_path
+from examples.utils import add_beam_to_path
 add_beam_to_path()
 
 import torch
@@ -22,6 +22,8 @@ from src.beam import DataTensor, BeamOptimizer, beam_logger
 from torchvision import transforms
 import torchvision
 from ray import tune
+import kornia
+from kornia.augmentation.container import AugmentationSequential
 
 
 class ReBlock(nn.Module):
@@ -125,13 +127,15 @@ class CIFAR10Dataset(UniversalDataset):
         device = hparams.device
         padding = hparams.padding
 
-        augmentations = transforms.Compose([transforms.RandomHorizontalFlip(),
-                                            transforms.RandomCrop(32, padding=padding, padding_mode='edge'),])
+        self.augmentations = AugmentationSequential(kornia.augmentation.RandomHorizontalFlip(),
+                                                    kornia.augmentation.RandomCrop((32, 32), padding=padding,
+                                                                                   padding_mode='reflect'))
 
-        self.t_basic = transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
-                                            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+        self.mu = torch.FloatTensor([0.4914, 0.4822, 0.4465]).view(1, -1, 1, 1).to(device)
+        self.sigma = torch.FloatTensor([0.247, 0.243, 0.261]).view(1, -1, 1, 1).to(device)
 
-        self.t_train = transforms.Compose([augmentations, self.t_basic])
+        # self.t_basic = transforms.Compose([transforms.Lambda(lambda x: (x.half() / 255)),
+        #                                    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
 
         file = os.path.join(path, 'dataset_uint8.pt')
         if os.path.exists(file):
@@ -164,14 +168,77 @@ class CIFAR10Dataset(UniversalDataset):
 
         x = self.data[ind]
 
+        # x = self.t_basic(x)
+
+        x = x.half() / 255
+
+        # print(x.shape)
         if self.training:
-            x = self.t_train(x)
-        else:
-            x = self.t_basic(x)
+            x = self.augmentations(x)
+
+        x = (x.float() - self.mu) / self.sigma
 
         x = x.to(memory_format=torch.channels_last)
 
         return {'x': x, 'y': self.labels[ind]}
+
+
+# class CIFAR10Dataset(UniversalDataset):
+#
+#     def __init__(self, hparams):
+#         super().__init__()
+#
+#         path = hparams.path_to_data
+#         device = hparams.device
+#         padding = hparams.padding
+#
+#         augmentations = transforms.Compose([transforms.RandomHorizontalFlip(),
+#                                             transforms.RandomCrop(32, padding=padding, padding_mode='edge'),])
+#
+#         self.t_basic = transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
+#                                            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+#
+#         self.t_train = transforms.Compose([augmentations, self.t_basic])
+#
+#         file = os.path.join(path, 'dataset_uint8.pt')
+#         if os.path.exists(file):
+#             x_train, x_test, y_train, y_test = torch.load(file, map_location=device)
+#
+#         else:
+#             dataset_train = torchvision.datasets.CIFAR10(root=path, train=True,
+#                                                          transform=torchvision.transforms.PILToTensor(), download=True)
+#             dataset_test = torchvision.datasets.CIFAR10(root=path, train=False,
+#                                                         transform=torchvision.transforms.PILToTensor(), download=True)
+#
+#             x_train = torch.stack([dataset_train[i][0] for i in range(len(dataset_train))]).to(device)
+#             x_test = torch.stack([dataset_test[i][0] for i in range(len(dataset_test))]).to(device)
+#
+#             y_train = torch.LongTensor(dataset_train.targets).to(device)
+#             y_test = torch.LongTensor(dataset_test.targets).to(device)
+#
+#             torch.save((x_train, x_test, y_train, y_test), file)
+#
+#         # self.data = torch.cat([x_train, x_test])
+#         # self.labels = torch.cat([y_train, y_test])
+#         # test_indices = len(x_train) + torch.arange(len(x_test))
+#         # self.split(validation=.2, test=test_indices, seed=hparams.split_dataset_seed)
+#
+#         self.data = PackedFolds({'train': x_train, 'test': x_test})
+#         self.labels = PackedFolds({'train': y_train, 'test': y_test})
+#         self.split(validation=.2, test=self.labels['test'].index, seed=hparams.split_dataset_seed)
+#
+#     def getitem(self, ind):
+#
+#         x = self.data[ind]
+#
+#         if self.training:
+#             x = self.t_train(x)
+#         else:
+#             x = self.t_basic(x)
+#
+#         x = x.to(memory_format=torch.channels_last)
+#
+#         return {'x': x, 'y': self.labels[ind]}
 
 
 class LRPolicy(object):
@@ -244,7 +311,8 @@ class CIFAR10Algorithm(Algorithm):
         y_hat = net(x)
         loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=self.hparams.label_smoothing)
 
-        opt.apply(loss, training=training)
+        if training:
+            opt.apply(loss)
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))

@@ -138,9 +138,7 @@ class BeamOptimizer(object):
         self.iteration = 0
         self.amp = amp
         self.autocast_device = next(net.parameters()).device.type
-
-        if self.amp:
-            self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
 
         self.optimizers = {}
 
@@ -192,29 +190,28 @@ class BeamOptimizer(object):
         for op in self.optimizers.values():
             op.zero_grad(set_to_none=set_to_none)
 
-    def apply(self, loss, training=False, set_to_none=True):
+    def apply(self, loss, set_to_none=True, gradient=None, retain_graph=None, create_graph=False, inputs=None):
 
-        if training:
-            with torch.autocast(self.autocast_device, enabled=False):
-                self.iteration += 1
+        with torch.autocast(self.autocast_device, enabled=False):
+            self.iteration += 1
 
-                if self.amp:
-                    self.scaler.scale(loss).backward()
-                else:
-                    loss.backward()
+            if self.amp:
+                self.scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
+                                                 create_graph=create_graph, inputs=inputs)
+            else:
+                loss.backward(gradient=gradient, retain_graph=retain_graph,
+                              create_graph=create_graph, inputs=inputs)
 
-                if self.clip > 0:
-                    for op in self.optimizers.values():
-                        for pg in op.param_groups:
-                            if self.amp:
-                                for op in self.optimizers.values():
-                                    self.scaler.unscale_(op)
+            if self.clip > 0:
+                for op in self.optimizers.values():
+                    if self.amp:
+                        self.scaler.unscale_(op)
+                    for pg in op.param_groups:
+                        torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.clip)
 
-                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.clip)
-
-                if not (self.iteration % self.accumulate):
-                    self.step()
-                    self.zero_grad(set_to_none=set_to_none)
+            if not (self.iteration % self.accumulate):
+                self.step()
+                self.zero_grad(set_to_none=set_to_none)
 
     def step(self):
         for op in self.optimizers.values():
@@ -227,7 +224,9 @@ class BeamOptimizer(object):
             self.scaler.update()
 
     def state_dict(self):
-        return {k: op.state_dict() for k, op in self.optimizers.items()}
+        state_dict = {k: op.state_dict() for k, op in self.optimizers.items()}
+        state_dict['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
+        return state_dict
 
     def load_state_dict(self, state_dict, state_only=False):
 
@@ -237,6 +236,9 @@ class BeamOptimizer(object):
                 state_dict[k]['param_groups'] = op.state_dict()['param_groups']
 
             op.load_state_dict(state_dict[k])
+
+        if self.scaler is not None and 'scaler' in state_dict.keys():
+            self.scaler.load_state_dict(state_dict["scaler"])
 
 
 class RuleLayer(nn.Module):

@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # In[1]:
-from utils import add_beam_to_path
+from examples.utils import add_beam_to_path
 add_beam_to_path()
 
 import torch
@@ -183,7 +183,8 @@ class DeepTSNE(Algorithm):
 
         loss = loss_dist + self.hparams.reg_weight * loss_reg
 
-        opt.apply(loss, training=training)
+        if training:
+            opt.apply(loss)
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))

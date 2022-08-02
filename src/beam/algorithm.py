@@ -8,7 +8,7 @@ from .utils import logger
 import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data
+from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, stack_results
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from timeit import default_timer as timer
 
@@ -39,6 +39,8 @@ class Algorithm(object):
         self.amp = hparams.amp if self.cuda else False
         if self.amp:
             self.scaler = torch.cuda.amp.GradScaler()
+        else:
+            self.scaler = None
 
         self.epoch = 0
 
@@ -90,6 +92,11 @@ class Algorithm(object):
         if hparams.reload_path is not None:
             self.load_checkpoint(hparams.reload_path)
 
+        self.dataset = None
+        self.persistent_dataloaders = {}
+        self.dataloaders = {}
+        self.eval_subset = None
+
     @property
     def experiment(self):
 
@@ -106,99 +113,120 @@ class Algorithm(object):
         self.trial = experiment.trial
         self._experiment = experiment
 
-    def apply(self, loss, optimizers=None, training=False, set_to_none=True, gradient=None,
-              retain_graph=None, create_graph=False, inputs=None):
+    def apply(self, loss, optimizers=None, set_to_none=True, gradient=None,
+              retain_graph=None, create_graph=False, inputs=None, iteration=None):
 
         if optimizers is None:
             optimizers = self.optimizers
         elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
             optimizers = [optimizers]
 
-        if training:
-            with torch.autocast(self.autocast_device, enabled=False):
-                self.iteration += 1
+        optimizers_flat = []
+        for op in optimizers:
+            if issubclass(type(op), BeamOptimizer):
+                for opi in op.optimizers.values():
+                    optimizers_flat.append(opi)
+            else:
+                optimizers_flat.append(op)
+        optimizers = optimizers_flat
 
-                if self.amp:
-                    self.scaler.scale(loss).backward()
-                else:
-                    loss.backward(gradient=gradient, retain_graph=retain_graph,
-                                  create_graph=create_graph, inputs=inputs)
+        with torch.autocast(self.autocast_device, enabled=False):
 
-                if self.hparams.clip > 0:
-                    for op in self.optimizers.values():
-                        for pg in op.param_groups:
-                            if self.amp:
-                                for op in self.optimizers.values():
-                                    self.scaler.unscale_(op)
+            if self.amp:
+                self.scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
+                                                 create_graph=create_graph, inputs=inputs)
+            else:
+                loss.backward(gradient=gradient, retain_graph=retain_graph,
+                              create_graph=create_graph, inputs=inputs)
 
-                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.hparams.clip)
+            if self.hparams.clip > 0:
+                for op in optimizers.values():
+                    if self.amp:
+                        self.scaler.unscale_(op)
+                    for pg in op.param_groups:
+                        torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.hparams.clip)
 
-                if not (self.iteration % self.hparams.accumulate):
-                    for op in optimizers:
+            if not (iteration % self.hparams.accumulate):
+                for op in optimizers:
+                    if self.amp:
+                        self.scaler.step(op)
+                    else:
                         op.step()
-                        op.zero_grad(set_to_none=set_to_none)
+                    op.zero_grad(set_to_none=set_to_none)
 
-    def load_dataset(self, dataset=None, dataloaders=None, batch_size_train=None, batch_size_eval=None,
+    def load_dataset(self, dataset=None, batch_size_train=None, batch_size_eval=None,
                      oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
                      worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
                      dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
 
-        assert dataloaders is not None or dataset is not None, "Either dataset or dataloader must be supplied"
         self.dataset = dataset
 
-        if dataloaders is None:
+        batch_size_train = self.hparams.batch_size_train if batch_size_train is None else batch_size_train
+        batch_size_eval = self.hparams.batch_size_eval if batch_size_eval is None else batch_size_eval
+        oversample = (self.hparams.oversampling_factor > 0) if oversample is None else oversample
+        weight_factor = self.hparams.oversampling_factor if weight_factor is None else weight_factor
+        expansion_size = self.hparams.expansion_size if expansion_size is None else expansion_size
+        dynamic = self.hparams.dynamic_sampler if dynamic is None else dynamic
+        buffer_size = self.hparams.buffer_size if buffer_size is None else buffer_size
+        probs_normalization = self.hparams.probs_normalization if probs_normalization is None else probs_normalization
+        sample_size = self.hparams.sample_size if sample_size is None else sample_size
 
-            batch_size_train = self.hparams.batch_size_train if batch_size_train is None else batch_size_train
-            batch_size_eval = self.hparams.batch_size_eval if batch_size_eval is None else batch_size_eval
-            oversample = (self.hparams.oversampling_factor > 0) if oversample is None else oversample
-            weight_factor = self.hparams.oversampling_factor if weight_factor is None else weight_factor
-            expansion_size = self.hparams.expansion_size if expansion_size is None else expansion_size
-            dynamic = self.hparams.dynamic_sampler if dynamic is None else dynamic
-            buffer_size = self.hparams.buffer_size if buffer_size is None else buffer_size
-            probs_normalization = self.hparams.probs_normalization if probs_normalization is None else probs_normalization
-            sample_size = self.hparams.sample_size if sample_size is None else sample_size
+        self.persistent_dataloaders = {}
+        self.dataloaders = {}
 
-            dataset.build_samplers(batch_size_train, eval_batch_size=batch_size_eval,
-                                   oversample=oversample, weight_factor=weight_factor, expansion_size=expansion_size,
-                                   dynamic=dynamic, buffer_size=buffer_size,
-                                   probs_normalization=probs_normalization,
-                                   sample_size=sample_size
-                                   )
+        subsets = dataset.indices.keys()
+        self.eval_subset = 'validation' if 'validation' in subsets else 'test'
 
-            dataloaders = dataset.build_dataloaders(num_workers=self.hparams.cpu_workers,
-                                                    pin_memory=self.pin_memory,
-                                                    timeout=timeout, collate_fn=collate_fn,
-                                                    worker_init_fn=worker_init_fn,
-                                                    multiprocessing_context=multiprocessing_context, generator=generator,
-                                                    prefetch_factor=prefetch_factor)
+        for s in subsets:
+            sampler = dataset.build_sampler(s, batch_size_eval, persistent=False, oversample=oversample,
+                                            weight_factor=weight_factor, expansion_size=expansion_size,
+                                            dynamic=dynamic, buffer_size=buffer_size,
+                                            probs_normalization=probs_normalization,
+                                            sample_size=sample_size)
 
-        self.dataloaders = dataloaders
+            self.dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
+                                                            pin_memory=self.pin_memory,
+                                                            timeout=timeout, collate_fn=collate_fn,
+                                                            worker_init_fn=worker_init_fn,
+                                                            multiprocessing_context=multiprocessing_context,
+                                                            generator=generator,
+                                                            prefetch_factor=prefetch_factor)
+
+        for s in ['train', self.eval_subset]:
+
+            sampler = dataset.build_sampler(s, batch_size_train, persistent=True, oversample=oversample,
+                                            weight_factor=weight_factor, expansion_size=expansion_size,
+                                            dynamic=dynamic, buffer_size=buffer_size,
+                                            probs_normalization=probs_normalization,
+                                            sample_size=sample_size)
+
+            self.persistent_dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
+                                                        pin_memory=self.pin_memory,
+                                                        timeout=timeout, collate_fn=collate_fn,
+                                                        worker_init_fn=worker_init_fn,
+                                                        multiprocessing_context=multiprocessing_context,
+                                                        generator=generator,
+                                                        prefetch_factor=prefetch_factor)
+
         self.epoch_length = {}
 
-        self.eval_subset = 'validation' if 'validation' in dataloaders.keys() else 'test'
         self.epoch_length['train'] = self.hparams.epoch_length_train
         self.epoch_length[self.eval_subset] = self.hparams.epoch_length_eval
 
         if self.epoch_length['train'] is None:
-            dataset = dataloaders['train'].dataset
-            self.epoch_length['train'] = len(dataset.indices_split['train'])
+            dataset = self.persistent_dataloaders['train'].dataset
+            self.epoch_length['train'] = len(dataset.indices['train'])
 
         if self.epoch_length[self.eval_subset] is None:
-            dataset = dataloaders[self.eval_subset].dataset
-            self.epoch_length[self.eval_subset] = len(dataset.indices_split[self.eval_subset])
+            dataset = self.persistent_dataloaders[self.eval_subset].dataset
+            self.epoch_length[self.eval_subset] = len(dataset.indices[self.eval_subset])
 
         if self.hparams.scale_epoch_by_batch_size:
             self.epoch_length[self.eval_subset] = self.epoch_length[self.eval_subset] // self.batch_size_eval
             self.epoch_length['train'] = self.epoch_length['train'] // self.batch_size_train
 
-        if 'test' in dataloaders.keys():
-            self.epoch_length['test'] = len(dataloaders['test'])
-
         if self.n_epochs is None:
             self.n_epochs = self.hparams.total_steps // self.epoch_length['train']
-
-        if self.dataset is None:
-            self.dataset = next(iter(self.dataloaders.values())).dataset
 
     def register_network(self, net):
 
@@ -257,9 +285,12 @@ class Algorithm(object):
 
         return dataloader
 
-    def data_generator(self, subset, max_iterations=None):
+    def data_generator(self, subset, max_iterations=None, persistent=False):
 
-        dataloader = self.build_dataloader(subset)
+        if persistent:
+            dataloader = self.persistent_dataloaders[subset]
+        else:
+            dataloader = self.build_dataloader(subset)
         for i, (ind, sample) in enumerate(dataloader):
             if max_iterations is not None and i >= max_iterations:
                 break
@@ -309,7 +340,7 @@ class Algorithm(object):
             self.set_mode(training=training)
             results = self.preprocess_epoch(results=results, epoch=n, training=training)
 
-            data_generator = self.data_generator(subset)
+            data_generator = self.data_generator(subset, persistent=True)
             for i, (ind, sample) in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
                                   threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
@@ -318,11 +349,16 @@ class Algorithm(object):
                 with torch.autocast(self.autocast_device, enabled=self.amp):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
 
+                    if self.amp and training and self.scaler._scale is not None:
+                        self.scaler.update()
+
             results = self.postprocess_epoch(sample=sample, index=ind, results=results, epoch=n, training=training)
+
+            batch_size = self.batch_size_train if training else self.batch_size_eval
+            results = stack_results(results, batch_size=batch_size)
 
             delta = timer() - t0
             n_iter = i + 1
-            batch_size = self.batch_size_train if training else self.batch_size_eval
 
             results['stats']['seconds'] = delta
             results['stats']['batches'] = n_iter
@@ -411,8 +447,8 @@ class Algorithm(object):
             results = self.postprocess_inference(sample=sample, index=ind, transforms=transforms,
                                                  results=results, subset=subset, predicting=predicting)
 
+            results = stack_results(results, batch_size=batch_size)
             dataset = UniversalDataset(transforms, index=index)
-            # results = concat_results(results)
             dataset.set_statistics(results)
 
         return dataset
@@ -481,6 +517,8 @@ class Algorithm(object):
         for k, optimizer in self.optimizers.items():
             state[f"{k}_optimizer"] = wrapper(optimizer.state_dict())
 
+        state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
+
         if path is not None:
             torch.save(state, path)
         else:
@@ -505,6 +543,9 @@ class Algorithm(object):
 
         for k, optimizer in self.optimizers.items():
             optimizer.load_state_dict(state[f"{k}_optimizer"])
+
+        if self.scaler is not None and 'scaler' in state.keys():
+            self.scaler.load_state_dict(state["scaler"])
 
         self.epoch = state['epoch']
         return state['aux']

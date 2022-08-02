@@ -106,7 +106,7 @@ class Study(object):
         for k, v in config.items():
             setattr(args, k, v)
 
-        experiment = Experiment(args, results_names='objective', hpo='tune', print_hyperparameters=False)
+        experiment = Experiment(args, hpo='tune', print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
 
         if 'objective' in results:
@@ -130,8 +130,7 @@ class Study(object):
         for k, v in config.items():
             setattr(args, k, v)
 
-        experiment = Experiment(args, hpo='optuna', results_names='objective',
-                                trial=trial, print_hyperparameters=False)
+        experiment = Experiment(args, hpo='optuna', trial=trial, print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
 
         if 'objective' in results:

@@ -22,6 +22,32 @@ logger.add(sys.stdout, level='INFO', colorize=True,
            format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>')
 
 
+def stack_results(results, batch_size=None):
+    for n, res in results.items():
+        for k, v in res.items():
+            v_type = check_type(v)
+            if v_type.major == 'array' and v_type.minor == 'list' and v_type.element != 'array':
+                vi_type = check_type(v[0])
+                if vi_type.minor == 'numpy':
+                    results[n][k] = np.stack(results[n][k])
+                elif vi_type.minor == 'tensor':
+                    results[n][k] = torch.stack(results[n][k])
+            elif v_type.major == 'array' and v_type.element == 'array':
+                if v_type.minor in ['tensor', 'numpy']:
+
+                    if v_type.minor == 'tensor':
+                        oprs = {'cat': torch.cat, 'stack': torch.stack}
+                    else:
+                        oprs = {'cat': np.concatenate, 'stack': np.stack}
+
+                    opr = oprs['cat']
+                    if batch_size is not None and v[0].shape != batch_size:
+                        opr = oprs['stack']
+
+                    results[n][k] = opr(results[n][k])
+
+    return results
+
 def rate_string_format(n, t):
     if n / t > 1:
         return f"{n / t: .4} [iter/sec]"
@@ -131,12 +157,17 @@ def beam_device(device):
 
 
 def check_element_type(x):
-    t = str(type(x)).lower()
 
     if not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
         return 'array'
-    elif pd.isna(x):
+    if pd.isna(x):
         return 'none'
+
+    if hasattr(x, 'dtype'):
+        t = str(x.dtype).lower()
+    else:
+        t = str(type(x)).lower()
+
     if 'int' in t:
         return 'int'
     if 'bool' in t:
@@ -145,6 +176,7 @@ def check_element_type(x):
         return 'float'
     if 'str' in t:
         return 'str'
+
     return 'object'
 
 

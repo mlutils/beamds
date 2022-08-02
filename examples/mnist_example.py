@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # In[1]:
-from utils import add_beam_to_path
+from examples.utils import add_beam_to_path
 add_beam_to_path()
 
 import torch
@@ -35,7 +35,8 @@ class MNISTDataset(UniversalDataset):
 
         self.data = PackedFolds({'train': dataset_train.data, 'test': dataset_test.data})
         self.labels = PackedFolds({'train': dataset_train.targets, 'test': dataset_test.targets})
-        self.split(validation=.2, test=self.labels['test'].index, seed=seed)
+        # self.split(validation=.2, test=self.labels['test'].index, seed=seed)
+        self.split(test=self.labels['test'].index, seed=seed)
 
     def getitem(self, index):
         return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
@@ -78,7 +79,8 @@ class MNISTAlgorithm(Algorithm):
         y_hat = net(x)
         loss = F.cross_entropy(y_hat, y, reduction='mean')
 
-        opt.apply(loss, training=training)
+        if training:
+            opt.apply(loss)
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))

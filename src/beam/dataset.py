@@ -314,9 +314,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.set_index(index)
 
         if not hasattr(self, 'indices_split'):
-            self.indices_split = {}
-        if not hasattr(self, 'samplers'):
-            self.samplers = {}
+            self.indices = {}
         if not hasattr(self, 'labels_split'):
             self.labels_split = {}
         if not hasattr(self, 'probs'):
@@ -473,11 +471,11 @@ class UniversalDataset(torch.utils.data.Dataset):
         if test is None:
             pass
         elif check_type(test).major == 'array':
-            self.indices_split['test'] = torch.LongTensor(test)
+            self.indices['test'] = torch.LongTensor(test)
             indices = np.sort(np.array(list(set(indices).difference(set(np.array(test))))))
 
             if labels is not None:
-                self.labels_split['test'] = labels[self.indices_split['test']]
+                self.labels_split['test'] = labels[self.indices['test']]
                 # labels = labels[indices]
 
         elif test_split_method == 'uniform':
@@ -491,7 +489,7 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 indices, test = train_test_split(indices, random_state=seed, test_size=test)
 
-            self.indices_split['test'] = torch.LongTensor(test)
+            self.indices['test'] = torch.LongTensor(test)
             if seed is not None:
                 seed = seed + 1
 
@@ -500,21 +498,21 @@ class UniversalDataset(torch.utils.data.Dataset):
             indices = indices[ind_sort]
 
             test_size = int(test * len(self)) if type(test) is float else test
-            self.indices_split['test'] = torch.LongTensor(indices[-test_size:])
+            self.indices['test'] = torch.LongTensor(indices[-test_size:])
             indices = indices[:-test_size]
 
             if labels is not None:
                 labels = labels[ind_sort]
-                self.labels_split['test'] = labels[self.indices_split['test']]
+                self.labels_split['test'] = labels[self.indices['test']]
 
         if validation is None:
             pass
         elif check_type(validation).major == 'array':
-            self.indices_split['validation'] = torch.LongTensor(validation)
+            self.indices['validation'] = torch.LongTensor(validation)
             indices = np.sort(np.array(list(set(indices).difference(set(np.array(validation))))))
 
             if labels is not None:
-                self.labels_split['validation'] = labels[self.indices_split['validation']]
+                self.labels_split['validation'] = labels[self.indices['validation']]
 
         else:
             if type(validation) is float:
@@ -528,61 +526,38 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 indices, validation = train_test_split(indices, random_state=seed, test_size=validation)
 
-            self.indices_split['validation'] = torch.LongTensor(validation)
+            self.indices['validation'] = torch.LongTensor(validation)
 
-        self.indices_split['train'] = torch.LongTensor(indices)
+        self.indices['train'] = torch.LongTensor(indices)
         if labels is not None:
             self.labels_split['train'] = labels[indices]
 
     def set_statistics(self, stats):
         self.statistics = stats
 
-    def build_samplers(self, batch_size, eval_batch_size=None, oversample=False, weight_factor=1., expansion_size=int(1e7),
+    def build_sampler(self, subset, batch_size, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
                        dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
 
-        if eval_batch_size is None:
-            eval_batch_size = batch_size
+        if not persistent:
+            return UniversalBatchSampler(self.indices[subset], batch_size, shuffle=False,
+                                         tail=True, once=True, dynamic=False)
 
-        if 'test' in self.indices_split:
-            self.samplers['test'] = UniversalBatchSampler(self.indices_split['test'],
-                                                          eval_batch_size, shuffle=False,
-                                                          tail=True, once=True, dynamic=False)
+        probs = None
+        if oversample and subset in self.labels_split and self.labels_split[subset] is not None:
+            probs = compute_sample_weight('balanced', y=self.labels_split[subset]) ** weight_factor
+            probs_normalization = 'sum'
+        elif subset in self.probs:
+            probs = self.probs[subset]
 
-        if 'validation' in self.indices_split:
-            probs = None
-            if oversample and 'validation' in self.labels_split and self.labels_split['validation'] is not None:
-                probs = compute_sample_weight('balanced', y=self.labels_split['validation']) ** weight_factor
-                probs_normalization = 'sum'
-            elif 'validation' in self.probs:
-                probs = self.probs['train']
+        return UniversalBatchSampler(self.indices[subset],
+                                     batch_size, probs=probs, shuffle=True, tail=True,
+                                     once=False, expansion_size=expansion_size,
+                                     dynamic=dynamic, buffer_size=buffer_size,
+                                     probs_normalization=probs_normalization,
+                                     sample_size=sample_size)
 
-            self.samplers['validation'] = UniversalBatchSampler(self.indices_split['validation'],
-                                                          eval_batch_size, probs=probs, shuffle=True,
-                                                                tail=True, once=False,
-                                                                expansion_size=expansion_size,
-                                                                dynamic=dynamic, buffer_size=buffer_size,
-                                                                probs_normalization=probs_normalization,
-                                                                sample_size=sample_size)
-
-        if 'train' in self.indices_split:
-            probs = None
-            if oversample and 'train' in self.labels_split and self.labels_split['train'] is not None:
-                probs = compute_sample_weight('balanced', y=self.labels_split['train']) ** weight_factor
-                probs_normalization = 'sum'
-            elif 'train' in self.probs:
-                probs = self.probs['train']
-
-            self.samplers['train'] = UniversalBatchSampler(self.indices_split['train'],
-                                                           batch_size, probs=probs, shuffle=True, tail=True,
-                                                           once=False, expansion_size=expansion_size,
-                                                           dynamic=dynamic, buffer_size=buffer_size,
-                                                           probs_normalization=probs_normalization,
-                                                           sample_size=sample_size)
-
-    def build_dataloaders(self, num_workers=0, pin_memory=None, timeout=0, collate_fn=None,
+    def build_dataloader(self, sampler, num_workers=0, pin_memory=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
-
-        dataloaders = {}
 
         try:
             d = str(self.device)
@@ -595,56 +570,12 @@ class UniversalDataset(torch.utils.data.Dataset):
         else:
             pin_memory = pin_memory and pin_memory_
 
-        if 'test' in self.samplers:
-            sampler = self.samplers['test']
-            persistent_workers = True if num_workers > 0 else False
-            dataloaders['test'] = torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
-                                                 num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
-                                                 worker_init_fn=worker_init_fn, collate_fn=collate_fn,
-                                                 multiprocessing_context=multiprocessing_context, generator=generator,
-                                                 prefetch_factor=prefetch_factor, persistent_workers=persistent_workers
-                                                 )
-
-        if 'validation' in self.samplers:
-            sampler = self.samplers['validation']
-            dataloaders['validation'] = torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
-                                                 num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
-                                                 worker_init_fn=worker_init_fn, collate_fn=collate_fn,
-                                                 multiprocessing_context=multiprocessing_context, generator=generator,
-                                                 prefetch_factor=prefetch_factor)
-
-        if 'train' in self.samplers:
-            sampler = self.samplers['train']
-            dataloaders['train'] = torch.utils.data.DataLoader(self, sampler=sampler,
-                                                                    batch_size = None,
-                                                                    num_workers=num_workers,
-                                                                    pin_memory=pin_memory,
-                                                                    timeout=timeout,
-                                                                    worker_init_fn=worker_init_fn,
-                                                                    collate_fn=collate_fn,
-                                                                    multiprocessing_context=multiprocessing_context,
-                                                                    generator=generator,
-                                                                    prefetch_factor=prefetch_factor)
-
-        return dataloaders
-
-    def dataloader(self, batch_size, subset='train', length=None, shuffle=True, tail=True, once=False,
-                   num_workers=0, pin_memory=True, timeout=0, collate_fn=None,
-                   worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
-                   persistent_workers=False):
-
-        indices = self.indices_split[subset]
-
-        sampler = UniversalBatchSampler(indices, batch_size, length=length, shuffle=shuffle, tail=tail, once=once)
-        dataloader = torch.utils.data.DataLoader(self, sampler=sampler, batch_size=None,
-                                                 num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
-                                                 worker_init_fn=worker_init_fn, collate_fn=collate_fn,
-                                                 multiprocessing_context=multiprocessing_context,
-                                                 generator=generator,
-                                                 prefetch_factor=prefetch_factor,
-                                                 persistent_workers=persistent_workers
-                                                 )
-        return dataloader
+        persistent_workers = (num_workers > 0 and sampler.once)
+        return torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
+                                             num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
+                                             worker_init_fn=worker_init_fn, collate_fn=collate_fn,
+                                             multiprocessing_context=multiprocessing_context, generator=generator,
+                                             prefetch_factor=prefetch_factor, persistent_workers=persistent_workers)
 
 
 class TransformedDataset(torch.utils.data.Dataset):
@@ -668,7 +599,6 @@ class TransformedDataset(torch.utils.data.Dataset):
         ind, data = self.dataset[ind]
         dataset = UniversalDataset(data)
         res = self.alg.predict(dataset, *self.args, **self.kwargs)
-        # res.set_index(ind)
 
         return ind, res.values
 

@@ -118,10 +118,9 @@ class Experiment(object):
     :param args:
     """
 
-    def __init__(self, args, results_names=None, hpo=None, trial=None, print_hyperparameters=True):
+    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=True):
         """
         args: the parsed arguments
-        results_names: additional results directories (defaults are: train, validation, test)
         """
 
         self.tensorboard_hparams = {}
@@ -233,15 +232,7 @@ class Experiment(object):
             os.makedirs(self.checkpoints_dir)
 
             # make log dirs
-            os.makedirs(os.path.join(self.results_dir, 'train'))
-            os.makedirs(os.path.join(self.results_dir, 'validation'))
-            os.makedirs(os.path.join(self.results_dir, 'test'))
-
-            if type(results_names) is list:
-                for r in results_names:
-                    os.makedirs(os.path.join(self.results_dir, r))
-            elif type(results_names) is str:
-                os.makedirs(os.path.join(self.results_dir, results_names))
+            os.makedirs(os.path.join(self.results_dir))
 
             # copy code to dir
 
@@ -414,6 +405,8 @@ class Experiment(object):
             for subset, res in results.items():
 
                 if store_results == 'yes' or store_results == 'logscale' and logscale:
+
+                    os.makedirs(os.path.join(self.results_dir, subset), exist_ok=True)
                     pd.to_pickle(res, os.path.join(self.results_dir, subset, f'results_{epoch:06d}'))
 
                 alg = algorithm if visualize_weights else None
@@ -464,17 +457,10 @@ class Experiment(object):
             if report is not None:
 
                 for param, val in report.items():
-
                     stat = None
-
                     if type(val) is dict or type(val) is defaultdict:
                         for p, v in val.items():
-                            try:
-                                val[p] = np.mean(v)
-                            except:
-                                print(p)
-                                print(v)
-                                print(param)
+                            val[p] = np.mean(v)
                     else:
 
                         v = [report[param]] if np.isscalar(report[param]) else report[param]
