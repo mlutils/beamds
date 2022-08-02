@@ -208,7 +208,7 @@ class Algorithm(object):
                                                         generator=generator,
                                                         prefetch_factor=prefetch_factor)
 
-        self.epoch_length = {}
+        self.epoch_length = {'train': None, self.eval_subset: None}
 
         if self.hparams.epoch_length is not None:
             l_train = len(dataset.indices['train'])

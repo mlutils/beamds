@@ -163,7 +163,7 @@ class BeamCLR(Algorithm):
 
     def postprocess_epoch(self, results=None, training=None, epoch=None, **kwargs):
 
-            if not training and not epoch % 10:
+            if not training and not epoch % 1:
                 self.labeled_dataset.normalize = True
 
                 logger.info("Evaluating the downstream task")
@@ -188,7 +188,6 @@ class BeamCLR(Algorithm):
                 results['scalar']['classification_loss'] = bst.best_score['valid_0']['multi_logloss']
 
             return results
-
 
     def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
@@ -218,13 +217,21 @@ class BeamCLR(Algorithm):
 
 if __name__ == '__main__':
 
-    path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
-    root_dir = '/home/shared/data/results/'
+    # path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
+    # root_dir = '/home/shared/data/results/'
+
+    path_to_data = '/localdata/elads/data/datasets/stl10/stl10_binary'
+    root_dir = '/localdata/elads/data/resutls'
 
     # check with --half
+    # args = beam_arguments(
+    #     f"--project-name=beam_ssl --root-dir={root_dir} --algorithm=BeamCLR --device=0 --amp "
+    #     f"--batch-size=256 --epoch-length=5000 --reload",
+    #     "--n-epochs=100", path_to_data=path_to_data)
+
     args = beam_arguments(
         f"--project-name=beam_ssl --root-dir={root_dir} --algorithm=BeamCLR --device=0 --amp "
-        f"--batch-size=64 --epoch-length=5000 --reload",
+        f"--batch-size=256 --reload",
         "--n-epochs=100", path_to_data=path_to_data)
 
     logger = beam_logger()
