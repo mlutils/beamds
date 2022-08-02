@@ -1,6 +1,7 @@
 pyarrow
 six
 tqdm
+jupyter-tensorboard
 
 
 xgboost>=1.6.1

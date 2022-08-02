@@ -1,31 +1,13 @@
 import torch
-import torchvision
 import torch.nn.functional as F
 from torch import nn
-from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
-import pandas as pd
-import faiss                   # make faiss available
-import umap
-import seaborn as sns
-from byol_pytorch import BYOL
 
 import os
-import sys
-import matplotlib.pyplot as plt
-from sklearn import svm
-
 import torchvision.models as models
 from torchvision import transforms
-from torchvision.models.feature_extraction import get_graph_node_names
 from torchvision.models.feature_extraction import create_feature_extractor
 
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score
-from sklearn.ensemble import BaggingClassifier, RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-
-from pl_bolts.models.self_supervised import SimCLR
-import lightgbm as lgb
 import kornia
 from kornia.augmentation.container import AugmentationSequential
 
@@ -33,7 +15,8 @@ from utils import add_beam_to_path
 add_beam_to_path()
 
 from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
-from src.beam import tqdm
+from src.beam import tqdm, beam_logger
+import lightgbm as lgb
 
 
 class STL10Dataset(UniversalDataset):
@@ -43,8 +26,9 @@ class STL10Dataset(UniversalDataset):
         path = hparams.path_to_data
         seed = hparams.split_dataset_seed
         device = hparams.device
+        self.half = hparams.half
 
-        super().__init__()
+        super().__init__(target_device=device)
 
         self.normalize = True
 
@@ -66,8 +50,6 @@ class STL10Dataset(UniversalDataset):
             self.labels = PackedFolds({'train': y_train, 'test': y_test})
             self.split(test=self.labels['test'].index, seed=seed)
 
-        self.target_device = device
-
         size = 224
         s = 1
         self.n_augmentations = 2
@@ -80,12 +62,19 @@ class STL10Dataset(UniversalDataset):
                                                     kornia.augmentation.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s, p=.8),
                                                     kornia.augmentation.RandomGrayscale(p=0.2))
 
+    # def astype(self, x):
+    #     if self.half:
+    #         x = x.half()
+    #     else:
+    #         x = x.float()
+    #     return x
+
     def getitem(self, index):
 
         x = self.data[index]
 
         if self.normalize:
-            x = x.to(self.target_device).half() / 255
+            x = x.to(self.target_device) / 255
 
         x = self.transform(x)
 
@@ -94,45 +83,112 @@ class STL10Dataset(UniversalDataset):
         return {'x': x, 'y': self.labels[index], 'augmentations': augmentations}
 
 
+class FeatureEncoder(nn.Module):
+
+    def __init__(self, net, layer='avgpool'):
+        super().__init__()
+
+        return_nodes = {layer: 'features'}
+        encoder = create_feature_extractor(net, return_nodes=return_nodes)
+
+        self.encoder = encoder
+
+    def forward(self, x):
+        return self.encoder(x)['features'].view(len(x), -1)
+
+
 class BeamCLR(Algorithm):
 
     def __init__(self, hparams):
 
         # choose your network
-        encoder = models.resnet50(pretrained=False)
-        layer = 'avgpool'
-        return_nodes = {layer: 'features'}
-        encoder = create_feature_extractor(encoder, return_nodes=return_nodes)
+        encoder = FeatureEncoder(models.resnet18(pretrained=False), layer='avgpool')
 
-        d = 2048
-        projection = nn.Sequential(nn.Linear(d, d), nn.BatchNorm1d(d), nn.ReLU(), nn.Linear(d, d), nn.BatchNorm1d(d))
+        self.h = 2048
+        self.temperature = 1
+        projection = nn.Sequential(nn.LazyLinear(self.h), nn.BatchNorm1d(self.h), nn.ReLU(),
+                                   nn.Linear(self.h, self.h), nn.BatchNorm1d(self.h))
+
+        self.labeled_dataset = STL10Dataset(hparams, subset='labeled')
+        self.index_train_labeled = np.array(self.labeled_dataset.indices['train'])
+        self.index_test_labeled = np.array(self.labeled_dataset.indices['test'])
 
         super().__init__(hparams, networks={'encoder': encoder, 'projection': projection})
-        self.features = lambda x: self.networks['encoder'](x)['features'].view(len(x), -1)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
-        x, y = sample['x'], sample['y']
+        # x, y = sample['x'], sample['y']
         x_aug1, x_aug2 = sample['augmentations']
 
         encoder = self.networks['encoder']
-        opt = self.optimizers['net']
+        opt_e = self.optimizers['encoder']
 
-        y_hat = net(x)
-        loss = F.cross_entropy(y_hat, y, reduction='mean')
+        projection = self.networks['projection']
+        opt_p = self.optimizers['projection']
 
-        opt.apply(loss, training=training)
+        h1 = encoder(x_aug1)
+        h2 = encoder(x_aug2)
+
+        z1 = projection(h1)
+        z2 = projection(h2)
+
+        b, h = z1.shape
+        z = torch.cat([z1, z2], dim=1).view(-1, h)
+
+        z_norm = torch.norm(z, dim=1, keepdim=True)
+
+        s = (z @ z.T) / (z_norm @ z_norm.T)
+        s = s * (1 - torch.eye(2 * b, 2 * b, device=s.device)) / self.temperature
+
+        logsumexp = torch.logsumexp(s[::2], dim=1)
+        s_couple = torch.diag(s, diagonal=1)[::2]
+
+        loss = - s_couple + logsumexp
+
+        loss = loss.mean()
+
+        if training:
+            self.apply(loss, optimizers=[opt_e, opt_p])
 
         # add scalar measurements
+
         results['scalar']['loss'].append(float(loss))
-        results['scalar']['ones'].append(x.sum(dim=-1).detach().cpu().numpy())
-        results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
+        results['scalar']['acc'].append(float((s_couple >= s[::2].max(dim=1).values).float().mean()))
 
         return results
 
     def preprocess_inference(self, results=None, **kwargs):
             self.dataset.normalize = True
             return results
+
+    def postprocess_epoch(self, results=None, training=None, epoch=None, **kwargs):
+
+            if not training and not epoch % 10:
+                self.labeled_dataset.normalize = True
+
+                logger.info("Evaluating the downstream task")
+                features = self.evaluate(self.labeled_dataset)
+                z = features.values['z'].detach().cpu().numpy()
+                y = features.values['y'].detach().cpu().numpy()
+
+                train_data = lgb.Dataset(z[self.index_train_labeled], label=y[self.index_train_labeled] - 1)
+                validation_data = lgb.Dataset(z[self.index_test_labeled], label=y[self.index_test_labeled] - 1)
+
+                num_round = 30
+                param = {'objective': 'multiclass',
+                         'num_leaves': 31,
+                         'max_depth': 4,
+                         'gpu_device_id': 1,
+                         'verbosity': -1,
+                         'metric': ['multi_error', 'multiclass'],
+                         'num_class': 10}
+                bst = lgb.train(param, train_data, num_round, valid_sets=[validation_data])
+
+                results['scalar']['classification_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+                results['scalar']['classification_loss'] = bst.best_score['valid_0']['multi_logloss']
+
+            return results
+
 
     def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
@@ -141,9 +197,8 @@ class BeamCLR(Algorithm):
         else:
             x, y = sample['x'], sample['y']
 
-        net = self.networks['net']
-        # z = net(x)[0]
-        z = net(x)
+        encoder = self.networks['encoder']
+        z = encoder(x)
 
         if not predicting:
             return {'z': z, 'y': y}, results
@@ -151,11 +206,38 @@ class BeamCLR(Algorithm):
         return z, results
 
 
-def show_image(i, aug=False):
+# def show_image(i, aug=False):
+#
+#     dataset_labeled.normalize = True
+#     key = 'x_aug' if aug else 'x'
+#     im = np.array(dataset_labeled[i][1][key].permute(1, 2, 0))
+#     plt.imshow(im)
+#     plt.show()
+#     dataset_labeled.normalize = True
 
-    dataset_labeled.normalize = True
-    key = 'x_aug' if aug else 'x'
-    im = np.array(dataset_labeled[i][1][key].permute(1, 2, 0))
-    plt.imshow(im)
-    plt.show()
-    dataset_labeled.normalize = True
+
+if __name__ == '__main__':
+
+    path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
+    root_dir = '/home/shared/data/results/'
+
+    # check with --half
+    args = beam_arguments(
+        f"--project-name=beam_ssl --root-dir={root_dir} --algorithm=BeamCLR --device=0 --amp "
+        f"--batch-size=64 --epoch-length=5000 --reload",
+        "--n-epochs=100", path_to_data=path_to_data)
+
+    logger = beam_logger()
+
+    experiment = Experiment(args)
+    Alg = globals()[experiment.hparams.algorithm]
+
+    alg = experiment.fit(Alg, STL10Dataset)
+
+    # ## Inference
+    inference = alg('test')
+
+    logger.info('Test inference results:')
+    for n, v in inference.statistics['metrics'].items():
+        logger.info(f'{n}:')
+        logger.info(v)

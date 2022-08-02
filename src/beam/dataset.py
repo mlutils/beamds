@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type, slice_to_index, as_tensor
+from .utils import check_type, slice_to_index, as_tensor, to_device
 import pandas as pd
 import math
 import hashlib
@@ -307,7 +307,18 @@ class PackedFolds(object):
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self, *args, index=None, device='cpu', **kwargs):
+    def __init__(self, *args, index=None, device='cpu', target_device=None, **kwargs):
+        """
+        Universal Beam dataset class
+
+        @param args:
+        @param index:
+        @param device:
+        @param target_device: if not None, the dataset is responsible to transform samples into this dataset.
+        This is useful when we want to transform a sample to the GPU during the getitem routine in order to speed-up the
+        computation.
+        @param kwargs:
+        """
         super().__init__()
 
         self.index = None
@@ -325,6 +336,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.training = False
         self.data_type = None
         self.statistics = None
+        self.target_device = target_device
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -400,7 +412,11 @@ class UniversalDataset(torch.utils.data.Dataset):
             ind = slice_to_index(ind, l=len(self))
             iloc = ind
 
-        return ind, self.getitem(iloc)
+        sample = self.getitem(iloc)
+        if self.target_device is not None:
+            sample = to_device(sample, device=self.target_device)
+
+        return ind, sample
 
     @property
     def device(self):
@@ -535,11 +551,19 @@ class UniversalDataset(torch.utils.data.Dataset):
     def set_statistics(self, stats):
         self.statistics = stats
 
-    def build_sampler(self, subset, batch_size, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
+    def build_sampler(self, batch_size, subset=None, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
                        dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
 
+        if subset is None:
+            if self.index is not None:
+                indices = self.index.index.values
+            else:
+                indices = torch.arange(len(self))
+        else:
+            indices = self.indices[subset]
+
         if not persistent:
-            return UniversalBatchSampler(self.indices[subset], batch_size, shuffle=False,
+            return UniversalBatchSampler(indices, batch_size, shuffle=False,
                                          tail=True, once=True, dynamic=False)
 
         probs = None
@@ -560,8 +584,8 @@ class UniversalDataset(torch.utils.data.Dataset):
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
 
         try:
-            d = str(self.device)
-            pin_memory_ = ('cpu' in str(d))
+            d = self.device.type if self.target_device is None else self.target_device
+            pin_memory_ = ('cpu' == d)
         except NotImplementedError:
             pin_memory_ = True
 

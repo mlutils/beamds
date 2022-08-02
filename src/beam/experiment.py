@@ -279,12 +279,6 @@ class Experiment(object):
         if self.hparams.batch_size is None:
             self.hparams.batch_size = self.hparams.batch_size_train
 
-        if self.hparams.epoch_length_train is None:
-            self.hparams.epoch_length_train = self.hparams.epoch_length
-
-        if self.hparams.epoch_length_eval is None:
-            self.hparams.epoch_length_eval = self.hparams.epoch_length
-
         # build the hyperparamter class which will be sent to the dataset and algorithm classes
 
         if self.load_model:

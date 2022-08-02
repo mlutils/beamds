@@ -139,14 +139,14 @@ class Algorithm(object):
                 loss.backward(gradient=gradient, retain_graph=retain_graph,
                               create_graph=create_graph, inputs=inputs)
 
-            if self.hparams.clip > 0:
+            if self.hparams.clip_gradient > 0:
                 for op in optimizers.values():
                     if self.amp:
                         self.scaler.unscale_(op)
                     for pg in op.param_groups:
                         torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.hparams.clip)
 
-            if not (iteration % self.hparams.accumulate):
+            if iteration is None or not (iteration % self.hparams.accumulate):
                 for op in optimizers:
                     if self.amp:
                         self.scaler.step(op)
@@ -178,7 +178,7 @@ class Algorithm(object):
         self.eval_subset = 'validation' if 'validation' in subsets else 'test'
 
         for s in subsets:
-            sampler = dataset.build_sampler(s, batch_size_eval, persistent=False, oversample=oversample,
+            sampler = dataset.build_sampler(batch_size_eval, subset=s, persistent=False, oversample=oversample,
                                             weight_factor=weight_factor, expansion_size=expansion_size,
                                             dynamic=dynamic, buffer_size=buffer_size,
                                             probs_normalization=probs_normalization,
@@ -194,7 +194,7 @@ class Algorithm(object):
 
         for s in ['train', self.eval_subset]:
 
-            sampler = dataset.build_sampler(s, batch_size_train, persistent=True, oversample=oversample,
+            sampler = dataset.build_sampler(batch_size_train, subset=s, persistent=True, oversample=oversample,
                                             weight_factor=weight_factor, expansion_size=expansion_size,
                                             dynamic=dynamic, buffer_size=buffer_size,
                                             probs_normalization=probs_normalization,
@@ -210,8 +210,18 @@ class Algorithm(object):
 
         self.epoch_length = {}
 
-        self.epoch_length['train'] = self.hparams.epoch_length_train
-        self.epoch_length[self.eval_subset] = self.hparams.epoch_length_eval
+        if self.hparams.epoch_length is not None:
+            l_train = len(dataset.indices['train'])
+            l_eval = len(dataset.indices[self.eval_subset])
+
+            self.epoch_length['train'] = int(self.hparams.epoch_length * l_train / (l_train + l_eval))
+            self.epoch_length[self.eval_subset] = int(self.hparams.epoch_length * l_eval / (l_train + l_eval))
+
+        if self.hparams.epoch_length_train is not None:
+            self.epoch_length['train'] = self.hparams.epoch_length_train
+
+        if self.hparams.epoch_length_eval is not None:
+            self.epoch_length[self.eval_subset] = self.hparams.epoch_length_eval
 
         if self.epoch_length['train'] is None:
             dataset = self.persistent_dataloaders['train'].dataset
@@ -259,15 +269,10 @@ class Algorithm(object):
 
             dataset = subset
 
-            if hasattr(dataset, 'index') and dataset.index is not None:
-                index = dataset.index.index.values
-            else:
-                index = len(dataset)
+            sampler = dataset.build_sampler(self.hparams.batch_size_eval, persistent=False)
 
-            sampler = UniversalBatchSampler(index, self.hparams.batch_size_eval, shuffle=False,
-                                            tail=True, once=True)
-            dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
-                                                     num_workers=0, pin_memory=self.pin_memory)
+            dataloader = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
+                                                  pin_memory=self.pin_memory)
 
         else:
 
