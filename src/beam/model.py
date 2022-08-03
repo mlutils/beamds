@@ -782,6 +782,16 @@ def beam_weights_initializer(m, method='none'):
             nn.init.constant_(m.bias.data, 0)
 
 
+def soft_target_update(source, target, tau):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(target_param.data * tau + param.data * (1.0 - tau))
+
+
+def target_copy(source, target):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
+
+
 def reset_networks_and_optimizers(networks=None, optimizers=None):
     if networks is not None:
         net_iter = networks.keys() if issubclass(type(networks), dict) else range(len(networks))

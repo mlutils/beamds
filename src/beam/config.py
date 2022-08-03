@@ -163,6 +163,10 @@ def add_unknown_arguments(args, unknown):
     args = copy.deepcopy(args)
 
     i = 0
+
+    if len(unknown) > 0:
+        logger.warning(f"Parsing unkown arguments: {unknown}. Please check for typos")
+
     while i < len(unknown):
 
         arg = unknown[i]
@@ -238,7 +242,7 @@ def beam_arguments(*args, **kwargs):
 
     args_str = re.split(r"\s+", ' '.join([ar.strip() for ar in args_str]))
 
-    sys.argv = [file_name] + sys_args + args_str
+    sys.argv = [file_name] + args_str + sys_args
     sys.argv = list(filter(lambda x: bool(x), sys.argv))
 
     args, unknown = pr.parse_known_args()
