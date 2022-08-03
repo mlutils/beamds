@@ -1,7 +1,8 @@
 import argparse
+import copy
 import os
 import sys
-from .utils import is_notebook, check_type
+from .utils import is_notebook, check_type, logger
 import re
 
 
@@ -141,6 +142,68 @@ def get_beam_parser():
 
     return parser
 
+
+def normalize_key(k):
+    return k.replace('-', '_')
+
+def normalize_value(v):
+    try:
+        return int(v)
+    except:
+        pass
+    try:
+        return float(v)
+    except:
+        pass
+    return v
+
+
+def add_unknown_arguments(args, unknown):
+
+    args = copy.deepcopy(args)
+
+    i = 0
+    while i < len(unknown):
+
+        arg = unknown[i]
+        if not arg.startswith("-"):
+            logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it as it does not start with \'-\' sign")
+            i += 1
+            continue
+        if arg.startswith("--"):
+            arg = arg[2:]
+        else:
+            arg = arg[1:]
+
+        if arg.startswith('no-'):
+            k = arg[3:]
+            setattr(args, normalize_key(k), False)
+            i += 1
+            continue
+
+        if '=' in arg:
+            arg = arg.split('=')
+            if len(arg) != 2:
+                logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it contains more than one \'=\' sign")
+                i += 1
+                continue
+            k, v = arg
+            setattr(args, normalize_key(k), normalize_value(v))
+            i += 1
+            continue
+
+        k = normalize_key(arg)
+        if i == len(unknown) - 1 or unknown[i+1].startswith("-"):
+            setattr(args, k, True)
+            i += 1
+        else:
+            v = unknown[i+1]
+            setattr(args, k, normalize_value(v))
+            i += 2
+
+    return args
+
+
 def beam_arguments(*args, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
@@ -151,6 +214,7 @@ def beam_arguments(*args, **kwargs):
         sys.argv = sys.argv[:1]
 
     file_name = sys.argv[0] if len(sys.argv) > 0 else '/tmp/tmp.py'
+    sys_args = sys.argv[1:]
 
     args_str = []
     args_dict = []
@@ -174,10 +238,11 @@ def beam_arguments(*args, **kwargs):
 
     args_str = re.split(r"\s+", ' '.join([ar.strip() for ar in args_str]))
 
-    sys.argv = [file_name] + args_str
+    sys.argv = [file_name] + sys_args + args_str
     sys.argv = list(filter(lambda x: bool(x), sys.argv))
 
-    args = pr.parse_args()
+    args, unknown = pr.parse_known_args()
+    args = add_unknown_arguments(args, unknown)
 
     for k, v in kwargs.items():
         setattr(args, k, v)

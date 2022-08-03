@@ -15,8 +15,25 @@ from utils import add_beam_to_path
 add_beam_to_path()
 
 from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
-from src.beam import tqdm, beam_logger
+from src.beam import tqdm, beam_logger, get_beam_parser
 import lightgbm as lgb
+import socket
+
+
+def my_default_configuration_by_cluster():
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    ip = s.getsockname()[0]
+
+    if '172.17' in ip:
+        path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
+        root_dir = '/home/shared/data/results/'
+    else:
+        path_to_data = '/localdata/elads/data/datasets/stl10/stl10_binary'
+        root_dir = '/localdata/elads/data/resutls'
+
+    return path_to_data, root_dir
 
 
 class STL10Dataset(UniversalDataset):
@@ -61,13 +78,6 @@ class STL10Dataset(UniversalDataset):
                                                     kornia.augmentation.RandomHorizontalFlip(),
                                                     kornia.augmentation.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s, p=.8),
                                                     kornia.augmentation.RandomGrayscale(p=0.2))
-
-    # def astype(self, x):
-    #     if self.half:
-    #         x = x.half()
-    #     else:
-    #         x = x.float()
-    #     return x
 
     def getitem(self, index):
 
@@ -205,34 +215,23 @@ class BeamCLR(Algorithm):
         return z, results
 
 
-# def show_image(i, aug=False):
-#
-#     dataset_labeled.normalize = True
-#     key = 'x_aug' if aug else 'x'
-#     im = np.array(dataset_labeled[i][1][key].permute(1, 2, 0))
-#     plt.imshow(im)
-#     plt.show()
-#     dataset_labeled.normalize = True
+def get_ssl_parser():
+
+    parser = get_beam_parser()
+
+    path_to_data, root_dir = my_default_configuration_by_cluster()
+    parser.add_argument('--path-to-data', type=str, default=path_to_data, help='Path to the STL10 binaries')
+    parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
+
+    return parser
 
 
 if __name__ == '__main__':
 
-    # path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
-    # root_dir = '/home/shared/data/results/'
-
-    path_to_data = '/localdata/elads/data/datasets/stl10/stl10_binary'
-    root_dir = '/localdata/elads/data/resutls'
-
-    # check with --half
-    # args = beam_arguments(
-    #     f"--project-name=beam_ssl --root-dir={root_dir} --algorithm=BeamCLR --device=0 --amp "
-    #     f"--batch-size=256 --epoch-length=5000 --reload",
-    #     "--n-epochs=100", path_to_data=path_to_data)
-
     args = beam_arguments(
-        f"--project-name=beam_ssl --root-dir={root_dir} --algorithm=BeamCLR --device=0 --amp "
+        f"--project-name=beam_ssl --algorithm=BeamCLR --device=0 --amp "
         f"--batch-size=256 --reload",
-        "--n-epochs=100", path_to_data=path_to_data)
+        "--n-epochs=100")
 
     logger = beam_logger()
 
