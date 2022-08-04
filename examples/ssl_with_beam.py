@@ -120,40 +120,73 @@ class BeamSSL(Algorithm):
         encoder = FeatureEncoder(encoder, layer=hparams.layer)
         networks['encoder'] = encoder
 
-        if algorithm in ['byol']:
+        hidden_sizes = {'resnet18': 512, 'resnet50': 2048}
+        h = hidden_sizes[hparams.model]
 
-            encoder = getattr(models, hparams.model)(pretrained=hparams.pretrained)
-            encoder = FeatureEncoder(encoder, layer=hparams.layer)
-
-            # target = target_copy(networks['encoder'], encoder)
-            networks['encoder_target'] = encoder
-
-        h = {'resnet18': 512, 'resnet50': 2048}
-        self.h = h[hparams.model]
         self.temperature = hparams.temperature
 
-        if algorithm in ['byol']:
-            networks['projection'] = nn.Sequential(nn.Linear(self.h, self.h), nn.BatchNorm1d(self.h), nn.ReLU(),
-                                       nn.Linear(self.h, self.h))
+        if algorithm == 'byol':
 
-            target = nn.Sequential(nn.Linear(self.h, self.h), nn.BatchNorm1d(self.h), nn.ReLU(),
-                                       nn.Linear(self.h, self.h))
+            encoder = getattr(models, hparams.model)(pretrained=False)
+            encoder = FeatureEncoder(encoder, layer=hparams.layer)
+            networks['target_encoder'] = encoder
+            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
+            networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(),
+                                                          nn.Linear(h, h))
+            networks['prediction'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
 
-            networks['projection_target'] = target
+        elif algorithm == 'simclr':
+            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h))
 
+        elif algorithm == 'simsiam':
+            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h))
+            networks['prediction'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
+
+        elif algorithm == 'barlowtwins':
+            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                   nn.ReLU(), nn.Linear(h, 2048))
+
+        elif algorithm == 'moco':
+            encoder = getattr(models, hparams.model)(pretrained=False)
+            encoder = FeatureEncoder(encoder, layer=hparams.layer)
+            networks['target_encoder'] = encoder
+            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
+            networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(),
+                                                          nn.Linear(h, h))
+            networks['prediction'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
         else:
-            networks['projection'] = nn.Sequential(nn.Linear(self.h, self.h), nn.BatchNorm1d(self.h), nn.ReLU(),
-                                       nn.Linear(self.h, self.h), nn.BatchNorm1d(self.h))
+            raise NotImplementedError
 
-        if algorithm in ['simsiam', 'byol']:
-            networks['prediction'] = nn.Sequential(nn.Linear(self.h, self.h), nn.BatchNorm1d(self.h), nn.ReLU(),
-                                       nn.Linear(self.h, self.h))
 
         self.labeled_dataset = STL10Dataset(hparams, subset='labeled')
         self.index_train_labeled = np.array(self.labeled_dataset.indices['train'])
         self.index_test_labeled = np.array(self.labeled_dataset.indices['test'])
 
         super().__init__(hparams, networks=networks)
+
+    @staticmethod
+    def get_parser():
+
+        parser = get_beam_parser()
+
+        path_to_data, root_dir = my_default_configuration_by_cluster()
+        beam_boolean_feature(parser, "pretrained", False, "Whether to load pretrained weights", metavar='hparam')
+
+        parser.add_argument('--path-to-data', type=str, default=path_to_data, help='Path to the STL10 binaries')
+        parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
+        parser.add_argument('--n-rules', type=int, default=128, help='Number of rules')
+        parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
+        parser.add_argument('--tau', type=float, default=.99, metavar='hparam', help='Target update factor')
+        parser.add_argument('--lambda-twins', type=float, default=0.005, metavar='hparam',
+                            help='Off diagonal weight factor for Barlow Twins loss')
+        parser.add_argument('--model', type=str, default='resnet18', metavar='hparam', help='The encoder model '
+                                                                                            '(selected out of torchvision.models)')
+        parser.add_argument('--layer', type=str, default='avgpool', metavar='hparam',
+                            help='Name of the model layer which'
+                                 ' extracts the features')
+
+        return parser
 
     def preprocess_inference(self, results=None, **kwargs):
             self.dataset.normalize = True
@@ -203,6 +236,50 @@ class BeamSSL(Algorithm):
         return z, results
 
 
+class BarlowTwins(BeamSSL):
+
+    def __init__(self, hparams):
+
+        super().__init__(hparams, algorithm='barlowtwins')
+
+    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+
+        x_aug1, x_aug2 = sample['augmentations']
+
+        encoder = self.networks['encoder']
+        opt_e = self.optimizers['encoder']
+
+        projection = self.networks['projection']
+        opt_p = self.optimizers['projection']
+
+        z1 = projection(encoder(x_aug1))
+        z2 = projection(encoder(x_aug2))
+
+        z1 = (z1 - z1.mean(dim=0, keepdim=True)) / (z1.std(dim=0, keepdim=True) + 1e-6)
+        z2 = (z2 - z2.mean(dim=0, keepdim=True)) / (z2.std(dim=0, keepdim=True) + 1e-6)
+
+        b, d = z1.shape
+        corr = (z1.T @ z2) / b
+
+        I = torch.eye(d, device=corr.device)
+        corr_diff = (corr - I) ** 2
+
+        invariance = torch.diag(corr_diff).sum()
+        redundancy = (corr_diff * (1 - I)).sum()
+
+        loss = invariance + self.hparams.lambda_twins * redundancy
+
+        if training:
+            self.apply(loss, optimizers=[opt_e, opt_p])
+
+        # add scalar measurements
+        results['scalar']['loss'].append(float(loss))
+        results['scalar']['invariance'].append(float(invariance))
+        results['scalar']['redundancy'].append(float(redundancy))
+
+        return results
+
+
 class SimCLR(BeamSSL):
 
     def __init__(self, hparams):
@@ -219,11 +296,8 @@ class SimCLR(BeamSSL):
         projection = self.networks['projection']
         opt_p = self.optimizers['projection']
 
-        h1 = encoder(x_aug1)
-        h2 = encoder(x_aug2)
-
-        z1 = projection(h1)
-        z2 = projection(h2)
+        z1 = projection(encoder(x_aug1))
+        z2 = projection(encoder(x_aug2))
 
         b, h = z1.shape
         z = torch.cat([z1, z2], dim=1).view(-1, h)
@@ -308,26 +382,32 @@ class BYOL(BeamSSL):
         x_aug1, x_aug2 = sample['augmentations']
 
         encoder = self.networks['encoder']
-        opt_e = self.optimizers['encoder']
-
         projection = self.networks['projection']
-        opt_proj = self.optimizers['projection']
-
         prediction = self.networks['prediction']
+
+        opt_e = self.optimizers['encoder']
+        opt_proj = self.optimizers['projection']
         opt_pred = self.optimizers['prediction']
 
         z1 = projection(encoder(x_aug1))
-        z2 = projection(encoder(x_aug2))
-
         p1 = prediction(z1)
-        p2 = prediction(z2)
 
-        d1 = SimSiam.simsiam_loss(p1, z2)
-        d2 = SimSiam.simsiam_loss(p2, z1)
+        target_encoder = self.networks['target_encoder']
+        target_projection = self.networks['target_projection']
 
-        loss = d1.mean() / 2 + d2.mean() / 2
+        with torch.no_grad():
+            z2 = target_projection(target_encoder(x_aug2))
+
+        z2 = z2 / torch.norm(z2, dim=1, keepdim=True)
+        p1 = p1 / torch.norm(p1, dim=1, keepdim=True)
+
+        loss = torch.pow(p1 - z2, 2).sum(dim=1).mean()
 
         if training:
+
+            soft_target_update(encoder, target_encoder, self.hparams.tau)
+            soft_target_update(projection, target_projection, self.hparams.tau)
+
             self.apply(loss, optimizers=[opt_e, opt_proj, opt_pred])
 
         # add scalar measurements
@@ -336,29 +416,9 @@ class BYOL(BeamSSL):
         return results
 
 
-def get_ssl_parser():
-
-    parser = get_beam_parser()
-
-    path_to_data, root_dir = my_default_configuration_by_cluster()
-    beam_boolean_feature(parser, "pretrained", False, "Whether to load pretrained weights", metavar='hparam')
-
-    parser.add_argument('--path-to-data', type=str, default=path_to_data, help='Path to the STL10 binaries')
-    parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
-    parser.add_argument('--n-rules', type=int, default=128, help='Number of rules')
-    parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
-    parser.add_argument('--tau', type=float, default=.99, metavar='hparam', help='Target update factor')
-    parser.add_argument('--model', type=str, default='resnet18', metavar='hparam', help='The encoder model '
-                                                                      '(selected out of torchvision.models)')
-    parser.add_argument('--layer', type=str, default='avgpool', metavar='hparam', help='Name of the model layer which'
-                                                                                       ' extracts the features')
-
-    return parser
-
-
 if __name__ == '__main__':
 
-    args = beam_arguments(get_ssl_parser(),
+    args = beam_arguments(BeamSSL.get_parser(),
         f"--project-name=beam_ssl --algorithm=SimCLR --device=0 --amp "
         f"--batch-size=256 --n-epochs=100")
 

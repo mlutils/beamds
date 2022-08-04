@@ -12,3 +12,4 @@ lightning-bolts
 lightning-flash[all]
 byol-pytorch
 normflows
+torchlars

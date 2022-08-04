@@ -87,7 +87,7 @@ RUN echo "c.ServerApp.allow_root = True" >> /root/.jupyter/jupyter_lab_config.py
 # so for now, we will run it from the container and commit the container to a modified image.
 # RUN pip install git+https://github.com/chaoleili/jupyterlab_tensorboard.git
 
-RUN #chmod +x /workspace/install/entrypoint.sh
+RUN chmod +x /workspace/install/entrypoint.sh
 ENTRYPOINT ["/workspace/install/entrypoint.sh"]
 CMD ["10"]
 

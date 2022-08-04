@@ -9,7 +9,9 @@ import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, stack_results
+from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
+from .experiment import Experiment
 from timeit import default_timer as timer
 
 
@@ -44,47 +46,9 @@ class Algorithm(object):
 
         self.epoch = 0
 
-        if networks is None:
-            networks = {}
-        elif issubclass(type(networks), nn.Module):
-            networks = {'net': networks}
-        elif check_type(networks).major == 'dict':
-            pass
-        else:
-            raise NotImplementedError("Network type is unsupported")
-
-        for k in networks.keys():
-            networks[k] = self.register_network(networks[k])
-        self.networks = networks
-
-        if optimizers is None:
-            self.optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
-                                                          'weight_decay': self.hparams.weight_decay,
-                                                           'betas': (self.hparams.beta1, self.hparams.beta2),
-                                                          'eps': self.hparams.eps},
-                                           sparse_args={'lr': self.hparams.lr_sparse,
-                                                        'betas': (self.hparams.beta1, self.hparams.beta2),
-                                                        'eps': self.hparams.eps},
-                                           clip=self.hparams.clip_gradient, amp=self.amp, accumulate=self.hparams.accumulate
-                                           ) for k, v in self.networks.items()}
-
-        elif issubclass(type(optimizers), dict):
-            self.optimizers = {}
-            for k, o in optimizers.items():
-                if callable(o):
-                    self.optimizers[k] = self.networks[k]
-                else:
-                    o.load_state_dict(o.state_dict())
-                    self.optimizers[k] = o
-
-        elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
-            optimizers.load_state_dict(optimizers.state_dict())
-            self.optimizers = {'net': optimizers}
-
-        elif callable(optimizers):
-            self.optimizers = {'net': optimizers(self.networks['net'])}
-        else:
-            raise NotImplementedError
+        self.networks = {}
+        self.optimizers = {}
+        self.add_networks_and_optmizers(networks=networks, optimizers=optimizers)
 
         if hparams.store_initial_weights:
             self.initial_weights = self.save_checkpoint()
@@ -96,6 +60,69 @@ class Algorithm(object):
         self.persistent_dataloaders = {}
         self.dataloaders = {}
         self.eval_subset = None
+
+    @staticmethod
+    def get_parser():
+        return get_beam_parser()
+
+    @classmethod
+    def from_pretrained(cls, path=None, hparams=None, **kwargs):
+        if path is not None:
+            experiment = Experiment.reload_from_path(path)
+        elif hparams is not None:
+            experiment = Experiment(hparams)
+        else:
+            hparams = beam_arguments(cls.get_parser(), **kwargs)
+            experiment = Experiment(hparams)
+        return experiment.algorithm_generator(cls)
+
+    def add_networks_and_optmizers(self, networks=None, optimizers=None):
+
+        if networks is None:
+            networks = {}
+        elif issubclass(type(networks), nn.Module):
+            networks = {'net': networks}
+        elif check_type(networks).major == 'dict':
+            pass
+        else:
+            raise NotImplementedError("Network type is unsupported")
+
+        for k in networks.keys():
+            networks[k] = self.register_network(networks[k])
+
+        if optimizers is None:
+            optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
+                                                          'weight_decay': self.hparams.weight_decay,
+                                                           'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                          'eps': self.hparams.eps},
+                                           sparse_args={'lr': self.hparams.lr_sparse,
+                                                        'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                        'eps': self.hparams.eps},
+                                           clip=self.hparams.clip_gradient, amp=self.amp, accumulate=self.hparams.accumulate
+                                           ) for k, v in networks.items()}
+
+        elif issubclass(type(optimizers), dict):
+            for k, o in optimizers.items():
+                if callable(o):
+                    optimizers[k] = o(networks[k])
+                else:
+                    o.load_state_dict(o.state_dict())
+                    optimizers[k] = o
+
+        elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+            optimizers.load_state_dict(optimizers.state_dict())
+            optimizers = {'net': optimizers}
+
+        elif callable(optimizers):
+            optimizers = {'net': optimizers(networks['net'])}
+        else:
+            raise NotImplementedError
+
+        for k, net in networks.items():
+            if k in self.networks:
+                raise Exception(f"Found network with identical keys: {k} please provide unique key.")
+            self.networks[k] = networks[k]
+            self.optimizers[k] = optimizers[k]
 
     @property
     def experiment(self):
