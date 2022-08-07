@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 import numpy as np
+import math
 
 import os
 import torchvision.models as models
@@ -18,16 +19,14 @@ from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, Pa
 from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature
 from src.beam.model import soft_target_update, target_copy
 import lightgbm as lgb
-import socket
+import requests
 
 
 def my_default_configuration_by_cluster():
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    ip = s.getsockname()[0]
+    ip = requests.get(r'http://jsonip.com').json()['ip']
 
-    if '172.17' in ip:
+    if '132.70.60' not in ip:
         path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
         root_dir = '/home/shared/data/results/'
     else:
@@ -122,6 +121,7 @@ class BeamSSL(Algorithm):
 
         hidden_sizes = {'resnet18': 512, 'resnet50': 2048}
         h = hidden_sizes[hparams.model]
+        p = 2048
 
         self.temperature = hparams.temperature
 
@@ -130,13 +130,36 @@ class BeamSSL(Algorithm):
             encoder = getattr(models, hparams.model)(pretrained=False)
             encoder = FeatureEncoder(encoder, layer=hparams.layer)
             networks['target_encoder'] = encoder
-            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
-            networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(),
-                                                          nn.Linear(h, h))
-            networks['prediction'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
+            # networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
+            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                   nn.ReLU(), nn.Linear(h, p))
+
+            networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                          nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                          nn.ReLU(), nn.Linear(h, p))
+
+            networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
+
+        elif algorithm == 'universal_ssl':
+
+            encoder = getattr(models, hparams.model)(pretrained=False)
+            encoder = FeatureEncoder(encoder, layer=hparams.layer)
+            networks['target_encoder'] = encoder
+            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                   nn.ReLU(), nn.Linear(h, p))
+
+            networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                          nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                          nn.ReLU(), nn.Linear(h, p))
+
+            networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
 
         elif algorithm == 'simclr':
-            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h))
+            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                   nn.ReLU(), nn.Linear(h, p))
 
         elif algorithm == 'simsiam':
             networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h))
@@ -145,7 +168,7 @@ class BeamSSL(Algorithm):
         elif algorithm == 'barlowtwins':
             networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
                                                    nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, 2048))
+                                                   nn.ReLU(), nn.Linear(h, p))
 
         elif algorithm == 'moco':
             encoder = getattr(models, hparams.model)(pretrained=False)
@@ -174,6 +197,7 @@ class BeamSSL(Algorithm):
         beam_boolean_feature(parser, "pretrained", False, "Whether to load pretrained weights", metavar='hparam')
 
         parser.add_argument('--path-to-data', type=str, default=path_to_data, help='Path to the STL10 binaries')
+        parser.add_argument('--similarity', type=str, metavar='hparam', default='cosine', help='Similarity distance in UniversalSSL')
         parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
         parser.add_argument('--n-rules', type=int, default=128, help='Number of rules')
         parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
@@ -192,6 +216,22 @@ class BeamSSL(Algorithm):
             self.dataset.normalize = True
             return results
 
+    def evaluate_downstream_task(self, z, y):
+
+        train_data = lgb.Dataset(z[self.index_train_labeled], label=y[self.index_train_labeled] - 1)
+        validation_data = lgb.Dataset(z[self.index_test_labeled], label=y[self.index_test_labeled] - 1)
+
+        num_round = 40
+        param = {'objective': 'multiclass',
+                 'num_leaves': 31,
+                 'max_depth': 4,
+                 'gpu_device_id': 1,
+                 'verbosity': -1,
+                 'metric': ['multi_error', 'multiclass'],
+                 'num_class': 10}
+
+        return lgb.train(param, train_data, num_round, valid_sets=[validation_data])
+
     def postprocess_epoch(self, results=None, training=None, epoch=None, **kwargs):
 
             if not training and not epoch % 1:
@@ -199,41 +239,109 @@ class BeamSSL(Algorithm):
 
                 logger.info("Evaluating the downstream task")
                 features = self.evaluate(self.labeled_dataset)
-                z = features.values['z'].detach().cpu().numpy()
+                z = features.values['h'].detach().cpu().numpy()
                 y = features.values['y'].detach().cpu().numpy()
 
-                train_data = lgb.Dataset(z[self.index_train_labeled], label=y[self.index_train_labeled] - 1)
-                validation_data = lgb.Dataset(z[self.index_test_labeled], label=y[self.index_test_labeled] - 1)
+                bst = self.evaluate_downstream_task(z, y)
 
-                num_round = 30
-                param = {'objective': 'multiclass',
-                         'num_leaves': 31,
-                         'max_depth': 4,
-                         'gpu_device_id': 1,
-                         'verbosity': -1,
-                         'metric': ['multi_error', 'multiclass'],
-                         'num_class': 10}
-                bst = lgb.train(param, train_data, num_round, valid_sets=[validation_data])
+                results['scalar']['encoder_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+                results['scalar']['encoder_loss'] = bst.best_score['valid_0']['multi_logloss']
 
-                results['scalar']['classification_acc'] = 1 - bst.best_score['valid_0']['multi_error']
-                results['scalar']['classification_loss'] = bst.best_score['valid_0']['multi_logloss']
+                if 'z' in features.values:
+
+                    z = features.values['z'].detach().cpu().numpy()
+                    bst = self.evaluate_downstream_task(z, y)
+
+                    results['scalar']['projection_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+                    results['scalar']['projection_loss'] = bst.best_score['valid_0']['multi_logloss']
+
+                    if 'p' in features.values:
+
+                        z = features.values['p'].detach().cpu().numpy()
+                        bst = self.evaluate_downstream_task(z, y)
+
+                        results['scalar']['prediction_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+                        results['scalar']['prediction_loss'] = bst.best_score['valid_0']['multi_logloss']
 
             return results
 
     def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
+        data = {}
         if predicting:
             x = sample
         else:
             x, y = sample['x'], sample['y']
+            data['y'] = y
+
+        h = self.networks['encoder'](x)
+        data['h'] = h
+        if 'projection' in self.networks:
+            z = self.networks['projection'](h)
+            data['z'] = z
+
+            if 'prediction' in self.networks:
+                p = self.networks['prediction'](z)
+                data['p'] = p
+
+        return data, results
+
+
+class UniversalSSL(BeamSSL):
+
+    def __init__(self, hparams):
+
+        super().__init__(hparams, algorithm='universal_ssl')
+
+    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+
+        x_aug1, x_aug2 = sample['augmentations']
 
         encoder = self.networks['encoder']
-        z = encoder(x)
+        projection = self.networks['projection']
+        prediction = self.networks['prediction']
 
-        if not predicting:
-            return {'z': z, 'y': y}, results
+        opt_e = self.optimizers['encoder']
+        opt_proj = self.optimizers['projection']
+        opt_pred = self.optimizers['prediction']
 
-        return z, results
+        target_encoder = self.networks['target_encoder']
+        target_projection = self.networks['target_projection']
+
+        z1 = prediction(projection(encoder(x_aug1)))
+        z2 = target_projection(target_encoder(x_aug2))
+
+        b, d = z1.shape
+        z = torch.cat([z1, z2], dim=1).view(-1, d)
+
+        z_norm = torch.norm(z, dim=1, keepdim=True)
+
+        if self.hparams.similarity == 'cosine':
+            s = (z @ z.T) / (z_norm @ z_norm.T)
+        elif self.hparams.similarity == 'l2':
+            z_l2_squared = torch.pow(z, 2).sum(dim=1, keepdim=True)
+            s = - (z_l2_squared - 2 * (z @ z.T) + z_l2_squared.T)
+        else:
+            raise NotImplementedError
+
+        s = s * (1 - torch.eye(2 * b, 2 * b, device=s.device)) / (self.temperature * d)
+
+        logsumexp = torch.logsumexp(s[::2], dim=1)
+        s_couple = torch.diag(s, diagonal=1)[::2]
+
+        loss = - s_couple + logsumexp
+        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_proj, opt_pred])
+
+        if training:
+
+            soft_target_update(encoder, target_encoder, self.hparams.tau)
+            soft_target_update(projection, target_projection, self.hparams.tau)
+
+        # add scalar measurements
+        results['scalar']['loss'].append(float(loss))
+        results['scalar']['acc'].append(float((s_couple >= s[::2].max(dim=1).values).float().mean()))
+
+        return results
 
 
 class BarlowTwins(BeamSSL):
@@ -264,18 +372,16 @@ class BarlowTwins(BeamSSL):
         I = torch.eye(d, device=corr.device)
         corr_diff = (corr - I) ** 2
 
-        invariance = torch.diag(corr_diff).sum()
-        redundancy = (corr_diff * (1 - I)).sum()
+        invariance = torch.diag(corr_diff)
+        redundancy = (corr_diff * (1 - I)).sum(dim=-1)
 
         loss = invariance + self.hparams.lambda_twins * redundancy
-
-        if training:
-            self.apply(loss, optimizers=[opt_e, opt_p])
+        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
-        results['scalar']['invariance'].append(float(invariance))
-        results['scalar']['redundancy'].append(float(redundancy))
+        results['scalar']['invariance'].append(float(invariance.mean()))
+        results['scalar']['redundancy'].append(float(redundancy.mean()))
 
         return results
 
@@ -311,11 +417,7 @@ class SimCLR(BeamSSL):
         s_couple = torch.diag(s, diagonal=1)[::2]
 
         loss = - s_couple + logsumexp
-
-        loss = loss.mean()
-
-        if training:
-            self.apply(loss, optimizers=[opt_e, opt_p])
+        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
@@ -360,10 +462,8 @@ class SimSiam(BeamSSL):
         d1 = SimSiam.simsiam_loss(p1, z2)
         d2 = SimSiam.simsiam_loss(p2, z1)
 
-        loss = d1.mean() / 2 + d2.mean() / 2
-
-        if training:
-            self.apply(loss, optimizers=[opt_e, opt_proj, opt_pred])
+        loss = (d1 + d2) / 2
+        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_proj, opt_pred])
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
@@ -401,14 +501,13 @@ class BYOL(BeamSSL):
         z2 = z2 / torch.norm(z2, dim=1, keepdim=True)
         p1 = p1 / torch.norm(p1, dim=1, keepdim=True)
 
-        loss = torch.pow(p1 - z2, 2).sum(dim=1).mean()
+        loss = torch.pow(p1 - z2, 2).sum(dim=1)
+        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_proj, opt_pred])
 
         if training:
 
             soft_target_update(encoder, target_encoder, self.hparams.tau)
             soft_target_update(projection, target_projection, self.hparams.tau)
-
-            self.apply(loss, optimizers=[opt_e, opt_proj, opt_pred])
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
@@ -420,7 +519,7 @@ if __name__ == '__main__':
 
     args = beam_arguments(BeamSSL.get_parser(),
         f"--project-name=beam_ssl --algorithm=SimCLR --device=0 --amp "
-        f"--batch-size=256 --n-epochs=100")
+        f"--batch-size=256 --n-epochs=200")
 
     logger = beam_logger()
 

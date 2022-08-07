@@ -14,7 +14,6 @@ import copy
 import shutil
 from collections import defaultdict
 from .utils import include_patterns, logger, check_type, beam_device, check_element_type
-from .algorithm import Algorithm
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
@@ -26,15 +25,24 @@ from tensorboard.notebook import start as start_tensorboard
 done = mp.Event()
 
 
+def gen_hparams_string(e):
+    tensorboard_hparams = pd.read_pickle(os.path.join(e, "hparams.pkl"))
+    return '/'.join([f"{k}_{v}" for k, v in tensorboard_hparams.items()])
+
+
+def path_depth(path):
+    return len(os.path.normpath(path).split(os.sep))
+
+
 def beam_algorithm_generator(experiment, Alg, Dataset=None):
 
-    if issubclass(type(Alg), Algorithm):
-        alg = Alg
-    else:
+    if type(Alg) == type:
         alg = Alg(experiment.hparams)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
+    else:
+        alg = Alg
 
     if issubclass(type(Dataset), torch.utils.data.Dataset):
         dataset = Dataset
@@ -125,19 +133,12 @@ class Experiment(object):
 
         self.tensorboard_hparams = {}
 
-        pa = None
-        if hasattr(args, 'parser'):
-            pa = args.parser._actions
-            pa = {pai.dest: pai.metavar for pai in pa}
-            delattr(args, 'parser')
-
+        hparams = args.hparams
         vars_args = copy.copy(vars(args))
         for k, v in vars_args.items():
             param_type = check_type(v)
-            if param_type.major == 'scalar' and \
-                    param_type.element in ['bool', 'str', 'int', 'float'] and \
-                    pa is not None and k in pa and pa[k] == 'hparam':
-                self.tensorboard_hparams[k] =v
+            if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float'] and k in hparams:
+                self.tensorboard_hparams[k] = v
 
         self.hparams = copy.copy(args)
 
@@ -514,11 +515,8 @@ class Experiment(object):
             self.writer.add_hparams(self.tensorboard_hparams, metrics, name=os.path.join('..', 'hparams'), global_step=n)
             # self.writer.add_hparams(self.tensorboard_hparams, metrics, run_name=os.path.join('..', 'hparams'))
 
-    def tensorboard(self, port=None, add_all_of_same_identifier=False, add_all_of_same_algorithm=False,
-                          add_all_of_same_project=False, more_experiments=None, more_identifiers=None,
-                          more_algorithms=None, get_port_from_beam_port_range=True, hparams=False):
-
-        suffix = 'hparams' if hparams else 'logs'
+    @staticmethod
+    def _tensorboard(port=None, get_port_from_beam_port_range=True, base_dir=None, log_dirs=None, hparams=False):
 
         if port is None:
             if get_port_from_beam_port_range:
@@ -544,20 +542,97 @@ class Experiment(object):
 
         logger.info(f"Opening a tensorboard server on port: {port}")
 
-        def gen_hparams_string(e):
-            tensorboard_hparams = pd.read_pickle(os.path.join(e, "hparams.pkl"))
-            return '/'.join([f"{k}_{v}" for k, v in tensorboard_hparams.items()])
+        if hparams:
+            command_argument = f"--bind_all --logdir {base_dir} --port {port}"
+        else:
+            command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
+        start_tensorboard(command_argument)
 
-        def path_depth(path):
-            return len(os.path.normpath(path).split(os.sep))
+    def normalize_experiment_path(self, path, level=0):
 
-        def normalize_path(path, level=0):
+        normal_path = [self.hparams.root_dir, self.hparams.project_name,
+                       self.hparams.algorithm, self.hparams.identifier]
+        pd = path_depth(self.hparams.root_dir)
 
-            normal_path = [self.hparams.root_dir, self.hparams.project_name,
-                           self.hparams.algorithm, self.hparams.identifier]
-            pd = path_depth(self.hparams.root_dir)
+        return os.path.join(*normal_path[:len(normal_path)-pd-level], path)
 
-            return os.path.join(*normal_path[:len(normal_path)-pd-level], path)
+    @staticmethod
+    def open_tensorboard(root='', project=None, algorithm=None,
+                         identifier=None, experiment=None, hparams=False, port=None,
+                         get_port_from_beam_port_range=True):
+        depth = 4
+        filters = {'project': None, 'algorithm': None, 'identifier': None, 'experiment':None}
+        if project is not None:
+            path_type = check_type(project)
+            if path_type.minor == 'list':
+                filters['project'] = project
+            else:
+                filters['project'] = [project]
+                path = os.path.join(root, project)
+                if os.path.isdir(path):
+                    root = path
+                    depth = 3
+
+        if algorithm is not None:
+            path_type = check_type(algorithm)
+            if path_type.minor == 'list':
+                filters['algorithm'] = algorithm
+            else:
+                filters['algorithm'] = [algorithm]
+                path = os.path.join(root, algorithm)
+                if os.path.isdir(path):
+                    root = path
+                    depth = 2
+
+        if identifier is not None:
+            path_type = check_type(identifier)
+            if path_type.minor == 'list':
+                filters['identifier'] = identifier
+            else:
+                filters['identifier'] = [identifier]
+                path = os.path.join(root, identifier)
+                if os.path.isdir(path):
+                    root = path
+                    depth = 1
+        if experiment is not None:
+            path_type = check_type(experiment)
+            if path_type.minor == 'list':
+                filters['experiment'] = experiment
+            else:
+                filters['experiment'] = [experiment]
+                path = os.path.join(root, experiment)
+                if os.path.isdir(path):
+                    root = path
+                    depth = 0
+
+        experiments = [d[0] for d in list(os.walk(root)) if (path_depth(d[0]) - path_depth(root)) == depth]
+        experiments = [os.path.normpath(e) for e in experiments]
+
+        if filters['project'] is not None:
+            experiments = list(filter(lambda x: x.split(os.sep)[-4] in filters['project'], experiments))
+        if filters['algorithm'] is not None:
+            experiments = list(filter(lambda x: x.split(os.sep)[-3] in filters['algorithm'], experiments))
+        if filters['identifier'] is not None:
+            experiments = list(filter(lambda x: x.split(os.sep)[-2] in filters['identifier'], experiments))
+        if filters['experiment'] is not None:
+            experiments = list(filter(lambda x: x.split(os.sep)[-1] in filters['experiment'], experiments))
+
+        print(experiments)
+
+        names = ['/'.join(e.split(os.sep)[-3:]) for e in experiments]
+        names = [f"{n}/{gen_hparams_string(e)}" for n, e in zip(names, experiments)]
+
+        experiments = [os.path.join(e, 'tensorboard', 'logs') for e in experiments]
+        log_dirs = ','.join([f"{n}:{e}" for n, e in zip(names, experiments)])
+
+        Experiment._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
+                                base_dir=root, log_dirs=log_dirs, hparams=hparams)
+
+    def tensorboard(self, port=None, add_all_of_same_identifier=False, add_all_of_same_algorithm=False,
+                          add_all_of_same_project=False, more_experiments=None, more_identifiers=None,
+                          more_algorithms=None, get_port_from_beam_port_range=True, hparams=False):
+
+        suffix = 'hparams' if hparams else 'logs'
 
         if add_all_of_same_project:
             base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name)
@@ -579,7 +654,7 @@ class Experiment(object):
                 logger.error("hparams visualization does not support adding additional experiments")
             if type(more_experiments) is str:
                 more_experiments = [more_experiments]
-                experiments = experiments + [normalize_path(e, level=0) for e in more_experiments]
+                experiments = experiments + [self.normalize_experiment_path(e, level=0) for e in more_experiments]
 
         if more_identifiers is not None:
             if hparams:
@@ -588,7 +663,7 @@ class Experiment(object):
                 more_identifiers = [more_identifiers]
                 depth = 1
                 for identifier in more_identifiers:
-                    identifier = normalize_path(identifier, level=depth)
+                    identifier = self.normalize_experiment_path(identifier, level=depth)
                     experiments = experiments + [d[0] for d in list(os.walk(identifier)) if (path_depth(d[0]) - path_depth(identifier)) == depth]
 
         if more_algorithms is not None:
@@ -598,7 +673,7 @@ class Experiment(object):
                 more_algorithms = [more_algorithms]
                 depth = 2
                 for algorithm in more_algorithms:
-                    algorithm = normalize_path(algorithm, level=depth)
+                    algorithm = self.normalize_experiment_path(algorithm, level=depth)
                     experiments = experiments + [d[0] for d in list(os.walk(algorithm)) if (path_depth(d[0]) - path_depth(algorithm)) == depth]
 
         experiments = [os.path.normpath(e) for e in experiments]
@@ -608,11 +683,8 @@ class Experiment(object):
         experiments = [os.path.join(e, 'tensorboard', suffix) for e in experiments]
         log_dirs = ','.join([f"{n}:{e}" for n, e in zip(names, experiments)])
 
-        if hparams:
-            command_argument = f"--bind_all --logdir {base_dir} --port {port}"
-        else:
-            command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
-        start_tensorboard(command_argument)
+        self._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
+                          base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
     def algorithm_generator(self, Alg, Dataset=None):
         return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset)

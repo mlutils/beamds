@@ -12,4 +12,6 @@ lightning-bolts
 lightning-flash[all]
 byol-pytorch
 normflows
-torchlars
+
+# this package raises an error
+# torchlars

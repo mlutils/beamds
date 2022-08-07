@@ -110,6 +110,7 @@ def get_beam_parser():
     parser.add_argument('--batch-size-train', type=int, default=None, metavar='hparam', help='Batch Size for training iterations')
     parser.add_argument('--batch-size-eval', type=int, default=None, metavar='hparam', help='Batch Size for testing/evaluation iterations')
 
+    parser.add_argument('--reduction', type=str, metavar='hparam', default='sum', help='whether to sum loss elements or average them')
     parser.add_argument('--lr-dense', type=float, default=1e-3, metavar='hparam', help='learning rate for dense optimizers')
     parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='hparam', help='learning rate for sparse optimizers')
     parser.add_argument('--weight-decay', type=float, default=0., metavar='hparam', help='L2 regularization coefficient for dense optimizers')
@@ -255,6 +256,7 @@ def beam_arguments(*args, **kwargs):
         for k, v in ar.items():
             setattr(args, k, v)
 
-    setattr(args, 'parser', pr)
+    hparams = [pai.dest for pai in pr._actions if pai.metavar == 'hparam']
+    setattr(args, 'hparams', hparams)
 
     return args

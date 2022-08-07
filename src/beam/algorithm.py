@@ -140,46 +140,62 @@ class Algorithm(object):
         self.trial = experiment.trial
         self._experiment = experiment
 
-    def apply(self, loss, optimizers=None, set_to_none=True, gradient=None,
+    def apply(self, loss, training=True, optimizers=None, set_to_none=True, gradient=None,
               retain_graph=None, create_graph=False, inputs=None, iteration=None):
 
-        if optimizers is None:
-            optimizers = self.optimizers
-        elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
-            optimizers = [optimizers]
+        n = torch.numel(loss)
+        if n > 1:
 
-        optimizers_flat = []
-        for op in optimizers:
-            if issubclass(type(op), BeamOptimizer):
-                for opi in op.optimizers.values():
-                    optimizers_flat.append(opi)
+            if self.hparams.reduction == 'sum':
+                reduction = 1
+            elif self.hparams.reduction == 'mean':
+                reduction = n
+            elif self.hparams.reduction == 'sqrt':
+                reduction = math.sqrt(n)
             else:
-                optimizers_flat.append(op)
-        optimizers = optimizers_flat
+                raise NotImplementedError
 
-        with torch.autocast(self.autocast_device, enabled=False):
+            loss = loss.sum() / reduction
 
-            if self.amp:
-                self.scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
-                                                 create_graph=create_graph, inputs=inputs)
-            else:
-                loss.backward(gradient=gradient, retain_graph=retain_graph,
-                              create_graph=create_graph, inputs=inputs)
+        if training:
+            if optimizers is None:
+                optimizers = self.optimizers
+            elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+                optimizers = [optimizers]
 
-            if self.hparams.clip_gradient > 0:
-                for op in optimizers.values():
-                    if self.amp:
-                        self.scaler.unscale_(op)
-                    for pg in op.param_groups:
-                        torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.hparams.clip)
+            optimizers_flat = []
+            for op in optimizers:
+                if issubclass(type(op), BeamOptimizer):
+                    for opi in op.optimizers.values():
+                        optimizers_flat.append(opi)
+                else:
+                    optimizers_flat.append(op)
+            optimizers = optimizers_flat
 
-            if iteration is None or not (iteration % self.hparams.accumulate):
-                for op in optimizers:
-                    if self.amp:
-                        self.scaler.step(op)
-                    else:
-                        op.step()
-                    op.zero_grad(set_to_none=set_to_none)
+            with torch.autocast(self.autocast_device, enabled=False):
+
+                if self.amp:
+                    self.scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
+                                                     create_graph=create_graph, inputs=inputs)
+                else:
+                    loss.backward(gradient=gradient, retain_graph=retain_graph,
+                                  create_graph=create_graph, inputs=inputs)
+
+                if self.hparams.clip_gradient > 0:
+                    for op in optimizers.values():
+                        if self.amp:
+                            self.scaler.unscale_(op)
+                        for pg in op.param_groups:
+                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.hparams.clip)
+
+                if iteration is None or not (iteration % self.hparams.accumulate):
+                    for op in optimizers:
+                        if self.amp:
+                            self.scaler.step(op)
+                        else:
+                            op.step()
+                        op.zero_grad(set_to_none=set_to_none)
+        return loss
 
     def load_dataset(self, dataset=None, batch_size_train=None, batch_size_eval=None,
                      oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
