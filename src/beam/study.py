@@ -74,7 +74,8 @@ class TimeoutStopper(Stopper):
 
 class Study(object):
 
-    def __init__(self, args, Alg=None, Dataset=None, algorithm_generator=None, print_results=False, enable_tqdm=False):
+    def __init__(self, args, Alg=None, Dataset=None, algorithm_generator=None, print_results=False,
+                 alg_args=None, alg_kwargs=None, dataset_args=None, dataset_kwargs=None, enable_tqdm=False):
 
         args.reload = False
         args.override = False
@@ -87,7 +88,9 @@ class Study(object):
         args.identifier = f'{args.identifier}_hp_optimization_{exptime}'
 
         if algorithm_generator is None:
-            self.ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset)
+            self.ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset,
+                              alg_args=alg_args, alg_kwargs=alg_kwargs, dataset_args=dataset_args,
+                              dataset_kwargs=dataset_kwargs)
         else:
             self.ag = algorithm_generator
         self.args = args

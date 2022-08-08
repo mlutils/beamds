@@ -34,10 +34,11 @@ def path_depth(path):
     return len(os.path.normpath(path).split(os.sep))
 
 
-def beam_algorithm_generator(experiment, Alg, Dataset=None):
+def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
+                             dataset_args=None, dataset_kwargs=None):
 
     if type(Alg) == type:
-        alg = Alg(experiment.hparams)
+        alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
@@ -49,7 +50,7 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None):
     elif Dataset is None:
         dataset = alg.dataset
     else:
-        dataset = Dataset(experiment.hparams)
+        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
 
     alg.load_dataset(dataset)
     alg.experiment = experiment
@@ -686,13 +687,17 @@ class Experiment(object):
         self._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
                           base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
-    def algorithm_generator(self, Alg, Dataset=None):
-        return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset)
+    def algorithm_generator(self, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
+                             dataset_args=None, dataset_kwargs=None):
+        return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
 
     def fit(self, Alg, Dataset=None, *args, return_results=False, reload_results=False,
-            tensorboard_arguments=None, **kwargs):
+            tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
+            dataset_kwargs=None, **kwargs):
 
-        ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset)
+        ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
 

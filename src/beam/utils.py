@@ -15,6 +15,7 @@ from collections import namedtuple
 from timeit import default_timer as timer
 from loguru import logger
 from torchvision import transforms
+import hashlib
 
 # logger.remove(handler_id=0)
 logger.remove()
@@ -47,6 +48,7 @@ def stack_results(results, batch_size=None):
                     results[n][k] = opr(results[n][k])
 
     return results
+
 
 def rate_string_format(n, t):
     if n / t > 1:
@@ -173,7 +175,10 @@ def check_element_type(x):
     if 'bool' in t:
         return 'bool'
     if 'float' in t:
-        return 'float'
+        if '16' in t:
+            return 'float16'
+        else:
+            return 'float'
     if 'str' in t:
         return 'str'
 
@@ -368,6 +373,31 @@ def finite_iterations(iterator, n):
         yield out
         if i + 1 == n:
             break
+
+
+def hash_tensor(x, fast=False, coarse=False):
+    """
+    This  function returns a deterministic hash of the tensor content
+    @param x: the tensor to hash
+    @param fast: whether to consider only the first and last elements of the tensor for hashing
+    @param coarse: whether to apply coarse hashing where the tensor is quantized into low resolution (16bit) tensor
+    @return: an integer representing the hash value
+    """
+    if torch.numel(x) < 10000:
+        fast = False
+
+    if coarse and 'float' in str(x.dtype):
+        x = (x / x.max() * (2 ** 15)).half()
+
+    x = x.detach().cpu().numpy()
+
+    if fast:
+        x = str(x).encode('utf-8')
+    else:
+        x.flags.writeable = False
+        x = x.data
+
+    return int(hashlib.sha1(x).hexdigest(), 16)
 
 
 def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=None, notebook=True, **argv):

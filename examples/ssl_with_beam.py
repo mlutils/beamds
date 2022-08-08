@@ -36,6 +36,9 @@ def my_default_configuration_by_cluster():
     return path_to_data, root_dir
 
 
+# class Ensembel
+
+
 class STL10Dataset(UniversalDataset):
 
     def __init__(self, hparams, subset='unlabeled'):
@@ -109,77 +112,60 @@ class FeatureEncoder(nn.Module):
 
 class BeamSSL(Algorithm):
 
-    def __init__(self, hparams, algorithm=None):
+    def __init__(self, hparams):
 
-        logger.info(f"BeamSSL model: {algorithm}")
         networks = {}
         # choose your network
 
-        encoder = getattr(models, hparams.model)(pretrained=hparams.pretrained)
-        encoder = FeatureEncoder(encoder, layer=hparams.layer)
-        networks['encoder'] = encoder
-
         hidden_sizes = {'resnet18': 512, 'resnet50': 2048}
-        h = hidden_sizes[hparams.model]
-        p = 2048
 
+        self.h_dim = hidden_sizes[hparams.model]
+        self.p_dim = hparams.p_dim
         self.temperature = hparams.temperature
+        self.model = hparams.model
+        self.layer = hparams.layer
 
-        if algorithm == 'byol':
+        networks['encoder'] = self.generate_encoder()
 
-            encoder = getattr(models, hparams.model)(pretrained=False)
-            encoder = FeatureEncoder(encoder, layer=hparams.layer)
-            networks['target_encoder'] = encoder
-            # networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
-            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, p))
-
-            networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                          nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                          nn.ReLU(), nn.Linear(h, p))
-
-            networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
-
-        elif algorithm == 'universal_ssl':
-
-            encoder = getattr(models, hparams.model)(pretrained=False)
-            encoder = FeatureEncoder(encoder, layer=hparams.layer)
-            networks['target_encoder'] = encoder
-            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, p))
-
-            networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                          nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                          nn.ReLU(), nn.Linear(h, p))
-
-            networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
-
-        elif algorithm == 'simclr':
-            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, p))
-
-        elif algorithm == 'simsiam':
-            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h))
-            networks['prediction'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
-
-        elif algorithm == 'barlowtwins':
-            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                   nn.ReLU(), nn.Linear(h, p))
-
-        elif algorithm == 'moco':
-            encoder = getattr(models, hparams.model)(pretrained=False)
-            encoder = FeatureEncoder(encoder, layer=hparams.layer)
-            networks['target_encoder'] = encoder
-            networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
-            networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(),
-                                                          nn.Linear(h, h))
-            networks['prediction'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
-        else:
-            raise NotImplementedError
+        # elif algorithm == 'universal_ssl':
+        #
+        #     encoder = getattr(models, hparams.model)(pretrained=False)
+        #     encoder = FeatureEncoder(encoder, layer=hparams.layer)
+        #     networks['target_encoder'] = encoder
+        #     networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+        #                                            nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+        #                                            nn.ReLU(), nn.Linear(h, p))
+        #
+        #     networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+        #                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+        #                                                   nn.ReLU(), nn.Linear(h, p))
+        #
+        #     networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
+        #
+        # elif algorithm == 'simclr':
+        #     networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+        #                                            nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+        #                                            nn.ReLU(), nn.Linear(h, p))
+        #
+        # elif algorithm == 'simsiam':
+        #     networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h))
+        #     networks['prediction'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
+        #
+        # elif algorithm == 'barlowtwins':
+        #     networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+        #                                            nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+        #                                            nn.ReLU(), nn.Linear(h, p))
+        #
+        # elif algorithm == 'moco':
+        #     encoder = getattr(models, hparams.model)(pretrained=False)
+        #     encoder = FeatureEncoder(encoder, layer=hparams.layer)
+        #     networks['target_encoder'] = encoder
+        #     networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
+        #     networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(),
+        #                                                   nn.Linear(h, h))
+        #     networks['prediction'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Linear(h, h))
+        # else:
+        #     raise NotImplementedError
 
 
         self.labeled_dataset = STL10Dataset(hparams, subset='labeled')
@@ -187,6 +173,13 @@ class BeamSSL(Algorithm):
         self.index_test_labeled = np.array(self.labeled_dataset.indices['test'])
 
         super().__init__(hparams, networks=networks)
+
+    def generate_encoder(self):
+
+        encoder = getattr(models, self.model)(pretrained=False)
+        encoder = FeatureEncoder(encoder, layer=self.layer)
+        return encoder
+
 
     @staticmethod
     def get_parser():
@@ -200,6 +193,7 @@ class BeamSSL(Algorithm):
         parser.add_argument('--similarity', type=str, metavar='hparam', default='cosine', help='Similarity distance in UniversalSSL')
         parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
         parser.add_argument('--n-rules', type=int, default=128, help='Number of rules')
+        parser.add_argument('--p-dim', type=int, default=2048, help='Prediction/Projection output dimension')
         parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
         parser.add_argument('--tau', type=float, default=.99, metavar='hparam', help='Target update factor')
         parser.add_argument('--lambda-twins', type=float, default=0.005, metavar='hparam',
@@ -285,6 +279,48 @@ class BeamSSL(Algorithm):
                 data['p'] = p
 
         return data, results
+
+
+class BeamBarlowTwins(BeamSSL):
+
+    def __init__(self, hparams):
+
+        super().__init__(hparams, algorithm='beam_barlowtwins')
+
+    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+
+        x_aug1, x_aug2 = sample['augmentations']
+
+        encoder = self.networks['encoder']
+        opt_e = self.optimizers['encoder']
+
+        projection = self.networks['projection']
+        opt_p = self.optimizers['projection']
+
+        z1 = projection(encoder(x_aug1))
+        z2 = projection(encoder(x_aug2))
+
+        z1 = (z1 - z1.mean(dim=0, keepdim=True)) / (z1.std(dim=0, keepdim=True) + 1e-6)
+        z2 = (z2 - z2.mean(dim=0, keepdim=True)) / (z2.std(dim=0, keepdim=True) + 1e-6)
+
+        b, d = z1.shape
+        corr = (z1.T @ z2) / b
+
+        I = torch.eye(d, device=corr.device)
+        corr_diff = (corr - I) ** 2
+
+        invariance = torch.diag(corr_diff)
+        redundancy = (corr_diff * (1 - I)).sum(dim=-1)
+
+        loss = invariance + self.hparams.lambda_twins * redundancy
+        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
+
+        # add scalar measurements
+        results['scalar']['loss'].append(float(loss))
+        results['scalar']['invariance'].append(float(invariance.mean()))
+        results['scalar']['redundancy'].append(float(redundancy.mean()))
+
+        return results
 
 
 class UniversalSSL(BeamSSL):
@@ -475,7 +511,22 @@ class BYOL(BeamSSL):
 
     def __init__(self, hparams):
 
-        super().__init__(hparams, algorithm='byol')
+        super().__init__(hparams)
+
+        networks = {}
+        h = self.h_dim
+        p = self.p_dim
+
+        networks['target_encoder'] = self.generate_encoder()
+        networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, p))
+        networks['target_projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                      nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                      nn.ReLU(), nn.Linear(h, p))
+        networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
+
+
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -526,6 +577,7 @@ if __name__ == '__main__':
     experiment = Experiment(args)
     Alg = globals()[experiment.hparams.algorithm]
 
+    logger.info(f"BeamSSL model: {experiment.hparams.algorithm}")
     alg = experiment.fit(Alg, STL10Dataset)
 
     # ## Inference

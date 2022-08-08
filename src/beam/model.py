@@ -4,8 +4,9 @@ import itertools
 from collections import defaultdict
 import numpy as np
 import math
-from .utils import slice_to_index, logger
+from .utils import slice_to_index, logger, hash_tensor
 from functools import partial
+
 
 class PackedSet(object):
 
@@ -780,6 +781,15 @@ def beam_weights_initializer(m, method='none'):
         nn.init.kaiming_uniform_(m.weight.data)
         if m.bias is not None:
             nn.init.constant_(m.bias.data, 0)
+
+
+# def reset_network(net):
+#     prev_hash = {n: hash_tensor(p) for n, p in net.named_parameters()}
+#     for n, m in net.named_modules():
+#         if hasattr(m, 'reset_parameters'):
+#             m.reset_parameters()
+#     for n, p in net.named_parameters():
+#         if
 
 
 def soft_target_update(source, target, tau):
