@@ -526,6 +526,7 @@ class BYOL(BeamSSL):
                                                       nn.ReLU(), nn.Linear(h, p))
         networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
 
+        self.add_networks_and_optmizers(networks=networks)
 
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):

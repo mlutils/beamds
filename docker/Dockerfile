@@ -6,7 +6,7 @@
 FROM nvcr.io/nvidia/pytorch:22.07-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="docker run -p 12000-12099:12000-12099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -itd -v /home/:/home/ -v /mnt/:/mnt/ --name flame beam:<date> 12"
-LABEL "build_command"="docker build -f docker/Dockerfile --tag beam:$(date '+%Y%m%d') ."
+LABEL "build_command"="docker build -f docker/Dockerfile --tag beam:$(date '+%Y%m%d') . | tee -a /tmp/beam_build_$(date '+%Y%m%d').log"
 
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -24,7 +24,7 @@ ENV PATH "/usr/local/cuda/bin:$PATH"
 ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 ENV DYLD_LIBRARY_PATH "/usr/local/cuda/lib:$DYLD_LIBRARY_PATH"
 
-## apt installs
+# apt installs
 RUN chmod +x /workspace/install/apt_installs.sh
 RUN /workspace/install/apt_installs.sh
 
@@ -32,17 +32,17 @@ RUN /workspace/install/apt_installs.sh
 RUN pip install --upgrade pip
 RUN pip install -U -r /workspace/install/requirements.txt
 RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
-RUN pip install -U -r /workspace/install/requirements_0001.txt
-RUN pip install -U -r /workspace/install/requirements_0002.txt
-RUN pip install -U -r /workspace/install/requirements_0003.txt
-RUN pip install -U -r /workspace/install/requirements_0004.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-RUN pip install -U -r /workspace/install/requirements_0005.txt
-RUN pip install -U -r /workspace/install/requirements_0006.txt
-RUN pip install -U -r /workspace/install/requirements_0007.txt
-RUN pip install -U -r /workspace/install/requirements_0008.txt
-RUN pip install -U -r /workspace/install/requirements_0009.txt
-RUN pip install -U -r /workspace/install/requirements_0010.txt
-RUN pip install -U -r /workspace/install/requirements_0011.txt
+##RUN pip install -U -r /workspace/install/requirements_0001.txt
+##RUN pip install -U -r /workspace/install/requirements_0002.txt
+##RUN pip install -U -r /workspace/install/requirements_0003.txt
+##RUN pip install -U -r /workspace/install/requirements_0004.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+##RUN pip install -U -r /workspace/install/requirements_0005.txt
+##RUN pip install -U -r /workspace/install/requirements_0006.txt
+##RUN pip install -U -r /workspace/install/requirements_0007.txt
+##RUN pip install -U -r /workspace/install/requirements_0008.txt
+##RUN pip install -U -r /workspace/install/requirements_0009.txt
+##RUN pip install -U -r /workspace/install/requirements_0010.txt
+##RUN pip install -U -r /workspace/install/requirements_0011.txt
 RUN pip install -U -r /workspace/install/requirements_0012.txt
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
@@ -53,15 +53,15 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 RUN cp /workspace/install/motd /etc/motd
 RUN echo "cat /etc/motd" >> /root/.bashrc
 
-# download datasets and models
-RUN python /workspace/install/downloader.py
-
-## download nlp data
-RUN python -m nltk.downloader all
-RUN python -m spacy download zh_core_web_sm
-RUN python -m spacy download en_core_web_sm
-RUN python -m spacy download xx_ent_wiki_sm
-RUN python -m spacy download ru_core_news_sm
+## download datasets and models
+#RUN python /workspace/install/downloader.py
+#
+### download nlp data
+#RUN python -m nltk.downloader all
+#RUN python -m spacy download zh_core_web_sm
+#RUN python -m spacy download en_core_web_sm
+#RUN python -m spacy download xx_ent_wiki_sm
+#RUN python -m spacy download ru_core_news_sm
 
 # install beam
 
@@ -69,7 +69,7 @@ RUN mkdir /workspace/beamds/
 COPY . /workspace/beamds/
 WORKDIR /workspace/beamds/
 RUN python -m build
-RUN pip install --no-deps "dist/beam_ds-$(python -c 'import src.beam as beam; print(beam.__version__)')-py3-none-any.whl"
+RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
 WORKDIR /workspace
 
 # config jupyter notebook

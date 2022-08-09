@@ -1,3 +1,5 @@
+import copy
+
 import torch
 from torch import nn
 import itertools
@@ -783,13 +785,18 @@ def beam_weights_initializer(m, method='none'):
             nn.init.constant_(m.bias.data, 0)
 
 
-# def reset_network(net):
-#     prev_hash = {n: hash_tensor(p) for n, p in net.named_parameters()}
-#     for n, m in net.named_modules():
-#         if hasattr(m, 'reset_parameters'):
-#             m.reset_parameters()
-#     for n, p in net.named_parameters():
-#         if
+def reset_network(net):
+    prev_hash = {n: hash_tensor(p) for n, p in net.named_parameters()}
+    for n, m in net.named_modules():
+        if hasattr(m, 'reset_parameters'):
+            m.reset_parameters()
+    for n, p in net.named_parameters():
+        if prev_hash[n] == hash_tensor(p):
+            logger.warning(f"Parameter {n} was not reset. Check if its nn.Module supports .reset_parameters()")
+
+
+def copy_network(net):
+    return copy.deepcopy(net)
 
 
 def soft_target_update(source, target, tau):
