@@ -60,6 +60,33 @@ def beam_logger():
     return logger
 
 
+def find_port(port=None, get_port_from_beam_port_range=True):
+
+    if port is None:
+        if get_port_from_beam_port_range:
+            base_range = int(os.environ['JUPYTER_PORT']) // 100
+            port_range = range(base_range * 100, (base_range + 1) * 100)
+
+        else:
+            port_range = range(10000, 2 ** 16)
+
+        for p in port_range:
+            if check_if_port_is_available(p):
+                port = str(p)
+                break
+
+        if port is None:
+            logger.error("Cannot find free port in the specified range")
+            return
+
+    else:
+        if not check_if_port_is_available(port):
+            logger.error(f"Port {port} is not available")
+            return
+
+    return port
+
+
 def is_boolean(x):
 
     x_type = check_type(x)

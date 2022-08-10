@@ -11,11 +11,12 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger
+from .utils import include_patterns, logger, find_port
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
 import torch.distributed as dist
+import ray
 from ray import tune
 import optuna
 from functools import partial
@@ -102,6 +103,12 @@ class Study(object):
         for k, v in vars(args).items():
             logger.info(k + ': ' + str(v))
 
+    @staticmethod
+    def init_ray(runtime_env=None, dashboard_port=None, include_dashboard=True):
+
+        ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
+                 include_dashboard=include_dashboard, dashboard_host="0.0.0.0")
+
     def runner_tune(self, config):
 
         args = copy.deepcopy(self.args)
@@ -144,7 +151,14 @@ class Study(object):
             else:
                 return results['objective']
 
-    def tune(self, config, *args, timeout=0, **kwargs):
+    def tune(self, config, *args, timeout=0, runtime_env=None, dashboard_port=None,
+             get_port_from_beam_port_range=True, include_dashboard=True, **kwargs):
+
+        dashboard_port = find_port(port=dashboard_port, get_port_from_beam_port_range=get_port_from_beam_port_range)
+        if dashboard_port is None:
+            return
+
+        self.init_ray(runtime_env=runtime_env, dashboard_port=dashboard_port, include_dashboard=include_dashboard)
 
         if 'stop' in kwargs:
             stop = kwargs['stop']

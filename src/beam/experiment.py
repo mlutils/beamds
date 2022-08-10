@@ -16,7 +16,7 @@ from collections import defaultdict
 from .utils import include_patterns, logger, check_type, beam_device, check_element_type
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
+from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port
 import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
@@ -519,27 +519,9 @@ class Experiment(object):
     @staticmethod
     def _tensorboard(port=None, get_port_from_beam_port_range=True, base_dir=None, log_dirs=None, hparams=False):
 
+        port = find_port(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range)
         if port is None:
-            if get_port_from_beam_port_range:
-                base_range = int(os.environ['JUPYTER_PORT']) // 1000
-                port_range = range(base_range * 1000, (base_range + 1) * 1000)
-
-            else:
-                port_range = range(10000, 2**16)
-
-            for p in port_range:
-                if check_if_port_is_available(p):
-                    port = str(p)
-                    break
-
-            if port is None:
-                logger.error("Cannot find free port in the specified range")
-                return
-
-        else:
-            if not check_if_port_is_available(port):
-                logger.error(f"Port {port} is not available")
-                return
+            return
 
         logger.info(f"Opening a tensorboard server on port: {port}")
 
