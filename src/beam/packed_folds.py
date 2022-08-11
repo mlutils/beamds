@@ -124,8 +124,6 @@ class PackedFolds(object):
         offset = cumsum - lengths
         offset = offset[fold] + fold_index
 
-        self.device = device
-
         info = {'fold': fold, 'fold_index': fold_index, 'offset': offset}
 
         if self.sampling_method == 'index':
@@ -217,6 +215,15 @@ class PackedFolds(object):
             return self.names[0]
         return 'hetrogenous'
 
+    @property
+    def device(self):
+        if self.sampling_method == 'folds':
+            device = self.data[0].device
+        else:
+            device = self.data.device
+
+        return device
+
     def to(self, device):
 
         if self.sampling_method == 'folds':
@@ -225,7 +232,6 @@ class PackedFolds(object):
             self.data = self.data.to(device)
 
         self.info = self.info.to(device)
-        self.device = device
 
         return self
 

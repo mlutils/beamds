@@ -31,21 +31,21 @@ RUN /workspace/install/apt_installs.sh
 # pip installs
 RUN pip install --upgrade pip
 RUN pip install -U -r /workspace/install/requirements.txt
-RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
-##RUN pip install -U -r /workspace/install/requirements_0001.txt
-##RUN pip install -U -r /workspace/install/requirements_0002.txt
-##RUN pip install -U -r /workspace/install/requirements_0003.txt
-##RUN pip install -U -r /workspace/install/requirements_0004.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-##RUN pip install -U -r /workspace/install/requirements_0005.txt
-##RUN pip install -U -r /workspace/install/requirements_0006.txt
-##RUN pip install -U -r /workspace/install/requirements_0007.txt
-##RUN pip install -U -r /workspace/install/requirements_0008.txt
-##RUN pip install -U -r /workspace/install/requirements_0009.txt
-##RUN pip install -U -r /workspace/install/requirements_0010.txt
-##RUN pip install -U -r /workspace/install/requirements_0011.txt
-RUN pip install -U -r /workspace/install/requirements_0012.txt
-RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
-RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
+#RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
+#RUN pip install -U -r /workspace/install/requirements_0001.txt
+#RUN pip install -U -r /workspace/install/requirements_0002.txt
+#RUN pip install -U -r /workspace/install/requirements_0003.txt
+#RUN pip install -U -r /workspace/install/requirements_0004.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+#RUN pip install -U -r /workspace/install/requirements_0005.txt
+#RUN pip install -U -r /workspace/install/requirements_0006.txt
+#RUN pip install -U -r /workspace/install/requirements_0007.txt
+#RUN pip install -U -r /workspace/install/requirements_0008.txt
+#RUN pip install -U -r /workspace/install/requirements_0009.txt
+#RUN pip install -U -r /workspace/install/requirements_0010.txt
+#RUN pip install -U -r /workspace/install/requirements_0011.txt
+#RUN pip install -U -r /workspace/install/requirements_0012.txt
+#RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
+#RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 
 
 # add the beam message
@@ -65,12 +65,12 @@ RUN echo "cat /etc/motd" >> /root/.bashrc
 
 # install beam
 
-RUN mkdir /workspace/beamds/
-COPY . /workspace/beamds/
-WORKDIR /workspace/beamds/
-RUN python -m build
-RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
-WORKDIR /workspace
+#RUN mkdir /workspace/beamds/
+#COPY . /workspace/beamds/
+#WORKDIR /workspace/beamds/
+#RUN python -m build
+#RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
+#WORKDIR /workspace
 
 # config jupyter notebook
 RUN jupyter nbextension enable --py widgetsnbextension

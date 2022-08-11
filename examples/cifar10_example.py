@@ -318,9 +318,6 @@ class CIFAR10Algorithm(Algorithm):
         results['scalar']['loss'].append(float(loss))
         results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
 
-        if training:
-            self.scheduler.step()
-
         return results
 
     def report(self, results=None, epoch=None, **kwargs):

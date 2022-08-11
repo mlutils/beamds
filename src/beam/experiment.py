@@ -13,7 +13,7 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger, check_type, beam_device, check_element_type
+from .utils import include_patterns, logger, check_type, beam_device, check_element_type, print_beam_hyperparameters
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port
@@ -36,6 +36,15 @@ def path_depth(path):
 
 def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
                              dataset_args=None, dataset_kwargs=None):
+
+    if alg_args is None:
+        alg_args = tuple()
+    if alg_kwargs is None:
+        alg_kwargs = dict()
+    if dataset_args is None:
+        dataset_args = tuple()
+    if dataset_kwargs is None:
+        dataset_kwargs = dict()
 
     if type(Alg) == type:
         alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
@@ -260,11 +269,7 @@ class Experiment(object):
                    format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
 
         if print_hyperparameters:
-            logger.info(f"beam project: {args.project_name}")
-            logger.info('Experiment Hyperparameters')
-
-            for k, v in vars_args.items():
-                logger.info(k + ': ' + str(v))
+            print_beam_hyperparameters(args)
 
         # replace zero split_dataset_seed to none (non-deterministic split) - if zero
         if self.hparams.split_dataset_seed == 0:
@@ -438,9 +443,8 @@ class Experiment(object):
                 else:
                     return v
 
-            logger.info(f'{subset}:')
-
             if print_log and 'stats' in res:
+                logger.info(f'{subset}:')
                 logger.info('| '.join([f"{k}: {format(v)} " for k, v in res['stats'].items()]))
 
             report = None

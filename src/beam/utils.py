@@ -60,6 +60,17 @@ def beam_logger():
     return logger
 
 
+def print_beam_hyperparameters(args):
+
+    logger.info(f"beam project: {args.project_name}")
+    logger.info('Experiment Hyperparameters')
+
+    for k, v in vars(args).items():
+        if k == 'hparams':
+            continue
+        logger.info(k + ': ' + str(v))
+
+
 def find_port(port=None, get_port_from_beam_port_range=True):
 
     if port is None:
