@@ -17,6 +17,7 @@ lightning-bolts
 
 byol-pytorch
 normflows
+pytorch-pretrained-biggan
 
 # this package raises an error
 # torchlars

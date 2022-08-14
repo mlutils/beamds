@@ -3,7 +3,7 @@
 
 # In[1]:
 
-from examples.utils import add_beam_to_path
+from examples.example_utils import add_beam_to_path
 add_beam_to_path()
 
 import torch

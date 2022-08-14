@@ -46,7 +46,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.statistics = None
         self.target_device = target_device
 
-        if len(args) > 1 and type(args[0]) is argparse.Namespace:
+        if len(args) >= 1 and type(args[0]) is argparse.Namespace:
             self.hparams = args[0]
             args = args[1:]
 
@@ -96,7 +96,15 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.data_type = check_type(self.data).minor
 
         if self.data_type == 'dict':
+
+            ind_type = check_type(ind, check_minor=False)
+            if ind_type.element == 'str':
+                if ind_type.major == 'scalar':
+                    return self.data[ind]
+                return [self.data[k] for k in ind]
+
             return {k: v[ind] for k, v in self.data.items()}
+
         elif self.data_type == 'list':
             return [v[ind] for v in self.data]
         elif self.data_type == 'simple':

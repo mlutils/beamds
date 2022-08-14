@@ -10,10 +10,3 @@ networkx
 cdlib
 stellargraph
 pykeen
-
-# jax
-
-functorch
-jax[cuda]
-jaxlib
-objax
