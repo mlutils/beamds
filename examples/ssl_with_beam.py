@@ -17,11 +17,11 @@ from examples.example_utils import add_beam_to_path
 add_beam_to_path()
 
 from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
-from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature
-from src.beam.model import soft_target_update, target_copy, reset_network, copy_network
+from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature, BeamOptimizer
+from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble, beam_weights_initializer
 import lightgbm as lgb
 import requests
-
+from torch.nn.utils import spectral_norm
 
 simclr_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
 
@@ -37,9 +37,6 @@ def my_default_configuration_by_cluster():
         root_dir = '/localdata/elads/data/resutls'
 
     return path_to_data, root_dir
-
-
-# class Ensembel
 
 
 class ImageNetAugmented(UniversalDataset):
@@ -145,12 +142,7 @@ class BeamSSL(Algorithm):
         self.pretrained = hparams.pretrained
         self.layer = hparams.layer
 
-        if self.model == 'simclr':
-            simclr = SimCLR_pretrained.load_from_checkpoint(simclr_path, strict=False)
-            # networks['encoder'] = simclr.encoder
-            networks['encoder'] = simclr
-        else:
-            networks['encoder'] = self.generate_encoder()
+        networks['encoder'] = self.generate_encoder()
 
         self.labeled_dataset = STL10Dataset(hparams, subset='labeled')
         self.index_train_labeled = np.array(self.labeled_dataset.indices['train'])
@@ -158,12 +150,17 @@ class BeamSSL(Algorithm):
 
         super().__init__(hparams, networks=networks)
 
-    def generate_encoder(self):
+    def generate_encoder(self, pretrained=None):
 
-        encoder = getattr(models, self.model)(pretrained=self.pretrained)
+        if pretrained is not None:
+            pretrained = self.pretrained
 
-        if self.layer != 'last':
-            encoder = FeatureEncoder(encoder, layer=self.layer)
+        if self.model == 'simclr':
+            encoder = SimCLR_pretrained.load_from_checkpoint(simclr_path, strict=False)
+        else:
+            encoder = getattr(models, self.model)(pretrained=pretrained)
+            if self.layer != 'last':
+                encoder = FeatureEncoder(encoder, layer=self.layer)
 
         return encoder
 
@@ -179,6 +176,7 @@ class BeamSSL(Algorithm):
         parser.add_argument('--similarity', type=str, metavar='hparam', default='cosine', help='Similarity distance in UniversalSSL')
         parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
         parser.add_argument('--n-rules', type=int, default=128, help='Number of rules')
+        parser.add_argument('--n-ensembles', type=int, default=16, help='Size of the ensemble model')
         parser.add_argument('--p-dim', type=int, default=2048, help='Prediction/Projection output dimension')
         parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
         parser.add_argument('--tau', type=float, default=.99, metavar='hparam', help='Target update factor')
@@ -272,28 +270,41 @@ class BeamBarlowTwins(BeamSSL):
     def __init__(self, hparams):
         super().__init__(hparams)
 
-        networks = {}
         h = self.h_dim
         p = self.p_dim
 
-        networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+        projection = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, p))
 
-        self.add_networks_and_optmizers(networks=networks)
+        discriminator = nn.Sequential(spectral_norm(nn.Linear(h, h)),
+                                   nn.ReLU(), spectral_norm(nn.Linear(h, h)), nn.ReLU(), nn.Linear(h, 1))
+
+        self.add_networks_and_optmizers(networks={'projection': projection, 'discriminator': discriminator})
+
+        ensemble = BeamEnsemble(self.generate_encoder, n_ensembles=hparams.n_ensembles)
+        ensemble.set_optimizers(BeamOptimizer.prototype(dense_args={'lr': self.hparams.lr_dense,
+                                                                    'weight_decay': self.hparams.weight_decay,
+                                                                    'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                                    'eps': self.hparams.eps}))
+
+        self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)
+
+        beam_weights_initializer(self.networks['projection'])
+        beam_weights_initializer(self.networks['discriminator'], method='orthogonal')
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
         encoder = self.networks['encoder']
-        opt_e = self.optimizers['encoder']
 
         projection = self.networks['projection']
         opt_p = self.optimizers['projection']
 
-        z1 = projection(encoder(x_aug1))
-        z2 = projection(encoder(x_aug2))
+        index = torch.randperm(len(encoder))
+        z1 = projection(encoder(x_aug1, index=index[0]))
+        z2 = projection(encoder(x_aug2, index=index[1]))
 
         z1 = (z1 - z1.mean(dim=0, keepdim=True)) / (z1.std(dim=0, keepdim=True) + 1e-6)
         z2 = (z2 - z2.mean(dim=0, keepdim=True)) / (z2.std(dim=0, keepdim=True) + 1e-6)
@@ -308,7 +319,11 @@ class BeamBarlowTwins(BeamSSL):
         redundancy = (corr_diff * (1 - I)).sum(dim=-1)
 
         loss = invariance + self.hparams.lambda_twins * redundancy
-        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
+
+        opt_1 = encoder.optimizers[index[0]]
+        opt_2 = encoder.optimizers[index[1]]
+
+        loss = self.apply(loss, training=training, optimizers=[opt_1, opt_2, opt_p])
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
@@ -328,7 +343,7 @@ class UniversalSSL(BeamSSL):
         h = self.h_dim
         p = self.p_dim
 
-        networks['target_encoder'] = copy_network(self.networks['encoder'])
+        networks['target_encoder'] = self.generate_encoder(pretrained=False)
         reset_network(networks['target_encoder'])
 
         networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
@@ -558,7 +573,7 @@ class BYOL(BeamSSL):
         h = self.h_dim
         p = self.p_dim
 
-        networks['target_encoder'] = copy_network(self.networks['encoder'])
+        networks['target_encoder'] = self.generate_encoder(pretrained=False)
         reset_network(networks['target_encoder'])
 
         networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),

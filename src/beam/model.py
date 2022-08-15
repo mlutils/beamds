@@ -8,7 +8,8 @@ import numpy as np
 import math
 from .utils import slice_to_index, logger, hash_tensor
 from functools import partial
-
+import random
+import types
 
 class PackedSet(object):
 
@@ -751,6 +752,72 @@ class Sparsemax(nn.Module):
         return self.grad_input
 
 
+class BeamEnsemble(torch.nn.Module):
+
+    def __init__(self, net, n_ensembles, optimizer=None):
+        super().__init__()
+
+        if issubclass(type(net), nn.Module):
+            ensembles = []
+            for _ in range(n_ensembles):
+                new_net = copy_network(net)
+                reset_network(new_net)
+                ensembles.append(new_net)
+        else:
+            ensembles = [net() for _ in range(n_ensembles)]
+
+        self.ensembles = nn.ModuleList(ensembles)
+        self.n_ensembles = n_ensembles
+
+        self.optimizers = None
+        if optimizer is not None:
+            self.optimizers = self.set_optimizers(optimizer)
+
+        self.optimizer = None
+        self.net = None
+        self.active_model = None
+
+    def set_optimizers(self, optimizer):
+
+        try:
+            self.optimizers = [optimizer(net) for net in self.ensembles]
+        except TypeError:
+            self.optimizers = [optimizer(net.paramters()) for net in self.ensembles]
+
+        return self.optimizers
+
+    def __len__(self):
+        return self.n_ensembles
+
+    def forward(self, x, reduction='mean', index=None):
+
+        if self.training:
+            if index is None:
+                    index = random.randint(0, self.n_ensembles-1)
+
+            self.net = self.ensembles[index]
+            if self.optimizers is not None:
+                self.optimizer = self.optimizers[index]
+            self.active_model = index
+
+            y = self.net(x)
+
+        else:
+            self.optimizer = None
+            self.net = None
+            self.active_model = None
+
+            y = [net(x) for net in self.ensembles]
+            if reduction == 'mean':
+                y = torch.stack(y).mean(dim=0)
+            elif reduction == 'none':
+                y = torch.stack(y)
+            else:
+                raise NotImplementedError
+
+        return y
+
+
 class FeatureHasher(object):
 
     def __init__(self, num_embeddings, embedding_dim, n_classes=None, distribution='uniform', seed=None, device='cpu'):
@@ -771,19 +838,105 @@ class FeatureHasher(object):
         return self.weight[x]
 
 
-def beam_weights_initializer(m, method='none'):
-    if isinstance(m, nn.Conv2d):
-        nn.init.kaiming_uniform_(m.weight.data,nonlinearity='relu')
-        if m.bias is not None:
-            nn.init.constant_(m.bias.data, 0)
-    elif isinstance(m, nn.BatchNorm2d):
-        nn.init.constant_(m.weight.data, 1)
-        nn.init.constant_(m.bias.data, 0)
-    elif isinstance(m, nn.Linear):
-        nn.init.kaiming_uniform_(m.weight.data)
-        if m.bias is not None:
-            nn.init.constant_(m.bias.data, 0)
+def beam_weights_initializer(net, black_list=None, white_list=None, zero_bias=True,
+                             method=None, gain=None, nonlinearity='relu', method_argv=None,
+                             nonlinearity_argv=None, method_linear=None, method_linear_argv=None,
+                             method_conv=None, method_conv_argv=None, method_embedding=None, method_embedding_argv=None,):
+    """
 
+    @param net:
+    @param black_list:
+    @param white_list:
+    @param zero_bias:
+    @param method: [kaiming_uniform, kaiming_normal, xavier_uniform, xavier_normal, orthogonal, trunc_normal, sparse]
+    @param gain:
+    @param nonlinearity:
+    @param nonlinearity_argv:
+    @return:
+    """
+
+    def bias_init(m):
+        if zero_bias:
+            nn.init.zeros_(m.bias)
+        else:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(m.bias, -bound, bound)
+
+    if gain is None:
+        if nonlinearity_argv is None:
+            nonlinearity_argv = {}
+        gain = nn.init.calculate_gain(nonlinearity, **nonlinearity_argv)
+
+    # bert initializes embedding of 768 with .02 std and pytorch initializes with 1. stdout
+    # so by default we use something in the middle which is also more reasonable for embedding of ~256 dimensions.
+    if method_embedding is None:
+        method_embedding = partial(nn.init.normal_, mean=0., std=.2)
+    else:
+        if method_embedding_argv is None:
+            method_embedding_argv = {}
+        method_embedding = partial(getattr(nn.init, f"{method_embedding}_"), **method_embedding_argv)
+
+    if method is not None:
+        if method_argv is None:
+            method_argv = {}
+        method = partial(getattr(nn.init, f"{method}_"), **method_argv)
+        if method_conv is None:
+            method_conv = method
+        if method_linear is None:
+            method_linear = method_linear
+
+    if method_conv is None:
+        method_conv = partial(nn.init.xavier_uniform_, gain=gain)
+    else:
+        if method_conv_argv is None:
+            method_conv_argv = {}
+        method_conv = partial(getattr(nn.init, f"{method_conv}_"), **method_conv_argv)
+
+    if method_linear is None:
+        method_linear = partial(nn.init.xavier_uniform_, gain=gain)
+    else:
+        if method_linear_argv is None:
+            method_linear_argv = {}
+        method_linear = partial(getattr(nn.init, f"{method_conv}_"), **method_linear_argv)
+
+    if black_list is None:
+        black_list = []
+    if white_list is None:
+        # white_list = [n for n, p in net.named_parameters()]
+        white_list = ['']
+
+    def valid_param(n, suffix=None):
+        if suffix is not None:
+            n = f"{n}.{suffix}"
+        return any([nw in n for nw in white_list]) and not any([nb in n for nb in black_list])
+
+    for n, m in net.named_modules():
+        if not valid_param(n):
+            continue
+
+        if 'Norm' in str(type(m)):
+            if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
+                nn.init.ones_(m.weight)
+            if valid_param(n, suffix='bias') and hasattr(m, 'bias'):
+                nn.init.ones_(m.bias)
+        elif 'Embedding' in str(type(m)):
+            if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
+                method_embedding(m.weight)
+        elif 'Linear' in str(type(m)):
+            if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
+                method_linear(m.weight)
+            if valid_param(n, suffix='bias') and hasattr(m, 'bias'):
+                bias_init(m)
+        elif 'Conv' in str(type(m)):
+            if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
+                method_conv(m.weight)
+            if valid_param(n, suffix='bias') and hasattr(m, 'bias'):
+                bias_init(m)
+        else:
+            if len(list(m.parameters())) > 0:
+                logger.warning(f"Beam weight initializer does not support layer type: {n}")
 
 def reset_network(net):
     prev_hash = {n: hash_tensor(p) for n, p in net.named_parameters()}

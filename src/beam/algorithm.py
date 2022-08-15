@@ -76,12 +76,12 @@ class Algorithm(object):
             experiment = Experiment(hparams)
         return experiment.algorithm_generator(cls)
 
-    def add_networks_and_optmizers(self, networks=None, optimizers=None):
+    def add_networks_and_optmizers(self, networks=None, optimizers=None, build_optimizers=True, name='net'):
 
         if networks is None:
             networks = {}
         elif issubclass(type(networks), nn.Module):
-            networks = {'net': networks}
+            networks = {name: networks}
         elif check_type(networks).major == 'dict':
             pass
         else:
@@ -90,39 +90,54 @@ class Algorithm(object):
         for k in networks.keys():
             networks[k] = self.register_network(networks[k])
 
-        if optimizers is None:
-            optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
-                                                          'weight_decay': self.hparams.weight_decay,
-                                                           'betas': (self.hparams.beta1, self.hparams.beta2),
-                                                          'eps': self.hparams.eps},
-                                           sparse_args={'lr': self.hparams.lr_sparse,
-                                                        'betas': (self.hparams.beta1, self.hparams.beta2),
-                                                        'eps': self.hparams.eps},
-                                           clip=self.hparams.clip_gradient, amp=self.amp, accumulate=self.hparams.accumulate
-                                           ) for k, v in networks.items()}
+        if build_optimizers:
+            if optimizers is None:
+                optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
+                                                              'weight_decay': self.hparams.weight_decay,
+                                                               'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                              'eps': self.hparams.eps},
+                                               sparse_args={'lr': self.hparams.lr_sparse,
+                                                            'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                            'eps': self.hparams.eps},
+                                               clip=self.hparams.clip_gradient, amp=self.amp, accumulate=self.hparams.accumulate
+                                               ) for k, v in networks.items()}
 
-        elif issubclass(type(optimizers), dict):
-            for k, o in optimizers.items():
-                if callable(o):
-                    optimizers[k] = o(networks[k])
-                else:
-                    o.load_state_dict(o.state_dict())
-                    optimizers[k] = o
+            elif issubclass(type(optimizers), dict):
+                for k, o in optimizers.items():
+                    if callable(o):
+                        try:
+                            optimizers[k] = o(networks[k])
+                        except TypeError:
+                            optimizers[k] = o(networks[k].parameters())
+                    else:
+                        o.load_state_dict(o.state_dict())
+                        optimizers[k] = o
 
-        elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
-            optimizers.load_state_dict(optimizers.state_dict())
-            optimizers = {'net': optimizers}
+            elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+                optimizers.load_state_dict(optimizers.state_dict())
+                optimizers = {name: optimizers}
 
-        elif callable(optimizers):
-            optimizers = {'net': optimizers(networks['net'])}
+            elif callable(optimizers):
+                try:
+                    optimizers = {name: optimizers(networks[name])}
+                except TypeError:
+                    optimizers = {name: optimizers(networks[name].parameters())}
+            else:
+                raise NotImplementedError
+
         else:
-            raise NotImplementedError
+            optimizers = {}
 
         for k, net in networks.items():
             if k in self.networks:
-                raise Exception(f"Found network with identical keys: {k} please provide unique key.")
-            self.networks[k] = networks[k]
-            self.optimizers[k] = optimizers[k]
+                self.networks.pop(k)
+                logger.warning(f"Found network with identical keys: {k} overriding previous network.")
+                if k in self.optimizers:
+                    self.optimizers.pop(k)
+
+            self.networks[k] = net
+        for k, opt in optimizers.items():
+            self.optimizers[k] = opt
 
     @property
     def experiment(self):
