@@ -841,7 +841,8 @@ class FeatureHasher(object):
 def beam_weights_initializer(net, black_list=None, white_list=None, zero_bias=True,
                              method=None, gain=None, nonlinearity='relu', method_argv=None,
                              nonlinearity_argv=None, method_linear=None, method_linear_argv=None,
-                             method_conv=None, method_conv_argv=None, method_embedding=None, method_embedding_argv=None,):
+                             method_conv=None, method_conv_argv=None, method_embedding=None, method_embedding_argv=None,
+                             temperature=1):
     """
 
     @param net:
@@ -882,24 +883,24 @@ def beam_weights_initializer(net, black_list=None, white_list=None, zero_bias=Tr
         if method_argv is None:
             method_argv = {}
         method = partial(getattr(nn.init, f"{method}_"), **method_argv)
-        if method_conv is None:
-            method_conv = method
-        if method_linear is None:
-            method_linear = method_linear
 
-    if method_conv is None:
-        method_conv = partial(nn.init.xavier_uniform_, gain=gain)
-    else:
+    if method_conv is not None:
         if method_conv_argv is None:
             method_conv_argv = {}
         method_conv = partial(getattr(nn.init, f"{method_conv}_"), **method_conv_argv)
-
-    if method_linear is None:
-        method_linear = partial(nn.init.xavier_uniform_, gain=gain)
+    elif method is not None:
+        method_conv = method
     else:
+        method_conv = partial(nn.init.xavier_uniform_, gain=gain)
+
+    if method_linear is not None:
         if method_linear_argv is None:
             method_linear_argv = {}
         method_linear = partial(getattr(nn.init, f"{method_conv}_"), **method_linear_argv)
+    elif method is not None:
+        method_linear = method
+    else:
+        method_linear = partial(nn.init.xavier_uniform_, gain=gain)
 
     if black_list is None:
         black_list = []
@@ -913,7 +914,7 @@ def beam_weights_initializer(net, black_list=None, white_list=None, zero_bias=Tr
         return any([nw in n for nw in white_list]) and not any([nb in n for nb in black_list])
 
     for n, m in net.named_modules():
-        if not valid_param(n):
+        if len(list(m.children())) or not valid_param(n):
             continue
 
         if 'Norm' in str(type(m)):
@@ -924,14 +925,30 @@ def beam_weights_initializer(net, black_list=None, white_list=None, zero_bias=Tr
         elif 'Embedding' in str(type(m)):
             if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
                 method_embedding(m.weight)
+
         elif 'Linear' in str(type(m)):
             if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
-                method_linear(m.weight)
+                fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(m.weight)
+                if fan_in > 1 and fan_out > 1:
+                    method_linear(m.weight)
+                else:
+                    with torch.no_grad():
+                        m.weight.normal_()
+                        m.weight.data = torch.exp(m.weight.data / (temperature * math.sqrt(torch.numel(m.weight))))
+                        m.weight.data = m.weight.data / m.weight.data.sum()
+
             if valid_param(n, suffix='bias') and hasattr(m, 'bias'):
                 bias_init(m)
         elif 'Conv' in str(type(m)):
             if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
-                method_conv(m.weight)
+                fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(m.weight)
+                if fan_in > 1 and fan_out > 1:
+                    method_conv(m.weight)
+                else:
+                    with torch.no_grad():
+                        m.weight.normal_()
+                        m.weight.data = torch.exp(m.weight.data / (temperature * math.sqrt(torch.numel(m.weight))))
+                        m.weight.data = m.weight.data / m.weight.data.sum()
             if valid_param(n, suffix='bias') and hasattr(m, 'bias'):
                 bias_init(m)
         else:

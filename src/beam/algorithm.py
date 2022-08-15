@@ -131,7 +131,7 @@ class Algorithm(object):
         for k, net in networks.items():
             if k in self.networks:
                 self.networks.pop(k)
-                logger.warning(f"Found network with identical keys: {k} overriding previous network.")
+                logger.warning(f"Found network with identical keys: {k}. Overriding previous network.")
                 if k in self.optimizers:
                     self.optimizers.pop(k)
 

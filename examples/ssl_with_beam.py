@@ -148,6 +148,8 @@ class BeamSSL(Algorithm):
         self.index_train_labeled = np.array(self.labeled_dataset.indices['train'])
         self.index_test_labeled = np.array(self.labeled_dataset.indices['test'])
 
+        self.logger = beam_logger()
+
         super().__init__(hparams, networks=networks)
 
     def generate_encoder(self, pretrained=None):
@@ -215,7 +217,7 @@ class BeamSSL(Algorithm):
             if not training and not epoch % 1:
                 self.labeled_dataset.normalize = True
 
-                logger.info("Evaluating the downstream task")
+                self.logger.info("Evaluating the downstream task")
                 features = self.evaluate(self.labeled_dataset)
                 z = features.values['h'].detach().cpu().numpy()
                 y = features.values['y'].detach().cpu().numpy()
@@ -288,23 +290,25 @@ class BeamBarlowTwins(BeamSSL):
                                                                     'betas': (self.hparams.beta1, self.hparams.beta2),
                                                                     'eps': self.hparams.eps}))
 
-        self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)
+        # self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)
+        self.add_networks_and_optmizers(networks=ensemble, name='encoder')
 
-        beam_weights_initializer(self.networks['projection'])
-        beam_weights_initializer(self.networks['discriminator'], method='orthogonal')
+        # beam_weights_initializer(self.networks['projection'])
+        # beam_weights_initializer(self.networks['discriminator'], method='orthogonal')
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
         encoder = self.networks['encoder']
+        opt_e = self.optimizers['encoder']
 
         projection = self.networks['projection']
         opt_p = self.optimizers['projection']
 
         index = torch.randperm(len(encoder))
         z1 = projection(encoder(x_aug1, index=index[0]))
-        z2 = projection(encoder(x_aug2, index=index[1]))
+        z2 = projection(encoder(x_aug2, index=index[0]))
 
         z1 = (z1 - z1.mean(dim=0, keepdim=True)) / (z1.std(dim=0, keepdim=True) + 1e-6)
         z2 = (z2 - z2.mean(dim=0, keepdim=True)) / (z2.std(dim=0, keepdim=True) + 1e-6)
@@ -320,10 +324,11 @@ class BeamBarlowTwins(BeamSSL):
 
         loss = invariance + self.hparams.lambda_twins * redundancy
 
-        opt_1 = encoder.optimizers[index[0]]
-        opt_2 = encoder.optimizers[index[1]]
+        # opt_1 = encoder.optimizers[index[0]]
+        # opt_2 = encoder.optimizers[index[1]]
 
-        loss = self.apply(loss, training=training, optimizers=[opt_1, opt_2, opt_p])
+        # loss = self.apply(loss, training=training, optimizers=[opt_1, opt_2, opt_p])
+        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
 
         # add scalar measurements
         results['scalar']['loss'].append(float(loss))
