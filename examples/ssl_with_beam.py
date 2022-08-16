@@ -25,6 +25,14 @@ from torch.nn.utils import spectral_norm
 
 simclr_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
 
+if '1.13'  in torch.__version__:
+    pretrained_weights = {'convnext_base': {'weights': models.convnext.ConvNeXt_Base_Weights.DEFAULT},
+                          'resnet18': {'weights': models.resnet.ResNet18_Weights.DEFAULT}}
+else:
+    pretrained_weights = {'convnext_base': {'pretrained': True},
+                          'resnet18': {'pretrained': True}}
+
+
 def my_default_configuration_by_cluster():
 
     ip = requests.get(r'http://jsonip.com').json()['ip']
@@ -67,14 +75,21 @@ class ImageNetAugmented(UniversalDataset):
 
         x = self.data[index]
 
+        x = x.to(self.target_device)
+
         if self.normalize:
-            x = x.to(self.target_device) / 255
+            x = x / 255
 
         x = self.transform(x)
 
         augmentations = [self.gaussian_blur(self.augmentations(x)) for _ in range(self.n_augmentations)]
 
-        return {'x': x, 'y': self.labels[index], 'augmentations': augmentations}
+        data = {'x': x, 'augmentations': augmentations}
+
+        if hasattr(self, 'labels'):
+            data['y'] = self.labels[index]
+
+        return data
 
 
 class STL10Dataset(ImageNetAugmented):
@@ -154,13 +169,18 @@ class BeamSSL(Algorithm):
 
     def generate_encoder(self, pretrained=None):
 
-        if pretrained is not None:
+        if pretrained is None:
             pretrained = self.pretrained
+
+        if pretrained:
+            weights = pretrained_weights[self.model]
+        else:
+            weights = {'weights': None}
 
         if self.model == 'simclr':
             encoder = SimCLR_pretrained.load_from_checkpoint(simclr_path, strict=False)
         else:
-            encoder = getattr(models, self.model)(pretrained=pretrained)
+            encoder = getattr(models, self.model)(**weights)
             if self.layer != 'last':
                 encoder = FeatureEncoder(encoder, layer=self.layer)
 
@@ -251,8 +271,10 @@ class BeamSSL(Algorithm):
         if predicting:
             x = sample
         else:
-            x, y = sample['x'], sample['y']
-            data['y'] = y
+            x = sample['x']
+
+            if 'y' in sample:
+                data['y'] = sample['y']
 
         h = self.networks['encoder'](x)
         data['h'] = h
@@ -263,6 +285,19 @@ class BeamSSL(Algorithm):
             if 'prediction' in self.networks:
                 p = self.networks['prediction'](z)
                 data['p'] = p
+
+        if type(sample) is dict and 'augmentations' in sample:
+            representations = []
+            for a in sample['augmentations']:
+                representations.append(self.networks['encoder'](a))
+
+            representations = torch.stack(representations)
+
+            mu = representations.mean(dim=0)
+            std = representations.std(dim=0)
+
+            data['mu'] = mu
+            data['std'] = std
 
         return data, results
 
