@@ -76,6 +76,13 @@ def get_beam_parser():
 
     boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='hparam')
     boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='hparam')
+    boolean_feature(parser, "find-unused-parameters", False, "For DDP applications: allows running backward on "
+                                                             "a subgraph of the model. introduces extra overheads, "
+                                                             "so applications should only set find_unused_parameters "
+                                                             "to True when necessary")
+    boolean_feature(parser, "broadcast-buffers", True, "For DDP applications: Flag that enables syncing (broadcasting) "
+                                                       "buffers of the module at beginning of the forward function.")
+
     boolean_feature(parser, "store-initial-weights", False, "Store the network's initial weights")
 
     # experiment parameters

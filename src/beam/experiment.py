@@ -136,10 +136,17 @@ class Experiment(object):
     :param args:
     """
 
-    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=True):
+    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None):
         """
-        args: the parsed arguments
+
+        @param args:
+        @param hpo:
+        @param trial:
+        @param print_hyperparameters: If None, default behavior is to print hyperparameters only outside of jupyter notebooks
         """
+
+        if print_hyperparameters is None:
+            print_hyperparameters = not is_notebook()
 
         self.tensorboard_hparams = {}
 
@@ -268,8 +275,7 @@ class Experiment(object):
         logger.add(log_file, level='INFO', colorize=True,
                    format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
 
-        if print_hyperparameters:
-            print_beam_hyperparameters(args)
+        print_beam_hyperparameters(args, debug_only=not print_hyperparameters)
 
         # replace zero split_dataset_seed to none (non-deterministic split) - if zero
         if self.hparams.split_dataset_seed == 0:
@@ -294,8 +300,11 @@ class Experiment(object):
             self.hparams.reload_path = None
 
         self.trial = trial
+
         self.hparams.hpo = hpo
         self.hparams.ddp = False
+        self.hparams.rank = self.rank
+        self.hparams.world_size = self.world_size
 
         if self.hparams.device.type == 'cuda':
             if self.hparams.device_list is not None:
@@ -352,6 +361,10 @@ class Experiment(object):
 
         self.rank = rank
         self.world_size = world_size
+
+        self.hparams.rank = rank
+        self.hparams.world_size = world_size
+
         self.hparams.ddp = self.world_size > 1
         self.hparams.enable_tqdm = self.hparams.enable_tqdm and (rank == 0)
 
@@ -749,6 +762,9 @@ class Experiment(object):
 
         if self.world_size > 1:
             logger.info(f'Initializing {self.world_size} parallel workers')
+            logger.warning(f"Caution: Sometimes DDP experiments can fail due to a bad configuration. "
+                           f"Specifically, of in_place error set --no-broadcast-buffer flag and for subgraph issues"
+                           f"set --find-unused-parameters")
 
             if self.hparams.mp_port == 'random' or check_if_port_is_available(self.hparams.mp_port):
                 self.hparams.mp_port = find_free_port()

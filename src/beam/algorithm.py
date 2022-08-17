@@ -28,6 +28,9 @@ class Algorithm(object):
         self.ddp = hparams.ddp
         self.hpo = hparams.hpo
 
+        self.rank = hparams.rank
+        self.world_size = hparams.world_size
+
         # some experiment hyperparameters
         self.half = hparams.half
         self.enable_tqdm = hparams.enable_tqdm if hparams.tqdm_threshold == 0 or not hparams.enable_tqdm else None
@@ -304,7 +307,9 @@ class Algorithm(object):
         net = net.to(self.device)
 
         if self.ddp:
-            net = DDP(net, device_ids=[self.device], find_unused_parameters=True)
+            net = DDP(net, device_ids=[self.device],
+                      find_unused_parameters=self.hparams.find_unused_parameters,
+                      broadcast_buffers=self.hparams.broadcast_buffers)
 
         return net
 
@@ -482,7 +487,7 @@ class Algorithm(object):
         '''
         return False
 
-    def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None):
+    def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None, **kwargs):
 
         with torch.no_grad():
 
@@ -490,7 +495,6 @@ class Algorithm(object):
             results = defaultdict(lambda: defaultdict(list))
             transforms = []
             index = []
-            results = self.preprocess_inference(results=results, subset=subset, predicting=predicting)
 
             desc = subset if type(subset) is str else ('predict' if predicting else 'evaluate')
 
@@ -498,25 +502,29 @@ class Algorithm(object):
                 enable_tqdm = self.enable_tqdm
 
             dataloader = self.build_dataloader(subset)
+            dataset = dataloader.dataset
 
             batch_size = self.batch_size_eval
             if head is not None:
                 max_iterations = math.ceil(head / batch_size)
 
+            results = self.preprocess_inference(results=results, subset=subset, predicting=predicting, dataset=dataset,
+                                                **kwargs)
             data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
             total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
             for i, (ind, sample) in tqdm(data_generator, enable=enable_tqdm,
                                   threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
                                   notebook=(not self.ddp), desc=desc, total=total_iterations):
                 transform, results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting,
-                                         index=ind)
+                                         index=ind, **kwargs)
                 transforms.append(transform)
                 index.append(ind)
 
             index = torch.cat(index)
             transforms = concat_data(transforms)
             results = self.postprocess_inference(sample=sample, index=ind, transforms=transforms,
-                                                 results=results, subset=subset, predicting=predicting)
+                                                 results=results, subset=subset, dataset=dataset,
+                                                 predicting=predicting, **kwargs)
 
             results = stack_results(results, batch_size=batch_size)
             dataset = UniversalDataset(transforms, index=index)

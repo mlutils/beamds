@@ -3,3 +3,6 @@
 jax[cuda]
 jaxlib
 objax
+
+
+torch_pruning

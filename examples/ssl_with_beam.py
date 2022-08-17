@@ -12,6 +12,7 @@ from torchvision.models.feature_extraction import create_feature_extractor
 import kornia
 from kornia.augmentation.container import AugmentationSequential
 from pl_bolts.models.self_supervised import SimCLR as SimCLR_pretrained
+import torch_tensorrt
 
 from examples.example_utils import add_beam_to_path
 add_beam_to_path()
@@ -212,9 +213,32 @@ class BeamSSL(Algorithm):
 
         return parser
 
-    def preprocess_inference(self, results=None, **kwargs):
+    def preprocess_inference(self, results=None, augmentations=0, dataset=None, **kwargs):
             self.dataset.normalize = True
+
+            # self.traced_encoder = torch.jit.trace(self.networks['encoder'],
+            #                                torch.randn((1, 3, 224, 224)).to(self.hparams.device))
+            # torch.jit.save(self.traced_encoder, "/tmp/model.jit.pt")
+
+            # self.traced_encoder = torch_tensorrt.compile(self.networks['encoder'],
+            #                                    inputs=[torch_tensorrt.Input((1, 3, 224, 224))],
+            #                                    enabled_precisions={torch_tensorrt.dtype.half}  # Run with FP16
+            #                                    )
+
+            # self.traced_encoder = torch.jit.script(self.networks['encoder'])
+
+            if augmentations > 0 and dataset is not None:
+                results['aux']['org_n_augmentations'] = dataset.n_augmentations
+                dataset.n_augmentations = augmentations
+
             return results
+
+    def postprocess_inference(self, sample=None, results=None, subset=None, dataset=None, **kwargs):
+
+        if 'aux' in results and 'org_n_augmentations' in results['aux'] and dataset is not None:
+            dataset.n_augmentations = results['aux']['org_n_augmentations']
+
+        return results
 
     def evaluate_downstream_task(self, z, y):
 
@@ -265,7 +289,8 @@ class BeamSSL(Algorithm):
 
             return results
 
-    def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
+    def inference(self, sample=None, results=None, subset=None, predicting=True,
+                  projection=True, prediction=True, augmentations=0, **kwargs):
 
         data = {}
         if predicting:
@@ -278,15 +303,16 @@ class BeamSSL(Algorithm):
 
         h = self.networks['encoder'](x)
         data['h'] = h
-        if 'projection' in self.networks:
+
+        if 'projection' in self.networks and projection:
             z = self.networks['projection'](h)
             data['z'] = z
 
-            if 'prediction' in self.networks:
-                p = self.networks['prediction'](z)
-                data['p'] = p
+        if 'prediction' in self.networks and prediction:
+            p = self.networks['prediction'](z)
+            data['p'] = p
 
-        if type(sample) is dict and 'augmentations' in sample:
+        if type(sample) is dict and 'augmentations' in sample and augmentations:
             representations = []
             for a in sample['augmentations']:
                 representations.append(self.networks['encoder'](a))
