@@ -191,7 +191,7 @@ def get_notebook_name():
 def process_async(func, args, mp_context='spawn', num_workers=10):
     ctx = mp.get_context(mp_context)
     with ctx.Pool(num_workers) as pool:
-        res = [pool.apply_async(func, (args,)) for arg in args]
+        res = [pool.apply_async(func, (arg,)) for arg in args]
         results = []
         for r in tqdm_beam(res):
             results.append(r.get())

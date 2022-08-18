@@ -11,6 +11,9 @@ import sys
 import warnings
 from .data_tensor import DataTensor
 import argparse
+from collections import namedtuple
+
+DataBatch = namedtuple("DataBatch", "index data")
 
 
 class UniversalDataset(torch.utils.data.Dataset):
@@ -136,7 +139,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if self.target_device is not None:
             sample = to_device(sample, device=self.target_device)
 
-        return ind, sample
+        return DataBatch(index=ind, data=sample)
 
     def __device__(self):
         raise NotImplementedError(f"For data type: {type(self.data)}")

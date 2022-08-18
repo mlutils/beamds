@@ -26,12 +26,12 @@ from torch.nn.utils import spectral_norm
 
 simclr_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
 
-if '1.13'  in torch.__version__:
-    pretrained_weights = {'convnext_base': {'weights': models.convnext.ConvNeXt_Base_Weights.DEFAULT},
-                          'resnet18': {'weights': models.resnet.ResNet18_Weights.DEFAULT}}
-else:
-    pretrained_weights = {'convnext_base': {'pretrained': True},
-                          'resnet18': {'pretrained': True}}
+pretrained_weights = {'convnext_base': {'weights': models.convnext.ConvNeXt_Base_Weights.DEFAULT},
+                          'resnet18': {'weights': models.resnet.ResNet18_Weights.DEFAULT},
+                      'convnext_tiny': {'weights': models.convnext.ConvNeXt_Tiny_Weights.DEFAULT}, }
+
+if '1.13' not in torch.__version__:
+    pretrained_weights = {k: {'pretrained': True} for k in pretrained_weights.keys()}
 
 
 def my_default_configuration_by_cluster():
@@ -144,7 +144,7 @@ class BeamSSL(Algorithm):
         networks = {}
         # choose your network
 
-        hidden_sizes = {'resnet18': 512, 'resnet50': 2048, 'convnext_base': 1024, 'simclr': 2048}
+        hidden_sizes = {'resnet18': 512, 'resnet50': 2048, 'convnext_base': 1024, 'simclr': 2048, 'convnext_tiny': 768}
 
         if hparams.layer == 'last':
             self.h_dim = 1000
@@ -214,18 +214,11 @@ class BeamSSL(Algorithm):
         return parser
 
     def preprocess_inference(self, results=None, augmentations=0, dataset=None, **kwargs):
+
             self.dataset.normalize = True
 
-            # self.traced_encoder = torch.jit.trace(self.networks['encoder'],
-            #                                torch.randn((1, 3, 224, 224)).to(self.hparams.device))
-            # torch.jit.save(self.traced_encoder, "/tmp/model.jit.pt")
-
-            # self.traced_encoder = torch_tensorrt.compile(self.networks['encoder'],
-            #                                    inputs=[torch_tensorrt.Input((1, 3, 224, 224))],
-            #                                    enabled_precisions={torch_tensorrt.dtype.half}  # Run with FP16
-            #                                    )
-
-            # self.traced_encoder = torch.jit.script(self.networks['encoder'])
+            net = self.networks['encoder']
+            # self.optimized_encoder = torch.jit.optimize_for_inference(torch.jit.script(self.networks['encoder'].eval()))
 
             if augmentations > 0 and dataset is not None:
                 results['aux']['org_n_augmentations'] = dataset.n_augmentations
@@ -301,21 +294,31 @@ class BeamSSL(Algorithm):
             if 'y' in sample:
                 data['y'] = sample['y']
 
-        h = self.networks['encoder'](x)
+        networks = self.inference_networks
+        b = len(x)
+        if b < self.batch_size_eval:
+            x = torch.cat([x, torch.zeros((self.batch_size_eval-b, *x.shape[1:]), device=x.device, dtype=x.dtype)])
+
+        h = networks['encoder'](x)
+
+        if b < self.batch_size_eval:
+            h = h[:b]
+
+        # h = self.optimized_encoder(x)
         data['h'] = h
 
-        if 'projection' in self.networks and projection:
-            z = self.networks['projection'](h)
+        if 'projection' in networks and projection:
+            z = networks['projection'](h)
             data['z'] = z
 
-        if 'prediction' in self.networks and prediction:
-            p = self.networks['prediction'](z)
+        if 'prediction' in networks and prediction:
+            p = networks['prediction'](z)
             data['p'] = p
 
         if type(sample) is dict and 'augmentations' in sample and augmentations:
             representations = []
             for a in sample['augmentations']:
-                representations.append(self.networks['encoder'](a))
+                representations.append(networks['encoder'](a))
 
             representations = torch.stack(representations)
 

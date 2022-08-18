@@ -955,6 +955,7 @@ def beam_weights_initializer(net, black_list=None, white_list=None, zero_bias=Tr
             if len(list(m.parameters())) > 0:
                 logger.warning(f"Beam weight initializer does not support layer type: {n}")
 
+
 def reset_network(net):
     prev_hash = {n: hash_tensor(p) for n, p in net.named_parameters()}
     for n, m in net.named_modules():
@@ -963,6 +964,16 @@ def reset_network(net):
     for n, p in net.named_parameters():
         if prev_hash[n] == hash_tensor(p):
             logger.warning(f"Parameter {n} was not reset. Check if its nn.Module supports .reset_parameters()")
+
+
+def free_network_params(net):
+    for p in net.parameters():
+        p.requires_grad = True
+
+
+def freeze_network_params(net):
+    for p in net.parameters():
+        p.requires_grad = False
 
 
 def copy_network(net):

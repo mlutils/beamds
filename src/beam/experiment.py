@@ -209,6 +209,9 @@ class Experiment(object):
             else:
                 self.hparams.override = False
 
+        if self.hparams.reload and not self.load_model:
+            logger.warning(f"Did not find existing experiment to match your specifications: basedir={self.base_dir} resume={self.hparams.resume}")
+
         if self.exp_name is None:
             exp_num = np.max(exp_indices) + 1 if len(exp_indices) else 0
             self.exp_name = "%04d_%s" % (exp_num, self.exptime)
@@ -231,7 +234,7 @@ class Experiment(object):
                 logger.info("Creating new experiment")
 
             else:
-                logger.info("Deleting old experiment")
+                logger.warning("Deleting old experiment")
 
                 shutil.rmtree(self.root)
                 self.exp_name = "%04d_%s" % (exp_num, self.exptime)

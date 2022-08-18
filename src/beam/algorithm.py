@@ -10,9 +10,10 @@ from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, stack_results
 from .config import beam_arguments, get_beam_parser
-from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
+from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
 from timeit import default_timer as timer
+import torch_tensorrt as trt
 
 
 class Algorithm(object):
@@ -50,6 +51,7 @@ class Algorithm(object):
         self.epoch = 0
 
         self.networks = {}
+        self.inference_networks = {}
         self.optimizers = {}
         self.add_networks_and_optmizers(networks=networks, optimizers=optimizers)
 
@@ -134,11 +136,13 @@ class Algorithm(object):
         for k, net in networks.items():
             if k in self.networks:
                 self.networks.pop(k)
+                self.inference_networks.pop(k)
                 logger.warning(f"Found network with identical keys: {k}. Overriding previous network.")
                 if k in self.optimizers:
                     self.optimizers.pop(k)
 
             self.networks[k] = net
+            self.inference_networks[k] = net
         for k, opt in optimizers.items():
             self.optimizers[k] = opt
 
@@ -341,12 +345,12 @@ class Algorithm(object):
 
         else:
 
-            if subset_type.minor == 'tuple' and check_type(subset[0]).major == 'array' \
-                    and check_type(subset[1]).minor in ['list', 'dict']:
-                if check_type(subset[1]).minor == 'list':
-                    dataset = UniversalDataset(*subset[1], index=subset[0])
+            if subset_type.minor == 'tuple' and check_type(subset.index).major == 'array' \
+                    and check_type(subset.data).minor in ['list', 'dict']:
+                if check_type(subset.data).minor == 'list':
+                    dataset = UniversalDataset(*subset.data, index=subset.index)
                 else:
-                    dataset = UniversalDataset(**subset[1], index=subset[0])
+                    dataset = UniversalDataset(**subset.data, index=subset.index)
             elif subset_type.minor in ['list', 'tuple']:
                 dataset = UniversalDataset(*subset)
             elif subset_type.minor in ['dict']:
@@ -371,7 +375,7 @@ class Algorithm(object):
             if max_iterations is not None and i >= max_iterations:
                 break
             sample = self.process_sample(sample)
-            yield i, (ind, sample)
+            yield i, DataBatch(index=ind, data=sample)
 
     def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
         '''
@@ -628,6 +632,49 @@ class Algorithm(object):
 
         self.epoch = state['epoch']
         return state['aux']
+
+    def optimize_for_inference(self, networks, half=True, eval=True):
+
+        logger.warning("Currently we support only models on device=0")
+        sample = self.dataset[0]
+
+        self.inference_networks = {}
+
+        for k, v in networks.items():
+
+            v_type = check_type(v)
+            if v_type.element == 'str':
+                shape = sample.data[v].shape
+            else:
+                shape = v
+
+            opt_shape = list((self.batch_size_eval, *shape))
+            min_shape = list((1, *shape))
+            # print(min_shape)
+
+            net = copy.deepcopy(self.networks[k])
+            if eval:
+                net = net.eval()
+            else:
+                net = net.train()
+
+            torch_script_module = torch.jit.optimize_for_inference(torch.jit.script(net.eval()))
+
+            dtype = torch.half if half else torch.float
+
+            # trt_ts_module = trt.compile(torch_script_module, inputs=[trt.Input(opt_shape=opt_shape,
+            #                                                                     min_shape=min_shape,
+            #                                                                     max_shape=opt_shape,
+            #                                                                     dtype=dtype)],
+            #                                        enabled_precisions={dtype},
+            #                             require_full_compilation=True)
+
+            trt_ts_module = trt.compile(torch_script_module, inputs=[trt.Input(shape=opt_shape,
+                                                                                dtype=dtype)],
+                                                   enabled_precisions={dtype},
+                                        require_full_compilation=False)
+
+            self.inference_networks[k] = trt_ts_module
 
     def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, **kwargs):
