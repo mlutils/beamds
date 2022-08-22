@@ -19,7 +19,9 @@ add_beam_to_path()
 
 from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
 from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature, BeamOptimizer
-from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble, beam_weights_initializer
+from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble
+from src.beam.model import beam_weights_initializer, freeze_network_params, free_network_params
+
 import lightgbm as lgb
 import requests
 from torch.nn.utils import spectral_norm
@@ -29,10 +31,11 @@ simclr_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_
 pretrained_weights = {'convnext_base': {'weights': models.convnext.ConvNeXt_Base_Weights.DEFAULT},
                           'resnet18': {'weights': models.resnet.ResNet18_Weights.DEFAULT},
                       'convnext_tiny': {'weights': models.convnext.ConvNeXt_Tiny_Weights.DEFAULT}, }
+untrained_weights = {'weights': None}
 
 if '1.13' not in torch.__version__:
     pretrained_weights = {k: {'pretrained': True} for k in pretrained_weights.keys()}
-
+    untrained_weights = {'pretrained': None}
 
 def my_default_configuration_by_cluster():
 
@@ -42,8 +45,12 @@ def my_default_configuration_by_cluster():
         path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
         root_dir = '/home/shared/data/results/'
     else:
-        path_to_data = '/localdata/elads/data/datasets/stl10/stl10_binary'
-        root_dir = '/localdata/elads/data/resutls'
+        # path_to_data = '/home/dsi/elads/external/data/datasets/stl10/stl10_binary'
+        # root_dir = '/home/dsi/elads/external/data/resutls'
+        path_to_data = '/external/data/datasets/stl10/stl10_binary'
+        root_dir = '/external/data/resutls'
+        # path_to_data = '/localdata/elads/data/datasets/stl10/stl10_binary'
+        # root_dir = '/localdata/elads/data/resutls'
 
     return path_to_data, root_dir
 
@@ -174,14 +181,14 @@ class BeamSSL(Algorithm):
             pretrained = self.pretrained
 
         if pretrained:
-            weights = pretrained_weights[self.model]
+            argv = pretrained_weights[self.model]
         else:
-            weights = {'weights': None}
+            argv = untrained_weights
 
         if self.model == 'simclr':
             encoder = SimCLR_pretrained.load_from_checkpoint(simclr_path, strict=False)
         else:
-            encoder = getattr(models, self.model)(**weights)
+            encoder = getattr(models, self.model)(**argv)
             if self.layer != 'last':
                 encoder = FeatureEncoder(encoder, layer=self.layer)
 
@@ -198,13 +205,19 @@ class BeamSSL(Algorithm):
         parser.add_argument('--path-to-data', type=str, default=path_to_data, help='Path to the STL10 binaries')
         parser.add_argument('--similarity', type=str, metavar='hparam', default='cosine', help='Similarity distance in UniversalSSL')
         parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
-        parser.add_argument('--n-rules', type=int, default=128, help='Number of rules')
-        parser.add_argument('--n-ensembles', type=int, default=16, help='Size of the ensemble model')
+        parser.add_argument('--n-discriminator-steps', type=int, default=1, help='Number of discriminator steps')
+        parser.add_argument('--n-ensembles', type=int, default=1, help='Size of the ensemble model')
         parser.add_argument('--p-dim', type=int, default=2048, help='Prediction/Projection output dimension')
         parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
+        parser.add_argument('--var-eps', type=float, default=0.0001, metavar='hparam', help='Std epsilon in VICReg')
+        parser.add_argument('--lambda-vicreg', type=float, default=25., metavar='hparam', help='Lambda weight in VICReg')
+        parser.add_argument('--mu-vicreg', type=float, default=25., metavar='hparam', help='Mu weight in VICReg')
+        parser.add_argument('--nu-vicreg', type=float, default=1., metavar='hparam', help='Nu weight in VICReg')
         parser.add_argument('--tau', type=float, default=.99, metavar='hparam', help='Target update factor')
         parser.add_argument('--lambda-twins', type=float, default=0.005, metavar='hparam',
                             help='Off diagonal weight factor for Barlow Twins loss')
+        parser.add_argument('--lambda-disc', type=float, default=1., metavar='hparam',
+                            help='Discriminator loss for the encoder training')
         parser.add_argument('--model', type=str, default='resnet18', metavar='hparam', help='The encoder model '
                                                                                             '(selected out of torchvision.models)')
         parser.add_argument('--layer', type=str, default='avgpool', metavar='hparam',
@@ -216,9 +229,6 @@ class BeamSSL(Algorithm):
     def preprocess_inference(self, results=None, augmentations=0, dataset=None, **kwargs):
 
             self.dataset.normalize = True
-
-            net = self.networks['encoder']
-            # self.optimized_encoder = torch.jit.optimize_for_inference(torch.jit.script(self.networks['encoder'].eval()))
 
             if augmentations > 0 and dataset is not None:
                 results['aux']['org_n_augmentations'] = dataset.n_augmentations
@@ -247,7 +257,8 @@ class BeamSSL(Algorithm):
                  'metric': ['multi_error', 'multiclass'],
                  'num_class': 10}
 
-        return lgb.train(param, train_data, num_round, valid_sets=[validation_data])
+        return lgb.train(param, train_data, num_round, valid_sets=[validation_data], verbose_eval=False)
+
 
     def postprocess_epoch(self, results=None, training=None, epoch=None, **kwargs):
 
@@ -255,7 +266,7 @@ class BeamSSL(Algorithm):
                 self.labeled_dataset.normalize = True
 
                 self.logger.info("Evaluating the downstream task")
-                features = self.evaluate(self.labeled_dataset)
+                features = self.evaluate(self.labeled_dataset, projection=False, prediction=False, augmentations=0)
                 z = features.values['h'].detach().cpu().numpy()
                 y = features.values['y'].detach().cpu().numpy()
 
@@ -283,7 +294,7 @@ class BeamSSL(Algorithm):
             return results
 
     def inference(self, sample=None, results=None, subset=None, predicting=True,
-                  projection=True, prediction=True, augmentations=0, **kwargs):
+                  projection=True, prediction=True, augmentations=0, inference_networks=True, **kwargs):
 
         data = {}
         if predicting:
@@ -294,7 +305,8 @@ class BeamSSL(Algorithm):
             if 'y' in sample:
                 data['y'] = sample['y']
 
-        networks = self.inference_networks
+        networks = self.inference_networks if inference_networks else self.networks
+
         b = len(x)
         if b < self.batch_size_eval:
             x = torch.cat([x, torch.zeros((self.batch_size_eval-b, *x.shape[1:]), device=x.device, dtype=x.dtype)])
@@ -338,6 +350,7 @@ class BeamBarlowTwins(BeamSSL):
 
         h = self.h_dim
         p = self.p_dim
+        self.n_ensembles = hparams.n_ensembles
 
         projection = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
@@ -348,58 +361,172 @@ class BeamBarlowTwins(BeamSSL):
 
         self.add_networks_and_optmizers(networks={'projection': projection, 'discriminator': discriminator})
 
-        ensemble = BeamEnsemble(self.generate_encoder, n_ensembles=hparams.n_ensembles)
+        # if self.n_ensembles > 1:
+        ensemble = BeamEnsemble(self.generate_encoder, n_ensembles=self.n_ensembles)
         ensemble.set_optimizers(BeamOptimizer.prototype(dense_args={'lr': self.hparams.lr_dense,
                                                                     'weight_decay': self.hparams.weight_decay,
                                                                     'betas': (self.hparams.beta1, self.hparams.beta2),
                                                                     'eps': self.hparams.eps}))
 
-        # self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)
-        self.add_networks_and_optmizers(networks=ensemble, name='encoder')
+        self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)
 
         # beam_weights_initializer(self.networks['projection'])
-        # beam_weights_initializer(self.networks['discriminator'], method='orthogonal')
+        beam_weights_initializer(self.networks['discriminator'], method='orthogonal')
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
         encoder = self.networks['encoder']
-        opt_e = self.optimizers['encoder']
 
         projection = self.networks['projection']
         opt_p = self.optimizers['projection']
 
-        index = torch.randperm(len(encoder))
-        z1 = projection(encoder(x_aug1, index=index[0]))
-        z2 = projection(encoder(x_aug2, index=index[0]))
+        discriminator = self.networks['discriminator']
+        opt_d = self.optimizers['discriminator']
 
-        z1 = (z1 - z1.mean(dim=0, keepdim=True)) / (z1.std(dim=0, keepdim=True) + 1e-6)
-        z2 = (z2 - z2.mean(dim=0, keepdim=True)) / (z2.std(dim=0, keepdim=True) + 1e-6)
+        freeze_network_params(encoder, projection)
+        free_network_params(discriminator)
 
-        b, d = z1.shape
-        corr = (z1.T @ z2) / b
+        index = torch.randperm(encoder.n_ensembles)
+        h = encoder(x_aug1, index=index[0])
+        r = torch.randn_like(h)
 
-        I = torch.eye(d, device=corr.device)
-        corr_diff = (corr - I) ** 2
+        d_h = discriminator(h)
+        d_r = discriminator(r)
 
-        invariance = torch.diag(corr_diff)
-        redundancy = (corr_diff * (1 - I)).sum(dim=-1)
+        loss_d = F.softplus(-d_h) + F.softplus(d_r)
+        # loss_d = -d_h + d_r
+        loss_d = self.apply(loss_d, training=training, optimizers=[opt_d], name='discriminator')
+        results['scalar']['loss_d'].append(float(loss_d))
+        results['scalar']['stats_mu'].append(float(h.mean()))
+        results['scalar']['stats_std'].append(float(h.std()))
 
-        loss = invariance + self.hparams.lambda_twins * redundancy
+        if not counter % self.hparams.n_discriminator_steps:
+            free_network_params(encoder, projection)
+            freeze_network_params(discriminator)
 
-        # opt_1 = encoder.optimizers[index[0]]
-        # opt_2 = encoder.optimizers[index[1]]
+            index = torch.randperm(encoder.n_ensembles)
 
-        # loss = self.apply(loss, training=training, optimizers=[opt_1, opt_2, opt_p])
-        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
+            ind1 = index[0]
+            ind2 = index[min(len(index)-1, 1)]
+            opt_e1 = encoder.optimizers[ind1]
+            opt_e2 = encoder.optimizers[ind2]
 
-        # add scalar measurements
-        results['scalar']['loss'].append(float(loss))
-        results['scalar']['invariance'].append(float(invariance.mean()))
-        results['scalar']['redundancy'].append(float(redundancy.mean()))
+            h1 = encoder(x_aug1, index=index[0])
+            h2 = encoder(x_aug2, index=index[min(len(index)-1, 1)])
+
+            d1 = discriminator(h1)
+            d2 = discriminator(h2)
+
+            z1 = projection(h1)
+            z2 = projection(h2)
+
+            z1 = (z1 - z1.mean(dim=0, keepdim=True)) / (z1.std(dim=0, keepdim=True) + 1e-6)
+            z2 = (z2 - z2.mean(dim=0, keepdim=True)) / (z2.std(dim=0, keepdim=True) + 1e-6)
+
+            b, d = z1.shape
+            corr = (z1.T @ z2) / b
+
+            I = torch.eye(d, device=corr.device)
+            corr_diff = (corr - I) ** 2
+
+            invariance = torch.diag(corr_diff)
+            redundancy = (corr_diff * (1 - I)).sum(dim=-1)
+            # discrimination = -F.softplus(-d1) - F.softplus(-d2)
+            discrimination = F.softplus(d1) + F.softplus(d2)
+            # discrimination = d1 + d2
+
+            opts = [opt_e1, opt_p] if ind1 == ind2 else [opt_e1, opt_e2, opt_p]
+            loss = self.apply(invariance, self.hparams.lambda_twins * redundancy,
+                              self.hparams.lambda_disc * discrimination, training=training,
+                              optimizers=opts, name='encoder')
+
+            # add scalar measurements
+            results['scalar']['loss'].append(float(loss))
+            results['scalar']['invariance'].append(float(invariance.mean()))
+            results['scalar']['redundancy'].append(float(redundancy.mean()))
+            results['scalar']['discrimination'].append(float(discrimination.mean()))
 
         return results
+
+
+# class BeamBarlowTwins2(BeamSSL):
+#
+#     def __init__(self, hparams):
+#         super().__init__(hparams)
+#
+#         h = self.h_dim
+#         p = self.p_dim
+#         self.n_ensembles = hparams.n_ensembles
+#
+#         projection = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+#                                    nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+#                                    nn.ReLU(), nn.Linear(h, p))
+#
+#         self.add_networks_and_optmizers(networks={'projection': projection})
+#
+#         ensemble = BeamEnsemble(self.generate_encoder, n_ensembles=self.n_ensembles)
+#         ensemble.set_optimizers(BeamOptimizer.prototype(dense_args={'lr': self.hparams.lr_dense,
+#                                                                     'weight_decay': self.hparams.weight_decay,
+#                                                                     'betas': (self.hparams.beta1, self.hparams.beta2),
+#                                                                     'eps': self.hparams.eps}))
+#
+#         self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)
+#
+#     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+#
+#         x_aug1, x_aug2 = sample['augmentations']
+#
+#         encoder = self.networks['encoder']
+#
+#         projection = self.networks['projection']
+#         opt_p = self.optimizers['projection']
+#
+#         index = torch.randperm(encoder.n_ensembles)
+#
+#         ind1 = index[0]
+#         ind2 = index[min(len(index)-1, 1)]
+#         opt_e1 = encoder.optimizers[ind1]
+#         opt_e2 = encoder.optimizers[ind2]
+#
+#         h1 = encoder(x_aug1, index=index[0])
+#         h2 = encoder(x_aug2, index=index[min(len(index)-1, 1)])
+#
+#         z1 = projection(h1)
+#         z2 = projection(h2)
+#
+#         mu1 = z1.mean(dim=0, keepdim=True)
+#         mu2 = z2.mean(dim=0, keepdim=True)
+#
+#         std1 = z1.std(dim=0, keepdim=True)
+#         std2 = z2.std(dim=0, keepdim=True)
+#
+#         z1 = (z1 - mu1) / (std1 + 1e-6)
+#         z2 = (z2 - mu2) / (std2 + 1e-6)
+#
+#         b, d = z1.shape
+#         corr = (z1.T @ z2) / b
+#
+#         I = torch.eye(d, device=corr.device)
+#         corr_diff = (corr - I) ** 2
+#
+#         invariance = torch.diag(corr_diff)
+#         redundancy = (corr_diff * (1 - I)).sum(dim=-1)
+#         variance =
+#
+#         opts = [opt_e1, opt_p] if ind1 == ind2 else [opt_e1, opt_e2, opt_p]
+#         loss = self.apply(invariance, self.hparams.lambda_twins * redundancy,
+#                           self.hparams.lambda_disc * variance, training=training,
+#                           optimizers=opts, name='encoder')
+#
+#         # add scalar measurements
+#         results['scalar']['loss'].append(float(loss))
+#         results['scalar']['invariance'].append(float(invariance.mean()))
+#         results['scalar']['redundancy'].append(float(redundancy.mean()))
+#         results['scalar']['variance'].append(float(variance.mean()))
+#
+#         return results
 
 
 class UniversalSSL(BeamSSL):
@@ -524,6 +651,66 @@ class BarlowTwins(BeamSSL):
         results['scalar']['loss'].append(float(loss))
         results['scalar']['invariance'].append(float(invariance.mean()))
         results['scalar']['redundancy'].append(float(redundancy.mean()))
+
+        return results
+
+
+class VICReg(BeamSSL):
+
+    def __init__(self, hparams):
+
+        super().__init__(hparams)
+
+        networks = {}
+        h = self.h_dim
+        p = self.p_dim
+
+        networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, p))
+
+        self.add_networks_and_optmizers(networks=networks)
+
+    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+
+        x_aug1, x_aug2 = sample['augmentations']
+
+        encoder = self.networks['encoder']
+        opt_e = self.optimizers['encoder']
+
+        projection = self.networks['projection']
+        opt_p = self.optimizers['projection']
+
+        z1 = projection(encoder(x_aug1))
+        z2 = projection(encoder(x_aug2))
+
+        sim_loss = F.mse_loss(z1, z2, reduction='mean')
+
+        mu1 = z1.mean(dim=0, keepdim=True)
+        mu2 = z2.mean(dim=0, keepdim=True)
+
+        std1 = torch.sqrt(z1.var(dim=0) + self.hparams.var_eps)
+        std2 = torch.sqrt(z2.var(dim=0) + self.hparams.var_eps)
+        std_loss = torch.mean(F.relu(1 - std1)) + torch.mean(F.relu(1 - std2))
+
+        z1 = (z1 - mu1)
+        z2 = (z2 - mu2)
+
+        b, d = z1.shape
+        corr1 = (z1.T @ z1) / (b - 1)
+        corr2 = (z2.T @ z2) / (b - 1)
+
+        I = torch.eye(d, device=corr1.device)
+        cov_loss = (corr1 * (1 - I)).pow(2).sum() / d + (corr2 * (1 - I)).pow(2).sum() / d
+
+        loss = self.hparams.lambda_vicreg * sim_loss + self.hparams.mu_vicreg * std_loss + self.hparams.nu_vicreg * cov_loss
+        loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
+
+        # add scalar measurements
+        results['scalar']['loss'].append(float(loss))
+        results['scalar']['sim_loss'].append(float(sim_loss))
+        results['scalar']['std_loss'].append(float(std_loss))
+        results['scalar']['cov_loss'].append(float(cov_loss))
 
         return results
 

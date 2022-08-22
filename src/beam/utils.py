@@ -16,6 +16,7 @@ from timeit import default_timer as timer
 from loguru import logger
 from torchvision import transforms
 import hashlib
+from functools import partial
 
 # logger.remove(handler_id=0)
 logger.remove()
@@ -412,8 +413,14 @@ def concat_data(data):
         return data
 
 
+def batch_augmentation_(x, augmentations):
+    return torch.stack([augmentations(xi) for xi in x])
+
+
 def batch_augmentation(augmentations):
-    return transforms.Lambda(lambda x: torch.stack([augmentations(xi) for xi in x]))
+
+    ba = partial(batch_augmentation_, augmentations=augmentations)
+    return transforms.Lambda(ba)
 
 
 def finite_iterations(iterator, n):

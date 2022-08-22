@@ -54,7 +54,12 @@ class MNISTAlgorithm(Algorithm):
         self.stop_at = hparams.stop_at
 
     def early_stopping(self, results=None, epoch=None, **kwargs):
-        acc = np.mean(results['validation']['scalar']['acc'])
+
+        if 'validation' in results:
+            acc = np.mean(results['validation']['scalar']['acc'])
+        else:
+            acc = np.mean(results['test']['scalar']['acc'])
+
         return acc > self.stop_at
 
     def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):

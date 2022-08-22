@@ -95,7 +95,7 @@ def get_beam_parser():
     parser.add_argument('--total-steps', type=int, default=int(1e6), metavar='hparam', help='Total number of environment steps')
 
     parser.add_argument('--epoch-length', type=int, default=None, metavar='hparam',
-                        help='Length of both train/eval epochs (if None - it is taken from epoch-length-train/epoch-length-eval arguments)')
+                        help='Length of train+eval epochs (if None - it is taken from epoch-length-train/epoch-length-eval arguments)')
     parser.add_argument('--epoch-length-train', type=int, default=None, metavar='hparam',
                         help='Length of each epoch (if None - it is the dataset[train] size)')
     parser.add_argument('--epoch-length-eval', type=int, default=None, metavar='hparam',

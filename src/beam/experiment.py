@@ -766,7 +766,7 @@ class Experiment(object):
         if self.world_size > 1:
             logger.info(f'Initializing {self.world_size} parallel workers')
             logger.warning(f"Caution: Sometimes DDP experiments can fail due to a bad configuration. "
-                           f"Specifically, of in_place error set --no-broadcast-buffer flag and for subgraph issues"
+                           f"Specifically, if in_place error set --no-broadcast-buffer flag and for subgraph issues"
                            f"set --find-unused-parameters")
 
             if self.hparams.mp_port == 'random' or check_if_port_is_available(self.hparams.mp_port):

@@ -48,6 +48,7 @@ class Algorithm(object):
         else:
             self.scaler = None
 
+        self.scalers = {}
         self.epoch = 0
 
         self.networks = {}
@@ -162,24 +163,46 @@ class Algorithm(object):
         self.trial = experiment.trial
         self._experiment = experiment
 
-    def apply(self, loss, training=True, optimizers=None, set_to_none=True, gradient=None,
-              retain_graph=None, create_graph=False, inputs=None, iteration=None):
+    def apply(self, *losses, training=True, optimizers=None, set_to_none=True, gradient=None,
+              retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None, name=None):
 
-        n = torch.numel(loss)
-        if n > 1:
+        total_loss = 0
+        if reduction is None:
+            reduction = self.hparams.reduction
 
-            if self.hparams.reduction == 'sum':
-                reduction = 1
-            elif self.hparams.reduction == 'mean':
-                reduction = n
-            elif self.hparams.reduction == 'sqrt':
-                reduction = math.sqrt(n)
-            else:
-                raise NotImplementedError
+        for loss in losses:
+            n = torch.numel(loss)
 
-            loss = loss.sum() / reduction
+            if n > 1:
 
+                if reduction == 'sum':
+                    r = 1
+                elif reduction == 'mean':
+                    r = n
+                elif reduction == 'mean_batch':
+                    r = len(loss)
+                elif reduction == 'sqrt':
+                    r = math.sqrt(n)
+                elif reduction == 'sqrt_batch':
+                    r = math.sqrt(len(loss))
+                else:
+                    raise NotImplementedError
+
+                loss = loss.sum() / r
+
+            total_loss = total_loss + loss
+
+        loss = total_loss
         if training:
+
+            if self.amp:
+                if name is None:
+                    scaler = self.scaler
+                else:
+                    if name not in self.scalers:
+                        self.scalers[name] = torch.cuda.amp.GradScaler()
+                    scaler = self.scalers[name]
+
             if optimizers is None:
                 optimizers = self.optimizers
             elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
@@ -197,7 +220,7 @@ class Algorithm(object):
             with torch.autocast(self.autocast_device, enabled=False):
 
                 if self.amp:
-                    self.scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
+                    scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
                                                      create_graph=create_graph, inputs=inputs)
                 else:
                     loss.backward(gradient=gradient, retain_graph=retain_graph,
@@ -206,14 +229,14 @@ class Algorithm(object):
                 if self.hparams.clip_gradient > 0:
                     for op in optimizers.values():
                         if self.amp:
-                            self.scaler.unscale_(op)
+                            scaler.unscale_(op)
                         for pg in op.param_groups:
                             torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.hparams.clip)
 
                 if iteration is None or not (iteration % self.hparams.accumulate):
                     for op in optimizers:
                         if self.amp:
-                            self.scaler.step(op)
+                            scaler.step(op)
                         else:
                             op.step()
                         op.zero_grad(set_to_none=set_to_none)
@@ -311,9 +334,14 @@ class Algorithm(object):
         net = net.to(self.device)
 
         if self.ddp:
-            net = DDP(net, device_ids=[self.device],
+            net_ddp = DDP(net, device_ids=[self.device],
                       find_unused_parameters=self.hparams.find_unused_parameters,
                       broadcast_buffers=self.hparams.broadcast_buffers)
+
+            for a in dir(net):
+                if a not in dir(net_ddp) and not a.startswith('_'):
+                    setattr(net_ddp, a, getattr(net, a))
+            net = net_ddp
 
         return net
 
@@ -429,8 +457,12 @@ class Algorithm(object):
                 with torch.autocast(self.autocast_device, enabled=self.amp):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
 
-                    if self.amp and training and self.scaler._scale is not None:
-                        self.scaler.update()
+                    if self.amp and training:
+                        if self.scaler._scale is not None:
+                            self.scaler.update()
+                        for k, scaler in self.scalers.items():
+                            if scaler._scale is not None:
+                                scaler.update()
 
             results = self.postprocess_epoch(sample=sample, index=ind, results=results, epoch=n, training=training)
 
@@ -602,6 +634,8 @@ class Algorithm(object):
 
         state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
 
+        state['scalers'] = {k: scaler.state_dict() if scaler is not None else None for k, scaler in self.scalers.items()}
+
         if path is not None:
             torch.save(state, path)
         else:
@@ -630,6 +664,10 @@ class Algorithm(object):
         if self.scaler is not None and 'scaler' in state.keys():
             self.scaler.load_state_dict(state["scaler"])
 
+        for k, s in state["scalers"].items():
+            if k in self.scalers:
+                self.scalers[k].load_state_dict(s)
+
         self.epoch = state['epoch']
         return state['aux']
 
@@ -650,7 +688,6 @@ class Algorithm(object):
 
             opt_shape = list((self.batch_size_eval, *shape))
             min_shape = list((1, *shape))
-            # print(min_shape)
 
             net = copy.deepcopy(self.networks[k])
             if eval:

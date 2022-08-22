@@ -966,14 +966,16 @@ def reset_network(net):
             logger.warning(f"Parameter {n} was not reset. Check if its nn.Module supports .reset_parameters()")
 
 
-def free_network_params(net):
-    for p in net.parameters():
-        p.requires_grad = True
+def free_network_params(*nets):
+    for net in nets:
+        for p in net.parameters():
+            p.requires_grad = True
 
 
-def freeze_network_params(net):
-    for p in net.parameters():
-        p.requires_grad = False
+def freeze_network_params(*nets):
+    for net in nets:
+        for p in net.parameters():
+            p.requires_grad = False
 
 
 def copy_network(net):
