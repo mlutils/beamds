@@ -8,7 +8,7 @@ from .utils import logger
 import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, stack_results
+from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, stack_results, to_numpy
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
@@ -101,7 +101,8 @@ class Algorithm(object):
                 optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
                                                               'weight_decay': self.hparams.weight_decay,
                                                                'betas': (self.hparams.beta1, self.hparams.beta2),
-                                                              'eps': self.hparams.eps},
+                                                              'eps': self.hparams.eps,
+                                                               'capturable': self.hparams.capturable},
                                                sparse_args={'lr': self.hparams.lr_sparse,
                                                             'betas': (self.hparams.beta1, self.hparams.beta2),
                                                             'eps': self.hparams.eps},
@@ -163,14 +164,35 @@ class Algorithm(object):
         self.trial = experiment.trial
         self._experiment = experiment
 
-    def apply(self, *losses, training=True, optimizers=None, set_to_none=True, gradient=None,
-              retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None, name=None):
+    def apply(self, *losses, weights=None, training=True, optimizers=None, set_to_none=True, gradient=None,
+              retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None,
+              name=None, results=None):
 
+        if name is None:
+            name = 'loss'
         total_loss = 0
         if reduction is None:
             reduction = self.hparams.reduction
 
-        for loss in losses:
+        if len(losses) == 1 and issubclass(type(losses[0]), dict):
+            losses = losses[0]
+        elif len(losses) == 1:
+            losses = {name: losses[0]}
+        else:
+            losses = {f'{name}_{i}': l for i, l in enumerate(losses)}
+
+        if weights is None:
+            weights = {k: 1 for k in losses.keys()}
+        elif issubclass(type(weights), dict):
+            pass
+        else:
+            weights_type = check_type(weights, check_minor=False, check_element=False)
+            if weights_type.major == 'scalar':
+                weights = {next(iter(losses.keys())): weights}
+            else:
+                weights = {f'{name}_{i}': l for i, l in enumerate(weights)}
+
+        for k, loss in losses.items():
             n = torch.numel(loss)
 
             if n > 1:
@@ -188,9 +210,25 @@ class Algorithm(object):
                 else:
                     raise NotImplementedError
 
-                loss = loss.sum() / r
+                loss = loss.sum()
+                losses[k] = loss
+                weights[k] = weights[k] / r
 
-            total_loss = total_loss + loss
+            total_loss = total_loss + loss * weights[k]
+
+        if results is not None:
+            if len(losses) > 1:
+                for k, l in losses.items():
+                    results['scalar'][f'{k}_s'].append(to_numpy(l))
+
+                    if weights[k] > 1:
+                        results['scalar'][f'{k}_w'].append(to_numpy(weights[k]))
+                    elif weights[k] == 0:
+                        results['scalar'][f'{k}_w'].append(0)
+                    else:
+                        results['scalar'][f'{k}_f'].append(to_numpy(1 / weights[k]))
+
+            results['scalar'][name] = to_numpy(total_loss)
 
         loss = total_loss
         if training:

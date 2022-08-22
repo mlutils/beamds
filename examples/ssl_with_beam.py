@@ -21,6 +21,7 @@ from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, Pa
 from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature, BeamOptimizer
 from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble
 from src.beam.model import beam_weights_initializer, freeze_network_params, free_network_params
+from src.beam.utils import to_numpy
 
 import lightgbm as lgb
 import requests
@@ -203,23 +204,27 @@ class BeamSSL(Algorithm):
         beam_boolean_feature(parser, "pretrained", False, "Whether to load pretrained weights", metavar='hparam')
 
         parser.add_argument('--path-to-data', type=str, default=path_to_data, help='Path to the STL10 binaries')
-        parser.add_argument('--similarity', type=str, metavar='hparam', default='cosine', help='Similarity distance in UniversalSSL')
+        parser.add_argument('--similarity', type=str, metavar='hparam', default='cosine',
+                            help='Similarity distance in UniversalSSL')
         parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
         parser.add_argument('--n-discriminator-steps', type=int, default=1, help='Number of discriminator steps')
         parser.add_argument('--n-ensembles', type=int, default=1, help='Size of the ensemble model')
         parser.add_argument('--p-dim', type=int, default=2048, help='Prediction/Projection output dimension')
         parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
         parser.add_argument('--var-eps', type=float, default=0.0001, metavar='hparam', help='Std epsilon in VICReg')
-        parser.add_argument('--lambda-vicreg', type=float, default=25., metavar='hparam', help='Lambda weight in VICReg')
+        parser.add_argument('--lambda-vicreg', type=float, default=25., metavar='hparam',
+                            help='Lambda weight in VICReg')
         parser.add_argument('--mu-vicreg', type=float, default=25., metavar='hparam', help='Mu weight in VICReg')
         parser.add_argument('--nu-vicreg', type=float, default=1., metavar='hparam', help='Nu weight in VICReg')
+        parser.add_argument('--lambda-mean-vicreg', type=float, default=0., metavar='hparam',
+                            help='lambda-mean weight in BeamVICReg')
         parser.add_argument('--tau', type=float, default=.99, metavar='hparam', help='Target update factor')
         parser.add_argument('--lambda-twins', type=float, default=0.005, metavar='hparam',
                             help='Off diagonal weight factor for Barlow Twins loss')
         parser.add_argument('--lambda-disc', type=float, default=1., metavar='hparam',
                             help='Discriminator loss for the encoder training')
-        parser.add_argument('--model', type=str, default='resnet18', metavar='hparam', help='The encoder model '
-                                                                                            '(selected out of torchvision.models)')
+        parser.add_argument('--model', type=str, default='resnet18', metavar='hparam',
+                            help='The encoder model (selected out of torchvision.models)')
         parser.add_argument('--layer', type=str, default='avgpool', metavar='hparam',
                             help='Name of the model layer which'
                                  ' extracts the features')
@@ -655,6 +660,81 @@ class BarlowTwins(BeamSSL):
         return results
 
 
+class BeamVICReg(BeamSSL):
+
+    def __init__(self, hparams):
+
+        super().__init__(hparams)
+
+        networks = {}
+        h = self.h_dim
+        p = self.p_dim
+
+        networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, p))
+
+        self.add_networks_and_optmizers(networks=networks)
+
+    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+
+        x_aug1, x_aug2 = sample['augmentations']
+
+        encoder = self.networks['encoder']
+        opt_e = self.optimizers['encoder']
+
+        projection = self.networks['projection']
+        opt_p = self.optimizers['projection']
+
+        h1 = encoder(x_aug1)
+        h2 = encoder(x_aug2)
+
+        z1 = projection(h1)
+        z2 = projection(h2)
+
+        sim_loss = F.mse_loss(z1, z2, reduction='none').mean(dim=0)
+
+        mu1 = z1.mean(dim=0, keepdim=True)
+        mu2 = z2.mean(dim=0, keepdim=True)
+
+        std1 = torch.sqrt(z1.var(dim=0) + self.hparams.var_eps)
+        std2 = torch.sqrt(z2.var(dim=0) + self.hparams.var_eps)
+        std_loss = F.relu(1 - std1) + F.relu(1 - std2)
+
+        z1 = (z1 - mu1)
+        z2 = (z2 - mu2)
+
+        b, d = z1.shape
+
+        if b != 256:
+            print(b)
+            raise Exception
+
+        corr1 = (z1.T @ z1) / (b - 1)
+        corr2 = (z2.T @ z2) / (b - 1)
+
+        I = torch.eye(d, device=corr1.device)
+        cov_loss = (corr1 * (1 - I)).pow(2).sum(dim=0) + (corr2 * (1 - I)).pow(2).sum(dim=0)
+
+        mean_loss = mu1.pow(2) + mu2.pow(2)
+
+        self.apply({'sim_loss': sim_loss, 'std_loss': std_loss,
+                           'cov_loss': cov_loss, 'mean_loss': mean_loss},
+                          weights={'sim_loss': self.hparams.lambda_vicreg,
+                                   'std_loss': self.hparams.mu_vicreg,
+                                   'cov_loss': self.hparams.nu_vicreg,
+                                   'mean_loss': self.hparams.lambda_mean_vicreg}, results=results,
+                          training=training, optimizers=[opt_e, opt_p])
+
+        # add scalar measurements
+        results['scalar']['h_mean'].append(to_numpy(h1.mean(dim=0).flatten()))
+        results['scalar']['h_std'].append(to_numpy(h1.std(dim=0).flatten()))
+        results['scalar']['z_mean'].append(to_numpy(mu1.flatten()))
+        results['scalar']['z_std'].append(to_numpy(z1.std(dim=0).flatten()))
+
+        return results
+
+
 class VICReg(BeamSSL):
 
     def __init__(self, hparams):
@@ -681,8 +761,11 @@ class VICReg(BeamSSL):
         projection = self.networks['projection']
         opt_p = self.optimizers['projection']
 
-        z1 = projection(encoder(x_aug1))
-        z2 = projection(encoder(x_aug2))
+        h1 = encoder(x_aug1)
+        h2 = encoder(x_aug2)
+
+        z1 = projection(h1)
+        z2 = projection(h2)
 
         sim_loss = F.mse_loss(z1, z2, reduction='mean')
 
@@ -707,10 +790,12 @@ class VICReg(BeamSSL):
         loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
 
         # add scalar measurements
-        results['scalar']['loss'].append(float(loss))
-        results['scalar']['sim_loss'].append(float(sim_loss))
-        results['scalar']['std_loss'].append(float(std_loss))
-        results['scalar']['cov_loss'].append(float(cov_loss))
+        results['scalar']['loss'].append(to_numpy(loss))
+        results['scalar']['sim_loss'].append(to_numpy(sim_loss))
+        results['scalar']['std_loss'].append(to_numpy(std_loss))
+        results['scalar']['cov_loss'].append(to_numpy(cov_loss))
+        results['scalar']['stats_mu'].append(h1.mean(dim=0).detach().cpu().numpy())
+        results['scalar']['stats_std'].append(h1.std(dim=0).detach().cpu().numpy())
 
         return results
 

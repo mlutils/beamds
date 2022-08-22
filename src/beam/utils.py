@@ -200,6 +200,20 @@ def process_async(func, args, mp_context='spawn', num_workers=10):
     return results
 
 
+def to_numpy(x):
+
+    if issubclass(type(x), torch.Tensor):
+        x = x.detach().cpu().numpy()
+    else:
+        x = np.array(x)
+    if x.size == 1:
+        if 'int' in str(x.dtype):
+            x = int(x)
+        else:
+            x = float(x)
+    return x
+
+
 def beam_device(device):
     if type(device) is torch.device:
         return device

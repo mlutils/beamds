@@ -84,6 +84,9 @@ def get_beam_parser():
                                                        "buffers of the module at beginning of the forward function.")
 
     boolean_feature(parser, "store-initial-weights", False, "Store the network's initial weights")
+    boolean_feature(parser, "capturable", False, 'Temporary workaround that should be removed in future pytorch releases '
+                                                 'it makes possible to reload models with adam optimizers '
+                                                 'see: https://github.com/pytorch/pytorch/issues/80809')
 
     # experiment parameters
     parser.add_argument('--init', type=str, default='ortho', metavar='hparam',
