@@ -481,7 +481,7 @@ class Experiment(object):
 
                         v = [report[param]] if np.isscalar(report[param]) else report[param]
                         v = np.stack(v).flatten()
-                        stat = pd.Series(v).describe()
+                        stat = pd.Series(v, dtype=np.float32).describe()
                         report[param] = np.mean(v)
 
                     if print_log:

@@ -24,7 +24,20 @@ logger.add(sys.stdout, level='INFO', colorize=True,
            format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>')
 
 
-def stack_results(results, batch_size=None):
+def stack_train_results(results, batch_size=None):
+
+    stacked_results = defaultdict(dict)
+
+    for k_type in results.keys():
+        for k_name, v in results[k_type].items():
+            stacked_results[k_type][k_name] = v
+
+    stacked_results = stack_inference_results(stacked_results, batch_size=batch_size)
+
+    return stacked_results
+
+
+def stack_inference_results(results, batch_size=None):
     for n, res in results.items():
         for k, v in res.items():
             v_type = check_type(v)
@@ -35,12 +48,20 @@ def stack_results(results, batch_size=None):
                 elif vi_type.minor == 'tensor':
                     results[n][k] = torch.stack(results[n][k])
             elif v_type.major == 'array' and v_type.element == 'array':
-                if v_type.minor in ['tensor', 'numpy']:
+                if v_type.minor in ['tensor', 'numpy', 'list']:
 
                     if v_type.minor == 'tensor':
                         oprs = {'cat': torch.cat, 'stack': torch.stack}
-                    else:
+                    elif v_type.minor == 'numpy':
                         oprs = {'cat': np.concatenate, 'stack': np.stack}
+                    else:
+                        vi_type = check_type(v[0])
+                        if vi_type.minor == 'tensor':
+                            oprs = {'cat': torch.cat, 'stack': torch.stack}
+                        elif vi_type.minor == 'numpy':
+                            oprs = {'cat': np.concatenate, 'stack': np.stack}
+                        else:
+                            break
 
                     opr = oprs['cat']
                     if batch_size is not None and v[0].shape != batch_size:

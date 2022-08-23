@@ -8,7 +8,8 @@ from .utils import logger
 import numpy as np
 from .model import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, stack_results, to_numpy
+from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
+    stack_inference_results, to_numpy, stack_train_results
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
@@ -505,7 +506,7 @@ class Algorithm(object):
             results = self.postprocess_epoch(sample=sample, index=ind, results=results, epoch=n, training=training)
 
             batch_size = self.batch_size_train if training else self.batch_size_eval
-            results = stack_results(results, batch_size=batch_size)
+            results = stack_inference_results(results, batch_size=batch_size)
 
             delta = timer() - t0
             n_iter = i + 1
@@ -600,7 +601,7 @@ class Algorithm(object):
                                                  results=results, subset=subset, dataset=dataset,
                                                  predicting=predicting, **kwargs)
 
-            results = stack_results(results, batch_size=batch_size)
+            results = stack_inference_results(results, batch_size=batch_size)
             dataset = UniversalDataset(transforms, index=index)
             dataset.set_statistics(results)
 
@@ -608,25 +609,17 @@ class Algorithm(object):
 
     def __iter__(self):
 
-        all_train_results = defaultdict(dict)
-        all_eval_results = defaultdict(dict)
-
         eval_generator = self.epoch_iterator(self.n_epochs, subset=self.eval_subset, training=False)
         for i, train_results in enumerate(self.epoch_iterator(self.n_epochs, subset='train', training=True)):
 
-            for k_type in train_results.keys():
-                for k_name, v in train_results[k_type].items():
-                    all_train_results[k_type][k_name] = v
+            train_results = stack_train_results(train_results, batch_size=self.batch_size_train)
 
             with torch.no_grad():
 
-                validation_results = next(eval_generator)
+                eval_results = next(eval_generator)
+                eval_results = stack_train_results(eval_results, batch_size=self.batch_size_eval)
 
-                for k_type in validation_results.keys():
-                    for k_name, v in validation_results[k_type].items():
-                        all_eval_results[k_type][k_name] = v
-
-            results = {'train': all_train_results, self.eval_subset: all_eval_results}
+            results = {'train': train_results, self.eval_subset: eval_results}
 
             if self.hpo is not None:
                 results = self.report(results, i)
@@ -636,9 +629,6 @@ class Algorithm(object):
 
             if self.early_stopping(results, i):
                 return
-
-            all_train_results = defaultdict(dict)
-            all_eval_results = defaultdict(dict)
 
     def set_mode(self, training=True):
 
