@@ -216,7 +216,7 @@ class BeamSSL(Algorithm):
                             help='Lambda weight in VICReg')
         parser.add_argument('--mu-vicreg', type=float, default=25., metavar='hparam', help='Mu weight in VICReg')
         parser.add_argument('--nu-vicreg', type=float, default=1., metavar='hparam', help='Nu weight in VICReg')
-        parser.add_argument('--lambda-mean-vicreg', type=float, default=0., metavar='hparam',
+        parser.add_argument('--lambda-mean-vicreg', type=float, default=20., metavar='hparam',
                             help='lambda-mean weight in BeamVICReg')
         parser.add_argument('--tau', type=float, default=.99, metavar='hparam', help='Target update factor')
         parser.add_argument('--lambda-twins', type=float, default=0.005, metavar='hparam',
@@ -263,7 +263,6 @@ class BeamSSL(Algorithm):
                  'num_class': 10}
 
         return lgb.train(param, train_data, num_round, valid_sets=[validation_data], verbose_eval=False)
-
 
     def postprocess_epoch(self, results=None, training=None, epoch=None, **kwargs):
 
@@ -694,23 +693,23 @@ class BeamVICReg(BeamSSL):
 
         sim_loss = F.mse_loss(z1, z2, reduction='none').mean(dim=0)
 
-        mu1_h = h1.mean(dim=0, keepdim=True)
-        mu2_h = h2.mean(dim=0, keepdim=True)
+        # mu1_h = h1.mean(dim=0, keepdim=True)
+        # mu2_h = h2.mean(dim=0, keepdim=True)
 
         mu1 = z1.mean(dim=0, keepdim=True)
         mu2 = z2.mean(dim=0, keepdim=True)
 
         mean_loss = mu1.pow(2) + mu2.pow(2)
-        meanh_loss = mu1_h.pow(2) + mu2_h.pow(2)
+        # meanh_loss = mu1_h.pow(2) + mu2_h.pow(2)
 
         std1 = torch.sqrt(z1.var(dim=0) + self.hparams.var_eps)
         std2 = torch.sqrt(z2.var(dim=0) + self.hparams.var_eps)
 
-        std1_h = torch.sqrt(h1.var(dim=0) + self.hparams.var_eps)
-        std2_h = torch.sqrt(h2.var(dim=0) + self.hparams.var_eps)
+        # std1_h = torch.sqrt(h1.var(dim=0) + self.hparams.var_eps)
+        # std2_h = torch.sqrt(h2.var(dim=0) + self.hparams.var_eps)
 
         std_loss = F.relu(1 - std1) + F.relu(1 - std2)
-        stdh_loss = std1_h.pow(2) + std2_h.pow(2) - torch.log(std1_h) - torch.log(std2_h)
+        # stdh_loss = std1_h.pow(2) + std2_h.pow(2) - torch.log(std1_h) - torch.log(std2_h)
 
         z1 = (z1 - mu1)
         z2 = (z2 - mu2)
@@ -723,14 +722,22 @@ class BeamVICReg(BeamSSL):
         I = torch.eye(d, device=corr1.device)
         cov_loss = (corr1 * (1 - I)).pow(2).sum(dim=0) + (corr2 * (1 - I)).pow(2).sum(dim=0)
 
-        self.apply({'sim_loss': sim_loss, 'std_loss': std_loss, 'stdh_loss': stdh_loss,
-                           'cov_loss': cov_loss, 'mean_loss': mean_loss, 'meanh_loss': meanh_loss},
+        # self.apply({'sim_loss': sim_loss, 'std_loss': std_loss, 'stdh_loss': stdh_loss,
+        #                    'cov_loss': cov_loss, 'mean_loss': mean_loss, 'meanh_loss': meanh_loss},
+        #                   weights={'sim_loss': self.hparams.lambda_vicreg,
+        #                            'std_loss': self.hparams.mu_vicreg,
+        #                            'stdh_loss': self.hparams.mu_vicreg,
+        #                            'cov_loss': self.hparams.nu_vicreg,
+        #                            'mean_loss': self.hparams.lambda_mean_vicreg,
+        #                            'meanh_loss': self.hparams.lambda_mean_vicreg}, results=results,
+        #                   training=training, optimizers=[opt_e, opt_p])
+
+        self.apply({'sim_loss': sim_loss, 'std_loss': std_loss,
+                           'cov_loss': cov_loss, 'mean_loss': mean_loss, },
                           weights={'sim_loss': self.hparams.lambda_vicreg,
                                    'std_loss': self.hparams.mu_vicreg,
-                                   'stdh_loss': self.hparams.mu_vicreg,
                                    'cov_loss': self.hparams.nu_vicreg,
-                                   'mean_loss': self.hparams.lambda_mean_vicreg,
-                                   'meanh_loss': self.hparams.lambda_mean_vicreg}, results=results,
+                                   'mean_loss': self.hparams.lambda_mean_vicreg,}, results=results,
                           training=training, optimizers=[opt_e, opt_p])
 
         # add scalar measurements

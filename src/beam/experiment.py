@@ -16,7 +16,8 @@ from collections import defaultdict
 from .utils import include_patterns, logger, check_type, beam_device, check_element_type, print_beam_hyperparameters
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port
+from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
+    pretty_format_number
 import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
@@ -445,6 +446,10 @@ class Experiment(object):
 
     def log_data(self, results, n, print_log=True, alg=None, argv=None):
 
+        def format_stat(k, v):
+            format = f"{k if k != 'mean' else 'avg'}:{pretty_format_number(v)}".ljust(15)
+            return format
+
         for subset, res in results.items():
 
             def format(v):
@@ -487,8 +492,13 @@ class Experiment(object):
                     if print_log:
                         if not (type(report[param]) is dict or type(
                                 report[param]) is defaultdict):
-                            stat = '| '.join([f"{k if k != 'mean' else 'avg'}:{v: .4}".ljust(15) for k, v in dict(stat).items() if k != 'count'])
-                            paramp = f'{param}:'
+                            stat = '| '.join([format_stat(k, v) for k, v in dict(stat).items() if k != 'count'])
+
+                            if len(param) > 11:
+                                paramp = f'{param[:4]}...{param[-4:]}:'
+                            else:
+                                paramp = f'{param}:'
+
                             logger.info(f'{paramp: <12} | {stat}')
 
         if self.writer is None:

@@ -235,6 +235,23 @@ def to_numpy(x):
     return x
 
 
+def pretty_format_number(x):
+
+    if x is None or np.isinf(x) or np.isnan(x):
+        return f'{x}'.ljust(10)
+    if int(x) == x and np.abs(x) < 10000:
+        return f'{int(x)}'.ljust(10)
+    if np.abs(x) >= 10000 or np.abs(x) < 0.0001:
+        return f'{float(x):.4}'.ljust(10)
+    if np.abs(x) >= 1000:
+        return f'{x:.1f}'.ljust(10)
+    if np.abs(x) < 10000 and np.abs(x) >= 0.0001:
+        nl = int(np.log10(np.abs(x)))
+        return f'{np.sign(x) * int(np.abs(x) * (10 ** (4 - nl))) * float(10 ** (nl - 4))}'.ljust(8)[:8].ljust(10)
+
+    return f'{x}:NoFormat'
+
+
 def beam_device(device):
     if type(device) is torch.device:
         return device
