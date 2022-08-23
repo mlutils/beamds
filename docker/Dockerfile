@@ -6,6 +6,7 @@
 FROM nvcr.io/nvidia/pytorch:22.07-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
+LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 28"
 LABEL "build_command"="bash docker/build_beam.sh"
 
 ENV DEBIAN_FRONTEND noninteractive

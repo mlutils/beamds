@@ -31,7 +31,13 @@ simclr_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_
 
 pretrained_weights = {'convnext_base': {'weights': models.convnext.ConvNeXt_Base_Weights.DEFAULT},
                           'resnet18': {'weights': models.resnet.ResNet18_Weights.DEFAULT},
-                      'convnext_tiny': {'weights': models.convnext.ConvNeXt_Tiny_Weights.DEFAULT}, }
+                      'convnext_tiny': {'weights': models.convnext.ConvNeXt_Tiny_Weights.DEFAULT},
+                      'swin_s': {'weights': 'DEFAULT'},}
+
+hidden_sizes = {'resnet18': 512, 'resnet50': 2048, 'convnext_base': 1024, 'simclr': 2048,
+                'convnext_tiny': 768, 'swin_s': 768}
+
+
 untrained_weights = {'weights': None}
 
 if '1.13' not in torch.__version__:
@@ -152,14 +158,15 @@ class BeamSSL(Algorithm):
         networks = {}
         # choose your network
 
-        hidden_sizes = {'resnet18': 512, 'resnet50': 2048, 'convnext_base': 1024, 'simclr': 2048, 'convnext_tiny': 768}
-
         if hparams.layer == 'last':
             self.h_dim = 1000
         else:
             self.h_dim = hidden_sizes[hparams.model]
 
-        self.p_dim = hparams.p_dim
+        if hparams.p_dim is None:
+            self.p_dim = hidden_sizes[hparams.model]
+        else:
+            self.p_dim = hparams.p_dim
 
         self.temperature = hparams.temperature
         self.model = hparams.model
@@ -209,7 +216,7 @@ class BeamSSL(Algorithm):
         parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
         parser.add_argument('--n-discriminator-steps', type=int, default=1, help='Number of discriminator steps')
         parser.add_argument('--n-ensembles', type=int, default=1, help='Size of the ensemble model')
-        parser.add_argument('--p-dim', type=int, default=2048, help='Prediction/Projection output dimension')
+        parser.add_argument('--p-dim', type=int, default=None, help='Prediction/Projection output dimension')
         parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
         parser.add_argument('--var-eps', type=float, default=0.0001, metavar='hparam', help='Std epsilon in VICReg')
         parser.add_argument('--lambda-vicreg', type=float, default=25., metavar='hparam',

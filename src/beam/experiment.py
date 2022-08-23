@@ -86,9 +86,13 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     except KeyboardInterrupt:
 
         logger.error(f"KeyboardInterrupt: Training was interrupted, Worker terminates")
-        if world_size == 1:
-            logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
-            experiment.reload_checkpoint(alg)
+        if rank == 0:
+            checkpoint_file = os.path.join(experiment.checkpoints_dir, f'checkpoint_{alg.epoch+1:06d}')
+            alg.save_checkpoint(checkpoint_file)
+
+        # if world_size == 1:
+        #     logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
+        #     experiment.reload_checkpoint(alg)
 
     if world_size == 1:
         return alg, results

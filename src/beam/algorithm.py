@@ -484,6 +484,10 @@ class Algorithm(object):
 
             results = defaultdict(lambda: defaultdict(list))
 
+            if not training and self.rank > 0:
+                yield results
+                continue
+
             self.set_mode(training=training)
             results = self.preprocess_epoch(results=results, epoch=n, training=training)
 
