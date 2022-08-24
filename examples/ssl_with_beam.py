@@ -14,18 +14,23 @@ from kornia.augmentation.container import AugmentationSequential
 from pl_bolts.models.self_supervised import SimCLR as SimCLR_pretrained
 import torch_tensorrt
 
-from example_utils import add_beam_to_path
+from examples.example_utils import add_beam_to_path
 add_beam_to_path()
 
 from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
 from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature, BeamOptimizer
 from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble
 from src.beam.model import beam_weights_initializer, freeze_network_params, free_network_params
-from src.beam.utils import to_numpy
+from src.beam.utils import to_numpy, pretty_format_number
 
 import lightgbm as lgb
 import requests
 from torch.nn.utils import spectral_norm
+import faiss
+# working with faiss and torch
+import faiss.contrib.torch_utils
+from sklearn.manifold import TSNE
+import umap
 
 simclr_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
 
@@ -44,6 +49,7 @@ if '1.13' not in torch.__version__:
     pretrained_weights = {k: {'pretrained': True} for k in pretrained_weights.keys()}
     untrained_weights = {'pretrained': None}
 
+
 def my_default_configuration_by_cluster():
 
     ip = requests.get(r'http://jsonip.com').json()['ip']
@@ -60,6 +66,125 @@ def my_default_configuration_by_cluster():
         # root_dir = '/localdata/elads/data/resutls'
 
     return path_to_data, root_dir
+
+
+class Similarity(object):
+
+    def __init__(self, index=None, d=None, expected_population=int(1e6),
+                 expected_searches=int(1e6), metric='l2',
+                 training_device='cpu', inference_device='cpu', ram_footprint=2**8*int(1e9),
+                 gpu_footprint=24*int(1e9), exact=False, nlists=None, M=None,
+                 reducer='umap'):
+
+        '''
+        To Choose an index, follow https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index
+        @param d:
+        @param expected_population:
+        @param expected_searches:
+        @param metric:
+        @param ram_size:
+        @param gpu_size:
+        @param exact_results:
+        @param reducer:
+        '''
+
+        metrics = {'l2': faiss.METRIC_L2, 'l1': faiss.METRIC_L1, 'linf': faiss.METRIC_Linf,
+                   'cosine': faiss.METRIC_INNER_PRODUCT, 'ip': faiss.METRIC_INNER_PRODUCT,
+                   'js': faiss.METRIC_JensenShannon}
+        metric = metrics[metric]
+        self.normalize = False
+        if metric == 'cosine':
+            self.normalize = True
+
+        # choosing nlists: https://github.com/facebookresearch/faiss/issues/112,
+        #  https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index
+        if nlists is None:
+            if expected_population <= int(1e6):
+                # You will need between 30*K and 256*K vectors for training (the more the better)
+                nlists = int(8 * math.sqrt(expected_population))
+            elif expected_population > int(1e6) and expected_population <= int(1e7):
+                nlists = 2 ** 16
+            elif expected_population > int(1e7) and expected_population <= int(1e8):
+                nlists = 2 ** 18
+            else:
+                nlists = 2 ** 20
+
+        if index is not None:
+            if inference_device == 'cpu':
+
+                if exact:
+                    logger.info(f"Using Flat Index. Expected RAM footprint is "
+                                f"{pretty_format_number(4 * d * expected_population / int(1e6))} MB")
+                    index = faiss.IndexFlat(d, metric)
+                else:
+                    if M is None:
+                        M = 2 ** np.arange(2, 7)[::-1]
+                        footprints = (d * 4 + M * 8) * expected_population
+                        M_ind = np.where(footprints < ram_footprint)[0]
+                        if len(M_ind):
+                            M = M[M_ind[0]]
+                    if M is not None:
+                        logger.info(f"Using HNSW{M}. Expected RAM footprint is "
+                                    f"{pretty_format_number(footprints[M_ind[0]] / int(1e6))} MB")
+                        index = faiss.IndexHNSWFlat(d, M)
+
+            else:
+
+                res = faiss.StandardGpuResources()
+                if exact:
+                    config = faiss.GpuIndexFlatConfig()
+                    config.device = inference_device
+                    logger.info(f"Using GPUFlat Index. Expected GPU-RAM footprint is "
+                                f"{pretty_format_number(4 * d * expected_population / int(1e6))} MB")
+
+                    index = faiss.GpuIndexFlat(res, d, metric, config)
+                else:
+
+                    if (4 * d + 8) * expected_population <= gpu_footprint:
+                        logger.info(f"Using GPUIndexIVFFlat Index. Expected GPU-RAM footprint is "
+                                    f"{pretty_format_number((4 * d + 8) * expected_population / int(1e6))} MB")
+                        index = faiss.GpuIndexIVFFlat(res, d,  nlists, M, 8, faiss.METRIC_L2,
+                                                      faiss.GpuIndexIVFFlatConfig())
+                    else:
+
+                        if M is None:
+                            M = 2 ** np.arange(2, 7)[::-1]
+                            footprints = (M + 8) * expected_population
+                            M_ind = np.where(footprints < gpu_footprint)[0]
+                            if len(M_ind):
+                                M = M[M_ind[0]]
+                        if M is not None:
+                            logger.info(f"Using GPUIndexIVFFlat Index. Expected GPU-RAM footprint is "
+                                        f"{pretty_format_number((M + 8) * expected_population / int(1e6))} MB")
+                            faiss.GpuIndexIVFPQ(res, d,  nlists, M, 8, faiss.METRIC_L2, faiss.GpuIndexIVFPQConfig())
+
+        if index is not None:
+            logger.error("Cannot find suitable index type")
+            raise Exception
+
+        res = faiss.StandardGpuResources()
+        if training_device != 'cpu' and inference_device == 'cpu':
+            self.training_index = faiss.index_cpu_to_gpu(res, training_device, index)
+
+        if reducer == 'umap':
+            self.reducer = umap.UMAP()
+        elif reducer == 'tsne':
+            self.reducer = TSNE()
+        else:
+            raise NotImplementedError
+
+    def add(self, z):
+        self.index.add(z)
+
+    def most_similar(self, zi, n=1):
+        D, I = self.index.search(zi, n)
+        return D, I
+
+    def __len__(self):
+        return self.index.ntotal
+
+    def reduce(self, z):
+        return self.reducer.fit_transform(z)
 
 
 class ImageNetAugmented(UniversalDataset):
@@ -305,7 +430,8 @@ class BeamSSL(Algorithm):
             return results
 
     def inference(self, sample=None, results=None, subset=None, predicting=True,
-                  projection=True, prediction=True, augmentations=0, inference_networks=True, **kwargs):
+                  projection=True, prediction=True, augmentations=0, inference_networks=True,
+                  **kwargs):
 
         data = {}
         if predicting:
@@ -352,6 +478,24 @@ class BeamSSL(Algorithm):
             data['std'] = std
 
         return data, results
+
+    def evaluate(self, *args, **kwargs):
+        '''
+        For validation and test purposes (when labels are known)
+        '''
+        return self(*args, predicting=False, **kwargs)
+
+    def predict(self, dataset, *args, lazy=False, add_to_population=False, anomaly_detction=False, **kwargs):
+        '''
+        Build faiss populations and calculate anomalies
+        '''
+
+        # if add_to_population:
+        #
+        #
+        # features = super().predict(dataset, *args, lazy=False, **kwargs)
+
+        return self(dataset, *args, predicting=True, **kwargs)
 
 
 class BeamBarlowTwins(BeamSSL):
