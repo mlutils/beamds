@@ -1,0 +1,9 @@
+# jax
+
+jax[cuda]
+jaxlib
+objax
+
+torchlars
+torch_pruning
+git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git

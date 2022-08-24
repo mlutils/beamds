@@ -13,11 +13,11 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger, check_type, beam_device, check_element_type
-from .algorithm import Algorithm
+from .utils import include_patterns, logger, check_type, beam_device, check_element_type, print_beam_hyperparameters
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
+from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
+    pretty_format_number
 import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
@@ -26,22 +26,41 @@ from tensorboard.notebook import start as start_tensorboard
 done = mp.Event()
 
 
-def beam_algorithm_generator(experiment, Alg, Dataset=None):
+def gen_hparams_string(e):
+    tensorboard_hparams = pd.read_pickle(os.path.join(e, "hparams.pkl"))
+    return '/'.join([f"{k}_{v}" for k, v in tensorboard_hparams.items()])
 
-    if issubclass(type(Alg), Algorithm):
-        alg = Alg
-    else:
-        alg = Alg(experiment.hparams)
+
+def path_depth(path):
+    return len(os.path.normpath(path).split(os.sep))
+
+
+def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
+                             dataset_args=None, dataset_kwargs=None):
+
+    if alg_args is None:
+        alg_args = tuple()
+    if alg_kwargs is None:
+        alg_kwargs = dict()
+    if dataset_args is None:
+        dataset_args = tuple()
+    if dataset_kwargs is None:
+        dataset_kwargs = dict()
+
+    if type(Alg) == type:
+        alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
+    else:
+        alg = Alg
 
     if issubclass(type(Dataset), torch.utils.data.Dataset):
         dataset = Dataset
     elif Dataset is None:
         dataset = alg.dataset
     else:
-        dataset = Dataset(experiment.hparams)
+        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
 
     alg.load_dataset(dataset)
     alg.experiment = experiment
@@ -57,7 +76,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     try:
         for i, results in enumerate(iter(alg)):
-            experiment.save_model_results(results, alg, i,
+            experiment.save_model_results(copy.deepcopy(results), alg, i,
                                           print_results=experiment.hparams.print_results,
                                           visualize_results=experiment.hparams.visualize_results,
                                           store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
@@ -67,9 +86,13 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     except KeyboardInterrupt:
 
         logger.error(f"KeyboardInterrupt: Training was interrupted, Worker terminates")
-        if world_size == 1:
-            logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
-            experiment.reload_checkpoint(alg)
+        if rank == 0:
+            checkpoint_file = os.path.join(experiment.checkpoints_dir, f'checkpoint_{alg.epoch+1:06d}')
+            alg.save_checkpoint(checkpoint_file)
+
+        # if world_size == 1:
+        #     logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
+        #     experiment.reload_checkpoint(alg)
 
     if world_size == 1:
         return alg, results
@@ -118,25 +141,26 @@ class Experiment(object):
     :param args:
     """
 
-    def __init__(self, args, results_names=None, hpo=None, trial=None, print_hyperparameters=True):
+    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None):
         """
-        args: the parsed arguments
-        results_names: additional results directories (defaults are: train, validation, test)
+
+        @param args:
+        @param hpo:
+        @param trial:
+        @param print_hyperparameters: If None, default behavior is to print hyperparameters only outside of jupyter notebooks
         """
+
+        if print_hyperparameters is None:
+            print_hyperparameters = not is_notebook()
 
         self.tensorboard_hparams = {}
 
-        pa = None
-        if hasattr(args, 'parser'):
-            pa = args.parser._actions
-            pa = {pai.dest: pai.metavar for pai in pa}
-            delattr(args, 'parser')
-
+        hparams = args.hparams
         vars_args = copy.copy(vars(args))
         for k, v in vars_args.items():
             param_type = check_type(v)
-            if param_type.element in ['bool', 'str', 'int', 'float'] and pa is not None and k in pa and pa[k] == 'hparam':
-                self.tensorboard_hparams[k] =v
+            if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float'] and k in hparams:
+                self.tensorboard_hparams[k] = v
 
         self.hparams = copy.copy(args)
 
@@ -190,6 +214,9 @@ class Experiment(object):
             else:
                 self.hparams.override = False
 
+        if self.hparams.reload and not self.load_model:
+            logger.warning(f"Did not find existing experiment to match your specifications: basedir={self.base_dir} resume={self.hparams.resume}")
+
         if self.exp_name is None:
             exp_num = np.max(exp_indices) + 1 if len(exp_indices) else 0
             self.exp_name = "%04d_%s" % (exp_num, self.exptime)
@@ -212,7 +239,7 @@ class Experiment(object):
                 logger.info("Creating new experiment")
 
             else:
-                logger.info("Deleting old experiment")
+                logger.warning("Deleting old experiment")
 
                 shutil.rmtree(self.root)
                 self.exp_name = "%04d_%s" % (exp_num, self.exptime)
@@ -231,15 +258,7 @@ class Experiment(object):
             os.makedirs(self.checkpoints_dir)
 
             # make log dirs
-            os.makedirs(os.path.join(self.results_dir, 'train'))
-            os.makedirs(os.path.join(self.results_dir, 'validation'))
-            os.makedirs(os.path.join(self.results_dir, 'test'))
-
-            if type(results_names) is list:
-                for r in results_names:
-                    os.makedirs(os.path.join(self.results_dir, r))
-            elif type(results_names) is str:
-                os.makedirs(os.path.join(self.results_dir, results_names))
+            os.makedirs(os.path.join(self.results_dir))
 
             # copy code to dir
 
@@ -264,12 +283,7 @@ class Experiment(object):
         logger.add(log_file, level='INFO', colorize=True,
                    format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
 
-        if print_hyperparameters:
-            logger.info(f"beam project: {args.project_name}")
-            logger.info('Experiment Hyperparameters')
-
-            for k, v in vars_args.items():
-                logger.info(k + ': ' + str(v))
+        print_beam_hyperparameters(args, debug_only=not print_hyperparameters)
 
         # replace zero split_dataset_seed to none (non-deterministic split) - if zero
         if self.hparams.split_dataset_seed == 0:
@@ -286,12 +300,6 @@ class Experiment(object):
         if self.hparams.batch_size is None:
             self.hparams.batch_size = self.hparams.batch_size_train
 
-        if self.hparams.epoch_length_train is None:
-            self.hparams.epoch_length_train = self.hparams.epoch_length
-
-        if self.hparams.epoch_length_eval is None:
-            self.hparams.epoch_length_eval = self.hparams.epoch_length
-
         # build the hyperparamter class which will be sent to the dataset and algorithm classes
 
         if self.load_model:
@@ -300,8 +308,17 @@ class Experiment(object):
             self.hparams.reload_path = None
 
         self.trial = trial
+
         self.hparams.hpo = hpo
         self.hparams.ddp = False
+        self.hparams.rank = self.rank
+        self.hparams.world_size = self.world_size
+
+        if self.hparams.device.type == 'cuda':
+            if self.hparams.device_list is not None:
+                self.hparams.device_list = [beam_device(di) for di in self.hparams.device_list]
+            else:
+                self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.parallel)]
 
         pd.to_pickle(self.tensorboard_hparams, os.path.join(self.root, "hparams.pkl"))
 
@@ -352,11 +369,17 @@ class Experiment(object):
 
         self.rank = rank
         self.world_size = world_size
+
+        self.hparams.rank = rank
+        self.hparams.world_size = world_size
+
         self.hparams.ddp = self.world_size > 1
         self.hparams.enable_tqdm = self.hparams.enable_tqdm and (rank == 0)
 
-        if 'cpu' not in str(self.hparams.device) and world_size > 1:
-            self.hparams.device = beam_device(rank)
+        if self.hparams.device.type != 'cpu' and world_size > 1:
+            self.hparams.device = beam_device(self.hparams.device_list[rank])
+
+        logger.info(f'Worker {rank + 1} will be running on device={str(self.hparams.device)}')
 
     def writer_control(self, enable=True, networks=None, inputs=None):
 
@@ -404,12 +427,14 @@ class Experiment(object):
             for subset, res in results.items():
 
                 if store_results == 'yes' or store_results == 'logscale' and logscale:
+
+                    os.makedirs(os.path.join(self.results_dir, subset), exist_ok=True)
                     pd.to_pickle(res, os.path.join(self.results_dir, subset, f'results_{epoch:06d}'))
 
                 alg = algorithm if visualize_weights else None
 
             if visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
-                self.log_data(copy.deepcopy(results), epoch, print_log=print_results, alg=alg, argv=argv)
+                self.log_data(results, epoch, print_log=print_results, alg=alg, argv=argv)
 
             checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_{epoch:06d}')
             algorithm.save_checkpoint(checkpoint_file)
@@ -425,6 +450,10 @@ class Experiment(object):
 
     def log_data(self, results, n, print_log=True, alg=None, argv=None):
 
+        def format_stat(k, v):
+            format = f"{k if k != 'mean' else 'avg'}:{pretty_format_number(v)}".ljust(15)
+            return format
+
         for subset, res in results.items():
 
             def format(v):
@@ -439,9 +468,8 @@ class Experiment(object):
                 else:
                     return v
 
-            logger.info(f'{subset}:')
-
             if print_log and 'stats' in res:
+                logger.info(f'{subset}:')
                 logger.info('| '.join([f"{k}: {format(v)} " for k, v in res['stats'].items()]))
 
             report = None
@@ -454,24 +482,27 @@ class Experiment(object):
             if report is not None:
 
                 for param, val in report.items():
-
                     stat = None
-
                     if type(val) is dict or type(val) is defaultdict:
                         for p, v in val.items():
                             val[p] = np.mean(v)
-                    elif isinstance(report[param], torch.Tensor):
-                        stat = pd.Series(report[param].cpu().numpy()).describe()
-                        report[param] = torch.mean(val)
                     else:
-                        stat = pd.Series(report[param]).describe()
-                        report[param] = np.mean(val)
+
+                        v = [report[param]] if np.isscalar(report[param]) else report[param]
+                        v = np.stack(v).flatten()
+                        stat = pd.Series(v, dtype=np.float32).describe()
+                        report[param] = np.mean(v)
 
                     if print_log:
                         if not (type(report[param]) is dict or type(
                                 report[param]) is defaultdict):
-                            stat = '| '.join([f"{k if k != 'mean' else 'avg'}:{v: .4}".ljust(15) for k, v in dict(stat).items() if k != 'count'])
-                            paramp = f'{param}:'
+                            stat = '| '.join([format_stat(k, v) for k, v in dict(stat).items() if k != 'count'])
+
+                            if len(param) > 11:
+                                paramp = f'{param[:4]}...{param[-4:]}:'
+                            else:
+                                paramp = f'{param}:'
+
                             logger.info(f'{paramp: <12} | {stat}')
 
         if self.writer is None:
@@ -519,50 +550,106 @@ class Experiment(object):
             self.writer.add_hparams(self.tensorboard_hparams, metrics, name=os.path.join('..', 'hparams'), global_step=n)
             # self.writer.add_hparams(self.tensorboard_hparams, metrics, run_name=os.path.join('..', 'hparams'))
 
+    @staticmethod
+    def _tensorboard(port=None, get_port_from_beam_port_range=True, base_dir=None, log_dirs=None, hparams=False):
+
+        port = find_port(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range)
+        if port is None:
+            return
+
+        logger.info(f"Opening a tensorboard server on port: {port}")
+
+        if hparams:
+            command_argument = f"--bind_all --logdir {base_dir} --port {port}"
+        else:
+            command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
+        start_tensorboard(command_argument)
+
+    def normalize_experiment_path(self, path, level=0):
+
+        normal_path = [self.hparams.root_dir, self.hparams.project_name,
+                       self.hparams.algorithm, self.hparams.identifier]
+        pd = path_depth(self.hparams.root_dir)
+
+        return os.path.join(*normal_path[:len(normal_path)-pd-level], path)
+
+    @staticmethod
+    def open_tensorboard(root='', project=None, algorithm=None,
+                         identifier=None, experiment=None, hparams=False, port=None,
+                         get_port_from_beam_port_range=True):
+        depth = 4
+        filters = {'project': None, 'algorithm': None, 'identifier': None, 'experiment':None}
+        if project is not None:
+            path_type = check_type(project)
+            if path_type.minor == 'list':
+                filters['project'] = project
+            else:
+                filters['project'] = [project]
+                path = os.path.join(root, project)
+                if os.path.isdir(path):
+                    root = path
+                    depth = 3
+
+        if algorithm is not None:
+            path_type = check_type(algorithm)
+            if path_type.minor == 'list':
+                filters['algorithm'] = algorithm
+            else:
+                filters['algorithm'] = [algorithm]
+                path = os.path.join(root, algorithm)
+                if os.path.isdir(path):
+                    root = path
+                    depth = 2
+
+        if identifier is not None:
+            path_type = check_type(identifier)
+            if path_type.minor == 'list':
+                filters['identifier'] = identifier
+            else:
+                filters['identifier'] = [identifier]
+                path = os.path.join(root, identifier)
+                if os.path.isdir(path):
+                    root = path
+                    depth = 1
+        if experiment is not None:
+            path_type = check_type(experiment)
+            if path_type.minor == 'list':
+                filters['experiment'] = experiment
+            else:
+                filters['experiment'] = [experiment]
+                path = os.path.join(root, experiment)
+                if os.path.isdir(path):
+                    root = path
+                    depth = 0
+
+        experiments = [d[0] for d in list(os.walk(root)) if (path_depth(d[0]) - path_depth(root)) == depth]
+        experiments = [os.path.normpath(e) for e in experiments]
+
+        if filters['project'] is not None:
+            experiments = list(filter(lambda x: x.split(os.sep)[-4] in filters['project'], experiments))
+        if filters['algorithm'] is not None:
+            experiments = list(filter(lambda x: x.split(os.sep)[-3] in filters['algorithm'], experiments))
+        if filters['identifier'] is not None:
+            experiments = list(filter(lambda x: x.split(os.sep)[-2] in filters['identifier'], experiments))
+        if filters['experiment'] is not None:
+            experiments = list(filter(lambda x: x.split(os.sep)[-1] in filters['experiment'], experiments))
+
+        print(experiments)
+
+        names = ['/'.join(e.split(os.sep)[-3:]) for e in experiments]
+        names = [f"{n}/{gen_hparams_string(e)}" for n, e in zip(names, experiments)]
+
+        experiments = [os.path.join(e, 'tensorboard', 'logs') for e in experiments]
+        log_dirs = ','.join([f"{n}:{e}" for n, e in zip(names, experiments)])
+
+        Experiment._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
+                                base_dir=root, log_dirs=log_dirs, hparams=hparams)
+
     def tensorboard(self, port=None, add_all_of_same_identifier=False, add_all_of_same_algorithm=False,
                           add_all_of_same_project=False, more_experiments=None, more_identifiers=None,
                           more_algorithms=None, get_port_from_beam_port_range=True, hparams=False):
 
         suffix = 'hparams' if hparams else 'logs'
-
-        if port is None:
-            if get_port_from_beam_port_range:
-                base_range = int(os.environ['JUPYTER_PORT']) // 1000
-                port_range = range(base_range * 1000, (base_range + 1) * 1000)
-
-            else:
-                port_range = range(10000, 2**16)
-
-            for p in port_range:
-                if check_if_port_is_available(p):
-                    port = str(p)
-                    break
-
-            if port is None:
-                logger.error("Cannot find free port in the specified range")
-                return
-
-        else:
-            if not check_if_port_is_available(port):
-                logger.error(f"Port {port} is not available")
-                return
-
-        logger.info(f"Opening a tensorboard server on port: {port}")
-
-        def gen_hparams_string(e):
-            tensorboard_hparams = pd.read_pickle(os.path.join(e, "hparams.pkl"))
-            return '/'.join([f"{k}_{v}" for k, v in tensorboard_hparams.items()])
-
-        def path_depth(path):
-            return len(os.path.normpath(path).split(os.sep))
-
-        def normalize_path(path, level=0):
-
-            normal_path = [self.hparams.root_dir, self.hparams.project_name,
-                           self.hparams.algorithm, self.hparams.identifier]
-            pd = path_depth(self.hparams.root_dir)
-
-            return os.path.join(*normal_path[:len(normal_path)-pd-level], path)
 
         if add_all_of_same_project:
             base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name)
@@ -584,7 +671,7 @@ class Experiment(object):
                 logger.error("hparams visualization does not support adding additional experiments")
             if type(more_experiments) is str:
                 more_experiments = [more_experiments]
-                experiments = experiments + [normalize_path(e, level=0) for e in more_experiments]
+                experiments = experiments + [self.normalize_experiment_path(e, level=0) for e in more_experiments]
 
         if more_identifiers is not None:
             if hparams:
@@ -593,7 +680,7 @@ class Experiment(object):
                 more_identifiers = [more_identifiers]
                 depth = 1
                 for identifier in more_identifiers:
-                    identifier = normalize_path(identifier, level=depth)
+                    identifier = self.normalize_experiment_path(identifier, level=depth)
                     experiments = experiments + [d[0] for d in list(os.walk(identifier)) if (path_depth(d[0]) - path_depth(identifier)) == depth]
 
         if more_algorithms is not None:
@@ -603,7 +690,7 @@ class Experiment(object):
                 more_algorithms = [more_algorithms]
                 depth = 2
                 for algorithm in more_algorithms:
-                    algorithm = normalize_path(algorithm, level=depth)
+                    algorithm = self.normalize_experiment_path(algorithm, level=depth)
                     experiments = experiments + [d[0] for d in list(os.walk(algorithm)) if (path_depth(d[0]) - path_depth(algorithm)) == depth]
 
         experiments = [os.path.normpath(e) for e in experiments]
@@ -613,19 +700,20 @@ class Experiment(object):
         experiments = [os.path.join(e, 'tensorboard', suffix) for e in experiments]
         log_dirs = ','.join([f"{n}:{e}" for n, e in zip(names, experiments)])
 
-        if hparams:
-            command_argument = f"--bind_all --logdir {base_dir} --port {port}"
-        else:
-            command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
-        start_tensorboard(command_argument)
+        self._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
+                          base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
-    def algorithm_generator(self, Alg, Dataset=None):
-        return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset)
+    def algorithm_generator(self, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
+                             dataset_args=None, dataset_kwargs=None):
+        return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
 
     def fit(self, Alg, Dataset=None, *args, return_results=False, reload_results=False,
-            tensorboard_arguments=None, **kwargs):
+            tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
+            dataset_kwargs=None, **kwargs):
 
-        ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset)
+        ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
 
@@ -691,6 +779,9 @@ class Experiment(object):
 
         if self.world_size > 1:
             logger.info(f'Initializing {self.world_size} parallel workers')
+            logger.warning(f"Caution: Sometimes DDP experiments can fail due to a bad configuration. "
+                           f"Specifically, if in_place error set --no-broadcast-buffer flag and for subgraph issues"
+                           f"set --find-unused-parameters")
 
             if self.hparams.mp_port == 'random' or check_if_port_is_available(self.hparams.mp_port):
                 self.hparams.mp_port = find_free_port()

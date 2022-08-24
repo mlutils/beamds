@@ -3,322 +3,55 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type, slice_to_index, as_tensor
+from .utils import check_type, slice_to_index, as_tensor, to_device
 import pandas as pd
 import math
 import hashlib
 import sys
 import warnings
 from .data_tensor import DataTensor
+import argparse
+from collections import namedtuple
 
-
-class PackedFolds(object):
-
-    def __init__(self, data, index=None, names=None, fold=None, fold_index=None, device=None,
-                 sort_index=False, quick_getitem=True):
-
-        self.quick_getitem = quick_getitem
-        self.names_dict = None
-        self.names = None
-        self.sampling_method = 'folds'
-        
-        if names is not None:
-            self.names = names
-            self.names_dict = {n: i for i, n in enumerate(self.names)}
-
-        data_type = check_type(data)
-
-        if data_type.minor == 'list':
-            self.data = [as_tensor(v, device=device) for v in data]
-            
-        elif data_type.minor == 'dict':
-            if names is None:
-                self.names = list(data.keys())
-                self.names_dict = {n: i for i, n in enumerate(self.names)}
-                
-            self.data = [as_tensor(data[k], device=device) for k in self.names]
-
-        elif data_type.major == 'array':
-            self.data = as_tensor(data, device=device)
-            self.sampling_method = 'no_folds'
-        else:
-            raise ValueError("data should be either dict/list/array")
-
-        fold_type = check_type(fold)
-
-        if fold_type.element == 'str':
-            fold, names_map = pd.factorize(fold)
-
-            if self.names_dict is not None:
-                assert all([i == self.names_dict[n] for i, n in enumerate(names_map)]), "fold and data maps must match"
-            
-            else:
-                self.names = list(names_map)
-                self.names_dict = {n: i for i, n in enumerate(self.names)}
-
-            fold = as_tensor(fold)
-
-            if self.sampling_method == 'no_folds':
-                self.sampling_method = 'foldable'
-            
-        elif fold_type.element == 'int':   
-            fold = as_tensor(fold)
-
-            if self.sampling_method == 'no_folds':
-                self.sampling_method = 'foldable'
-
-        elif fold is None:
-            if self.sampling_method == 'no_folds':
-                assert len(names) == 1, "this is the single fold case"
-                fold = torch.zeros(len(self.data), dtype=torch.int64)
-                self.sampling_method = 'offset'
-            else:
-                fold = torch.cat([i * torch.ones(len(d), dtype=torch.int64) for i, d in enumerate(self.data)])
-
-        else:
-            raise ValueError
-
-        if data_type.minor in ['dict', 'list']:
-            lengths = torch.LongTensor([len(di) for di in self.data])
-        else:
-            lengths = torch.bincount(fold)
-    
-        if fold_index is not None:
-            fold_index = as_tensor(fold_index)
-        else:
-            fold_index = torch.cat([torch.arange(l) for l in lengths])
-
-        # update names
-        if self.names is None:
-            if data_type.minor in ['dict', 'list']:
-                self.names = list(range(len(self.data)))
-            else:
-                self.names = torch.sort(torch.unique(fold)).values
-
-            self.names_dict = {n: i for i, n in enumerate(self.names)}
-
-        # merge data if possible for faster slicing
-        if data_type.minor in ['dict', 'list']:
-            dtype = [di.dtype for di in self.data]
-            shape = [di.shape[1:] for di in self.data]
-            if all([d == dtype[0] for d in dtype]) and all([s == shape[0] for s in shape]):
-                self.data = torch.cat(self.data)
-                self.sampling_method = 'offset'
-
-        index_type = check_type(index)
-
-        if index_type.minor == 'list':
-            index = torch.concat([as_tensor(v, return_vector=True) for v in index])
-
-        elif index_type.minor == 'dict':
-            index = torch.concat([as_tensor(index[k], return_vector=True) for k in self.names])
-
-        elif index_type.major == 'array':
-            index = as_tensor(index)
-            
-        elif index is None:
-
-            if self.sampling_method in ['offset', 'foldable']:
-                index = torch.arange(len(self.data))
-                self.sampling_method = 'index'
-            else:
-                index = torch.arange(sum([len(d) for d in self.data]))
-            
-        else:
-            raise ValueError
-
-        cumsum = torch.cumsum(lengths, dim=0)
-        offset = cumsum - lengths
-        offset = offset[fold] + fold_index
-
-        self.device = device
-
-        info = {'fold': fold, 'fold_index': fold_index, 'offset': offset}
-
-        if self.sampling_method == 'index':
-            index = None
-
-        self.info = DataTensor(info, index=index, device=device)
-
-        if sort_index:
-            self.sort_index()
-
-    def sort_index(self, ascending=True):
-
-        self.info = self.info.sort_index(ascending=ascending)
-
-        return self
-
-    def __len__(self):
-        return len(self.info)
-
-    def get_fold(self, name):
-
-        fold = self.names_dict[name]
-        info = self.info[self.info['fold'] == fold]
-        index = info.index
-
-        if self.sampling_method == 'folds':
-            data = self.data[fold]
-        elif  self.sampling_method == 'index':
-            data = self.data[index]
-        elif self.sampling_method == 'offset':
-            data = self.data[info['offset'].values]
-        else:
-            raise Exception(f"Sampling method unsupported: {self.sampling_method}")
-
-        return PackedFolds(data=data, index=index, names=[name], device=self.device)
-
-    def apply(self, functions):
-
-        functions_type = check_type(functions)
-
-        if functions_type.minor == 'list':
-            data = [f(d) for d, f in zip(self.data, functions)]
-
-        elif functions_type.minor == 'dict':
-            data = [f(self.get_fold(k)) for k, f in functions.items()]
-        else:
-            raise ValueError
-
-        return PackedFolds(data=data, index=self.index, names=self.names, device=self.device)
-
-    @property
-    def index(self):
-        return self.info.index
-
-    @property
-    def fold(self):
-        return self.info['fold'].values
-
-    @property
-    def fold_index(self):
-        return self.info['fold_index'].values
-
-    @property
-    def offset(self):
-        return self.info['offset'].values
-
-    @property
-    def shape(self):
-
-        if self.sampling_method == 'fold':
-            shape = {k: d.shape for k, d in zip(self.names, self.data)}
-        else:
-            shape = self.data.shape
-        return shape
-
-    @property
-    def values(self):
-
-        if self.sampling_method == 'fold':
-            data = torch.cat(self.data)
-        else:
-            data = self.data
-
-        return data[self.info['offset'].values]
-
-    @property
-    def tag(self):
-        if len(self.names) == 1:
-            return self.names[0]
-        return 'hetrogenous'
-
-    def to(self, device):
-
-        self.data = [di.to(device) for di in self.data]
-        self.info = self.info.to(device)
-        self.device = device
-
-    def __repr__(self):
-        if self.sampling_method == 'folds':
-            data = {k: self.data[self.names_dict[k]] for k in self.names}
-        else:
-            data = {k: self.get_fold(k).data for k in self.names}
-
-        if len(data) == 1:
-            data = next(iter(data.values()))
-
-        return repr(data)
-
-    def __getitem__(self, ind):
-
-        ind_type = check_type(ind, check_minor=False)
-        if ind_type.major == 'scalar' and ind_type.element == 'str':
-            return self.get_fold(ind)
-        if self.sampling_method == 'index' and self.quick_getitem:
-            return self.data[ind]
-
-        if type(ind) is tuple:
-            ind_rest = ind[1:]
-            ind = ind[0]
-        else:
-            ind_rest = tuple()
-
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
-        if ind_type.major == 'scalar':
-            ind = [ind]
-
-        info = self.info.loc[ind]
-
-        if self.sampling_method == 'folds':
-            fold, fold_index = info[['fold', 'fold_index']].values.T
-
-            uq = torch.sort(torch.unique(fold)).values
-            names = [self.names[i] for i in uq]
-
-            if len(uq) == 1:
-
-                data = self.data[uq[0]].__getitem__((fold_index, *ind_rest))
-                if len(ind) == 1:
-                    return data[0]
-
-                return PackedFolds(data=[data], names=names, index=ind, device=self.device)
-
-            fold_index = [fold_index[fold == i] for i in uq]
-            data = [self.data[i].__getitem__((j, *ind_rest)) for i, j in zip(uq, fold_index)]
-
-            fold = None
-
-        else:
-
-            fold, offset = info[['fold', 'offset']].values.T
-            index = info.index
-            ind = index if self.sampling_method == 'index' else offset
-
-            data = self.data.__getitem__((ind, *ind_rest))
-
-            uq = torch.sort(torch.unique(fold)).values
-            names = [self.names[i] for i in uq]
-
-            if self.sampling_method == 'index':
-                ind = None
-            else:
-                ind = index
-
-        return PackedFolds(data=data, names=names, index=ind, fold=fold, device=self.device)
+DataBatch = namedtuple("DataBatch", "index data")
 
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self, *args, index=None, device='cpu', **kwargs):
+    def __init__(self, *args, index=None, device='cpu', target_device=None, **kwargs):
+        """
+        Universal Beam dataset class
+
+        @param args:
+        @param index:
+        @param device:
+        @param target_device: if not None, the dataset is responsible to transform samples into this dataset.
+        This is useful when we want to transform a sample to the GPU during the getitem routine in order to speed-up the
+        computation.
+        @param kwargs:
+        """
         super().__init__()
 
         self.index = None
         self.set_index(index)
 
         if not hasattr(self, 'indices_split'):
-            self.indices_split = {}
-        if not hasattr(self, 'samplers'):
-            self.samplers = {}
+            self.indices = {}
         if not hasattr(self, 'labels_split'):
             self.labels_split = {}
+        if not hasattr(self, 'probs'):
+            self.probs = {}
 
         # The training label is to be used when one wants to apply some data transformations/augmentations
         # only in training mode
         self.training = False
         self.data_type = None
         self.statistics = None
+        self.target_device = target_device
+
+        if len(args) >= 1 and type(args[0]) is argparse.Namespace:
+            self.hparams = args[0]
+            args = args[1:]
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -366,7 +99,15 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.data_type = check_type(self.data).minor
 
         if self.data_type == 'dict':
+
+            ind_type = check_type(ind, check_minor=False)
+            if ind_type.element == 'str':
+                if ind_type.major == 'scalar':
+                    return self.data[ind]
+                return [self.data[k] for k in ind]
+
             return {k: v[ind] for k, v in self.data.items()}
+
         elif self.data_type == 'list':
             return [v[ind] for v in self.data]
         elif self.data_type == 'simple':
@@ -394,7 +135,14 @@ class UniversalDataset(torch.utils.data.Dataset):
             ind = slice_to_index(ind, l=len(self))
             iloc = ind
 
-        return ind, self.getitem(iloc)
+        sample = self.getitem(iloc)
+        if self.target_device is not None:
+            sample = to_device(sample, device=self.target_device)
+
+        return DataBatch(index=ind, data=sample)
+
+    def __device__(self):
+        raise NotImplementedError(f"For data type: {type(self.data)}")
 
     @property
     def device(self):
@@ -411,7 +159,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         elif hasattr(self.data, 'device'):
             return self.data.device
         else:
-            raise NotImplementedError(f"For data type: {type(self.data)}")
+            return self.__device__
 
     def __repr__(self):
         return repr(self.data)
@@ -465,11 +213,11 @@ class UniversalDataset(torch.utils.data.Dataset):
         if test is None:
             pass
         elif check_type(test).major == 'array':
-            self.indices_split['test'] = torch.LongTensor(test)
+            self.indices['test'] = torch.LongTensor(test)
             indices = np.sort(np.array(list(set(indices).difference(set(np.array(test))))))
 
             if labels is not None:
-                self.labels_split['test'] = labels[self.indices_split['test']]
+                self.labels_split['test'] = labels[self.indices['test']]
                 # labels = labels[indices]
 
         elif test_split_method == 'uniform':
@@ -483,7 +231,7 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 indices, test = train_test_split(indices, random_state=seed, test_size=test)
 
-            self.indices_split['test'] = torch.LongTensor(test)
+            self.indices['test'] = torch.LongTensor(test)
             if seed is not None:
                 seed = seed + 1
 
@@ -492,21 +240,21 @@ class UniversalDataset(torch.utils.data.Dataset):
             indices = indices[ind_sort]
 
             test_size = int(test * len(self)) if type(test) is float else test
-            self.indices_split['test'] = torch.LongTensor(indices[-test_size:])
+            self.indices['test'] = torch.LongTensor(indices[-test_size:])
             indices = indices[:-test_size]
 
             if labels is not None:
                 labels = labels[ind_sort]
-                self.labels_split['test'] = labels[self.indices_split['test']]
+                self.labels_split['test'] = labels[self.indices['test']]
 
         if validation is None:
             pass
         elif check_type(validation).major == 'array':
-            self.indices_split['validation'] = torch.LongTensor(validation)
+            self.indices['validation'] = torch.LongTensor(validation)
             indices = np.sort(np.array(list(set(indices).difference(set(np.array(validation))))))
 
             if labels is not None:
-                self.labels_split['validation'] = labels[self.indices_split['validation']]
+                self.labels_split['validation'] = labels[self.indices['validation']]
 
         else:
             if type(validation) is float:
@@ -520,49 +268,50 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 indices, validation = train_test_split(indices, random_state=seed, test_size=validation)
 
-            self.indices_split['validation'] = torch.LongTensor(validation)
+            self.indices['validation'] = torch.LongTensor(validation)
 
-        self.indices_split['train'] = torch.LongTensor(indices)
+        self.indices['train'] = torch.LongTensor(indices)
         if labels is not None:
             self.labels_split['train'] = labels[indices]
 
     def set_statistics(self, stats):
         self.statistics = stats
 
-    def build_samplers(self, batch_size, eval_batch_size=None, oversample=False, weight_factor=1., expansion_size=int(1e7)):
+    def build_sampler(self, batch_size, subset=None, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
+                       dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
 
-        if eval_batch_size is None:
-            eval_batch_size = batch_size
+        if subset is None:
+            if self.index is not None:
+                indices = self.index.index.values
+            else:
+                indices = torch.arange(len(self))
+        else:
+            indices = self.indices[subset]
 
-        if 'test' in self.indices_split:
-            self.samplers['test'] = UniversalBatchSampler(self.indices_split['test'],
-                                                          eval_batch_size, shuffle=False, tail=True, once=True)
+        if not persistent:
+            return UniversalBatchSampler(indices, batch_size, shuffle=False,
+                                         tail=True, once=True, dynamic=False)
 
-        if 'validation' in self.indices_split:
-            probs = None
-            if oversample and 'validation' in self.labels_split and self.labels_split['validation'] is not None:
-                probs = compute_sample_weight('balanced', y=self.labels_split['validation']) ** weight_factor
+        probs = None
+        if oversample and subset in self.labels_split and self.labels_split[subset] is not None:
+            probs = compute_sample_weight('balanced', y=self.labels_split[subset]) ** weight_factor
+            probs_normalization = 'sum'
+        elif subset in self.probs:
+            probs = self.probs[subset]
 
-            self.samplers['validation'] = UniversalBatchSampler(self.indices_split['validation'],
-                                                          eval_batch_size, probs=probs, shuffle=True, tail=True, once=False)
+        return UniversalBatchSampler(self.indices[subset],
+                                     batch_size, probs=probs, shuffle=True, tail=True,
+                                     once=False, expansion_size=expansion_size,
+                                     dynamic=dynamic, buffer_size=buffer_size,
+                                     probs_normalization=probs_normalization,
+                                     sample_size=sample_size)
 
-        if 'train' in self.indices_split:
-            probs = None
-            if oversample and 'train' in self.labels_split and self.labels_split['train'] is not None:
-                probs = compute_sample_weight('balanced', y=self.labels_split['train']) ** weight_factor
-
-            self.samplers['train'] = UniversalBatchSampler(self.indices_split['train'],
-                                                           batch_size, probs=probs, shuffle=True, tail=True,
-                                                           once=False, expansion_size=expansion_size)
-
-    def build_dataloaders(self, num_workers=0, pin_memory=None, timeout=0, collate_fn=None,
+    def build_dataloader(self, sampler, num_workers=0, pin_memory=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
 
-        dataloaders = {}
-
         try:
-            d = str(self.device)
-            pin_memory_ = ('cpu' in str(d))
+            d = self.device.type if self.target_device is None else self.target_device
+            pin_memory_ = ('cpu' == d)
         except NotImplementedError:
             pin_memory_ = True
 
@@ -571,56 +320,12 @@ class UniversalDataset(torch.utils.data.Dataset):
         else:
             pin_memory = pin_memory and pin_memory_
 
-        if 'test' in self.samplers:
-            sampler = self.samplers['test']
-            persistent_workers = True if num_workers > 0 else False
-            dataloaders['test'] = torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
-                                                 num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
-                                                 worker_init_fn=worker_init_fn, collate_fn=collate_fn,
-                                                 multiprocessing_context=multiprocessing_context, generator=generator,
-                                                 prefetch_factor=prefetch_factor, persistent_workers=persistent_workers
-                                                 )
-
-        if 'validation' in self.samplers:
-            sampler = self.samplers['validation']
-            dataloaders['validation'] = torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
-                                                 num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
-                                                 worker_init_fn=worker_init_fn, collate_fn=collate_fn,
-                                                 multiprocessing_context=multiprocessing_context, generator=generator,
-                                                 prefetch_factor=prefetch_factor)
-
-        if 'train' in self.samplers:
-            sampler = self.samplers['train']
-            dataloaders['train'] = torch.utils.data.DataLoader(self, sampler=sampler,
-                                                                    batch_size = None,
-                                                                    num_workers=num_workers,
-                                                                    pin_memory=pin_memory,
-                                                                    timeout=timeout,
-                                                                    worker_init_fn=worker_init_fn,
-                                                                    collate_fn=collate_fn,
-                                                                    multiprocessing_context=multiprocessing_context,
-                                                                    generator=generator,
-                                                                    prefetch_factor=prefetch_factor)
-
-        return dataloaders
-
-    def dataloader(self, batch_size, subset='train', length=None, shuffle=True, tail=True, once=False,
-                   num_workers=0, pin_memory=True, timeout=0, collate_fn=None,
-                   worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
-                   persistent_workers=False):
-
-        indices = self.indices_split[subset]
-
-        sampler = UniversalBatchSampler(indices, batch_size, length=length, shuffle=shuffle, tail=tail, once=once)
-        dataloader = torch.utils.data.DataLoader(self, sampler=sampler, batch_size=None,
-                                                 num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
-                                                 worker_init_fn=worker_init_fn, collate_fn=collate_fn,
-                                                 multiprocessing_context=multiprocessing_context,
-                                                 generator=generator,
-                                                 prefetch_factor=prefetch_factor,
-                                                 persistent_workers=persistent_workers
-                                                 )
-        return dataloader
+        persistent_workers = (num_workers > 0 and sampler.once)
+        return torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
+                                             num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
+                                             worker_init_fn=worker_init_fn, collate_fn=collate_fn,
+                                             multiprocessing_context=multiprocessing_context, generator=generator,
+                                             prefetch_factor=prefetch_factor, persistent_workers=persistent_workers)
 
 
 class TransformedDataset(torch.utils.data.Dataset):
@@ -644,9 +349,71 @@ class TransformedDataset(torch.utils.data.Dataset):
         ind, data = self.dataset[ind]
         dataset = UniversalDataset(data)
         res = self.alg.predict(dataset, *self.args, **self.kwargs)
-        # res.set_index(ind)
 
         return ind, res.values
+
+
+class LazyReplayBuffer(UniversalDataset):
+
+    def __init__(self, size, device='cpu'):
+        self.max_size = size
+        self.size = 0
+        self.ptr = 0
+        self.target_device = device
+        super().__init__(device=device)
+
+    def build_buffer(self, x):
+        x_type = check_type(x)
+        if x_type.element == 'int':
+            dtype = torch.int64
+        elif x_type.element == 'float16':
+            dtype = torch.float16
+        else:
+            dtype = torch.float32
+
+        return torch.zeros(self.size, *x.shape, device=self.target_device, dtype=dtype)
+
+    def store(self, *args, **kwargs):
+
+        if len(args) == 1:
+            d = args[0]
+        elif len(args):
+            d = args
+        else:
+            d = kwargs
+
+        if self.data is None:
+            if issubclass(type(d), dict):
+                self.data = {k: self.build_buffer(v) for k, v in d.items()}
+                self.data_type = 'dict'
+            elif (type(d) is list) or (type(d) is tuple):
+                self.data = [self.build_buffer(v) for v in d]
+                self.data_type = 'list'
+            else:
+                self.data = self.build_buffer(d)
+                self.data_type = 'simple'
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if self.data_type == 'dict':
+                for k, v in d.items():
+                    self.data[k][self.ptr] = as_tensor(v, device=self.target_device)
+            elif self.data_type == 'list':
+                for i, v in enumerate(self.data):
+                    self.data[i][self.ptr] = as_tensor(v, device=self.target_device)
+            else:
+                self.data[self.ptr] = as_tensor(d, device=self.target_device)
+
+        self.ptr = (self.ptr + 1) % self.max_size
+        self.size = min(self.size + 1, self.max_size)
+
+    def reset(self):
+        self.ptr = 0
+        self.data = None
+        self.size = 0
+
+    def __len__(self):
+        return self.size
 
 
 class UniversalBatchSampler(object):
@@ -661,7 +428,7 @@ class UniversalBatchSampler(object):
                Maximum number of batches that can be returned by the sampler
          size : int
                The length of indices
-         batch: int
+         batch_size: int
                size of batch
          minibatches : int
              number of batches in one iteration over the array of indices
@@ -675,13 +442,14 @@ class UniversalBatchSampler(object):
              If true, shuffle the indices after each epoch
          """
 
-    def __init__(self, dataset_size, batch_size, probs=None, length=None, shuffle=True, tail=True,
-                 once=False, expansion_size=int(1e7)):
+    def __init__(self, indices, batch_size, probs=None, length=None, shuffle=True, tail=True,
+                 once=False, expansion_size=int(1e7), dynamic=False, buffer_size=None,
+                 probs_normalization='sum', sample_size=100000):
 
         """
                Parameters
                ----------
-               dataset_size : array/tensor/int
+               indices : array/tensor/int
                    If array or tensor, represents the indices of the examples contained in a subset of the whole data
                    (train/validation/test). If int, generates an array of indices [0, ..., dataset_size].
                batch_size : int
@@ -703,39 +471,113 @@ class UniversalBatchSampler(object):
          """
 
         self.length = sys.maxsize if length is None else int(length)
+        self.once = once
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.tail = tail
+        self.probs_normalization = probs_normalization
+        self.buffer_size = buffer_size
+        self.refreshed = False
+        self.size = None
+        self.minibatches = None
+        self.sample_size = sample_size
 
-        if check_type(dataset_size).major == 'array':
-            self.indices = torch.LongTensor(dataset_size)
+        if check_type(indices).major == 'array':
+            self.indices = torch.LongTensor(indices)
         else:
-            self.indices = torch.arange(dataset_size)
+            self.indices = torch.arange(indices)
+        self.probs = np.array(probs) if probs is not None else None
 
-        if probs is not None:
+        if dynamic:
+            self.samples_iterator = self.dynamic_samples_iterator
+            self.indices = np.array(self.indices)
 
-            probs = np.array(probs)
-            probs = probs / probs.sum()
+        else:
+            self.samples_iterator = self.static_samples_iterator
+            if probs is not None:
 
-            grow_factor = max(expansion_size, len(probs)) / len(probs)
+                probs = np.array(self.normalize_probabilities(probs))
+                grow_factor = max(expansion_size, len(probs)) / len(probs)
 
-            probs = (probs * len(probs) * grow_factor).round().astype(np.int)
-            m = np.gcd.reduce(probs)
-            reps = probs // m
-            indices = pd.DataFrame({'index': self.indices, 'times': reps})
-            self.indices = torch.LongTensor(indices.loc[indices.index.repeat(indices['times'])]['index'].values)
+                probs = (probs * len(probs) * grow_factor).round().astype(np.int)
+                m = np.gcd.reduce(probs)
+                reps = probs // m
+                indices = pd.DataFrame({'index': self.indices, 'times': reps})
+                self.indices = torch.LongTensor(indices.loc[indices.index.repeat(indices['times'])]['index'].values)
 
         self.size = len(self.indices)
-
+        self.minibatches = int(self.size / self.batch_size)
         if once:
             self.length = math.ceil(self.size / batch_size) if tail else self.size // batch_size
 
-        self.once = once
+    def normalize_probabilities(self, p):
 
-        self.batch = batch_size
-        self.minibatches = int(self.size / self.batch)
+        if p is None:
+            return None
 
-        self.shuffle = shuffle
-        self.tail = tail
+        if self.probs_normalization == 'softmax':
+            return torch.softmax(as_tensor(p, device='cpu'), dim=0)
 
-    def __iter__(self):
+        return p / p.sum()
+
+    def update_fifo(self):
+        if self.buffer_size is not None:
+            self.indices = self.indices[-self.buffer_size:]
+            self.probs = self.probs[-self.buffer_size:]
+            self.unnormalized_probs = self.unnormalized_probs[-self.buffer_size:]
+
+    def dynamic_samples_iterator(self):
+
+        self.n = 0
+        for _ in itertools.count():
+
+            self.update_fifo()
+            probs = np.array(self.normalize_probabilities(self.probs))
+            size = min(self.size, self.sample_size) if self.sample_size is not None else self.size
+            minibatches = math.ceil(size / self.batch_size)
+            indices_batched = torch.LongTensor(np.random.choice(self.indices, size=(minibatches, self.batch_size),
+                                                        replace=True, p=probs))
+
+            for samples in indices_batched:
+                self.n += 1
+                yield samples
+                if self.n >= self.length:
+                    return
+                if self.refreshed:
+                    self.refreshed = False
+                    continue
+
+    def replace_indices(self, indices, probs=None):
+        if check_type(indices).major == 'array':
+            self.indices = np.array(indices)
+        else:
+            self.indices = np.arange(indices)
+        self.probs = np.array(probs) if probs is not None else None
+        self.refreshed = True
+
+    def append_indices(self, indices, probs=None):
+        self.indices = np.concatenate([self.indices, np.array(indices)])
+        if probs is not None:
+            self.probs = torch.cat([self.probs, as_tensor(probs, device='cpu')])
+
+    def append_index(self, index, prob=None):
+        self.indices = np.concatenate([self.indices, np.array([index])])
+        if prob is not None:
+            self.probs = torch.cat([self.probs, as_tensor([prob], device='cpu')])
+
+    def pop_index(self, index):
+        v = self.indices != index
+        self.indices = self.indices[v]
+        if self.probs is not None:
+            self.probs = self.probs[torch.BoolTensor(v)]
+
+    def pop_indices(self, indices):
+        v = ~np.isin(self.indices, np.array(indices))
+        self.indices = self.indices[v]
+        if self.probs is not None:
+            self.probs = self.probs[v]
+
+    def static_samples_iterator(self):
 
         self.n = 0
         indices = self.indices.clone()
@@ -745,12 +587,12 @@ class UniversalBatchSampler(object):
             if self.shuffle:
                 indices = indices[torch.randperm(len(indices))]
 
-            indices_batched = indices[:self.minibatches * self.batch]
-            indices_tail = indices[self.minibatches * self.batch:]
+            indices_batched = indices[:self.minibatches * self.batch_size]
+            indices_tail = indices[self.minibatches * self.batch_size:]
 
             if self.tail and not self.once:
 
-                to_sample = max(0, self.batch - (self.size - self.minibatches * self.batch))
+                to_sample = max(0, self.batch_size - (self.size - self.minibatches * self.batch_size))
 
                 fill_batch = np.random.choice(len(indices_batched), to_sample, replace=(to_sample > self.size))
                 fill_batch = indices_batched[torch.LongTensor(fill_batch)]
@@ -758,20 +600,21 @@ class UniversalBatchSampler(object):
 
                 indices_batched = torch.cat([indices_batched, indices_tail])
 
-            indices_batched = indices_batched.reshape((-1, self.batch))
+            indices_batched = indices_batched.reshape((-1, self.batch_size))
 
             for samples in indices_batched:
                 self.n += 1
+                yield samples
                 if self.n >= self.length:
-                    yield samples
                     return
-                else:
-                    yield samples
 
             if self.once:
                 if self.tail:
                     yield indices_tail
                 return
+
+    def __iter__(self):
+        return self.samples_iterator()
 
     def __len__(self):
         return self.length

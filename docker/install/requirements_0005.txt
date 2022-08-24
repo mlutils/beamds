@@ -2,6 +2,12 @@
 fasttext
 
 # vision and image Packages
-opencv-contrib-python-headless
+opencv-contrib-python-headless<4.6
+# opencv-python-headless<4.6
+
 scikit-image
 Pillow
+
+kornia
+albumentations
+timm

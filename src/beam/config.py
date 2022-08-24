@@ -1,7 +1,8 @@
 import argparse
+import copy
 import os
 import sys
-from .utils import is_notebook, check_type
+from .utils import is_notebook, check_type, logger
 import re
 
 
@@ -52,6 +53,12 @@ def get_beam_parser():
 
     parser.add_argument('--cpu-workers', type=int, default=0, help='How many CPUs will be used for the data loading')
     parser.add_argument('--device', type=str, default='0', help='GPU Number or cpu/cuda string')
+    parser.add_argument("--device-list", nargs="+", default=None,
+                        help='Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
+                        'when passing --parallel=2 and will use GPUs 2 1 3 when passing --parallel=3. '
+                        'If None, will use an ascending order starting from the GPU passed in the --device parameter.'
+                        'e.g. when --device=1 will use GPUs 1,2,3,4 when --parallel=4')
+
     parser.add_argument('--parallel', type=int, default=1, metavar='hparam',
                         help='Number of parallel gpu workers. Set <=1 for single process')
 
@@ -69,7 +76,17 @@ def get_beam_parser():
 
     boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='hparam')
     boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='hparam')
+    boolean_feature(parser, "find-unused-parameters", False, "For DDP applications: allows running backward on "
+                                                             "a subgraph of the model. introduces extra overheads, "
+                                                             "so applications should only set find_unused_parameters "
+                                                             "to True when necessary")
+    boolean_feature(parser, "broadcast-buffers", True, "For DDP applications: Flag that enables syncing (broadcasting) "
+                                                       "buffers of the module at beginning of the forward function.")
+
     boolean_feature(parser, "store-initial-weights", False, "Store the network's initial weights")
+    boolean_feature(parser, "capturable", False, 'Temporary workaround that should be removed in future pytorch releases '
+                                                 'it makes possible to reload models with adam optimizers '
+                                                 'see: https://github.com/pytorch/pytorch/issues/80809')
 
     # experiment parameters
     parser.add_argument('--init', type=str, default='ortho', metavar='hparam',
@@ -81,7 +98,7 @@ def get_beam_parser():
     parser.add_argument('--total-steps', type=int, default=int(1e6), metavar='hparam', help='Total number of environment steps')
 
     parser.add_argument('--epoch-length', type=int, default=None, metavar='hparam',
-                        help='Length of both train/eval epochs (if None - it is taken from epoch-length-train/epoch-length-eval arguments)')
+                        help='Length of train+eval epochs (if None - it is taken from epoch-length-train/epoch-length-eval arguments)')
     parser.add_argument('--epoch-length-train', type=int, default=None, metavar='hparam',
                         help='Length of each epoch (if None - it is the dataset[train] size)')
     parser.add_argument('--epoch-length-eval', type=int, default=None, metavar='hparam',
@@ -89,6 +106,12 @@ def get_beam_parser():
     parser.add_argument('--n-epochs', type=int, default=None, metavar='hparam',
                         help='Number of epochs, if None, it uses the total steps to determine the number of iterations')
 
+    boolean_feature(parser, "dynamic-sampler", False, 'Whether to use a dynamic sampler (mainly for rl/optimization)')
+    parser.add_argument('--buffer-size', type=int, default=None, metavar='hparam',
+                        help='Maximal Dataset size in dynamic problems')
+    parser.add_argument('--probs-normalization', type=str, default='sum',
+                        help='Sampler\'s probabilities normalization method [sum/softmax]')
+    parser.add_argument('--sample-size', type=int, default=100000, help='Periodic sample size for the dynamic sampler')
     # environment parameters
 
     # Learning parameters
@@ -97,6 +120,7 @@ def get_beam_parser():
     parser.add_argument('--batch-size-train', type=int, default=None, metavar='hparam', help='Batch Size for training iterations')
     parser.add_argument('--batch-size-eval', type=int, default=None, metavar='hparam', help='Batch Size for testing/evaluation iterations')
 
+    parser.add_argument('--reduction', type=str, metavar='hparam', default='sum', help='whether to sum loss elements or average them')
     parser.add_argument('--lr-dense', type=float, default=1e-3, metavar='hparam', help='learning rate for dense optimizers')
     parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='hparam', help='learning rate for sparse optimizers')
     parser.add_argument('--weight-decay', type=float, default=0., metavar='hparam', help='L2 regularization coefficient for dense optimizers')
@@ -129,6 +153,72 @@ def get_beam_parser():
 
     return parser
 
+
+def normalize_key(k):
+    return k.replace('-', '_')
+
+def normalize_value(v):
+    try:
+        return int(v)
+    except:
+        pass
+    try:
+        return float(v)
+    except:
+        pass
+    return v
+
+
+def add_unknown_arguments(args, unknown):
+
+    args = copy.deepcopy(args)
+
+    i = 0
+
+    if len(unknown) > 0:
+        logger.warning(f"Parsing unkown arguments: {unknown}. Please check for typos")
+
+    while i < len(unknown):
+
+        arg = unknown[i]
+        if not arg.startswith("-"):
+            logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it as it does not start with \'-\' sign")
+            i += 1
+            continue
+        if arg.startswith("--"):
+            arg = arg[2:]
+        else:
+            arg = arg[1:]
+
+        if arg.startswith('no-'):
+            k = arg[3:]
+            setattr(args, normalize_key(k), False)
+            i += 1
+            continue
+
+        if '=' in arg:
+            arg = arg.split('=')
+            if len(arg) != 2:
+                logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it contains more than one \'=\' sign")
+                i += 1
+                continue
+            k, v = arg
+            setattr(args, normalize_key(k), normalize_value(v))
+            i += 1
+            continue
+
+        k = normalize_key(arg)
+        if i == len(unknown) - 1 or unknown[i+1].startswith("-"):
+            setattr(args, k, True)
+            i += 1
+        else:
+            v = unknown[i+1]
+            setattr(args, k, normalize_value(v))
+            i += 2
+
+    return args
+
+
 def beam_arguments(*args, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
@@ -139,6 +229,7 @@ def beam_arguments(*args, **kwargs):
         sys.argv = sys.argv[:1]
 
     file_name = sys.argv[0] if len(sys.argv) > 0 else '/tmp/tmp.py'
+    sys_args = sys.argv[1:]
 
     args_str = []
     args_dict = []
@@ -162,10 +253,11 @@ def beam_arguments(*args, **kwargs):
 
     args_str = re.split(r"\s+", ' '.join([ar.strip() for ar in args_str]))
 
-    sys.argv = [file_name] + args_str
+    sys.argv = [file_name] + args_str + sys_args
     sys.argv = list(filter(lambda x: bool(x), sys.argv))
 
-    args = pr.parse_args()
+    args, unknown = pr.parse_known_args()
+    args = add_unknown_arguments(args, unknown)
 
     for k, v in kwargs.items():
         setattr(args, k, v)
@@ -174,6 +266,7 @@ def beam_arguments(*args, **kwargs):
         for k, v in ar.items():
             setattr(args, k, v)
 
-    setattr(args, 'parser', pr)
+    hparams = [pai.dest for pai in pr._actions if pai.metavar == 'hparam']
+    setattr(args, 'hparams', hparams)
 
     return args

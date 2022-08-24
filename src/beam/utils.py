@@ -14,11 +14,62 @@ from random import randint
 from collections import namedtuple
 from timeit import default_timer as timer
 from loguru import logger
+from torchvision import transforms
+import hashlib
+from functools import partial
 
 # logger.remove(handler_id=0)
 logger.remove()
 logger.add(sys.stdout, level='INFO', colorize=True,
            format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>')
+
+
+def stack_train_results(results, batch_size=None):
+
+    stacked_results = defaultdict(dict)
+
+    for k_type in results.keys():
+        for k_name, v in results[k_type].items():
+            stacked_results[k_type][k_name] = v
+
+    stacked_results = stack_inference_results(stacked_results, batch_size=batch_size)
+
+    return stacked_results
+
+
+def stack_inference_results(results, batch_size=None):
+    for n, res in results.items():
+        for k, v in res.items():
+            v_type = check_type(v)
+            if v_type.major == 'array' and v_type.minor == 'list' and v_type.element != 'array':
+                vi_type = check_type(v[0])
+                if vi_type.minor == 'numpy':
+                    results[n][k] = np.stack(results[n][k])
+                elif vi_type.minor == 'tensor':
+                    results[n][k] = torch.stack(results[n][k])
+            elif v_type.major == 'array' and v_type.element == 'array':
+                if v_type.minor in ['tensor', 'numpy', 'list']:
+
+                    if v_type.minor == 'tensor':
+                        oprs = {'cat': torch.cat, 'stack': torch.stack}
+                    elif v_type.minor == 'numpy':
+                        oprs = {'cat': np.concatenate, 'stack': np.stack}
+                    else:
+                        vi_type = check_type(v[0])
+                        if vi_type.minor == 'tensor':
+                            oprs = {'cat': torch.cat, 'stack': torch.stack}
+                        elif vi_type.minor == 'numpy':
+                            oprs = {'cat': np.concatenate, 'stack': np.stack}
+                        else:
+                            break
+
+                    opr = oprs['cat']
+                    if batch_size is not None and v[0].shape != batch_size:
+                        opr = oprs['stack']
+
+                    results[n][k] = opr(results[n][k])
+
+    return results
 
 
 def rate_string_format(n, t):
@@ -29,6 +80,54 @@ def rate_string_format(n, t):
 
 def beam_logger():
     return logger
+
+
+def print_beam_hyperparameters(args, debug_only=False):
+
+    if debug_only:
+        log_func = logger.debug
+    else:
+        log_func = logger.info
+
+    log_func(f"beam project: {args.project_name}")
+    log_func('Experiment Hyperparameters')
+
+    hparams_list = args.hparams
+
+    for k, v in vars(args).items():
+        if k == 'hparams':
+            continue
+        elif k in hparams_list:
+            log_func(k + ': ' + str(v))
+        else:
+            logger.debug(k + ': ' + str(v))
+
+
+def find_port(port=None, get_port_from_beam_port_range=True):
+
+    if port is None:
+        if get_port_from_beam_port_range:
+            base_range = int(os.environ['JUPYTER_PORT']) // 100
+            port_range = range(base_range * 100, (base_range + 1) * 100)
+
+        else:
+            port_range = range(10000, 2 ** 16)
+
+        for p in port_range:
+            if check_if_port_is_available(p):
+                port = str(p)
+                break
+
+        if port is None:
+            logger.error("Cannot find free port in the specified range")
+            return
+
+    else:
+        if not check_if_port_is_available(port):
+            logger.error(f"Port {port} is not available")
+            return
+
+    return port
 
 
 def is_boolean(x):
@@ -114,12 +213,43 @@ def get_notebook_name():
 def process_async(func, args, mp_context='spawn', num_workers=10):
     ctx = mp.get_context(mp_context)
     with ctx.Pool(num_workers) as pool:
-        res = [pool.apply_async(func, (args,)) for arg in args]
+        res = [pool.apply_async(func, (arg,)) for arg in args]
         results = []
         for r in tqdm_beam(res):
             results.append(r.get())
 
     return results
+
+
+def to_numpy(x):
+
+    if issubclass(type(x), torch.Tensor):
+        x = x.detach().cpu().numpy()
+    else:
+        x = np.array(x)
+    if x.size == 1:
+        if 'int' in str(x.dtype):
+            x = int(x)
+        else:
+            x = float(x)
+    return x
+
+
+def pretty_format_number(x):
+
+    if x is None or np.isinf(x) or np.isnan(x):
+        return f'{x}'.ljust(10)
+    if int(x) == x and np.abs(x) < 10000:
+        return f'{int(x)}'.ljust(10)
+    if np.abs(x) >= 10000 or np.abs(x) < 0.0001:
+        return f'{float(x):.4}'.ljust(10)
+    if np.abs(x) >= 1000:
+        return f'{x:.1f}'.ljust(10)
+    if np.abs(x) < 10000 and np.abs(x) >= 0.0001:
+        nl = int(np.log10(np.abs(x)))
+        return f'{np.sign(x) * int(np.abs(x) * (10 ** (4 - nl))) * float(10 ** (nl - 4))}'.ljust(8)[:8].ljust(10)
+
+    return f'{x}:NoFormat'
 
 
 def beam_device(device):
@@ -130,20 +260,29 @@ def beam_device(device):
 
 
 def check_element_type(x):
-    t = str(type(x)).lower()
 
     if not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
         return 'array'
-    elif pd.isna(x):
+    if pd.isna(x):
         return 'none'
+
+    if hasattr(x, 'dtype'):
+        t = str(x.dtype).lower()
+    else:
+        t = str(type(x)).lower()
+
     if 'int' in t:
         return 'int'
     if 'bool' in t:
         return 'bool'
     if 'float' in t:
-        return 'float'
+        if '16' in t:
+            return 'float16'
+        else:
+            return 'float'
     if 'str' in t:
         return 'str'
+
     return 'object'
 
 
@@ -326,6 +465,16 @@ def concat_data(data):
         return data
 
 
+def batch_augmentation_(x, augmentations):
+    return torch.stack([augmentations(xi) for xi in x])
+
+
+def batch_augmentation(augmentations):
+
+    ba = partial(batch_augmentation_, augmentations=augmentations)
+    return transforms.Lambda(ba)
+
+
 def finite_iterations(iterator, n):
     for i, out in enumerate(iterator):
         yield out
@@ -333,12 +482,58 @@ def finite_iterations(iterator, n):
             break
 
 
+def hash_tensor(x, fast=False, coarse=False):
+    """
+    This  function returns a deterministic hash of the tensor content
+    @param x: the tensor to hash
+    @param fast: whether to consider only the first and last elements of the tensor for hashing
+    @param coarse: whether to apply coarse hashing where the tensor is quantized into low resolution (16bit) tensor
+    @return: an integer representing the hash value
+    """
+    if torch.numel(x) < 10000:
+        fast = False
+
+    if coarse and 'float' in str(x.dtype):
+        x = (x / x.max() * (2 ** 15)).half()
+
+    x = x.detach().cpu().numpy()
+
+    if fast:
+        x = str(x).encode('utf-8')
+    else:
+        x.flags.writeable = False
+        x = x.data
+
+    return int(hashlib.sha1(x).hexdigest(), 16)
+
+
 def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=None, notebook=True, **argv):
+
+    """
+    Beam's wrapper for the tqdm progress bar. It features a universal interface for both jupyter notebooks and .py files.
+    In addition, it provides a "lazy progress bar initialization". The progress bar is initialized only if its estimated
+    duration is longer than a threshold.
+
+    Parameters
+    ----------
+        threshold : float
+            The smallest expected duration (in Seconds) to generate a progress bar. This feature is used only if enable
+            is set to None.
+        stats_period: float
+            The initial time period (in seconds) to calculate the ineration statistics (iters/sec). This statistics is used to estimate the expected duction of the entire iteration.
+        message_func: func
+            A dynamic message to add to the progress bar. For example, this message can plot the instantaneous loss.
+        enable: boolean/None
+            Whether to enable the progress bar, disable it or when set to None, use lazy progress bar.
+        notebook: boolean
+            A boolean that overrides the internal calculation of is_notebook. Set to False when you want to avoid printing notebook styled tqdm bars (for example, due to multiprocessing).
+    """
 
     my_tqdm = tqdm_notebook if (is_notebook() and notebook) else tqdm
 
     if enable is False:
-        return x
+        for xi in x:
+            yield xi
 
     elif enable is True:
 

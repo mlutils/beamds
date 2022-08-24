@@ -7,3 +7,17 @@ torchensemble
 rtdl
 transformers
 tensorboardX
+
+lightning-bolts
+
+# this package creates dependencies collisions - use carefully only if needed.
+# lightning-flash
+# lightning-flash[image,tabular,text,audio]
+
+
+byol-pytorch
+normflows
+pytorch-pretrained-biggan
+
+# this package raises an error
+# torchlars

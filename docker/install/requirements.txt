@@ -2,7 +2,7 @@
 loguru
 setuptools
 build
-
+johnnydep
 
 # jupyter ipywidgets
 jupyterhub

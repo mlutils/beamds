@@ -3,10 +3,11 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:22.06-py3
+FROM nvcr.io/nvidia/pytorch:22.07-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
-LABEL "run_command"="docker run -p 12000-12099:12000-12099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -itd -v /home/:/home/ --name flame beam:<date> 12"
-LABEL "build_command"="docker build -f docker/Dockerfile --tag beam:$(date '+%Y%m%d') ."
+LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
+LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 28"
+LABEL "build_command"="bash docker/build_beam.sh"
 
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -44,6 +45,7 @@ RUN pip install -U -r /workspace/install/requirements_0009.txt
 RUN pip install -U -r /workspace/install/requirements_0010.txt
 RUN pip install -U -r /workspace/install/requirements_0011.txt
 RUN pip install -U -r /workspace/install/requirements_0012.txt
+RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 
@@ -69,7 +71,7 @@ RUN mkdir /workspace/beamds/
 COPY . /workspace/beamds/
 WORKDIR /workspace/beamds/
 RUN python -m build
-RUN pip install --no-deps "dist/beam-$(python -c 'import src.beam as beam; print(beam.__version__)')-py3-none-any.whl"
+RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
 WORKDIR /workspace
 
 # config jupyter notebook
@@ -82,8 +84,10 @@ RUN echo "c.ServerApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_lab_config.py
 RUN echo "c.ServerApp.token = ''" >> /root/.jupyter/jupyter_lab_config.py
 RUN echo "c.ServerApp.allow_root = True" >> /root/.jupyter/jupyter_lab_config.py
 
-RUN pip install git+https://github.com/cliffwoolley/jupyter_tensorboard.git
-RUN pip install git+https://github.com/chaoleili/jupyterlab_tensorboard.git
+
+# for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
+# so for now, we will run it from the container and commit the container to a modified image.
+# RUN pip install git+https://github.com/chaoleili/jupyterlab_tensorboard.git
 
 RUN chmod +x /workspace/install/entrypoint.sh
 ENTRYPOINT ["/workspace/install/entrypoint.sh"]

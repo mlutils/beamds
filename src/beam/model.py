@@ -1,11 +1,15 @@
+import copy
+
 import torch
 from torch import nn
 import itertools
 from collections import defaultdict
 import numpy as np
 import math
-from .utils import slice_to_index, logger
+from .utils import slice_to_index, logger, hash_tensor
 from functools import partial
+import random
+import types
 
 class PackedSet(object):
 
@@ -137,10 +141,8 @@ class BeamOptimizer(object):
         self.accumulate = accumulate
         self.iteration = 0
         self.amp = amp
-        self.autocast_device = 'cpu' if 'cpu' in str(next(net.parameters()).device) else 'cuda'
-
-        if self.amp:
-            self.scaler = torch.cuda.amp.GradScaler()
+        self.autocast_device = next(net.parameters()).device.type
+        self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
 
         self.optimizers = {}
 
@@ -192,31 +194,28 @@ class BeamOptimizer(object):
         for op in self.optimizers.values():
             op.zero_grad(set_to_none=set_to_none)
 
-    def apply(self, loss, training=False, set_to_none=True):
+    def apply(self, loss, set_to_none=True, gradient=None, retain_graph=None, create_graph=False, inputs=None):
 
         with torch.autocast(self.autocast_device, enabled=False):
             self.iteration += 1
 
-            if training:
+            if self.amp:
+                self.scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
+                                                 create_graph=create_graph, inputs=inputs)
+            else:
+                loss.backward(gradient=gradient, retain_graph=retain_graph,
+                              create_graph=create_graph, inputs=inputs)
 
-                if self.amp:
-                    self.scaler.scale(loss).backward()
-                else:
-                    loss.backward()
+            if self.clip > 0:
+                for op in self.optimizers.values():
+                    if self.amp:
+                        self.scaler.unscale_(op)
+                    for pg in op.param_groups:
+                        torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.clip)
 
-                if self.clip > 0:
-                    for op in self.optimizers.values():
-                        for pg in op.param_groups:
-
-                            if self.amp:
-                                for op in self.optimizers.values():
-                                    self.scaler.unscale_(op)
-
-                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.clip)
-
-                if not (self.iteration % self.accumulate):
-                    self.step()
-                    self.zero_grad(set_to_none=set_to_none)
+            if not (self.iteration % self.accumulate):
+                self.step()
+                self.zero_grad(set_to_none=set_to_none)
 
     def step(self):
         for op in self.optimizers.values():
@@ -229,7 +228,9 @@ class BeamOptimizer(object):
             self.scaler.update()
 
     def state_dict(self):
-        return {k: op.state_dict() for k, op in self.optimizers.items()}
+        state_dict = {k: op.state_dict() for k, op in self.optimizers.items()}
+        state_dict['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
+        return state_dict
 
     def load_state_dict(self, state_dict, state_only=False):
 
@@ -239,6 +240,9 @@ class BeamOptimizer(object):
                 state_dict[k]['param_groups'] = op.state_dict()['param_groups']
 
             op.load_state_dict(state_dict[k])
+
+        if self.scaler is not None and 'scaler' in state_dict.keys():
+            self.scaler.load_state_dict(state_dict["scaler"])
 
 
 class RuleLayer(nn.Module):
@@ -748,6 +752,72 @@ class Sparsemax(nn.Module):
         return self.grad_input
 
 
+class BeamEnsemble(torch.nn.Module):
+
+    def __init__(self, net, n_ensembles, optimizer=None):
+        super().__init__()
+
+        if issubclass(type(net), nn.Module):
+            ensembles = []
+            for _ in range(n_ensembles):
+                new_net = copy_network(net)
+                reset_network(new_net)
+                ensembles.append(new_net)
+        else:
+            ensembles = [net() for _ in range(n_ensembles)]
+
+        self.ensembles = nn.ModuleList(ensembles)
+        self.n_ensembles = n_ensembles
+
+        self.optimizers = None
+        if optimizer is not None:
+            self.optimizers = self.set_optimizers(optimizer)
+
+        self.optimizer = None
+        self.net = None
+        self.active_model = None
+
+    def set_optimizers(self, optimizer):
+
+        try:
+            self.optimizers = [optimizer(net) for net in self.ensembles]
+        except TypeError:
+            self.optimizers = [optimizer(net.paramters()) for net in self.ensembles]
+
+        return self.optimizers
+
+    def __len__(self):
+        return self.n_ensembles
+
+    def forward(self, x, reduction='mean', index=None):
+
+        if self.training:
+            if index is None:
+                    index = random.randint(0, self.n_ensembles-1)
+
+            self.net = self.ensembles[index]
+            if self.optimizers is not None:
+                self.optimizer = self.optimizers[index]
+            self.active_model = index
+
+            y = self.net(x)
+
+        else:
+            self.optimizer = None
+            self.net = None
+            self.active_model = None
+
+            y = [net(x) for net in self.ensembles]
+            if reduction == 'mean':
+                y = torch.stack(y).mean(dim=0)
+            elif reduction == 'none':
+                y = torch.stack(y)
+            else:
+                raise NotImplementedError
+
+        return y
+
+
 class FeatureHasher(object):
 
     def __init__(self, num_embeddings, embedding_dim, n_classes=None, distribution='uniform', seed=None, device='cpu'):
@@ -768,18 +838,158 @@ class FeatureHasher(object):
         return self.weight[x]
 
 
-def beam_weights_initializer(m, method='none'):
-    if isinstance(m, nn.Conv2d):
-        nn.init.kaiming_uniform_(m.weight.data,nonlinearity='relu')
-        if m.bias is not None:
-            nn.init.constant_(m.bias.data, 0)
-    elif isinstance(m, nn.BatchNorm2d):
-        nn.init.constant_(m.weight.data, 1)
-        nn.init.constant_(m.bias.data, 0)
-    elif isinstance(m, nn.Linear):
-        nn.init.kaiming_uniform_(m.weight.data)
-        if m.bias is not None:
-            nn.init.constant_(m.bias.data, 0)
+def beam_weights_initializer(net, black_list=None, white_list=None, zero_bias=True,
+                             method=None, gain=None, nonlinearity='relu', method_argv=None,
+                             nonlinearity_argv=None, method_linear=None, method_linear_argv=None,
+                             method_conv=None, method_conv_argv=None, method_embedding=None, method_embedding_argv=None,
+                             temperature=1):
+    """
+
+    @param net:
+    @param black_list:
+    @param white_list:
+    @param zero_bias:
+    @param method: [kaiming_uniform, kaiming_normal, xavier_uniform, xavier_normal, orthogonal, trunc_normal, sparse]
+    @param gain:
+    @param nonlinearity:
+    @param nonlinearity_argv:
+    @return:
+    """
+
+    def bias_init(m):
+        if zero_bias:
+            nn.init.zeros_(m.bias)
+        else:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(m.bias, -bound, bound)
+
+    if gain is None:
+        if nonlinearity_argv is None:
+            nonlinearity_argv = {}
+        gain = nn.init.calculate_gain(nonlinearity, **nonlinearity_argv)
+
+    # bert initializes embedding of 768 with .02 std and pytorch initializes with 1. stdout
+    # so by default we use something in the middle which is also more reasonable for embedding of ~256 dimensions.
+    if method_embedding is None:
+        method_embedding = partial(nn.init.normal_, mean=0., std=.2)
+    else:
+        if method_embedding_argv is None:
+            method_embedding_argv = {}
+        method_embedding = partial(getattr(nn.init, f"{method_embedding}_"), **method_embedding_argv)
+
+    if method is not None:
+        if method_argv is None:
+            method_argv = {}
+        method = partial(getattr(nn.init, f"{method}_"), **method_argv)
+
+    if method_conv is not None:
+        if method_conv_argv is None:
+            method_conv_argv = {}
+        method_conv = partial(getattr(nn.init, f"{method_conv}_"), **method_conv_argv)
+    elif method is not None:
+        method_conv = method
+    else:
+        method_conv = partial(nn.init.xavier_uniform_, gain=gain)
+
+    if method_linear is not None:
+        if method_linear_argv is None:
+            method_linear_argv = {}
+        method_linear = partial(getattr(nn.init, f"{method_conv}_"), **method_linear_argv)
+    elif method is not None:
+        method_linear = method
+    else:
+        method_linear = partial(nn.init.xavier_uniform_, gain=gain)
+
+    if black_list is None:
+        black_list = []
+    if white_list is None:
+        # white_list = [n for n, p in net.named_parameters()]
+        white_list = ['']
+
+    def valid_param(n, suffix=None):
+        if suffix is not None:
+            n = f"{n}.{suffix}"
+        return any([nw in n for nw in white_list]) and not any([nb in n for nb in black_list])
+
+    for n, m in net.named_modules():
+        if len(list(m.children())) or not valid_param(n):
+            continue
+
+        if 'Norm' in str(type(m)):
+            if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
+                nn.init.ones_(m.weight)
+            if valid_param(n, suffix='bias') and hasattr(m, 'bias'):
+                nn.init.ones_(m.bias)
+        elif 'Embedding' in str(type(m)):
+            if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
+                method_embedding(m.weight)
+
+        elif 'Linear' in str(type(m)):
+            if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
+                fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(m.weight)
+                if fan_in > 1 and fan_out > 1:
+                    method_linear(m.weight)
+                else:
+                    with torch.no_grad():
+                        m.weight.normal_()
+                        m.weight.data = torch.exp(m.weight.data / (temperature * math.sqrt(torch.numel(m.weight))))
+                        m.weight.data = m.weight.data / m.weight.data.sum()
+
+            if valid_param(n, suffix='bias') and hasattr(m, 'bias'):
+                bias_init(m)
+        elif 'Conv' in str(type(m)):
+            if valid_param(n, suffix='weight') and hasattr(m, 'weight'):
+                fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(m.weight)
+                if fan_in > 1 and fan_out > 1:
+                    method_conv(m.weight)
+                else:
+                    with torch.no_grad():
+                        m.weight.normal_()
+                        m.weight.data = torch.exp(m.weight.data / (temperature * math.sqrt(torch.numel(m.weight))))
+                        m.weight.data = m.weight.data / m.weight.data.sum()
+            if valid_param(n, suffix='bias') and hasattr(m, 'bias'):
+                bias_init(m)
+        else:
+            if len(list(m.parameters())) > 0:
+                logger.warning(f"Beam weight initializer does not support layer type: {n}")
+
+
+def reset_network(net):
+    prev_hash = {n: hash_tensor(p) for n, p in net.named_parameters()}
+    for n, m in net.named_modules():
+        if hasattr(m, 'reset_parameters'):
+            m.reset_parameters()
+    for n, p in net.named_parameters():
+        if prev_hash[n] == hash_tensor(p):
+            logger.warning(f"Parameter {n} was not reset. Check if its nn.Module supports .reset_parameters()")
+
+
+def free_network_params(*nets):
+    for net in nets:
+        for p in net.parameters():
+            p.requires_grad = True
+
+
+def freeze_network_params(*nets):
+    for net in nets:
+        for p in net.parameters():
+            p.requires_grad = False
+
+
+def copy_network(net):
+    return copy.deepcopy(net)
+
+
+def soft_target_update(source, target, tau):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(target_param.data * tau + param.data * (1.0 - tau))
+
+
+def target_copy(source, target):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
 
 
 def reset_networks_and_optimizers(networks=None, optimizers=None):

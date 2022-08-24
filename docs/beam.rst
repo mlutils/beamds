@@ -1,6 +1,9 @@
 beam package
 ============
 
+Submodules
+----------
+
 beam.algorithm module
 ---------------------
 
@@ -45,6 +48,14 @@ beam.model module
 -----------------
 
 .. automodule:: beam.model
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+beam.study module
+-----------------
+
+.. automodule:: beam.study
    :members:
    :undoc-members:
    :show-inheritance:

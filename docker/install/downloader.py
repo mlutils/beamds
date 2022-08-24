@@ -62,7 +62,7 @@ downloaded['20newsgroups'] = datasets.fetch_20newsgroups()
 downloaded['20newsgroups_vectorized'] = datasets.fetch_20newsgroups_vectorized()
 downloaded['california_housing'] = datasets.fetch_california_housing()
 downloaded['covtype'] = datasets.fetch_covtype()
-# downloaded['kddcup99'] = datasets.fetch_kddcup99()
+downloaded['kddcup99'] = datasets.fetch_kddcup99(percent10=False, as_frame=True)
 # downloaded['lfw_pairs'] = datasets.fetch_lfw_pairs()
 # downloaded['lfw_people'] = datasets.fetch_lfw_people()
 # downloaded['olivetti_faces'] = datasets.fetch_olivetti_faces()
@@ -83,6 +83,7 @@ for d in pytorch_datasets:
 
 model_names = ["bert-base-cased", "aubmindlab/bert-base-arabertv02", "xlm-roberta-base",
                "bert-base-multilingual-cased", "asafaya/bert-mini-arabic"]
+
 
 for m in model_names:
     tokenizer = AutoTokenizer.from_pretrained(m)
