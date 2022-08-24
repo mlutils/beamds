@@ -481,7 +481,6 @@ class Algorithm(object):
         for n in range(n_epochs):
 
             t0 = timer()
-
             results = defaultdict(lambda: defaultdict(list))
 
             if not training and self.rank > 0:

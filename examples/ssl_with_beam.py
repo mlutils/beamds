@@ -14,7 +14,7 @@ from kornia.augmentation.container import AugmentationSequential
 from pl_bolts.models.self_supervised import SimCLR as SimCLR_pretrained
 import torch_tensorrt
 
-from examples.example_utils import add_beam_to_path
+from example_utils import add_beam_to_path
 add_beam_to_path()
 
 from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
@@ -988,22 +988,16 @@ class BYOL(BeamSSL):
 
 if __name__ == '__main__':
 
-    args = beam_arguments(BeamSSL.get_parser(),
-        f"--project-name=beam_ssl --algorithm=SimCLR --device=0 --amp "
-        f"--batch-size=256 --n-epochs=200")
+    hparams = beam_arguments(BeamSSL.get_parser(),
+                         f"--project-name=beam_ssl --epoch-length=200 --reduction=mean --no-scale-epoch-by-batch-size",
+                         f" --identifier=parallel_alternatives",
+                         "--algorithm=BeamVICReg --parallel=4 --amp --model=swin_s --no-pretrained --layer=avgpool ",
+                         f"--batch-size=96 --n-epochs=20000 --no-broadcast-buffers --lr-d=1e-3 --weight-decay=1e-5")
 
     logger = beam_logger()
 
-    experiment = Experiment(args)
+    experiment = Experiment(hparams)
     Alg = globals()[experiment.hparams.algorithm]
 
     logger.info(f"BeamSSL model: {experiment.hparams.algorithm}")
     alg = experiment.fit(Alg, STL10Dataset)
-
-    # ## Inference
-    inference = alg('test')
-
-    logger.info('Test inference results:')
-    for n, v in inference.statistics['metrics'].items():
-        logger.info(f'{n}:')
-        logger.info(v)
