@@ -535,7 +535,7 @@ class BeamBarlowTwins(BeamSSL):
         ensemble = BeamEnsemble(self.generate_encoder, n_ensembles=self.n_ensembles)
         ensemble.set_optimizers(BeamOptimizer.prototype(dense_args={'lr': self.hparams.lr_dense,
                                                                     'weight_decay': self.hparams.weight_decay,
-                                                                    'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                                    'betas': (self.hparams.momentum, self.hparams.beta2),
                                                                     'eps': self.hparams.eps}))
 
         self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)
@@ -639,7 +639,7 @@ class BeamBarlowTwins(BeamSSL):
 #         ensemble = BeamEnsemble(self.generate_encoder, n_ensembles=self.n_ensembles)
 #         ensemble.set_optimizers(BeamOptimizer.prototype(dense_args={'lr': self.hparams.lr_dense,
 #                                                                     'weight_decay': self.hparams.weight_decay,
-#                                                                     'betas': (self.hparams.beta1, self.hparams.beta2),
+#                                                                     'betas': (self.hparams.momentum, self.hparams.beta2),
 #                                                                     'eps': self.hparams.eps}))
 #
 #         self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)

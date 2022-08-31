@@ -271,14 +271,14 @@ class CIFAR10Algorithm(Algorithm):
         if 'prototype' in hparams and hparams.prototype:
             optimizer = BeamOptimizer.prototype(dense_args={'lr': hparams.lr_dense,
                                                             'weight_decay': hparams.weight_decay,
-                                                           'momentum': hparams.beta1, 'nesterov': True},
+                                                           'momentum': hparams.momentum, 'nesterov': True},
                                                 clip=hparams.clip_gradient, accumulate=hparams.accumulate,
                                                 amp=hparams.amp,
                                                 sparse_args=None, dense_optimizer='SGD')
         else:
             optimizer = BeamOptimizer(net, dense_args={'lr': hparams.lr_dense,
                                                             'weight_decay': hparams.weight_decay,
-                                                           'momentum': hparams.beta1, 'nesterov': True},
+                                                           'momentum': hparams.momentum, 'nesterov': True},
                                                 clip=hparams.clip_gradient, accumulate=hparams.accumulate,
                                                 amp=hparams.amp,
                                                 sparse_args=None, dense_optimizer='SGD')
@@ -385,7 +385,7 @@ if __name__ == '__main__':
     args = beam_arguments(
         f"--project-name=cifar10 --root-dir={root_dir} --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
         "--n-epochs=2 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
-        "--weight-decay=.00256 --beta1=0.9 --beta2=0.9",
+        "--weight-decay=.00256 --momentum=0.9 --beta2=0.9",
         path_to_data=path_to_data, dropout=.0, activation='celu',
         channels=512, label_smoothing=.2, padding=4, scale_down=.7, scale_up=1.4, ratio_down=.7, ratio_up=1.4)
 

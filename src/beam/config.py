@@ -132,7 +132,8 @@ def get_beam_parser():
     parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='hparam', help='learning rate for sparse optimizers')
     parser.add_argument('--weight-decay', type=float, default=0., metavar='hparam', help='L2 regularization coefficient for dense optimizers')
     parser.add_argument('--eps', type=float, default=1e-4, metavar='hparam', help='Adam\'s epsilon parameter')
-    parser.add_argument('--beta1', type=float, default=0.9, metavar='hparam', help='Adam\'s β1 parameter')
+    parser.add_argument('--momentum', '--beta1', type=float, default=0.9, metavar='hparam',
+                        help='The momentum and Adam\'s β1 parameter')
     parser.add_argument('--beta2', type=float, default=0.999, metavar='hparam', help='Adam\'s β2 parameter')
     parser.add_argument('--clip-gradient', type=float, default=0., metavar='hparam', help='Clip Gradient L2 norm')
     parser.add_argument('--accumulate', type=int, default=1, metavar='hparam', help='Accumulate gradients for this number of backward iterations')

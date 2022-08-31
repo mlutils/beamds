@@ -28,7 +28,7 @@ class BeamScheduler(object):
     def __init__(self, optimizer, total_epochs, warmup=5, method='one_cycle', decay=math.sqrt(.1),):
 
         if method == 'one_cycle':
-            scheduler =
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, )
 
         if warmup is not None and warmup > 0:
             warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, total_iters=warmup)

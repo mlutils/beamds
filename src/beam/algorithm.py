@@ -106,11 +106,11 @@ class Algorithm(object):
             if optimizers is None:
                 optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
                                                               'weight_decay': self.hparams.weight_decay,
-                                                               'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                               'betas': (self.hparams.momentum, self.hparams.beta2),
                                                               'eps': self.hparams.eps,
                                                                'capturable': self.hparams.capturable},
                                                sparse_args={'lr': self.hparams.lr_sparse,
-                                                            'betas': (self.hparams.beta1, self.hparams.beta2),
+                                                            'betas': (self.hparams.momentum, self.hparams.beta2),
                                                             'eps': self.hparams.eps},
                                                clip=self.hparams.clip_gradient, amp=self.amp, accumulate=self.hparams.accumulate
                                                ) for k, v in networks.items()}

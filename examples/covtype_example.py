@@ -509,7 +509,7 @@ if __name__ == '__main__':
     args = beam_arguments(get_covtype_parser(),
                           f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1 --no-half --lr-d=1e-3 --lr-s=.02 --batch-size=512",
                           "--n-epochs=100 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
-                          "--weight-decay=1e-5 --beta1=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
+                          "--weight-decay=1e-5 --momentum=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
                           weight_decay=1e-3, label_smoothing=.2,
                           k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
                           path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
