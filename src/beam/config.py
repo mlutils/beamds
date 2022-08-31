@@ -61,6 +61,13 @@ def get_beam_parser():
 
     parser.add_argument('--parallel', type=int, default=1, metavar='hparam',
                         help='Number of parallel gpu workers. Set <=1 for single process')
+    parser.add_argument('--schedulers-steps', type=str, default='epoch',
+                        help='When to apply schedulers steps [epoch|iteration|none]: each epoch or each iteration '
+                             'Use none to avoid scheduler steps or to use your own custom steps policy')
+    parser.add_argument('--objective', type=str, default=None,
+                        help='A single objective to apply hyperparameter optimization or ReduceLROnPlateau scheduling. '
+                             'By default we consider maximization of the objective (e.g. accuracy) '
+                             'You can override this behavior by overriding the Algorithm.report method.')
 
     # booleans
 

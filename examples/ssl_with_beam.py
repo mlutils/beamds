@@ -71,8 +71,7 @@ def my_default_configuration_by_cluster():
 class Similarity(object):
 
     def __init__(self, index=None, d=None, expected_population=int(1e6),
-                 expected_searches=int(1e6), metric='l2',
-                 training_device='cpu', inference_device='cpu', ram_footprint=2**8*int(1e9),
+                 metric='l2', training_device='cpu', inference_device='cpu', ram_footprint=2**8*int(1e9),
                  gpu_footprint=24*int(1e9), exact=False, nlists=None, M=None,
                  reducer='umap'):
 
@@ -80,7 +79,6 @@ class Similarity(object):
         To Choose an index, follow https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index
         @param d:
         @param expected_population:
-        @param expected_searches:
         @param metric:
         @param ram_size:
         @param gpu_size:
@@ -127,6 +125,9 @@ class Similarity(object):
                         logger.info(f"Using HNSW{M}. Expected RAM footprint is "
                                     f"{pretty_format_number(footprints[M_ind[0]] / int(1e6))} MB")
                         index = faiss.IndexHNSWFlat(d, M)
+                    else:
+                        logger.info(f"Using OPQ16_64,IVF{nlists},PQ8 Index")
+                        index = faiss.index_factory(d, f'OPQ16_64,IVF{nlists},PQ8')
 
             else:
 
@@ -143,8 +144,9 @@ class Similarity(object):
                     if (4 * d + 8) * expected_population <= gpu_footprint:
                         logger.info(f"Using GPUIndexIVFFlat Index. Expected GPU-RAM footprint is "
                                     f"{pretty_format_number((4 * d + 8) * expected_population / int(1e6))} MB")
-                        index = faiss.GpuIndexIVFFlat(res, d,  nlists, M, 8, faiss.METRIC_L2,
-                                                      faiss.GpuIndexIVFFlatConfig())
+                        config = faiss.GpuIndexIVFFlatConfig()
+                        config.device = inference_device
+                        index = faiss.GpuIndexIVFFlat(res, d,  nlists, M, 8, faiss.METRIC_L2, config)
                     else:
 
                         if M is None:
@@ -156,12 +158,22 @@ class Similarity(object):
                         if M is not None:
                             logger.info(f"Using GPUIndexIVFFlat Index. Expected GPU-RAM footprint is "
                                         f"{pretty_format_number((M + 8) * expected_population / int(1e6))} MB")
-                            faiss.GpuIndexIVFPQ(res, d,  nlists, M, 8, faiss.METRIC_L2, faiss.GpuIndexIVFPQConfig())
 
-        if index is not None:
+                            config = faiss.GpuIndexIVFPQConfig()
+                            config.device = inference_device
+                            index = faiss.GpuIndexIVFPQ(res, d,  nlists, M, 8, faiss.METRIC_L2, config)
+                        else:
+                            logger.info(f"Using OPQ16_64,IVF{nlists},PQ8 Index")
+                            index = faiss.index_factory(d, f'OPQ16_64,IVF{nlists},PQ8')
+                            index = faiss.index_cpu_to_gpu(res, inference_device, index)
+
+        if index is None:
             logger.error("Cannot find suitable index type")
             raise Exception
 
+        self.index = index
+
+        self.training_index = None
         res = faiss.StandardGpuResources()
         if training_device != 'cpu' and inference_device == 'cpu':
             self.training_index = faiss.index_cpu_to_gpu(res, training_device, index)
@@ -173,7 +185,10 @@ class Similarity(object):
         else:
             raise NotImplementedError
 
-    def add(self, z):
+    def add(self, z, train=False):
+
+        if train or not self.index.is_trained:
+            self.index.train(z)
         self.index.add(z)
 
     def most_similar(self, zi, n=1):

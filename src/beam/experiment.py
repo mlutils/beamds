@@ -340,22 +340,28 @@ class Experiment(object):
 
     def reload_checkpoint(self, alg=None, iloc=-1, loc=None, name=None):
 
-        checkpoints = os.listdir(self.checkpoints_dir)
-        if not(len(checkpoints)):
-            logger.error(f"Directory of checkpoints is empty")
-            return
-
-        checkpoints = pd.DataFrame({'name': checkpoints, 'index': [int(c.split('_')[-1]) for c in checkpoints]})
-        checkpoints = checkpoints.sort_values('index')
-
         if name is not None:
             path = os.path.join(self.checkpoints_dir, name)
-        elif loc is not None:
-            chp = checkpoints.loc[loc]['name']
-            path = os.path.join(self.checkpoints_dir, chp)
+
         else:
-            chp = checkpoints.iloc[iloc]['name']
-            path = os.path.join(self.checkpoints_dir, chp)
+
+            checkpoints = os.listdir(self.checkpoints_dir)
+            checkpoints = [c for c in checkpoints if c.split('_')[-1].isnumeric()]
+            checkpoints_int = [int(c.split('_')[-1]) for c in checkpoints]
+
+            if not(len(checkpoints)):
+                logger.error(f"Directory of checkpoints does not contain valid checkpoint files")
+                return
+
+            checkpoints = pd.DataFrame({'name': checkpoints, 'index': checkpoints_int})
+            checkpoints = checkpoints.sort_values('index')
+
+            if loc is not None:
+                chp = checkpoints.loc[loc]['name']
+                path = os.path.join(self.checkpoints_dir, chp)
+            else:
+                chp = checkpoints.iloc[iloc]['name']
+                path = os.path.join(self.checkpoints_dir, chp)
 
         logger.info(f"Reload experiment from checkpoint: {path}")
 
@@ -438,6 +444,9 @@ class Experiment(object):
 
             checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_{epoch:06d}')
             algorithm.save_checkpoint(checkpoint_file)
+            if algorithm.best_state:
+                checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_best')
+                algorithm.save_checkpoint(checkpoint_file)
 
             if store_networks == 'no' or store_networks == 'logscale' and not logscale:
                 try:

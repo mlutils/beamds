@@ -6,7 +6,7 @@ import copy
 from .utils import tqdm_beam as tqdm
 from .utils import logger
 import numpy as np
-from .model import BeamOptimizer
+from .optim import BeamOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
     stack_inference_results, to_numpy, stack_train_results
@@ -15,6 +15,7 @@ from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from .experiment import Experiment
 from timeit import default_timer as timer
 import torch_tensorrt as trt
+from ray import tune
 
 
 class Algorithm(object):
@@ -55,6 +56,7 @@ class Algorithm(object):
         self.networks = {}
         self.inference_networks = {}
         self.optimizers = {}
+        self.schedulers = {}
         self.add_networks_and_optmizers(networks=networks, optimizers=optimizers)
 
         if hparams.store_initial_weights:
@@ -67,6 +69,9 @@ class Algorithm(object):
         self.persistent_dataloaders = {}
         self.dataloaders = {}
         self.eval_subset = None
+        self.objective = None
+        self.best_objective = None
+        self.best_state = False
 
     @staticmethod
     def get_parser():
@@ -432,6 +437,20 @@ class Algorithm(object):
 
         return dataloader
 
+    def schedulers_step(self, objective=None):
+        if objective is None:
+            objective = self.objective
+        for k, scheduler in self.schedulers.items():
+            if issubclass(type(scheduler), torch.optim.lr_scheduler._LRScheduler):
+                scheduler.step()
+            elif type(scheduler) is torch.optim.lr_scheduler.ReduceLROnPlateau:
+                scheduler.step(objective)
+            else:
+                try:
+                    scheduler.step()
+                except:
+                    raise Exception(f"Unknown scheduler type: {type(scheduler)}")
+
     def data_generator(self, subset, max_iterations=None, persistent=False):
 
         if persistent:
@@ -498,6 +517,10 @@ class Algorithm(object):
 
                 with torch.autocast(self.autocast_device, enabled=self.amp):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
+                    if self.hparams.schedulers_steps == 'iteration':
+                        objective = results['scalar'][self.hparams.objective] \
+                            if self.hparams.objective in results['scalar'] else None
+                        self.schedulers_step(objective)
 
                     if self.amp and training:
                         if self.scaler._scale is not None:
@@ -557,6 +580,27 @@ class Algorithm(object):
         Use this function to report results to hyperparameter optimization frameworks
         also you can add key 'objective' to the results dictionary to report the final scores.
         '''
+
+        if self.hparams.objective is not None and self.hparams.objective in results[self.eval_subset]['scalar']:
+            objective = np.mean(results[self.eval_subset]['scalar'][self.hparams.objective])
+            self.objective = objective
+            if self.best_objective is None:
+                self.best_objective = self.objective
+            elif self.objective > self.best_objective:
+                logger.info(f"New best objective result: {self.objective}")
+                self.best_objective = self.objective
+                self.best_state = True
+            else:
+                self.best_state = False
+
+            results['objective'] = objective
+            if self.hpo == 'tune':
+                tune.report(mean_accuracy=objective)
+            elif self.hpo == 'optuna':
+                self.trial.report(objective, epoch)
+        else:
+            logger.warning(f"The objective {self.hparams.objective} is missing from the validation results")
+
         return results
 
     def early_stopping(self, results=None, epoch=None, **kwargs):
@@ -624,6 +668,9 @@ class Algorithm(object):
 
             results = {'train': train_results, self.eval_subset: eval_results}
 
+            if self.hparams.schedulers_steps == 'epoch':
+                self.schedulers_step()
+
             if self.hpo is not None:
                 results = self.report(results, i)
 
@@ -663,6 +710,9 @@ class Algorithm(object):
         for k, optimizer in self.optimizers.items():
             state[f"{k}_optimizer"] = wrapper(optimizer.state_dict())
 
+        for k, scheduler in self.schedulers.items():
+            state[f"{k}_scheduler"] = wrapper(scheduler.state_dict())
+
         state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
 
         state['scalers'] = {k: scaler.state_dict() if scaler is not None else None for k, scaler in self.scalers.items()}
@@ -682,15 +732,27 @@ class Algorithm(object):
 
         for k, net in self.networks.items():
 
-            s = state[f"{k}_parameters"]
+            if f"{k}_parameters" in state.keys():
+                s = state[f"{k}_parameters"]
 
-            if not self.ddp:
-                torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(s, 'module.')
+                if not self.ddp:
+                    torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(s, 'module.')
 
-            net.load_state_dict(s, strict=strict)
+                net.load_state_dict(s, strict=strict)
+            else:
+                logger.warning(f"Network {k} is missing from the state-dict")
 
         for k, optimizer in self.optimizers.items():
-            optimizer.load_state_dict(state[f"{k}_optimizer"])
+            if f"{k}_optimizer" in state.keys():
+                optimizer.load_state_dict(state[f"{k}_optimizer"])
+            else:
+                logger.warning(f"Optimizer {k} is missing from the state-dict")
+
+        for k, scheduler in self.schedulers.items():
+            if f"{k}_scheduler" in state.keys():
+                scheduler.load_state_dict(state[f"{k}_scheduler"])
+            else:
+                logger.warning(f"Scheduler {k} is missing from the state-dict")
 
         if self.scaler is not None and 'scaler' in state.keys():
             self.scaler.load_state_dict(state["scaler"])
