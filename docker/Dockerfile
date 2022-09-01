@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:22.07-py3
+FROM nvcr.io/nvidia/pytorch:22.08-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 28"
@@ -59,11 +59,15 @@ RUN echo "cat /etc/motd" >> /root/.bashrc
 RUN python /workspace/install/downloader.py
 
 ## download nlp data
+
 RUN python -m nltk.downloader all
-RUN python -m spacy download zh_core_web_sm
-RUN python -m spacy download en_core_web_sm
-RUN python -m spacy download xx_ent_wiki_sm
-RUN python -m spacy download ru_core_news_sm
+
+#ENV LC_ALL C.UTF-8
+#ENV LANG C.UTF-8
+#RUN python -m spacy download zh_core_web_md
+#RUN python -m spacy download en_core_web_md
+#RUN python -m spacy download xx_ent_wiki_sm
+#RUN python -m spacy download ru_core_news_sm
 
 # install beam
 

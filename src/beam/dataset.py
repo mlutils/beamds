@@ -594,7 +594,10 @@ class UniversalBatchSampler(object):
 
                 to_sample = max(0, self.batch_size - (self.size - self.minibatches * self.batch_size))
 
-                fill_batch = np.random.choice(len(indices_batched), to_sample, replace=(to_sample > self.size))
+                try:
+                    fill_batch = np.random.choice(len(indices_batched), to_sample, replace=(to_sample > self.size))
+                except ValueError:
+                    logger.error("Train batch ")
                 fill_batch = indices_batched[torch.LongTensor(fill_batch)]
                 indices_tail = torch.cat([indices_tail, fill_batch])
 

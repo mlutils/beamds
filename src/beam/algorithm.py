@@ -6,7 +6,7 @@ import copy
 from .utils import tqdm_beam as tqdm
 from .utils import logger
 import numpy as np
-from .optim import BeamOptimizer
+from .optim import BeamOptimizer, BeamScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
     stack_inference_results, to_numpy, stack_train_results
@@ -437,13 +437,17 @@ class Algorithm(object):
 
         return dataloader
 
-    def schedulers_step(self, objective=None):
+    def schedulers_step(self, objective=None, step_type=None):
         if objective is None:
             objective = self.objective
         for k, scheduler in self.schedulers.items():
             if issubclass(type(scheduler), torch.optim.lr_scheduler._LRScheduler):
-                scheduler.step()
+                if self.hparams.schedulers_steps == step_type:
+                    scheduler.step()
             elif type(scheduler) is torch.optim.lr_scheduler.ReduceLROnPlateau:
+                if self.hparams.schedulers_steps == step_type:
+                    scheduler.step(objective)
+            elif type(scheduler) is BeamScheduler:
                 scheduler.step(objective)
             else:
                 try:
@@ -517,10 +521,9 @@ class Algorithm(object):
 
                 with torch.autocast(self.autocast_device, enabled=self.amp):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
-                    if self.hparams.schedulers_steps == 'iteration':
-                        objective = results['scalar'][self.hparams.objective] \
-                            if self.hparams.objective in results['scalar'] else None
-                        self.schedulers_step(objective)
+                    objective = results['scalar'][self.hparams.objective] \
+                        if self.hparams.objective in results['scalar'] else None
+                    self.schedulers_step(objective, step_type='iteration')
 
                     if self.amp and training:
                         if self.scaler._scale is not None:
@@ -575,12 +578,13 @@ class Algorithm(object):
         '''
         return results
 
-    def report(self, results=None, epoch=None, **argv):
+    def calculate_objective(self, results=None, **argv):
         '''
-        Use this function to report results to hyperparameter optimization frameworks
-        also you can add key 'objective' to the results dictionary to report the final scores.
+        This function calculates the optimization non-differentiable objective. It is used for hyperparameter optimization
+        and for ReduceOnPlateau scheduling. It is also responsible for tracking the best checkpoint
         '''
 
+        objective = None
         if self.hparams.objective is not None and self.hparams.objective in results[self.eval_subset]['scalar']:
             objective = np.mean(results[self.eval_subset]['scalar'][self.hparams.objective])
             self.objective = objective
@@ -592,16 +596,22 @@ class Algorithm(object):
                 self.best_state = True
             else:
                 self.best_state = False
-
             results['objective'] = objective
-            if self.hpo == 'tune':
-                tune.report(mean_accuracy=objective)
-            elif self.hpo == 'optuna':
-                self.trial.report(objective, epoch)
-        else:
+        elif self.hparams.objective is not None and self.hparams.objective not in results[self.eval_subset]['scalar']:
             logger.warning(f"The objective {self.hparams.objective} is missing from the validation results")
 
-        return results
+        return results, objective
+
+    def report(self, objective, epoch=None, **argv):
+        '''
+        Use this function to report results to hyperparameter optimization frameworks
+        also you can add key 'objective' to the results dictionary to report the final scores.
+        '''
+
+        if self.hpo == 'tune':
+            tune.report(mean_accuracy=objective)
+        elif self.hpo == 'optuna':
+            self.trial.report(objective, epoch)
 
     def early_stopping(self, results=None, epoch=None, **kwargs):
         '''
@@ -668,11 +678,9 @@ class Algorithm(object):
 
             results = {'train': train_results, self.eval_subset: eval_results}
 
-            if self.hparams.schedulers_steps == 'epoch':
-                self.schedulers_step()
-
-            if self.hpo is not None:
-                results = self.report(results, i)
+            results, objective = self.calculate_objective(results=results)
+            self.schedulers_step(objective=objective, step_type='epoch')
+            results = self.report(results, i)
 
             self.epoch += 1
             yield results

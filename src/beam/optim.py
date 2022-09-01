@@ -25,17 +25,36 @@ class MultipleScheduler(object):
 
 class BeamScheduler(object):
 
-    def __init__(self, optimizer, total_epochs, warmup=5, method='one_cycle', decay=math.sqrt(.1),):
+    def __init__(self, optimizer, total_steps, warmup=5, method='one_cycle', decay=math.sqrt(.1), step_type='epoch',
+                 pct_start=0.3, anneal_strategy='cos', cycle_momentum=True, base_momentum=0.85,
+                 max_momentum=0.95, div_factor=25.0):
 
+        self.step_type = step_type
+        self.method = method
         if method == 'one_cycle':
-            scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, )
+
+            max_lr = optimizer.params_group[0]['lr']
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr, total_steps=total_steps,
+                                                            pct_start=pct_start, anneal_strategy=anneal_strategy,
+                                                            cycle_momentum=cycle_momentum, base_momentum=base_momentum,
+                                                            max_momentum=max_momentum, div_factor=div_factor)
+            self.step_type = 'iteration'
+        else:
+
+            if method == 'reduce_on_plateau':
 
         if warmup is not None and warmup > 0:
             warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, total_iters=warmup)
             scheduler = torch.optim.lr_scheduler.ChainedScheduler([scheduler, warmup_scheduler])
-    def step(self, metric=None):
-        self.scheduler.step()
 
+        self.scheduler = scheduler
+
+    def step(self, objective=None, step_type=None):
+        if step_type == self.step_type or step_type is None:
+            if self.method == 'reduce_on_plateau':
+                self.scheduler.step(objective)
+            else:
+                self.scheduler.step()
 
 class BeamOptimizer(object):
 
