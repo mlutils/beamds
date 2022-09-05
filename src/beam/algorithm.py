@@ -69,7 +69,7 @@ class Algorithm(object):
         self.optimizers_flat = {}
         self.epoch_length = None
 
-        self.add_networks_and_optmizers(networks=networks, optimizers=optimizers)
+        self.add_networks_and_optimizers(networks=networks, optimizers=optimizers)
 
         if hparams.store_initial_weights:
             self.initial_weights = self.save_checkpoint()
@@ -105,20 +105,32 @@ class Algorithm(object):
             experiment = Experiment(hparams)
         return experiment.algorithm_generator(cls)
 
-    def add_networks_and_optmizers(self, networks=None, optimizers=None, build_optimizers=True, name='net',
-                                   build_schedulers=True):
+    def add_networks_and_optimizers(self, networks=None, optimizers=None, build_optimizers=True, name='net',
+                                    build_schedulers=True):
 
         if networks is None:
-            networks = {}
-        elif issubclass(type(networks), nn.Module):
-            networks = {name: networks}
-        elif check_type(networks).major == 'dict':
-            pass
+            networks = self.networks
         else:
-            raise NotImplementedError("Network type is unsupported")
+            if issubclass(type(networks), nn.Module):
+                networks = {name: networks}
+            elif check_type(networks).major == 'dict':
+                pass
+            else:
+                raise NotImplementedError("Network type is unsupported")
 
-        for k in networks.keys():
-            networks[k] = self.register_network(networks[k], name=k)
+            for k, net in networks.items():
+                if k in self.networks:
+                    self.networks.pop(k)
+                    self.inference_networks.pop(k)
+                    logger.warning(f"Found network with identical keys: {k}. Overriding previous network.")
+                    if k in self.optimizers:
+                        self.optimizers.pop(k)
+
+                networks[k] = self.register_network(networks[k], name=k)
+                self.networks[k] = networks[k]
+                self.inference_networks[k] = net
+                if self.hparams.swa is not None:
+                    self.swa_networks[k] = torch.optim.swa_utils.AveragedModel(net)
 
         if optimizers is None:
             if build_optimizers:
@@ -161,51 +173,31 @@ class Algorithm(object):
         else:
             raise NotImplementedError
 
-        for k, net in networks.items():
-            if k in self.networks:
-                self.networks.pop(k)
-                self.inference_networks.pop(k)
-                logger.warning(f"Found network with identical keys: {k}. Overriding previous network.")
-                if k in self.optimizers:
-                    self.optimizers.pop(k)
-
-            self.networks[k] = net
-            self.inference_networks[k] = net
-            if self.hparams.swa is not None:
-                self.swa_networks[k] = torch.optim.swa_utils.AveragedModel(net)
-
         for k, opt in optimizers.items():
             self.optimizers[k] = opt
 
             if self.hparams.swa is not None:
 
+                kwargs = {'anneal_epochs': self.get_hparam('swa_anneal_epochs', k), 'anneal_strategy': 'cos'}
+
                 if type(opt) is BeamOptimizer:
-                    self.swa_schedulers[k] = opt.set_scheduler(torch.optim.swa_utils.SWALR, self.get_hparam('swa_lr', k),
-                                                                         anneal_epochs=self.get_hparam('swa_anneal_epochs', k),
-                                                                         anneal_strategy='cos')
+                    self.swa_schedulers[k] = opt.set_scheduler(torch.optim.swa_utils.SWALR,
+                                                               self.get_hparam('swa_lr', k), **kwargs)
                 else:
-                    self.swa_schedulers[k] = torch.optim.swa_utils.SWALR(opt, self.get_hparam('swa_lr', k),
-                                                                         anneal_epochs=self.get_hparam('swa_anneal_epochs', k),
-                                                                         anneal_strategy='cos')
+                    self.swa_schedulers[k] = torch.optim.swa_utils.SWALR(opt, self.get_hparam('swa_lr', k), **kwargs)
 
             if build_schedulers and self.get_hparam('scheduler', k) is not None:
 
+                kwargs = {'warmup': self.get_hparam('scheduler_warmup', k), 'method': self.get_hparam('scheduler', k),
+                          'step_type': self.get_hparam('schedulers_steps', k),
+                          'cycle_momentum': True, 'base_momentum': self.get_hparam('cycle_base_momentum', k),
+                          'max_momentum': self.get_hparam('cycle_max_momentum', k),
+                          'factor': self.get_hparam('scheduler_factor', k)}
+
                 if type(opt) is BeamOptimizer:
-                    scheduler = opt.set_scheduler(BeamScheduler, warmup=self.get_hparam('scheduler_warmup', k),
-                                                  method=self.get_hparam('scheduler', k),
-                                                  step_type=self.get_hparam('schedulers_steps', k),
-                                                  cycle_momentum=True,
-                                                  base_momentum=self.get_hparam('cycle_base_momentum', k),
-                                                  max_momentum=self.get_hparam('cycle_max_momentum', k),
-                                                  factor=self.get_hparam('scheduler_factor', k))
+                    scheduler = opt.set_scheduler(BeamScheduler, **kwargs)
                 else:
-                    scheduler = BeamScheduler(opt, warmup=self.get_hparam('scheduler_warmup', k),
-                                              method=self.get_hparam('scheduler', k),
-                                              step_type=self.get_hparam('schedulers_steps', k),
-                                              cycle_momentum=True,
-                                              base_momentum=self.get_hparam('cycle_base_momentum', k),
-                                              max_momentum=self.get_hparam('cycle_max_momentum', k),
-                                              factor=self.get_hparam('scheduler_factor', k))
+                    scheduler = BeamScheduler(opt, **kwargs)
 
                 self.schedulers[k] = scheduler
 

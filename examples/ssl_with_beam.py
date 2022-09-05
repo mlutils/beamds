@@ -315,13 +315,16 @@ class BeamSSL(Algorithm):
 
         networks['encoder'] = self.generate_encoder()
 
-        self.labeled_dataset = STL10Dataset(hparams, subset='labeled')
-        self.index_train_labeled = np.array(self.labeled_dataset.indices['train'])
-        self.index_test_labeled = np.array(self.labeled_dataset.indices['test'])
-
+        self.index_train_labeled,
         self.logger = beam_logger()
 
         super().__init__(hparams, networks=networks)
+
+    def generate_labeled_test_set(self):
+
+        self.labeled_dataset = STL10Dataset(hparams, subset='labeled')
+        self.index_train_labeled = np.array(self.labeled_dataset.indices['train'])
+        self.index_test_labeled = np.array(self.labeled_dataset.indices['test'])
 
     def generate_encoder(self, pretrained=None):
 
@@ -529,7 +532,7 @@ class BeamBarlowTwins(BeamSSL):
         discriminator = nn.Sequential(spectral_norm(nn.Linear(h, h)),
                                    nn.ReLU(), spectral_norm(nn.Linear(h, h)), nn.ReLU(), nn.Linear(h, 1))
 
-        self.add_networks_and_optmizers(networks={'projection': projection, 'discriminator': discriminator})
+        self.add_networks_and_optimizers(networks={'projection': projection, 'discriminator': discriminator})
 
         # if self.n_ensembles > 1:
         ensemble = BeamEnsemble(self.generate_encoder, n_ensembles=self.n_ensembles)
@@ -538,7 +541,7 @@ class BeamBarlowTwins(BeamSSL):
                                                                     'betas': (self.hparams.momentum, self.hparams.beta2),
                                                                     'eps': self.hparams.eps}))
 
-        self.add_networks_and_optmizers(networks=ensemble, name='encoder', build_optimizers=False)
+        self.add_networks_and_optimizers(networks=ensemble, name='encoder', build_optimizers=False)
 
         # beam_weights_initializer(self.networks['projection'])
         beam_weights_initializer(self.networks['discriminator'], method='orthogonal')
@@ -720,7 +723,7 @@ class UniversalSSL(BeamSSL):
         reset_network(networks['target_projection'])
 
         networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
-        self.add_networks_and_optmizers(networks=networks)
+        self.add_networks_and_optimizers(networks=networks)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -787,7 +790,7 @@ class BarlowTwins(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, p))
 
-        self.add_networks_and_optmizers(networks=networks)
+        self.add_networks_and_optimizers(networks=networks)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -839,7 +842,7 @@ class BeamVICReg(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, p))
 
-        self.add_networks_and_optmizers(networks=networks)
+        self.add_networks_and_optimizers(networks=networks)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -929,7 +932,7 @@ class VICReg(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, p))
 
-        self.add_networks_and_optmizers(networks=networks)
+        self.add_networks_and_optimizers(networks=networks)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -993,7 +996,7 @@ class SimCLR(BeamSSL):
                                                    nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                    nn.ReLU(), nn.Linear(h, p))
 
-        self.add_networks_and_optmizers(networks=networks)
+        self.add_networks_and_optimizers(networks=networks)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -1043,7 +1046,7 @@ class SimSiam(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, p))
 
         networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
-        self.add_networks_and_optmizers(networks=networks)
+        self.add_networks_and_optimizers(networks=networks)
 
     @staticmethod
     def simsiam_loss(p, z):
@@ -1105,7 +1108,7 @@ class BYOL(BeamSSL):
         reset_network(networks['target_projection'])
 
         networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
-        self.add_networks_and_optmizers(networks=networks)
+        self.add_networks_and_optimizers(networks=networks)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
