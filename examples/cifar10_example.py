@@ -284,11 +284,11 @@ class CIFAR10Algorithm(Algorithm):
                                                 sparse_args=None, dense_optimizer='SGD')
 
         super().__init__(hparams, networks=net, optimizers=optimizer)
-        self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
-                                                              lr_lambda=LRPolicy(gain=hparams.gain,
-                                                                                 turn_point=hparams.turn_point,
-                                                                                 final_point=hparams.final_point,
-                                                                                 minimal_gain=hparams.minimal_gain))
+        # self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
+        #                                                       lr_lambda=LRPolicy(gain=hparams.gain,
+        #                                                                          turn_point=hparams.turn_point,
+        #                                                                          final_point=hparams.final_point,
+        #                                                                          minimal_gain=hparams.minimal_gain))
 
     def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
 
@@ -330,9 +330,6 @@ class CIFAR10Algorithm(Algorithm):
 
             self.trial.report(acc, epoch)
             results['objective'] = acc
-
-        else:
-            raise NotImplementedError
 
         return results
 

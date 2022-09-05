@@ -9,6 +9,6 @@ from .utils import tqdm_beam as tqdm
 from .algorithm import Algorithm
 from .model import LinearNet, PackedSet, BetterEmbedding, SplineEmbedding, copy_network, reset_network
 from .data_tensor import DataTensor
-from .optim import BeamOptimizer
+from .optim import BeamOptimizer, BeamScheduler
 
 from ._version import __version__

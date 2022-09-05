@@ -234,7 +234,6 @@ class Study(object):
             df = df_sync.merge(df_explode, how='cross')
 
         df = df.reset_index(drop=True)
-        print(df)
         n_trials = len(df)
 
         if not 'cpu' in self.args.device:

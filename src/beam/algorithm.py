@@ -6,7 +6,7 @@ import copy
 from .utils import tqdm_beam as tqdm
 from .utils import logger
 import numpy as np
-from .optim import BeamOptimizer, BeamScheduler
+from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
     stack_inference_results, to_numpy, stack_train_results
@@ -38,6 +38,8 @@ class Algorithm(object):
         self.half = hparams.half
         self.enable_tqdm = hparams.enable_tqdm if hparams.tqdm_threshold == 0 or not hparams.enable_tqdm else None
         self.n_epochs = hparams.n_epochs
+        self.swa_epochs = 0
+
         self.batch_size_train = hparams.batch_size_train
         self.batch_size_eval = hparams.batch_size_eval
 
@@ -54,9 +56,19 @@ class Algorithm(object):
         self.epoch = 0
 
         self.networks = {}
+        self.swa_networks = {}
         self.inference_networks = {}
+
         self.optimizers = {}
         self.schedulers = {}
+        self.swa_schedulers = {}
+
+        self.optimizers_name_by_id = {}
+        self.schedulers_name_by_id = {}
+        self.schedulers_flat = {}
+        self.optimizers_flat = {}
+        self.epoch_length = None
+
         self.add_networks_and_optmizers(networks=networks, optimizers=optimizers)
 
         if hparams.store_initial_weights:
@@ -73,6 +85,11 @@ class Algorithm(object):
         self.best_objective = None
         self.best_state = False
 
+    def get_hparam(self, hparam, specific=None):
+        if specific is not None and f"{specific}_{hparam}" in self.hparams:
+            return getattr(self.hparams, f"{specific}_{hparam}")
+        return getattr(self.hparams, hparam)
+
     @staticmethod
     def get_parser():
         return get_beam_parser()
@@ -88,7 +105,8 @@ class Algorithm(object):
             experiment = Experiment(hparams)
         return experiment.algorithm_generator(cls)
 
-    def add_networks_and_optmizers(self, networks=None, optimizers=None, build_optimizers=True, name='net'):
+    def add_networks_and_optmizers(self, networks=None, optimizers=None, build_optimizers=True, name='net',
+                                   build_schedulers=True):
 
         if networks is None:
             networks = {}
@@ -100,46 +118,48 @@ class Algorithm(object):
             raise NotImplementedError("Network type is unsupported")
 
         for k in networks.keys():
-            networks[k] = self.register_network(networks[k])
+            networks[k] = self.register_network(networks[k], name=k)
 
-        if build_optimizers:
-            if optimizers is None:
-                optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.hparams.lr_dense,
-                                                              'weight_decay': self.hparams.weight_decay,
-                                                               'betas': (self.hparams.momentum, self.hparams.beta2),
-                                                              'eps': self.hparams.eps,
-                                                               'capturable': self.hparams.capturable},
-                                               sparse_args={'lr': self.hparams.lr_sparse,
-                                                            'betas': (self.hparams.momentum, self.hparams.beta2),
-                                                            'eps': self.hparams.eps},
-                                               clip=self.hparams.clip_gradient, amp=self.amp, accumulate=self.hparams.accumulate
+        if optimizers is None:
+            if build_optimizers:
+                optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', k),
+                                                              'weight_decay': self.get_hparam('weight_decay', k),
+                                                              'betas': (self.get_hparam('momentum', k),
+                                                                        self.get_hparam('beta2', k)),
+                                                              'eps': self.get_hparam('eps', k),
+                                                              'capturable': self.get_hparam('capturable', k)},
+                                               sparse_args={'lr': self.get_hparam('lr_sparse', k),
+                                                            'betas': (self.get_hparam('momentum', k),
+                                                                      self.get_hparam('beta2', k)),
+                                                            'eps': self.get_hparam('eps', k)},
+                                               clip=self.get_hparam('clip_gradient', k), amp=self.amp,
+                                               accumulate=self.get_hparam('accumulate', k)
                                                ) for k, v in networks.items()}
-
-            elif issubclass(type(optimizers), dict):
-                for k, o in optimizers.items():
-                    if callable(o):
-                        try:
-                            optimizers[k] = o(networks[k])
-                        except TypeError:
-                            optimizers[k] = o(networks[k].parameters())
-                    else:
-                        o.load_state_dict(o.state_dict())
-                        optimizers[k] = o
-
-            elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
-                optimizers.load_state_dict(optimizers.state_dict())
-                optimizers = {name: optimizers}
-
-            elif callable(optimizers):
-                try:
-                    optimizers = {name: optimizers(networks[name])}
-                except TypeError:
-                    optimizers = {name: optimizers(networks[name].parameters())}
             else:
-                raise NotImplementedError
+                optimizers = {}
 
+        elif issubclass(type(optimizers), dict):
+            for k, o in optimizers.items():
+                if callable(o):
+                    try:
+                        optimizers[k] = o(networks[k])
+                    except TypeError:
+                        optimizers[k] = o(networks[k].parameters())
+                else:
+                    o.load_state_dict(o.state_dict())
+                    optimizers[k] = o
+
+        elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+            optimizers.load_state_dict(optimizers.state_dict())
+            optimizers = {name: optimizers}
+
+        elif callable(optimizers):
+            try:
+                optimizers = {name: optimizers(networks[name])}
+            except TypeError:
+                optimizers = {name: optimizers(networks[name].parameters())}
         else:
-            optimizers = {}
+            raise NotImplementedError
 
         for k, net in networks.items():
             if k in self.networks:
@@ -151,8 +171,51 @@ class Algorithm(object):
 
             self.networks[k] = net
             self.inference_networks[k] = net
+            if self.hparams.swa is not None:
+                self.swa_networks[k] = torch.optim.swa_utils.AveragedModel(net)
+
         for k, opt in optimizers.items():
             self.optimizers[k] = opt
+
+            if self.hparams.swa is not None:
+
+                if type(opt) is BeamOptimizer:
+                    self.swa_schedulers[k] = opt.set_scheduler(torch.optim.swa_utils.SWALR, self.get_hparam('swa_lr', k),
+                                                                         anneal_epochs=self.get_hparam('swa_anneal_epochs', k),
+                                                                         anneal_strategy='cos')
+                else:
+                    self.swa_schedulers[k] = torch.optim.swa_utils.SWALR(opt, self.get_hparam('swa_lr', k),
+                                                                         anneal_epochs=self.get_hparam('swa_anneal_epochs', k),
+                                                                         anneal_strategy='cos')
+
+            if build_schedulers and self.get_hparam('scheduler', k) is not None:
+
+                if type(opt) is BeamOptimizer:
+                    scheduler = opt.set_scheduler(BeamScheduler, warmup=self.get_hparam('scheduler_warmup', k),
+                                                  method=self.get_hparam('scheduler', k),
+                                                  step_type=self.get_hparam('schedulers_steps', k),
+                                                  cycle_momentum=True,
+                                                  base_momentum=self.get_hparam('cycle_base_momentum', k),
+                                                  max_momentum=self.get_hparam('cycle_max_momentum', k),
+                                                  factor=self.get_hparam('scheduler_factor', k))
+                else:
+                    scheduler = BeamScheduler(opt, warmup=self.get_hparam('scheduler_warmup', k),
+                                              method=self.get_hparam('scheduler', k),
+                                              step_type=self.get_hparam('schedulers_steps', k),
+                                              cycle_momentum=True,
+                                              base_momentum=self.get_hparam('cycle_base_momentum', k),
+                                              max_momentum=self.get_hparam('cycle_max_momentum', k),
+                                              factor=self.get_hparam('scheduler_factor', k))
+
+                self.schedulers[k] = scheduler
+
+        self.refresh_optimizers_and_schedulers_pointers()
+
+    def refresh_optimizers_and_schedulers_pointers(self):
+        self.optimizers_name_by_id = {id(opt): k for k, opt in self.optimizers.items()}
+        self.schedulers_name_by_id = {id(sch): k for k, sch in self.schedulers.items()}
+        self.schedulers_flat = self.get_flat_schedulers()
+        self.optimizers_flat = self.get_flat_optimizers()
 
     @property
     def experiment(self):
@@ -178,7 +241,7 @@ class Algorithm(object):
             name = 'loss'
         total_loss = 0
         if reduction is None:
-            reduction = self.hparams.reduction
+            reduction = self.get_hparam('reduction', name)
 
         if len(losses) == 1 and issubclass(type(losses[0]), dict):
             losses = losses[0]
@@ -248,36 +311,30 @@ class Algorithm(object):
                     scaler = self.scalers[name]
 
             if optimizers is None:
-                optimizers = self.optimizers
-            elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
-                optimizers = [optimizers]
-
-            optimizers_flat = []
-            for op in optimizers:
-                if issubclass(type(op), BeamOptimizer):
-                    for opi in op.optimizers.values():
-                        optimizers_flat.append(opi)
-                else:
-                    optimizers_flat.append(op)
-            optimizers = optimizers_flat
+                optimizers = self.optimizers_flat
+            else:
+                if issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+                    optimizers = [optimizers]
+                optimizers = self.get_flat_optimizers(optimizers)
 
             with torch.autocast(self.autocast_device, enabled=False):
 
                 if self.amp:
                     scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
-                                                     create_graph=create_graph, inputs=inputs)
+                                                create_graph=create_graph, inputs=inputs)
                 else:
                     loss.backward(gradient=gradient, retain_graph=retain_graph,
                                   create_graph=create_graph, inputs=inputs)
 
-                if self.hparams.clip_gradient > 0:
-                    for op in optimizers.values():
+                for k, op in optimizers.items():
+                    clip = self.get_hparam('clip_gradient', k)
+                    if clip > 0:
                         if self.amp:
                             scaler.unscale_(op)
                         for pg in op.param_groups:
-                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), self.hparams.clip)
+                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), clip)
 
-                if iteration is None or not (iteration % self.hparams.accumulate):
+                if iteration is None or not (iteration % self.get_hparam('accumulate', name)):
                     for op in optimizers:
                         if self.amp:
                             scaler.step(op)
@@ -317,13 +374,12 @@ class Algorithm(object):
                                             sample_size=sample_size)
 
             self.dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
-                                                            pin_memory=self.pin_memory,
-                                                            timeout=timeout, collate_fn=collate_fn,
-                                                            worker_init_fn=worker_init_fn,
-                                                            multiprocessing_context=multiprocessing_context,
-                                                            generator=generator,
-                                                            prefetch_factor=prefetch_factor)
-
+                                                           pin_memory=self.pin_memory,
+                                                           timeout=timeout, collate_fn=collate_fn,
+                                                           worker_init_fn=worker_init_fn,
+                                                           multiprocessing_context=multiprocessing_context,
+                                                           generator=generator,
+                                                           prefetch_factor=prefetch_factor)
         for s in ['train', self.eval_subset]:
 
             sampler = dataset.build_sampler(batch_size_train, subset=s, persistent=True, oversample=oversample,
@@ -333,12 +389,12 @@ class Algorithm(object):
                                             sample_size=sample_size)
 
             self.persistent_dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
-                                                        pin_memory=self.pin_memory,
-                                                        timeout=timeout, collate_fn=collate_fn,
-                                                        worker_init_fn=worker_init_fn,
-                                                        multiprocessing_context=multiprocessing_context,
-                                                        generator=generator,
-                                                        prefetch_factor=prefetch_factor)
+                                                                      pin_memory=self.pin_memory,
+                                                                      timeout=timeout, collate_fn=collate_fn,
+                                                                      worker_init_fn=worker_init_fn,
+                                                                      multiprocessing_context=multiprocessing_context,
+                                                                      generator=generator,
+                                                                      prefetch_factor=prefetch_factor)
 
         self.epoch_length = {'train': None, self.eval_subset: None}
 
@@ -370,7 +426,69 @@ class Algorithm(object):
         if self.n_epochs is None:
             self.n_epochs = self.hparams.total_steps // self.epoch_length['train']
 
-    def register_network(self, net):
+        if self.hparams.swa is not None:
+            if int(self.hparams.swa) == self.hparams.swa:
+                self.swa_epochs = int(self.hparams.swa)
+            else:
+                self.swa_epochs = int(np.round(self.hparams.swa * self.n_epochs))
+
+        for scheduler in self.schedulers_flat.values():
+            if type(scheduler) is BeamScheduler:
+                scheduler.update_total_steps(epochs=self.n_epochs, steps_per_epochs=self.epoch_length['train'])
+
+    def get_optimizer_name(self, opt):
+        i = id(opt)
+        if i in self.optimizers_name_by_id:
+            return self.optimizers_name_by_id[i]
+        return str(i)
+
+    def get_scheduler_name(self, sch):
+        i = id(sch)
+        if i in self.schedulers_name_by_id:
+            return self.schedulers_name_by_id[i]
+        return str(i)
+
+    def get_flat_optimizers(self, optimizers=None):
+
+        if issubclass(type(optimizers), list):
+            optimizers = {self.get_optimizer_name(opt): opt for opt in optimizers}
+        elif optimizers is None:
+            optimizers = self.optimizers
+
+        optimizers_flat = {}
+        for k, op in optimizers.items():
+            if issubclass(type(op), BeamOptimizer):
+                for ki, opi in op.optimizers.items():
+                    if len(op.optimizers) > 1:
+                        optimizers_flat[f'{k}_{ki}'] = opi
+                    else:
+                        optimizers_flat[k] = opi
+            else:
+                optimizers_flat[k] = op
+
+        return optimizers_flat
+
+    def get_flat_schedulers(self, schedulers=None):
+
+        if issubclass(type(schedulers), list):
+            schedulers = {self.get_scheduler_name(sch): sch for sch in schedulers}
+        elif schedulers is None:
+            schedulers = self.schedulers
+
+        schedulers_flat = {}
+        for k, scheduler in schedulers.items():
+            if issubclass(type(scheduler), MultipleScheduler):
+                for ki, sch in scheduler.schedulers.items():
+                    if len(scheduler.schedulers) > 1:
+                        schedulers_flat[f'{k}_{ki}'] = sch
+                    else:
+                        schedulers_flat[k] = sch
+            else:
+                schedulers_flat[k] = scheduler
+
+        return schedulers_flat
+
+    def register_network(self, net, name=None):
 
         if self.half:
             net = net.half()
@@ -379,8 +497,8 @@ class Algorithm(object):
 
         if self.ddp:
             net_ddp = DDP(net, device_ids=[self.device],
-                      find_unused_parameters=self.hparams.find_unused_parameters,
-                      broadcast_buffers=self.hparams.broadcast_buffers)
+                      find_unused_parameters=self.get_hparam('find_unused_parameters', name),
+                      broadcast_buffers=self.get_hparam('broadcast_buffers', name))
 
             for a in dir(net):
                 if a not in dir(net_ddp) and not a.startswith('_'):
@@ -440,15 +558,15 @@ class Algorithm(object):
     def schedulers_step(self, objective=None, step_type=None):
         if objective is None:
             objective = self.objective
-        for k, scheduler in self.schedulers.items():
+        for k, scheduler in self.schedulers_flat.items():
             if issubclass(type(scheduler), torch.optim.lr_scheduler._LRScheduler):
-                if self.hparams.schedulers_steps == step_type:
+                if self.get_hparam('schedulers_steps', k) == step_type:
                     scheduler.step()
             elif type(scheduler) is torch.optim.lr_scheduler.ReduceLROnPlateau:
-                if self.hparams.schedulers_steps == step_type:
+                if self.get_hparam('schedulers_steps', k) == step_type:
                     scheduler.step(objective)
             elif type(scheduler) is BeamScheduler:
-                scheduler.step(objective)
+                scheduler.step(objective, step_type=step_type)
             else:
                 try:
                     scheduler.step()
@@ -510,7 +628,17 @@ class Algorithm(object):
                 yield results
                 continue
 
-            self.set_mode(training=training)
+            if n == self.n_epochs + self.swa_epochs:
+                logger.warning("This is an extra epoch to calculate BN statistics. "
+                               "It is not used for training so we set training=False.")
+                training = False
+                bu_networks = self.networks
+                self.networks = self.swa_networks
+                self.set_mode(training=True)
+
+            else:
+                self.set_mode(training=training)
+
             results = self.preprocess_epoch(results=results, epoch=n, training=training)
 
             data_generator = self.data_generator(subset, persistent=True)
@@ -523,7 +651,9 @@ class Algorithm(object):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
                     objective = results['scalar'][self.hparams.objective] \
                         if self.hparams.objective in results['scalar'] else None
-                    self.schedulers_step(objective, step_type='iteration')
+
+                    if training and n < self.n_epochs:
+                        self.schedulers_step(objective, step_type='iteration')
 
                     if self.amp and training:
                         if self.scaler._scale is not None:
@@ -545,6 +675,18 @@ class Algorithm(object):
             results['stats']['samples'] = n_iter * batch_size
             results['stats']['batch_rate'] = rate_string_format(n_iter, delta)
             results['stats']['sample_rate'] = rate_string_format(n_iter * batch_size, delta)
+
+            # add learning rate and momentum of schedulers_steps
+            if training:
+                for k, scheduler in self.schedulers_flat.items():
+                    lr = scheduler.optimizer.param_groups[0]['lr']
+                    results['scalar'][f'lr_{k}'] = lr
+                    if type(scheduler) is BeamScheduler and scheduler.method in ['one_cycle']:
+                        results['scalar'][f'momentum_{k}'] = scheduler.get_current_state()['momentum']
+
+            if n == self.n_epochs + self.swa_epochs:
+                self.set_mode(training=False)
+                self.networks = bu_networks
 
             yield results
 
@@ -666,8 +808,11 @@ class Algorithm(object):
 
     def __iter__(self):
 
-        eval_generator = self.epoch_iterator(self.n_epochs, subset=self.eval_subset, training=False)
-        for i, train_results in enumerate(self.epoch_iterator(self.n_epochs, subset='train', training=True)):
+        self.refresh_optimizers_and_schedulers_pointers()
+        eval_generator = self.epoch_iterator(self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
+                                             subset=self.eval_subset, training=False)
+        for i, train_results in enumerate(self.epoch_iterator(self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
+                                                              subset='train', training=True)):
 
             train_results = stack_train_results(train_results, batch_size=self.batch_size_train)
 
@@ -679,7 +824,17 @@ class Algorithm(object):
             results = {'train': train_results, self.eval_subset: eval_results}
 
             results, objective = self.calculate_objective(results=results)
-            self.schedulers_step(objective=objective, step_type='epoch')
+
+            if i+1 == self.n_epochs and self.swa_epochs > 0:
+                logger.warning("Switching to SWA training")
+
+            if i+1 >= self.n_epochs and self.swa_epochs > 0:
+                for k, swa_model in self.swa_networks.items():
+                    swa_model.update_parameters(self.networks[k])
+                for k, sch in self.swa_schedulers.items():
+                    sch.step()
+            else:
+                self.schedulers_step(objective=objective, step_type='epoch')
             results = self.report(results, i)
 
             self.epoch += 1

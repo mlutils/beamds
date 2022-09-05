@@ -6,7 +6,7 @@ from collections import defaultdict
 import numpy as np
 import math
 from functools import partial
-
+from .utils import logger
 
 class MultipleScheduler(object):
 
@@ -22,39 +22,169 @@ class MultipleScheduler(object):
         for op in self.multiple_optimizer.optimizers.keys():
             self.schedulers[op].step(*argc, **argv)
 
+    def state_dict(self):
+        return {k: sch.state_dict() for k, sch in self.schedulers.items()}
+
+    def load_load_state_dict(self, state):
+        for k, sch in self.schedulers.items():
+            if k in state:
+                sch.load_state_dict(state[k])
+            else:
+                logger.error(f"Missing scheduler key from state_dict: {k}")
+
 
 class BeamScheduler(object):
 
-    def __init__(self, optimizer, total_steps, warmup=5, method='one_cycle', decay=math.sqrt(.1), step_type='epoch',
-                 pct_start=0.3, anneal_strategy='cos', cycle_momentum=True, base_momentum=0.85,
-                 max_momentum=0.95, div_factor=25.0):
+    def __init__(self, optimizer, total_steps=None, epochs=None, steps_per_epochs=None,
+                 warmup=5, method='one_cycle', step_type='epoch',
+                 pct_start=0.3, anneal_strategy='cos', cycle_momentum=True, base_momentum=0.85, start_factor=0.3,
+                 max_momentum=0.95, div_factor=25.0, eta_min=1e-6, factor=math.sqrt(.1), patience=None,
+                 threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=1e-6):
 
-        self.step_type = step_type
         self.method = method
+        self.epoch = 0
+        self.warmup_scheduler = None
+        self.warmup = warmup
+        self.optimizer = optimizer
+        self.last_lr = None
+        self.last_momentum = None
+
+        if method == 'one_cycle':
+            self.step_type = 'iteration'
+        else:
+            self.step_type = step_type
+
+        self.total_steps = self.get_total_steps(total_steps=total_steps, epochs=epochs,
+                                                steps_per_epochs=steps_per_epochs)
+
         if method == 'one_cycle':
 
-            max_lr = optimizer.params_group[0]['lr']
-            scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr, total_steps=total_steps,
+            max_lr = optimizer.param_groups[0]['lr']
+            if self.total_steps is None:
+                scheduler = partial(torch.optim.lr_scheduler.OneCycleLR, optimizer=optimizer, max_lr=max_lr,
+                                                                pct_start=pct_start, anneal_strategy=anneal_strategy,
+                                                                cycle_momentum=cycle_momentum, base_momentum=base_momentum,
+                                                                max_momentum=max_momentum, div_factor=div_factor)
+            else:
+                scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr, total_steps=self.total_steps,
                                                             pct_start=pct_start, anneal_strategy=anneal_strategy,
                                                             cycle_momentum=cycle_momentum, base_momentum=base_momentum,
                                                             max_momentum=max_momentum, div_factor=div_factor)
-            self.step_type = 'iteration'
         else:
+
+            if self.warmup is not None and self.warmup > 0:
+                self.warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=start_factor,
+                                                                          total_iters=warmup)
+                if self.total_steps is not None:
+                    self.total_steps = self.total_steps - self.warmup
 
             if method == 'reduce_on_plateau':
 
-        if warmup is not None and warmup > 0:
-            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, total_iters=warmup)
-            scheduler = torch.optim.lr_scheduler.ChainedScheduler([scheduler, warmup_scheduler])
+                if patience is None and self.total_steps is not None:
+                    patience = self.patience_heuristics(self.total_steps)
+
+                if patience is not None:
+                    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=factor,
+                                                                           patience=patience, threshold=threshold,
+                                                                           threshold_mode=threshold_mode,
+                                                                           cooldown=cooldown, min_lr=min_lr)
+                else:
+                    scheduler = partial(torch.optim.lr_scheduler.ReduceLROnPlateau, optimizer=optimizer, mode='max',
+                                        factor=factor, threshold=threshold,
+                                        threshold_mode=threshold_mode, cooldown=cooldown, min_lr=min_lr)
+
+            elif method == 'cosine_annealing':
+
+                if self.total_steps is None:
+                    scheduler = partial(torch.optim.lr_scheduler.CosineAnnealingLR, optimizer=optimizer,
+                                        eta_min=eta_min)
+                else:
+                    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, self.total_steps, eta_min=eta_min)
+
+            else:
+                scheduler = None
 
         self.scheduler = scheduler
 
+    def get_total_steps(self, total_steps=None, epochs=None, steps_per_epochs=None):
+        if epochs is not None and self.step_type == 'epoch':
+            total_steps = epochs
+        elif epochs is not None and steps_per_epochs is not None:
+            total_steps = epochs * steps_per_epochs
+        return total_steps
+
+    @staticmethod
+    def patience_heuristics(total_steps):
+
+        # return 2 * int(np.log2(total_steps / 12.5))
+
+        if total_steps > 400:
+            return 10
+        if total_steps > 200:
+            return 8
+        if total_steps > 100:
+            return 6
+        if total_steps > 50:
+            return 4
+        return 2
+
+    def update_total_steps(self, total_steps=None, epochs=None, steps_per_epochs=None):
+
+        self.total_steps = self.get_total_steps(total_steps=total_steps, epochs=epochs,
+                                                steps_per_epochs=steps_per_epochs)
+
+        if self.warmup_scheduler is not None:
+            self.total_steps = self.total_steps - self.warmup
+        if type(self.scheduler) is partial:
+            if self.method == 'one_cycle':
+                self.scheduler = self.scheduler(total_steps=self.total_steps)
+            elif self.method == 'cosine_annealing':
+                self.scheduler = self.scheduler(T_max=self.total_steps)
+            elif self.method == 'reduce_on_plateau':
+                self.scheduler = self.scheduler(patience=self.patience_heuristics(self.total_steps))
+            else:
+                raise NotImplementedError(f"Method: {self.method} is still unsupported")
+
+    def get_current_state(self):
+
+        lr = self.optimizer.param_groups[0]['lr']
+        if self.method in ['one_cycle']:
+            if self.scheduler.use_beta1:
+                momentum = self.optimizer.param_groups[0]['betas'][0]
+            else:
+                momentum = self.optimizer.param_groups[0]['momentum']
+        else:
+            momentum = None
+
+        return {'lr': lr, 'momentum': momentum}
+
+    def state_dict(self):
+        return {'epoch': 0,
+                'warmup_scheduler': None if self.warmup_scheduler is None else self.warmup_scheduler.state_dict(),
+                'scheduler': self.scheduler.state_dict()}
+
+    def load_state_dict(self, state):
+        self.epoch = state['epoch']
+        self.scheduler.load_state_dict(state['scheduler'])
+        if self.warmup_scheduler is not None:
+            self.warmup_scheduler.load_state_dict(state['warmup_scheduler'])
+
     def step(self, objective=None, step_type=None):
-        if step_type == self.step_type or step_type is None:
+
+        if step_type != self.step_type and step_type is not None:
+            return
+        if self.warmup_scheduler is not None and self.epoch < self.warmup:
+            self.warmup_scheduler.step()
+        else:
             if self.method == 'reduce_on_plateau':
                 self.scheduler.step(objective)
             else:
-                self.scheduler.step()
+                if self.scheduler is not None:
+                    self.scheduler.step()
+
+        self.epoch = self.epoch + 1
+        self.get_current_state()
+
 
 class BeamOptimizer(object):
 
@@ -150,6 +280,7 @@ class BeamOptimizer(object):
                 self.zero_grad(set_to_none=set_to_none)
 
     def step(self):
+
         for op in self.optimizers.values():
             if self.amp:
                 self.scaler.step(op)

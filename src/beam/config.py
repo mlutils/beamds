@@ -4,6 +4,7 @@ import os
 import sys
 from .utils import is_notebook, check_type, logger
 import re
+import math
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
@@ -64,6 +65,8 @@ def get_beam_parser():
     parser.add_argument('--schedulers-steps', type=str, default='epoch',
                         help='When to apply schedulers steps [epoch|iteration|none]: each epoch or each iteration '
                              'Use none to avoid scheduler steps or to use your own custom steps policy')
+    parser.add_argument('--scheduler', type=str, default=None, help='Build BeamScheduler. Supported schedulers: '
+                                                                    '[one_cycle,reduce_on_plateau,cosine_annealing]')
     parser.add_argument('--objective', type=str, default=None,
                         help='A single objective to apply hyperparameter optimization or ReduceLROnPlateau scheduling. '
                              'By default we consider maximization of the objective (e.g. accuracy) '
@@ -130,6 +133,14 @@ def get_beam_parser():
     parser.add_argument('--reduction', type=str, metavar='hparam', default='sum', help='whether to sum loss elements or average them')
     parser.add_argument('--lr-dense', type=float, default=1e-3, metavar='hparam', help='learning rate for dense optimizers')
     parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='hparam', help='learning rate for sparse optimizers')
+    parser.add_argument('--cycle-max-momentum', type=float, default=.95, metavar='hparam',
+                        help='The maximum momentum in one-cycle optimizer')
+    parser.add_argument('--cycle-base-momentum', type=float, default=.85, metavar='hparam',
+                        help='The base momentum in one-cycle optimizer')
+    parser.add_argument('--scheduler-factor', type=float, default=math.sqrt(.1), metavar='hparam',
+                        help='The factor to reduce lr in schedulers such as ReduceOnPlateau')
+    parser.add_argument('--scheduler-warmup', type=float, default=5, metavar='hparam',
+                        help='Scheduler\'s warmup factor (in epochs)')
     parser.add_argument('--weight-decay', type=float, default=0., metavar='hparam', help='L2 regularization coefficient for dense optimizers')
     parser.add_argument('--eps', type=float, default=1e-4, metavar='hparam', help='Adam\'s epsilon parameter')
     parser.add_argument('--momentum', '--beta1', type=float, default=0.9, metavar='hparam',
@@ -142,6 +153,12 @@ def get_beam_parser():
                              '0-no oversampling and 1-full oversampling. Set 0 for no oversampling')
     parser.add_argument('--expansion-size', type=int, default=int(1e7),
                         help='largest expanded index size for oversampling')
+
+    parser.add_argument('--swa', type=float, default=None,
+                        help='SWA period. If float it is a fraction of the total number of epochs. '
+                             'If integer, it is the number of SWA epochs.')
+    parser.add_argument('--swa-lr', type=float, default=0.05, metavar='hparam', help='The SWA learning rate')
+    parser.add_argument('--swa-anneal-epochs', type=int, default=10, metavar='hparam', help='The SWA lr annealing period')
 
     # results printing and visualization
 
