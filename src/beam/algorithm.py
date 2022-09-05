@@ -85,10 +85,24 @@ class Algorithm(object):
         self.best_objective = None
         self.best_state = False
 
-    def get_hparam(self, hparam, specific=None):
+    def get_hparam(self, hparam, specific=None, default=None):
         if specific is not None and f"{specific}_{hparam}" in self.hparams:
             return getattr(self.hparams, f"{specific}_{hparam}")
-        return getattr(self.hparams, hparam)
+        if hparam in self.hparams:
+            return getattr(self.hparams, hparam)
+        logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
+        return default
+
+    def to(self, device):
+
+        logger.warning("Current implementation transforms only the networks dictionary. Don't use for training.")
+        device = torch.device(device)
+        self.device = device
+
+        for net in self.networks.values():
+            net.to(device)
+
+        return self
 
     @staticmethod
     def get_parser():
@@ -129,19 +143,24 @@ class Algorithm(object):
                 networks[k] = self.register_network(networks[k], name=k)
                 self.networks[k] = networks[k]
                 self.inference_networks[k] = net
-                if self.hparams.swa is not None:
+                if self.get_hparam('swa') is not None:
                     self.swa_networks[k] = torch.optim.swa_utils.AveragedModel(net)
 
         if optimizers is None:
             if build_optimizers:
+
+                momentum = self.get_hparam('momentum')
+                if momentum is None:
+                    momentum = self.get_hparam('beta1')
+
                 optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', k),
                                                               'weight_decay': self.get_hparam('weight_decay', k),
-                                                              'betas': (self.get_hparam('momentum', k),
+                                                              'betas': (self.get_hparam('momentum', k, default=momentum),
                                                                         self.get_hparam('beta2', k)),
                                                               'eps': self.get_hparam('eps', k),
                                                               'capturable': self.get_hparam('capturable', k)},
                                                sparse_args={'lr': self.get_hparam('lr_sparse', k),
-                                                            'betas': (self.get_hparam('momentum', k),
+                                                            'betas': (self.get_hparam('momentum', k, default=momentum),
                                                                       self.get_hparam('beta2', k)),
                                                             'eps': self.get_hparam('eps', k)},
                                                clip=self.get_hparam('clip_gradient', k), amp=self.amp,
@@ -176,7 +195,7 @@ class Algorithm(object):
         for k, opt in optimizers.items():
             self.optimizers[k] = opt
 
-            if self.hparams.swa is not None:
+            if self.get_hparam('swa') is not None:
 
                 kwargs = {'anneal_epochs': self.get_hparam('swa_anneal_epochs', k), 'anneal_strategy': 'cos'}
 
@@ -342,15 +361,15 @@ class Algorithm(object):
 
         self.dataset = dataset
 
-        batch_size_train = self.hparams.batch_size_train if batch_size_train is None else batch_size_train
-        batch_size_eval = self.hparams.batch_size_eval if batch_size_eval is None else batch_size_eval
-        oversample = (self.hparams.oversampling_factor > 0) if oversample is None else oversample
-        weight_factor = self.hparams.oversampling_factor if weight_factor is None else weight_factor
-        expansion_size = self.hparams.expansion_size if expansion_size is None else expansion_size
-        dynamic = self.hparams.dynamic_sampler if dynamic is None else dynamic
-        buffer_size = self.hparams.buffer_size if buffer_size is None else buffer_size
-        probs_normalization = self.hparams.probs_normalization if probs_normalization is None else probs_normalization
-        sample_size = self.hparams.sample_size if sample_size is None else sample_size
+        batch_size_train = self.get_hparam('batch_size_train') if batch_size_train is None else batch_size_train
+        batch_size_eval = self.get_hparam('batch_size_eval') if batch_size_eval is None else batch_size_eval
+        oversample = (self.get_hparam('oversampling_factor') > 0) if oversample is None else oversample
+        weight_factor = self.get_hparam('oversampling_factor') if weight_factor is None else weight_factor
+        expansion_size = self.get_hparam('expansion_size') if expansion_size is None else expansion_size
+        dynamic = self.get_hparam('dynamic_sampler') if dynamic is None else dynamic
+        buffer_size = self.get_hparam('buffer_size') if buffer_size is None else buffer_size
+        probs_normalization = self.get_hparam('probs_normalization') if probs_normalization is None else probs_normalization
+        sample_size = self.get_hparam('sample_size') if sample_size is None else sample_size
 
         self.persistent_dataloaders = {}
         self.dataloaders = {}
@@ -418,7 +437,7 @@ class Algorithm(object):
         if self.n_epochs is None:
             self.n_epochs = self.hparams.total_steps // self.epoch_length['train']
 
-        if self.hparams.swa is not None:
+        if self.get_hparam('swa') is not None:
             if int(self.hparams.swa) == self.hparams.swa:
                 self.swa_epochs = int(self.hparams.swa)
             else:

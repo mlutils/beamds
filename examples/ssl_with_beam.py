@@ -21,7 +21,7 @@ from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, Pa
 from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature, BeamOptimizer
 from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble
 from src.beam.model import beam_weights_initializer, freeze_network_params, free_network_params
-from src.beam.utils import to_numpy, pretty_format_number
+from src.beam.utils import to_numpy, pretty_format_number, logger
 
 import lightgbm as lgb
 import requests
@@ -68,7 +68,7 @@ def my_default_configuration_by_cluster():
     return path_to_data, root_dir
 
 
-class Similarity(object):
+class BeamSimilarity(object):
 
     def __init__(self, index=None, d=None, expected_population=int(1e6),
                  metric='l2', training_device='cpu', inference_device='cpu', ram_footprint=2**8*int(1e9),
@@ -107,7 +107,7 @@ class Similarity(object):
             else:
                 nlists = 2 ** 20
 
-        if index is not None:
+        if index is None:
             if inference_device == 'cpu':
 
                 if exact:
@@ -146,7 +146,7 @@ class Similarity(object):
                                     f"{pretty_format_number((4 * d + 8) * expected_population / int(1e6))} MB")
                         config = faiss.GpuIndexIVFFlatConfig()
                         config.device = inference_device
-                        index = faiss.GpuIndexIVFFlat(res, d,  nlists, M, 8, faiss.METRIC_L2, config)
+                        index = faiss.GpuIndexIVFFlat(res, d,  nlists, faiss.METRIC_L2, config)
                     else:
 
                         if M is None:
@@ -204,7 +204,7 @@ class Similarity(object):
 
 class ImageNetAugmented(UniversalDataset):
 
-    def __init__(self, hparams=None, data=None):
+    def __init__(self, hparams=None, data=None, normalize=True):
 
         device = None
         if hparams is not None and 'device' in hparams:
@@ -212,7 +212,7 @@ class ImageNetAugmented(UniversalDataset):
 
         super().__init__(hparams, data, target_device=device)
 
-        self.normalize = True
+        self.normalize = normalize
 
         size = 224
         s = 1
@@ -255,8 +255,6 @@ class STL10Dataset(ImageNetAugmented):
         seed = hparams.split_dataset_seed
 
         super().__init__(hparams)
-
-        self.normalize = True
 
         if subset == 'unlabeled':
 
@@ -314,20 +312,32 @@ class BeamSSL(Algorithm):
         self.layer = hparams.layer
 
         networks['encoder'] = self.generate_encoder()
-
-        self.index_train_labeled,
         self.logger = beam_logger()
 
         super().__init__(hparams, networks=networks)
 
-    def generate_labeled_test_set(self):
-
-        self.labeled_dataset = STL10Dataset(hparams, subset='labeled')
+        self.labeled_dataset = self.generate_labeled_set()
         self.index_train_labeled = np.array(self.labeled_dataset.indices['train'])
         self.index_test_labeled = np.array(self.labeled_dataset.indices['test'])
+        self.sim = None
 
-    def generate_encoder(self, pretrained=None):
+    def generate_labeled_set(self, *args, pretrained=None, **kwargs):
+        """
+        This function should be overridden by the child class. Its purpose is to generate a labeled test-set for the
+        evaluation of the downstream task.
+        @return: UniversalDataset
+        """
+        labeled_dataset = STL10Dataset(self.hparams, subset='labeled')
+        labeled_dataset.normalize = True
+        return labeled_dataset
 
+    def generate_encoder(self, *args, pretrained=None, **kwargs):
+        """
+        This function should be overridden by the child class. Its purpose is to generate a fresh
+        (untrained or pretrained) encoder.
+        @param pretrained:
+        @return: nn.Module
+        """
         if pretrained is None:
             pretrained = self.pretrained
 
@@ -416,36 +426,62 @@ class BeamSSL(Algorithm):
 
     def postprocess_epoch(self, results=None, training=None, epoch=None, **kwargs):
 
-            if not training and not epoch % 1:
-                self.labeled_dataset.normalize = True
+        if not training and not epoch % 1:
 
-                self.logger.info("Evaluating the downstream task")
-                features = self.evaluate(self.labeled_dataset, projection=False, prediction=False, augmentations=0)
-                z = features.values['h'].detach().cpu().numpy()
-                y = features.values['y'].detach().cpu().numpy()
+            self.logger.info("Evaluating the downstream task")
+            features = self.evaluate(self.labeled_dataset, projection=False, prediction=False, augmentations=0)
+            z = features.values['h'].detach().cpu().numpy()
+            y = features.values['y'].detach().cpu().numpy()
 
+            bst = self.evaluate_downstream_task(z, y)
+
+            results['scalar']['encoder_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+            results['scalar']['encoder_loss'] = bst.best_score['valid_0']['multi_logloss']
+
+            if 'z' in features.values:
+
+                z = features.values['z'].detach().cpu().numpy()
                 bst = self.evaluate_downstream_task(z, y)
 
-                results['scalar']['encoder_acc'] = 1 - bst.best_score['valid_0']['multi_error']
-                results['scalar']['encoder_loss'] = bst.best_score['valid_0']['multi_logloss']
+                results['scalar']['projection_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+                results['scalar']['projection_loss'] = bst.best_score['valid_0']['multi_logloss']
 
-                if 'z' in features.values:
+                if 'p' in features.values:
 
-                    z = features.values['z'].detach().cpu().numpy()
+                    z = features.values['p'].detach().cpu().numpy()
                     bst = self.evaluate_downstream_task(z, y)
 
-                    results['scalar']['projection_acc'] = 1 - bst.best_score['valid_0']['multi_error']
-                    results['scalar']['projection_loss'] = bst.best_score['valid_0']['multi_logloss']
-
-                    if 'p' in features.values:
-
-                        z = features.values['p'].detach().cpu().numpy()
-                        bst = self.evaluate_downstream_task(z, y)
-
-                        results['scalar']['prediction_acc'] = 1 - bst.best_score['valid_0']['multi_error']
-                        results['scalar']['prediction_loss'] = bst.best_score['valid_0']['multi_logloss']
+                    results['scalar']['prediction_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+                    results['scalar']['prediction_loss'] = bst.best_score['valid_0']['multi_logloss']
 
             return results
+
+    def build_similarity(self, train=True, validation=True, labaled_data=True,
+                         metric='l2', training_device='cpu', inference_device='cpu', ram_footprint=2 ** 8 * int(1e9),
+                         gpu_footprint=24 * int(1e9), exact=False, nlists=None, M=None):
+
+        h = []
+
+        if train:
+            predictions = self.evaluate('train', prediction=False, projection=False)
+            h.append(predictions.data['h'].detach().cpu().numpy())
+        if validation:
+            predictions = self.evaluate(self.eval_subset, prediction=False, projection=False)
+            h.append(predictions.data['h'].detach().cpu().numpy())
+        if labaled_data:
+            predictions = self.evaluate(self.labeled_dataset, prediction=False, projection=False)
+            h.append(predictions.values['h'].detach().cpu().numpy())
+
+        h = np.concatenate(h)
+        d = h.shape[-1]
+        expected_population = len(h)
+        self.sim = BeamSimilarity(d=d, expected_population=expected_population,
+                 metric=metric, training_device=training_device, inference_device=inference_device,
+                                  ram_footprint=ram_footprint, gpu_footprint=gpu_footprint, exact=exact,
+                                  nlists=nlists, M=M, reducer='umap')
+
+        self.sim.add(h)
+        return self.sim
 
     def inference(self, sample=None, results=None, subset=None, predicting=True,
                   projection=True, prediction=True, augmentations=0, inference_networks=True,

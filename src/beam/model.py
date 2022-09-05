@@ -15,18 +15,22 @@ import types
 
 class PackedSet(object):
 
-    def __init__(self, data, length=None):
+    def __init__(self, data, length=None, device=None):
 
         if length is None:
-            self.length = torch.LongTensor([0] + [len(x) for x in data])
             self.data = torch.cat(data, dim=0)
+            self.length = torch.LongTensor([0] + [len(x) for x in data], device=self.data.device)
         else:
-            self.length = torch.LongTensor([0] + list(length))
             self.data = data
+            self.length = torch.LongTensor([0] + list(length), device=self.data.device)
 
         self._offset = self.length.cumsum(dim=0)
         self.length = self.length[1:]
         self.offset = self._offset[:-1]
+        self.index = torch.arange(len(self.offset), device=self.data.device)
+
+        if device is not None:
+            self.to(device)
 
     def __len__(self):
         return len(self.offset)
@@ -39,6 +43,7 @@ class PackedSet(object):
         self._offset = self._offset.to(device)
         self.length = self.length.to(device)
         self.offset = self.offset.to(device)
+        self.index = self.index.to(device)
         return self
 
     def aggregate(self, func):
@@ -46,12 +51,17 @@ class PackedSet(object):
 
     def __getitem__(self, index):
 
-        index = slice_to_index(index)
+        index = slice_to_index(index, l=len(self))
         if issubclass(type(index), np.ndarray):
-            index = torch.LongTensor(index)
+            if index.dtype == np.dtype('bool'):
+                index = torch.BoolTensor(index)
+            else:
+                index = torch.LongTensor(index)
         elif type(index) is int:
             index = torch.scalar_tensor(index, dtype=torch.int64)
         if issubclass(type(index), torch.Tensor):
+            if index.dtype == torch.bool:
+                index = self.index[index]
             shape = index.shape
             if len(shape) == 0:
                 return self.data[self._offset[index]:self._offset[index + 1]]

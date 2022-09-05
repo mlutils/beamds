@@ -49,6 +49,9 @@ RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storag
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 
+# Install faiss if you encounter GPU issues when using the pip version:
+# https://github.com/kyamagu/faiss-wheels/issues/54
+#RUN conda install -y -c conda-forge faiss-gpu
 
 # add the beam message
 

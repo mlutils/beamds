@@ -3,7 +3,8 @@ from collections import defaultdict
 import numpy as np
 import torch.distributed as dist
 from fnmatch import fnmatch, filter
-from tqdm import *
+from tqdm.notebook import tqdm as tqdm_notebook
+from tqdm import tqdm
 import random
 import torch
 import pandas as pd
@@ -109,9 +110,10 @@ def find_port(port=None, get_port_from_beam_port_range=True):
         if get_port_from_beam_port_range:
             base_range = int(os.environ['JUPYTER_PORT']) // 100
             port_range = range(base_range * 100, (base_range + 1) * 100)
+            port_range = np.roll(np.array(port_range), -66)
 
         else:
-            port_range = range(10000, 2 ** 16)
+            port_range = np.roll(np.array(range(10000, 2 ** 16)), -26006)
 
         for p in port_range:
             if check_if_port_is_available(p):
@@ -135,7 +137,7 @@ def is_boolean(x):
     x_type = check_type(x)
     if x_type.minor in ['numpy', 'pandas', 'tensor'] and 'bool' in str(x.dtype).lower():
         return True
-    if x_type.minor == 'list' and type(x[0]) is bool:
+    if x_type.minor == 'list' and len(x) and type(x[0]) is bool:
         return True
 
     return False
@@ -317,7 +319,7 @@ def check_type(x, check_minor=True, check_element=True):
 
     major type: array, scalar, dict, none, other
     minor type: tensor, numpy, pandas, native, list, tuple, none
-    elements type: int, float, str, object, none, unknown
+    elements type: int, float, str, object, empty, none, unknown
 
     '''
 
@@ -347,7 +349,13 @@ def check_type(x, check_minor=True, check_element=True):
         if mit != 'other':
             mjt = 'array'
             if mit in ['list', 'tuple']:
-                elt = check_element_type(x[0]) if check_element else 'na'
+                if check_element:
+                    if len(x):
+                        elt = check_element_type(x[0])
+                    else:
+                        elt = 'empty'
+                else:
+                    elt = 'na'
             elif mit in ['numpy', 'tensor', 'pandas']:
                 if mit == 'pandas':
                     dt = str(x.values.dtype)
@@ -516,6 +524,7 @@ def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=
 
     Parameters
     ----------
+        x:
         threshold : float
             The smallest expected duration (in Seconds) to generate a progress bar. This feature is used only if enable
             is set to None.
