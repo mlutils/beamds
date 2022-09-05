@@ -484,7 +484,7 @@ class BeamSSL(Algorithm):
         return self.sim
 
     def inference(self, sample=None, results=None, subset=None, predicting=True,
-                  projection=True, prediction=True, augmentations=0, inference_networks=True,
+                  projection=True, prediction=True, augmentations=0, inference_networks=True, add_to_sim=False,
                   **kwargs):
 
         data = {}

@@ -346,7 +346,7 @@ class Algorithm(object):
                             torch.nn.utils.clip_grad_norm_(iter(pg['params']), clip)
 
                 if iteration is None or not (iteration % self.get_hparam('accumulate', name)):
-                    for op in optimizers:
+                    for op in optimizers.values():
                         if self.amp:
                             scaler.step(op)
                         else:
