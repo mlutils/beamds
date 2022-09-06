@@ -26,8 +26,8 @@ ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 ENV DYLD_LIBRARY_PATH "/usr/local/cuda/lib:$DYLD_LIBRARY_PATH"
 
 # apt installs
-RUN chmod +x /workspace/install/apt_installs.sh
-RUN /workspace/install/apt_installs.sh
+#RUN chmod +x /workspace/install/apt_installs.sh
+RUN bash /workspace/install/apt_installs.sh
 
 # pip installs
 RUN pip install --upgrade pip
@@ -51,7 +51,9 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 
 # Install faiss if you encounter GPU issues when using the pip version:
 # https://github.com/kyamagu/faiss-wheels/issues/54
-#RUN conda install -y -c conda-forge faiss-gpu
+RUN conda install -y -c conda-forge faiss-gpu
+# install DGL from source
+RUN bash /workspace/install/install_dgl.sh
 
 # add the beam message
 

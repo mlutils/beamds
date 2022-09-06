@@ -323,7 +323,7 @@ class Experiment(object):
         pd.to_pickle(self.tensorboard_hparams, os.path.join(self.root, "hparams.pkl"))
 
     @staticmethod
-    def reload_from_path(path, **argv):
+    def reload_from_path(path, override_hparams=None, **argv):
 
         logger.info(f"Reload experiment from path: {path}")
         args = pd.read_pickle(os.path.join(path, "args.pkl"))
@@ -335,6 +335,10 @@ class Experiment(object):
         if not d:
             path, d = os.path.split(path)
         args.resume = d
+
+        if override_hparams is not None:
+            for k, v in override_hparams.items():
+                setattr(args, k, v)
 
         return Experiment(args, **argv)
 

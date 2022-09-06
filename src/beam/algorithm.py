@@ -251,8 +251,6 @@ class Algorithm(object):
         if name is None:
             name = 'loss'
         total_loss = 0
-        if reduction is None:
-            reduction = self.get_hparam('reduction', name)
 
         if len(losses) == 1 and issubclass(type(losses[0]), dict):
             losses = losses[0]
@@ -275,17 +273,19 @@ class Algorithm(object):
         for k, loss in losses.items():
             n = torch.numel(loss)
 
+            rd = self.get_hparam('reduction', k) if reduction is None else reduction
+
             if n > 1:
 
-                if reduction == 'sum':
+                if rd == 'sum':
                     r = 1
-                elif reduction == 'mean':
+                elif rd == 'mean':
                     r = n
-                elif reduction == 'mean_batch':
+                elif rd == 'mean_batch':
                     r = len(loss)
-                elif reduction == 'sqrt':
+                elif rd == 'sqrt':
                     r = math.sqrt(n)
-                elif reduction == 'sqrt_batch':
+                elif rd == 'sqrt_batch':
                     r = math.sqrt(len(loss))
                 else:
                     raise NotImplementedError
@@ -413,8 +413,8 @@ class Algorithm(object):
             l_train = len(dataset.indices['train'])
             l_eval = len(dataset.indices[self.eval_subset])
 
-            self.epoch_length['train'] = int(self.hparams.epoch_length * l_train / (l_train + l_eval))
-            self.epoch_length[self.eval_subset] = int(self.hparams.epoch_length * l_eval / (l_train + l_eval))
+            self.epoch_length['train'] = int(np.round(self.hparams.epoch_length * l_train / (l_train + l_eval)))
+            self.epoch_length[self.eval_subset] = self.hparams.epoch_length - self.epoch_length['train']
 
         if self.hparams.epoch_length_train is not None:
             self.epoch_length['train'] = self.hparams.epoch_length_train
@@ -431,8 +431,8 @@ class Algorithm(object):
             self.epoch_length[self.eval_subset] = len(dataset.indices[self.eval_subset])
 
         if self.hparams.scale_epoch_by_batch_size:
-            self.epoch_length[self.eval_subset] = self.epoch_length[self.eval_subset] // self.batch_size_eval
-            self.epoch_length['train'] = self.epoch_length['train'] // self.batch_size_train
+            self.epoch_length[self.eval_subset] = math.ceil(self.epoch_length[self.eval_subset] / self.batch_size_eval)
+            self.epoch_length['train'] = math.ceil(self.epoch_length['train'] / self.batch_size_train)
 
         if self.n_epochs is None:
             self.n_epochs = self.hparams.total_steps // self.epoch_length['train']
@@ -676,7 +676,7 @@ class Algorithm(object):
             results = self.postprocess_epoch(sample=sample, index=ind, results=results, epoch=n, training=training)
 
             batch_size = self.batch_size_train if training else self.batch_size_eval
-            results = stack_inference_results(results, batch_size=batch_size)
+            # results = stack_inference_results(results, batch_size=batch_size)
 
             delta = timer() - t0
             n_iter = i + 1
@@ -762,7 +762,11 @@ class Algorithm(object):
         '''
 
         if self.hpo == 'tune':
-            tune.report(mean_accuracy=objective)
+            if 'objective' in self.hparams:
+                kwargs = {self.hparams.objective: objective}
+            else:
+                kwargs = {'objective': objective}
+            tune.report(**kwargs)
         elif self.hpo == 'optuna':
             self.trial.report(objective, epoch)
 
@@ -846,7 +850,8 @@ class Algorithm(object):
                     sch.step()
             else:
                 self.schedulers_step(objective=objective, step_type='epoch')
-            results = self.report(results, i)
+
+            self.report(results, i)
 
             self.epoch += 1
             yield results
