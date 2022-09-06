@@ -141,7 +141,8 @@ class Experiment(object):
     :param args:
     """
 
-    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None):
+    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None, reload_iloc=-1,
+                 reload_loc=None, reload_name=None):
         """
 
         @param args:
@@ -303,7 +304,7 @@ class Experiment(object):
         # build the hyperparamter class which will be sent to the dataset and algorithm classes
 
         if self.load_model:
-            self.hparams.reload_path = self.reload_checkpoint()
+            self.hparams.reload_path = self.reload_checkpoint(iloc=reload_iloc, loc=reload_loc, name=reload_name)
         else:
             self.hparams.reload_path = None
 

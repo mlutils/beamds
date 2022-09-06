@@ -52,6 +52,7 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 # Install faiss if you encounter GPU issues when using the pip version:
 # https://github.com/kyamagu/faiss-wheels/issues/54
 RUN conda install -y -c conda-forge faiss-gpu
+
 # install DGL from source
 RUN bash /workspace/install/install_dgl.sh
 
