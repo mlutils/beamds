@@ -17,7 +17,7 @@ from .utils import include_patterns, logger, check_type, beam_device, check_elem
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
-    pretty_format_number
+    pretty_format_number, as_numpy
 import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
@@ -55,7 +55,7 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
     else:
         alg = Alg
 
-    if issubclass(type(Dataset), torch.utils.data.Dataset):
+    if isinstance(Dataset, torch.utils.data.Dataset):
         dataset = Dataset
     elif Dataset is None:
         dataset = alg.dataset
@@ -89,10 +89,6 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
         if rank == 0:
             checkpoint_file = os.path.join(experiment.checkpoints_dir, f'checkpoint_{alg.epoch+1:06d}')
             alg.save_checkpoint(checkpoint_file)
-
-        # if world_size == 1:
-        #     logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
-        #     experiment.reload_checkpoint(alg)
 
     if world_size == 1:
         return alg, results
@@ -487,7 +483,7 @@ class Experiment(object):
                 logger.info('| '.join([f"{k}: {format(v)} " for k, v in res['stats'].items()]))
 
             report = None
-            if issubclass(type(res), dict):
+            if isinstance(res, dict):
                 if 'scalar' in res:
                     report = res['scalar']
                 else:
@@ -533,19 +529,19 @@ class Experiment(object):
             for net in networks:
                 for name, param in networks[net].named_parameters():
                     try:
-                        self.writer.add_histogram("weight_%s/%s" % (net, name), param.data.cpu().numpy(), n,
+                        self.writer.add_histogram("weight_%s/%s" % (net, name), as_numpy(param), n,
                                                   bins='tensorflow')
-                        self.writer.add_histogram("grad_%s/%s" % (net, name), param.grad.cpu().numpy(), n,
+                        self.writer.add_histogram("grad_%s/%s" % (net, name), as_numpy(param.grad), n,
                                                   bins='tensorflow')
                         if hasattr(param, 'intermediate'):
-                            self.writer.add_histogram("iterm_%s/%s" % (net, name), param.intermediate.cpu().numpy(),
+                            self.writer.add_histogram("iterm_%s/%s" % (net, name), as_numpy(param.intermediate),
                                                       n,
                                                       bins='tensorflow')
                     except:
                         pass
         metrics = {}
         for subset, res in results.items():
-            if issubclass(type(res), dict) and subset != 'objective':
+            if isinstance(res, dict) and subset != 'objective':
                 for log_type in res:
                     if hasattr(self.writer, f'add_{log_type}'):
                         log_func = getattr(self.writer, f'add_{log_type}')
@@ -812,5 +808,3 @@ class Experiment(object):
         if self.writer is not None:
             self.writer.close()
             self.writer = None
-
-

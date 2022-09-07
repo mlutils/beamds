@@ -52,14 +52,14 @@ class PackedSet(object):
     def __getitem__(self, index):
 
         index = slice_to_index(index, l=len(self))
-        if issubclass(type(index), np.ndarray):
+        if isinstance(index, np.ndarray):
             if index.dtype == np.dtype('bool'):
                 index = torch.BoolTensor(index)
             else:
                 index = torch.LongTensor(index)
         elif type(index) is int:
             index = torch.scalar_tensor(index, dtype=torch.int64)
-        if issubclass(type(index), torch.Tensor):
+        if isinstance(index, torch.Tensor):
             if index.dtype == torch.bool:
                 index = self.index[index]
             shape = index.shape
@@ -633,7 +633,7 @@ class BeamEnsemble(torch.nn.Module):
     def __init__(self, net, n_ensembles, optimizer=None):
         super().__init__()
 
-        if issubclass(type(net), nn.Module):
+        if isinstance(net, nn.Module):
             ensembles = []
             for _ in range(n_ensembles):
                 new_net = copy_network(net)
@@ -870,14 +870,14 @@ def target_copy(source, target):
 
 def reset_networks_and_optimizers(networks=None, optimizers=None):
     if networks is not None:
-        net_iter = networks.keys() if issubclass(type(networks), dict) else range(len(networks))
+        net_iter = networks.keys() if isinstance(networks, dict) else range(len(networks))
         for i in net_iter:
             for n, m in networks[i].named_modules():
                 if hasattr(m, 'reset_parameters'):
                     m.reset_parameters()
 
     if optimizers is not None:
-        opt_iter = optimizers.keys() if issubclass(type(optimizers), dict) else range(len(optimizers))
+        opt_iter = optimizers.keys() if isinstance(optimizers, dict) else range(len(optimizers))
         for i in opt_iter:
             opt = optimizers[i]
 

@@ -14,10 +14,7 @@ import os
 
 from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds
-from src.beam import LinearNet
-from src.beam import DataTensor, BeamOptimizer
-from src.beam.utils import is_notebook
+from src.beam import Algorithm, PackedFolds, as_numpy
 from src.beam.config import get_beam_parser
 from src.beam.model import GBN, MHRuleLayer, BetterEmbedding, mySequential
 
@@ -427,12 +424,12 @@ class CovtypeAlgorithm(Algorithm):
         return aux, results
 
     def postprocess_inference(self, sample=None, aux=None, results=None, subset=None, with_labels=True):
-        y_pred = torch.cat(results['predictions']['y_pred'])
 
-        y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
+        y_pred = torch.cat(results['predictions']['y_pred'])
+        y_pred = as_numpy(torch.argmax(y_pred, dim=1))
 
         if with_labels:
-            y_true = torch.cat(aux['predictions']['target']).data.cpu().numpy()
+            y_true = as_numpy(torch.cat(aux['predictions']['target']))
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
             results['metrics']['recall'] = recall

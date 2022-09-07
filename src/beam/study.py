@@ -156,7 +156,7 @@ class Study(object):
         if 'objective' in results:
             if type('objective') is tuple:
                 return results['objective']
-            elif issubclass(type(results['objective']), dict):
+            elif isinstance(results['objective'], dict):
                 tune.report(**results['objective'])
             else:
                 return results['objective']
@@ -182,7 +182,7 @@ class Study(object):
         if 'objective' in results:
             if type('objective') is tuple:
                 return results['objective']
-            elif issubclass(type(results['objective']), dict):
+            elif isinstance(results['objective'], dict):
                 tune.report(**results['objective'])
             else:
                 return results['objective']

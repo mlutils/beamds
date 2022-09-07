@@ -7,3 +7,7 @@ objax
 torchlars
 torch_pruning
 git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
+
+boto3
+botocore
+s3transfer

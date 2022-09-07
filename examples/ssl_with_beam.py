@@ -21,7 +21,7 @@ from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, Pa
 from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature, BeamOptimizer
 from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble
 from src.beam.model import beam_weights_initializer, freeze_network_params, free_network_params
-from src.beam.utils import to_numpy, pretty_format_number, logger
+from src.beam.utils import as_numpy, pretty_format_number, logger
 
 import lightgbm as lgb
 import requests
@@ -445,8 +445,8 @@ class BeamSSL(Algorithm):
 
             self.logger.info("Evaluating the downstream task")
             features = self.evaluate(self.labeled_dataset, projection=False, prediction=False, augmentations=0)
-            z = features.values['h'].detach().cpu().numpy()
-            y = features.values['y'].detach().cpu().numpy()
+            z = as_numpy(features.values['h'])
+            y = as_numpy(features.values['y'])
 
             bst = self.evaluate_downstream_task(z, y)
 
@@ -455,7 +455,7 @@ class BeamSSL(Algorithm):
 
             if 'z' in features.values:
 
-                z = features.values['z'].detach().cpu().numpy()
+                z = as_numpy(features.values['z'])
                 bst = self.evaluate_downstream_task(z, y)
 
                 results['scalar']['projection_acc'] = 1 - bst.best_score['valid_0']['multi_error']
@@ -463,7 +463,7 @@ class BeamSSL(Algorithm):
 
                 if 'p' in features.values:
 
-                    z = features.values['p'].detach().cpu().numpy()
+                    z = as_numpy(features.values['p'])
                     bst = self.evaluate_downstream_task(z, y)
 
                     results['scalar']['prediction_acc'] = 1 - bst.best_score['valid_0']['multi_error']
@@ -533,7 +533,7 @@ class BeamSSL(Algorithm):
                   add_to_sim=False, latent_variable='h', **kwargs):
 
         data = {}
-        if issubclass(type(sample), dict):
+        if isinstance(sample, dict):
             x = sample['x']
             if 'y' in sample:
                 data['y'] = sample['y']
@@ -561,7 +561,7 @@ class BeamSSL(Algorithm):
             p = networks['prediction'](z)
             data['p'] = p
 
-        if type(sample) is dict and 'augmentations' in sample and augmentations:
+        if isinstance(sample, dict) and 'augmentations' in sample and augmentations:
             representations = []
             for a in sample['augmentations']:
                 representations.append(networks['encoder'](a))
@@ -988,10 +988,10 @@ class BeamVICReg(BeamSSL):
                           training=training, optimizers=[opt_e, opt_p])
 
         # add scalar measurements
-        results['scalar']['h_mean'].append(to_numpy(h1.mean(dim=0).flatten()))
-        results['scalar']['h_std'].append(to_numpy(h1.std(dim=0).flatten()))
-        results['scalar']['z_mean'].append(to_numpy(mu1.flatten()))
-        results['scalar']['z_std'].append(to_numpy(z1.std(dim=0).flatten()))
+        results['scalar']['h_mean'].append(as_numpy(h1.mean(dim=0).flatten()))
+        results['scalar']['h_std'].append(as_numpy(h1.std(dim=0).flatten()))
+        results['scalar']['z_mean'].append(as_numpy(mu1.flatten()))
+        results['scalar']['z_std'].append(as_numpy(z1.std(dim=0).flatten()))
 
         return results
 
@@ -1051,12 +1051,12 @@ class VICReg(BeamSSL):
         loss = self.apply(loss, training=training, optimizers=[opt_e, opt_p])
 
         # add scalar measurements
-        results['scalar']['loss'].append(to_numpy(loss))
-        results['scalar']['sim_loss'].append(to_numpy(sim_loss))
-        results['scalar']['std_loss'].append(to_numpy(std_loss))
-        results['scalar']['cov_loss'].append(to_numpy(cov_loss))
-        results['scalar']['stats_mu'].append(h1.mean(dim=0).detach().cpu().numpy())
-        results['scalar']['stats_std'].append(h1.std(dim=0).detach().cpu().numpy())
+        results['scalar']['loss'].append(as_numpy(loss))
+        results['scalar']['sim_loss'].append(as_numpy(sim_loss))
+        results['scalar']['std_loss'].append(as_numpy(std_loss))
+        results['scalar']['cov_loss'].append(as_numpy(cov_loss))
+        results['scalar']['stats_mu'].append(as_numpy(h1.mean(dim=0)))
+        results['scalar']['stats_std'].append(as_numpy(h1.std(dim=0)))
 
         return results
 

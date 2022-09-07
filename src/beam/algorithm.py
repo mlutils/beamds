@@ -9,7 +9,7 @@ import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
-    stack_inference_results, to_numpy, stack_train_results
+    stack_inference_results, as_numpy, stack_train_results
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
@@ -47,10 +47,7 @@ class Algorithm(object):
         self.pin_memory = self.cuda
         self.autocast_device = 'cuda' if self.cuda else 'cpu'
         self.amp = hparams.amp if self.cuda else False
-        if self.amp:
-            self.scaler = torch.cuda.amp.GradScaler()
-        else:
-            self.scaler = None
+        self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
 
         self.scalers = {}
         self.epoch = 0
@@ -69,14 +66,6 @@ class Algorithm(object):
         self.optimizers_flat = {}
         self.epoch_length = None
 
-        self.add_networks_and_optimizers(networks=networks, optimizers=optimizers)
-
-        if hparams.store_initial_weights:
-            self.initial_weights = self.save_checkpoint()
-
-        if hparams.reload_path is not None:
-            self.load_checkpoint(hparams.reload_path)
-
         self.dataset = None
         self.persistent_dataloaders = {}
         self.dataloaders = {}
@@ -84,6 +73,14 @@ class Algorithm(object):
         self.objective = None
         self.best_objective = None
         self.best_state = False
+
+        self.add_networks_and_optimizers(networks=networks, optimizers=optimizers)
+
+        if hparams.reload_path is not None:
+            self.load_checkpoint(hparams.reload_path)
+
+        if hparams.store_initial_weights:
+            self.initial_weights = self.save_checkpoint()
 
     def get_hparam(self, hparam, specific=None, default=None):
         if specific is not None and f"{specific}_{hparam}" in self.hparams:
@@ -109,9 +106,9 @@ class Algorithm(object):
         return get_beam_parser()
 
     @classmethod
-    def from_pretrained(cls, path=None, hparams=None, **kwargs):
+    def from_pretrained(cls, path=None, override_hparams=None, hparams=None, **kwargs):
         if path is not None:
-            experiment = Experiment.reload_from_path(path)
+            experiment = Experiment.reload_from_path(path, override_hparams=override_hparams)
         elif hparams is not None:
             experiment = Experiment(hparams)
         else:
@@ -125,7 +122,7 @@ class Algorithm(object):
         if networks is None:
             networks = self.networks
         else:
-            if issubclass(type(networks), nn.Module):
+            if isinstance(networks, nn.Module):
                 networks = {name: networks}
             elif check_type(networks).major == 'dict':
                 pass
@@ -169,7 +166,7 @@ class Algorithm(object):
             else:
                 optimizers = {}
 
-        elif issubclass(type(optimizers), dict):
+        elif isinstance(optimizers, dict):
             for k, o in optimizers.items():
                 if callable(o):
                     try:
@@ -180,7 +177,7 @@ class Algorithm(object):
                     o.load_state_dict(o.state_dict())
                     optimizers[k] = o
 
-        elif issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+        elif isinstance(optimizers, torch.optim.Optimizer) or isinstance(optimizers, BeamOptimizer):
             optimizers.load_state_dict(optimizers.state_dict())
             optimizers = {name: optimizers}
 
@@ -252,7 +249,7 @@ class Algorithm(object):
             name = 'loss'
         total_loss = 0
 
-        if len(losses) == 1 and issubclass(type(losses[0]), dict):
+        if len(losses) == 1 and isinstance(losses[0], dict):
             losses = losses[0]
         elif len(losses) == 1:
             losses = {name: losses[0]}
@@ -261,7 +258,7 @@ class Algorithm(object):
 
         if weights is None:
             weights = {k: 1 for k in losses.keys()}
-        elif issubclass(type(weights), dict):
+        elif isinstance(weights, dict):
             pass
         else:
             weights_type = check_type(weights, check_minor=False, check_element=False)
@@ -299,16 +296,16 @@ class Algorithm(object):
         if results is not None:
             if len(losses) > 1:
                 for k, l in losses.items():
-                    results['scalar'][f'{k}_s'].append(to_numpy(l))
+                    results['scalar'][f'{k}_s'].append(as_numpy(l))
 
                     if weights[k] > 1:
-                        results['scalar'][f'{k}_w'].append(to_numpy(weights[k]))
+                        results['scalar'][f'{k}_w'].append(as_numpy(weights[k]))
                     elif weights[k] == 0:
                         results['scalar'][f'{k}_w'].append(0)
                     else:
-                        results['scalar'][f'{k}_f'].append(to_numpy(1 / weights[k]))
+                        results['scalar'][f'{k}_f'].append(as_numpy(1 / weights[k]))
 
-            results['scalar'][name] = to_numpy(total_loss)
+            results['scalar'][name] = as_numpy(total_loss)
 
         loss = total_loss
         if training:
@@ -324,7 +321,7 @@ class Algorithm(object):
             if optimizers is None:
                 optimizers = self.optimizers_flat
             else:
-                if issubclass(type(optimizers), torch.optim.Optimizer) or issubclass(type(optimizers), BeamOptimizer):
+                if isinstance(optimizers, torch.optim.Optimizer) or isinstance(optimizers, BeamOptimizer):
                     optimizers = [optimizers]
                 optimizers = self.get_flat_optimizers(optimizers)
 
@@ -461,14 +458,14 @@ class Algorithm(object):
 
     def get_flat_optimizers(self, optimizers=None):
 
-        if issubclass(type(optimizers), list):
+        if isinstance(optimizers, list):
             optimizers = {self.get_optimizer_name(opt): opt for opt in optimizers}
         elif optimizers is None:
             optimizers = self.optimizers
 
         optimizers_flat = {}
         for k, op in optimizers.items():
-            if issubclass(type(op), BeamOptimizer):
+            if isinstance(op, BeamOptimizer):
                 for ki, opi in op.optimizers.items():
                     if len(op.optimizers) > 1:
                         optimizers_flat[f'{k}_{ki}'] = opi
@@ -481,14 +478,14 @@ class Algorithm(object):
 
     def get_flat_schedulers(self, schedulers=None):
 
-        if issubclass(type(schedulers), list):
+        if isinstance(schedulers, list):
             schedulers = {self.get_scheduler_name(sch): sch for sch in schedulers}
         elif schedulers is None:
             schedulers = self.schedulers
 
         schedulers_flat = {}
         for k, scheduler in schedulers.items():
-            if issubclass(type(scheduler), MultipleScheduler):
+            if isinstance(scheduler, MultipleScheduler):
                 for ki, sch in scheduler.schedulers.items():
                     if len(scheduler.schedulers) > 1:
                         schedulers_flat[f'{k}_{ki}'] = sch
@@ -518,12 +515,6 @@ class Algorithm(object):
 
         return net
 
-    def get_optimizers(self):
-        return self.optimizers
-
-    def get_networks(self):
-        return self.networks
-
     def process_sample(self, sample):
         return to_device(sample, self.device, half=self.half)
 
@@ -531,15 +522,14 @@ class Algorithm(object):
 
         if type(subset) is str:
             dataloader = self.dataloaders[subset]
-        elif issubclass(type(subset), torch.utils.data.DataLoader):
+        elif isinstance(subset, torch.utils.data.DataLoader):
             dataloader = subset
-        elif issubclass(type(subset), torch.utils.data.Dataset):
+        elif isinstance(subset, torch.utils.data.Dataset):
 
             dataset = subset
             sampler = dataset.build_sampler(self.hparams.batch_size_eval, persistent=False)
             dataloader = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
                                                   pin_memory=self.pin_memory)
-
         else:
 
             subset_type = check_type(subset)
@@ -562,20 +552,19 @@ class Algorithm(object):
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=self.hparams.cpu_workers,
                                                      pin_memory=self.pin_memory)
-
         return dataloader
 
     def schedulers_step(self, objective=None, step_type=None):
         if objective is None:
             objective = self.objective
         for k, scheduler in self.schedulers_flat.items():
-            if issubclass(type(scheduler), torch.optim.lr_scheduler._LRScheduler):
+            if isinstance(scheduler, torch.optim.lr_scheduler._LRScheduler):
                 if self.get_hparam('schedulers_steps', k) == step_type:
                     scheduler.step()
-            elif type(scheduler) is torch.optim.lr_scheduler.ReduceLROnPlateau:
+            elif isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 if self.get_hparam('schedulers_steps', k) == step_type:
                     scheduler.step(objective)
-            elif type(scheduler) is BeamScheduler:
+            elif isinstance(scheduler, BeamScheduler):
                 scheduler.step(objective, step_type=step_type)
             else:
                 try:
@@ -891,8 +880,13 @@ class Algorithm(object):
         for k, scheduler in self.schedulers.items():
             state[f"{k}_scheduler"] = wrapper(scheduler.state_dict())
 
-        state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
+        for k, swa_scheduler in self.swa_schedulers.items():
+            state[f"{k}_swa_scheduler"] = wrapper(swa_scheduler.state_dict())
 
+        for k, swa_network in self.swa_networks.items():
+            state[f"{k}_swa_network"] = wrapper(swa_network.state_dict())
+
+        state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
         state['scalers'] = {k: scaler.state_dict() if scaler is not None else None for k, scaler in self.scalers.items()}
 
         if path is not None:
@@ -920,6 +914,18 @@ class Algorithm(object):
             else:
                 logger.warning(f"Network {k} is missing from the state-dict")
 
+        for k, net in self.swa_networks.items():
+
+            if f"{k}_swa_network" in state.keys():
+                s = state[f"{k}_swa_network"]
+
+                if not self.ddp:
+                    torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(s, 'module.')
+
+                net.load_state_dict(s, strict=strict)
+            else:
+                logger.warning(f"SWA Network {k} is missing from the state-dict")
+
         for k, optimizer in self.optimizers.items():
             if f"{k}_optimizer" in state.keys():
                 optimizer.load_state_dict(state[f"{k}_optimizer"])
@@ -931,6 +937,12 @@ class Algorithm(object):
                 scheduler.load_state_dict(state[f"{k}_scheduler"])
             else:
                 logger.warning(f"Scheduler {k} is missing from the state-dict")
+
+        for k, swa_scheduler in self.swa_schedulers.items():
+            if f"{k}_swa_scheduler" in state.keys():
+                swa_scheduler.load_state_dict(state[f"{k}_swa_scheduler"])
+            else:
+                logger.warning(f"SWA Scheduler {k} is missing from the state-dict")
 
         if self.scaler is not None and 'scaler' in state.keys():
             self.scaler.load_state_dict(state["scaler"])

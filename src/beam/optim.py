@@ -239,7 +239,7 @@ class BeamOptimizer(object):
 
     @staticmethod
     def check_sparse(m):
-        return (issubclass(type(m), nn.Embedding) or issubclass(type(m), nn.EmbeddingBag)) and m.sparse
+        return (isinstance(m, nn.Embedding) or isinstance(m, nn.EmbeddingBag)) and m.sparse
 
     def set_scheduler(self, scheduler, *argc, **argv):
         return MultipleScheduler(self, scheduler, *argc, **argv)

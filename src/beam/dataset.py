@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch
+from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy
 import pandas as pd
 import math
 import hashlib
@@ -57,20 +57,20 @@ class UniversalDataset(torch.utils.data.Dataset):
             warnings.simplefilter("ignore")
             if len(args) == 1:
                 d = args[0]
-                if issubclass(type(d), dict):
-                    self.data = {k: as_tensor(v, device=device, recursive=True) for k, v in d.items()}
+                if isinstance(d, dict):
+                    self.data = {k: as_tensor(v, device=device) for k, v in d.items()}
                     self.data_type = 'dict'
-                elif (type(d) is list) or (type(d) is tuple):
-                    self.data = [as_tensor(v, device=device, recursive=True) for v in d]
+                elif isinstance(d, list) or isinstance(d, tuple):
+                    self.data = [as_tensor(v, device=device) for v in d]
                     self.data_type = 'list'
                 else:
                     self.data = d
                     self.data_type = 'simple'
             elif len(args):
-                self.data = [as_tensor(v, device=device, recursive=True) for v in args]
+                self.data = [as_tensor(v, device=device) for v in args]
                 self.data_type = 'list'
             elif len(kwargs):
-                self.data = {k: as_tensor(v, device=device, recursive=True) for k, v in kwargs.items()}
+                self.data = {k: as_tensor(v, device=device) for k, v in kwargs.items()}
                 self.data_type = 'dict'
             else:
                 self.data = None
@@ -81,7 +81,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if index is not None:
             index_type = check_type(index)
             if index_type.minor == 'tensor':
-                index = index.detach().cpu().numpy()
+                index = as_numpy(index)
             index = pd.Series(data=np.arange(len(index)), index=index)
             # check if index is not a simple arange
             if np.abs(index.index.values - np.arange(len(index))).sum() > 0:
@@ -123,7 +123,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
             ind_type = check_type(ind, check_element=False)
             if ind_type.minor == 'tensor':
-                loc = ind.detach().cpu().numpy()
+                loc = as_numpy(ind)
             else:
                 loc = ind
                 ind = as_tensor(ind)
@@ -386,10 +386,10 @@ class LazyReplayBuffer(UniversalDataset):
             d = kwargs
 
         if self.data is None:
-            if issubclass(type(d), dict):
+            if isinstance(d, dict):
                 self.data = {k: self.build_buffer(v) for k, v in d.items()}
                 self.data_type = 'dict'
-            elif (type(d) is list) or (type(d) is tuple):
+            elif isinstance(d, list) or isinstance(d, tuple):
                 self.data = [self.build_buffer(v) for v in d]
                 self.data_type = 'list'
             else:

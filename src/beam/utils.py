@@ -137,7 +137,7 @@ def is_boolean(x):
     x_type = check_type(x)
     if x_type.minor in ['numpy', 'pandas', 'tensor'] and 'bool' in str(x.dtype).lower():
         return True
-    if x_type.minor == 'list' and len(x) and type(x[0]) is bool:
+    if x_type.minor == 'list' and len(x) and isinstance(x[0], bool):
         return True
 
     return False
@@ -145,7 +145,7 @@ def is_boolean(x):
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
 
-    if type(s) is slice:
+    if isinstance(s, slice):
 
         f = torch.arange if arr_type == 'tensor' else np.arange
 
@@ -209,20 +209,6 @@ def process_async(func, args, mp_context='spawn', num_workers=10):
     return results
 
 
-def to_numpy(x):
-
-    if issubclass(type(x), torch.Tensor):
-        x = x.detach().cpu().numpy()
-    else:
-        x = np.array(x)
-    if x.size == 1:
-        if 'int' in str(x.dtype):
-            x = int(x)
-        else:
-            x = float(x)
-    return x
-
-
 def pretty_format_number(x):
 
     if x is None or np.isinf(x) or np.isnan(x):
@@ -241,7 +227,7 @@ def pretty_format_number(x):
 
 
 def beam_device(device):
-    if type(device) is torch.device:
+    if isinstance(device, torch.device):
         return device
     device = str(device)
     return torch.device(int(device) if device.isnumeric() else device)
@@ -275,7 +261,6 @@ def check_element_type(x):
 
 
 def check_minor_type(x):
-    t = type(x)
 
     if isinstance(x, torch.Tensor):
         return 'tensor'
@@ -283,11 +268,11 @@ def check_minor_type(x):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
-    if issubclass(t, dict):
+    if isinstance(x, dict):
         return 'dict'
-    if issubclass(t, list):
+    if isinstance(x, list):
         return 'list'
-    if issubclass(t, tuple):
+    if isinstance(x, tuple):
         return 'tuple'
     else:
         return 'other'
@@ -309,8 +294,6 @@ def check_type(x, check_minor=True, check_element=True):
 
     '''
 
-    t = type(x)
-
     if np.isscalar(x) or (torch.is_tensor(x) and (not len(x.shape))):
         mjt = 'scalar'
         if type(x) in [int, float, str]:
@@ -319,7 +302,7 @@ def check_type(x, check_minor=True, check_element=True):
             mit = check_minor_type(x) if check_minor else 'na'
         elt = check_element_type(x) if check_element else 'na'
 
-    elif issubclass(t, dict):
+    elif isinstance(x, dict):
         mjt = 'dict'
         mit = 'dict'
         elt = check_element_type(next(iter(x.values()))) if check_element else 'na'
@@ -434,11 +417,11 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
 
 def to_device(data, device='cuda', half=False):
 
-    if issubclass(type(data), dict):
+    if isinstance(data, dict):
         return {k: to_device(v, device=device, half=half) for k, v in data.items()}
-    elif (type(data) is list) or (type(data) is tuple):
+    elif isinstance(data, list) or isinstance(data, tuple):
         return [to_device(s, device=device, half=half) for s in data]
-    elif issubclass(type(data), torch.Tensor):
+    elif isinstance(data, torch.Tensor):
         if half and data.dtype in [torch.float32, torch.float64]:
             data = data.half()
         return data.to(device)
@@ -448,32 +431,47 @@ def to_device(data, device='cuda', half=False):
 
 def recursive_batch(x, index):
 
-    if issubclass(type(x), dict):
+    if isinstance(x, dict):
         return {k: recursive_batch(v, index) for k, v in x.items()}
-    elif issubclass(type(x), list) or issubclass(type(x), tuple):
+    elif isinstance(x, list) or isinstance(x, tuple):
         return [recursive_batch(s, index) for s in x]
     return x[index]
 
 
-def as_tensor(x, device=None, return_vector=False, recursive=False):
+def as_numpy(x):
 
-    if recursive:
-        if issubclass(type(x), dict):
-            return {k: as_tensor(v, device=device, return_vector=return_vector,
-                                 recursive=recursive) for k, v in x.items()}
-        elif issubclass(type(x), list) or issubclass(type(x), tuple):
-            return [as_tensor(s, device=device, return_vector=return_vector,
-                                 recursive=recursive) for s in x]
+    if isinstance(x, dict):
+        return {k: as_numpy(v) for k, v in x.items()}
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return [as_numpy(s) for s in x]
 
-    if type(x) is not torch.Tensor:
-        x = torch.tensor(x)
+    if isinstance(x, torch.Tensor):
+        x = x.detach().cpu().numpy()
+    else:
+        x = np.array(x)
+
+    if x.size == 1:
+        if 'int' in str(x.dtype):
+            x = int(x)
+        else:
+            x = float(x)
+
+    return x
+
+
+def as_tensor(x, device=None, dtype=None, return_vector=False):
+
+    if isinstance(x, dict):
+        return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
+
+    if isinstance(x, torch.Tensor):
+        x = torch.as_tensor(x, device=device, dtype=dtype)
 
     if return_vector:
         if not len(x.shape):
             x = x.unsqueeze(0)
-
-    if device is not None:
-        x = x.to(device)
 
     return x
 
@@ -481,11 +479,11 @@ def as_tensor(x, device=None, return_vector=False, recursive=False):
 def concat_data(data):
 
     d0 = data[0]
-    if issubclass(type(d0), dict):
+    if isinstance(d0, dict):
         return {k: concat_data([di[k] for di in data]) for k in d0.keys()}
-    elif (type(d0) is list) or (type(d0) is tuple):
+    elif isinstance(d0, list) or isinstance(d0, tuple):
         return [concat_data([di[n] for di in data]) for n in range(len(d0))]
-    elif issubclass(type(d0), torch.Tensor):
+    elif isinstance(d0, torch.Tensor):
         return torch.cat(data)
     else:
         return data
@@ -522,7 +520,7 @@ def hash_tensor(x, fast=False, coarse=False):
     if coarse and 'float' in str(x.dtype):
         x = (x / x.max() * (2 ** 15)).half()
 
-    x = x.detach().cpu().numpy()
+    x = as_numpy(x)
 
     if fast:
         x = str(x).encode('utf-8')

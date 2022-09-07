@@ -70,10 +70,10 @@ RUN python -m nltk.downloader all
 
 #ENV LC_ALL C.UTF-8
 #ENV LANG C.UTF-8
-#RUN python -m spacy download zh_core_web_md
-#RUN python -m spacy download en_core_web_md
-#RUN python -m spacy download xx_ent_wiki_sm
-#RUN python -m spacy download ru_core_news_sm
+RUN python -m spacy download zh_core_web_md
+RUN python -m spacy download en_core_web_md
+RUN python -m spacy download xx_ent_wiki_sm
+RUN python -m spacy download ru_core_news_sm
 
 # install beam
 

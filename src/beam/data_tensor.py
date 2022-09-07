@@ -4,7 +4,8 @@ from torch import nn
 import warnings
 from collections import namedtuple
 import numpy as np
-from .utils import check_type, slice_to_index, as_tensor, is_boolean
+from .utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy
+
 
 class Iloc(object):
 
@@ -34,7 +35,7 @@ class DataTensor(object):
             columns = data.columns
             index = data.index
             data = data.values
-        elif issubclass(type(data), dict):
+        elif isinstance(data, dict):
             columns = list(data.keys())
             data = torch.stack([data[c] for c in columns], dim=1)
 
@@ -58,7 +59,7 @@ class DataTensor(object):
             self.mapping_method = 'simple'
         else:
             if index_type.minor == 'tensor':
-                index = index.cpu().numpy()
+                index = as_numpy(index)
             elif index_type.major == 'scalar':
                 index = [index]
 
@@ -141,7 +142,7 @@ class DataTensor(object):
             pass
         elif self.mapping_method == 'series':
             if index_type.minor == 'tensor':
-                ind = ind.cpu().numpy()
+                ind = as_numpy(ind)
             ind = as_tensor(self.index_map[ind].values, return_vector=True)
         else:
             return NotImplementedError
@@ -209,12 +210,12 @@ class DataTensor(object):
 
     def __repr__(self):
 
-        if issubclass(type(self.index), torch.Tensor):
-            index = self.index.data.cpu().numpy()
+        if isinstance(self.index, torch.Tensor):
+            index = as_numpy(self.index.data)
         else:
             index = self.index
 
-        repr_data = repr(pd.DataFrame(data=self.data.detach().cpu().numpy(),
+        repr_data = repr(pd.DataFrame(data=as_numpy(self.data.detach()),
                                       columns=self.columns, index=index))
 
         inf = f'DataTensor:\ndevice:\t\t{self.data.device}\nrequires_grad:\t{self.data.requires_grad}'

@@ -16,7 +16,7 @@ import os
 
 from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds
+from src.beam import Algorithm, PackedFolds, as_numpy
 from src.beam import DataTensor, BeamOptimizer, beam_logger
 
 from torchvision import transforms
@@ -356,10 +356,10 @@ class CIFAR10Algorithm(Algorithm):
     def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
         y_pred = torch.cat(results['predictions']['y_pred'])
 
-        y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
+        y_pred = as_numpy(torch.argmax(y_pred, dim=1))
 
         if not predicting:
-            y_true = torch.cat(results['predictions']['target']).data.cpu().numpy()
+            y_true = as_numpy(torch.cat(results['predictions']['target']))
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
             results['metrics']['recall'] = recall
