@@ -536,21 +536,18 @@ class Algorithm(object):
         elif issubclass(type(subset), torch.utils.data.Dataset):
 
             dataset = subset
-
             sampler = dataset.build_sampler(self.hparams.batch_size_eval, persistent=False)
-
             dataloader = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
                                                   pin_memory=self.pin_memory)
 
         else:
 
             subset_type = check_type(subset)
+            index = None
 
             if type(subset) is DataBatch:
-                if check_type(subset.data).minor == 'list':
-                    dataset = UniversalDataset(*subset.data, index=subset.index)
-                else:
-                    dataset = UniversalDataset(**subset.data, index=subset.index)
+                index = subset.index
+                dataset = UniversalDataset(subset.data, index=index)
             elif subset_type.minor in ['list', 'tuple']:
                 dataset = UniversalDataset(*subset)
             elif subset_type.minor in ['dict']:
@@ -558,10 +555,13 @@ class Algorithm(object):
             else:
                 dataset = UniversalDataset(subset)
 
-            sampler = UniversalBatchSampler(len(dataset), self.hparams.batch_size_eval, shuffle=False,
+            if index is None:
+                index = len(dataset)
+            sampler = UniversalBatchSampler(index, self.hparams.batch_size_eval, shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
-                                                     num_workers=0, pin_memory=self.pin_memory)
+                                                     num_workers=self.hparams.cpu_workers,
+                                                     pin_memory=self.pin_memory)
 
         return dataloader
 
