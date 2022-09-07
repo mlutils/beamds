@@ -529,8 +529,6 @@ class Algorithm(object):
 
     def build_dataloader(self, subset):
 
-        subset_type = check_type(subset)
-
         if type(subset) is str:
             dataloader = self.dataloaders[subset]
         elif issubclass(type(subset), torch.utils.data.DataLoader):
@@ -546,8 +544,9 @@ class Algorithm(object):
 
         else:
 
-            if subset_type.minor == 'tuple' and check_type(subset.index).major == 'array' \
-                    and check_type(subset.data).minor in ['list', 'dict']:
+            subset_type = check_type(subset)
+
+            if type(subset) is DataBatch:
                 if check_type(subset.data).minor == 'list':
                     dataset = UniversalDataset(*subset.data, index=subset.index)
                 else:

@@ -31,6 +31,9 @@ import faiss
 import faiss.contrib.torch_utils
 from sklearn.manifold import TSNE
 import umap
+from collections import namedtuple
+
+Similarities = namedtuple("Similarities", "index distance")
 
 simclr_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
 
@@ -120,11 +123,11 @@ class BeamSimilarity(object):
                         footprints = (d * 4 + M * 8) * expected_population
                         M_ind = np.where(footprints < ram_footprint)[0]
                         if len(M_ind):
-                            M = M[M_ind[0]]
+                            M = int(M[M_ind[0]])
                     if M is not None:
                         logger.info(f"Using HNSW{M}. Expected RAM footprint is "
                                     f"{pretty_format_number(footprints[M_ind[0]] / int(1e6))} MB")
-                        index = faiss.IndexHNSWFlat(d, M)
+                        index = faiss.IndexHNSWFlat(d, M, metric)
                     else:
                         logger.info(f"Using OPQ16_64,IVF{nlists},PQ8 Index")
                         index = faiss.index_factory(d, f'OPQ16_64,IVF{nlists},PQ8')
@@ -172,11 +175,14 @@ class BeamSimilarity(object):
             raise Exception
 
         self.index = index
+        self.inference_device = inference_device
 
         self.training_index = None
         res = faiss.StandardGpuResources()
         if training_device != 'cpu' and inference_device == 'cpu':
             self.training_index = faiss.index_cpu_to_gpu(res, training_device, index)
+
+        self.training_device = training_device
 
         if reducer == 'umap':
             self.reducer = umap.UMAP()
@@ -185,18 +191,24 @@ class BeamSimilarity(object):
         else:
             raise NotImplementedError
 
-    def train(self, z):
-        self.index.train(z)
+    def train(self, x):
 
-    def add(self, z, train=None):
+        x = x.to(self.training_device)
+        self.index.train(x)
+
+    def add(self, x, train=False):
+
+        x = x.to(self.inference_device)
+        self.index.add(x)
 
         if (train is None and not self.index.is_trained) or train:
-            self.index.train(z)
-        self.index.add(z)
+            self.train(x)
 
-    def most_similar(self, zi, n=1):
-        D, I = self.index.search(zi, n)
-        return D, I
+    def most_similar(self, x, n=1):
+
+        x = x.to(self.inference_device)
+        D, I = self.index.search(x, n)
+        return Similarities(index=I, distance=D)
 
     def __len__(self):
         return self.index.ntotal
@@ -413,8 +425,8 @@ class BeamSSL(Algorithm):
 
     def evaluate_downstream_task(self, z, y):
 
-        train_data = lgb.Dataset(z[self.index_train_labeled], label=y[self.index_train_labeled] - 1)
-        validation_data = lgb.Dataset(z[self.index_test_labeled], label=y[self.index_test_labeled] - 1)
+        train_data = lgb.Dataset(z[self.index_train_labeled], label=y[self.index_train_labeled])
+        validation_data = lgb.Dataset(z[self.index_test_labeled], label=y[self.index_test_labeled])
 
         num_round = 40
         param = {'objective': 'multiclass',
@@ -423,7 +435,7 @@ class BeamSSL(Algorithm):
                  'gpu_device_id': 1,
                  'verbosity': -1,
                  'metric': ['multi_error', 'multiclass'],
-                 'num_class': 10}
+                 'num_class': np.max(y) + 1}
 
         return lgb.train(param, train_data, num_round, valid_sets=[validation_data], verbose_eval=False)
 
@@ -459,68 +471,74 @@ class BeamSSL(Algorithm):
 
         return results
 
-    def build_similarity(self, add_train=True, add_validation=True, add_labaled_data=True,
-                         train_train=True, train_validation=True, train_labaled_data=True,
-                         metric='l2', training_device=None, inference_device=None, ram_footprint=2 ** 8 * int(1e9),
-                         gpu_footprint=24 * int(1e9), exact=False, nlists=None, M=None):
+    def build_similarity(self, add_sets=None, train_sets=None, metric='l2', training_device=None, inference_device=None,
+                         ram_footprint=2 ** 8 * int(1e9), gpu_footprint=24 * int(1e9), exact=False, nlists=None,
+                         M=None, latent_variable='h', projection=False, prediction=False):
 
         device = self.device
-        if 'cpu' == device.type:
-            device =  device.type
-        else:
-            device = device.index
+        device = device.type if 'cpu' == device.type else device.index
 
         if training_device is None:
             training_device = device
         if inference_device is None:
             inference_device = device
 
+        if add_sets is None:
+            add_sets = ['train', self.eval_subset, self.labeled_dataset]
+        if train_sets is None:
+            train_sets = add_sets
+
         d = self.h_dim
 
-        l = 0
-        if add_train:
-            l = l + len(self.dataset.indices['train'])
-        if add_validation:
-            l = l + len(self.dataset.indices[self.eval_subset])
-        if add_labaled_data:
-            l = l + len(self.labeled_dataset)
+        expected_population = 0
+        add_dataloaders = {}
+        for subset in add_sets:
+            dataloader = self.build_dataloader(subset)
+            expected_population += len(dataloader.dataset)
+            add_dataloaders[id(subset)] = dataloader
 
-        expected_population = l
+        train_population = 0
+        train_dataloaders = {}
+        for subset in train_sets:
+            dataloader = self.build_dataloader(subset)
+            train_population += len(dataloader.dataset)
+            train_dataloaders[id(subset)] = dataloader
+
         self.sim = BeamSimilarity(d=d, expected_population=expected_population,
                                   metric=metric, training_device=training_device, inference_device=inference_device,
                                   ram_footprint=ram_footprint, gpu_footprint=gpu_footprint, exact=exact,
                                   nlists=nlists, M=M, reducer='umap')
 
         h = []
+        for i, dataloader in add_dataloaders.items():
+            predictions = self.predict(dataloader, prediction=prediction, projection=projection,
+                                       add_to_sim=True, latent_variable=latent_variable)
+            if i in train_dataloaders:
+                h.append(predictions.data[latent_variable])
 
-        if train_train:
-            predictions = self.evaluate('train', prediction=False, projection=False)
-            h.append(predictions.data['h'])
-        if train_validation:
-            predictions = self.evaluate(self.eval_subset, prediction=False, projection=False)
-            h.append(predictions.data['h'])
-        if train_labaled_data:
-            predictions = self.evaluate(self.labeled_dataset, prediction=False, projection=False)
-            h.append(predictions.values['h'])
+        for i, dataloader in train_dataloaders.items():
+            if i not in add_dataloaders:
+                predictions = self.predict(dataloader, prediction=prediction, projection=projection,
+                                       add_to_sim=True, latent_variable=latent_variable)
+
+                h.append(predictions.data[latent_variable])
 
         h = torch.cat(h)
-
         self.sim.train(h)
+
         return self.sim
 
     def inference(self, sample=None, results=None, subset=None, predicting=True, similarity=0,
                   projection=True, prediction=True, augmentations=0, inference_networks=True,
-                  add_to_sim=None, latent_variable='h',
-                  **kwargs):
+                  add_to_sim=False, latent_variable='h', **kwargs):
 
         data = {}
-        if predicting:
-            x = sample
-        else:
+        if issubclass(type(sample), dict):
             x = sample['x']
-
             if 'y' in sample:
                 data['y'] = sample['y']
+        else:
+            x = sample
 
         networks = self.inference_networks if inference_networks else self.networks
 
@@ -564,34 +582,16 @@ class BeamSSL(Algorithm):
 
         if similarity > 0:
             if self.sim is not None:
-                D, I = self.sim.most_similar(data[latent_variable], n=similarity)
+                similarities = self.sim.most_similar(data[latent_variable], n=similarity)
 
-                data['similar_indices'] = I
-                data['similarities_distances'] = D
+                data['similarities_index'] = similarities.index
+                data['similarities_distance'] = similarities.distance
 
             else:
                 logger.error("Please build and train similarity object first before calculating similarities. "
                              "Use alg.build_similarity()")
 
         return data, results
-
-    def evaluate(self, *args, **kwargs):
-        '''
-        For validation and test purposes (when labels are known)
-        '''
-        return self(*args, predicting=False, **kwargs)
-
-    def predict(self, dataset, *args, lazy=False, add_to_population=False, anomaly_detction=False, **kwargs):
-        '''
-        Build faiss populations and calculate anomalies
-        '''
-
-        # if add_to_population:
-        #
-        #
-        # features = super().predict(dataset, *args, lazy=False, **kwargs)
-
-        return self(dataset, *args, predicting=True, **kwargs)
 
 
 class BeamBarlowTwins(BeamSSL):

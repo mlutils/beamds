@@ -143,20 +143,6 @@ def is_boolean(x):
     return False
 
 
-def as_tensor(x, device=None, return_vector=False):
-    if type(x) is not torch.Tensor:
-        x = torch.tensor(x)
-
-    if return_vector:
-        if not len(x.shape):
-            x = x.unsqueeze(0)
-
-    if device is not None:
-        x = x.to(device)
-
-    return x
-
-
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
 
     if type(s) is slice:
@@ -458,6 +444,38 @@ def to_device(data, device='cuda', half=False):
         return data.to(device)
     else:
         return data
+
+
+def recursive_batch(x, index):
+
+    if issubclass(type(x), dict):
+        return {k: recursive_batch(v, index) for k, v in x.items()}
+    elif issubclass(type(x), list) or issubclass(type(x), tuple):
+        return [recursive_batch(s, index) for s in x]
+    return x[index]
+
+
+def as_tensor(x, device=None, return_vector=False, recursive=False):
+
+    if recursive:
+        if issubclass(type(x), dict):
+            return {k: as_tensor(v, device=device, return_vector=return_vector,
+                                 recursive=recursive) for k, v in x.items()}
+        elif issubclass(type(x), list) or issubclass(type(x), tuple):
+            return [as_tensor(s, device=device, return_vector=return_vector,
+                                 recursive=recursive) for s in x]
+
+    if type(x) is not torch.Tensor:
+        x = torch.tensor(x)
+
+    if return_vector:
+        if not len(x.shape):
+            x = x.unsqueeze(0)
+
+    if device is not None:
+        x = x.to(device)
+
+    return x
 
 
 def concat_data(data):

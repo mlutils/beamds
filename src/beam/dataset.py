@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type, slice_to_index, as_tensor, to_device
+from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch
 import pandas as pd
 import math
 import hashlib
@@ -58,19 +58,19 @@ class UniversalDataset(torch.utils.data.Dataset):
             if len(args) == 1:
                 d = args[0]
                 if issubclass(type(d), dict):
-                    self.data = {k: as_tensor(v, device=device) for k, v in d.items()}
+                    self.data = {k: as_tensor(v, device=device, recursive=True) for k, v in d.items()}
                     self.data_type = 'dict'
                 elif (type(d) is list) or (type(d) is tuple):
-                    self.data = [as_tensor(v, device=device) for v in d]
+                    self.data = [as_tensor(v, device=device, recursive=True) for v in d]
                     self.data_type = 'list'
                 else:
                     self.data = d
                     self.data_type = 'simple'
             elif len(args):
-                self.data = [as_tensor(v, device=device) for v in args]
+                self.data = [as_tensor(v, device=device, recursive=True) for v in args]
                 self.data_type = 'list'
             elif len(kwargs):
-                self.data = {k: as_tensor(v, device=device) for k, v in kwargs.items()}
+                self.data = {k: as_tensor(v, device=device, recursive=True) for k, v in kwargs.items()}
                 self.data_type = 'dict'
             else:
                 self.data = None
@@ -106,10 +106,10 @@ class UniversalDataset(torch.utils.data.Dataset):
                     return self.data[ind]
                 return [self.data[k] for k in ind]
 
-            return {k: v[ind] for k, v in self.data.items()}
+            return {k: recursive_batch(v, ind) for k, v in self.data.items()}
 
         elif self.data_type == 'list':
-            return [v[ind] for v in self.data]
+            return [recursive_batch(v, ind) for v in self.data]
         elif self.data_type == 'simple':
             return self.data[ind]
         else:
@@ -127,6 +127,9 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 loc = ind
                 ind = as_tensor(ind)
+
+            if ind_type.major == 'scalar':
+                loc = [loc]
 
             iloc = self.index.loc[loc].values
 
