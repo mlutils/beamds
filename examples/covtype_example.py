@@ -14,7 +14,7 @@ import os
 
 from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, as_numpy
+from src.beam import Algorithm, PackedFolds, as_numpy, beam_logger
 from src.beam.config import get_beam_parser
 from src.beam.model import GBN, MHRuleLayer, BetterEmbedding, mySequential
 
@@ -27,6 +27,137 @@ import math
 from sklearn.preprocessing import QuantileTransformer
 
 ModuleType = Union[str, Callable[..., nn.Module]]
+
+
+# class StaticBetterEmbedding(torch.nn.Module):
+#
+#     def __init__(self, numerical_indices, categorical_indices, n_quantiles, n_categories, emb_dim,
+#                  momentum=.001, track_running_stats=True, n_tables=15, initial_mask=1.,
+#                  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, quantile_resolution=1e-4,
+#                  use_stats_for_train=True, boost=True, flatten=False, quantile_embedding=True, tokenizer=True,
+#                  qnorm_flag=False, kaiming_init=False, init_spline_equally=True, sparse=True, spline=True):
+#
+#         super().__init__()
+#
+#         self.categorical_indices = categorical_indices
+#         self.numerical_indices = numerical_indices
+#
+#         n_feature_num = len(numerical_indices)
+#         n_features = len(torch.cat([categorical_indices, numerical_indices]))
+#
+#         n_categories = n_categories + 1
+#         cat_offset = n_categories.cumsum(0) - n_categories
+#         self.register_buffer("cat_offset", cat_offset.unsqueeze(0))
+#         self.register_buffer("null_emb_cat", torch.FloatTensor(1, 0, emb_dim))
+#
+#         self.flatten = flatten
+#         self.n_tables = n_tables
+#
+#         self.n_emb = int(n_categories.sum())
+#
+#         self.pid = PID(k_p=k_p, k_i=k_i, k_d=k_d, T=T, clip=clip)
+#         self.br = initial_mask
+#
+#         if len(categorical_indices):
+#             self.emb_cat = nn.Embedding(1 + self.n_emb * n_tables, emb_dim, sparse=sparse)
+#         else:
+#             self.emb_cat = lambda x: self.null_emb_cat.repeat(len(x), 1, 1)
+#
+#         if init_spline_equally:
+#
+#             none_val = torch.randn(n_tables, n_feature_num, emb_dim)
+#             base_1 = torch.randn(n_tables, n_feature_num, emb_dim)
+#             base_2 = torch.randn(n_tables, n_feature_num, emb_dim)
+#             weights = (none_val, base_1, base_2)
+#         else:
+#             weights = None
+#
+#         self.emb_num = None
+#         if spline:
+#             self.emb_num = SplineEmbedding(n_feature_num, n_quantiles, emb_dim, n_tables=n_tables,
+#                                        enable=quantile_embedding, init_weights=weights, sparse=sparse)
+#
+#         self.llr = LazyLinearRegression(n_quantiles, lr=0.001)
+#         self.lambda_llr = 0
+#         if n_quantiles > 1:
+#             self.pid_llr = PID(k_p=1e-1, k_i=0, k_d=0, T=T, clip=1e-3)
+#         else:
+#             self.pid_llr = PID(k_p=1e-4, k_i=0, k_d=0, T=T, clip=0)
+#
+#         self.qnorm = None
+#         if qnorm_flag:
+#             self.qnorm = LazyQuantileNorm(quantiles=int(1 / quantile_resolution), momentum=momentum,
+#                                       track_running_stats=track_running_stats,
+#                                       use_stats_for_train=use_stats_for_train, boost=boost)
+#
+#         self.tokenizer = tokenizer
+#         if tokenizer:
+#             self.weight = nn.Parameter(torch.empty((1, n_features, emb_dim)))
+#             if kaiming_init:
+#                 nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+#             else:
+#                 nn.init.normal_(self.weight)
+#         else:
+#             self.register_buffer('weight', torch.zeros((n_features, emb_dim)))
+#
+#         self.bias = nn.Parameter(torch.empty((1, n_features, emb_dim)))
+#         if kaiming_init:
+#             nn.init.kaiming_uniform_(self.bias, a=math.sqrt(5))
+#         else:
+#             nn.init.normal_(self.bias)
+#
+#         self.emb_dim = emb_dim
+#
+#     def step(self, train_loss, val_loss):
+#
+#         self.br = min(max(0, self.br + self.pid((train_loss - val_loss) / val_loss)), 1)
+#         self.lambda_llr = min(max(0, self.lambda_llr - self.pid_llr((train_loss - val_loss) / val_loss)), 1)
+#         logger.info(f"br was changed to {self.br}")
+#         logger.info(f"lambda_llr was changed to {self.lambda_llr}")
+#
+#     def get_llr(self):
+#         return self.llr(self.emb_num.emb.weight) * self.lambda_llr
+#
+#     def forward(self, x_num, x_cat, ensemble=True):
+#
+#         if self.qnorm is not None:
+#             x_num = self.qnorm(x_num)
+#
+#         if ensemble:
+#
+#             bernoulli = torch.distributions.bernoulli.Bernoulli(probs=self.br)
+#             mask_num = bernoulli.sample(sample_shape=x_num.shape).long().to(x_num.device)
+#             mask_cat = bernoulli.sample(sample_shape=x_cat.shape).long().to(x_cat.device)
+#
+#         else:
+#             mask_num = 1
+#             mask_cat = 1
+#
+#         if self.training:
+#             rand_table = torch.randint(self.n_tables, size=(1, 1), device=x_cat.device)
+#         else:
+#             rand_table = torch.randint(self.n_tables, size=(len(x), 1), device=x_cat.device)
+#
+#         x_cat = (x_cat + 1) * mask_cat + self.cat_offset + self.n_emb * rand_table
+#
+#         e_cat = self.emb_cat(x_cat)
+#
+#         if self.emb_num is not None:
+#             e_num = self.emb_num(x_num, mask_num, rand_table)
+#         else:
+#             e_num = torch.zeros(*x_num.shape, self.emb_dim, device=x_num.device, dtype=x_num.dtype)
+#
+#         e = torch.cat([e_cat, e_num], dim=1)
+#         e = e + self.bias
+#
+#         if self.tokenizer:
+#             x = torch.cat([torch.zeros_like(x_cat), x_num * mask_num], dim=1)
+#             y = self.weight * x.unsqueeze(-1)
+#             e = e + y
+#         if self.flatten:
+#             e = e.view(len(e), -1)
+#
+#         return e
 
 
 def _is_glu_activation(activation: ModuleType):
@@ -173,11 +304,11 @@ class ResRuleLayer(nn.Module):
                        bias_second=True,
                        activation=ffn_activation)
         self.activation = getattr(F, activation)
-        self.Head = Head( d_in=e_dim,
-                          d_out=n_out,
-                          bias=True,
-                          activation=head_activation,  # type: ignore
-                          normalization=head_normalization)
+        self.Head = Head(d_in=e_dim,
+                         d_out=n_out,
+                         bias=True,
+                         activation=head_activation,  # type: ignore
+                         normalization=head_normalization)
 
     def forward(self, x, e, y):
 
@@ -199,6 +330,7 @@ class ResRuleLayer(nn.Module):
         y.append(self.Head(r))
 
         return r, e, y
+
 
 class RuleNet(nn.Module):
 
@@ -243,43 +375,14 @@ class RuleNet(nn.Module):
         return y
 
 
-
-# class CovtypeDataset(UniversalDataset):
-#
-#     def __init__(self, path,
-#                  train_batch_size, eval_batch_size, device='cpu', weight_factor=.5, seed=5782):
-#
-#         dataset = fetch_covtype(data_home=path)
-#         data = dataset['data']
-#         columns = dataset['feature_names']
-#         y = np.array(dataset['target'], dtype=np.int64)
-#         df = pd.DataFrame(data=data, columns=columns, index=np.arange(len(data)))
-#
-#         soils_columns = [c for c in df.columns if 'Soil' in c]
-#         soil = np.where(df[soils_columns])[1]
-#
-#         wilderness_columns = [c for c in df.columns if 'Wilderness' in c]
-#         wilderness = np.where(df[wilderness_columns])[1]
-#
-#         df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
-#         df_num = df.drop(columns=(soils_columns+wilderness_columns))
-#
-#         covtype = pd.concat([df_num, df_cat], axis=1)
-#         super().__init__(x=covtype.values, y=y, device=device)
-#
-#         self.split(validation=.2, test=.2, seed=seed, stratify=True, labels=self.data['y'].cpu())
-#         self.build_samplers(train_batch_size, eval_batch_size, oversample=True, weight_factor=weight_factor)
-#
-#         self.categorical_indices = torch.arange(10, 12)
-#         self.numerical_indices = torch.arange(10)
-#         self.n_categories = torch.tensor(df_cat.nunique().values)
-#         self.n_classes = int(y.max() + 1)
-
-
 class CovtypeDataset(UniversalDataset):
 
-    def __init__(self, path,
-                 train_batch_size, eval_batch_size, device='cpu', weight_factor=.5, seed=5782):
+    def __init__(self, hparams):
+
+        path = hparams.path_to_data
+        device = hparams.device
+        seed = hparams.seed
+
         dataset = fetch_covtype(data_home=path)
         data = dataset['data']
         columns = dataset['feature_names']
@@ -295,13 +398,7 @@ class CovtypeDataset(UniversalDataset):
         df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
         df_num = df.drop(columns=(soils_columns + wilderness_columns))
 
-        # covtype = pd.concat([df_num, df_cat], axis=1)
-        # super().__init__(x=covtype.values, y=y, device=device)
-
-        super().__init__(y=y, device=device)
-
         self.split(validation=.2, test=.2, seed=seed, stratify=True, labels=self.data['y'].cpu())
-        self.build_samplers(train_batch_size, eval_batch_size, oversample=True, weight_factor=weight_factor)
 
         self.categorical_indices = torch.arange(10, 12)
         self.numerical_indices = torch.arange(10)
@@ -320,14 +417,16 @@ class CovtypeDataset(UniversalDataset):
         covtype = pd.concat([df_num, df_cat], axis=1)
         super().__init__(x=covtype.values.astype(np.float32), y=y, device=device)
 
+        # super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df.cat.values.astype(np.int65), y=y,
+        #                  device=device)
+
         self.n_categories = torch.tensor(df_cat.nunique().values)
         self.n_classes = int(y.max() + 1)
 
 
 class CovtypeAlgorithm(Algorithm):
 
-    def __init__(self, *args, **argv):
-        super().__init__(*args, **argv)
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
 
         networks, dataloaders, experiment = args
 
@@ -339,6 +438,8 @@ class CovtypeAlgorithm(Algorithm):
                                                               patience=experiment.scheduler_patience,
                                                               threshold=0, threshold_mode='rel', cooldown=0, min_lr=0,
                                                               eps=1e-06, verbose=True)
+
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
 
     def postprocess_epoch(self, sample=None, aux=None, results=None, epoch=None, subset=None, training=True):
 
@@ -441,31 +542,28 @@ class CovtypeAlgorithm(Algorithm):
 
 def covtype_algorithm_generator(experiment, **kwargs):
 
-    dataset = CovtypeDataset(experiment.path_to_data, experiment.batch_size_train, experiment.batch_size_eval,
-                             device=experiment.device, weight_factor=experiment.weight_factor, seed=experiment.seed)
-
-    pin_memory = 'cpu' not in str(experiment.device)
-    dataloader = dataset.build_dataloaders(num_workers=experiment.cpu_workers, pin_memory=pin_memory)
+    hparams = experiment.hparams
+    dataset = CovtypeDataset(hparams)
 
     # choose your network
     net = RuleNet(dataset.numerical_indices, dataset.categorical_indices,
-                  dataset.n_categories, n_out=dataset.n_classes, embedding_dim=experiment.channels,
-                  n_rules=experiment.n_rules, n_layers=experiment.n_layers, dropout=experiment.dropout,
-                 activation=experiment.activation, n_quantiles=experiment.n_quantiles, n_tables=experiment.n_tables,
-                  initial_mask=experiment.initial_mask, qnorm_momentum=experiment.qnorm_momentum, k_p=experiment.k_p,
-                  k_i=experiment.k_i, k_d=experiment.k_d, T=experiment.T_pid, clip=experiment.clip_pid)
+                  dataset.n_categories, n_out=dataset.n_classes, embedding_dim=hparams.channels,
+                  n_rules=hparams.n_rules, n_layers=hparams.n_layers, dropout=hparams.dropout,
+                  activation=hparams.activation, n_quantiles=hparams.n_quantiles,
+                  n_tables=hparams.n_tables, initial_mask=hparams.initial_mask, qnorm_momentum=hparams.qnorm_momentum,
+                  k_p=hparams.k_p, k_i=hparams.k_i, k_d=hparams.k_d, T=hparams.T_pid, clip=hparams.clip_pid)
 
-    optimizer = None
-
-    # we recommend using the algorithm argument to determine the type of algorithm to be used
     Alg = globals()[experiment.algorithm]
-    alg = Alg(net, dataloader, experiment, optimizers=optimizer)
+    alg = Alg(hparams, networks=net)
+    experiment.writer_cleanup()
+
+    alg.load_dataset(dataset)
+    alg.experiment = experiment
 
     return alg
 
 
 # Add experiment hyperparameter arguments
-
 def get_covtype_parser():
 
     parser = get_beam_parser()
@@ -474,14 +572,12 @@ def get_covtype_parser():
     parser.add_argument('--label-smoothing', type=float, default=0.05, help='Smoothing factor in the Cross Entropy loss')
     parser.add_argument('--activation', type=str, default='gelu', help='Activation function in RuleNet')
     parser.add_argument('--channels', type=int, default=256, help='Size of embedding')
-    parser.add_argument('--Dropout', type=float, default=0.0, help='Dropout value for rule layers')
+    parser.add_argument('--dropout', type=float, default=0.0, help='Dropout value for rule layers')
     parser.add_argument('--n-rules', type=int, default=128, help='Number of rules')
     parser.add_argument('--n-layers', type=int, default=5, help='Number of Residual Rule layers')
     parser.add_argument('--n-quantiles', type=int, default=20, help='Number of quantiles for the BetterEmbedding')
     parser.add_argument('--n-tables', type=int, default=15, help='Number of tables for the BetterEmbedding')
-
-    parser.add_argument('--scheduler-factor', type=float, default=1 / math.sqrt(10), help='Reduce factor on Plateau')
-    parser.add_argument('--scheduler-patience', type=int, default=16, help='Patience for plateau identification')
+    parser.add_argument('--scheduler', type=str, default='reduce_on_plateau', help='Activation function in RuleNet')
     parser.add_argument('--eval-ensembles', type=int, default=64, help='Number of repetitions of eval passes for each example (to build the ensemble)')
 
     parser.add_argument('--initial-mask', type=float, default=1., help='Initial PID masking')
@@ -503,24 +599,25 @@ if __name__ == '__main__':
     path_to_data = '/home/shared/data/dataset/covtype'
     root_dir = '/home/shared/data/results/covtype'
 
+    logger = beam_logger()
     args = beam_arguments(get_covtype_parser(),
-                          f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1 --no-half --lr-d=1e-3 --lr-s=.02 --batch-size=512",
-                          "--n-epochs=100 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
+                          f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1",
+                          f" --no-half --lr-d=1e-3 --lr-s=.02 --batch-size=512",
+                          "--n-epochs=100 --clip-gradient=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
                           "--weight-decay=1e-5 --momentum=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
                           weight_decay=1e-3, label_smoothing=.2,
                           k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
                           path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
                           n_layers=4, scheduler_factor=1 / math.sqrt(10))
 
-
     experiment = Experiment(args)
-    alg = experiment(covtype_algorithm_generator, tensorboard_arguments=None)
+    alg = experiment.fit(algorithm_generator=covtype_algorithm_generator, tensorboard_arguments=None)
 
     # ## Inference
     inference = alg('test')
 
-    print('Test inference results:')
+    logger.info('Test inference results:')
     for n, v in inference.statistics['metrics'].items():
-        print(f'{n}:')
-        print(v)
+        logger.info(f'{n}:')
+        logger.info(v)
 

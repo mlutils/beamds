@@ -11,5 +11,6 @@ from .algorithm import Algorithm
 from .model import LinearNet, PackedSet, BetterEmbedding, SplineEmbedding, copy_network, reset_network
 from .data_tensor import DataTensor
 from .optim import BeamOptimizer, BeamScheduler
+from .ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
 
 from ._version import __version__

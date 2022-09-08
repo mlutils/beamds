@@ -718,12 +718,16 @@ class Experiment(object):
         return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                              dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
 
-    def fit(self, Alg, Dataset=None, *args, return_results=False, reload_results=False,
+    def fit(self, Alg=None, Dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
             dataset_kwargs=None, **kwargs):
 
-        ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+        if algorithm_generator is None:
+            ag = partial(algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                                 dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+        else:
+            ag = algorithm_generator
+
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
 

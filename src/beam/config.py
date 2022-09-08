@@ -131,7 +131,7 @@ def get_beam_parser():
     parser.add_argument('--batch-size-eval', type=int, default=None, metavar='hparam', help='Batch Size for testing/evaluation iterations')
 
     parser.add_argument('--reduction', type=str, metavar='hparam', default='sum', help='whether to sum loss elements or average them')
-    parser.add_argument('--lr-dense', type=float, default=1e-3, metavar='hparam', help='learning rate for dense optimizers')
+    parser.add_argument('--lr-dense', '--lr', type=float, default=1e-3, metavar='hparam', help='learning rate for dense optimizers')
     parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='hparam', help='learning rate for sparse optimizers')
     parser.add_argument('--cycle-max-momentum', type=float, default=.95, metavar='hparam',
                         help='The maximum momentum in one-cycle optimizer')
@@ -139,6 +139,8 @@ def get_beam_parser():
                         help='The base momentum in one-cycle optimizer')
     parser.add_argument('--scheduler-factor', type=float, default=math.sqrt(.1), metavar='hparam',
                         help='The factor to reduce lr in schedulers such as ReduceOnPlateau')
+    parser.add_argument('--scheduler-patience', type=int, default=None, metavar='hparam',
+                        help='Patience for the ReduceOnPlateau scheduler')
     parser.add_argument('--scheduler-warmup', type=float, default=5, metavar='hparam',
                         help='Scheduler\'s warmup factor (in epochs)')
     parser.add_argument('--weight-decay', type=float, default=0., metavar='hparam', help='L2 regularization coefficient for dense optimizers')

@@ -20,7 +20,7 @@ from ray import tune
 
 class Algorithm(object):
 
-    def __init__(self, hparams, networks=None, optimizers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
 
         self._experiment = None
         self.trial = None
@@ -74,7 +74,7 @@ class Algorithm(object):
         self.best_objective = None
         self.best_state = False
 
-        self.add_networks_and_optimizers(networks=networks, optimizers=optimizers)
+        self.add_networks_and_optimizers(networks=networks, optimizers=optimizers, schedulers=schedulers)
 
         if hparams.reload_path is not None:
             self.load_checkpoint(hparams.reload_path)
@@ -116,8 +116,8 @@ class Algorithm(object):
             experiment = Experiment(hparams)
         return experiment.algorithm_generator(cls)
 
-    def add_networks_and_optimizers(self, networks=None, optimizers=None, build_optimizers=True, name='net',
-                                    build_schedulers=True):
+    def add_networks_and_optimizers(self, networks=None, optimizers=None, schedulers=None,
+                                    build_optimizers=True, build_schedulers=True, name='net'):
 
         if networks is None:
             networks = self.networks
@@ -144,27 +144,7 @@ class Algorithm(object):
                     self.swa_networks[k] = torch.optim.swa_utils.AveragedModel(net)
 
         if optimizers is None:
-            if build_optimizers:
-
-                momentum = self.get_hparam('momentum')
-                if momentum is None:
-                    momentum = self.get_hparam('beta1')
-
-                optimizers = {k: BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', k),
-                                                              'weight_decay': self.get_hparam('weight_decay', k),
-                                                              'betas': (self.get_hparam('momentum', k, default=momentum),
-                                                                        self.get_hparam('beta2', k)),
-                                                              'eps': self.get_hparam('eps', k),
-                                                              'capturable': self.get_hparam('capturable', k)},
-                                               sparse_args={'lr': self.get_hparam('lr_sparse', k),
-                                                            'betas': (self.get_hparam('momentum', k, default=momentum),
-                                                                      self.get_hparam('beta2', k)),
-                                                            'eps': self.get_hparam('eps', k)},
-                                               clip=self.get_hparam('clip_gradient', k), amp=self.amp,
-                                               accumulate=self.get_hparam('accumulate', k)
-                                               ) for k, v in networks.items()}
-            else:
-                optimizers = {}
+            optimizers = {}
 
         elif isinstance(optimizers, dict):
             for k, o in optimizers.items():
@@ -189,6 +169,32 @@ class Algorithm(object):
         else:
             raise NotImplementedError
 
+        if build_optimizers:
+
+            momentum = self.get_hparam('momentum')
+            if momentum is None:
+                momentum = self.get_hparam('beta1')
+
+            for k, v in networks.items():
+                if k not in optimizers:
+                    optimizers[k] = BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', k),
+                                                                  'weight_decay': self.get_hparam('weight_decay', k),
+                                                                  'betas': (self.get_hparam('momentum', k,
+                                                                                            default=momentum),
+                                                                            self.get_hparam('beta2', k)),
+                                                                  'eps': self.get_hparam('eps', k),
+                                                                  'capturable': self.get_hparam('capturable', k)},
+                                                   sparse_args={'lr': self.get_hparam('lr_sparse', k),
+                                                                'betas': (self.get_hparam('momentum', k,
+                                                                                          default=momentum),
+                                                                          self.get_hparam('beta2', k)),
+                                                                'eps': self.get_hparam('eps', k)},
+                                                   clip=self.get_hparam('clip_gradient', k), amp=self.amp,
+                                                   accumulate=self.get_hparam('accumulate', k))
+
+        if schedulers is None:
+            schedulers = {}
+
         for k, opt in optimizers.items():
             self.optimizers[k] = opt
 
@@ -202,12 +208,16 @@ class Algorithm(object):
                 else:
                     self.swa_schedulers[k] = torch.optim.swa_utils.SWALR(opt, self.get_hparam('swa_lr', k), **kwargs)
 
-            if build_schedulers and self.get_hparam('scheduler', k) is not None:
+            if k in schedulers:
+                self.schedulers[k] = schedulers[k]
+
+            elif build_schedulers and self.get_hparam('scheduler', k) is not None:
 
                 kwargs = {'warmup': self.get_hparam('scheduler_warmup', k), 'method': self.get_hparam('scheduler', k),
                           'step_type': self.get_hparam('schedulers_steps', k),
                           'cycle_momentum': True, 'base_momentum': self.get_hparam('cycle_base_momentum', k),
                           'max_momentum': self.get_hparam('cycle_max_momentum', k),
+                          'patience': self.get_hparam('patience', k),
                           'factor': self.get_hparam('scheduler_factor', k)}
 
                 if type(opt) is BeamOptimizer:
@@ -661,10 +671,10 @@ class Algorithm(object):
                             if scaler._scale is not None:
                                 scaler.update()
 
+            results = stack_train_results(results, batch_size=self.batch_size_train)
             results = self.postprocess_epoch(sample=sample, index=ind, results=results, epoch=n, training=training)
 
             batch_size = self.batch_size_train if training else self.batch_size_eval
-            # results = stack_inference_results(results, batch_size=batch_size)
 
             delta = timer() - t0
             n_iter = i + 1
@@ -799,11 +809,12 @@ class Algorithm(object):
 
             index = torch.cat(index)
             transforms = concat_data(transforms)
+            results = stack_inference_results(results, batch_size=batch_size)
+
             results = self.postprocess_inference(sample=sample, index=ind, transforms=transforms,
                                                  results=results, subset=subset, dataset=dataset,
                                                  predicting=predicting, **kwargs)
 
-            results = stack_inference_results(results, batch_size=batch_size)
             dataset = UniversalDataset(transforms, index=index)
             dataset.set_statistics(results)
 
@@ -816,13 +827,8 @@ class Algorithm(object):
                                              subset=self.eval_subset, training=False)
         for i, train_results in enumerate(self.epoch_iterator(self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
                                                               subset='train', training=True)):
-
-            train_results = stack_train_results(train_results, batch_size=self.batch_size_train)
-
             with torch.no_grad():
-
                 eval_results = next(eval_generator)
-                eval_results = stack_train_results(eval_results, batch_size=self.batch_size_eval)
 
             results = {'train': train_results, self.eval_subset: eval_results}
 
