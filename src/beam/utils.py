@@ -466,13 +466,10 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
     elif isinstance(x, list) or isinstance(x, tuple):
         return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
 
-    if isinstance(x, torch.Tensor):
-        x = torch.as_tensor(x, device=device, dtype=dtype)
-
+    x = torch.as_tensor(x, device=device, dtype=dtype)
     if return_vector:
         if not len(x.shape):
             x = x.unsqueeze(0)
-
     return x
 
 

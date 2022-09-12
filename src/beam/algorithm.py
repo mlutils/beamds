@@ -20,7 +20,7 @@ from ray import tune
 
 class Algorithm(object):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None):
 
         self._experiment = None
         self.trial = None
@@ -81,6 +81,9 @@ class Algorithm(object):
 
         if hparams.store_initial_weights:
             self.initial_weights = self.save_checkpoint()
+
+        if dataset is not None:
+            self.load_dataset(dataset)
 
     def get_hparam(self, hparam, specific=None, default=None):
         if specific is not None and f"{specific}_{hparam}" in self.hparams:
@@ -361,7 +364,7 @@ class Algorithm(object):
                         op.zero_grad(set_to_none=set_to_none)
         return loss
 
-    def load_dataset(self, dataset=None, batch_size_train=None, batch_size_eval=None,
+    def load_dataset(self, dataset, batch_size_train=None, batch_size_eval=None,
                      oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
                      worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
                      dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
@@ -661,7 +664,7 @@ class Algorithm(object):
                     objective = results['scalar'][self.hparams.objective] \
                         if self.hparams.objective in results['scalar'] else None
 
-                    if training and n < self.n_epochs:
+                    if not training and n < self.n_epochs:
                         self.schedulers_step(objective, step_type='iteration')
 
                     if self.amp and training:
@@ -747,7 +750,7 @@ class Algorithm(object):
                 self.best_state = True
             else:
                 self.best_state = False
-            results['objective'] = objective
+            results[self.eval_subset]['objective'] = objective
         elif self.hparams.objective is not None and self.hparams.objective not in results[self.eval_subset]['scalar']:
             logger.warning(f"The objective {self.hparams.objective} is missing from the validation results")
 
@@ -831,8 +834,8 @@ class Algorithm(object):
                 eval_results = next(eval_generator)
 
             results = {'train': train_results, self.eval_subset: eval_results}
-
-            results, objective = self.calculate_objective(results=results)
+            eval_results, objective = self.calculate_objective(results=results)
+            self.report(objective, i)
 
             if i+1 == self.n_epochs and self.swa_epochs > 0:
                 logger.warning("Switching to SWA training")
@@ -844,8 +847,6 @@ class Algorithm(object):
                     sch.step()
             else:
                 self.schedulers_step(objective=objective, step_type='epoch')
-
-            self.report(results, i)
 
             self.epoch += 1
             yield results

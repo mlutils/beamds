@@ -4,9 +4,6 @@ from torch import nn
 import numpy as np
 import math
 
-from examples.example_utils import add_beam_to_path
-add_beam_to_path()
-
 from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
 from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature, BeamOptimizer
 from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble

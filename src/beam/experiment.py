@@ -22,6 +22,7 @@ import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
 from tensorboard.notebook import start as start_tensorboard
+import inspect
 
 done = mp.Event()
 
@@ -47,22 +48,31 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
     if dataset_kwargs is None:
         dataset_kwargs = dict()
 
+    if isinstance(Dataset, torch.utils.data.Dataset):
+        dataset = Dataset
+    elif Dataset is not None:
+        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+    else:
+        dataset = None
+
     if type(Alg) == type:
-        alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
+
+        ars = inspect.getfullargspec(Alg)
+
+        # don't pass dataset if the algorithm cannot handle it on initialization
+        if 'dataset' in ars.args or ars.varargs is not None:
+            alg = Alg(experiment.hparams, *alg_args, dataset=dataset, **alg_kwargs)
+        else:
+            alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
     else:
         alg = Alg
 
-    if isinstance(Dataset, torch.utils.data.Dataset):
-        dataset = Dataset
-    elif Dataset is None:
-        dataset = alg.dataset
-    else:
-        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+    if alg.dataset is None and dataset is not None:
+        alg.load_dataset(dataset)
 
-    alg.load_dataset(dataset)
     alg.experiment = experiment
 
     return alg
@@ -525,7 +535,7 @@ class Experiment(object):
                     defaults_argv[log_type][k] = argv[log_type][k]
 
         if alg is not None:
-            networks = alg.get_networks()
+            networks = alg.networks
             for net in networks:
                 for name, param in networks[net].named_parameters():
                     try:
@@ -723,10 +733,15 @@ class Experiment(object):
             dataset_kwargs=None, **kwargs):
 
         if algorithm_generator is None:
-            ag = partial(algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+            ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                  dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         else:
-            ag = algorithm_generator
+
+            if Alg is not None:
+                ag = partial(algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                                     dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+            else:
+                ag = algorithm_generator
 
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
