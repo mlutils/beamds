@@ -436,7 +436,11 @@ class Experiment(object):
 
             if print_results:
                 logger.info('')
-                logger.info(f'Finished epoch {iteration+1}/{algorithm.n_epochs} (Total trained epochs {epoch}).')
+                objective_str = ''
+                if 'objective' in results and check_type(results['objective']).major == 'scalar':
+                    objective_str = f"Current objective: {pretty_format_number(results['objective'])}"
+                logger.info(f'Finished epoch {iteration+1}/{algorithm.n_epochs} (Total trained epochs {epoch}). '
+                            f'{objective_str}')
 
             decade = int(np.log10(epoch) + 1)
             logscale = not (epoch - 1) % (10 ** (decade - 1))
@@ -446,7 +450,7 @@ class Experiment(object):
                 if store_results == 'yes' or store_results == 'logscale' and logscale:
 
                     os.makedirs(os.path.join(self.results_dir, subset), exist_ok=True)
-                    pd.to_pickle(res, os.path.join(self.results_dir, subset, f'results_{epoch:06d}'))
+                    torch.save(res, os.path.join(self.results_dir, subset, f'results_{epoch:06d}'))
 
                 alg = algorithm if visualize_weights else None
 
@@ -476,6 +480,9 @@ class Experiment(object):
 
         for subset, res in results.items():
 
+            if subset == 'objective':
+                continue
+            
             def format(v):
                 v_type = check_element_type(v)
                 if v_type == 'int':

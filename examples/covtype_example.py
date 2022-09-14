@@ -14,7 +14,7 @@ import os
 
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, beam_logger
+from src.beam import Algorithm, PackedFolds, beam_logger, LinearNet
 from src.beam.model import PID
 from src.beam.config import get_beam_parser
 from src.beam.model import GBN, MHRuleLayer, mySequential
@@ -332,15 +332,18 @@ class CovtypeDataset(UniversalDataset):
         wilderness_columns = [c for c in df.columns if 'Wilderness' in c]
         wilderness = np.where(df[wilderness_columns])[1]
 
-        df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
+        # df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
+        df_cat = df[soils_columns + wilderness_columns]
         df_num = df.drop(columns=(soils_columns + wilderness_columns))
 
         # covtype = pd.concat([df_num, df_cat], axis=1)
         # super().__init__(x=covtype.values.astype(np.float32), y=y, device=device)
-        super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df_cat.values.astype(np.int64),
+        # super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df_cat.values.astype(np.int64),
+        #                  y=y, device=device)
+        super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df_cat.values.astype(np.float32),
                          y=y, device=device)
 
-        self.split(validation=.2, test=.2, seed=seed, stratify=True, labels=self.data['y'].cpu())
+        self.split(validation=.2, test=.2, seed=seed, stratify=False, labels=self.data['y'].cpu())
 
         # self.categorical_indices = torch.arange(10, 12)
         # self.numerical_indices = torch.arange(10)
@@ -372,11 +375,13 @@ class CovtypeAlgorithm(Algorithm):
         self.eval_ensembles = hparams.eval_ensembles
         self.label_smoothing = hparams.label_smoothing
 
-        net = RuleNet(dataset.n_num, dataset.n_cat, dataset.n_categories,
-                      embedding_dim=hparams.channels, n_rules=hparams.n_rules, n_layers=hparams.n_layers,
-                      dropout=hparams.dropout, n_out=dataset.n_classes, bias=True,
-                      activation=hparams.activation, n_tables=hparams.n_tables, initial_mask=hparams.initial_mask,
-                      k_p=hparams.k_p, k_i=hparams.k_i, k_d=hparams.k_d, T=hparams.T_pid, clip=hparams.clip_pid)
+        # net = RuleNet(dataset.n_num, dataset.n_cat, dataset.n_categories,
+        #               embedding_dim=hparams.channels, n_rules=hparams.n_rules, n_layers=hparams.n_layers,
+        #               dropout=hparams.dropout, n_out=dataset.n_classes, bias=True,
+        #               activation=hparams.activation, n_tables=hparams.n_tables, initial_mask=hparams.initial_mask,
+        #               k_p=hparams.k_p, k_i=hparams.k_i, k_d=hparams.k_d, T=hparams.T_pid, clip=hparams.clip_pid)
+
+        net = LinearNet(dataset.n_num + dataset.n_cat, 256, dataset.n_classes, 4)
 
         super().__init__(hparams, networks=net, dataset=dataset)
 
@@ -386,11 +391,10 @@ class CovtypeAlgorithm(Algorithm):
         # x_num, x_cat, y = sample['x_num'], sample['x_cat'], sample['y']
 
         if training:
-            results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
             self.last_train_loss = float(np.mean(results['scalar']['loss']))
         else:
             val_loss = float(np.mean(results['scalar']['loss']))
-            self.networks['net'].emb.step(self.last_train_loss, val_loss)
+            # self.networks['net'].emb.step(self.last_train_loss, val_loss)
 
         return results
 
@@ -400,16 +404,14 @@ class CovtypeAlgorithm(Algorithm):
         x_num, x_cat, y = sample['x_num'], sample['x_cat'], sample['y']
 
         net = self.networks['net']
-        opt = self.optimizers['net']
 
-        y_hat = net(x_num, x_cat)
-        loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=self.label_smoothing)
+        # y_hat = net(x_num, x_cat)
+        y_hat = net(torch.cat([x_num, x_cat], dim=1))
+        loss = F.cross_entropy(y_hat, y, reduction='none', label_smoothing=self.label_smoothing)
 
-        if training:
-            opt.apply(loss)
+        self.apply(loss, results=results, training=training)
 
         # add scalar measurements
-        results['scalar']['loss'].append(float(loss))
         results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
 
         return results
@@ -466,8 +468,8 @@ def get_covtype_parser():
 
     parser = get_beam_parser()
 
-    parser.add_argument('--weight-factor', type=float, default=0.5, help='Squashing factor for the oversampling probabilities')
-    parser.add_argument('--label-smoothing', type=float, default=0.05, help='Smoothing factor in the Cross Entropy loss')
+    parser.add_argument('--weight-factor', type=float, default=0., help='Squashing factor for the oversampling probabilities')
+    parser.add_argument('--label-smoothing', type=float, default=0.1, help='Smoothing factor in the Cross Entropy loss')
     parser.add_argument('--activation', type=str, default='gelu', help='Activation function in RuleNet')
     parser.add_argument('--objective', type=str, default='acc', help='The objective is the accuracy of the '
                                                                      'downstream task')
@@ -502,13 +504,13 @@ if __name__ == '__main__':
     logger = beam_logger()
     args = beam_arguments(get_covtype_parser(),
                           f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1",
-                          f" --no-half --lr-d=1e-3 --lr-s=.02 --batch-size=512",
+                          f" --no-half --lr-d=1e-3 --lr-s=1e-2 --batch-size=512",
                           "--n-epochs=100 --clip-gradient=0 --parallel=1 --accumulate=1",
-                          "--weight-decay=1e-5 --momentum=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
-                          weight_decay=1e-3, label_smoothing=.2,
+                          "--momentum=0.9 --beta2=0.99", weight_factor=.0, scheduler_patience=16,
+                          weight_decay=1e-5, label_smoothing=.2,
                           k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
                           path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
-                          n_layers=4, scheduler_factor=1 / math.sqrt(10))
+                          n_layers=2, scheduler_factor=1 / math.sqrt(10))
 
     experiment = Experiment(args)
     alg = experiment.fit(Alg=CovtypeAlgorithm, Dataset=CovtypeDataset, tensorboard_arguments=None)

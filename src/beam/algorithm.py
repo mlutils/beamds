@@ -220,7 +220,7 @@ class Algorithm(object):
                           'step_type': self.get_hparam('schedulers_steps', k),
                           'cycle_momentum': True, 'base_momentum': self.get_hparam('cycle_base_momentum', k),
                           'max_momentum': self.get_hparam('cycle_max_momentum', k),
-                          'patience': self.get_hparam('patience', k),
+                          'patience': self.get_hparam('scheduler_patience', k),
                           'factor': self.get_hparam('scheduler_factor', k)}
 
                 if type(opt) is BeamOptimizer:
@@ -313,12 +313,14 @@ class Algorithm(object):
 
                     if weights[k] > 1:
                         results['scalar'][f'{k}_w'].append(as_numpy(weights[k]))
+                    elif weights[k] == 1:
+                        pass
                     elif weights[k] == 0:
                         results['scalar'][f'{k}_w'].append(0)
                     else:
                         results['scalar'][f'{k}_f'].append(as_numpy(1 / weights[k]))
 
-            results['scalar'][name] = as_numpy(total_loss)
+            results['scalar'][name].append(as_numpy(total_loss))
 
         loss = total_loss
         if training:
@@ -388,11 +390,7 @@ class Algorithm(object):
         self.eval_subset = 'validation' if 'validation' in subsets else 'test'
 
         for s in subsets:
-            sampler = dataset.build_sampler(batch_size_eval, subset=s, persistent=False, oversample=oversample,
-                                            weight_factor=weight_factor, expansion_size=expansion_size,
-                                            dynamic=dynamic, buffer_size=buffer_size,
-                                            probs_normalization=probs_normalization,
-                                            sample_size=sample_size)
+            sampler = dataset.build_sampler(batch_size_eval, subset=s, persistent=False)
 
             self.dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
                                                            pin_memory=self.pin_memory,
@@ -750,7 +748,7 @@ class Algorithm(object):
                 self.best_state = True
             else:
                 self.best_state = False
-            results[self.eval_subset]['objective'] = objective
+            results['objective'] = objective
         elif self.hparams.objective is not None and self.hparams.objective not in results[self.eval_subset]['scalar']:
             logger.warning(f"The objective {self.hparams.objective} is missing from the validation results")
 
