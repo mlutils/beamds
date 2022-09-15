@@ -482,7 +482,7 @@ class Experiment(object):
 
             if subset == 'objective':
                 continue
-            
+
             def format(v):
                 v_type = check_element_type(v)
                 if v_type == 'int':
@@ -517,8 +517,14 @@ class Experiment(object):
 
                         v = [report[param]] if np.isscalar(report[param]) else report[param]
                         v = np.stack(v).flatten()
-                        stat = pd.Series(v, dtype=np.float32).describe()
+
                         report[param] = np.mean(v)
+                        if len(v) > 1:
+                            stat = pd.Series(v, dtype=np.float32).describe()
+                        else:
+                            v_type = check_type(v)
+                            v = int(v) if v_type.element == 'int' else float(v)
+                            stat = {'val': v}
 
                     if print_log:
                         if not (type(report[param]) is dict or type(

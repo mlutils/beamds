@@ -3,7 +3,8 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy
+from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, \
+    recursive_device, recursive_len
 import pandas as pd
 import math
 import hashlib
@@ -154,15 +155,15 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.data_type = check_type(self.data).minor
 
         if self.data_type == 'dict':
-            return next(iter(self.data.values())).device
+            return recursive_device(next(iter(self.data.values())))
         elif self.data_type == 'list':
-            return self.data[0].device
+            return recursive_device(self.data[0])
         elif self.data_type == 'simple':
             return self.data.device
         elif hasattr(self.data, 'device'):
             return self.data.device
         else:
-            return self.__device__
+            return self.__device__()
 
     def __repr__(self):
         return repr(self.data)
@@ -177,9 +178,9 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.data_type = check_type(self.data).minor
 
         if self.data_type == 'dict':
-            return len(next(iter(self.data.values())))
+            return recursive_len(next(iter(self.data.values())))
         elif self.data_type == 'list':
-            return len(self.data[0])
+            return recursive_len(self.data[0])
         elif self.data_type == 'simple':
             return len(self.data)
         elif hasattr(self.data, '__len__'):

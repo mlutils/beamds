@@ -4,11 +4,12 @@ from torch import nn
 import numpy as np
 import math
 
-from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
-from src.beam import tqdm, beam_logger, get_beam_parser, beam_boolean_feature, BeamOptimizer
-from src.beam.model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble
-from src.beam.model import beam_weights_initializer, freeze_network_params, free_network_params
-from src.beam.utils import as_numpy, pretty_format_number, logger
+from .model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble
+from .model import beam_weights_initializer, freeze_network_params, free_network_params
+from .utils import as_numpy, pretty_format_number, logger, beam_logger
+from .algorithm import Algorithm
+from .optim import BeamOptimizer
+from .config import boolean_feature, get_beam_parser
 
 import lightgbm as lgb
 from torch.nn.utils import spectral_norm
@@ -26,6 +27,7 @@ def get_ssl_parser():
 
     parser = get_beam_parser()
 
+    boolean_feature(parser, "verbose-lgb", False, "Print progress in lgb training")
     parser.add_argument('--similarity', type=str, metavar='hparam', default='cosine',
                         help='Similarity distance in UniversalSSL')
     parser.add_argument('--p-dim', type=int, default=None, help='Prediction/Projection output dimension')
@@ -41,6 +43,10 @@ def get_ssl_parser():
     parser.add_argument('--lambda-twins', type=float, default=0.005, metavar='hparam',
                         help='Off diagonal weight factor for Barlow Twins loss')
 
+    parser.add_argument('--lgb-rounds', type=int, default=40, help='LGB argument: num_round')
+    parser.add_argument('--lgb-num-leaves', type=int, default=31, help='LGB argument: num_leaves')
+    parser.add_argument('--lgb-max-depth', type=int, default=4, help='LGB argument: max_depth')
+    parser.add_argument('--lgb-device', type=int, default=None, help='LGB argument: device')
     return parser
 
 
@@ -192,17 +198,23 @@ class BeamSimilarity(object):
 
 class BeamSSL(Algorithm):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None, labeled_dataset=None):
 
         if networks is None:
             networks = {}
 
-        networks['encoder'] = self.generate_encoder()
+        encoder = self.generate_encoder()
+        if encoder is not None:
+            networks['encoder'] = encoder
+
         self.logger = beam_logger()
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
 
-        self.labeled_dataset = self.generate_labeled_set()
+        if labeled_dataset is None:
+            labeled_dataset = self.generate_labeled_set()
+        self.labeled_dataset = labeled_dataset
+
         self.index_train_labeled = np.array(self.labeled_dataset.indices['train'])
         self.index_test_labeled = np.array(self.labeled_dataset.indices['test'])
         self.sim = None
@@ -213,7 +225,7 @@ class BeamSSL(Algorithm):
         evaluation of the downstream task.
         @return: UniversalDataset
         """
-        raise NotImplementedError
+        return None
 
     def generate_encoder(self, *args, pretrained=None, **kwargs):
         """
@@ -222,7 +234,7 @@ class BeamSSL(Algorithm):
         @param pretrained:
         @return: nn.Module
         """
-        raise NotImplementedError
+        return None
 
     @property
     def p_dim(self):
@@ -254,16 +266,21 @@ class BeamSSL(Algorithm):
         train_data = lgb.Dataset(z[self.index_train_labeled], label=y[self.index_train_labeled])
         validation_data = lgb.Dataset(z[self.index_test_labeled], label=y[self.index_test_labeled])
 
-        num_round = 40
+        if self.hparams.lgb_device is None:
+            device = None if 'cpu' == self.device.type else self.device.index
+        else:
+            device = self.hparams.lgb_device
+
+        num_round = self.hparams.lgb_rounds
         param = {'objective': 'multiclass',
-                 'num_leaves': 31,
-                 'max_depth': 4,
-                 'gpu_device_id': 1,
+                 'num_leaves': self.hparams.lgb_num_leaves,
+                 'max_depth': self.hparams.lgb_max_depth,
+                 'gpu_device_id': device,
                  'verbosity': -1,
                  'metric': ['multi_error', 'multiclass'],
                  'num_class': np.max(y) + 1}
 
-        return lgb.train(param, train_data, num_round, valid_sets=[validation_data], verbose_eval=False)
+        return lgb.train(param, train_data, num_round, valid_sets=[validation_data], verbose_eval=self.hparams.verbose_lgb)
 
     def postprocess_epoch(self, results=None, training=None, epoch=None, **kwargs):
 
@@ -368,14 +385,14 @@ class BeamSSL(Algorithm):
 
         networks = self.inference_networks if inference_networks else self.networks
 
-        b = len(x)
-        if b < self.batch_size_eval:
-            x = torch.cat([x, torch.zeros((self.batch_size_eval-b, *x.shape[1:]), device=x.device, dtype=x.dtype)])
+        # b = len(x)
+        # if b < self.batch_size_eval:
+        #     x = torch.cat([x, torch.zeros((self.batch_size_eval-b, *x.shape[1:]), device=x.device, dtype=x.dtype)])
 
         h = networks['encoder'](x)
 
-        if b < self.batch_size_eval:
-            h = h[:b]
+        # if b < self.batch_size_eval:
+        #     h = h[:b]
 
         data['h'] = h
 
@@ -422,7 +439,7 @@ class BeamSSL(Algorithm):
 
 class BeamBarlowTwins(BeamSSL):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, **kwargs):
 
         if networks is None:
             networks = {}
@@ -438,7 +455,7 @@ class BeamBarlowTwins(BeamSSL):
         networks['discriminator'] = nn.Sequential(spectral_norm(nn.Linear(h, h)),
                                    nn.ReLU(), spectral_norm(nn.Linear(h, h)), nn.ReLU(), nn.Linear(h, 1))
 
-        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
         ensemble = BeamEnsemble(self.generate_encoder, n_ensembles=self.n_ensembles)
         ensemble.set_optimizers(BeamOptimizer.prototype(dense_args={'lr': self.hparams.lr_dense,
@@ -527,7 +544,7 @@ class BeamBarlowTwins(BeamSSL):
 
 class BarlowTwins(BeamSSL):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, **kwargs):
 
         if networks is None:
             networks = {}
@@ -537,7 +554,7 @@ class BarlowTwins(BeamSSL):
         networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, p))
-        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -577,7 +594,7 @@ class BarlowTwins(BeamSSL):
 
 class BeamVICReg(BeamSSL):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, **kwargs):
 
         if networks is None:
             networks = {}
@@ -587,7 +604,7 @@ class BeamVICReg(BeamSSL):
         networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, p))
-        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -650,7 +667,7 @@ class BeamVICReg(BeamSSL):
 
 class VICReg(BeamSSL):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, **kwargs):
 
         if networks is None:
             networks = {}
@@ -661,7 +678,7 @@ class VICReg(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, p))
 
-        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -714,7 +731,7 @@ class VICReg(BeamSSL):
 
 class SimCLR(BeamSSL):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, **kwargs):
 
         if networks is None:
             networks = {}
@@ -725,7 +742,7 @@ class SimCLR(BeamSSL):
                                                    nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                    nn.ReLU(), nn.Linear(h, p))
 
-        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -763,7 +780,7 @@ class SimCLR(BeamSSL):
 
 class SimSiam(BeamSSL):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, **kwargs):
 
         if networks is None:
             networks = {}
@@ -775,7 +792,7 @@ class SimSiam(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, p))
 
         networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
-        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
     @staticmethod
     def simsiam_loss(p, z):
@@ -818,7 +835,7 @@ class SimSiam(BeamSSL):
 
 class BYOL(BeamSSL):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, **kwargs):
 
         if networks is None:
             networks = {}
@@ -836,7 +853,7 @@ class BYOL(BeamSSL):
         reset_network(networks['target_projection'])
 
         networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
-        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 

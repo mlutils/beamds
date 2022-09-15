@@ -438,6 +438,23 @@ def recursive_batch(x, index):
     return x[index]
 
 
+def recursive_device(x):
+
+    if isinstance(x, dict):
+        return recursive_device(next(iter(x.values())))
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return recursive_device(x[0])
+    return x.device
+
+def recursive_len(x):
+
+    if isinstance(x, dict):
+        return recursive_len(next(iter(x.values())))
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return recursive_len(x[0])
+    return len(x)
+
+
 def as_numpy(x):
 
     if isinstance(x, dict):

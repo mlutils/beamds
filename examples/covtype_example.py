@@ -1,3 +1,4 @@
+import rtdl
 
 try:
     from examples.example_utils import add_beam_to_path
@@ -27,16 +28,89 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 import math
 from sklearn.preprocessing import QuantileTransformer
 
-ModuleType = Union[str, Callable[..., nn.Module]]
+
+# def preprocess_feature(v, nq=20, feature_type=None):
+#     '''
+#     get vector of features and calculate
+#     quantiles/categories
+#
+#     returns vc, categories
+#
+#     vc - categorical representation of v
+#     categories - names of categories (if quantile it is (a, b])
+#
+#     currently does not handle nan.
+#     '''
+#
+#     if type(v) is not pd.Series:
+#         v = pd.Series(v)
+#
+#     # for now we use a simple rule to distinguish between categorical and numerical features
+#     n = v.nunique()
+#
+#     if n > nq or (feature_type is not None and feature_type == 'numerical'):
+#
+#         c_type = 'numerical'
+#
+#         q = (np.arange(nq + 1)) / nq
+#
+#         vc = pd.qcut(v, q, labels=False, duplicates='drop')
+#         categories = v.quantile(q).values[:-1]
+#         vc = vc.fillna(-1).values
+#
+#     else:
+#
+#         c_type = 'categorical'
+#
+#         vc, categories = pd.factorize(v)
+#
+#     # allocate nan value
+#     categories = np.insert(categories, 0, np.nan)
+#     vc = vc + 1
+#
+#     return vc, categories, c_type
+#
+#
+# def preprocess_table(df, nq=20, offset=True, feature_type=None):
+#     metadata = defaultdict(OrderedDict)
+#     n = 0
+#     dfc = {}
+#
+#     for c in df.columns:
+#
+#         if feature_type is not None:
+#             ft = feature_type[c]
+#
+#         vc, categories, c_type = preprocess_feature(df[c], nq=nq, feature_type=ft)
+#
+#         m = len(categories)
+#         metadata['n_features'][c] = m
+#         metadata['categories'][c] = categories
+#         metadata['aggregated_n_features'][c] = n
+#         metadata['c_type'][c] = c_type
+#
+#         if offset:
+#             vc = vc + n
+#
+#         n = n + m
+#         dfc[c] = vc
+#
+#     dfc = pd.DataFrame(dfc).astype(np.int64)
+#
+#     metadata['total_features'] = n
+#
+#     return dfc, metadata
 
 
 class BetterEmbedding(torch.nn.Module):
 
-    def __init__(self, n_num, n_cat, n_categories, emb_dim, n_tables=15, initial_mask=1.,
+    def __init__(self, n_num, n_categories, emb_dim, n_tables=15, initial_mask=1.,
                  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, flatten=False, kaiming_init=False, sparse=True):
 
         super().__init__()
 
+        n_categories = as_tensor(n_categories)
+        n_cat = len(n_categories)
         n_categories = n_categories + 1
         cat_offset = n_categories.cumsum(0) - n_categories
         self.register_buffer("cat_offset", cat_offset.unsqueeze(0))
@@ -80,6 +154,7 @@ class BetterEmbedding(torch.nn.Module):
     def step(self, train_loss, val_loss):
         self.br = min(max(0, self.br + self.pid((train_loss - val_loss) / val_loss)), 1)
         logger.info(f"br was changed to {self.br}")
+
     def forward(self, x_num, x_cat, mask=True):
 
         if mask:
@@ -108,132 +183,6 @@ class BetterEmbedding(torch.nn.Module):
             e = e.view(len(e), -1)
 
         return e
-
-def _is_glu_activation(activation: ModuleType):
-    return (
-            isinstance(activation, str)
-            and activation.endswith('GLU')
-            or activation in [ReGLU, GEGLU]
-    )
-
-
-def reglu(x: Tensor) -> Tensor:
-    """The ReGLU activation function from [1].
-
-    References:
-
-        [1] Noam Shazeer, "GLU Variants Improve Transformer", 2020
-    """
-    assert x.shape[-1] % 2 == 0
-    a, b = x.chunk(2, dim=-1)
-    return a * F.relu(b)
-
-
-def geglu(x: Tensor) -> Tensor:
-    """The GEGLU activation function from [1].
-
-    References:
-
-        [1] Noam Shazeer, "GLU Variants Improve Transformer", 2020
-    """
-    assert x.shape[-1] % 2 == 0
-    a, b = x.chunk(2, dim=-1)
-    return a * F.gelu(b)
-
-
-class ReGLU(nn.Module):
-    """The ReGLU activation function from [shazeer2020glu].
-
-    Examples:
-        .. testcode::
-
-            module = ReGLU()
-            x = torch.randn(3, 4)
-            assert module(x).shape == (3, 2)
-
-    References:
-        * [shazeer2020glu] Noam Shazeer, "GLU Variants Improve Transformer", 2020
-    """
-
-    def forward(self, x: Tensor) -> Tensor:
-        return reglu(x)
-
-
-class GEGLU(nn.Module):
-
-    def forward(self, x: Tensor) -> Tensor:
-        return geglu(x)
-
-
-def _make_nn_module(module_type: ModuleType, *args) -> nn.Module:
-    if isinstance(module_type, str):
-        if module_type == 'ReGLU':
-            return ReGLU()
-        elif module_type == 'GEGLU':
-            return GEGLU()
-        else:
-            try:
-                cls = getattr(nn, module_type)
-            except AttributeError as err:
-                raise ValueError(
-                    f'Failed to construct the module {module_type} with the arguments {args}'
-                ) from err
-            return cls(*args)
-    else:
-        return module_type(*args)
-
-
-class FFN(nn.Module):
-    """The Feed-Forward Network module used in every `Transformer` block."""
-
-    def __init__(
-            self,
-            *,
-            d_token: int,
-            d_hidden: int,
-            bias_first: bool,
-            bias_second: bool,
-            activation: ModuleType,
-    ):
-        super().__init__()
-        self.linear_first = nn.Linear(
-            d_token,
-            d_hidden * (2 if _is_glu_activation(activation) else 1),
-            bias_first,
-            )
-        self.activation = _make_nn_module(activation)
-        self.linear_second = nn.Linear(d_hidden, d_token, bias_second)
-
-    def forward(self, x: Tensor) -> Tensor:
-        x = self.linear_first(x)
-        x = self.activation(x)
-        x = self.linear_second(x)
-        return x
-
-
-class Head(nn.Module):
-    """The final module of the `Transformer` that performs BERT-like inference."""
-
-    def __init__(
-            self,
-            *,
-            d_in: int,
-            bias: bool,
-            activation: ModuleType,
-            normalization: ModuleType,
-            d_out: int,
-    ):
-        super().__init__()
-        self.normalization = _make_nn_module(normalization, d_in)
-        self.activation = _make_nn_module(activation)
-        self.linear = nn.Linear(d_in, d_out, bias)
-
-    def forward(self, x: Tensor) -> Tensor:
-        x = x[:, -1]
-        x = self.normalization(x)
-        x = self.activation(x)
-        x = self.linear(x)
-        return x
 
 
 class ResRuleLayer(nn.Module):
@@ -288,7 +237,7 @@ class RuleNet(nn.Module):
                  activation='gelu', n_tables=15, initial_mask=1.,  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005):
         super().__init__()
 
-        self.emb = BetterEmbedding(n_num, n_cat, n_categories, embedding_dim,
+        self.emb = BetterEmbedding(n_num, n_categories, embedding_dim,
                                    n_tables=n_tables, initial_mask=initial_mask, k_p=k_p, k_i=k_i, k_d=k_d, T=T,
                                    clip=clip, flatten=False, kaiming_init=False, sparse=True)
 
@@ -338,12 +287,12 @@ class CovtypeDataset(UniversalDataset):
 
         # covtype = pd.concat([df_num, df_cat], axis=1)
         # super().__init__(x=covtype.values.astype(np.float32), y=y, device=device)
-        # super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df_cat.values.astype(np.int64),
-        #                  y=y, device=device)
-        super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df_cat.values.astype(np.float32),
+        super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df_cat.values.astype(np.int64),
                          y=y, device=device)
+        # super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df_cat.values.astype(np.float32),
+        #                  y=y, device=device)
 
-        self.split(validation=.2, test=.2, seed=seed, stratify=False, labels=self.data['y'].cpu())
+        self.split(validation=92962, test=116203, seed=seed, stratify=False, labels=self.data['y'].cpu())
 
         # self.categorical_indices = torch.arange(10, 12)
         # self.numerical_indices = torch.arange(10)
@@ -359,8 +308,8 @@ class CovtypeDataset(UniversalDataset):
 
         # super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df.cat.values.astype(np.int65), y=y,
         #                  device=device)
-
         self.n_categories = torch.tensor(df_cat.nunique().values)
+
         self.n_classes = int(y.max() + 1)
         self.n_num = df_num.shape[-1]
         self.n_cat = df_cat.shape[-1]
@@ -370,7 +319,7 @@ class CovtypeDataset(UniversalDataset):
 
 class CovtypeAlgorithm(Algorithm):
 
-    def __init__(self, hparams, dataset=None):
+    def __init__(self, hparams, dataset=None, optimizers=None):
 
         self.eval_ensembles = hparams.eval_ensembles
         self.label_smoothing = hparams.label_smoothing
@@ -381,9 +330,18 @@ class CovtypeAlgorithm(Algorithm):
         #               activation=hparams.activation, n_tables=hparams.n_tables, initial_mask=hparams.initial_mask,
         #               k_p=hparams.k_p, k_i=hparams.k_i, k_d=hparams.k_d, T=hparams.T_pid, clip=hparams.clip_pid)
 
-        net = LinearNet(dataset.n_num + dataset.n_cat, 256, dataset.n_classes, 4)
+        # net = LinearNet(dataset.n_num + dataset.n_cat, 256, dataset.n_classes, 4)
 
-        super().__init__(hparams, networks=net, dataset=dataset)
+        net = rtdl.FTTransformer.make_baseline(n_num_features=dataset.n_num,
+                                               cat_cardinalities=list(as_numpy(dataset.n_categories)),
+                                               d_token=hparams.channels, n_blocks=3, attention_dropout=hparams.dropout,
+                                               ffn_dropout=hparams.dropout, d_out=dataset.n_classes,
+                                               residual_dropout=hparams.dropout, ffn_d_hidden=hparams.channels)
+
+        optimizers = torch.optim.AdamW(net.optimization_param_groups(), lr=hparams.lr_dense,
+                                       weight_decay=hparams.weight_decay)
+
+        super().__init__(hparams, networks=net, dataset=dataset, optimizers=optimizers)
 
     def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
 
@@ -405,8 +363,8 @@ class CovtypeAlgorithm(Algorithm):
 
         net = self.networks['net']
 
-        # y_hat = net(x_num, x_cat)
-        y_hat = net(torch.cat([x_num, x_cat], dim=1))
+        y_hat = net(x_num, x_cat)
+        # y_hat = net(torch.cat([x_num, x_cat], dim=1))
         loss = F.cross_entropy(y_hat, y, reduction='none', label_smoothing=self.label_smoothing)
 
         self.apply(loss, results=results, training=training)
@@ -419,21 +377,23 @@ class CovtypeAlgorithm(Algorithm):
     def inference(self, sample=None, results=None, subset=None, with_labels=True, **kwargs):
 
         if with_labels:
-            x, y = sample['x'], sample['y']
+            x_num, x_cat, y = sample['x_num'], sample['x_cat'], sample['y']
 
         else:
-            x = sample
+            x_num, x_cat = sample['x_num'], sample['x_cat']
 
         net = self.networks['net']
+        # x = torch.cat([x_num, x_cat])
 
         if subset == 'validation':
-            y_hat = net(x)
-
+            # y_hat = net(x)
+            y_hat = net(x_num, x_cat)
         else:
             net.train()
             y_hat = []
             for i in range(self.eval_ensembles):
-                y_hat.append(net(x))
+                # y_hat.append(net(x))
+                y_hat.append(net(x_num, x_cat))
 
             y_hat = torch.stack(y_hat).mean(dim=0)
 
@@ -507,7 +467,7 @@ if __name__ == '__main__':
                           f" --no-half --lr-d=1e-3 --lr-s=1e-2 --batch-size=512",
                           "--n-epochs=100 --clip-gradient=0 --parallel=1 --accumulate=1",
                           "--momentum=0.9 --beta2=0.99", weight_factor=.0, scheduler_patience=16,
-                          weight_decay=1e-5, label_smoothing=.2,
+                          weight_decay=1e-5, label_smoothing=0.,
                           k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
                           path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
                           n_layers=2, scheduler_factor=1 / math.sqrt(10))
