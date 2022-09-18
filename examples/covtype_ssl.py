@@ -264,19 +264,19 @@ class Vime(BeamSSL):
         h = self.h_dim
         self.cat_splits = torch.cumsum(dataset.n_categories, dim=0)[:-1]
 
-        # networks['decoder'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-        #                                        nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-        #                                        nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)))
-
-        # networks['decoder_masks'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-        #                                        nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-        #                                        nn.ReLU(), nn.Linear(h, len(dataset.n_categories)))
-
-        networks['decoder'] = nn.Sequential(nn.Linear(h, h),
+        networks['decoder'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)))
 
-        networks['decoder_masks'] = nn.Sequential(nn.Linear(h, h),
+        networks['decoder_masks'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, len(dataset.n_categories)))
+
+        # networks['decoder'] = nn.Sequential(nn.Linear(h, h),
+        #                                        nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)))
+        #
+        # networks['decoder_masks'] = nn.Sequential(nn.Linear(h, h),
+        #                                        nn.ReLU(), nn.Linear(h, len(dataset.n_categories)))
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
@@ -290,12 +290,12 @@ class Vime(BeamSSL):
         decoder = self.networks['decoder']
         decoder_masks = self.networks['decoder_masks']
 
-        h = encoder((_, x))
+        h = encoder((_, x_aug))
         x_hat = decoder(h)
         masks_hat = decoder_masks(h)
 
         loss_mask = F.binary_cross_entropy_with_logits(masks_hat, mask.float(), reduction='none',
-                                 pos_weight=torch.ones(masks_hat.shape, device=masks_hat.device))
+                                 pos_weight=1/self.hparams.mask * torch.ones(masks_hat.shape, device=masks_hat.device))
 
         results['scalar'][f'acc_mask'].append(as_numpy((masks_hat > 0).long() == mask))
 
