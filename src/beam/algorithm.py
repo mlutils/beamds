@@ -64,6 +64,7 @@ class Algorithm(object):
         self.schedulers_name_by_id = {}
         self.schedulers_flat = {}
         self.optimizers_flat = {}
+        self.optimizers_steps = defaultdict(lambda: 0)
         self.epoch_length = None
 
         self.dataset = None
@@ -309,7 +310,7 @@ class Algorithm(object):
         if results is not None:
             if len(losses) > 1:
                 for k, l in losses.items():
-                    results['scalar'][f'{k}_s'].append(as_numpy(l))
+                    results['scalar'][f'{k}_s'].append(as_numpy(l * weights[k]))
 
                     if weights[k] > 1:
                         results['scalar'][f'{k}_w'].append(as_numpy(weights[k]))
@@ -350,20 +351,26 @@ class Algorithm(object):
                                   create_graph=create_graph, inputs=inputs)
 
                 for k, op in optimizers.items():
-                    clip = self.get_hparam('clip_gradient', k)
-                    if clip > 0:
-                        if self.amp:
-                            scaler.unscale_(op)
-                        for pg in op.param_groups:
-                            torch.nn.utils.clip_grad_norm_(iter(pg['params']), clip)
 
-                if iteration is None or not (iteration % self.get_hparam('accumulate', name)):
-                    for op in optimizers.values():
+                    self.optimizers_steps[k] = self.optimizers_steps[k] + 1
+                    it = self.optimizers_steps[k] if iteration is None else iteration
+
+                    if not (it % self.get_hparam('accumulate', name)):
+
+                        clip = self.get_hparam('clip_gradient', k)
+                        if clip > 0:
+                            if self.amp:
+                                scaler.unscale_(op)
+                            for pg in op.param_groups:
+                                torch.nn.utils.clip_grad_norm_(iter(pg['params']), clip)
+
                         if self.amp:
                             scaler.step(op)
                         else:
                             op.step()
+
                         op.zero_grad(set_to_none=set_to_none)
+
         return loss
 
     def load_dataset(self, dataset, batch_size_train=None, batch_size_eval=None,

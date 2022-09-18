@@ -435,23 +435,49 @@ def recursive_batch(x, index):
         return {k: recursive_batch(v, index) for k, v in x.items()}
     elif isinstance(x, list) or isinstance(x, tuple):
         return [recursive_batch(s, index) for s in x]
-    return x[index]
+    elif x is None:
+        return None
+    else:
+        return x[index]
 
 
 def recursive_device(x):
 
     if isinstance(x, dict):
-        return recursive_device(next(iter(x.values())))
+        for xi in x.values():
+            try:
+                return recursive_device(xi)
+            except AttributeError:
+                # case of None
+                pass
     elif isinstance(x, list) or isinstance(x, tuple):
-        return recursive_device(x[0])
+        for xi in x:
+            try:
+                return recursive_device(xi)
+            except AttributeError:
+                # case of None
+                pass
     return x.device
+
 
 def recursive_len(x):
 
     if isinstance(x, dict):
-        return recursive_len(next(iter(x.values())))
+        for xi in x.values():
+            try:
+                return recursive_len(xi)
+            except TypeError:
+                # case of None
+                pass
+
     elif isinstance(x, list) or isinstance(x, tuple):
-        return recursive_len(x[0])
+        for xi in x:
+            try:
+                return recursive_len(xi)
+            except TypeError:
+                # case of None
+                pass
+
     return len(x)
 
 
@@ -482,11 +508,14 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
         return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
     elif isinstance(x, list) or isinstance(x, tuple):
         return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
+    elif x is None:
+        return None
 
     x = torch.as_tensor(x, device=device, dtype=dtype)
     if return_vector:
         if not len(x.shape):
             x = x.unsqueeze(0)
+
     return x
 
 

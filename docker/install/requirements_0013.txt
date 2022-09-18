@@ -13,3 +13,4 @@ botocore
 s3transfer
 
 scalene
+Flask
