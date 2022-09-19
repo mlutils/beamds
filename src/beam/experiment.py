@@ -280,6 +280,8 @@ class Experiment(object):
             pd.to_pickle(vars_args, os.path.join(self.root, "args.pkl"))
 
         self.writer = None
+        self.alg = None
+
         self.rank = 0
         self.world_size = args.parallel
 

@@ -20,7 +20,7 @@ from src.beam.config import get_beam_parser
 from sklearn.datasets import fetch_covtype
 import pandas as pd
 from sklearn.preprocessing import QuantileTransformer
-from src.beam import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
+from src.beam import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam, tqdm
 
 
 class CovtypeDataset(UniversalDataset):
@@ -195,6 +195,17 @@ class CovModuleWrapper(nn.Module):
         return y
 
 
+class CovTypeIdentity(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+
+        x_num, x_cat = x
+        return x_cat
+
+
 class BeamTabularSSL(BeamSSL):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None, **kwargs):
@@ -280,6 +291,7 @@ class Vime(BeamSSL):
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
+
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         _, x = sample['x']
@@ -313,6 +325,25 @@ class Vime(BeamSSL):
         self.apply({'loss_cat': loss_cat, 'loss_mask': loss_mask}, weights={'loss_cat': 1, 'loss_mask': 10},
                    training=training, results=results)
 
+        return results
+
+
+class Dummy(BeamSSL):
+
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None, **kwargs):
+
+        if networks is None:
+            networks = {}
+        networks['encoder'] = CovTypeIdentity()
+
+        super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
+
+    @property
+    def h_dim(self):
+        return self.dataset.n_cat
+
+    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+        results['scalar']['const'].append(1)
         return results
 
 

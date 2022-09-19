@@ -362,7 +362,7 @@ class BeamSSL(Algorithm):
         for i, dataloader in train_dataloaders.items():
             if i not in add_dataloaders:
                 predictions = self.predict(dataloader, prediction=prediction, projection=projection,
-                                       add_to_sim=True, latent_variable=latent_variable)
+                                       add_to_sim=False, latent_variable=latent_variable)
 
                 h.append(predictions.data[latent_variable])
 
