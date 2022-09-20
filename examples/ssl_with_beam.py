@@ -11,7 +11,6 @@ from torchvision.models.feature_extraction import create_feature_extractor
 
 import kornia
 from kornia.augmentation.container import AugmentationSequential
-from pl_bolts.models.self_supervised import SimCLR as SimCLR_pretrained
 import torch_tensorrt
 
 from examples.example_utils import add_beam_to_path
@@ -204,6 +203,7 @@ def my_ssl_algorithm(algorithm):
                 argv = untrained_weights
 
             if self.model == 'simclr':
+                from pl_bolts.models.self_supervised import SimCLR as SimCLR_pretrained
                 encoder = SimCLR_pretrained.load_from_checkpoint(simclr_path, strict=False)
             else:
                 encoder = getattr(models, self.model)(**argv)

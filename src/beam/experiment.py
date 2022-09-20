@@ -7,7 +7,7 @@ import warnings
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 # from torch.utils.tensorboard import SummaryWriter
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 from shutil import copytree
 import torch
 import copy
@@ -163,8 +163,8 @@ class Experiment(object):
         self.tensorboard_hparams = {}
 
         hparams = args.hparams
-        vars_args = copy.copy(vars(args))
-        for k, v in vars_args.items():
+        self.vars_args = copy.copy(vars(args))
+        for k, v in self.vars_args.items():
             param_type = check_type(v)
             if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float'] and k in hparams:
                 self.tensorboard_hparams[k] = v
@@ -277,10 +277,9 @@ class Experiment(object):
             copytree(os.path.dirname(os.path.realpath(code_root_path)), self.code_dir,
                      ignore=include_patterns('*.py', '*.md', '*.ipynb'))
 
-            pd.to_pickle(vars_args, os.path.join(self.root, "args.pkl"))
+            pd.to_pickle(self.vars_args, os.path.join(self.root, "args.pkl"))
 
         self.writer = None
-        self.alg = None
 
         self.rank = 0
         self.world_size = args.parallel
@@ -403,6 +402,7 @@ class Experiment(object):
     def writer_control(self, enable=True, networks=None, inputs=None):
 
         if enable and self.writer is None and self.hparams.tensorboard:
+            from tensorboardX import SummaryWriter
             self.writer = SummaryWriter(log_dir=os.path.join(self.tensorboard_dir, 'logs'),
                                         comment=self.hparams.identifier)
 

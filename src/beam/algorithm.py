@@ -536,6 +536,13 @@ class Algorithm(object):
     def process_sample(self, sample):
         return to_device(sample, self.device, half=self.half)
 
+    def return_dataset(self, subset):
+
+        if type(subset) is str or isinstance(subset, torch.utils.data.DataLoader) \
+                or isinstance(subset, torch.utils.data.Dataset):
+            return True
+        return False
+
     def build_dataloader(self, subset):
 
         if type(subset) is str:
@@ -782,11 +789,12 @@ class Algorithm(object):
         '''
         return False
 
-    def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None, **kwargs):
+    def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None, eval_mode=True,
+                 return_dataset=None, **kwargs):
 
         with torch.no_grad():
 
-            self.set_mode(training=False)
+            self.set_mode(training=eval_mode)
             results = defaultdict(lambda: defaultdict(list))
             transforms = []
             index = []
@@ -795,6 +803,16 @@ class Algorithm(object):
 
             if enable_tqdm is None:
                 enable_tqdm = self.enable_tqdm
+
+            if return_dataset is None:
+                if predicting:
+                    return_dataset = self.return_dataset(subset)
+                    if not return_dataset:
+                        logger.warning("Predicting: the inferred return type will be DataBatch and results statistics "
+                                       "will be omitted. To avoid this behavior please provide a dataset or specify "
+                                       "return_dataset=True")
+                else:
+                    return_dataset = True
 
             dataloader = self.build_dataloader(subset)
             dataset = dataloader.dataset
@@ -823,8 +841,11 @@ class Algorithm(object):
                                                  results=results, subset=subset, dataset=dataset,
                                                  predicting=predicting, **kwargs)
 
-            dataset = UniversalDataset(transforms, index=index)
-            dataset.set_statistics(results)
+            if return_dataset:
+                dataset = UniversalDataset(transforms, index=index)
+                dataset.set_statistics(results)
+            else:
+                dataset = DataBatch(index=index, data=transforms)
 
         return dataset
 

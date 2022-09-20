@@ -104,16 +104,25 @@ def print_beam_hyperparameters(args, debug_only=False):
             logger.debug(k + ': ' + str(v))
 
 
-def find_port(port=None, get_port_from_beam_port_range=True):
+def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
+
+    if application == 'tensorboard':
+        first_beam_range = 66
+        first_global_range = 26006
+    elif application == 'flask':
+        first_beam_range = 50
+        first_global_range = 25000
+    else:
+        raise NotImplementedError
 
     if port is None:
         if get_port_from_beam_port_range:
             base_range = int(os.environ['JUPYTER_PORT']) // 100
             port_range = range(base_range * 100, (base_range + 1) * 100)
-            port_range = np.roll(np.array(port_range), -66)
+            port_range = np.roll(np.array(port_range), -first_beam_range)
 
         else:
-            port_range = np.roll(np.array(range(10000, 2 ** 16)), -26006)
+            port_range = np.roll(np.array(range(10000, 2 ** 16)), -first_global_range)
 
         for p in port_range:
             if check_if_port_is_available(p):

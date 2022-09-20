@@ -14,3 +14,4 @@ s3transfer
 
 scalene
 Flask
+line_profiler

@@ -16,8 +16,6 @@ from torch.nn.utils import spectral_norm
 import faiss
 # working with faiss and torch
 import faiss.contrib.torch_utils
-from sklearn.manifold import TSNE
-import umap
 from collections import namedtuple
 
 Similarities = namedtuple("Similarities", "index distance")
@@ -164,8 +162,10 @@ class BeamSimilarity(object):
         self.training_device = training_device
 
         if reducer == 'umap':
+            import umap
             self.reducer = umap.UMAP()
         elif reducer == 'tsne':
+            from sklearn.manifold import TSNE
             self.reducer = TSNE()
         else:
             raise NotImplementedError
@@ -245,8 +245,6 @@ class BeamSSL(Algorithm):
         raise NotImplementedError
 
     def preprocess_inference(self, results=None, augmentations=0, dataset=None, **kwargs):
-
-            self.dataset.normalize = True
 
             if augmentations > 0 and dataset is not None:
                 results['aux']['org_n_augmentations'] = dataset.n_augmentations
