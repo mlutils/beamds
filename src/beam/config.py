@@ -86,6 +86,8 @@ def get_beam_parser():
 
     boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='hparam')
     boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='hparam')
+    boolean_feature(parser, "scalene", False, "Profile the experiment with the Scalene python profiler")
+
     boolean_feature(parser, "find-unused-parameters", False, "For DDP applications: allows running backward on "
                                                              "a subgraph of the model. introduces extra overheads, "
                                                              "so applications should only set find_unused_parameters "

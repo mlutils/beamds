@@ -23,6 +23,113 @@ from sklearn.preprocessing import QuantileTransformer
 from src.beam import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam, tqdm
 
 
+class EmbeddingCovtypeDataset(UniversalDataset):
+
+    def __init__(self, hparams):
+
+        emb_size = 256
+        path = hparams.path_to_data
+        device = hparams.device
+        seed = hparams.seed
+        self.mask = hparams.mask
+        self.quantiles = hparams.quantiles
+        self.n_augmentations = 1
+
+        dataset = fetch_covtype(data_home=path)
+        data = dataset['data']
+        columns = dataset['feature_names']
+        y = np.array(dataset['target'], dtype=np.int64)
+        df = pd.DataFrame(data=data, columns=columns, index=np.arange(len(data)))
+
+        soils_columns = [c for c in df.columns if 'Soil' in c]
+        soil = np.where(df[soils_columns])[1]
+
+        wilderness_columns = [c for c in df.columns if 'Wilderness' in c]
+        wilderness = np.where(df[wilderness_columns])[1]
+
+        df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
+        df_num = df.drop(columns=(soils_columns + wilderness_columns))
+
+        super().__init__(x=df.values, y=y, device=device)
+
+        self.split(validation=92962, test=116203, seed=seed, stratify=False, labels=self.data['y'].cpu())
+        self.mask_distribution = torch.distributions.Bernoulli(probs=self.mask)
+
+        self.qt = QuantileTransformer(n_quantiles=self.quantiles,
+                                      output_distribution='uniform',
+                                      ignore_implicit_zeros=False,
+                                      subsample=100000,
+                                      random_state=None,
+                                      copy=True).fit(df_num.iloc[self.indices['train']].values)
+
+        x_cat = as_tensor(df_cat.values, device=self.device)
+        x_num = (self.qt_transform(df_num.values, device=self.device) * self.quantiles).long()
+
+        self.data['x_cat'] = torch.cat([x_num, x_cat], dim=1)
+
+        self.features_names = list(df_num.columns) + list(df_cat.columns)
+
+        self.n_categories = torch.cat([(self.quantiles + 1) * torch.ones(x_num.shape[-1], dtype=torch.int64),
+                                       torch.tensor(df_cat.nunique().values)])
+
+        self.offset = torch.cumsum(self.n_categories, dim=0) - self.n_categories
+        self.offset = self.offset.to(self.device)
+
+        self.n_classes = int(y.max() + 1)
+        self.n_num = 0
+        self.n_cat = self.data['x_cat'].shape[-1]
+        self.features_index = torch.arange(self.data['x_cat'].shape[-1]).unsqueeze(0)
+        self.embedding = torch.randn(self.n_categories.sum(), emb_size, device=self.device)
+
+    def qt_transform(self, df_num, device=None):
+        return as_tensor(self.qt.transform(as_numpy(df_num)).astype(np.float32), device=device)
+
+    def getitem(self, ind):
+
+        x = self.data['x'][ind]
+        x_cat = self.data['x_cat'][ind]
+        y = self.data['y'][ind]
+
+        emb = self.embedding[x_cat + self.offset]
+
+        data = {'x': x, 'x_cat': x_cat, 'emb':emb, 'y': y}
+
+        return data
+
+class CovtypeDatasetOrg(UniversalDataset):
+
+    def __init__(self, hparams):
+
+        path = hparams.path_to_data
+        device = hparams.device
+        seed = hparams.seed
+
+        dataset = fetch_covtype(data_home=path)
+        data = dataset['data']
+        columns = dataset['feature_names']
+        y = np.array(dataset['target'], dtype=np.int64)
+        df = pd.DataFrame(data=data, columns=columns, index=np.arange(len(data)))
+
+        super().__init__(x_num=df.values.astype(np.float32), x_cat=None,
+                         y=y, device=device)
+        # super().__init__(x_num=df_num.values.astype(np.float32), x_cat=df_cat.values.astype(np.float32),
+        #                  y=y, device=device)
+
+        self.split(validation=92962, test=116203, seed=seed, stratify=False, labels=self.data['y'].cpu())
+
+    def qt_transform(self, df_num, device=None):
+        return as_tensor(self.qt.transform(as_numpy(df_num)).astype(np.float32), device=device)
+
+    def getitem(self, ind):
+        x_num = self.data['x_num'][ind]
+        y = self.data['y'][ind]
+
+        x = (x_num, None)
+
+        data = {'x': x, 'y': y}
+
+        return data
+
 class CovtypeDataset(UniversalDataset):
 
     def __init__(self, hparams):

@@ -15,6 +15,16 @@ echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
 export JUPYTER_PORT=$JUPYTER_PORT
 echo "root:$ROOT_PASSWORD" | chpasswd
 
+# write the beam configuration to a file
+
+mkdir /workspace/configuration
+touch /workspace/configuration/config.csv
+
+echo "parameters, value" >> /workspace/configuration/config.csv
+echo "initials, ${INITIALS}" >> /workspace/configuration/config.csv
+echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
+echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
+
 service ssh start
 jupyter-lab &
 

@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, \
+from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, beam_device, \
     recursive_device, recursive_len
 import pandas as pd
 import math
@@ -32,6 +32,9 @@ class UniversalDataset(torch.utils.data.Dataset):
         @param kwargs:
         """
         super().__init__()
+
+        device = beam_device(device)
+        target_device = beam_device(target_device)
 
         self.index = None
         self.set_index(index)

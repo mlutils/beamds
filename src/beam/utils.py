@@ -116,12 +116,26 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
         raise NotImplementedError
 
     if port is None:
-        if get_port_from_beam_port_range:
-            base_range = int(os.environ['JUPYTER_PORT']) // 100
-            port_range = range(base_range * 100, (base_range + 1) * 100)
-            port_range = np.roll(np.array(port_range), -first_beam_range)
 
-        else:
+        port_range = None
+
+        if get_port_from_beam_port_range:
+
+            base_range = None
+            if 'JUPYTER_PORT' in os.environ:
+
+                base_range = int(os.environ['JUPYTER_PORT']) // 100
+
+            elif os.path.isfile('/workspace/configuration/config.csv'):
+                conf = pd.read_csv('/workspace/configuration/config.csv')
+                base_range = int(conf.set_index('parameters').loc['initials'])
+
+            if base_range is not None:
+
+                port_range = range(base_range * 100, (base_range + 1) * 100)
+                port_range = np.roll(np.array(port_range), -first_beam_range)
+
+        if port_range is None:
             port_range = np.roll(np.array(range(10000, 2 ** 16)), -first_global_range)
 
         for p in port_range:
@@ -236,7 +250,7 @@ def pretty_format_number(x):
 
 
 def beam_device(device):
-    if isinstance(device, torch.device):
+    if isinstance(device, torch.device) or device is None:
         return device
     device = str(device)
     return torch.device(int(device) if device.isnumeric() else device)
