@@ -26,8 +26,7 @@ from src.beam import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, Ba
 class EmbeddingCovtypeDataset(UniversalDataset):
 
     def __init__(self, hparams):
-
-        emb_size = 256
+        emb_size = hparams.channels
         path = hparams.path_to_data
         device = hparams.device
         seed = hparams.seed
@@ -85,21 +84,20 @@ class EmbeddingCovtypeDataset(UniversalDataset):
         return as_tensor(self.qt.transform(as_numpy(df_num)).astype(np.float32), device=device)
 
     def getitem(self, ind):
-
         x = self.data['x'][ind]
         x_cat = self.data['x_cat'][ind]
         y = self.data['y'][ind]
 
         emb = self.embedding[x_cat + self.offset]
 
-        data = {'x': x, 'x_cat': x_cat, 'emb':emb, 'y': y}
+        data = {'x': x, 'x_cat': x_cat, 'emb': emb, 'y': y}
 
         return data
+
 
 class CovtypeDatasetOrg(UniversalDataset):
 
     def __init__(self, hparams):
-
         path = hparams.path_to_data
         device = hparams.device
         seed = hparams.seed
@@ -130,10 +128,10 @@ class CovtypeDatasetOrg(UniversalDataset):
 
         return data
 
+
 class CovtypeDataset(UniversalDataset):
 
     def __init__(self, hparams):
-
         path = hparams.path_to_data
         device = hparams.device
         seed = hparams.seed
@@ -205,10 +203,9 @@ class CovtypeDataset(UniversalDataset):
         return data
 
 
-class CovtypeMaskedDataset(UniversalDataset):
+class CovtypeCategoricalMaskedDataset(UniversalDataset):
 
     def __init__(self, hparams):
-
         path = hparams.path_to_data
         device = hparams.device
         seed = hparams.seed
@@ -259,7 +256,6 @@ class CovtypeMaskedDataset(UniversalDataset):
         self.features_index = torch.arange(self.data['x_cat'].shape[-1]).unsqueeze(0)
 
     def augment(self, x):
-
         _, x_cat = x
 
         # we sample the corruption from the train subset
@@ -274,7 +270,6 @@ class CovtypeMaskedDataset(UniversalDataset):
         return as_tensor(self.qt.transform(as_numpy(df_num)).astype(np.float32), device=device)
 
     def getitem(self, ind):
-
         x_num = None
         x_cat = self.data['x_cat'][ind]
         y = self.data['y'][ind]
@@ -295,22 +290,10 @@ class CovModuleWrapper(nn.Module):
         self.model = model
 
     def forward(self, x):
-
         x_num, x_cat = x
         y = self.model(x_num, x_cat)
 
         return y
-
-
-class CovTypeIdentity(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-
-        x_num, x_cat = x
-        return x_cat
 
 
 class BeamTabularSSL(BeamSSL):
@@ -326,8 +309,8 @@ class BeamTabularSSL(BeamSSL):
         self.cat_splits = torch.cumsum(dataset.n_categories, dim=0)[:-1]
 
         networks['decoder_cat'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                               nn.ReLU(), nn.Linear(h, p_cat))
+                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                nn.ReLU(), nn.Linear(h, p_cat))
         networks['decoder_num'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
                                                 nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                 nn.ReLU(), nn.Linear(h, p_num))
@@ -383,12 +366,12 @@ class Vime(BeamSSL):
         self.cat_splits = torch.cumsum(dataset.n_categories, dim=0)[:-1]
 
         networks['decoder'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                               nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)))
+                                            nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                            nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)))
 
         networks['decoder_masks'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
-                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                               nn.ReLU(), nn.Linear(h, len(dataset.n_categories)))
+                                                  nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                  nn.ReLU(), nn.Linear(h, len(dataset.n_categories)))
 
         # networks['decoder'] = nn.Sequential(nn.Linear(h, h),
         #                                        nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)))
@@ -397,7 +380,6 @@ class Vime(BeamSSL):
         #                                        nn.ReLU(), nn.Linear(h, len(dataset.n_categories)))
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
-
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -414,7 +396,8 @@ class Vime(BeamSSL):
         masks_hat = decoder_masks(h)
 
         loss_mask = F.binary_cross_entropy_with_logits(masks_hat, mask.float(), reduction='none',
-                                 pos_weight=1/self.hparams.mask * torch.ones(masks_hat.shape, device=masks_hat.device))
+                                                       pos_weight=1 / self.hparams.mask * torch.ones(masks_hat.shape,
+                                                                                                     device=masks_hat.device))
 
         results['scalar'][f'acc_mask'].append(as_numpy((masks_hat > 0).long() == mask))
 
@@ -435,27 +418,132 @@ class Vime(BeamSSL):
         return results
 
 
-class Dummy(BeamSSL):
+class VicVime(BeamSSL):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None, **kwargs):
 
         if networks is None:
             networks = {}
-        networks['encoder'] = CovTypeIdentity()
+        h = self.h_dim
+
+        # add augmentation
+        dataset.n_augmentations = 2
+
+        self.cat_splits = torch.cumsum(dataset.n_categories, dim=0)[:-1]
+
+        networks['decoder'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                            nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                            nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)))
+
+        networks['decoder_masks'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                  nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                                  nn.ReLU(), nn.Linear(h, len(dataset.n_categories)))
+
+        p = self.p_dim
+
+        networks['projection'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, p))
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    @property
-    def h_dim(self):
-        return self.dataset.n_cat
-
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
-        results['scalar']['const'].append(1)
+
+        _, x = sample['x']
+        _, x_aug1 = sample['augmentations'][0]['x']
+        mask1 = sample['augmentations'][0]['mask']
+
+        _, x_aug2 = sample['augmentations'][1]['x']
+        mask2 = sample['augmentations'][1]['mask']
+
+        encoder = self.networks['encoder']
+        decoder = self.networks['decoder']
+        decoder_masks = self.networks['decoder_masks']
+        projection = self.networks['projection']
+
+        h1 = encoder((_, x_aug1))
+        h2 = encoder((_, x_aug2))
+
+        x_hat1 = decoder(h1)
+        masks_hat1 = decoder_masks(h1)
+
+        x_hat2 = decoder(h2)
+        masks_hat2 = decoder_masks(h2)
+
+        masks_hat = torch.cat([masks_hat1, masks_hat2])
+        x_hat = torch.cat([x_hat1, x_hat2])
+        mask = torch.cat([mask1, mask2])
+
+        loss_mask = F.binary_cross_entropy_with_logits(masks_hat, mask.float(), reduction='none',
+                                                       pos_weight=1 / self.hparams.mask * torch.ones(masks_hat.shape,
+                                                                                                     device=masks_hat.device))
+
+        results['scalar'][f'acc_mask'].append(as_numpy((masks_hat > 0).long() == mask))
+
+        x_hat = torch.tensor_split(x_hat, self.cat_splits, dim=-1)
+        loss_cat = []
+
+        xd = torch.cat([x, x])
+
+        for i in range(xd.shape[-1]):
+            loss_cat_i = F.cross_entropy(x_hat[i], xd[:, i], reduction='none')
+            loss_cat.append(loss_cat_i)
+            results['scalar'][f'acc_{self.dataset.features_names[i]}'].append(as_numpy(torch.argmax(x_hat[i], dim=1)
+                                                                                       == xd[:, i]))
+
+        loss_cat = torch.stack(loss_cat, dim=-1)
+
+        z1 = projection(h1)
+        z2 = projection(h2)
+
+        sim_loss = F.mse_loss(z1, z2, reduction='none').mean(dim=0)
+
+        mu1 = z1.mean(dim=0, keepdim=True)
+        mu2 = z2.mean(dim=0, keepdim=True)
+        mean_loss = mu1.pow(2) + mu2.pow(2)
+
+        c1 = h1.mean(dim=1)
+        c2 = h2.mean(dim=1)
+
+        c_loss = c1.pow(2) + c2.pow(2)
+
+        norm_squared_1 = h1.pow(2).mean(dim=1)
+        norm_squared_2 = h2.pow(2).mean(dim=1)
+
+        norm_loss = norm_squared_1 - 0.5 * torch.log(norm_squared_1 + 1e-6) + \
+                    norm_squared_2 - 0.5 * torch.log(norm_squared_2 + 1e-6)
+
+        std1 = torch.sqrt(z1.var(dim=0) + self.hparams.var_eps)
+        std2 = torch.sqrt(z2.var(dim=0) + self.hparams.var_eps)
+
+        std_loss = F.relu(1 - std1) + F.relu(1 - std2)
+
+        z1 = (z1 - mu1)
+        z2 = (z2 - mu2)
+
+        b, d = z1.shape
+
+        corr1 = (z1.T @ z1) / (b - 1)
+        corr2 = (z2.T @ z2) / (b - 1)
+
+        I = torch.eye(d, device=corr1.device)
+        cov_loss = (corr1 * (1 - I)).pow(2).sum(dim=0) + (corr2 * (1 - I)).pow(2).sum(dim=0)
+
+        self.apply({'loss_cat': loss_cat, 'loss_mask': loss_mask,
+                    'sim_loss': sim_loss, 'std_loss': std_loss,
+                    'cov_loss': cov_loss, 'mean_loss': mean_loss,
+                    'c_loss': c_loss, 'norm_loss': norm_loss},
+                   weights={'loss_cat': self.hparams.cat_loss_weight, 'loss_mask': self.hparams.mask_loss_weight,
+                            'sim_loss': self.hparams.lambda_vicreg,
+                            'std_loss': self.hparams.mu_vicreg,
+                            'cov_loss': self.hparams.nu_vicreg,
+                            'c_loss': self.hparams.lambda_mean_vicreg, 'norm_loss': self.hparams.mu_vicreg,
+                            'mean_loss': self.hparams.lambda_mean_vicreg}, training=training, results=results)
+
         return results
 
 
 def my_ssl_algorithm(algorithm):
-
     BaseClass = globals()[algorithm]
 
     class CovtypeSSL(BaseClass):
@@ -467,11 +555,11 @@ def my_ssl_algorithm(algorithm):
 
             self.hparams = hparams
             model = rtdl.FTTransformer.make_baseline(n_num_features=dataset.n_num,
-                                                      cat_cardinalities=list(as_numpy(dataset.n_categories)),
-                                                      d_token=hparams.channels, n_blocks=hparams.n_layers,
-                                                      attention_dropout=hparams.dropout,
-                                                      ffn_dropout=hparams.dropout, d_out=hparams.h_dim,
-                                                      residual_dropout=hparams.dropout, ffn_d_hidden=hparams.channels)
+                                                     cat_cardinalities=list(as_numpy(dataset.n_categories)),
+                                                     d_token=hparams.channels, n_blocks=hparams.n_layers,
+                                                     attention_dropout=hparams.dropout,
+                                                     ffn_dropout=hparams.dropout, d_out=hparams.h_dim,
+                                                     residual_dropout=hparams.dropout, ffn_d_hidden=hparams.channels)
 
             networks['encoder'] = CovModuleWrapper(model)
 
@@ -508,18 +596,20 @@ def my_ssl_algorithm(algorithm):
 
 # Add experiment hyperparameter arguments
 def get_covtype_parser():
-
     parser = get_ssl_parser()
 
     parser.add_argument('--weight-factor', type=float, default=0.,
                         help='Squashing factor for the oversampling probabilities')
     parser.add_argument('--objective', type=str, default='encoder_acc',
                         help='The objective is the accuracy of the downstream task')
-    parser.add_argument('--dataset', type=str, default='CovtypeMaskedDataset', help='The dataset class')
+    parser.add_argument('--dataset', type=str, default='CovtypeCategoricalMaskedDataset', help='The dataset class')
     parser.add_argument('--channels', type=int, default=128, help='Size of embedding')
     parser.add_argument('--dropout', type=float, default=0.0, help='Dropout value for rule layers')
     parser.add_argument('--mask', type=float, default=0.2, help='Masking augmentation parameter')
     parser.add_argument('--n-layers', type=int, default=3, help='Number of Hidden layers')
+
+    parser.add_argument('--mask-loss-weight', type=float, default=10, help='Weight of the masking BCE loss')
+    parser.add_argument('--cat-loss-weight', type=float, default=1, help='Masking augmentation parameter')
 
     parser.add_argument('--h-dim', type=int, default=64, help='Hidden size dimension')
     parser.add_argument('--p-dim', type=int, default=64, help='Projection size dimension')
@@ -529,7 +619,6 @@ def get_covtype_parser():
 
 
 if __name__ == '__main__':
-
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 

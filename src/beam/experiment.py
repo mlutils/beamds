@@ -365,8 +365,8 @@ class Experiment(object):
                 logger.error(f"Directory of checkpoints does not contain valid checkpoint files")
                 return
 
-            checkpoints = pd.DataFrame({'name': checkpoints, 'index': checkpoints_int})
-            checkpoints = checkpoints.sort_values('index')
+            checkpoints = pd.DataFrame({'name': checkpoints}, index=checkpoints_int)
+            checkpoints = checkpoints.sort_index()
 
             if loc is not None:
                 chp = checkpoints.loc[loc]['name']
@@ -521,10 +521,12 @@ class Experiment(object):
                         v = np.stack(v).flatten()
 
                         report[param] = np.mean(v)
-                        if len(v) > 1:
+                        if len(v) > 1 and np.var(v) > 0:
                             stat = pd.Series(v, dtype=np.float32).describe()
                         else:
                             v_type = check_type(v)
+                            if v_type.major != 'scalar':
+                                v = v[0]
                             v = int(v) if v_type.element == 'int' else float(v)
                             stat = {'val': v}
 
@@ -543,6 +545,7 @@ class Experiment(object):
         if self.writer is None:
             return
 
+        logger.info(f"Tensorboard results are stored to: {self.root}")
         defaults_argv = defaultdict(lambda: defaultdict(dict))
         if argv is not None:
             for log_type in argv:
