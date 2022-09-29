@@ -133,7 +133,7 @@ class BeamScheduler(object):
             return 4
         return 2
 
-    def update_total_steps(self, total_steps=None, epochs=None, steps_per_epochs=None):
+    def update_total_steps(self, total_steps=None, epochs=None, steps_per_epochs=None, initial_state=None):
 
         self.total_steps = self.get_total_steps(total_steps=total_steps, epochs=epochs,
                                                 steps_per_epochs=steps_per_epochs)
@@ -149,6 +149,9 @@ class BeamScheduler(object):
                 self.scheduler = self.scheduler(patience=self.patience_heuristics(self.total_steps))
             else:
                 raise NotImplementedError(f"Method: {self.method} is still unsupported")
+
+            if initial_state is not None:
+                self.scheduler.load_state_dict(initial_state)
 
     def get_current_state(self):
 
