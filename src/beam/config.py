@@ -139,6 +139,10 @@ def get_beam_parser():
                         help='The maximum momentum in one-cycle optimizer')
     parser.add_argument('--cycle-base-momentum', type=float, default=.85, metavar='hparam',
                         help='The base momentum in one-cycle optimizer')
+    parser.add_argument('--cawr-t0', type=int, default=10, metavar='hparam',
+                        help=' Number of iterations for the first restart in CosineAnnealingWarmRestarts scheduler')
+    parser.add_argument('--cawr-tmult', type=int, default=1, metavar='hparam',
+                        help=' A factor increases Ti after a restart in CosineAnnealingWarmRestarts scheduler')
     parser.add_argument('--scheduler-factor', type=float, default=math.sqrt(.1), metavar='hparam',
                         help='The factor to reduce lr in schedulers such as ReduceOnPlateau')
     parser.add_argument('--scheduler-patience', type=int, default=None, metavar='hparam',

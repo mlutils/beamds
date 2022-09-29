@@ -500,18 +500,21 @@ class VicVime(BeamSSL):
 
         mu1 = z1.mean(dim=0, keepdim=True)
         mu2 = z2.mean(dim=0, keepdim=True)
-        mean_loss = mu1.pow(2) + mu2.pow(2)
+        # mean_loss = mu1.pow(2) + mu2.pow(2)
 
-        c1 = h1.mean(dim=1)
-        c2 = h2.mean(dim=1)
+        c1 = h1.mean(dim=0, keepdim=True)
+        c2 = h2.mean(dim=0, keepdim=True)
+        c_loss = F.smooth_l1_loss(c1, torch.zeros_like(c1)) + \
+                    F.smooth_l1_loss(c2, torch.zeros_like(c2))  # c1.pow(2) + c2.pow(2)
+        #
+        norm_squared_1 = (h1 - c1).pow(2).mean(dim=0, keepdim=True)
+        norm_squared_2 = (h2 - c2).pow(2).mean(dim=0, keepdim=True)
 
-        c_loss = c1.pow(2) + c2.pow(2)
+        # norm_loss = norm_squared_1 - torch.log(norm_squared_1 + 1e-6) + \
+        #             norm_squared_2 - torch.log(norm_squared_2 + 1e-6)
 
-        norm_squared_1 = h1.pow(2).mean(dim=1)
-        norm_squared_2 = h2.pow(2).mean(dim=1)
-
-        norm_loss = norm_squared_1 - 0.5 * torch.log(norm_squared_1 + 1e-6) + \
-                    norm_squared_2 - 0.5 * torch.log(norm_squared_2 + 1e-6)
+        norm_loss = F.smooth_l1_loss(norm_squared_1, torch.ones_like(norm_squared_1)) + \
+                    F.smooth_l1_loss(norm_squared_2, torch.ones_like(norm_squared_2))
 
         std1 = torch.sqrt(z1.var(dim=0) + self.hparams.var_eps)
         std2 = torch.sqrt(z2.var(dim=0) + self.hparams.var_eps)
@@ -531,16 +534,25 @@ class VicVime(BeamSSL):
 
         self.apply({'loss_cat': loss_cat, 'loss_mask': loss_mask,
                     'sim_loss': sim_loss, 'std_loss': std_loss,
-                    'cov_loss': cov_loss, 'mean_loss': mean_loss,
-                    'c_loss': c_loss, 'norm_loss': norm_loss},
+                    'cov_loss': cov_loss,
+                    # 'mean_loss': mean_loss,
+                    'c_loss': c_loss,
+                    'norm_loss': norm_loss,
+                    },
                    weights={'loss_cat': self.hparams.cat_loss_weight, 'loss_mask': self.hparams.mask_loss_weight,
                             'sim_loss': self.hparams.lambda_vicreg,
                             'std_loss': self.hparams.mu_vicreg,
                             'cov_loss': self.hparams.nu_vicreg,
-                            'c_loss': self.hparams.lambda_mean_vicreg, 'norm_loss': self.hparams.mu_vicreg,
-                            'mean_loss': self.hparams.lambda_mean_vicreg}, training=training, results=results)
+                            # 'mean_loss': self.hparams.lambda_mean_vicreg,
+                            'c_loss': self.hparams.c_loss_weight,
+                            'norm_loss': self.hparams.norm_loss_weight,
+                            }, training=training, results=results)
+
+        results['scalar']['mu'].append(as_numpy(c1))
+        results['scalar']['sig'].append(as_numpy(torch.sqrt(norm_squared_1)))
 
         return results
+
 
 
 def my_ssl_algorithm(algorithm):
@@ -609,7 +621,9 @@ def get_covtype_parser():
     parser.add_argument('--n-layers', type=int, default=3, help='Number of Hidden layers')
 
     parser.add_argument('--mask-loss-weight', type=float, default=10, help='Weight of the masking BCE loss')
-    parser.add_argument('--cat-loss-weight', type=float, default=1, help='Masking augmentation parameter')
+    parser.add_argument('--cat-loss-weight', type=float, default=1, help='Weight of the categorical CE loss')
+    parser.add_argument('--c-loss-weight', type=float, default=25, help='Weight of the c-mean loss')
+    parser.add_argument('--norm-loss-weight', type=float, default=10, help='Weight of the normalization loss')
 
     parser.add_argument('--h-dim', type=int, default=64, help='Hidden size dimension')
     parser.add_argument('--p-dim', type=int, default=64, help='Projection size dimension')

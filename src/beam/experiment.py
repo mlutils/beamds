@@ -22,6 +22,7 @@ import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
 from tensorboard.notebook import start as start_tensorboard
+from ._version import __version__
 import inspect
 
 done = mp.Event()
@@ -238,12 +239,12 @@ class Experiment(object):
         self.code_dir = os.path.join(self.root, 'code')
 
         if self.load_model:
-            logger.info("Resuming existing experiment")
+            logger.info(f"Resuming existing experiment (Beam version: {__version__})")
 
         else:
 
             if not self.hparams.override:
-                logger.info("Creating new experiment")
+                logger.info(f"Creating new experiment (Beam version: {__version__})")
 
             else:
                 logger.warning("Deleting old experiment")
@@ -437,7 +438,8 @@ class Experiment(object):
         if not self.rank:
 
             if print_results:
-                logger.info('')
+                logger.info('----------------------------------------------------------'
+                            '---------------------------------------------------------------------')
                 objective_str = ''
                 if 'objective' in results and check_type(results['objective']).major == 'scalar':
                     objective_str = f"Current objective: {pretty_format_number(results['objective'])}"

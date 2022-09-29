@@ -92,10 +92,13 @@ def print_beam_hyperparameters(args, debug_only=False):
 
     log_func(f"beam project: {args.project_name}")
     log_func('Experiment Hyperparameters')
+    log_func('----------------------------------------------------------'
+             '---------------------------------------------------------------------')
 
     hparams_list = args.hparams
+    var_args_sorted = dict(sorted(vars(args).items()))
 
-    for k, v in vars(args).items():
+    for k, v in var_args_sorted.items():
         if k == 'hparams':
             continue
         elif k in hparams_list:
@@ -103,6 +106,8 @@ def print_beam_hyperparameters(args, debug_only=False):
         else:
             logger.debug(k + ': ' + str(v))
 
+    log_func('----------------------------------------------------------'
+             '---------------------------------------------------------------------')
 
 def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
 

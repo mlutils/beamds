@@ -25,6 +25,7 @@ from .experiment import Experiment, beam_algorithm_generator
 from ray.tune.stopper import Stopper
 from typing import Union
 import datetime
+from ._version import __version__
 
 
 class TimeoutStopper(Stopper):
@@ -81,6 +82,7 @@ class Study(object):
                  print_hyperparameters=True, track_results=False, track_algorithms=False,
                  track_hparams=True, track_suggestion=True):
 
+        logger.info(f"Creating new study (Beam version: {__version__})")
         hparams.reload = False
         hparams.override = False
         hparams.print_results = print_results

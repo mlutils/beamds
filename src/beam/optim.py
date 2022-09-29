@@ -39,7 +39,7 @@ class BeamScheduler(object):
                  warmup=5, method='one_cycle', step_type='epoch',
                  pct_start=0.3, anneal_strategy='cos', cycle_momentum=True, base_momentum=0.85, start_factor=0.3,
                  max_momentum=0.95, div_factor=25.0, eta_min=1e-6, factor=math.sqrt(.1), patience=None,
-                 threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=1e-6):
+                 threshold=0.0001, T_0=10, T_mult=1, threshold_mode='rel', cooldown=0, min_lr=1e-6):
 
         self.method = method
         self.epoch = 0
@@ -100,6 +100,11 @@ class BeamScheduler(object):
                                         eta_min=eta_min)
                 else:
                     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, self.total_steps, eta_min=eta_min)
+
+            elif method == 'cawr':
+
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=T_0, T_mult=T_mult,
+                                                                                 eta_min=eta_min)
 
             else:
                 scheduler = None

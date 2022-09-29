@@ -343,6 +343,16 @@ class Algorithm(object):
 
             with torch.autocast(self.autocast_device, enabled=False):
 
+                it = {}
+
+                for k, op in optimizers.items():
+
+                    it[k] = self.optimizers_steps[k] if iteration is None else iteration
+                    it[k] = (it[k] % self.get_hparam('accumulate', name))
+
+                    if not it[k]:
+                        op.zero_grad(set_to_none=set_to_none)
+
                 if self.amp:
                     scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
                                                 create_graph=create_graph, inputs=inputs)
@@ -352,10 +362,7 @@ class Algorithm(object):
 
                 for k, op in optimizers.items():
 
-                    self.optimizers_steps[k] = self.optimizers_steps[k] + 1
-                    it = self.optimizers_steps[k] if iteration is None else iteration
-
-                    if not (it % self.get_hparam('accumulate', name)):
+                    if it[k] == self.get_hparam('accumulate', name) - 1:
 
                         clip = self.get_hparam('clip_gradient', k)
                         if clip > 0:
@@ -369,7 +376,7 @@ class Algorithm(object):
                         else:
                             op.step()
 
-                        op.zero_grad(set_to_none=set_to_none)
+                    self.optimizers_steps[k] = self.optimizers_steps[k] + 1
 
         return loss
 
