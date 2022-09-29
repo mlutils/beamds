@@ -17,6 +17,7 @@ import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook
 import torch.distributed as dist
 import ray
+from ray.tune import JupyterNotebookReporter
 from ray import tune
 import optuna
 from functools import partial
@@ -24,6 +25,7 @@ from .experiment import Experiment, beam_algorithm_generator
 from ray.tune.stopper import Stopper
 from typing import Union
 import datetime
+from ._version import __version__
 
 
 class TimeoutStopper(Stopper):
@@ -75,20 +77,21 @@ class TimeoutStopper(Stopper):
 
 class Study(object):
 
-    def __init__(self, args, Alg=None, Dataset=None, algorithm_generator=None, print_results=False,
+    def __init__(self, hparams, Alg=None, Dataset=None, algorithm_generator=None, print_results=False,
                  alg_args=None, alg_kwargs=None, dataset_args=None, dataset_kwargs=None, enable_tqdm=False,
                  print_hyperparameters=True, track_results=False, track_algorithms=False,
                  track_hparams=True, track_suggestion=True):
 
-        args.reload = False
-        args.override = False
-        args.print_results = print_results
-        args.visualize_weights = False
-        args.enable_tqdm = enable_tqdm
-        args.parallel = 0
+        logger.info(f"Creating new study (Beam version: {__version__})")
+        hparams.reload = False
+        hparams.override = False
+        hparams.print_results = print_results
+        hparams.visualize_weights = False
+        hparams.enable_tqdm = enable_tqdm
+        hparams.parallel = 0
 
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        args.identifier = f'{args.identifier}_hp_optimization_{exptime}'
+        hparams.identifier = f'{hparams.identifier}_hp_optimization_{exptime}'
 
         if algorithm_generator is None:
             self.ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset,
@@ -96,13 +99,13 @@ class Study(object):
                               dataset_kwargs=dataset_kwargs)
         else:
             self.ag = algorithm_generator
-        self.args = args
+        self.hparams = hparams
 
         if print_hyperparameters:
-            print_beam_hyperparameters(args)
+            print_beam_hyperparameters(hparams)
 
-        self.ray_logs = os.path.join(self.args.root_dir, 'ray_results', self.args.project_name,
-                                        self.args.algorithm, self.args.identifier)
+        self.ray_logs = os.path.join(self.hparams.root_dir, 'ray_results', self.hparams.project_name,
+                                     self.hparams.algorithm, self.hparams.identifier)
 
         self.experiments_tracker = []
         self.track_results = track_results
@@ -137,25 +140,25 @@ class Study(object):
 
     def runner_tune(self, config, parallel=None):
 
-        args = copy.deepcopy(self.args)
+        hparams = copy.deepcopy(self.hparams)
 
         for k, v in config.items():
-            setattr(args, k, v)
+            setattr(hparams, k, v)
 
         # set device to 0 (ray exposes only a single device
-        args.device = '0'
+        hparams.device = '0'
         if parallel is not None:
-            args.parallel = parallel
+            hparams.parallel = parallel
 
-        experiment = Experiment(args, hpo='tune', print_hyperparameters=False)
+        experiment = Experiment(hparams, hpo='tune', print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
 
-        self.tracker(algorithm=alg, results=results, hparams=args, suggestion=config)
+        self.tracker(algorithm=alg, results=results, hparams=hparams, suggestion=config)
 
         if 'objective' in results:
             if type('objective') is tuple:
                 return results['objective']
-            elif issubclass(type(results['objective']), dict):
+            elif isinstance(results['objective'], dict):
                 tune.report(**results['objective'])
             else:
                 return results['objective']
@@ -168,20 +171,20 @@ class Study(object):
         for k, v in config.items():
             logger.info(k + ': ' + str(v))
 
-        args = copy.deepcopy(self.args)
+        hparams = copy.deepcopy(self.hparams)
 
         for k, v in config.items():
-            setattr(args, k, v)
+            setattr(hparams, k, v)
 
-        experiment = Experiment(args, hpo='optuna', trial=trial, print_hyperparameters=False)
+        experiment = Experiment(hparams, hpo='optuna', trial=trial, print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
 
-        self.tracker(algorithm=alg, results=results, hparams=args, suggestion=config)
+        self.tracker(algorithm=alg, results=results, hparams=hparams, suggestion=config)
 
         if 'objective' in results:
             if type('objective') is tuple:
                 return results['objective']
-            elif issubclass(type(results['objective']), dict):
+            elif isinstance(results['objective'], dict):
                 tune.report(**results['objective'])
             else:
                 return results['objective']
@@ -208,12 +211,24 @@ class Study(object):
         parallel = None
         if 'resources_per_trial' in kwargs and 'gpu' in kwargs['resources_per_trial']:
             gpus = kwargs['resources_per_trial']['gpu']
-            if 'cpu' not in self.args.device:
+            if 'cpu' not in self.hparams.device:
                 parallel = gpus
 
         runner_tune = partial(self.runner_tune, parallel=parallel)
 
         logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {self.ray_logs}")
+
+        if 'metric' not in kwargs.keys():
+            if 'objective' in self.hparams:
+                kwargs['metric'] = self.hparams['objective']
+            else:
+                kwargs['metric'] = 'objective'
+        if 'mode' not in kwargs.keys():
+            kwargs['mode'] = 'max'
+
+        if 'progress_reporter' not in kwargs.keys() and is_notebook():
+            kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
+
         analysis = tune.run(runner_tune, config=config, local_dir=self.ray_logs, *args, stop=stop, **kwargs)
 
         return analysis
@@ -234,16 +249,15 @@ class Study(object):
             df = df_sync.merge(df_explode, how='cross')
 
         df = df.reset_index(drop=True)
-        print(df)
         n_trials = len(df)
 
-        if not 'cpu' in self.args.device:
+        if not 'cpu' in self.hparams.device:
             if 'n_jobs' not in kwargs or kwargs['n_jobs'] != 1:
                 logger.warning("Optuna does not support multi-GPU jobs. Setting number of parallel jobs to 1")
             kwargs['n_jobs'] = 1
 
         if study_name is None:
-            study_name = f'{self.args.project_name}/{self.args.algorithm}/{self.args.identifier}'
+            study_name = f'{self.hparams.project_name}/{self.hparams.algorithm}/{self.hparams.identifier}'
 
         if load_study:
             study = optuna.create_study(storage=storage, sampler=sampler, pruner=pruner, study_name=study_name)
@@ -275,13 +289,13 @@ class Study(object):
     def optuna(self, suggest, load_study=False, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
                load_if_exists=False, directions=None, *args, **kwargs):
 
-        if not 'cpu' in self.args.device:
+        if not 'cpu' in self.hparams.device:
             if 'n_jobs' not in kwargs or kwargs['n_jobs'] != 1:
                 logger.warning("Optuna does not support multi-GPU jobs. Setting number of parallel jobs to 1")
             kwargs['n_jobs'] = 1
 
         if study_name is None:
-            study_name = f'{self.args.project_name}/{self.args.algorithm}/{self.args.identifier}'
+            study_name = f'{self.hparams.project_name}/{self.hparams.algorithm}/{self.hparams.identifier}'
 
         runner = partial(self.runner_optuna, suggest=suggest)
 

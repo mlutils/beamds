@@ -52,6 +52,14 @@ https://stackoverflow.com/a/61737404
 
 Follow https://github.com/cimarieta/sphinx-autodoc-example
 
+## Profiling your code with Scalene
+
+Scalene is a high-performance python profiler that supports GPU profiling. 
+To analyze your code with Scalene use the following arguments:
+```shell
+scalene --reduced-profile --outfile OUTFILE.html --html --- your_prog.py <your additional arguments>
+```
+
 
 
 

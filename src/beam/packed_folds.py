@@ -1,6 +1,6 @@
 
 import torch
-from .utils import check_type, slice_to_index, as_tensor
+from .utils import check_type, slice_to_index, as_tensor, beam_device
 import pandas as pd
 from .data_tensor import DataTensor
 
@@ -10,6 +10,7 @@ class PackedFolds(object):
     def __init__(self, data, index=None, names=None, fold=None, fold_index=None, device=None,
                  sort_index=False, quick_getitem=True):
 
+        device = beam_device(device)
         self.quick_getitem = quick_getitem
         self.names_dict = None
         self.names = None

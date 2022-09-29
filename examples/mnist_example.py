@@ -16,7 +16,7 @@ from src.beam import beam_arguments, Experiment, beam_algorithm_generator
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm
 from src.beam import LinearNet
-from src.beam import DataTensor, PackedFolds
+from src.beam import DataTensor, PackedFolds, as_numpy
 
 
 # In[2]:
@@ -88,9 +88,9 @@ class MNISTAlgorithm(Algorithm):
             opt.apply(loss)
 
         # add scalar measurements
-        results['scalar']['loss'].append(float(loss))
-        results['scalar']['ones'].append(x.sum(dim=-1).detach().cpu().numpy())
-        results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
+        results['scalar']['loss'].append(as_numpy(loss))
+        results['scalar']['ones'].append(as_numpy(x.sum(dim=-1)))
+        results['scalar']['acc'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
 
         return results
 
@@ -119,10 +119,10 @@ class MNISTAlgorithm(Algorithm):
     def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
         y_pred = torch.cat(results['predictions']['y_pred'])
-        y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
+        y_pred = as_numpy(torch.argmax(y_pred, dim=1))
 
         if not predicting:
-            y_true = torch.cat(results['predictions']['target']).data.cpu().numpy()
+            y_true = as_numpy(torch.cat(results['predictions']['target']))
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
             results['metrics']['recall'] = recall

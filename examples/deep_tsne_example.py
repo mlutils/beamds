@@ -15,7 +15,7 @@ import numpy as np
 from src.beam import beam_arguments, Experiment, beam_algorithm_generator
 from src.beam import UniversalDataset, UniversalBatchSampler, get_beam_parser
 from src.beam import Algorithm
-from src.beam import LinearNet
+from src.beam import LinearNet, as_numpy
 from src.beam import DataTensor, PackedFolds
 from functools import partial
 import math
@@ -106,8 +106,8 @@ class DeepTSNE(Algorithm):
             z = predictions.data['z']
             y = predictions.data['y']
 
-            y = y.detach().cpu().numpy()
-            z = z.detach().cpu().numpy()
+            y = as_numpy(y.detach())
+            z = as_numpy(z.detach())
 
             fig, ax = plt.subplots()
             sc = ax.scatter(z[:, 0], z[:, 1], c=y, cmap='tab10')

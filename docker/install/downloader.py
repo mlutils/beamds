@@ -95,3 +95,9 @@ for m in model_names:
         print(e)
 
 
+tv_models = {'resnet18': 'DEFAULT', 'resnet50': 'DEFAULT', 'convnext_base': 'DEFAULT',
+             'convnext_tiny': 'DEFAULT', 'swin_s': 'DEFAULT'}
+
+for m, w in tv_models.items():
+    getattr(torchvision.models, m)(weights=w)
+

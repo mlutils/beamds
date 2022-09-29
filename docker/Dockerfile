@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:22.07-py3
+FROM nvcr.io/nvidia/pytorch:22.08-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -26,8 +26,8 @@ ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 ENV DYLD_LIBRARY_PATH "/usr/local/cuda/lib:$DYLD_LIBRARY_PATH"
 
 # apt installs
-RUN chmod +x /workspace/install/apt_installs.sh
-RUN /workspace/install/apt_installs.sh
+#RUN chmod +x /workspace/install/apt_installs.sh
+RUN bash /workspace/install/apt_installs.sh
 
 # pip installs
 RUN pip install --upgrade pip
@@ -49,6 +49,12 @@ RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storag
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 
+# Install faiss if you encounter GPU issues when using the pip version:
+# https://github.com/kyamagu/faiss-wheels/issues/54
+RUN conda install -y -c conda-forge faiss-gpu
+
+# install DGL from source
+RUN bash /workspace/install/install_dgl.sh
 
 # add the beam message
 
@@ -59,9 +65,13 @@ RUN echo "cat /etc/motd" >> /root/.bashrc
 RUN python /workspace/install/downloader.py
 
 ## download nlp data
+
 RUN python -m nltk.downloader all
-RUN python -m spacy download zh_core_web_sm
-RUN python -m spacy download en_core_web_sm
+
+#ENV LC_ALL C.UTF-8
+#ENV LANG C.UTF-8
+RUN python -m spacy download zh_core_web_md
+RUN python -m spacy download en_core_web_md
 RUN python -m spacy download xx_ent_wiki_sm
 RUN python -m spacy download ru_core_news_sm
 

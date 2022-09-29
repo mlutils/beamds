@@ -7,7 +7,7 @@ import warnings
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 # from torch.utils.tensorboard import SummaryWriter
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 from shutil import copytree
 import torch
 import copy
@@ -17,11 +17,13 @@ from .utils import include_patterns, logger, check_type, beam_device, check_elem
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
-    pretty_format_number
+    pretty_format_number, as_numpy
 import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
 from tensorboard.notebook import start as start_tensorboard
+from ._version import __version__
+import inspect
 
 done = mp.Event()
 
@@ -47,22 +49,31 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
     if dataset_kwargs is None:
         dataset_kwargs = dict()
 
+    if isinstance(Dataset, torch.utils.data.Dataset):
+        dataset = Dataset
+    elif Dataset is not None:
+        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+    else:
+        dataset = None
+
     if type(Alg) == type:
-        alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
+
+        ars = inspect.getfullargspec(Alg)
+
+        # don't pass dataset if the algorithm cannot handle it on initialization
+        if 'dataset' in ars.args or ars.varargs is not None:
+            alg = Alg(experiment.hparams, *alg_args, dataset=dataset, **alg_kwargs)
+        else:
+            alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
     else:
         alg = Alg
 
-    if issubclass(type(Dataset), torch.utils.data.Dataset):
-        dataset = Dataset
-    elif Dataset is None:
-        dataset = alg.dataset
-    else:
-        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+    if alg.dataset is None and dataset is not None:
+        alg.load_dataset(dataset)
 
-    alg.load_dataset(dataset)
     alg.experiment = experiment
 
     return alg
@@ -85,14 +96,10 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     except KeyboardInterrupt:
 
-        logger.error(f"KeyboardInterrupt: Training was interrupted, Worker terminates")
+        logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates")
         if rank == 0:
             checkpoint_file = os.path.join(experiment.checkpoints_dir, f'checkpoint_{alg.epoch+1:06d}')
             alg.save_checkpoint(checkpoint_file)
-
-        # if world_size == 1:
-        #     logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
-        #     experiment.reload_checkpoint(alg)
 
     if world_size == 1:
         return alg, results
@@ -141,7 +148,8 @@ class Experiment(object):
     :param args:
     """
 
-    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None):
+    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None, reload_iloc=-1,
+                 reload_loc=None, reload_name=None):
         """
 
         @param args:
@@ -156,8 +164,8 @@ class Experiment(object):
         self.tensorboard_hparams = {}
 
         hparams = args.hparams
-        vars_args = copy.copy(vars(args))
-        for k, v in vars_args.items():
+        self.vars_args = copy.copy(vars(args))
+        for k, v in self.vars_args.items():
             param_type = check_type(v)
             if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float'] and k in hparams:
                 self.tensorboard_hparams[k] = v
@@ -231,12 +239,12 @@ class Experiment(object):
         self.code_dir = os.path.join(self.root, 'code')
 
         if self.load_model:
-            logger.info("Resuming existing experiment")
+            logger.info(f"Resuming existing experiment (Beam version: {__version__})")
 
         else:
 
             if not self.hparams.override:
-                logger.info("Creating new experiment")
+                logger.info(f"Creating new experiment (Beam version: {__version__})")
 
             else:
                 logger.warning("Deleting old experiment")
@@ -270,9 +278,10 @@ class Experiment(object):
             copytree(os.path.dirname(os.path.realpath(code_root_path)), self.code_dir,
                      ignore=include_patterns('*.py', '*.md', '*.ipynb'))
 
-            pd.to_pickle(vars_args, os.path.join(self.root, "args.pkl"))
+            pd.to_pickle(self.vars_args, os.path.join(self.root, "args.pkl"))
 
         self.writer = None
+
         self.rank = 0
         self.world_size = args.parallel
 
@@ -303,7 +312,7 @@ class Experiment(object):
         # build the hyperparamter class which will be sent to the dataset and algorithm classes
 
         if self.load_model:
-            self.hparams.reload_path = self.reload_checkpoint()
+            self.hparams.reload_path = self.reload_checkpoint(iloc=reload_iloc, loc=reload_loc, name=reload_name)
         else:
             self.hparams.reload_path = None
 
@@ -323,7 +332,7 @@ class Experiment(object):
         pd.to_pickle(self.tensorboard_hparams, os.path.join(self.root, "hparams.pkl"))
 
     @staticmethod
-    def reload_from_path(path, **argv):
+    def reload_from_path(path, override_hparams=None, **argv):
 
         logger.info(f"Reload experiment from path: {path}")
         args = pd.read_pickle(os.path.join(path, "args.pkl"))
@@ -336,26 +345,36 @@ class Experiment(object):
             path, d = os.path.split(path)
         args.resume = d
 
+        if override_hparams is not None:
+            for k, v in override_hparams.items():
+                setattr(args, k, v)
+
         return Experiment(args, **argv)
 
     def reload_checkpoint(self, alg=None, iloc=-1, loc=None, name=None):
 
-        checkpoints = os.listdir(self.checkpoints_dir)
-        if not(len(checkpoints)):
-            logger.error(f"Directory of checkpoints is empty")
-            return
-
-        checkpoints = pd.DataFrame({'name': checkpoints, 'index': [int(c.split('_')[-1]) for c in checkpoints]})
-        checkpoints = checkpoints.sort_values('index')
-
         if name is not None:
             path = os.path.join(self.checkpoints_dir, name)
-        elif loc is not None:
-            chp = checkpoints.loc[loc]['name']
-            path = os.path.join(self.checkpoints_dir, chp)
+
         else:
-            chp = checkpoints.iloc[iloc]['name']
-            path = os.path.join(self.checkpoints_dir, chp)
+
+            checkpoints = os.listdir(self.checkpoints_dir)
+            checkpoints = [c for c in checkpoints if c.split('_')[-1].isnumeric()]
+            checkpoints_int = [int(c.split('_')[-1]) for c in checkpoints]
+
+            if not(len(checkpoints)):
+                logger.error(f"Directory of checkpoints does not contain valid checkpoint files")
+                return
+
+            checkpoints = pd.DataFrame({'name': checkpoints}, index=checkpoints_int)
+            checkpoints = checkpoints.sort_index()
+
+            if loc is not None:
+                chp = checkpoints.loc[loc]['name']
+                path = os.path.join(self.checkpoints_dir, chp)
+            else:
+                chp = checkpoints.iloc[iloc]['name']
+                path = os.path.join(self.checkpoints_dir, chp)
 
         logger.info(f"Reload experiment from checkpoint: {path}")
 
@@ -384,6 +403,7 @@ class Experiment(object):
     def writer_control(self, enable=True, networks=None, inputs=None):
 
         if enable and self.writer is None and self.hparams.tensorboard:
+            from tensorboardX import SummaryWriter
             self.writer = SummaryWriter(log_dir=os.path.join(self.tensorboard_dir, 'logs'),
                                         comment=self.hparams.identifier)
 
@@ -418,8 +438,13 @@ class Experiment(object):
         if not self.rank:
 
             if print_results:
-                logger.info('')
-                logger.info(f'Finished epoch {iteration+1}/{algorithm.n_epochs} (Total trained epochs {epoch}).')
+                logger.info('----------------------------------------------------------'
+                            '---------------------------------------------------------------------')
+                objective_str = ''
+                if 'objective' in results and check_type(results['objective']).major == 'scalar':
+                    objective_str = f"Current objective: {pretty_format_number(results['objective'])}"
+                logger.info(f'Finished epoch {iteration+1}/{algorithm.n_epochs} (Total trained epochs {epoch}). '
+                            f'{objective_str}')
 
             decade = int(np.log10(epoch) + 1)
             logscale = not (epoch - 1) % (10 ** (decade - 1))
@@ -429,7 +454,7 @@ class Experiment(object):
                 if store_results == 'yes' or store_results == 'logscale' and logscale:
 
                     os.makedirs(os.path.join(self.results_dir, subset), exist_ok=True)
-                    pd.to_pickle(res, os.path.join(self.results_dir, subset, f'results_{epoch:06d}'))
+                    torch.save(res, os.path.join(self.results_dir, subset, f'results_{epoch:06d}'))
 
                 alg = algorithm if visualize_weights else None
 
@@ -438,6 +463,9 @@ class Experiment(object):
 
             checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_{epoch:06d}')
             algorithm.save_checkpoint(checkpoint_file)
+            if algorithm.best_state:
+                checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_best')
+                algorithm.save_checkpoint(checkpoint_file)
 
             if store_networks == 'no' or store_networks == 'logscale' and not logscale:
                 try:
@@ -456,6 +484,9 @@ class Experiment(object):
 
         for subset, res in results.items():
 
+            if subset == 'objective':
+                continue
+
             def format(v):
                 v_type = check_element_type(v)
                 if v_type == 'int':
@@ -473,7 +504,7 @@ class Experiment(object):
                 logger.info('| '.join([f"{k}: {format(v)} " for k, v in res['stats'].items()]))
 
             report = None
-            if issubclass(type(res), dict):
+            if isinstance(res, dict):
                 if 'scalar' in res:
                     report = res['scalar']
                 else:
@@ -490,8 +521,16 @@ class Experiment(object):
 
                         v = [report[param]] if np.isscalar(report[param]) else report[param]
                         v = np.stack(v).flatten()
-                        stat = pd.Series(v, dtype=np.float32).describe()
+
                         report[param] = np.mean(v)
+                        if len(v) > 1 and np.var(v) > 0:
+                            stat = pd.Series(v, dtype=np.float32).describe()
+                        else:
+                            v_type = check_type(v)
+                            if v_type.major != 'scalar':
+                                v = v[0]
+                            v = int(v) if v_type.element == 'int' else float(v)
+                            stat = {'val': v}
 
                     if print_log:
                         if not (type(report[param]) is dict or type(
@@ -508,6 +547,7 @@ class Experiment(object):
         if self.writer is None:
             return
 
+        logger.info(f"Tensorboard results are stored to: {self.root}")
         defaults_argv = defaultdict(lambda: defaultdict(dict))
         if argv is not None:
             for log_type in argv:
@@ -515,23 +555,23 @@ class Experiment(object):
                     defaults_argv[log_type][k] = argv[log_type][k]
 
         if alg is not None:
-            networks = alg.get_networks()
+            networks = alg.networks
             for net in networks:
                 for name, param in networks[net].named_parameters():
                     try:
-                        self.writer.add_histogram("weight_%s/%s" % (net, name), param.data.cpu().numpy(), n,
+                        self.writer.add_histogram("weight_%s/%s" % (net, name), as_numpy(param), n,
                                                   bins='tensorflow')
-                        self.writer.add_histogram("grad_%s/%s" % (net, name), param.grad.cpu().numpy(), n,
+                        self.writer.add_histogram("grad_%s/%s" % (net, name), as_numpy(param.grad), n,
                                                   bins='tensorflow')
                         if hasattr(param, 'intermediate'):
-                            self.writer.add_histogram("iterm_%s/%s" % (net, name), param.intermediate.cpu().numpy(),
+                            self.writer.add_histogram("iterm_%s/%s" % (net, name), as_numpy(param.intermediate),
                                                       n,
                                                       bins='tensorflow')
                     except:
                         pass
         metrics = {}
         for subset, res in results.items():
-            if issubclass(type(res), dict) and subset != 'objective':
+            if isinstance(res, dict) and subset != 'objective':
                 for log_type in res:
                     if hasattr(self.writer, f'add_{log_type}'):
                         log_func = getattr(self.writer, f'add_{log_type}')
@@ -708,12 +748,21 @@ class Experiment(object):
         return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                              dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
 
-    def fit(self, Alg, Dataset=None, *args, return_results=False, reload_results=False,
+    def fit(self, Alg=None, Dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
             dataset_kwargs=None, **kwargs):
 
-        ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+        if algorithm_generator is None:
+            ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                                 dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+        else:
+
+            if Alg is not None:
+                ag = partial(algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                                     dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+            else:
+                ag = algorithm_generator
+
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
 
@@ -727,7 +776,7 @@ class Experiment(object):
         except KeyboardInterrupt:
 
             res = None
-            logger.error(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
+            logger.warning(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
 
         if res is None or self.world_size > 1:
             alg = algorithm_generator(self, *args, **kwargs)
@@ -798,5 +847,3 @@ class Experiment(object):
         if self.writer is not None:
             self.writer.close()
             self.writer = None
-
-

@@ -16,7 +16,7 @@ import os
 
 from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds
+from src.beam import Algorithm, PackedFolds, as_numpy
 from src.beam import DataTensor, BeamOptimizer, beam_logger
 
 from torchvision import transforms
@@ -271,24 +271,24 @@ class CIFAR10Algorithm(Algorithm):
         if 'prototype' in hparams and hparams.prototype:
             optimizer = BeamOptimizer.prototype(dense_args={'lr': hparams.lr_dense,
                                                             'weight_decay': hparams.weight_decay,
-                                                           'momentum': hparams.beta1, 'nesterov': True},
+                                                           'momentum': hparams.momentum, 'nesterov': True},
                                                 clip=hparams.clip_gradient, accumulate=hparams.accumulate,
                                                 amp=hparams.amp,
                                                 sparse_args=None, dense_optimizer='SGD')
         else:
             optimizer = BeamOptimizer(net, dense_args={'lr': hparams.lr_dense,
                                                             'weight_decay': hparams.weight_decay,
-                                                           'momentum': hparams.beta1, 'nesterov': True},
+                                                           'momentum': hparams.momentum, 'nesterov': True},
                                                 clip=hparams.clip_gradient, accumulate=hparams.accumulate,
                                                 amp=hparams.amp,
                                                 sparse_args=None, dense_optimizer='SGD')
 
         super().__init__(hparams, networks=net, optimizers=optimizer)
-        self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
-                                                              lr_lambda=LRPolicy(gain=hparams.gain,
-                                                                                 turn_point=hparams.turn_point,
-                                                                                 final_point=hparams.final_point,
-                                                                                 minimal_gain=hparams.minimal_gain))
+        # self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
+        #                                                       lr_lambda=LRPolicy(gain=hparams.gain,
+        #                                                                          turn_point=hparams.turn_point,
+        #                                                                          final_point=hparams.final_point,
+        #                                                                          minimal_gain=hparams.minimal_gain))
 
     def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
 
@@ -331,9 +331,6 @@ class CIFAR10Algorithm(Algorithm):
             self.trial.report(acc, epoch)
             results['objective'] = acc
 
-        else:
-            raise NotImplementedError
-
         return results
 
     def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
@@ -359,10 +356,10 @@ class CIFAR10Algorithm(Algorithm):
     def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
         y_pred = torch.cat(results['predictions']['y_pred'])
 
-        y_pred = torch.argmax(y_pred, dim=1).data.cpu().numpy()
+        y_pred = as_numpy(torch.argmax(y_pred, dim=1))
 
         if not predicting:
-            y_true = torch.cat(results['predictions']['target']).data.cpu().numpy()
+            y_true = as_numpy(torch.cat(results['predictions']['target']))
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
             results['metrics']['recall'] = recall
@@ -385,7 +382,7 @@ if __name__ == '__main__':
     args = beam_arguments(
         f"--project-name=cifar10 --root-dir={root_dir} --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
         "--n-epochs=2 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
-        "--weight-decay=.00256 --beta1=0.9 --beta2=0.9",
+        "--weight-decay=.00256 --momentum=0.9 --beta2=0.9",
         path_to_data=path_to_data, dropout=.0, activation='celu',
         channels=512, label_smoothing=.2, padding=4, scale_down=.7, scale_up=1.4, ratio_down=.7, ratio_up=1.4)
 

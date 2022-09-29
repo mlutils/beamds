@@ -3,7 +3,8 @@ from collections import defaultdict
 import numpy as np
 import torch.distributed as dist
 from fnmatch import fnmatch, filter
-from tqdm import *
+from tqdm.notebook import tqdm as tqdm_notebook
+from tqdm import tqdm
 import random
 import torch
 import pandas as pd
@@ -91,10 +92,13 @@ def print_beam_hyperparameters(args, debug_only=False):
 
     log_func(f"beam project: {args.project_name}")
     log_func('Experiment Hyperparameters')
+    log_func('----------------------------------------------------------'
+             '---------------------------------------------------------------------')
 
     hparams_list = args.hparams
+    var_args_sorted = dict(sorted(vars(args).items()))
 
-    for k, v in vars(args).items():
+    for k, v in var_args_sorted.items():
         if k == 'hparams':
             continue
         elif k in hparams_list:
@@ -102,16 +106,42 @@ def print_beam_hyperparameters(args, debug_only=False):
         else:
             logger.debug(k + ': ' + str(v))
 
+    log_func('----------------------------------------------------------'
+             '---------------------------------------------------------------------')
 
-def find_port(port=None, get_port_from_beam_port_range=True):
+def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
+
+    if application == 'tensorboard':
+        first_beam_range = 66
+        first_global_range = 26006
+    elif application == 'flask':
+        first_beam_range = 50
+        first_global_range = 25000
+    else:
+        raise NotImplementedError
 
     if port is None:
-        if get_port_from_beam_port_range:
-            base_range = int(os.environ['JUPYTER_PORT']) // 100
-            port_range = range(base_range * 100, (base_range + 1) * 100)
 
-        else:
-            port_range = range(10000, 2 ** 16)
+        port_range = None
+
+        if get_port_from_beam_port_range:
+
+            base_range = None
+            if 'JUPYTER_PORT' in os.environ:
+
+                base_range = int(os.environ['JUPYTER_PORT']) // 100
+
+            elif os.path.isfile('/workspace/configuration/config.csv'):
+                conf = pd.read_csv('/workspace/configuration/config.csv')
+                base_range = int(conf.set_index('parameters').loc['initials'])
+
+            if base_range is not None:
+
+                port_range = range(base_range * 100, (base_range + 1) * 100)
+                port_range = np.roll(np.array(port_range), -first_beam_range)
+
+        if port_range is None:
+            port_range = np.roll(np.array(range(10000, 2 ** 16)), -first_global_range)
 
         for p in port_range:
             if check_if_port_is_available(p):
@@ -135,29 +165,15 @@ def is_boolean(x):
     x_type = check_type(x)
     if x_type.minor in ['numpy', 'pandas', 'tensor'] and 'bool' in str(x.dtype).lower():
         return True
-    if x_type.minor == 'list' and type(x[0]) is bool:
+    if x_type.minor == 'list' and len(x) and isinstance(x[0], bool):
         return True
 
     return False
 
 
-def as_tensor(x, device=None, return_vector=False):
-    if type(x) is not torch.Tensor:
-        x = torch.tensor(x)
-
-    if return_vector:
-        if not len(x.shape):
-            x = x.unsqueeze(0)
-
-    if device is not None:
-        x = x.to(device)
-
-    return x
-
-
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
 
-    if type(s) is slice:
+    if isinstance(s, slice):
 
         f = torch.arange if arr_type == 'tensor' else np.arange
 
@@ -221,20 +237,6 @@ def process_async(func, args, mp_context='spawn', num_workers=10):
     return results
 
 
-def to_numpy(x):
-
-    if issubclass(type(x), torch.Tensor):
-        x = x.detach().cpu().numpy()
-    else:
-        x = np.array(x)
-    if x.size == 1:
-        if 'int' in str(x.dtype):
-            x = int(x)
-        else:
-            x = float(x)
-    return x
-
-
 def pretty_format_number(x):
 
     if x is None or np.isinf(x) or np.isnan(x):
@@ -253,7 +255,7 @@ def pretty_format_number(x):
 
 
 def beam_device(device):
-    if type(device) is torch.device:
+    if isinstance(device, torch.device) or device is None:
         return device
     device = str(device)
     return torch.device(int(device) if device.isnumeric() else device)
@@ -287,7 +289,6 @@ def check_element_type(x):
 
 
 def check_minor_type(x):
-    t = type(x)
 
     if isinstance(x, torch.Tensor):
         return 'tensor'
@@ -295,11 +296,11 @@ def check_minor_type(x):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
-    if issubclass(t, dict):
+    if isinstance(x, dict):
         return 'dict'
-    if issubclass(t, list):
+    if isinstance(x, list):
         return 'list'
-    if issubclass(t, tuple):
+    if isinstance(x, tuple):
         return 'tuple'
     else:
         return 'other'
@@ -317,11 +318,9 @@ def check_type(x, check_minor=True, check_element=True):
 
     major type: array, scalar, dict, none, other
     minor type: tensor, numpy, pandas, native, list, tuple, none
-    elements type: int, float, str, object, none, unknown
+    elements type: int, float, str, object, empty, none, unknown
 
     '''
-
-    t = type(x)
 
     if np.isscalar(x) or (torch.is_tensor(x) and (not len(x.shape))):
         mjt = 'scalar'
@@ -331,7 +330,7 @@ def check_type(x, check_minor=True, check_element=True):
             mit = check_minor_type(x) if check_minor else 'na'
         elt = check_element_type(x) if check_element else 'na'
 
-    elif issubclass(t, dict):
+    elif isinstance(x, dict):
         mjt = 'dict'
         mit = 'dict'
         elt = check_element_type(next(iter(x.values()))) if check_element else 'na'
@@ -347,7 +346,13 @@ def check_type(x, check_minor=True, check_element=True):
         if mit != 'other':
             mjt = 'array'
             if mit in ['list', 'tuple']:
-                elt = check_element_type(x[0]) if check_element else 'na'
+                if check_element:
+                    if len(x):
+                        elt = check_element_type(x[0])
+                    else:
+                        elt = 'empty'
+                else:
+                    elt = 'na'
             elif mit in ['numpy', 'tensor', 'pandas']:
                 if mit == 'pandas':
                     dt = str(x.values.dtype)
@@ -440,11 +445,11 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
 
 def to_device(data, device='cuda', half=False):
 
-    if issubclass(type(data), dict):
+    if isinstance(data, dict):
         return {k: to_device(v, device=device, half=half) for k, v in data.items()}
-    elif (type(data) is list) or (type(data) is tuple):
+    elif isinstance(data, list) or isinstance(data, tuple):
         return [to_device(s, device=device, half=half) for s in data]
-    elif issubclass(type(data), torch.Tensor):
+    elif isinstance(data, torch.Tensor):
         if half and data.dtype in [torch.float32, torch.float64]:
             data = data.half()
         return data.to(device)
@@ -452,14 +457,104 @@ def to_device(data, device='cuda', half=False):
         return data
 
 
+def recursive_batch(x, index):
+
+    if isinstance(x, dict):
+        return {k: recursive_batch(v, index) for k, v in x.items()}
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return [recursive_batch(s, index) for s in x]
+    elif x is None:
+        return None
+    else:
+        return x[index]
+
+
+def recursive_device(x):
+
+    if isinstance(x, dict):
+        for xi in x.values():
+            try:
+                return recursive_device(xi)
+            except AttributeError:
+                # case of None
+                pass
+    elif isinstance(x, list) or isinstance(x, tuple):
+        for xi in x:
+            try:
+                return recursive_device(xi)
+            except AttributeError:
+                # case of None
+                pass
+    return x.device
+
+
+def recursive_len(x):
+
+    if isinstance(x, dict):
+        for xi in x.values():
+            try:
+                return recursive_len(xi)
+            except TypeError:
+                # case of None
+                pass
+
+    elif isinstance(x, list) or isinstance(x, tuple):
+        for xi in x:
+            try:
+                return recursive_len(xi)
+            except TypeError:
+                # case of None
+                pass
+
+    return len(x)
+
+
+def as_numpy(x):
+
+    if isinstance(x, dict):
+        return {k: as_numpy(v) for k, v in x.items()}
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return [as_numpy(s) for s in x]
+
+    if isinstance(x, torch.Tensor):
+        x = x.detach().cpu().numpy()
+    else:
+        x = np.array(x)
+
+    if x.size == 1:
+        if 'int' in str(x.dtype):
+            x = int(x)
+        else:
+            x = float(x)
+
+    return x
+
+
+def as_tensor(x, device=None, dtype=None, return_vector=False):
+
+    if isinstance(x, dict):
+        return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
+    elif x is None:
+        return None
+
+    x = torch.as_tensor(x, device=device, dtype=dtype)
+    if return_vector:
+        if not len(x.shape):
+            x = x.unsqueeze(0)
+
+    return x
+
+
 def concat_data(data):
 
     d0 = data[0]
-    if issubclass(type(d0), dict):
+    if isinstance(d0, dict):
         return {k: concat_data([di[k] for di in data]) for k in d0.keys()}
-    elif (type(d0) is list) or (type(d0) is tuple):
+    elif isinstance(d0, list) or isinstance(d0, tuple):
         return [concat_data([di[n] for di in data]) for n in range(len(d0))]
-    elif issubclass(type(d0), torch.Tensor):
+    elif isinstance(d0, torch.Tensor):
         return torch.cat(data)
     else:
         return data
@@ -496,7 +591,7 @@ def hash_tensor(x, fast=False, coarse=False):
     if coarse and 'float' in str(x.dtype):
         x = (x / x.max() * (2 ** 15)).half()
 
-    x = x.detach().cpu().numpy()
+    x = as_numpy(x)
 
     if fast:
         x = str(x).encode('utf-8')
@@ -516,6 +611,7 @@ def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=
 
     Parameters
     ----------
+        x:
         threshold : float
             The smallest expected duration (in Seconds) to generate a progress bar. This feature is used only if enable
             is set to None.

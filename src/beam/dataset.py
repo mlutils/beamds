@@ -3,7 +3,8 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from .utils import check_type, slice_to_index, as_tensor, to_device
+from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, beam_device, \
+    recursive_device, recursive_len
 import pandas as pd
 import math
 import hashlib
@@ -32,6 +33,9 @@ class UniversalDataset(torch.utils.data.Dataset):
         """
         super().__init__()
 
+        device = beam_device(device)
+        target_device = beam_device(target_device)
+
         self.index = None
         self.set_index(index)
 
@@ -57,10 +61,10 @@ class UniversalDataset(torch.utils.data.Dataset):
             warnings.simplefilter("ignore")
             if len(args) == 1:
                 d = args[0]
-                if issubclass(type(d), dict):
+                if isinstance(d, dict):
                     self.data = {k: as_tensor(v, device=device) for k, v in d.items()}
                     self.data_type = 'dict'
-                elif (type(d) is list) or (type(d) is tuple):
+                elif isinstance(d, list) or isinstance(d, tuple):
                     self.data = [as_tensor(v, device=device) for v in d]
                     self.data_type = 'list'
                 else:
@@ -81,7 +85,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if index is not None:
             index_type = check_type(index)
             if index_type.minor == 'tensor':
-                index = index.detach().cpu().numpy()
+                index = as_numpy(index)
             index = pd.Series(data=np.arange(len(index)), index=index)
             # check if index is not a simple arange
             if np.abs(index.index.values - np.arange(len(index))).sum() > 0:
@@ -106,10 +110,10 @@ class UniversalDataset(torch.utils.data.Dataset):
                     return self.data[ind]
                 return [self.data[k] for k in ind]
 
-            return {k: v[ind] for k, v in self.data.items()}
+            return {k: recursive_batch(v, ind) for k, v in self.data.items()}
 
         elif self.data_type == 'list':
-            return [v[ind] for v in self.data]
+            return [recursive_batch(v, ind) for v in self.data]
         elif self.data_type == 'simple':
             return self.data[ind]
         else:
@@ -123,10 +127,13 @@ class UniversalDataset(torch.utils.data.Dataset):
 
             ind_type = check_type(ind, check_element=False)
             if ind_type.minor == 'tensor':
-                loc = ind.detach().cpu().numpy()
+                loc = as_numpy(ind)
             else:
                 loc = ind
                 ind = as_tensor(ind)
+
+            if ind_type.major == 'scalar':
+                loc = [loc]
 
             iloc = self.index.loc[loc].values
 
@@ -151,15 +158,15 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.data_type = check_type(self.data).minor
 
         if self.data_type == 'dict':
-            return next(iter(self.data.values())).device
+            return recursive_device(next(iter(self.data.values())))
         elif self.data_type == 'list':
-            return self.data[0].device
+            return recursive_device(self.data[0])
         elif self.data_type == 'simple':
             return self.data.device
         elif hasattr(self.data, 'device'):
             return self.data.device
         else:
-            return self.__device__
+            return self.__device__()
 
     def __repr__(self):
         return repr(self.data)
@@ -174,9 +181,9 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.data_type = check_type(self.data).minor
 
         if self.data_type == 'dict':
-            return len(next(iter(self.data.values())))
+            return recursive_len(next(iter(self.data.values())))
         elif self.data_type == 'list':
-            return len(self.data[0])
+            return recursive_len(self.data[0])
         elif self.data_type == 'simple':
             return len(self.data)
         elif hasattr(self.data, '__len__'):
@@ -383,10 +390,10 @@ class LazyReplayBuffer(UniversalDataset):
             d = kwargs
 
         if self.data is None:
-            if issubclass(type(d), dict):
+            if isinstance(d, dict):
                 self.data = {k: self.build_buffer(v) for k, v in d.items()}
                 self.data_type = 'dict'
-            elif (type(d) is list) or (type(d) is tuple):
+            elif isinstance(d, list) or isinstance(d, tuple):
                 self.data = [self.build_buffer(v) for v in d]
                 self.data_type = 'list'
             else:
@@ -594,7 +601,11 @@ class UniversalBatchSampler(object):
 
                 to_sample = max(0, self.batch_size - (self.size - self.minibatches * self.batch_size))
 
-                fill_batch = np.random.choice(len(indices_batched), to_sample, replace=(to_sample > self.size))
+                try:
+                    fill_batch = np.random.choice(len(indices_batched), to_sample, replace=(to_sample > self.size))
+                except ValueError:
+                    raise ValueError("Looks like your dataset is smaller than a single batch. Try to make it larger.")
+
                 fill_batch = indices_batched[torch.LongTensor(fill_batch)]
                 indices_tail = torch.cat([indices_tail, fill_batch])
 

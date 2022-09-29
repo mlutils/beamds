@@ -12,7 +12,6 @@ gssapi
 thrift-sasl
 python-snappy
 thriftpy
-faiss-gpu
 
 category_encoders
 pyro-ppl
