@@ -16,7 +16,7 @@ from .experiment import Experiment
 from timeit import default_timer as timer
 import torch_tensorrt as trt
 from ray import tune
-
+from functools import partial
 
 class Algorithm(object):
 
@@ -59,6 +59,7 @@ class Algorithm(object):
         self.optimizers = {}
         self.schedulers = {}
         self.swa_schedulers = {}
+        self.schedulers_initial_state = {}
 
         self.optimizers_name_by_id = {}
         self.schedulers_name_by_id = {}
@@ -87,8 +88,14 @@ class Algorithm(object):
             self.load_dataset(dataset)
 
     def get_hparam(self, hparam, specific=None, default=None):
-        if specific is not None and f"{specific}_{hparam}" in self.hparams:
+
+        if type(specific) is list:
+            for s in specific:
+                if f"{s}_{hparam}" in self.hparams:
+                    return getattr(self.hparams, f"{specific}_{hparam}")
+        elif specific is not None and f"{specific}_{hparam}" in self.hparams:
             return getattr(self.hparams, f"{specific}_{hparam}")
+
         if hparam in self.hparams:
             return getattr(self.hparams, hparam)
         logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
@@ -380,6 +387,14 @@ class Algorithm(object):
 
         return loss
 
+    @staticmethod
+    def split_names(k):
+        if '/' in k:
+            k, ki = k.split('/')
+        else:
+            ki = None
+        return k, ki
+
     def load_dataset(self, dataset, batch_size_train=None, batch_size_eval=None,
                      oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
                      worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
@@ -465,9 +480,17 @@ class Algorithm(object):
             else:
                 self.swa_epochs = int(np.round(self.hparams.swa * self.n_epochs))
 
-        for scheduler in self.schedulers_flat.values():
+        for k, scheduler in self.schedulers_flat.items():
             if type(scheduler) is BeamScheduler:
-                scheduler.update_total_steps(epochs=self.n_epochs, steps_per_epochs=self.epoch_length['train'])
+
+                k, ki = self.split_names(k)
+
+                state = self.schedulers_initial_state[k] if k in self.schedulers_initial_state else None
+                if ki is not None and k is not None:
+                    state = state[ki]
+
+                scheduler.update_total_steps(epochs=self.n_epochs,
+                                             steps_per_epochs=self.epoch_length['train'], initial_state=state)
 
     def get_optimizer_name(self, opt):
         i = id(opt)
@@ -493,7 +516,7 @@ class Algorithm(object):
             if isinstance(op, BeamOptimizer):
                 for ki, opi in op.optimizers.items():
                     if len(op.optimizers) > 1:
-                        optimizers_flat[f'{k}_{ki}'] = opi
+                        optimizers_flat[f'{k}/{ki}'] = opi
                     else:
                         optimizers_flat[k] = opi
             else:
@@ -513,7 +536,7 @@ class Algorithm(object):
             if isinstance(scheduler, MultipleScheduler):
                 for ki, sch in scheduler.schedulers.items():
                     if len(scheduler.schedulers) > 1:
-                        schedulers_flat[f'{k}_{ki}'] = sch
+                        schedulers_flat[f'{k}/{ki}'] = sch
                     else:
                         schedulers_flat[k] = sch
             else:
@@ -590,11 +613,14 @@ class Algorithm(object):
         if objective is None:
             objective = self.objective
         for k, scheduler in self.schedulers_flat.items():
+
+            k, ki = self.split_names(k)
+
             if isinstance(scheduler, torch.optim.lr_scheduler._LRScheduler):
-                if self.get_hparam('schedulers_steps', k) == step_type:
+                if self.get_hparam('schedulers_steps', specific=[f'{k}/{ki}', k]) == step_type:
                     scheduler.step()
             elif isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                if self.get_hparam('schedulers_steps', k) == step_type:
+                if self.get_hparam('schedulers_steps', specific=[f'{k}/{ki}', k]) == step_type:
                     scheduler.step(objective)
             elif isinstance(scheduler, BeamScheduler):
                 scheduler.step(objective, step_type=step_type)
@@ -974,7 +1000,11 @@ class Algorithm(object):
 
         for k, scheduler in self.schedulers.items():
             if f"{k}_scheduler" in state.keys():
-                scheduler.load_state_dict(state[f"{k}_scheduler"])
+                self.schedulers_initial_state[k] = state[f"{k}_scheduler"]
+                try:
+                    scheduler.load_state_dict(state[f"{k}_scheduler"])
+                except AttributeError:
+                    logger.warning("Tries to load scheduler which requires dataset info: please load dataset first")
             else:
                 logger.warning(f"Scheduler {k} is missing from the state-dict")
 
