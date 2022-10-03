@@ -4,7 +4,7 @@ from torch import nn
 import numpy as np
 import math
 
-from .model import soft_target_update, target_copy, reset_network, copy_network, BeamEnsemble
+from .model import soft_target_update, reset_network, copy_network, BeamEnsemble
 from .model import beam_weights_initializer, freeze_network_params, free_network_params
 from .utils import as_numpy, pretty_format_number, logger, beam_logger
 from .algorithm import Algorithm

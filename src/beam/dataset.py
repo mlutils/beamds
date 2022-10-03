@@ -10,7 +10,6 @@ import math
 import hashlib
 import sys
 import warnings
-from .data_tensor import DataTensor
 import argparse
 from collections import namedtuple
 

@@ -14,9 +14,7 @@ from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
 from timeit import default_timer as timer
-import torch_tensorrt as trt
 from ray import tune
-from functools import partial
 
 class Algorithm(object):
 
@@ -1026,6 +1024,7 @@ class Algorithm(object):
 
     def optimize_for_inference(self, networks, half=True, eval=True):
 
+        import torch_tensorrt as trt
         logger.warning("Currently we support only models on device=0")
         sample = self.dataset[0]
 

@@ -1,8 +1,8 @@
-import os, torch, copy, sys
+import os, sys
 from collections import defaultdict
 import numpy as np
 import torch.distributed as dist
-from fnmatch import fnmatch, filter
+from fnmatch import filter
 from tqdm.notebook import tqdm as tqdm_notebook
 from tqdm import tqdm
 import random
@@ -11,7 +11,6 @@ import pandas as pd
 import multiprocessing as mp
 import socket
 from contextlib import closing
-from random import randint
 from collections import namedtuple
 from timeit import default_timer as timer
 from loguru import logger
@@ -538,6 +537,12 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
         return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
     elif x is None:
         return None
+
+    if dtype is None and hasattr(x, 'dtype'):
+        if 'int' in str(x.dtype):
+            dtype = torch.int64
+        else:
+            dtype = torch.float32
 
     x = torch.as_tensor(x, device=device, dtype=dtype)
     if return_vector:

@@ -1,6 +1,5 @@
 import torch
 import pandas as pd
-from torch import nn
 import warnings
 from collections import namedtuple
 import numpy as np

@@ -19,8 +19,10 @@ from src.beam.config import get_beam_parser
 
 from sklearn.datasets import fetch_covtype
 import pandas as pd
-from sklearn.preprocessing import QuantileTransformer
-from src.beam import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam, tqdm
+from sklearn.preprocessing import QuantileTransformer, RobustScaler
+from src.beam.ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
+from src.beam import tqdm
+import faiss
 
 
 class EmbeddingCovtypeDataset(UniversalDataset):
@@ -76,7 +78,6 @@ class EmbeddingCovtypeDataset(UniversalDataset):
 
         self.n_classes = int(y.max() + 1)
         self.n_num = 0
-        self.n_cat = self.data['x_cat'].shape[-1]
         self.features_index = torch.arange(self.data['x_cat'].shape[-1]).unsqueeze(0)
         self.embedding = torch.randn(self.n_categories.sum(), emb_size, device=self.device)
 
@@ -282,6 +283,83 @@ class CovtypeCategoricalMaskedDataset(UniversalDataset):
         return data
 
 
+class CovtypeFullMaskedDataset(UniversalDataset):
+
+    def __init__(self, hparams):
+        path = hparams.path_to_data
+        device = hparams.device
+        seed = hparams.seed
+        self.mask = hparams.mask
+        self.quantiles = hparams.quantiles
+        self.n_augmentations = 1
+
+        dataset = fetch_covtype(data_home=path)
+        data = dataset['data']
+        columns = dataset['feature_names']
+        y = np.array(dataset['target'], dtype=np.int64)
+        df = pd.DataFrame(data=data, columns=columns, index=np.arange(len(data)))
+
+        soils_columns = [c for c in df.columns if 'Soil' in c]
+        soil = np.where(df[soils_columns])[1]
+
+        wilderness_columns = [c for c in df.columns if 'Wilderness' in c]
+        wilderness = np.where(df[wilderness_columns])[1]
+
+        df_cat = pd.DataFrame({'Soil': soil, 'Wilderness': wilderness})
+        df_num = df.drop(columns=(soils_columns + wilderness_columns))
+
+        self.transformer = RobustScaler().fit(df_num)
+        x_num = self.transformer.transform(df_num)
+
+        super().__init__(x_cat=df_cat.values, x_num=x_num, y=y, device=device)
+
+        self.split(validation=92962, test=116203, seed=seed, stratify=False, labels=self.data['y'].cpu())
+        self.mask_distribution = torch.distributions.Bernoulli(probs=self.mask)
+
+        self.features_names_cat = list(df_cat.columns)
+        self.features_names_num = list(df_num.columns)
+
+        self.n_categories = torch.tensor(df_cat.max().values + 1)
+
+        self.n_classes = int(y.max() + 1)
+        self.n_num = len(df_num.columns)
+        self.n_cat = self.data['x_cat'].shape[-1]
+        self.features_index_cat = torch.arange(self.data['x_cat'].shape[-1]).unsqueeze(0)
+        self.features_index_num = torch.arange(self.data['x_num'].shape[-1]).unsqueeze(0)
+
+    def augment(self, x):
+        x_num, x_cat = x
+
+        # we sample the corruption from the train subset
+        ind_patched = torch.randint(len(self.indices['train']), size=x_cat.shape)
+        x_patched = self.data['x_cat'][self.indices['train'][ind_patched], self.features_index_cat]
+        mask_cat = self.mask_distribution.sample(x_cat.shape).to(self.device).long()
+        x_cat = x_patched * mask_cat + x_cat * (1 - mask_cat)
+
+        ind_patched = torch.randint(len(self.indices['train']), size=x_num.shape)
+        x_patched = self.data['x_num'][self.indices['train'][ind_patched], self.features_index_num]
+        mask_num = self.mask_distribution.sample(x_num.shape).to(self.device)
+        x_num = x_patched * mask_num + x_num * (1 - mask_num)
+
+        return {'x': (x_num, x_cat), 'mask': torch.cat([mask_num, mask_cat], dim=1)}
+
+    def qt_transform(self, df_num, device=None):
+        return as_tensor(self.qt.transform(as_numpy(df_num)).astype(np.float32), device=device)
+
+    def getitem(self, ind):
+
+        x_num = self.data['x_num'][ind]
+        x_cat = self.data['x_cat'][ind]
+        y = self.data['y'][ind]
+
+        x = (x_num, x_cat)
+        augmentations = [self.augment(x) for _ in range(self.n_augmentations)]
+
+        data = {'x': x, 'y': y, 'augmentations': augmentations}
+
+        return data
+
+
 class CovModuleWrapper(nn.Module):
 
     def __init__(self, model):
@@ -363,6 +441,7 @@ class Vime(BeamSSL):
         if networks is None:
             networks = {}
         h = self.h_dim
+
         self.cat_splits = torch.cumsum(dataset.n_categories, dim=0)[:-1]
 
         networks['decoder'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
@@ -426,18 +505,19 @@ class VicVime(BeamSSL):
             networks = {}
         h = self.h_dim
 
+        self.kmeans = None
         # add augmentation
         dataset.n_augmentations = 2
 
-        self.cat_splits = torch.cumsum(dataset.n_categories, dim=0)[:-1]
+        self.cat_splits = torch.cumsum(dataset.n_categories, dim=0)
 
         networks['decoder'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
                                             nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                            nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)))
+                                            nn.ReLU(), nn.Linear(h, sum(dataset.n_categories)+dataset.n_num))
 
         networks['decoder_masks'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
                                                   nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
-                                                  nn.ReLU(), nn.Linear(h, len(dataset.n_categories)))
+                                                  nn.ReLU(), nn.Linear(h, len(dataset.n_categories)+dataset.n_num))
 
         p = self.p_dim
 
@@ -445,24 +525,43 @@ class VicVime(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
                                                nn.ReLU(), nn.Linear(h, p))
 
+        networks['classifier'] = nn.Sequential(nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, h), nn.BatchNorm1d(h),
+                                               nn.ReLU(), nn.Linear(h, hparams.n_clusters))
+
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
+
+    def postprocess_epoch(self, results=None, training=None, epoch=None, **kwargs):
+
+        super().postprocess_epoch(results=results, training=training, epoch=epoch, **kwargs)
+
+        if not training:
+            h = np.concatenate(results['aux']['h'])
+
+            init_centroids = self.kmeans.centroids if self.kmeans is not None else None
+            self.kmeans = faiss.Kmeans(h.shape[-1], self.hparams.n_clusters, niter=100, verbose=True,
+                                       gpu=True, nredo=3)
+            self.kmeans.train(h, init_centroids=init_centroids)
+
+        return results
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
-        _, x = sample['x']
-        _, x_aug1 = sample['augmentations'][0]['x']
+        x_num, x_cat = sample['x']
+        x_num_aug1, x_cat_aug1 = sample['augmentations'][0]['x']
         mask1 = sample['augmentations'][0]['mask']
 
-        _, x_aug2 = sample['augmentations'][1]['x']
+        x_num_aug2, x_cat_aug2 = sample['augmentations'][1]['x']
         mask2 = sample['augmentations'][1]['mask']
 
         encoder = self.networks['encoder']
         decoder = self.networks['decoder']
         decoder_masks = self.networks['decoder_masks']
         projection = self.networks['projection']
+        classifier = self.networks['classifier']
 
-        h1 = encoder((_, x_aug1))
-        h2 = encoder((_, x_aug2))
+        h1 = encoder((x_num_aug1, x_cat_aug1))
+        h2 = encoder((x_num_aug2, x_cat_aug2))
 
         x_hat1 = decoder(h1)
         masks_hat1 = decoder_masks(h1)
@@ -483,13 +582,16 @@ class VicVime(BeamSSL):
         x_hat = torch.tensor_split(x_hat, self.cat_splits, dim=-1)
         loss_cat = []
 
-        xd = torch.cat([x, x])
+        xd_cat = torch.cat([x_cat, x_cat])
+        xd_num = torch.cat([x_num, x_num])
 
-        for i in range(xd.shape[-1]):
-            loss_cat_i = F.cross_entropy(x_hat[i], xd[:, i], reduction='none')
+        for i in range(xd_cat.shape[-1]):
+            loss_cat_i = F.cross_entropy(x_hat[i], xd_cat[:, i], reduction='none') * mask[:, i]
             loss_cat.append(loss_cat_i)
-            results['scalar'][f'acc_{self.dataset.features_names[i]}'].append(as_numpy(torch.argmax(x_hat[i], dim=1)
-                                                                                       == xd[:, i]))
+            results['scalar'][f'acc_{self.dataset.features_names_cat[i]}'].append(as_numpy(torch.argmax(x_hat[i], dim=1)
+                                                                                       == xd_cat[:, i]))
+
+        loss_num = F.smooth_l1_loss(x_hat[-1], xd_num, reduction='none') * mask[:, -xd_num.shape[-1]:]
 
         loss_cat = torch.stack(loss_cat, dim=-1)
 
@@ -532,10 +634,30 @@ class VicVime(BeamSSL):
         I = torch.eye(d, device=corr1.device)
         cov_loss = (corr1 * (1 - I)).pow(2).sum(dim=0) + (corr2 * (1 - I)).pow(2).sum(dim=0)
 
+        #  add classification loss
+
+        h = encoder((x_num, x_cat))
+
+        if self.kmeans is not None:
+            _, y = self.kmeans.index.search(as_numpy(h), 1)
+
+            y_hat = classifier(h)
+            y = as_tensor(y, device=y_hat.device).squeeze(-1)
+            loss_classification = F.cross_entropy(y_hat, y, reduction='none')
+
+            results['scalar']['acc_plabels'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
+
+        else:
+            loss_classification = as_tensor(0, device=h.device)
+
+        if not training:
+            results['aux']['h'].append(as_numpy(h))
+
         self.apply({'loss_cat': loss_cat, 'loss_mask': loss_mask,
                     'sim_loss': sim_loss, 'std_loss': std_loss,
                     'cov_loss': cov_loss,
-                    # 'mean_loss': mean_loss,
+                    'num_loss': loss_num,
+                    'classification_loss': loss_classification,
                     'c_loss': c_loss,
                     'norm_loss': norm_loss,
                     },
@@ -543,8 +665,9 @@ class VicVime(BeamSSL):
                             'sim_loss': self.hparams.lambda_vicreg,
                             'std_loss': self.hparams.mu_vicreg,
                             'cov_loss': self.hparams.nu_vicreg,
-                            # 'mean_loss': self.hparams.lambda_mean_vicreg,
+                            'num_loss': self.hparams.num_loss_weight,
                             'c_loss': self.hparams.c_loss_weight,
+                            'classification_loss': self.hparams.classification_loss_weight,
                             'norm_loss': self.hparams.norm_loss_weight,
                             }, training=training, results=results)
 
@@ -614,7 +737,7 @@ def get_covtype_parser():
                         help='Squashing factor for the oversampling probabilities')
     parser.add_argument('--objective', type=str, default='encoder_acc',
                         help='The objective is the accuracy of the downstream task')
-    parser.add_argument('--dataset', type=str, default='CovtypeCategoricalMaskedDataset', help='The dataset class')
+    parser.add_argument('--dataset', type=str, default='CovtypeFullMaskedDataset', help='The dataset class')
     parser.add_argument('--channels', type=int, default=128, help='Size of embedding')
     parser.add_argument('--dropout', type=float, default=0.0, help='Dropout value for rule layers')
     parser.add_argument('--mask', type=float, default=0.2, help='Masking augmentation parameter')
@@ -622,12 +745,15 @@ def get_covtype_parser():
 
     parser.add_argument('--mask-loss-weight', type=float, default=10, help='Weight of the masking BCE loss')
     parser.add_argument('--cat-loss-weight', type=float, default=1, help='Weight of the categorical CE loss')
+    parser.add_argument('--num-loss-weight', type=float, default=1, help='Weight of the numerical CE loss')
     parser.add_argument('--c-loss-weight', type=float, default=25, help='Weight of the c-mean loss')
     parser.add_argument('--norm-loss-weight', type=float, default=10, help='Weight of the normalization loss')
+    parser.add_argument('--classification-loss-weight', type=float, default=2., help='Weight of the classification loss')
 
     parser.add_argument('--h-dim', type=int, default=64, help='Hidden size dimension')
     parser.add_argument('--p-dim', type=int, default=64, help='Projection size dimension')
     parser.add_argument('--quantiles', type=int, default=64, help='Number of quantiles for the numerical features')
+    parser.add_argument('--n-clusters', type=int, default=10, help='Number of clusters for the pseudo labeling')
 
     return parser
 

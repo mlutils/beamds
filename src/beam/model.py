@@ -2,7 +2,6 @@ import copy
 
 import torch
 from torch import nn
-import itertools
 from collections import defaultdict
 import numpy as np
 import math
@@ -10,7 +9,6 @@ from .utils import slice_to_index, logger, hash_tensor
 from .optim import BeamOptimizer
 from functools import partial
 import random
-import types
 
 
 class PackedSet(object):
