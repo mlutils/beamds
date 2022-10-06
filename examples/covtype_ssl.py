@@ -699,7 +699,7 @@ def my_ssl_algorithm(algorithm):
             networks['encoder'] = CovModuleWrapper(model)
 
             optimizers['encoder'] = torch.optim.AdamW(model.optimization_param_groups(),
-                                                      lr=hparams.lr_dense, weight_decay=hparams.weight_decay)
+                                                      lr=self.get_hparam('lr_dense', 'encoder'), weight_decay=hparams.weight_decay)
 
             test_ind = dataset.indices['test']
 

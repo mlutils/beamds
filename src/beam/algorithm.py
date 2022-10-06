@@ -731,14 +731,6 @@ class Algorithm(object):
             results['stats']['batch_rate'] = rate_string_format(n_iter, delta)
             results['stats']['sample_rate'] = rate_string_format(n_iter * batch_size, delta)
 
-            # add learning rate and momentum of schedulers_steps
-            if training:
-                for k, scheduler in self.schedulers_flat.items():
-                    lr = scheduler.optimizer.param_groups[0]['lr']
-                    results['scalar'][f'lr_{k}'] = lr
-                    if type(scheduler) is BeamScheduler and scheduler.method in ['one_cycle']:
-                        results['scalar'][f'momentum_{k}'] = scheduler.get_current_state()['momentum']
-
             if n == self.n_epochs + self.swa_epochs:
                 self.set_mode(training=False)
                 self.networks = bu_networks
@@ -890,6 +882,13 @@ class Algorithm(object):
             with torch.no_grad():
                 eval_results = next(eval_generator)
 
+            # add learning rate and momentum of schedulers_steps
+            for k, scheduler in self.schedulers_flat.items():
+                lr = scheduler.optimizer.param_groups[0]['lr']
+                train_results['scalar'][f'lr_{k}'] = lr
+                if type(scheduler) is BeamScheduler and scheduler.method in ['one_cycle']:
+                    train_results['scalar'][f'momentum_{k}'] = scheduler.get_current_state()['momentum']
+
             results = {'train': train_results, self.eval_subset: eval_results}
             eval_results, objective = self.calculate_objective(results=results)
             self.report(objective, i)
@@ -902,6 +901,9 @@ class Algorithm(object):
                     swa_model.update_parameters(self.networks[k])
                 for k, sch in self.swa_schedulers.items():
                     sch.step()
+
+                    lr = sch.optimizer.param_groups[0]['lr']
+                    results['train']['scalar'][f'swalr_{k}'] = lr
             else:
                 self.schedulers_step(objective=objective, step_type='epoch')
 
@@ -951,7 +953,8 @@ class Algorithm(object):
             state[f"{k}_swa_network"] = wrapper(swa_network.state_dict())
 
         state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
-        state['scalers'] = {k: scaler.state_dict() if scaler is not None else None for k, scaler in self.scalers.items()}
+        state['scalers'] = {k: scaler.state_dict()
+                            if scaler is not None else None for k, scaler in self.scalers.items()}
 
         if path is not None:
             torch.save(state, path)
