@@ -17,6 +17,7 @@ from loguru import logger
 from torchvision import transforms
 import hashlib
 from functools import partial
+import inspect
 
 # logger.remove(handler_id=0)
 logger.remove()
@@ -225,15 +226,102 @@ def get_notebook_name():
     return display_javascript(js)
 
 
-def process_async(func, args, mp_context='spawn', num_workers=10):
+# def process_async(func, args, mp_context='spawn', num_workers=10):
+#     ctx = mp.get_context(mp_context)
+#     with ctx.Pool(num_workers) as pool:
+#         res = [pool.apply_async(func, (arg,)) for arg in args]
+#         results = []
+#         for r in tqdm_beam(res):
+#             results.append(r.get())
+#
+#     return results
+
+
+def process_async(func, args_list, constant_kwargs=None, kwargs_list=None, mp_context='spawn', num_workers=10):
+
+    if constant_kwargs is None:
+        constant_kwargs = {}
+
+    if kwargs_list is None:
+        kwargs_list = []
+
+    ars = inspect.getfullargspec(func)
+    if len(ars.args) == 1:
+        if (type(args_list[0]) is tuple and len(args_list[0]) != len(ars.args)) or type(args_list[0]) is not tuple:
+            args_list = [(ai, ) for ai in args_list]
+
     ctx = mp.get_context(mp_context)
     with ctx.Pool(num_workers) as pool:
-        res = [pool.apply_async(func, (arg,)) for arg in args]
+        res = [pool.apply_async(func, tuple(args_i), {**kwargs_i, **constant_kwargs}) for args_i, kwargs_i in zip(args_list, kwargs_list)]
         results = []
         for r in tqdm_beam(res):
             results.append(r.get())
 
     return results
+
+
+def divide_chunks(x, chunksize=None, n_chunks=None, dim=0):
+
+    assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
+    x_type = check_type(x, check_element=False)
+    assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
+
+    if x_type.major == 'array':
+
+        l = len(x)
+
+        if chunksize is None:
+            chunksize = l // n_chunks
+
+        if n_chunks is None:
+            n_chunks = int(np.round(l / chunksize))
+
+        if x_type.minor == 'tensor':
+            for c in torch.chunk(x, n_chunks, dim=dim):
+                yield c
+
+        elif x_type.minor in ['numpy', 'pandas']:
+
+            for c in np.array_split(x, n_chunks, axis=dim):
+                yield c
+
+        else:
+
+            for i in range(0, l, chunksize):
+                yield x[i:i + chunksize]
+
+    else:
+
+        c = []
+        for xi in iter(x):
+
+            c.append(xi)
+            if len(c) == chunksize:
+                yield c
+                c = []
+        yield c
+
+
+def collate_chunks(x, dim=0):
+
+    x_type = check_type(x[0], check_element=False)
+    assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
+
+    if x_type.minor == 'tensor':
+        return torch.cat(x, dim=dim)
+
+    elif x_type.minor == 'numpy':
+        return np.concatenate(x, axis=dim)
+
+    elif x_type.minor == 'pandas':
+        return pd.concat(x, axis=dim)
+
+    else:
+
+        xc = []
+        for xi in iter(x):
+            xc.extend(xi)
+        return xc
 
 
 def pretty_format_number(x):
