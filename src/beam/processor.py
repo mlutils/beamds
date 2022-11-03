@@ -12,7 +12,7 @@ import sys
 import warnings
 import argparse
 from collections import namedtuple
-from .utils import process_async, divide_chunks
+from .utils import divide_chunks, collate_chunks
 from collections import OrderedDict
 
 
@@ -58,8 +58,7 @@ class Reducer(Processor):
         super(Reducer, self).__init__(*args, **kwargs)
 
     def reduce(self, *args, **kwargs):
-        raise NotImplementedError
-
+        return collate_chunks(list(args))
 
 
 class Transformer(object):
@@ -76,23 +75,21 @@ class Transformer(object):
         self.args = args
         self.kwargs = kwargs
 
-    def __transform__(self, x=None, **argv):
+    def transform_chunk(self, x=None, **argv):
         raise NotImplementedError
 
-    def aggregate(self, *xs):
+    def fit(self, *args, **kwargs):
         return NotImplementedError
 
-    def collate(self, *xs):
-        return NotImplementedError
-
-    def transform(self, x):
+    def transform(self, x, **argv):
 
         if not self.n_jobs:
 
-            for c in divide_chunks(x, chunksize=self.chunksize):
+            chunks = []
+            for xi in divide_chunks(x, chunksize=self.chunksize):
+                chunks.append(self.transform_chunk(xi, **argv))
 
-
-            return self.collate(process_async(self.__transform__, ))
+            return collate_chunks(chunks)
 
         return self.__transform__(x)
 
