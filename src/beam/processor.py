@@ -13,14 +13,19 @@ import warnings
 import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks
+from .multiprocessing import parallelize
 from collections import OrderedDict
+import os
+import fastavro
+import pyarrow as pa
 
 
 class Processor(object):
 
-    def __init__(self, *args, aggregator=False, pipeline=False, **kwargs):
+    def __init__(self, *args, aggregator=False, track_steps=False, pipeline=False, **kwargs):
         self.pipeline = pipeline
         self.aggregator = aggregator
+        self.track_statistics = track_steps
 
         if pipeline or aggregator:
             self.transformers = OrderedDict()
@@ -30,8 +35,46 @@ class Processor(object):
             for k, t in kwargs.items():
                 self.transformers[k] = t
 
-    def read(self, path):
-        raise NotImplementedError
+    @staticmethod
+    def pipeline(*ps):
+        return Processor(*ps, pipeline=True)
+
+    @staticmethod
+    def read(path, **kwargs):
+
+        _, ext = os.path.splitext(path)
+
+        if ext == 'fea':
+            x = pd.read_feather(path, **kwargs)
+        elif ext == 'csv':
+            x = pd.read_csv(path, **kwargs)
+        elif ext in ['pkl', 'pickle']:
+            x = pd.read_pickle(path, **kwargs)
+        elif ext in ['npy', 'npz']:
+            x = np.load(path, **kwargs)
+        elif ext == 'parquet':
+            x = pd.read_parquet(path, **kwargs)
+        elif ext == 'pt':
+            x = torch.load(path, **kwargs)
+        elif ext in ['xls', 'xlsx', 'xlsm', 'xlsb', 'odf', 'ods', 'odt']:
+            x = pd.read_excel(path, **kwargs)
+        elif ext == 'avro':
+            x = []
+            with open(path, 'rb') as fo:
+                for record in fastavro.reader(fo):
+                    x.append(record)
+        elif ext == 'json':
+            x = []
+            with open(path, 'r') as fo:
+                for record in fastavro.json_reader(fo):
+                    x.append(record)
+        elif ext == 'orc':
+            x = pa.orc.read(path, **kwargs)
+
+        else:
+            raise ValueError("Unknown extension type.")
+
+        return x
 
     def write(self, x, path):
         raise NotImplementedError
@@ -47,27 +90,20 @@ class Processor(object):
     #                 self.steps[i] = x
     #         return x
 
-    @staticmethod
-    def pipeline(*ts):
-        return Processor(*ts, pipeline=True)
-
-
 class Reducer(Processor):
 
     def __init__(self, *args, **kwargs):
         super(Reducer, self).__init__(*args, **kwargs)
 
     def reduce(self, *args, **kwargs):
-        return collate_chunks(list(args))
+        return collate_chunks(list(args), dim=1)
 
 
 class Transformer(object):
 
-    def __init__(self, *args, n_jobs=0, chunksize=1, track_steps=False,
-                 **kwargs):
+    def __init__(self, *args, n_jobs=0, chunksize=1, **kwargs):
 
         self.transformers = None
-        self.track_statistics = track_steps
         self.chunksize = chunksize
         self.steps = {}
 
@@ -75,27 +111,14 @@ class Transformer(object):
         self.args = args
         self.kwargs = kwargs
 
-    def transform_chunk(self, x=None, **argv):
+    def _transform(self, x=None, **argv):
         raise NotImplementedError
 
     def fit(self, *args, **kwargs):
         return NotImplementedError
 
-    def transform(self, x, **argv):
-
-        if not self.n_jobs:
-
-            chunks = []
-            for xi in divide_chunks(x, chunksize=self.chunksize):
-                chunks.append(self.transform_chunk(xi, **argv))
-
-            return collate_chunks(chunks)
-
-        return self.__transform__(x)
-
-    @staticmethod
-    def pipeline(*ts):
-        return Transformer(*ts, pipeline=True)
+    def transform(self, x, **kwargs):
+        return parallelize(self._transform, x, constant_kwargs=kwargs)
 
 
 

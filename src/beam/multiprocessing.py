@@ -39,13 +39,11 @@ def parallelize(func, args_list, kwargs_list=None, constant_kwargs=None, chunksi
             chunksize = 1
 
         results = []
-        args_list = list(zip(*[list(divide_chunks(ai, chunksize=chunksize)) for ai in args_list]))
-        kwargs_list = list(zip(*[list(divide_chunks(ai, chunksize=chunksize)) for ai in kwargs_list]))
+        args_list = list(divide_chunks(args_list, chunksize=chunksize))
+        kwargs_list = list(divide_chunks(kwargs_list, chunksize=chunksize))
 
         for args_i, kwargs_i in zip(args_list, kwargs_list):
-            results.append(func(args_i, **constant_kwargs))
-
-    # if 'apply' in method:
+            results.append(func(*args_i, **{**kwargs_i, **constant_kwargs}))
 
     ars = inspect.getfullargspec(func)
     if len(ars.args) == 1:
