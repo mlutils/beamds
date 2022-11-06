@@ -12,7 +12,7 @@ import sys
 import warnings
 import argparse
 from collections import namedtuple
-from .utils import divide_chunks, collate_chunks
+from .utils import divide_chunks, collate_chunks, recursive_chunks
 from .multiprocessing import parallelize
 from collections import OrderedDict
 import os
@@ -22,25 +22,11 @@ import pyarrow as pa
 
 class Processor(object):
 
-    def __init__(self, *args, aggregator=False, track_steps=False, pipeline=False, **kwargs):
-        self.pipeline = pipeline
-        self.aggregator = aggregator
-        self.track_statistics = track_steps
-
-        if pipeline or aggregator:
-            self.transformers = OrderedDict()
-            for i, t in enumerate(args):
-                self.transformers[i] = t
-
-            for k, t in kwargs.items():
-                self.transformers[k] = t
+    def __init__(self, *args, root_path=None, **kwargs):
+        self.root_path = root_path
 
     @staticmethod
-    def pipeline(*ps):
-        return Processor(*ps, pipeline=True)
-
-    @staticmethod
-    def read(path, **kwargs):
+    def read(path, relative=True, **kwargs):
 
         _, ext = os.path.splitext(path)
 
@@ -76,49 +62,102 @@ class Processor(object):
 
         return x
 
-    def write(self, x, path):
-        raise NotImplementedError
+    def write(self, x, path, **kwargs):
+
+        _, ext = os.path.splitext(path)
+
+        if ext == 'fea':
+            x = pd.DataFrame(x)
+            x.to_feather(path, **kwargs)
+        elif ext == 'csv':
+            x = pd.DataFrame(x)
+            x.to_csv(path, **kwargs)
+        elif ext in ['pkl', 'pickle']:
+            pd.to_pickle(x, path, **kwargs)
+        elif ext == 'npy':
+            np.save(x, path, **kwargs)
+        elif ext == 'npz':
+            np.savez(x, path, **kwargs)
+        elif ext == 'parquet':
+            x = pd.DataFrame(x)
+            x.to_parquet(path, **kwargs)
+        elif ext == 'pt':
+            torch.save(x, path, **kwargs)
+        else:
+            raise ValueError("Unsupported extension type.")
+
+    # parquet: allow_truncated_timestamps=True, coerce_timestemps='us'
 
 
-    # def transform(self):
-    #
-    #     if self.pipeline:
-    #
-    #         for i, t in self.transformers.items():
-    #             x = t.transform(x)
-    #             if self.track_statistics:
-    #                 self.steps[i] = x
-    #         return x
+class Pipeline(Processor):
+
+    def __init__(self, *ts, track_steps=False, **kwts):
+
+        super(Pipeline, self).__init__()
+        self.track_steps = track_steps
+        self.steps = {}
+
+        self.transformers = OrderedDict()
+        for i, t in enumerate(ts):
+            self.transformers[i] = t
+
+        for k, t in kwts.items():
+            self.transformers[k] = t
+
+    def transform(self, x, **kwargs):
+
+        self.steps = []
+
+        for i, t in self.transformers.items():
+
+            kwargs_i = kwargs[i] if i in kwargs.keys() else {}
+            x = t.transform(x, **kwargs_i)
+
+            if self.track_steps:
+                self.steps[i] = x
+
+        return x
+
 
 class Reducer(Processor):
 
     def __init__(self, *args, **kwargs):
         super(Reducer, self).__init__(*args, **kwargs)
 
-    def reduce(self, *args, **kwargs):
-        return collate_chunks(list(args), dim=1)
+    def reduce(self, *xs, **kwargs):
+        return collate_chunks(list(xs), dim=1)
 
 
-class Transformer(object):
+class Transformer(Processor):
 
     def __init__(self, *args, n_jobs=0, chunksize=1, **kwargs):
 
+        super(Transformer, self).__init__(*args, **kwargs)
         self.transformers = None
         self.chunksize = chunksize
-        self.steps = {}
-
         self.n_jobs = n_jobs
         self.args = args
         self.kwargs = kwargs
 
-    def _transform(self, x=None, **argv):
+    def chunks(self, x):
+        for c in recursive_chunks(x, chunksize=self.chunksize):
+            yield c
+
+    def _transform(self, x, **kwargs):
         raise NotImplementedError
 
-    def fit(self, *args, **kwargs):
+    def fit(self, x, **kwargs):
+        return NotImplementedError
+
+    def collate(self, x, **kwargs):
         return NotImplementedError
 
     def transform(self, x, **kwargs):
-        return parallelize(self._transform, x, constant_kwargs=kwargs)
+
+        x = parallelize(self._transform, list(self.chunks(x)), constant_kwargs=kwargs,
+                           workers=self.n_jobs, method='apply_async')
+
+        return self.collate(x, **kwargs)
 
 
 

@@ -16,6 +16,7 @@ from loguru import logger
 from torchvision import transforms
 import hashlib
 from functools import partial
+import itertools
 
 
 # logger.remove(handler_id=0)
@@ -225,6 +226,70 @@ def get_notebook_name():
     return display_javascript(js)
 
 
+def recursive_chunks(x, chunksize=None, n_chunks=None, dim=0):
+
+    x_type = check_type(x)
+
+    try:
+        if x_type.minor == 'dict':
+            gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks, dim=dim) for k, v in x.items()}
+            for _ in itertools.count():
+                yield {k: next(v) for k, v in gen.items()}
+        elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
+
+            gen = [recursive_chunks(s, chunksize=chunksize, n_chunks=n_chunks, dim=dim) for s in x]
+            for _ in itertools.count():
+                yield [next(s) for s in gen]
+        elif x is None:
+            for _ in itertools.count():
+                yield None
+        else:
+            for c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, dim=dim):
+                yield c
+
+    except StopIteration:
+        return
+
+
+def recursive_size(x, mode='sum'):
+
+    x_type = check_type(x)
+
+    try:
+        if x_type.minor == 'dict':
+
+            if mode == 'sum':
+                return sum([recursive_size(v, mode=mode) for v in x.values()])
+            elif mode == 'max':
+                return max([recursive_size(v, mode=mode) for v in x.values()])
+            else:
+                raise NotImplementedError
+
+        elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
+
+            if mode == 'sum':
+                return sum([recursive_size(s, mode=mode) for s in x])
+            elif mode == 'max':
+                return max([recursive_size(s, mode=mode) for s in x])
+            else:
+                raise NotImplementedError
+
+        elif x is None:
+            return 0
+        else:
+            if x.minor == 'tensor':
+                return x.element_size() * x.nelement()
+            elif x.minor == 'numpy':
+                return x.size * x.itemsize
+            elif x.minor == 'pandas':
+                return np.sum(x.memory_usage(index=True, deep=True))
+            else:
+                return sys.getsizeof(x)
+
+    except StopIteration:
+        return
+
+
 def divide_chunks(x, chunksize=None, n_chunks=None, dim=0):
 
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
@@ -242,7 +307,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, dim=0):
             n_chunks = int(np.round(l / chunksize))
 
         if x_type.minor == 'tensor':
-            for c in torch.chunk(x, n_chunks, dim=dim):
+            for c in torch.tensor_split(x, n_chunks, dim=dim):
                 yield c
 
         elif x_type.minor in ['numpy', 'pandas']:
@@ -251,9 +316,8 @@ def divide_chunks(x, chunksize=None, n_chunks=None, dim=0):
                 yield c
 
         else:
-
-            for i in range(0, l, chunksize):
-                yield x[i:i + chunksize]
+            for i in np.array_split(np.arange(l), n_chunks):
+                yield x[i[0]:i[-1]+1]
 
     else:
 
