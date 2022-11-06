@@ -255,39 +255,35 @@ def recursive_size(x, mode='sum'):
 
     x_type = check_type(x)
 
-    try:
-        if x_type.minor == 'dict':
+    if x_type.minor == 'dict':
 
-            if mode == 'sum':
-                return sum([recursive_size(v, mode=mode) for v in x.values()])
-            elif mode == 'max':
-                return max([recursive_size(v, mode=mode) for v in x.values()])
-            else:
-                raise NotImplementedError
-
-        elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
-
-            if mode == 'sum':
-                return sum([recursive_size(s, mode=mode) for s in x])
-            elif mode == 'max':
-                return max([recursive_size(s, mode=mode) for s in x])
-            else:
-                raise NotImplementedError
-
-        elif x is None:
-            return 0
+        if mode == 'sum':
+            return sum([recursive_size(v, mode=mode) for v in x.values()])
+        elif mode == 'max':
+            return max([recursive_size(v, mode=mode) for v in x.values()])
         else:
-            if x.minor == 'tensor':
-                return x.element_size() * x.nelement()
-            elif x.minor == 'numpy':
-                return x.size * x.itemsize
-            elif x.minor == 'pandas':
-                return np.sum(x.memory_usage(index=True, deep=True))
-            else:
-                return sys.getsizeof(x)
+            raise NotImplementedError
 
-    except StopIteration:
-        return
+    elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
+
+        if mode == 'sum':
+            return sum([recursive_size(s, mode=mode) for s in x])
+        elif mode == 'max':
+            return max([recursive_size(s, mode=mode) for s in x])
+        else:
+            raise NotImplementedError
+
+    elif x is None:
+        return 0
+    else:
+        if x.minor == 'tensor':
+            return x.element_size() * x.nelement()
+        elif x.minor == 'numpy':
+            return x.size * x.itemsize
+        elif x.minor == 'pandas':
+            return np.sum(x.memory_usage(index=True, deep=True))
+        else:
+            return sys.getsizeof(x)
 
 
 def divide_chunks(x, chunksize=None, n_chunks=None, dim=0):

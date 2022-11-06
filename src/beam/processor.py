@@ -22,11 +22,14 @@ import pyarrow as pa
 
 class Processor(object):
 
-    def __init__(self, *args, root_path=None, **kwargs):
-        self.root_path = root_path
+    def __init__(self, *args, root_dir=None, path_to_data=None, **kwargs):
+        self.root_dir = root_dir
+        self.path_to_data = path_to_data
 
-    @staticmethod
-    def read(path, relative=True, **kwargs):
+    def read(self, path, relative=True, **kwargs):
+
+        if relative:
+            path = os.path.join(self.root_dir, path)
 
         _, ext = os.path.splitext(path)
 
@@ -62,7 +65,10 @@ class Processor(object):
 
         return x
 
-    def write(self, x, path, **kwargs):
+    def write(self, x, path, relative=True, **kwargs):
+
+        if relative:
+            path = os.path.join(self.root_path, path)
 
         _, ext = os.path.splitext(path)
 

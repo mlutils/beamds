@@ -47,6 +47,8 @@ def get_beam_parser():
     parser.add_argument('--root-dir', type=str, default=os.path.join(os.path.expanduser('~'), 'beam_projects'),
                          help='Root directory for Logs and results')
 
+    parser.add_argument('--path-to-data', type=str, default=None, help='Where the dataset is located')
+
     boolean_feature(parser, "reload", False, "Load saved model")
     parser.add_argument('--resume', type=int, default=-1,
                         help='Resume experiment number, set -1 for last experiment: active when reload=True')
