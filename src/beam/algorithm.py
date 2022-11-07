@@ -16,6 +16,7 @@ from .experiment import Experiment
 from timeit import default_timer as timer
 from ray import tune
 
+
 class Algorithm(object):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None):
@@ -133,7 +134,7 @@ class Algorithm(object):
         else:
             if isinstance(networks, nn.Module):
                 networks = {name: networks}
-            elif check_type(networks).major == 'dict':
+            elif check_type(networks).minor == 'dict':
                 pass
             else:
                 raise NotImplementedError("Network type is unsupported")

@@ -42,13 +42,13 @@ def stack_inference_results(results, batch_size=None):
     for n, res in results.items():
         for k, v in res.items():
             v_type = check_type(v)
-            if v_type.major == 'array' and v_type.minor == 'list' and v_type.element != 'array':
+            if v_type.major == 'container' and v_type.minor == 'list':
                 vi_type = check_type(v[0])
                 if vi_type.minor == 'numpy':
                     results[n][k] = np.stack(results[n][k])
                 elif vi_type.minor == 'tensor':
                     results[n][k] = torch.stack(results[n][k])
-            elif v_type.major == 'array' and v_type.element == 'array':
+            elif v_type.major in ['array', 'container'] and v_type.element == 'array':
                 if v_type.minor in ['tensor', 'numpy', 'list']:
 
                     if v_type.minor == 'tensor':
@@ -328,7 +328,28 @@ def divide_chunks(x, chunksize=None, n_chunks=None, dim=0):
         yield c
 
 
-def collate_chunks(x, dim=0):
+def recursive_merge(dfs, method='tree', **kwargs):
+    if len(dfs) == 1:
+        return dfs[0]
+    if len(dfs) == 2:
+        return pd.merge(dfs[0], dfs[1], **kwargs)
+    if method == 'series':
+        return recursive_merge([dfs[0], recursive_merge(dfs[1:], method='series', **kwargs)], method='series', **kwargs)
+    if method == 'tree':
+        return recursive_merge([recursive_merge(dfs[:len(dfs)//2], method='tree', **kwargs),
+                                recursive_merge(dfs[len(dfs)//2:], method='tree', **kwargs)], method='tree', **kwargs)
+    raise ValueError('Unknown method type')
+
+
+def iter_container(x):
+    if hasattr(x, 'items'):
+        return x.items()
+    return enumerate(x)
+
+
+def collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
+
+    x = list(xs)
 
     x_type = check_type(x[0], check_element=False)
     if (x_type.major not in ['array', 'other']) or (dim == 1 and x_type.minor not in ['tensor', 'numpy', 'pandas']):
@@ -341,8 +362,12 @@ def collate_chunks(x, dim=0):
         return np.concatenate(x, axis=dim)
 
     elif x_type.minor == 'pandas':
-        return pd.concat(x, axis=dim)
-
+        if on is None or dim == 0:
+            return pd.concat(x, axis=dim)
+        elif on == 'index':
+            return recursive_merge(x, method=method, how=how, left_index=True, right_index=True)
+        else:
+            return recursive_merge(x, method=method, how=how, on=on)
     else:
 
         xc = []
@@ -430,8 +455,8 @@ def check_type(x, check_minor=True, check_element=True):
 
     <major type>, <minor type>, <elements type>
 
-    major type: array, scalar, dict, none, other
-    minor type: tensor, numpy, pandas, native, list, tuple, none
+    major type: array, scalar, container, none, other
+    minor type: dict, tensor, numpy, pandas, native, list, tuple, none
     elements type: int, float, str, object, empty, none, unknown
 
     '''
@@ -445,7 +470,7 @@ def check_type(x, check_minor=True, check_element=True):
         elt = check_element_type(x) if check_element else 'na'
 
     elif isinstance(x, dict):
-        mjt = 'dict'
+        mjt = 'container'
         mit = 'dict'
         elt = check_element_type(next(iter(x.values()))) if check_element else 'na'
 
@@ -466,7 +491,16 @@ def check_type(x, check_minor=True, check_element=True):
                     else:
                         elt = 'empty'
                 else:
+                    if not np.isscalar(x[0]):
+                        mjt = 'container'
                     elt = 'na'
+
+                if elt == 'empty':
+                    if not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
+                        mjt = 'container'
+                elif elt == 'array':
+                    mjt = 'container'
+
             elif mit in ['numpy', 'tensor', 'pandas']:
                 if mit == 'pandas':
                     dt = str(x.values.dtype)

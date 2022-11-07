@@ -58,6 +58,9 @@ RUN conda install -y -c conda-forge faiss-gpu
 # install DGL from source
 RUN bash /workspace/install/install_dgl.sh
 
+# install RAPID framework
+RUN bash /workspace/install/rapid_install.sh
+
 # add the beam message
 
 RUN cp /workspace/install/motd /etc/motd

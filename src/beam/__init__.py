@@ -6,7 +6,7 @@ from .experiment import Experiment, beam_algorithm_generator
 from .study import Study
 from .utils import setup, cleanup, check_type, slice_to_index, beam_logger, beam_device, as_tensor, \
     batch_augmentation, as_numpy
-from .multiprocessing import parallelize
+from .parallel import parallelize
 from .utils import tqdm_beam as tqdm
 from .algorithm import Algorithm
 from .model import LinearNet, PackedSet, BetterEmbedding, SplineEmbedding, copy_network, reset_network

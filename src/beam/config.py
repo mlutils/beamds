@@ -279,7 +279,7 @@ def beam_arguments(*args, **kwargs):
 
         ar_type = check_type(ar)
 
-        if ar_type.major == 'dict':
+        if ar_type.minor == 'dict':
             args_dict.append(ar)
         elif ar_type.major == 'scalar' and ar_type.element == 'str':
             args_str.append(ar)
