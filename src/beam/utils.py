@@ -226,25 +226,28 @@ def get_notebook_name():
     return display_javascript(js)
 
 
-def recursive_chunks(x, chunksize=None, n_chunks=None, dim=0):
+def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
 
     x_type = check_type(x)
 
     try:
         if x_type.minor == 'dict':
-            gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks, dim=dim) for k, v in x.items()}
+            gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks,
+                                       partition=partition, dim=dim) for k, v in x.items()}
             for _ in itertools.count():
+                # d = {k: next(v) for k, v in gen.items()}
                 yield {k: next(v) for k, v in gen.items()}
+
         elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
 
-            gen = [recursive_chunks(s, chunksize=chunksize, n_chunks=n_chunks, dim=dim) for s in x]
+            gen = [recursive_chunks(s, chunksize=chunksize, n_chunks=n_chunks, partition=partition, dim=dim) for s in x]
             for _ in itertools.count():
                 yield [next(s) for s in gen]
         elif x is None:
             for _ in itertools.count():
                 yield None
         else:
-            for c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, dim=dim):
+            for c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition, dim=dim):
                 yield c
 
     except StopIteration:

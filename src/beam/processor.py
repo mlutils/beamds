@@ -124,8 +124,11 @@ class BeamData(object):
         else:
             raise ValueError("Unsupported extension type.")
 
-    def write(self, x, path=None, root=True, relative=True, compress=None, chunksize=int(1e9),
+    def write(self, x=None, path=None, root=True, relative=True, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
+
+        if x is None:
+            x = self.data
 
         if path is None:
             path = self.root_path
@@ -141,11 +144,13 @@ class BeamData(object):
             elif n_chunks is None:
                 n_chunks = max(int(np.round(recursive_len(x) / chunklen)), 1)
 
-        if os.path.isfile(path):
-            os.remove(path)
-        elif os.path.isdir(path):
-            shutil.rmtree(path)
-            # os.rmdir(path)
+            if os.path.isfile(path):
+                os.remove(path)
+            elif os.path.isdir(path):
+                shutil.rmtree(path)
+
+            os.makedirs(path, exist_ok=True)
+            os.rmdir(path)
 
         x_type = check_type(x)
 
@@ -264,7 +269,7 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, n_jobs=0, n_chunks=None, chunksize=None, **kwargs):
+    def __init__(self, *args, state=None, n_jobs=0, n_chunks=None, chunksize=None, **kwargs):
 
         super(Transformer, self).__init__(*args, **kwargs)
 
@@ -275,7 +280,7 @@ class Transformer(Processor):
         self.chunksize = chunksize
         self.n_chunks = n_chunks
         self.n_jobs = n_jobs
-        self.args = args
+        self.state = state
         self.kwargs = kwargs
 
     def chunks(self, x):
