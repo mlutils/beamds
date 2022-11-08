@@ -276,17 +276,19 @@ def recursive_size(x, mode='sum'):
     elif x is None:
         return 0
     else:
-        if x.minor == 'tensor':
+        if x_type.minor == 'tensor':
             return x.element_size() * x.nelement()
-        elif x.minor == 'numpy':
+        elif x_type.minor == 'numpy':
             return x.size * x.itemsize
-        elif x.minor == 'pandas':
+        elif x_type.minor == 'pandas':
             return np.sum(x.memory_usage(index=True, deep=True))
         else:
             return sys.getsizeof(x)
 
 
-def divide_chunks(x, chunksize=None, n_chunks=None, dim=0):
+def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
+
+    #TODO: add divide by partition parameter
 
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = check_type(x, check_element=False)
@@ -305,6 +307,15 @@ def divide_chunks(x, chunksize=None, n_chunks=None, dim=0):
         if x_type.minor == 'tensor':
             for c in torch.tensor_split(x, n_chunks, dim=dim):
                 yield c
+
+        # elif x_type.minor == 'pandas' and partition != None:
+        #
+        #     grouped = x.groupby(partition)
+        #     groups = {}
+        #     for k, g in grouped:
+        #         groups[k] = g
+        #
+        #     return groups
 
         elif x_type.minor in ['numpy', 'pandas']:
 
@@ -830,4 +841,3 @@ def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=
         else:
             for xi in iter_x:
                 yield xi
-

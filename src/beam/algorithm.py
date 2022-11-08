@@ -257,7 +257,7 @@ class Algorithm(object):
     # a setter function
     @experiment.setter
     def experiment(self, experiment):
-        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root}")
+        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root_path}")
         self.trial = experiment.trial
         self._experiment = experiment
 

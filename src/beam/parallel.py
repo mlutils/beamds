@@ -37,15 +37,15 @@ def parallelize(func, args_list, kwargs_list=None, constant_kwargs=None, chunksi
     if workers == 0:
 
         results = []
-        for args_i, kwargs_i in zip(args_list, kwargs_list):
+        for args_i, kwargs_i in progressbar(zip(args_list, kwargs_list)):
             results.append(func(*args_i, **{**kwargs_i, **constant_kwargs}))
 
     else:
 
-        ars = inspect.getfullargspec(func)
-        if len(ars.args) == 1:
-            if (type(args_list[0]) is tuple and len(args_list[0]) != len(ars.args)) or type(args_list[0]) is not tuple:
-                args_list = [(ai,) for ai in args_list]
+        # ars = inspect.getfullargspec(func)
+        # if len(ars.args) == 1:
+        #     if (type(args_list[0]) is tuple and len(args_list[0]) != len(ars.args)) or type(args_list[0]) is not tuple:
+        #         args_list = [(ai,) for ai in args_list]
 
         if method == 'process_map' or method == 'thread_map':
 

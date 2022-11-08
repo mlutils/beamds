@@ -21,20 +21,35 @@ import fastavro
 import pyarrow as pa
 import shutil
 import pathlib
+from argparse import Namespace
 
 
 class Processor(object):
 
-    def __init__(self, *args, root_dir=None, path_to_data=None, **kwargs):
-        self.root_dir = root_dir
-        self.path_to_data = path_to_data
+    def __init__(self, *args, **kwargs):
+        pass
 
-    def read_file(self, path=None, relative=True, **kwargs):
 
-        if path is None:
-            path = self.root_dir
-        elif relative:
-            path = os.path.join(self.root_dir, path)
+class BeamData(object):
+
+    feather_index_mark = "index:"
+
+    def __init__(self, *args, path=None, **kwargs):
+        self.root_path = path
+        if len(args) == 0:
+            arg_type = check_type(args[0])
+            if arg_type.major == 'container':
+                self.data = args[0]
+        else:
+            assert len(args) * len(kwargs) == 0, "Please use either args or kwargs"
+
+        if len(args):
+            self.data = list(args)
+        else:
+            self.data = kwargs
+
+    @staticmethod
+    def read_file(path, **kwargs):
 
         _, ext = os.path.splitext(path)
 
@@ -43,8 +58,8 @@ class Processor(object):
 
             c = x.columns
             for ci in c:
-                if '/feather_index' in c:
-                    index_name = ci.split('/feather_index')[0]
+                if BeamData.feather_index_mark in c:
+                    index_name = ci.lstrip(BeamData.feather_index_mark)
                     x = x.rename(columns={ci: index_name})
                     x = x.set_index(index_name)
 
@@ -78,19 +93,17 @@ class Processor(object):
 
         return x
 
-    def write_file(self, x, path, relative=True, **kwargs):
-
-        if relative:
-            path = os.path.join(self.root_dir, path)
+    @staticmethod
+    def write_file(x, path, **kwargs):
 
         _, ext = os.path.splitext(path)
 
         if ext == '.fea':
-            x = pd.DataFrame(x)
 
+            x = pd.DataFrame(x)
             index_name = x.index.name if x.index.name is not None else 'index'
             df = x.reset_index()
-            new_name = index_name + '/feather_index'
+            new_name = BeamData.feather_index_mark + index_name
             x = df.rename(columns={index_name: new_name})
 
             x.to_feather(path, **kwargs)
@@ -111,40 +124,46 @@ class Processor(object):
         else:
             raise ValueError("Unsupported extension type.")
 
+    def write(self, x, path=None, root=True, relative=True, compress=None, chunksize=int(1e9),
+              chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
 
-
-
-    def write(self, x, path, root=True, relative=True, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None,  **kwargs):
+        if path is None:
+            path = self.root_path
+        elif relative:
+            path = os.path.join(self.root_path, path)
 
         if root:
             if (n_chunks is None) and (chunklen is None):
                 max_size = recursive_size(x, mode='max')
-                n_chunks = int(np.round(max_size / chunksize))
+                n_chunks = max(int(np.round(max_size / chunksize)), 1)
             elif (n_chunks is not None) and (chunklen is not None):
                 logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
             elif n_chunks is None:
-                n_chunks = int(np.round(recursive_len(x) / chunklen))
-
-        if relative:
-            path = os.path.join(self.root_dir, path)
+                n_chunks = max(int(np.round(recursive_len(x) / chunklen)), 1)
 
         if os.path.isfile(path):
             os.remove(path)
         elif os.path.isdir(path):
             shutil.rmtree(path)
-            os.rmdir(path)
+            # os.rmdir(path)
 
         x_type = check_type(x)
 
         if x_type.major == 'container':
             os.mkdir(path)
-            for k, v in iter_container(x):
-                self.write(k, os.path.join(path, str(k)), relative=relative, root=False, compress=compress,  **kwargs)
-        else:
 
-            #TODO: divide into chunks before saving
-            x = divide_chunks(x, c)
+            file_type_type = check_type(file_type)
+
+            for k, v in iter_container(x):
+
+                if file_type_type.major == 'container':
+                    ft = file_type[k]
+                else:
+                    ft = file_type
+
+                self.write(v, os.path.join(path, str(k)), relative=relative, n_chunks=n_chunks,
+                           root=False, compress=compress, file_type=ft, **kwargs)
+        else:
 
             if partition is not None and x_type.minor == 'pandas':
                 order = ['.parquet', '.fea', '.pkl']
@@ -155,40 +174,53 @@ class Processor(object):
             else:
                 order = ['.pkl']
 
-            path = pathlib.Path(path)
-            for ext in order:
-                file_path = path.with_suffix(ext)
-                try:
-                    kwargs = {}
-                    if ext == '.parquet':
-                        if compress is False:
-                            kwargs['compression'] = None
+            if file_type is not None:
+                order.insert(file_type, 0)
 
-                        self.write_file(x, file_path, partition=partition, coerce_timestamps='us',
-                                        allow_truncated_timestamps=True, **kwargs)
-                    elif ext == '.fea':
-                        if compress is False:
-                            kwargs['compression'] = 'uncompressed'
-                        self.write_file(x, file_path, **kwargs)
+            x = list(divide_chunks(x, n_chunks=n_chunks))
 
-                    elif ext == '.pkl':
-                        if compress is False:
-                            kwargs['compression'] = 'none'
-                        self.write_file(x, file_path, **kwargs)
+            if len(x) > 1:
+                os.mkdir(path)
 
-                    elif ext == '.pt':
-                        self.write_file(x, file_path, **kwargs)
-                    else:
-                        raise NotImplementedError
+            for i, xi in enumerate(x):
 
-                    error = False
+                if len(x) > 1:
+                    path_i = pathlib.Path(os.path.join(path, f"{i:06}"))
+                else:
+                    path_i = pathlib.Path(path)
 
-                except:
-                    logger.warning(f"Failed to write file: {file_path.name}. Trying with the next file extension")
-                    error = True
+                for ext in order:
+                    file_path = path_i.with_suffix(ext)
+                    try:
+                        kwargs = {}
+                        if ext == '.parquet':
+                            if compress is False:
+                                kwargs['compression'] = None
+                            self.write_file(xi, file_path, partition=partition, coerce_timestamps='us',
+                                            allow_truncated_timestamps=True, **kwargs)
+                        elif ext == '.fea':
+                            if compress is False:
+                                kwargs['compression'] = 'uncompressed'
+                            self.write_file(xi, file_path, **kwargs)
 
-            if error:
-                logger.error(f"Could not write file: {path.name}.")
+                        elif ext == '.pkl':
+                            if compress is False:
+                                kwargs['compression'] = 'none'
+                            self.write_file(xi, file_path, **kwargs)
+
+                        else:
+                            self.write_file(xi, file_path, **kwargs)
+
+                        error = False
+                        order = [ext]
+                        break
+
+                    except:
+                        logger.warning(f"Failed to write file: {file_path.name}. Trying with the next file extension")
+                        error = True
+
+                if error:
+                    logger.error(f"Could not write file: {path_i.name}.")
 
 
 class Pipeline(Processor):
@@ -232,9 +264,13 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, n_jobs=0, n_chunks=1, chunksize=None, **kwargs):
+    def __init__(self, *args, n_jobs=0, n_chunks=None, chunksize=None, **kwargs):
 
         super(Transformer, self).__init__(*args, **kwargs)
+
+        if (n_chunks is None) and (chunksize is None):
+            n_chunks = 1
+
         self.transformers = None
         self.chunksize = chunksize
         self.n_chunks = n_chunks
@@ -246,7 +282,7 @@ class Transformer(Processor):
         for c in recursive_chunks(x, chunksize=self.chunksize, n_chunks=self.n_chunks):
             yield c
 
-    def _transform(self, x, **kwargs):
+    def _transform(self, x, index=None, **kwargs):
         raise NotImplementedError
 
     def fit(self, x, **kwargs):
@@ -257,11 +293,15 @@ class Transformer(Processor):
         return self.transform(x, **kwargs)
 
     def collate(self, x, **kwargs):
-        return NotImplementedError
+        return collate_chunks(*x, dim=0, **kwargs)
 
     def transform(self, x, **kwargs):
 
-        x = parallelize(self._transform, list(self.chunks(x)), constant_kwargs=kwargs,
+        chunks = list(self.chunks(x))
+        chunks = [(c,) for c in chunks]
+        kwargs_list = [{'index': i} for i in range(len(chunks))]
+
+        x = parallelize(self._transform, chunks, constant_kwargs=kwargs, kwargs_list=kwargs_list,
                            workers=self.n_jobs, method='apply_async')
 
         return self.collate(x, **kwargs)

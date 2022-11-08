@@ -92,7 +92,7 @@ class Study(object):
         if print_hyperparameters:
             print_beam_hyperparameters(hparams)
 
-        self.ray_logs = os.path.join(self.hparams.root_dir, 'ray_results', self.hparams.project_name,
+        self.ray_logs = os.path.join(self.hparams.root_path, 'ray_results', self.hparams.project_name,
                                      self.hparams.algorithm, self.hparams.identifier)
 
         self.experiments_tracker = []

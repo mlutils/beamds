@@ -1,0 +1,44 @@
+
+from examples.example_utils import add_beam_to_path
+add_beam_to_path()
+
+from src.beam.processor import BeamData, Transformer
+import numpy as np
+import pandas as pd
+
+import string
+import random
+
+def rand_column(n=16):
+    letters = string.ascii_letters
+    return ''.join(random.choice(letters) for i in range(n))
+
+
+class MyTransformer(Transformer):
+
+    def __init__(self, *args, n_jobs=0, n_chunks=None, chunksize=None, **kwargs):
+        super().__init__(*args, n_jobs=n_jobs, n_chunks=n_chunks, chunksize=chunksize, **kwargs)
+
+    def _transform(self, x, index=None, **kwargs):
+        print('xxx')
+        return len(x)
+
+
+
+if __name__ == '__main__':
+
+    n = 100
+    m = 100
+    k = 4
+
+    dfs = {rand_column(): pd.DataFrame(index=np.random.permutation(np.arange(n)),
+                        data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)}
+
+    # path = '/tmp/my_data'
+    # bd = BeamData(dfs, path=path)
+    # bd.write(dfs)
+
+    tf = MyTransformer(chunksize=2, n_jobs=2)
+    y = tf.transform(dfs)
+
+    print("done")

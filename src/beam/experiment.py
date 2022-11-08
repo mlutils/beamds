@@ -179,7 +179,7 @@ class Experiment(object):
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.hparams.device = beam_device(self.hparams.device)
 
-        self.base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name,
+        self.base_dir = os.path.join(self.hparams.root_path, self.hparams.project_name,
                                      self.hparams.algorithm, self.hparams.identifier)
         os.makedirs(self.base_dir, exist_ok=True)
 
@@ -607,9 +607,9 @@ class Experiment(object):
 
     def normalize_experiment_path(self, path, level=0):
 
-        normal_path = [self.hparams.root_dir, self.hparams.project_name,
+        normal_path = [self.hparams.root_path, self.hparams.project_name,
                        self.hparams.algorithm, self.hparams.identifier]
-        pd = path_depth(self.hparams.root_dir)
+        pd = path_depth(self.hparams.root_path)
 
         return os.path.join(*normal_path[:len(normal_path)-pd-level], path)
 
@@ -692,13 +692,13 @@ class Experiment(object):
         suffix = 'hparams' if hparams else 'logs'
 
         if add_all_of_same_project:
-            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name)
+            base_dir = os.path.join(self.hparams.root_path, self.hparams.project_name)
             depth = 3
         elif add_all_of_same_algorithm:
-            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm)
+            base_dir = os.path.join(self.hparams.root_path, self.hparams.project_name, self.hparams.algorithm)
             depth = 2
         elif add_all_of_same_identifier:
-            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
+            base_dir = os.path.join(self.hparams.root_path, self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
             depth = 1
         else:
             base_dir = self.root
