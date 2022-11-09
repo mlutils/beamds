@@ -17,7 +17,7 @@ from torchvision import transforms
 import hashlib
 from functools import partial
 import itertools
-
+import scipy
 
 # logger.remove(handler_id=0)
 logger.remove()
@@ -226,29 +226,80 @@ def get_notebook_name():
     return display_javascript(js)
 
 
-def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
+def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
+
+    keys = []
+    values = []
+    for k, v in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition, dim=dim):
+        keys.append(k)
+        values.append(v)
+
+    if not is_arange(keys):
+        values = dict(zip(keys, values))
+
+    return values
+
+
+def is_arange(x):
+    arr_x = np.array(x)
+    return np.issubdtype(arr_x.dtype, np.number) and (np.abs(np.arange(len(x)) - arr_x).sum() == 0)
+
+
+def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
 
     x_type = check_type(x)
 
     try:
         if x_type.minor == 'dict':
             gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks,
-                                       partition=partition, dim=dim) for k, v in x.items()}
-            for _ in itertools.count():
+                                       partition=partition, squeeze=squeeze, dim=dim) for k, v in x.items()}
+
+            for i in itertools.count():
                 # d = {k: next(v) for k, v in gen.items()}
-                yield {k: next(v) for k, v in gen.items()}
+                d = {}
+                for k, v in gen.items():
+                    i, v = next(v)
+                    d[k] = v
+
+                yield i, d
+
+                # TODO: groups with varying size
+                # keys = {}
+                # d = {}
+                # for g, v in gen.items():
+                #     try:
+                #         k, v = next(v)
+                #     except:
+                #         pass
+                #
+                #     keys[g] = k
+                #
+                # smallest_key = min(keys)
+                #
+                # yield i, d
+                #
+                # yield {k: next(v) for k, v in gen.items()}
 
         elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
 
-            gen = [recursive_chunks(s, chunksize=chunksize, n_chunks=n_chunks, partition=partition, dim=dim) for s in x]
-            for _ in itertools.count():
-                yield [next(s) for s in gen]
+            gen = [recursive_chunks(s, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
+                                    squeeze=squeeze, dim=dim) for s in x]
+            for i in itertools.count():
+                # yield [next(s) for s in gen]
+                l = []
+                for k, s in enumerate(gen):
+                    i, s = next(s)
+                    l.append(s)
+
+                yield i, l
+
         elif x is None:
-            for _ in itertools.count():
-                yield None
+            for i in itertools.count():
+                yield i, None
         else:
-            for c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition, dim=dim):
-                yield c
+            for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
+                                      squeeze=squeeze, dim=dim):
+                yield k, c
 
     except StopIteration:
         return
@@ -281,15 +332,15 @@ def recursive_size(x, mode='sum'):
     else:
         if x_type.minor == 'tensor':
             return x.element_size() * x.nelement()
-        elif x_type.minor == 'numpy':
-            return x.size * x.itemsize
+        elif x_type.minor in ['numpy', 'scipy_sparse']:
+            return x.size * x.dtype.itemsize
         elif x_type.minor == 'pandas':
             return np.sum(x.memory_usage(index=True, deep=True))
         else:
             return sys.getsizeof(x)
 
 
-def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
+def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
 
     #TODO: add divide by partition parameter
 
@@ -308,38 +359,50 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
             n_chunks = int(np.round(l / chunksize))
 
         if x_type.minor == 'tensor':
-            for c in torch.tensor_split(x, n_chunks, dim=dim):
-                yield c
+            for i, c in enumerate(torch.tensor_split(x, n_chunks, dim=dim)):
+                if squeeze and len(c) == 1:
+                    c = c.squeeze()
 
-        # elif x_type.minor == 'pandas' and partition != None:
-        #
-        #     grouped = x.groupby(partition)
-        #     groups = {}
-        #     for k, g in grouped:
-        #         groups[k] = g
-        #
-        #     return groups
+                yield i, c
+
+        elif x_type.minor == 'pandas' and partition != None:
+
+            grouped = x.groupby(partition, sort=True)
+            for k, g in grouped:
+                yield k, g
 
         elif x_type.minor in ['numpy', 'pandas']:
 
-            for c in np.array_split(x, n_chunks, axis=dim):
-                yield c
+            for i, c in enumerate(np.array_split(x, n_chunks, axis=dim)):
+                if squeeze and len(c) == 1:
+                    c = c.squeeze()
+                yield i, c
 
         else:
-            for i in np.array_split(np.arange(l), n_chunks):
-                yield x[i[0]:i[-1]+1]
+            for j, i in enumerate(np.array_split(np.arange(l), n_chunks)):
+
+                v = x[i[0]:i[-1]+1]
+                if squeeze and len(v) == 1:
+                    v = v[0]
+                yield j, v
 
     else:
 
         c = []
-        for xi in iter(x):
+        i = 0
+        for i, xi in enumerate(iter(x)):
 
             c.append(xi)
             if len(c) == chunksize:
-                yield c
+
+                if squeeze and len(c) == 1:
+                    c = c[0]
+                yield i, c
+
                 c = []
 
-        yield c
+        i = i+1 if i > 0 else i
+        yield i, c
 
 
 def recursive_merge(dfs, method='tree', **kwargs):
@@ -374,6 +437,12 @@ def collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
 
     elif x_type.minor == 'numpy':
         return np.concatenate(x, axis=dim)
+
+    elif x_type.minor == 'scipy_sparse':
+
+        if dim == 0:
+            return scipy.sparse.vstack(x)
+        return scipy.sparse.hstack(x)
 
     elif x_type.minor == 'pandas':
         if on is None or dim == 0:
@@ -449,6 +518,8 @@ def check_minor_type(x):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
+    if scipy.sparse.issparse(x):
+        return 'scipy_sparse'
     if isinstance(x, dict):
         return 'dict'
     if isinstance(x, list):
@@ -469,8 +540,8 @@ def check_type(x, check_minor=True, check_element=True):
 
     <major type>, <minor type>, <elements type>
 
-    major type: array, scalar, container, none, other
-    minor type: dict, tensor, numpy, pandas, native, list, tuple, none
+    major type: container, array, scalar, none, other
+    minor type: dict, list, tuple, tensor, numpy, pandas, scipy_sparse, native, none
     elements type: int, float, str, object, empty, none, unknown
 
     '''
@@ -486,7 +557,14 @@ def check_type(x, check_minor=True, check_element=True):
     elif isinstance(x, dict):
         mjt = 'container'
         mit = 'dict'
-        elt = check_element_type(next(iter(x.values()))) if check_element else 'na'
+
+        if check_element:
+            if len(x):
+                elt = check_element_type(next(iter(x.values())))
+            else:
+                elt = 'empty'
+        else:
+            elt = 'na'
 
     elif x is None:
         mjt = 'none'

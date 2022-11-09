@@ -19,7 +19,7 @@ class MyTransformer(Transformer):
     def __init__(self, *args, n_jobs=0, n_chunks=None, chunksize=None, **kwargs):
         super().__init__(*args, n_jobs=n_jobs, n_chunks=n_chunks, chunksize=chunksize, **kwargs)
 
-    def _transform(self, x, index=None, **kwargs):
+    def _transform(self, x, key=None, is_chunk=True, **kwargs):
         print('xxx')
         return len(x)
 
@@ -31,14 +31,20 @@ if __name__ == '__main__':
     m = 100
     k = 4
 
-    dfs = {rand_column(): pd.DataFrame(index=np.random.permutation(np.arange(n)),
-                        data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)}
+    # dfs = {rand_column(): pd.DataFrame(index=np.random.permutation(np.arange(n)),
+    #                     data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)}
+
+    dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)), data=np.random.randn(n, m),
+                       columns=[rand_column() for _ in range(m)])
+
+    # dfs = [1, 2, 3]
 
     # path = '/tmp/my_data'
     # bd = BeamData(dfs, path=path)
     # bd.write(dfs)
 
-    tf = MyTransformer(chunksize=2, n_jobs=2)
+    # tf = MyTransformer(chunksize=1, n_jobs=0)
+    tf = MyTransformer(n_chunks=2, n_jobs=0)
     y = tf.transform(dfs)
 
     print("done")

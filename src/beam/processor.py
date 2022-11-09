@@ -13,7 +13,7 @@ import warnings
 import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size, recursive_len
+    recursive_size, recursive_len, is_arange
 from .parallel import parallelize
 from collections import OrderedDict
 import os
@@ -22,6 +22,7 @@ import pyarrow as pa
 import shutil
 import pathlib
 from argparse import Namespace
+import scipy
 
 
 class Processor(object):
@@ -68,7 +69,9 @@ class BeamData(object):
         elif ext in ['.pkl', '.pickle']:
             x = pd.read_pickle(path, **kwargs)
         elif ext in ['.npy', '.npz']:
-            x = np.load(path, **kwargs)
+            x = np.load(path, allow_pickle=True, **kwargs)
+        elif ext == '.scipy_npz':
+            x = scipy.sparse.load_npz(path)
         elif ext == '.parquet':
             x = pd.read_parquet(path, **kwargs)
         elif ext == '.pt':
@@ -94,7 +97,13 @@ class BeamData(object):
         return x
 
     @staticmethod
-    def write_file(x, path, **kwargs):
+    def write_file(x, path, overwrite=True, **kwargs):
+
+        if (not overwrite) and (os.path.isdir(path) or os.path.isfile(path)):
+            logger.error(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
+            return
+
+        BeamData.clean_path(path)
 
         _, ext = os.path.splitext(path)
 
@@ -113,9 +122,12 @@ class BeamData(object):
         elif ext in ['.pkl', '.pickle']:
             pd.to_pickle(x, path, **kwargs)
         elif ext == '.npy':
-            np.save(x, path, **kwargs)
+            np.save(path, x, **kwargs)
         elif ext == '.npz':
-            np.savez(x, path, **kwargs)
+            np.savez(path, x, **kwargs)
+        elif ext == '.scipy_npz':
+            scipy.sparse.save_npz(path, x, **kwargs)
+            os.rename(f'{path}.npz', path)
         elif ext == '.parquet':
             x = pd.DataFrame(x)
             x.to_parquet(path, **kwargs)
@@ -123,6 +135,37 @@ class BeamData(object):
             torch.save(x, path, **kwargs)
         else:
             raise ValueError("Unsupported extension type.")
+
+    @staticmethod
+    def clean_path(path):
+        if os.path.isfile(path):
+            os.remove(path)
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+
+        os.makedirs(path, exist_ok=True)
+        os.rmdir(path)
+
+    def read(self, path=None, relative=True, **kwargs):
+
+        if path is None:
+            path = self.root_path
+        elif relative:
+            path = os.path.join(self.root_path, path)
+
+        if os.path.isfile(path):
+            return BeamData.read_file(path, **kwargs)
+        else:
+            values = []
+            keys = []
+            for p in os.listdir(path):
+                values.append(p)
+                keys.append(BeamData.read_file(os.path.join(path, p), **kwargs))
+
+            if not is_arange(keys):
+                values = dict(zip(keys, values))
+            return values
+
 
     def write(self, x=None, path=None, root=True, relative=True, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
@@ -144,13 +187,7 @@ class BeamData(object):
             elif n_chunks is None:
                 n_chunks = max(int(np.round(recursive_len(x) / chunklen)), 1)
 
-            if os.path.isfile(path):
-                os.remove(path)
-            elif os.path.isdir(path):
-                shutil.rmtree(path)
-
-            os.makedirs(path, exist_ok=True)
-            os.rmdir(path)
+            BeamData.clean_path(path)
 
         x_type = check_type(x)
 
@@ -174,6 +211,8 @@ class BeamData(object):
                 order = ['.parquet', '.fea', '.pkl']
             elif x_type.minor in ['pandas', 'numpy']:
                 order = ['.fea', '.parquet', '.pkl']
+            elif x_type.minor == 'scipy_sparse':
+                order = ['scipy_npz', 'npy', '.pkl']
             elif x_type.minor == 'tensor':
                 order = ['.pt']
             else:
@@ -211,6 +250,11 @@ class BeamData(object):
                         elif ext == '.pkl':
                             if compress is False:
                                 kwargs['compression'] = 'none'
+                            self.write_file(xi, file_path, **kwargs)
+
+                        elif ext == '.scipy_npz':
+                            if compress is False:
+                                kwargs['compressed'] = True
                             self.write_file(xi, file_path, **kwargs)
 
                         else:
@@ -269,7 +313,7 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, state=None, n_jobs=0, n_chunks=None, chunksize=None, **kwargs):
+    def __init__(self, *args, state=None, n_jobs=0, n_chunks=None, chunksize=None, squeeze=True, **kwargs):
 
         super(Transformer, self).__init__(*args, **kwargs)
 
@@ -281,13 +325,22 @@ class Transformer(Processor):
         self.n_chunks = n_chunks
         self.n_jobs = n_jobs
         self.state = state
+        self.squeeze = squeeze
         self.kwargs = kwargs
 
-    def chunks(self, x):
-        for c in recursive_chunks(x, chunksize=self.chunksize, n_chunks=self.n_chunks):
-            yield c
+    def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None):
 
-    def _transform(self, x, index=None, **kwargs):
+        if chunksize is None:
+            chunksize = self.chunksize
+        if n_chunks is None:
+            n_chunks = self.n_chunks
+        if squeeze is None:
+            squeeze = self.squeeze
+
+        for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
+            yield k, c
+
+    def _transform(self, x, key=None, is_chunk=False, **kwargs):
         raise NotImplementedError
 
     def fit(self, x, **kwargs):
@@ -300,14 +353,28 @@ class Transformer(Processor):
     def collate(self, x, **kwargs):
         return collate_chunks(*x, dim=0, **kwargs)
 
-    def transform(self, x, **kwargs):
+    def transform(self, x, chunksize=None, n_chunks=None, n_jobs=None, squeeze=None, **kwargs):
 
-        chunks = list(self.chunks(x))
-        chunks = [(c,) for c in chunks]
-        kwargs_list = [{'index': i} for i in range(len(chunks))]
+        if chunksize is None:
+            chunksize = self.chunksize
+        if n_chunks is None:
+            n_chunks = self.n_chunks
+        if squeeze is None:
+            squeeze = self.squeeze
+        if n_jobs is None:
+            n_jobs = self.n_jobs
+
+        chunks = []
+        kwargs_list = []
+
+        is_chunk = (chunksize != 1) or (not squeeze)
+
+        for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
+            chunks.append((c, ))
+            kwargs_list.append({'key': k, 'is_chunk': is_chunk})
 
         x = parallelize(self._transform, chunks, constant_kwargs=kwargs, kwargs_list=kwargs_list,
-                           workers=self.n_jobs, method='apply_async')
+                           workers=n_jobs, method='apply_async')
 
         return self.collate(x, **kwargs)
 
