@@ -35,9 +35,26 @@ class BeamData(object):
 
     feather_index_mark = "index:"
 
-    def __init__(self, *args, path=None, **kwargs):
-        self.root_path = path
-        if len(args) == 0:
+    def __init__(self, *args, path=None, data_paths=None, to_memory=False, **kwargs):
+
+        self.in_disk = False
+        self.in_memory = False
+        self.synchronized = False
+
+        if data_paths is None:
+            self.root_path = path
+            self.data_paths = self.read(lazy=True)
+        else:
+            self.data_paths = data_paths
+            self.root_path = ''
+
+        if self.data_paths:
+            self.in_disk = True
+            self.synchronized = True
+
+        # if data_paths_types
+        self.data = None
+        if len(args) == 1:
             arg_type = check_type(args[0])
             if arg_type.major == 'container':
                 self.data = args[0]
@@ -48,6 +65,13 @@ class BeamData(object):
             self.data = list(args)
         else:
             self.data = kwargs
+
+        if self.data is not None:
+            self.in_memory = True
+            self.synchronized = (not self.synchronized)
+
+        if to_memory:
+            self.to_memory()
 
     @staticmethod
     def read_file(path, **kwargs):
@@ -146,29 +170,90 @@ class BeamData(object):
         os.makedirs(path, exist_ok=True)
         os.rmdir(path)
 
-    def read(self, path=None, relative=True, **kwargs):
+    def to_disk(self, compress=None, chunksize=int(1e9),
+              chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, **kwargs):
+        assert self.root_path is not None, "path is unknown, Please define BeamData with path"
+        assert self.in_memory, "data is unavailable, Please define BeamData with valid data"
+
+        self.write(compress=compress, chunksize=chunksize,
+                   chunklen=chunklen, n_chunks=n_chunks, partition=partition,
+                   file_type=file_type, override=override, **kwargs)
+
+        self.data_paths = self.read(lazy=True)
+        self.in_disk = True
+        self.synchronized = True
+
+    def to_memory(self, **kwargs):
+
+        assert self.in_disk, "data is unavailable in disk, Please define BeamData with valid path"
+
+        path = None
+        if self.data_paths is not None:
+            path = self.data_paths
+
+        self.data = self.read(path=path, **kwargs)
+
+        self.in_memory = True
+        self.synchronized = True
+
+
+    def read(self, path=None, relative=True, lazy=False, collate=True, **kwargs):
+
+        path_type = check_type(path)
 
         if path is None:
             path = self.root_path
-        elif relative:
+        elif relative and path_type.major == 'scalar':
             path = os.path.join(self.root_path, path)
 
-        if os.path.isfile(path):
-            return BeamData.read_file(path, **kwargs)
-        else:
+        if path_type.major in ['container', 'array']:
+
             values = []
             keys = []
-            for p in os.listdir(path):
-                values.append(p)
-                keys.append(BeamData.read_file(os.path.join(path, p), **kwargs))
+            paths = []
+            for p, next_path in iter_container(path):
 
-            if not is_arange(keys):
+                values.append(self.read(path=next_path, relative=False, lazy=lazy, **kwargs))
+                keys.append(p)
+                paths.append(next_path)
+
+            if all(['_chunk' in p for p in paths]) and collate:
+                values = collate_chunks(*values, dim=0)
+            elif not is_arange(keys):
                 values = dict(zip(keys, values))
             return values
 
+        elif os.path.isfile(path):
+            if lazy:
+                return path
+            return BeamData.read_file(path, **kwargs)
+
+        elif os.path.isdir(path):
+
+            values = []
+            keys = []
+            for p in sorted(os.listdir(path)):
+
+                next_path = os.path.join(path, p)
+                values.append(self.read(path=next_path, relative=False, lazy=lazy, **kwargs))
+
+                if os.path.isfile(next_path):
+                    p, _ = os.path.splitext(p)
+
+                keys.append(p)
+
+            if all(['_chunk' in p for p in keys]) and collate:
+                values = collate_chunks(*values, dim=0)
+            elif not is_arange(keys):
+                values = dict(zip(keys, values))
+            return values
+
+        else:
+            return None
+
 
     def write(self, x=None, path=None, root=True, relative=True, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
+              chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, **kwargs):
 
         if x is None:
             x = self.data
@@ -187,7 +272,8 @@ class BeamData(object):
             elif n_chunks is None:
                 n_chunks = max(int(np.round(recursive_len(x) / chunklen)), 1)
 
-            BeamData.clean_path(path)
+            if override:
+                BeamData.clean_path(path)
 
         x_type = check_type(x)
 
@@ -226,10 +312,10 @@ class BeamData(object):
             if len(x) > 1:
                 os.mkdir(path)
 
-            for i, xi in enumerate(x):
+            for i, xi in x:
 
                 if len(x) > 1:
-                    path_i = pathlib.Path(os.path.join(path, f"{i:06}"))
+                    path_i = pathlib.Path(os.path.join(path, f"{i:06}_chunk"))
                 else:
                     path_i = pathlib.Path(path)
 
@@ -264,8 +350,9 @@ class BeamData(object):
                         order = [ext]
                         break
 
-                    except:
+                    except Exception as e:
                         logger.warning(f"Failed to write file: {file_path.name}. Trying with the next file extension")
+                        logger.debug(e)
                         error = True
 
                 if error:
@@ -313,7 +400,8 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, state=None, n_jobs=0, n_chunks=None, chunksize=None, squeeze=True, **kwargs):
+    def __init__(self, *args, state=None, n_jobs=0, n_chunks=None,
+                 chunksize=None, squeeze=True, path=None, **kwargs):
 
         super(Transformer, self).__init__(*args, **kwargs)
 
@@ -327,12 +415,12 @@ class Transformer(Processor):
         self.state = state
         self.squeeze = squeeze
         self.kwargs = kwargs
+        self.path = path
 
     def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None):
 
-        if chunksize is None:
+        if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
-        if n_chunks is None:
             n_chunks = self.n_chunks
         if squeeze is None:
             squeeze = self.squeeze
@@ -342,6 +430,22 @@ class Transformer(Processor):
 
     def _transform(self, x, key=None, is_chunk=False, **kwargs):
         raise NotImplementedError
+
+    def worker(self, x, key=None, is_chunk=False, data_in='memory', strategy='memory', **kwargs):
+
+        if data_in == 'disk':
+            bd = BeamData(data_paths=x)
+            bd.to_memory()
+            x = bd.data
+
+        x = self._transform(x, key=key, is_chunk=is_chunk, **kwargs)
+
+        if strategy == 'disk':
+            bd = BeamData(x, path=self.path)
+            bd.to_disk()
+            x = bd.data_paths
+
+        return x
 
     def fit(self, x, **kwargs):
         return NotImplementedError
@@ -353,16 +457,33 @@ class Transformer(Processor):
     def collate(self, x, **kwargs):
         return collate_chunks(*x, dim=0, **kwargs)
 
-    def transform(self, x, chunksize=None, n_chunks=None, n_jobs=None, squeeze=None, **kwargs):
+    def transform(self, x, chunksize=None, n_chunks=None, n_jobs=None, squeeze=None, parent_strategy='disk',
+                  worker_strategy='memory', **kwargs):
 
-        if chunksize is None:
+        if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
-        if n_chunks is None:
             n_chunks = self.n_chunks
         if squeeze is None:
             squeeze = self.squeeze
         if n_jobs is None:
             n_jobs = self.n_jobs
+
+        data_in = 'memory'
+        if isinstance(x, BeamData):
+            if parent_strategy == 'disk':
+                if x.in_disk:
+                    x = x.data_paths
+                else:
+                    x.to_disk()
+                    x = x.data_paths
+                data_in = 'disk'
+
+            elif parent_strategy == 'memory':
+                if x.in_memory:
+                    x = x.data
+                else:
+                    x.to_memory()
+                    x = x.data
 
         chunks = []
         kwargs_list = []
@@ -371,10 +492,11 @@ class Transformer(Processor):
 
         for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
             chunks.append((c, ))
-            kwargs_list.append({'key': k, 'is_chunk': is_chunk})
+            kwargs_list.append({'key': k, 'is_chunk': is_chunk,
+                                'worker_strategy': worker_strategy, 'data_in': data_in})
 
-        x = parallelize(self._transform, chunks, constant_kwargs=kwargs, kwargs_list=kwargs_list,
-                           workers=n_jobs, method='apply_async')
+        x = parallelize(self.worker, chunks, constant_kwargs=kwargs, kwargs_list=kwargs_list,
+                           workers=n_jobs, method='apply_async', collate=False)
 
         return self.collate(x, **kwargs)
 

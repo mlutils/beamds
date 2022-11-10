@@ -17,7 +17,7 @@ def process_async(func, args, mp_context='spawn', num_workers=10):
     return results
 
 
-def parallelize(func, args_list, kwargs_list=None, constant_kwargs=None, chunksize=None,
+def parallelize(func, args_list, kwargs_list=None, constant_kwargs=None, map_chunksize=None,
                 context='spawn', workers=10, method='apply_async', progressbar='beam',
                 collate=True, dim=0):
 
@@ -52,9 +52,9 @@ def parallelize(func, args_list, kwargs_list=None, constant_kwargs=None, chunksi
             mp_method = thread_map if method == 'thread_map' else process_map
             args_list = list(zip(*args_list))
 
-            if chunksize is None:
-                chunksize = 1
-            results = mp_method(func, *args_list, max_workers=workers, chunksize=chunksize)
+            if map_chunksize is None:
+                map_chunksize = 1
+            results = mp_method(func, *args_list, max_workers=workers, chunksize=map_chunksize)
 
         else:
 
@@ -75,7 +75,7 @@ def parallelize(func, args_list, kwargs_list=None, constant_kwargs=None, chunksi
                 #                             for args_i, kwargs_i in zip(args_list, kwargs_list)), total=len(args_list)))
 
                 elif method in ['starmap', 'map']:
-                    results = list(pool.starmap(func, args_list, chunksize=chunksize))
+                    results = list(pool.starmap(func, args_list, chunksize=map_chunksize))
 
                 # elif method == 'starmap_async':
                 #

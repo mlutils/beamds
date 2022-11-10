@@ -240,8 +240,14 @@ def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
     return values
 
 
-def is_arange(x):
+def is_arange(x, from_string=True):
+
     arr_x = np.array(x)
+    try:
+        arr_x = arr_x.astype(int)
+    except ValueError:
+        return False
+
     return np.issubdtype(arr_x.dtype, np.number) and (np.abs(np.arange(len(x)) - arr_x).sum() == 0)
 
 
@@ -250,7 +256,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
     x_type = check_type(x)
 
     try:
-        if x_type.minor == 'dict':
+        if (x_type.major == 'container') and (x_type.minor == 'dict') :
             gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks,
                                        partition=partition, squeeze=squeeze, dim=dim) for k, v in x.items()}
 
@@ -280,7 +286,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
                 #
                 # yield {k: next(v) for k, v in gen.items()}
 
-        elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
+        elif x_type.major == 'container':
 
             gen = [recursive_chunks(s, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
                                     squeeze=squeeze, dim=dim) for s in x]
@@ -346,6 +352,10 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = check_type(x, check_element=False)
+
+    if not (x_type.major in ['array', 'other']):
+        print('xxx')
+
     assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
 
     if x_type.major == 'array':
@@ -428,6 +438,9 @@ def collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
 
     x = list(xs)
 
+    if not len(x):
+        return x
+
     x_type = check_type(x[0], check_element=False)
     if (x_type.major not in ['array', 'other']) or (dim == 1 and x_type.minor not in ['tensor', 'numpy', 'pandas']):
         return x
@@ -485,8 +498,11 @@ def beam_device(device):
 
 def check_element_type(x):
 
-    if not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
+    unknown = (check_minor_type(x) == 'other')
+
+    if not unknown and not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
         return 'array'
+
     if pd.isna(x):
         return 'none'
 
@@ -506,6 +522,9 @@ def check_element_type(x):
             return 'float'
     if 'str' in t:
         return 'str'
+
+    if unknown:
+        return 'other'
 
     return 'object'
 
@@ -548,10 +567,13 @@ def check_type(x, check_minor=True, check_element=True):
 
     if np.isscalar(x) or (torch.is_tensor(x) and (not len(x.shape))):
         mjt = 'scalar'
-        if type(x) in [int, float, str]:
-            mit = 'native'
+        if check_minor:
+            if type(x) in [int, float, str]:
+                mit = 'native'
+            else:
+                mit = check_minor_type(x)
         else:
-            mit = check_minor_type(x) if check_minor else 'na'
+            mit = 'na'
         elt = check_element_type(x) if check_element else 'na'
 
     elif isinstance(x, dict):
@@ -573,27 +595,21 @@ def check_type(x, check_minor=True, check_element=True):
 
     else:
 
+        elt = 'unknown'
+        mjt = 'array'
+        if isinstance(x, list) or isinstance(x, tuple):
+            if len(x):
+                elt = check_element_type(x[0])
+            else:
+                elt = 'empty'
+
+            if elt in ['array', 'object']:
+                mjt = 'container'
+
         mit = check_minor_type(x) if check_minor else 'na'
-        if mit != 'other':
-            mjt = 'array'
-            if mit in ['list', 'tuple']:
-                if check_element:
-                    if len(x):
-                        elt = check_element_type(x[0])
-                    else:
-                        elt = 'empty'
-                else:
-                    if not np.isscalar(x[0]):
-                        mjt = 'container'
-                    elt = 'na'
 
-                if elt == 'empty':
-                    if not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
-                        mjt = 'container'
-                elif elt == 'array':
-                    mjt = 'container'
-
-            elif mit in ['numpy', 'tensor', 'pandas']:
+        if elt:
+            if mit in ['numpy', 'tensor', 'pandas', 'scipy_sparse']:
                 if mit == 'pandas':
                     dt = str(x.values.dtype)
                 else:
@@ -604,11 +620,9 @@ def check_type(x, check_minor=True, check_element=True):
                     elt = 'int'
                 else:
                     elt = 'object'
-            else:
-                elt = 'unknown'
-        else:
+
+        if mit == 'other':
             mjt = 'other'
-            mit = 'other'
             elt = 'other'
 
     return type_tuple(major=mjt, minor=mit, element=elt)
