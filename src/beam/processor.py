@@ -13,7 +13,7 @@ import warnings
 import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size, recursive_len, is_arange
+    recursive_size, recursive_len, is_arange, listdir_fullpath
 from .parallel import parallelize
 from collections import OrderedDict
 import os
@@ -23,7 +23,7 @@ import shutil
 import pathlib
 from argparse import Namespace
 import scipy
-
+import sys
 
 class Processor(object):
 
@@ -63,7 +63,7 @@ class BeamData(object):
 
         if len(args):
             self.data = list(args)
-        else:
+        elif len(kwargs):
             self.data = kwargs
 
         if self.data is not None:
@@ -185,7 +185,8 @@ class BeamData(object):
 
     def to_memory(self, **kwargs):
 
-        assert self.in_disk, "data is unavailable in disk, Please define BeamData with valid path"
+        if not self.in_disk:
+            logger.warning("data is unavailable in dick, returning None object")
 
         path = None
         if self.data_paths is not None:
@@ -195,6 +196,20 @@ class BeamData(object):
 
         self.in_memory = True
         self.synchronized = True
+
+
+    def __getitem__(self, item):
+
+        if self.in_memory:
+            return self.data[item]
+
+        item_paths = self.data_paths[item]
+        item_type = check_type(item_paths)
+
+        if item_type.major == 'scalar':
+            return BeamData.read_file(item_paths)
+
+        return BeamData(data_paths=item_paths)
 
 
     def read(self, path=None, relative=True, lazy=False, collate=True, **kwargs):
@@ -248,12 +263,24 @@ class BeamData(object):
                 values = dict(zip(keys, values))
             return values
 
+        elif any(str(path) in str(p) for p in listdir_fullpath(os.path.dirname(path))):
+
+            list_dir = listdir_fullpath(os.path.dirname(path))
+            i = [os.path.splitext(p)[0] for p in list_dir].index(path)
+
+            path = list_dir[i]
+
+            if lazy:
+                return path
+            return BeamData.read_file(path, **kwargs)
+
         else:
             return None
 
 
     def write(self, x=None, path=None, root=True, relative=True, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, **kwargs):
+              chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, archive=None,
+              **kwargs):
 
         if x is None:
             x = self.data
@@ -277,10 +304,11 @@ class BeamData(object):
 
         x_type = check_type(x)
 
-        if x_type.major == 'container':
+        if x_type.major == 'container' and (not (archive == True)):
             os.mkdir(path)
 
             file_type_type = check_type(file_type)
+            archive_type = check_type(archive)
 
             for k, v in iter_container(x):
 
@@ -288,6 +316,11 @@ class BeamData(object):
                     ft = file_type[k]
                 else:
                     ft = file_type
+
+                if archive_type.major == 'container':
+                    ar = archive[k]
+                else:
+                    ar = archive
 
                 self.write(v, os.path.join(path, str(k)), relative=relative, n_chunks=n_chunks,
                            root=False, compress=compress, file_type=ft, **kwargs)
@@ -326,7 +359,7 @@ class BeamData(object):
                         if ext == '.parquet':
                             if compress is False:
                                 kwargs['compression'] = None
-                            self.write_file(xi, file_path, partition=partition, coerce_timestamps='us',
+                            self.write_file(xi, file_path, partition_cols=partition, coerce_timestamps='us',
                                             allow_truncated_timestamps=True, **kwargs)
                         elif ext == '.fea':
                             if compress is False:
@@ -354,6 +387,8 @@ class BeamData(object):
                         logger.warning(f"Failed to write file: {file_path.name}. Trying with the next file extension")
                         logger.debug(e)
                         error = True
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
 
                 if error:
                     logger.error(f"Could not write file: {path_i.name}.")
@@ -428,10 +463,10 @@ class Transformer(Processor):
         for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
             yield k, c
 
-    def _transform(self, x, key=None, is_chunk=False, **kwargs):
+    def _transform(self, x, key=None, is_chunk=False, fit=False, **kwargs):
         raise NotImplementedError
 
-    def worker(self, x, key=None, is_chunk=False, data_in='memory', strategy='memory', **kwargs):
+    def worker(self, x, key=None, is_chunk=False, data_in='memory', strategy='memory', fit=False, **kwargs):
 
         if data_in == 'disk':
             bd = BeamData(data_paths=x)
@@ -493,7 +528,7 @@ class Transformer(Processor):
         for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
             chunks.append((c, ))
             kwargs_list.append({'key': k, 'is_chunk': is_chunk,
-                                'worker_strategy': worker_strategy, 'data_in': data_in})
+                                'strategy': worker_strategy, 'data_in': data_in})
 
         x = parallelize(self.worker, chunks, constant_kwargs=kwargs, kwargs_list=kwargs_list,
                            workers=n_jobs, method='apply_async', collate=False)

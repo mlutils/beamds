@@ -41,11 +41,13 @@ if __name__ == '__main__':
 
     # dfs = [1, 2, 3]
 
-    path = '/tmp/my_data'
+    path = '/tmp/sandbox/multi_dfs'
     bd = BeamData(dfs, path=path)
     # bd.write(dfs)
 
-    bd.write(dfs, n_chunks=4)
+    bd.write(dfs, n_chunks=2)
+
+    x = bd.read()
 
     bd2 = BeamData(path=path)
 

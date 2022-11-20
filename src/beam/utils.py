@@ -434,6 +434,10 @@ def iter_container(x):
     return enumerate(x)
 
 
+def listdir_fullpath(d):
+    return [os.path.join(d, f) for f in os.listdir(d)]
+
+
 def collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
 
     x = list(xs)

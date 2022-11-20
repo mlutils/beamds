@@ -34,6 +34,7 @@ RUN bash /workspace/install/apt_installs.sh
 # pip installs
 RUN pip install --upgrade pip
 RUN pip install -U -r /workspace/install/requirements.txt
+# REMOVE FOR LITE VERSION
 RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
 RUN pip install -U -r /workspace/install/requirements_0001.txt
 RUN pip install -U -r /workspace/install/requirements_0002.txt
@@ -56,29 +57,29 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 RUN conda install -y -c conda-forge faiss-gpu
 
 # install DGL from source
+# REMOVE FOR LITE VERSION
 RUN bash /workspace/install/install_dgl.sh
 
 # install RAPID framework
+# REMOVE FOR LITE VERSION
 RUN bash /workspace/install/rapid_install.sh
 
-# add the beam message
-
-RUN cp /workspace/install/motd /etc/motd
-RUN echo "cat /etc/motd" >> /root/.bashrc
-
 # download datasets and models
+# REMOVE FOR LITE VERSION
 RUN python /workspace/install/downloader.py
 
 ## download nlp data
 
+# REMOVE FOR LITE VERSION
 RUN python -m nltk.downloader all
 
 #ENV LC_ALL C.UTF-8
 #ENV LANG C.UTF-8
-#RUN python -m spacy download zh_core_web_md
-#RUN python -m spacy download en_core_web_md
-#RUN python -m spacy download xx_ent_wiki_sm
-#RUN python -m spacy download ru_core_news_sm
+# REMOVE FOR LITE VERSION
+RUN python -m spacy download zh_core_web_md
+RUN python -m spacy download en_core_web_md
+RUN python -m spacy download xx_ent_wiki_sm
+RUN python -m spacy download ru_core_news_sm
 
 # install beam
 
@@ -92,13 +93,7 @@ WORKDIR /workspace
 # config jupyter notebook
 RUN jupyter nbextension enable --py widgetsnbextension
 
-RUN jupyter lab --generate-config
-RUN echo "c.ServerApp.notebook_dir = '/home/'" >> /root/.jupyter/jupyter_lab_config.py
-RUN echo "c.ServerApp.allow_remote_access = True" >> /root/.jupyter/jupyter_lab_config.py
-RUN echo "c.ServerApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_lab_config.py
-RUN echo "c.ServerApp.token = ''" >> /root/.jupyter/jupyter_lab_config.py
-RUN echo "c.ServerApp.allow_root = True" >> /root/.jupyter/jupyter_lab_config.py
-
+RUN bash /workspace/install/configure_jupyter.sh
 
 # for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.
