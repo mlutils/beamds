@@ -25,53 +25,69 @@ from argparse import Namespace
 import scipy
 import sys
 
-class Processor(object):
-
-    def __init__(self, *args, **kwargs):
-        pass
-
 
 class BeamData(object):
 
     feather_index_mark = "index:"
 
-    def __init__(self, *args, path=None, data_paths=None, to_memory=False, **kwargs):
+    def __init__(self, *args, data=None, root_path=None, all_paths=None, lazy=True, **kwargs):
 
-        self.in_disk = False
-        self.in_memory = False
-        self.synchronized = False
+        '''
 
-        if data_paths is None:
-            self.root_path = path
-            self.data_paths = self.read(lazy=True)
+        @param args:
+        @param data:
+        @param root_path:
+        @param all_paths:
+        @param lazy:
+        @param kwargs:
+
+        Possible orientations are: row/column/other
+
+        '''
+
+        self.stored = False
+        self.cached = None
+        self.synced = False
+
+        if all_paths is None:
+            self.root_path = root_path
+            self.all_paths = self.read(lazy=True)
         else:
-            self.data_paths = data_paths
+            self.all_paths = all_paths
             self.root_path = ''
 
-        if self.data_paths:
-            self.in_disk = True
-            self.synchronized = True
+        if self.all_paths:
+            self.stored = True
+            self.synced = True
 
-        # if data_paths_types
-        self.data = None
         if len(args) == 1:
             arg_type = check_type(args[0])
             if arg_type.major == 'container':
                 self.data = args[0]
-        else:
-            assert len(args) * len(kwargs) == 0, "Please use either args or kwargs"
-
-        if len(args):
+        elif len(args):
             self.data = list(args)
         elif len(kwargs):
             self.data = kwargs
+        elif data is not None:
+            self.data = data
+        else:
+            self.data = None
 
         if self.data is not None:
-            self.in_memory = True
-            self.synchronized = (not self.synchronized)
+            self.cached = True
+            self.synced = (not self.synced)
 
-        if to_memory:
-            self.to_memory()
+        if not lazy:
+            self.cache()
+
+    def get_orientation(self):
+
+        pass
+
+
+    @property
+    def values(self):
+        return self.data
 
     @staticmethod
     def read_file(path, **kwargs):
@@ -171,46 +187,46 @@ class BeamData(object):
         os.makedirs(path, exist_ok=True)
         os.rmdir(path)
 
-    def to_disk(self, compress=None, chunksize=int(1e9),
+    def store(self, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, **kwargs):
         assert self.root_path is not None, "path is unknown, Please define BeamData with path"
-        assert self.in_memory, "data is unavailable, Please define BeamData with valid data"
+        assert self.cached, "data is unavailable, Please define BeamData with valid data"
 
         self.write(compress=compress, chunksize=chunksize,
                    chunklen=chunklen, n_chunks=n_chunks, partition=partition,
                    file_type=file_type, override=override, **kwargs)
 
-        self.data_paths = self.read(lazy=True)
-        self.in_disk = True
-        self.synchronized = True
+        self.all_paths = self.read(lazy=True)
+        self.stored = True
+        self.synced = True
 
-    def to_memory(self, **kwargs):
+    def cache(self, **kwargs):
 
-        if not self.in_disk:
+        if not self.stored:
             logger.warning("data is unavailable in dick, returning None object")
 
         path = None
-        if self.data_paths is not None:
-            path = self.data_paths
+        if self.all_paths is not None:
+            path = self.all_paths
 
         self.data = self.read(path=path, **kwargs)
 
-        self.in_memory = True
-        self.synchronized = True
+        self.cached = True
+        self.synced = True
 
 
     def __getitem__(self, item):
 
-        if self.in_memory:
+        if self.cached:
             return self.data[item]
 
-        item_paths = self.data_paths[item]
+        item_paths = self.all_paths[item]
         item_type = check_type(item_paths)
 
         if item_type.major == 'scalar':
             return BeamData.read_file(item_paths)
 
-        return BeamData(data_paths=item_paths)
+        return BeamData(all_paths=item_paths)
 
 
     def read(self, path=None, relative=True, lazy=False, collate=True, **kwargs):
@@ -393,150 +409,3 @@ class BeamData(object):
 
                 if error:
                     logger.error(f"Could not write file: {path_i.name}.")
-
-
-class Pipeline(Processor):
-
-    def __init__(self, *ts, track_steps=False, **kwts):
-
-        super().__init__()
-        self.track_steps = track_steps
-        self.steps = {}
-
-        self.transformers = OrderedDict()
-        for i, t in enumerate(ts):
-            self.transformers[i] = t
-
-        for k, t in kwts.items():
-            self.transformers[k] = t
-
-    def transform(self, x, **kwargs):
-
-        self.steps = []
-
-        for i, t in self.transformers.items():
-
-            kwargs_i = kwargs[i] if i in kwargs.keys() else {}
-            x = t.transform(x, **kwargs_i)
-
-            if self.track_steps:
-                self.steps[i] = x
-
-        return x
-
-
-class Reducer(Processor):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def reduce(self, *xs, **kwargs):
-        return collate_chunks(*xs, dim=1, **kwargs)
-
-
-class Transformer(Processor):
-
-    def __init__(self, *args, state=None, n_jobs=0, n_chunks=None,
-                 chunksize=None, squeeze=True, path=None, **kwargs):
-
-        super(Transformer, self).__init__(*args, **kwargs)
-
-        if (n_chunks is None) and (chunksize is None):
-            n_chunks = 1
-
-        self.transformers = None
-        self.chunksize = chunksize
-        self.n_chunks = n_chunks
-        self.n_jobs = n_jobs
-        self.state = state
-        self.squeeze = squeeze
-        self.kwargs = kwargs
-        self.path = path
-
-    def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None):
-
-        if (chunksize is None) and (n_chunks is None):
-            chunksize = self.chunksize
-            n_chunks = self.n_chunks
-        if squeeze is None:
-            squeeze = self.squeeze
-
-        for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
-            yield k, c
-
-    def _transform(self, x, key=None, is_chunk=False, fit=False, **kwargs):
-        raise NotImplementedError
-
-    def worker(self, x, key=None, is_chunk=False, data_in='memory', strategy='memory', fit=False, **kwargs):
-
-        if data_in == 'disk':
-            bd = BeamData(data_paths=x)
-            bd.to_memory()
-            x = bd.data
-
-        x = self._transform(x, key=key, is_chunk=is_chunk, **kwargs)
-
-        if strategy == 'disk':
-            bd = BeamData(x, path=self.path)
-            bd.to_disk()
-            x = bd.data_paths
-
-        return x
-
-    def fit(self, x, **kwargs):
-        return NotImplementedError
-
-    def fit_transform(self, x, **kwargs):
-        self.fit(x, **kwargs)
-        return self.transform(x, **kwargs)
-
-    def collate(self, x, **kwargs):
-        return collate_chunks(*x, dim=0, **kwargs)
-
-    def transform(self, x, chunksize=None, n_chunks=None, n_jobs=None, squeeze=None, parent_strategy='disk',
-                  worker_strategy='memory', **kwargs):
-
-        if (chunksize is None) and (n_chunks is None):
-            chunksize = self.chunksize
-            n_chunks = self.n_chunks
-        if squeeze is None:
-            squeeze = self.squeeze
-        if n_jobs is None:
-            n_jobs = self.n_jobs
-
-        data_in = 'memory'
-        if isinstance(x, BeamData):
-            if parent_strategy == 'disk':
-                if x.in_disk:
-                    x = x.data_paths
-                else:
-                    x.to_disk()
-                    x = x.data_paths
-                data_in = 'disk'
-
-            elif parent_strategy == 'memory':
-                if x.in_memory:
-                    x = x.data
-                else:
-                    x.to_memory()
-                    x = x.data
-
-        chunks = []
-        kwargs_list = []
-
-        is_chunk = (chunksize != 1) or (not squeeze)
-
-        for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
-            chunks.append((c, ))
-            kwargs_list.append({'key': k, 'is_chunk': is_chunk,
-                                'strategy': worker_strategy, 'data_in': data_in})
-
-        x = parallelize(self.worker, chunks, constant_kwargs=kwargs, kwargs_list=kwargs_list,
-                           workers=n_jobs, method='apply_async', collate=False)
-
-        return self.collate(x, **kwargs)
-
-
-
-
-

@@ -715,6 +715,34 @@ def to_device(data, device='cuda', half=False):
         return data
 
 
+def recursive_func(x, func, *args, **kwargs):
+
+    if isinstance(x, dict):
+        return {k: recursive_func(v, *args, **kwargs) for k, v in x.items()}
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return [recursive_func(s, *args, **kwargs) for s in x]
+    elif x is None:
+        return None
+    else:
+        return func(x, *args, **kwargs)
+
+
+def recursive_flatten(x, flat=None):
+
+    if flat is None:
+        flat = []
+
+    if isinstance(x, dict):
+        return {k: recursive_flatten(v) for k, v in x.items()}
+    elif isinstance(x, list) or isinstance(x, tuple):
+        return [recursive_flatten(s) for s in x]
+    elif x is None:
+        return None
+    else:
+        return x
+
+
+
 def recursive_batch(x, index):
 
     if isinstance(x, dict):
