@@ -13,7 +13,7 @@ import warnings
 import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size, recursive_len, is_arange, listdir_fullpath
+    recursive_size, recursive_len, is_arange, listdir_fullpath, is_chunk
 from .parallel import parallelize
 from collections import OrderedDict
 import os
@@ -24,19 +24,22 @@ import pathlib
 from argparse import Namespace
 import scipy
 import sys
+from pathlib import Path
 
 
 class BeamData(object):
 
     feather_index_mark = "index:"
 
-    def __init__(self, *args, data=None, root_path=None, all_paths=None, lazy=True, **kwargs):
+    def __init__(self, *args, data=None, root_path=None, all_paths=None,
+                 lazy=True, device=None, columns=None, index=None, sort_index=False,
+                 quick_getitem=True, **kwargs):
 
         '''
 
         @param args:
         @param data:
-        @param root_path:
+        @param root_path: if not str, requires to support the pathlib Path attributes and operations
         @param all_paths:
         @param lazy:
         @param kwargs:
@@ -45,20 +48,19 @@ class BeamData(object):
 
         '''
 
+        self.lazy = lazy
+
         self.stored = False
-        self.cached = None
+        self.cached = False
         self.synced = False
 
-        if all_paths is None:
-            self.root_path = root_path
-            self.all_paths = self.read(lazy=True)
-        else:
-            self.all_paths = all_paths
-            self.root_path = ''
+        self.recursive_stored = None
+        self.recursive_cached = None
+        self.recursive_synced = None
 
-        if self.all_paths:
-            self.stored = True
-            self.synced = True
+        root_path_type = check_type(root_path)
+        if root_path_type.minor == 'str':
+            root_path = Path(root_path)
 
         if len(args) == 1:
             arg_type = check_type(args[0])
@@ -73,6 +75,21 @@ class BeamData(object):
         else:
             self.data = None
 
+        if all_paths is None:
+            self.root_path = root_path
+            self.all_paths = BeamData.recursive_map_path(root_path)
+        else:
+            self.all_paths = all_paths
+            self.root_path = BeamData.recursive_root_finder(all_paths)
+
+        if self.all_paths:
+            self.stored = True
+            if not lazy:
+                self.data = BeamData.read_all_paths(all_paths)
+
+            self.synced = True
+
+
         if self.data is not None:
             self.cached = True
             self.synced = (not self.synced)
@@ -80,10 +97,88 @@ class BeamData(object):
         if not lazy:
             self.cache()
 
-    def get_orientation(self):
+    def read_all_paths(self, all_paths, **kwargs):
 
+        all_paths_type = check_type(all_paths)
+        if all_paths_type.major == 'container':
+            keys = []
+            values = []
+            paths = []
+            for k, next_path in iter_container(all_paths):
+                values.append(self.read_all_paths(next_path, **kwargs))
+                keys.append(k)
+                paths.append(next_path)
+
+            if not is_arange(keys):
+                values = dict(zip(keys, values))
+
+            return values
+
+        if all_paths.is_dir():
+            values = []
+            for k, next_path in all_paths.iterdir():
+                values.append(BeamData.read_file(path=next_path, **kwargs))
+
+            values = collate_chunks(*values, dim=self.orientation_dimension)
+
+
+
+
+        return None
+
+    @staticmethod
+    def recursive_root_finder(all_paths, head=None):
+        if head is None:
+            head = []
+
+        all_paths_type = check_type(all_paths)
+        if all_paths_type.major == 'container':
+
+            k, v =  next(iter_container(all_paths))
+            head.append(k)
+            return BeamData.recursive_root_finder(v, head=head)
+
+        if all_paths.is_file():
+            return all_paths.parent.joinpath(all_paths.stem)
+
+        for _ in head:
+            all_paths = all_paths.parent
+
+        return all_paths
+
+    @staticmethod
+    def recursive_map_path(path):
+
+        if path.is_dir():
+
+            keys = []
+            values = []
+
+            for next_path in path.iterdir():
+                keys.append(next_path)
+                values.append(BeamData.recursive_map_path(next_path))
+
+            # if the directory contains chunks it is considered as a single path
+            if all([is_chunk(p) for p in keys]):
+                return path
+
+            if not is_arange(keys):
+                values = dict(zip(keys, values))
+
+            return values
+
+        # we store the files without their extension
+        if path.is_file():
+            return path.parent.joinpath(path.stem)
+
+        return None
+
+
+    def get_orientation(self):
         pass
 
+    def as_tensor(self):
+        return NotImplementedError
 
     @property
     def values(self):

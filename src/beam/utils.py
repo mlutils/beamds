@@ -18,6 +18,9 @@ import hashlib
 from functools import partial
 import itertools
 import scipy
+from pathlib import Path
+import re
+
 
 # logger.remove(handler_id=0)
 logger.remove()
@@ -428,6 +431,10 @@ def recursive_merge(dfs, method='tree', **kwargs):
     raise ValueError('Unknown method type')
 
 
+def is_chunk(path):
+    return path.is_file() and bool(re.search(r'\d{6}_chunk.', str(path.name)))
+
+
 def iter_container(x):
     if hasattr(x, 'items'):
         return x.items()
@@ -549,6 +556,8 @@ def check_minor_type(x):
         return 'list'
     if isinstance(x, tuple):
         return 'tuple'
+    if isinstance(x, Path):
+        return 'path'
     else:
         return 'other'
 
@@ -600,7 +609,11 @@ def check_type(x, check_minor=True, check_element=True):
     else:
 
         elt = 'unknown'
-        mjt = 'array'
+
+        if hasattr(x, '__len__'):
+            mjt = 'array'
+        else:
+            mjt = 'other'
         if isinstance(x, list) or isinstance(x, tuple):
             if len(x):
                 elt = check_element_type(x[0])
@@ -727,20 +740,15 @@ def recursive_func(x, func, *args, **kwargs):
         return func(x, *args, **kwargs)
 
 
-def recursive_flatten(x, flat=None):
+def recursive_flatten(x):
 
-    #TODO: complete recursive flat
-    if flat is None:
-        flat = []
-
-    if isinstance(x, dict):
-        return {k: recursive_flatten(v) for k, v in x.items()}
-    elif isinstance(x, list) or isinstance(x, tuple):
-        return [recursive_flatten(s) for s in x]
-    elif x is None:
-        return None
+    if isinstance(x, dict) or isinstance(x, list) or isinstance(x, tuple):
+        l = []
+        for i, xi in iter_container(x):
+            l.extend(recursive_flatten(xi))
+        return l
     else:
-        return x
+        return [x]
 
 
 
