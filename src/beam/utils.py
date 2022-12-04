@@ -243,7 +243,7 @@ def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
     return values
 
 
-def is_arange(x, from_string=True):
+def is_arange(x):
 
     arr_x = np.array(x)
     try:
@@ -313,26 +313,54 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
     except StopIteration:
         return
 
+def recursive_size(x):
 
-def recursive_size(x, mode='sum'):
+    x_type = check_type(x)
+    if x_type.major == 'container':
+
+        keys = []
+        values = []
+
+        for k, v in iter_container(x):
+            keys.append(k)
+            values.append(recursive_size(v))
+
+        if not is_arange(keys):
+            values = dict(zip(keys, values))
+
+        return values
+
+    else:
+
+        if x_type.minor == 'tensor':
+            return x.element_size() * x.nelement()
+        elif x_type.minor in ['numpy', 'scipy_sparse']:
+            return x.size * x.dtype.itemsize
+        elif x_type.minor == 'pandas':
+            return np.sum(x.memory_usage(index=True, deep=True))
+        else:
+            return sys.getsizeof(x)
+
+
+def recursive_size_summary(x, mode='sum'):
 
     x_type = check_type(x)
 
     if x_type.minor == 'dict':
 
         if mode == 'sum':
-            return sum([recursive_size(v, mode=mode) for v in x.values()])
+            return sum([recursive_size_summary(v, mode=mode) for v in x.values()])
         elif mode == 'max':
-            return max([recursive_size(v, mode=mode) for v in x.values()])
+            return max([recursive_size_summary(v, mode=mode) for v in x.values()])
         else:
             raise NotImplementedError
 
     elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
 
         if mode == 'sum':
-            return sum([recursive_size(s, mode=mode) for s in x])
+            return sum([recursive_size_summary(s, mode=mode) for s in x])
         elif mode == 'max':
-            return max([recursive_size(s, mode=mode) for s in x])
+            return max([recursive_size_summary(s, mode=mode) for s in x])
         else:
             raise NotImplementedError
 
@@ -355,9 +383,6 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = check_type(x, check_element=False)
-
-    if not (x_type.major in ['array', 'other']):
-        print('xxx')
 
     assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
 
@@ -431,8 +456,8 @@ def recursive_merge(dfs, method='tree', **kwargs):
     raise ValueError('Unknown method type')
 
 
-def is_chunk(path):
-    return path.is_file() and bool(re.search(r'\d{6}_chunk.', str(path.name)))
+def is_chunk(path, chunk_patter='_chunk'):
+    return path.is_file() and bool(re.search(rf'\d{6}{chunk_patter}\.', str(path.name)))
 
 
 def iter_container(x):

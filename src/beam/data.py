@@ -13,7 +13,8 @@ import warnings
 import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size, recursive_len, is_arange, listdir_fullpath, is_chunk, rmtree
+    recursive_size_summary, recursive_len, is_arange, listdir_fullpath, is_chunk, rmtree, \
+    recursive_size,recursive_flatten
 from .parallel import parallelize
 from collections import OrderedDict
 import os
@@ -34,7 +35,10 @@ class BeamData(object):
 
     def __init__(self, *args, data=None, root_path=None, all_paths=None,
                  lazy=True, device=None, columns=None, index=None, sort_index=False,
-                 quick_getitem=True, **kwargs):
+                 quick_getitem=True, override=True, compress=None, chunksize=int(1e9),
+                 chunklen=None, n_chunks=None, partition=None, archive_len=int(1e6),
+                 read_kwargs=None, write_kwargs=None,
+                 **kwargs):
 
         '''
 
@@ -59,6 +63,9 @@ class BeamData(object):
         self.recursive_cached = None
         self.recursive_synced = None
         self.orientation = None
+
+        self.read_kwargs = {} if read_kwargs is None else read_kwargs
+        self.write_kwargs = {} if write_kwargs is None else write_kwargs
 
         root_path_type = check_type(root_path)
         if root_path_type.minor == 'str':
@@ -87,10 +94,9 @@ class BeamData(object):
         if self.all_paths:
             self.stored = True
             if not lazy:
-                self.data = BeamData.read_all_paths(all_paths)
+                self.data = BeamData.read_tree(all_paths, **self.read_kwargs)
 
             self.synced = True
-
 
         if self.data is not None:
             self.cached = True
@@ -99,15 +105,46 @@ class BeamData(object):
         if not lazy:
             self.cache()
 
-    def read_all_paths(self, all_paths, **kwargs):
+    @staticmethod
+    def clean_path(path):
 
-        all_paths_type = check_type(all_paths)
-        if all_paths_type.major == 'container':
+        if path.exists():
+            rmtree(path)
+        else:
+            if path.parent.exists():
+                for p in path.parent.iterdir():
+                    if p.stem == path.name:
+                        rmtree(p)
+
+        path.mkdir(parents=True)
+        path.rmdir()
+
+    @staticmethod
+    def read_file(path, **kwargs):
+
+        if type(path) is str:
+            path = Path(path)
+
+        path_type = check_type(path)
+
+        if path_type.minor == 'path':
+            return BeamData.read_file_from_path(path, **kwargs)
+
+        return NotImplementedError
+
+    @staticmethod
+    def read_tree(paths, **kwargs):
+
+        if type(paths) is str:
+            paths = Path(paths)
+
+        paths_type = check_type(paths)
+        if paths_type.major == 'container':
             keys = []
             values = []
             paths = []
-            for k, next_path in iter_container(all_paths):
-                values.append(self.read_all_paths(next_path, **kwargs))
+            for k, next_path in iter_container(paths):
+                values.append(BeamData.read_tree(next_path, **kwargs))
                 keys.append(k)
                 paths.append(next_path)
 
@@ -116,14 +153,7 @@ class BeamData(object):
 
             return values
 
-        if all_paths.is_dir():
-            values = []
-            for k, next_path in all_paths.iterdir():
-                values.append(BeamData.read_file(path=next_path, **kwargs))
-
-            values = collate_chunks(*values, dim=self.orientation)
-
-        return None
+        return BeamData.read_object(paths, **kwargs)
 
     @staticmethod
     def recursive_root_finder(all_paths, head=None):
@@ -158,7 +188,7 @@ class BeamData(object):
                 values.append(BeamData.recursive_map_path(next_path))
 
             # if the directory contains chunks it is considered as a single path
-            if all([is_chunk(p) for p in keys]):
+            if all([is_chunk(p, chunk_patter=BeamData.chunk_file_extension) for p in keys]):
                 return path
 
             if not is_arange(keys):
@@ -186,8 +216,12 @@ class BeamData(object):
     @staticmethod
     def read_object(path, **kwargs):
 
+        if type(path) is str:
+            path = Path(path)
+
         if path.is_file():
             return BeamData.read_file(path, **kwargs)
+
         elif path.is_dir():
 
             keys = []
@@ -200,7 +234,7 @@ class BeamData(object):
                     conf = pd.read_pickle(next_path)
                     orientation = conf['orientation']
 
-                keys.append(next_path)
+                keys.append(next_path.split(BeamData.chunk_file_extension)[0])
                 values.append(BeamData.read_file(next_path, **kwargs))
             return collate_chunks(*values, keys=keys, dim=orientation)
 
@@ -214,7 +248,7 @@ class BeamData(object):
             return None
 
     @staticmethod
-    def read_file(path, **kwargs):
+    def read_file_from_path(path, **kwargs):
 
         ext = path.suffix
 
@@ -262,24 +296,25 @@ class BeamData(object):
         return x
 
     @staticmethod
-    def write_file(x, path, overwrite=True, **kwargs):
+    def write_file_to_path(x, path, overwrite=True, **kwargs):
 
-        if (not overwrite) and (os.path.isdir(path) or os.path.isfile(path)):
+        if type(path) is str:
+            path = Path(path)
+
+        if (not overwrite) and path.exists():
             logger.error(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
             return
 
         BeamData.clean_path(path)
 
-        _, ext = os.path.splitext(path)
+        ext = path.suffix
 
         if ext == '.fea':
-
             x = pd.DataFrame(x)
             index_name = x.index.name if x.index.name is not None else 'index'
             df = x.reset_index()
             new_name = BeamData.feather_index_mark + index_name
             x = df.rename(columns={index_name: new_name})
-
             x.to_feather(path, **kwargs)
         elif ext == '.csv':
             x = pd.DataFrame(x)
@@ -302,125 +337,77 @@ class BeamData(object):
             raise ValueError("Unsupported extension type.")
 
     @staticmethod
-    def clean_path(path):
+    def write_data(data, path, sizes=None, archive_size=int(1e6), **kwargs):
 
-        if path.exists():
-            rmtree(path)
-        else:
-            if path.parent.exists():
-                for p in path.parent.iterdir():
-                    if p.stem == path.name:
-                        rmtree(p)
+        if type(path) is str:
+            path = Path(path)
 
-        path.mkdir(parents=True)
-        path.rmdir()
+        if sizes is None:
+            sizes = recursive_size(data)
 
-    def store(self, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, **kwargs):
-        assert self.root_path is not None, "path is unknown, Please define BeamData with path"
-        assert self.cached, "data is unavailable, Please define BeamData with valid data"
+        data_type = check_type(data)
 
-        self.write(compress=compress, chunksize=chunksize,
-                   chunklen=chunklen, n_chunks=n_chunks, partition=partition,
-                   file_type=file_type, override=override, **kwargs)
+        if data_type.major == 'container':
 
-        self.all_paths = self.read(lazy=True)
-        self.stored = True
-        self.synced = True
+            size_summary = sum(recursive_flatten(sizes))
+            if size_summary < archive_size:
+                BeamData.write_data(data, path, size=size_summary, archive=True, **kwargs)
 
-    def cache(self, **kwargs):
+            else:
+                for k, v in iter_container(data):
+                    if type(k) is not str:
+                        k = f'{k:06}'
+                    BeamData.write_data(v, path.joinpath(k), sizes=sizes[k] **kwargs)
 
-        if not self.stored:
-            logger.warning("data is unavailable in dick, returning None object")
-
-        path = None
-        if self.all_paths is not None:
-            path = self.all_paths
-
-        self.data = self.read(path=path, **kwargs)
-
-        self.cached = True
-        self.synced = True
+        BeamData.write_object(data, path, size=sizes, **kwargs)
 
 
-    def __getitem__(self, item):
+    @staticmethod
+    def write_object(data, path, override=True, size=None, archive=False,compress=None, chunksize=int(1e9),
+              chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
 
-        if self.cached:
-            return self.data[item]
+        if type(path) is str:
+            path = Path(path)
 
-        item_paths = self.all_paths[item]
-        item_type = check_type(item_paths)
-
-        if item_type.major == 'scalar':
-            return BeamData.read_file(item_paths)
-
-        return BeamData(all_paths=item_paths)
-
-
-    def read(self, path=None, relative=True, lazy=False, collate=True, **kwargs):
-
-        path_type = check_type(path)
-
-        if path is None:
-            path = self.root_path
-        elif relative and path_type.major == 'scalar':
-            path = os.path.join(self.root_path, path)
-
-        if path_type.major in ['container', 'array']:
-
-            values = []
-            keys = []
-            paths = []
-            for p, next_path in iter_container(path):
-
-                values.append(self.read(path=next_path, relative=False, lazy=lazy, **kwargs))
-                keys.append(p)
-                paths.append(next_path)
-
-            if all([BeamData.chunk_file_extension in p for p in paths]) and collate:
-                values = collate_chunks(*values, dim=0)
-            elif not is_arange(keys):
-                values = dict(zip(keys, values))
-            return values
-
-        elif os.path.isfile(path):
-            if lazy:
-                return path
-            return BeamData.read_file(path, **kwargs)
-
-        elif os.path.isdir(path):
-
-            values = []
-            keys = []
-            for p in sorted(os.listdir(path)):
-
-                next_path = os.path.join(path, p)
-                values.append(self.read(path=next_path, relative=False, lazy=lazy, **kwargs))
-
-                if os.path.isfile(next_path):
-                    p, _ = os.path.splitext(p)
-
-                keys.append(p)
-
-            if all([BeamData.chunk_file_extension in p for p in keys]) and collate:
-                values = collate_chunks(*values, dim=0)
-            elif not is_arange(keys):
-                values = dict(zip(keys, values))
-            return values
-
-        elif any(str(path) in str(p) for p in listdir_fullpath(os.path.dirname(path))):
-
-            list_dir = listdir_fullpath(os.path.dirname(path))
-            i = [os.path.splitext(p)[0] for p in list_dir].index(path)
-
-            path = list_dir[i]
-
-            if lazy:
-                return path
-            return BeamData.read_file(path, **kwargs)
+        if override:
+            BeamData.clean_path(path)
 
         else:
-            return None
+            if path.exists() or (path.parent.is_dir() and any(p.stem == path.stem for p in path.parent.iterdir())):
+                logger.warning(f"path {path} exists. To override, specify override=True")
+                return
+
+        if archive:
+            BeamData.write_file_to_path(data, path.with_suffix('pkl'), override=override, **kwargs)
+
+        else:
+
+            if (n_chunks is None) and (chunklen is None):
+                if size is None:
+                    size = sum(recursive_flatten(recursive_size(data)))
+                n_chunks = max(int(np.round(size / chunksize)), 1)
+            elif (n_chunks is not None) and (chunklen is not None):
+                logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
+            elif n_chunks is None:
+                n_chunks = max(int(np.round(recursive_len(data) / chunklen)), 1)
+
+            data_type = check_type(data)
+            if partition is not None and data_type.minor == 'pandas':
+                priority = ['.parquet', '.fea', '.pkl']
+            elif data_type.minor in ['pandas', 'numpy']:
+                priority = ['.fea', '.parquet', '.pkl']
+            elif data_type.minor == 'scipy_sparse':
+                priority = ['scipy_npz', 'npy', '.pkl']
+            elif data_type.minor == 'tensor':
+                priority = ['.pt']
+            else:
+                priority = ['.pkl']
+
+            if file_type is not None:
+                priority.insert(file_type, 0)
+
+            if n_chunks > 1:
+                data = list(divide_chunks(data, n_chunks=n_chunks))
 
 
     def write(self, x=None, path=None, root=True, relative=True, compress=None, chunksize=int(1e9),
@@ -437,7 +424,7 @@ class BeamData(object):
 
         if root:
             if (n_chunks is None) and (chunklen is None):
-                max_size = recursive_size(x, mode='max')
+                max_size = recursive_size_summary(x, mode='max')
                 n_chunks = max(int(np.round(max_size / chunksize)), 1)
             elif (n_chunks is not None) and (chunklen is not None):
                 logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
@@ -537,3 +524,111 @@ class BeamData(object):
 
                 if error:
                     logger.error(f"Could not write file: {path_i.name}.")
+
+
+    def store(self, compress=None, chunksize=int(1e9),
+              chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, **kwargs):
+        assert self.root_path is not None, "path is unknown, Please define BeamData with path"
+        assert self.cached, "data is unavailable, Please define BeamData with valid data"
+
+        self.write(compress=compress, chunksize=chunksize,
+                   chunklen=chunklen, n_chunks=n_chunks, partition=partition,
+                   file_type=file_type, override=override, **kwargs)
+
+        self.all_paths = self.read(lazy=True)
+        self.stored = True
+        self.synced = True
+
+    def cache(self, **kwargs):
+
+        if not self.stored:
+            logger.warning("data is unavailable in dick, returning None object")
+
+        path = None
+        if self.all_paths is not None:
+            path = self.all_paths
+
+        self.data = self.read(path=path, **kwargs)
+
+        self.cached = True
+        self.synced = True
+
+
+    def __getitem__(self, item):
+
+        if self.cached:
+            return self.data[item]
+
+        item_paths = self.all_paths[item]
+        item_type = check_type(item_paths)
+
+        if item_type.major == 'scalar':
+            return BeamData.read_file(item_paths)
+
+        return BeamData(all_paths=item_paths)
+
+
+    # def read(self, path=None, relative=True, lazy=False, collate=True, **kwargs):
+    #
+    #     path_type = check_type(path)
+    #
+    #     if path is None:
+    #         path = self.root_path
+    #     elif relative and path_type.major == 'scalar':
+    #         path = os.path.join(self.root_path, path)
+    #
+    #     if path_type.major in ['container', 'array']:
+    #
+    #         values = []
+    #         keys = []
+    #         paths = []
+    #         for p, next_path in iter_container(path):
+    #
+    #             values.append(self.read(path=next_path, relative=False, lazy=lazy, **kwargs))
+    #             keys.append(p)
+    #             paths.append(next_path)
+    #
+    #         if all([BeamData.chunk_file_extension in p for p in paths]) and collate:
+    #             values = collate_chunks(*values, dim=0)
+    #         elif not is_arange(keys):
+    #             values = dict(zip(keys, values))
+    #         return values
+    #
+    #     elif os.path.isfile(path):
+    #         if lazy:
+    #             return path
+    #         return BeamData.read_file(path, **kwargs)
+    #
+    #     elif os.path.isdir(path):
+    #
+    #         values = []
+    #         keys = []
+    #         for p in sorted(os.listdir(path)):
+    #
+    #             next_path = os.path.join(path, p)
+    #             values.append(self.read(path=next_path, relative=False, lazy=lazy, **kwargs))
+    #
+    #             if os.path.isfile(next_path):
+    #                 p, _ = os.path.splitext(p)
+    #
+    #             keys.append(p)
+    #
+    #         if all([BeamData.chunk_file_extension in p for p in keys]) and collate:
+    #             values = collate_chunks(*values, dim=0)
+    #         elif not is_arange(keys):
+    #             values = dict(zip(keys, values))
+    #         return values
+    #
+    #     elif any(str(path) in str(p) for p in listdir_fullpath(os.path.dirname(path))):
+    #
+    #         list_dir = listdir_fullpath(os.path.dirname(path))
+    #         i = [os.path.splitext(p)[0] for p in list_dir].index(path)
+    #
+    #         path = list_dir[i]
+    #
+    #         if lazy:
+    #             return path
+    #         return BeamData.read_file(path, **kwargs)
+    #
+    #     else:
+    #         return None

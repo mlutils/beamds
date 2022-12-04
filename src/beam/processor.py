@@ -13,7 +13,7 @@ import warnings
 import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size, recursive_len, is_arange, listdir_fullpath
+    recursive_size_summary, recursive_len, is_arange, listdir_fullpath
 from .parallel import parallelize
 from collections import OrderedDict
 import os
@@ -293,7 +293,7 @@ class BeamData(object):
 
         if root:
             if (n_chunks is None) and (chunklen is None):
-                max_size = recursive_size(x, mode='max')
+                max_size = recursive_size_summary(x, mode='max')
                 n_chunks = max(int(np.round(max_size / chunksize)), 1)
             elif (n_chunks is not None) and (chunklen is not None):
                 logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
