@@ -13,13 +13,12 @@ import warnings
 import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size, recursive_len, is_arange, listdir_fullpath, is_chunk
+    recursive_size, recursive_len, is_arange, listdir_fullpath, is_chunk, rmtree
 from .parallel import parallelize
 from collections import OrderedDict
 import os
 import fastavro
 import pyarrow as pa
-import shutil
 import pathlib
 from argparse import Namespace
 import scipy
@@ -30,6 +29,8 @@ from pathlib import Path
 class BeamData(object):
 
     feather_index_mark = "index:"
+    configuration_file_name = '.conf'
+    chunk_file_extension = '_chunk'
 
     def __init__(self, *args, data=None, root_path=None, all_paths=None,
                  lazy=True, device=None, columns=None, index=None, sort_index=False,
@@ -57,6 +58,7 @@ class BeamData(object):
         self.recursive_stored = None
         self.recursive_cached = None
         self.recursive_synced = None
+        self.orientation = None
 
         root_path_type = check_type(root_path)
         if root_path_type.minor == 'str':
@@ -119,10 +121,7 @@ class BeamData(object):
             for k, next_path in all_paths.iterdir():
                 values.append(BeamData.read_file(path=next_path, **kwargs))
 
-            values = collate_chunks(*values, dim=self.orientation_dimension)
-
-
-
+            values = collate_chunks(*values, dim=self.orientation)
 
         return None
 
@@ -134,7 +133,7 @@ class BeamData(object):
         all_paths_type = check_type(all_paths)
         if all_paths_type.major == 'container':
 
-            k, v =  next(iter_container(all_paths))
+            k, v = next(iter_container(all_paths))
             head.append(k)
             return BeamData.recursive_root_finder(v, head=head)
 
@@ -173,8 +172,8 @@ class BeamData(object):
 
         return None
 
-
-    def get_orientation(self):
+    @staticmethod
+    def get_orientation(data):
         pass
 
     def as_tensor(self):
@@ -185,9 +184,39 @@ class BeamData(object):
         return self.data
 
     @staticmethod
+    def read_object(path, **kwargs):
+
+        if path.is_file():
+            return BeamData.read_file(path, **kwargs)
+        elif path.is_dir():
+
+            keys = []
+            values = []
+            orientation = 0
+
+            for next_path in path.iterdir():
+
+                if next_path.stem == BeamData.configuration_file_name:
+                    conf = pd.read_pickle(next_path)
+                    orientation = conf['orientation']
+
+                keys.append(next_path)
+                values.append(BeamData.read_file(next_path, **kwargs))
+            return collate_chunks(*values, keys=keys, dim=orientation)
+
+        else:
+
+            for p in path.partent.iterdir():
+                if p.stem == path.stem:
+                    return BeamData.read_file(p, **kwargs)
+
+            logger.warning(f"No object found in path: {path}")
+            return None
+
+    @staticmethod
     def read_file(path, **kwargs):
 
-        _, ext = os.path.splitext(path)
+        ext = path.suffix
 
         if ext == '.fea':
             x = pd.read_feather(path, **kwargs)
@@ -274,13 +303,17 @@ class BeamData(object):
 
     @staticmethod
     def clean_path(path):
-        if os.path.isfile(path):
-            os.remove(path)
-        elif os.path.isdir(path):
-            shutil.rmtree(path)
 
-        os.makedirs(path, exist_ok=True)
-        os.rmdir(path)
+        if path.exists():
+            rmtree(path)
+        else:
+            if path.parent.exists():
+                for p in path.parent.iterdir():
+                    if p.stem == path.name:
+                        rmtree(p)
+
+        path.mkdir(parents=True)
+        path.rmdir()
 
     def store(self, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, **kwargs):
@@ -344,7 +377,7 @@ class BeamData(object):
                 keys.append(p)
                 paths.append(next_path)
 
-            if all(['_chunk' in p for p in paths]) and collate:
+            if all([BeamData.chunk_file_extension in p for p in paths]) and collate:
                 values = collate_chunks(*values, dim=0)
             elif not is_arange(keys):
                 values = dict(zip(keys, values))
@@ -369,7 +402,7 @@ class BeamData(object):
 
                 keys.append(p)
 
-            if all(['_chunk' in p for p in keys]) and collate:
+            if all([BeamData.chunk_file_extension in p for p in keys]) and collate:
                 values = collate_chunks(*values, dim=0)
             elif not is_arange(keys):
                 values = dict(zip(keys, values))

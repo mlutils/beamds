@@ -445,7 +445,24 @@ def listdir_fullpath(d):
     return [os.path.join(d, f) for f in os.listdir(d)]
 
 
-def collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
+def rmtree(path):
+
+    path_type = check_type(path)
+    if path_type.minor == 'str':
+        path = Path(path)
+
+    if path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        for item in path.iterdir():
+            if item.is_dir():
+                rmtree(item)
+            else:
+                item.unlink()
+        path.rmdir()
+
+
+def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'):
 
     x = list(xs)
 
