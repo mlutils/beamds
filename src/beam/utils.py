@@ -343,6 +343,32 @@ def recursive_size(x):
             return sys.getsizeof(x)
 
 
+def recursive(func):
+
+    def apply_recursively(x, *args, **kwargs):
+
+        x_type = check_type(x)
+        if x_type.major == 'container':
+
+            keys = []
+            values = []
+
+            for k, v in iter_container(x):
+                keys.append(k)
+                values.append(apply_recursively(v, *args, **kwargs))
+
+            if not is_arange(keys):
+                values = dict(zip(keys, values))
+
+            return values
+
+        else:
+
+            return func(x, *args, **kwargs)
+
+    return apply_recursively
+
+
 def recursive_size_summary(x, mode='sum'):
 
     x_type = check_type(x)
@@ -784,9 +810,9 @@ def to_device(data, device='cuda', half=False):
 def recursive_func(x, func, *args, **kwargs):
 
     if isinstance(x, dict):
-        return {k: recursive_func(v, *args, **kwargs) for k, v in x.items()}
+        return {k: recursive_func(v, func, *args, **kwargs) for k, v in x.items()}
     elif isinstance(x, list) or isinstance(x, tuple):
-        return [recursive_func(s, *args, **kwargs) for s in x]
+        return [recursive_func(s, func, *args, **kwargs) for s in x]
     elif x is None:
         return None
     else:
@@ -803,14 +829,16 @@ def recursive_flatten(x):
     else:
         return [x]
 
+
+@recursive
 def recursive_batch(x, index):
 
-    if isinstance(x, dict):
-        return {k: recursive_batch(v, index) for k, v in x.items()}
-    elif isinstance(x, list) or isinstance(x, tuple):
-        return [recursive_batch(s, index) for s in x]
-    elif x is None:
+    x_type = check_type(x)
+
+    if x is None:
         return None
+    elif x_type.minor == 'pandas':
+        return x.iloc[index]
     else:
         return x[index]
 
