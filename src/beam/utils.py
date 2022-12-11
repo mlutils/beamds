@@ -20,6 +20,7 @@ import itertools
 import scipy
 from pathlib import Path
 import re
+from collections import Counter
 
 
 # logger.remove(handler_id=0)
@@ -648,6 +649,16 @@ def check_type(x, check_minor=True, check_element=True):
         mit = 'none'
         elt = 'none'
 
+    elif isinstance(x, slice):
+        mjt = 'slice'
+        mit = 'slice'
+        elt = 'slice'
+
+    elif isinstance(x, Counter):
+        mjt = 'counter'
+        mit = 'counter'
+        elt = 'counter'
+
     else:
 
         elt = 'unknown'
@@ -791,8 +802,6 @@ def recursive_flatten(x):
         return l
     else:
         return [x]
-
-
 
 def recursive_batch(x, index):
 
