@@ -37,11 +37,10 @@ class BeamData(object):
     configuration_file_name = '.conf'
     chunk_file_extension = '_chunk'
 
-    def __init__(self, *args, data=None, root_path=None, all_paths=None, label=None,
-                 lazy=True, device=None, columns=None, index=None, sort_index=False, part=None,
-                 quick_getitem=True, override=True, compress=None, chunksize=int(1e9),
-                 chunklen=None, n_chunks=None, partition=None, archive_len=int(1e6),
-                 read_kwargs=None, write_kwargs=None, target_device=None,
+    def __init__(self, *args, data=None, root_path=None, all_paths=None, name=None, label=None,
+                 lazy=True, device=None, columns=None, index=None, target_device=None,
+                 override=True, compress=None, chunksize=int(1e9), chunklen=None, n_chunks=None,
+                 partition=None, archive_len=int(1e6), read_kwargs=None, write_kwargs=None,
                  **kwargs):
 
         '''
@@ -70,22 +69,35 @@ class BeamData(object):
          this could model for example node properties in Knowledge graph where there are many types of nodes with different
          features.
 
-        Fetching the
-        If index
+         If data is both cached in self.data and stored in self.all_paths, the cached version is always preferred.
 
         '''
 
+        assert len(list(filter(lambda x: x is not None, [data, root_path, all_paths]))), \
+            "Requires ether data, root_path or all_paths to be not None"
+
         self.lazy = lazy
+        self.override = override
+        self.compress = compress
+        self.chunksize = chunksize
+        self.chunklen = chunklen
+        self.n_chunks = n_chunks
+        self.partition = partition
+        self.archive_len = archive_len
+        self.target_device = target_device
+        self.index = index
+        self.label = label
+        self.columns = columns
 
         self.stored = False
-        self.cached = False
-        self.synced = False
+        self.indices = None
+        self.flatten_data = None
 
-        self.recursive_stored = None
-        self.recursive_cached = None
-        self.recursive_synced = None
-        self.orient = None
         self.conf = None
+        self._columns_map = None
+        self._device = None
+        self._len = None
+        self._orient = None
 
         self.read_kwargs = {} if read_kwargs is None else read_kwargs
         self.write_kwargs = {} if write_kwargs is None else write_kwargs
@@ -93,6 +105,9 @@ class BeamData(object):
         root_path_type = check_type(root_path)
         if root_path_type.minor == 'str':
             root_path = Path(root_path)
+
+        if name is not None:
+            root_path = root_path.joinpath(name)
 
         if len(args) == 1:
             arg_type = check_type(args[0])
@@ -109,40 +124,22 @@ class BeamData(object):
 
         if all_paths is None:
             self.root_path = root_path
-            self.all_paths = BeamData.recursive_map_path(root_path)
+            if self.data is None:
+                self.all_paths = BeamData.recursive_map_path(root_path)
         else:
             self.all_paths = all_paths
             self.root_path = BeamData.recursive_root_finder(all_paths)
 
-        if self.all_paths:
+        if self.all_paths is not None and self.data is None:
+
             self.stored = True
             if not lazy:
-                self.data = BeamData.read_tree(all_paths, **self.read_kwargs)
-            else:
-                self.conf = BeamData.get_config_file(self.root_path)
+                self.cache()
+                # self.data = BeamData.read_tree(all_paths, **self.read_kwargs)
+            self.conf = BeamData.get_config_file(self.root_path)
+            self.info = BeamData.get_info_file(self.root_path)
 
-            self.synced = True
-
-        if self.data is not None:
-            self.cached = True
-            self.synced = (not self.synced)
-
-        self.target_device = target_device
-        if not lazy:
-            self.cache()
-
-        self.index = index
-        self.label = label
-        self.part = part
-        self.len = None
-
-        self.flatten_data = None
-        self.set_orientation()
-
-        if self.stored:
-            pass
-
-        elif self.cached:
+        elif self.data is not None:
 
             self.data_types = recursive(check_type)(self.data)
             self.index_mapper = None
@@ -158,6 +155,10 @@ class BeamData(object):
 
             if self.orient == 'columns':
                 self.columns_orientation_prep()
+
+        if device is not None:
+            self.to(device)
+
 
     @staticmethod
     def recursive_filter(x, info):
@@ -195,7 +196,7 @@ class BeamData(object):
                     return in_fold.index, x[in_fold], key + 1
 
         index, data, _ = _recursive_filter(x, info)
-        return DataBatch(index=index,data=data)
+        return DataBatch(index=index,data=data, label=None)
 
 
     def index_orientation_prep(self):
@@ -222,6 +223,19 @@ class BeamData(object):
         if self.index is not None:
             self.index_mapper = pd.Series(np.arange(len(self.index), index=self.index))
 
+    @staticmethod
+    def get_info_file(root_path):
+
+        if type(root_path) is str:
+            root_path = Path(root_path)
+
+        info_file = root_path.joinpath(BeamData.configuration_file_name)
+
+        if info_file.is_file():
+            info = BeamData.read_file_from_path(info_file)
+            return info
+
+        return None
 
     @staticmethod
     def get_config_file(root_path):
@@ -251,13 +265,22 @@ class BeamData(object):
         path.mkdir(parents=True)
         path.rmdir()
 
+    @property
+    def device(self):
+        if self._device is not None:
+            return self._device
+
+        self._device = recursive_device(self.data)
+        return self._device
+
     def to(self, device):
         self.data = recursive(lambda x: x.to(device))(self.data)
+        self._device = device
         return self
 
     def __len__(self):
-        if self.len is None:
-            if self.cached:
+        if self._len is None:
+            if self.data is not None:
                 if self.orient == 'columns':
                     len = recursive_len(self.data)
                 elif self.dim == 'index':
@@ -271,16 +294,19 @@ class BeamData(object):
             else:
                 len = None
 
-            self.len = len
-        return self.len
+            self._len = len
+        return self._len
 
-    def set_orientation(self):
-        if self.cached:
+    @property
+    def orient(self):
+        if self._orient is not None:
+            return self._orient
+        if self.data is not None:
 
             data_type = check_type(self.data)
 
             if data_type.major != 'container':
-                self.orient = 'simple'
+                self._orient = 'simple'
 
             else:
 
@@ -288,22 +314,28 @@ class BeamData(object):
                 lens = list(filter(lambda x: x is not None, lens))
 
                 if len(np.unique(lens) == 1):
-                    self.orient = 'columns'
+                    self._orient = 'columns'
                 else:
                     lens = recursive_flatten(
                         recursive(lambda x: x.shape[1] if hasattr(x, 'shape') and len(x.shape) > 1 else None)([self.data]))
 
                     lens = list(filter(lambda x: x is not None, lens))
                     if len(np.unique(lens) == 1):
-                        self.orient = 'index'
+                        self._orient = 'index'
                     else:
-                        self.orient = 'other'
+                        self._orient = 'other'
 
         elif self.stored:
-            self.orient = self.conf['orientation']
+            self._orient = self.conf['orientation']
 
         else:
-            self.orient = 'other'
+            self._orient = 'other'
+
+        return self._orient
+
+    def set_orientation(self):
+        self._orient = None
+        return self.orient
 
     @property
     def dim(self):
@@ -404,7 +436,7 @@ class BeamData(object):
     @property
     def values(self):
 
-        if not self.cached:
+        if self.data is None:
             self.cache()
 
         return self.data
@@ -658,6 +690,18 @@ class BeamData(object):
                     logger.error(f"Could not write file: {path_i.name}.")
 
 
+    @property
+    def columns_map(self):
+
+        if self._columns_map is not None:
+            return self._columns_map
+
+        if self.columns is not None:
+            self._columns_map = {str(k): i for i, k in enumerate(self.columns)}
+
+        return self._columns_map
+
+
     def concatenate_data(self, data):
 
         if self.objects_type == 'tensor':
@@ -679,7 +723,6 @@ class BeamData(object):
 
         self.all_paths = self.read(lazy=True)
         self.stored = True
-        self.synced = True
 
     def cache(self, **kwargs):
 
@@ -692,21 +735,17 @@ class BeamData(object):
 
         self.data = self.read(path=path, **kwargs)
 
-        self.cached = True
-        self.synced = True
-
     def get_batch(self, index):
 
-        if self.index is not None:
-            index = self.index_mapper.loc[index].values
-
         if self.orient == 'simple':
-            return self.data[index]
+            data = self.data[index]
 
-        if self.orient == 'columns':
-            return recursive_batch(self.data, index)
+        elif self.orient == 'columns':
 
-        if self.orient == 'index':
+            data = recursive_batch(self.data, index)
+            return BeamData(data, index=index)
+
+        elif self.orient == 'index':
 
             info =  self.info.iloc[index]
             info['reverse_index'] = np.arange(len(info))
@@ -723,51 +762,179 @@ class BeamData(object):
             batch = batch[batch_index]
             return batch
 
-        if self.orient == 'other':
+        elif self.orient == 'other':
 
             info = self.info.iloc[index]
             db = BeamData.recursive_filter(self.data, info)
             return BeamData(db.data, index=db.index)
 
+        else:
+            raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orient}")
 
-        raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orient}")
+        label = self.label.loc[index]
+        return DataBatch(data=data, index=index, label=label)
+
+
+    def inverse_map(self, ind):
+
+        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+
+        index_type = check_type(ind)
+        if index_type.major == 'scalar':
+            ind = [ind]
+
+        if self.index_mapper is not None:
+            ind = self.index_mapper.loc[ind].values
+
+        return ind
+
+
+    def _loc(self, ind):
+        ind = self.inverse_map(ind)
+        return self.get_batch(ind)
+
+
+    def _iloc(self, ind):
+
+        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        index_type = check_type(ind)
+        if index_type.major == 'scalar':
+            ind = [ind]
+
+        return self.get_batch(ind)
+
+    def slice_data(self, index):
+        if self.cached:
+
+            data = recursive_batch(self.data, index)
+            return BeamData(data, index=self.index, columns=self.columns, labels=self.label)
+        else:
+            raise LookupError(f"Cannot slice data as data is not cached")
+
+
+    def slice_keys(self, keys):
+
+        keys_type = check_type(keys)
+        if keys_type.major == 'scalar':
+            if self.cached:
+                data = self.data[keys]
+            else:
+                data = None
+
+            if self.stored:
+                all_paths = self.all_paths[keys]
+            else:
+                all_paths = None
+
+        else:
+
+            data_type = check_type(self.data)
+
+            if self.cached:
+
+                data = [] if data_type.minor == 'list' else {}
+                for k in keys:
+                    data[k] = self.data[k]
+
+            else:
+                data = None
+
+            if self.stored:
+
+                all_paths = [] if data_type.minor == 'list' else {}
+                for k in keys:
+                    all_paths[k] = self.all_paths[k]
+
+            else:
+                all_paths = None
+
+        if self.orient == 'columns':
+            kwargs = dict(index=self.index, label=self.label)
+        elif self.orient == 'simple':
+            kwargs = dict(columns=self.columns, index=self.index, label=self.label)
+        elif self.orient == 'index':
+            kwargs = dict(columns=self.columns, label=self.index)
+        else:
+            kwargs = dict()
+
+        return BeamData(data=data, all_paths=all_paths, **kwargs)
+
+    def inverse_columns_map(self, columns):
+
+        columns_map = self.columns_map
+        if check_type(columns).major == 'scalar':
+            columns = columns_map[columns]
+        else:
+            columns = [columns_map[i] for i in columns]
+
+        return columns
 
     def __getitem__(self, item):
 
+        '''
+
+        @param item:
+        @return:
+
+        The axes of BeamData objects are considered to be in order: [keys, index, columns, <rest of shape>]
+        if BeamData is orient==simple (meaning there are no keys), the first axis disappear.
+
+        Optional item configuration:
+
+        [keys] - keys is ether a slice, list or scalar.
+        [index] - index is pandas/numpy/tensor array
+        [keys, index] - keys is ether a slice, list or scalar and index is an array
+
+        '''
+
+        if self.orient == 'simple':
+            axes = ['index', 'columns', 'other']
+        else:
+            axes = ['keys', 'index', 'columns', 'other']
+
+        obj = self
         item_type = check_type(item)
-        if item_type.major == 'slice':
-            item = slice_to_index(item, l=len(self))
+        if item_type.minor == 'tuple':
+            for j, i in enumerate(item):
+                if i == slice(None):
+                    axes.pop(0)
+                    continue
 
-        if item_type.element in ['int', 'slice']:
+                i_type = check_type(i)
+                if axes[0] == 'keys' and i_type.minor in ['pandas', 'numpy', 'tensor']:
+                    axes.pop(0)
 
-            if not self.cached:
-                self.cache()
+                a = axes[0]
+                if a == 'keys':
+                    obj = obj.slice_keys(i)
+                    axes.pop(0)
 
-            sample = self.get_batch(item)
+                elif a == 'index':
 
-            if self.target_device is not None:
-                sample = to_device(sample, device=self.target_device)
+                    if i_type.major == 'slice':
+                        i = slice_to_index(i, l=len(obj))
 
-            if self.index is not None:
-                ind = self.index.iloc[item].values
-            else:
-                ind = item
+                    if not obj.cached:
+                        obj.cache()
 
-            if self.label is not None:
-                label = self.label[item]
-            else:
-                label = None
-                
-            return DataBatch(index=ind, label=label, data=sample)
+                    obj = obj.get_batch(i)
+                    axes.pop(0)
 
+                else:
 
-        if self.cached:
-            return self.data[item]
+                    if a == 'columns' and self.columns is not None:
+                        ind = (self.inverse_map(i), *item[j+1:])
+                    else:
+                        ind = item[j:]
 
-        item_paths = self.all_paths[item]
-        item_type = check_type(item_paths)
+                    if type(obj) is BeamData:
+                        obj = obj.slice_data(ind)
 
-        if item_type.major == 'scalar':
-            return BeamData.read_file(item_paths)
+                    elif type(obj) is DataBatch:
+                        data = recursive_batch(obj.data, ind)
+                        obj = DataBatch(data=data, index=obj.index, label=obj.label)
 
-        return BeamData(all_paths=item_paths)
+                    else:
+                        raise ValueError(f"Object type is {type(obj)}")
+
+        return obj

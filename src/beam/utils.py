@@ -842,6 +842,17 @@ def recursive_batch(x, index):
     else:
         return x[index]
 
+@recursive
+def recursive_slice(x, index):
+
+    x_type = check_type(x)
+
+    if x is None:
+        return None
+    elif x_type.minor == 'pandas':
+        return x[index]
+    else:
+        return x[:, index]
 
 def recursive_device(x):
 

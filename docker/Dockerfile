@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:22.10-py3
+FROM nvcr.io/nvidia/pytorch:22.08-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -58,28 +58,28 @@ RUN conda install -y -c conda-forge faiss-gpu
 
 # install DGL from source
 # REMOVE FOR LITE VERSION
-RUN bash /workspace/install/install_dgl.sh
+# RUN bash /workspace/install/install_dgl.sh
 
 # install RAPID framework
 # REMOVE FOR LITE VERSION
-RUN bash /workspace/install/rapid_install.sh
+# RUN bash /workspace/install/rapid_install.sh
 
 # download datasets and models
 # REMOVE FOR LITE VERSION
-RUN python /workspace/install/downloader.py
+# RUN python /workspace/install/downloader.py
 
 ## download nlp data
 
 # REMOVE FOR LITE VERSION
-RUN python -m nltk.downloader all
+# RUN python -m nltk.downloader all
 
 #ENV LC_ALL C.UTF-8
 #ENV LANG C.UTF-8
 # REMOVE FOR LITE VERSION
-RUN python -m spacy download zh_core_web_md
-RUN python -m spacy download en_core_web_md
-RUN python -m spacy download xx_ent_wiki_sm
-RUN python -m spacy download ru_core_news_sm
+# RUN python -m spacy download zh_core_web_md
+# RUN python -m spacy download en_core_web_md
+# RUN python -m spacy download xx_ent_wiki_sm
+# RUN python -m spacy download ru_core_news_sm
 
 # install beam
 
@@ -91,8 +91,6 @@ RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
 WORKDIR /workspace
 
 # config jupyter notebook
-RUN jupyter nbextension enable --py widgetsnbextension
-
 RUN bash /workspace/install/configure_jupyter.sh
 
 # for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
