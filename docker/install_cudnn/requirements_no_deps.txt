@@ -1,0 +1,9 @@
+# no deps package installation
+
+# fastai
+# fastcore
+# fastdownload
+# fastprogress
+
+# lightning-flash
+# functorch

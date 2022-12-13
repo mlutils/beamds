@@ -1,0 +1,11 @@
+# pandas and alternative packages
+pandas
+pandarallel
+
+# don't install dask as it ships with the NVIDIA image
+# dask[complete]
+
+datatable
+# pyspark
+# pyspark[sql]
+# pyspark[pandas_on_spark]

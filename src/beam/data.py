@@ -37,8 +37,8 @@ class BeamData(object):
     configuration_file_name = '.conf'
     chunk_file_extension = '_chunk'
 
-    def __init__(self, *args, data=None, root_path=None, all_paths=None, name=None, label=None,
-                 lazy=True, device=None, columns=None, index=None, target_device=None,
+    def __init__(self, *args, data=None, path=None, name=None,
+                 index=None, label=None, columns=None, lazy=True, device=None, target_device=None,
                  override=True, compress=None, chunksize=int(1e9), chunklen=None, n_chunks=None,
                  partition=None, archive_len=int(1e6), read_kwargs=None, write_kwargs=None,
                  **kwargs):
@@ -47,8 +47,7 @@ class BeamData(object):
 
         @param args:
         @param data:
-        @param root_path: if not str, requires to support the pathlib Path attributes and operations
-        @param all_paths:
+        @param path: if not str, requires to support the pathlib Path attributes and operations, can be container of paths
         @param lazy:
         @param kwargs:
 
@@ -73,7 +72,7 @@ class BeamData(object):
 
         '''
 
-        assert len(list(filter(lambda x: x is not None, [data, root_path, all_paths]))), \
+        assert len(list(filter(lambda x: x is not None, [data, path]))), \
             "Requires ether data, root_path or all_paths to be not None"
 
         self.lazy = lazy
@@ -90,6 +89,7 @@ class BeamData(object):
         self.columns = columns
 
         self.stored = False
+        self.cached = True
         self.indices = None
         self.flatten_data = None
 
@@ -102,13 +102,7 @@ class BeamData(object):
         self.read_kwargs = {} if read_kwargs is None else read_kwargs
         self.write_kwargs = {} if write_kwargs is None else write_kwargs
 
-        root_path_type = check_type(root_path)
-        if root_path_type.minor == 'str':
-            root_path = Path(root_path)
-
-        if name is not None:
-            root_path = root_path.joinpath(name)
-
+        # first we check if the BeamData object is cached (i.e. the data is passed as an argument)
         if len(args) == 1:
             arg_type = check_type(args[0])
             if arg_type.major == 'container':
@@ -121,14 +115,37 @@ class BeamData(object):
             self.data = data
         else:
             self.data = None
+            self.cached = False
+            # in this case the data is not cached, so it should be stored ether in root_path or in all_paths
 
-        if all_paths is None:
+        path_type = check_type(path)
+        if path_type.minor == 'str':
+            path = Path(path)
+
+        path_type = check_type(path)
+        if path_type.major != 'container' and name is not None:
+            path = path.joinpath(name)
+
+        if path_type.major == 'container':
+            self.root_path = BeamData.recursive_root_finder(path)
+        else:
+            self.root_path = path
+
+
+
+        self.path = path
+
+        #TODO: start here
+        if not self.cached:
+            pass
+
+        if path is None:
             self.root_path = root_path
             if self.data is None:
                 self.all_paths = BeamData.recursive_map_path(root_path)
         else:
-            self.all_paths = all_paths
-            self.root_path = BeamData.recursive_root_finder(all_paths)
+            self.all_paths = path
+            self.root_path = BeamData.recursive_root_finder(path)
 
         if self.all_paths is not None and self.data is None:
 
@@ -280,7 +297,7 @@ class BeamData(object):
 
     def __len__(self):
         if self._len is None:
-            if self.data is not None:
+            if self.cached:
                 if self.orient == 'columns':
                     len = recursive_len(self.data)
                 elif self.dim == 'index':
@@ -301,7 +318,7 @@ class BeamData(object):
     def orient(self):
         if self._orient is not None:
             return self._orient
-        if self.data is not None:
+        if self.cached:
 
             data_type = check_type(self.data)
 
@@ -436,7 +453,7 @@ class BeamData(object):
     @property
     def values(self):
 
-        if self.data is None:
+        if not self.cached:
             self.cache()
 
         return self.data
@@ -724,10 +741,16 @@ class BeamData(object):
         self.all_paths = self.read(lazy=True)
         self.stored = True
 
-    def cache(self, **kwargs):
+    def cache(self, all_paths=None, **kwargs):
+
+        if all_paths is None:
+            all_paths = self.all_paths
+
+        # read the conf and info files
+
 
         if not self.stored:
-            logger.warning("data is unavailable in dick, returning None object")
+            logger.warning("data is unavailable in disc, returning None object")
 
         path = None
         if self.all_paths is not None:
@@ -837,6 +860,7 @@ class BeamData(object):
                     data[k] = self.data[k]
 
             else:
+
                 data = None
 
             if self.stored:
@@ -844,6 +868,11 @@ class BeamData(object):
                 all_paths = [] if data_type.minor == 'list' else {}
                 for k in keys:
                     all_paths[k] = self.all_paths[k]
+
+                if self.lazy:
+                    data = None
+                else:
+                    data = BeamData.read_tree(all_paths)
 
             else:
                 all_paths = None
@@ -857,7 +886,7 @@ class BeamData(object):
         else:
             kwargs = dict()
 
-        return BeamData(data=data, all_paths=all_paths, **kwargs)
+        return BeamData(data=data, path=all_paths, lazy=self.lazy, **kwargs)
 
     def inverse_columns_map(self, columns):
 
