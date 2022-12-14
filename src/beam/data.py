@@ -35,12 +35,14 @@ class BeamData(object):
 
     feather_index_mark = "index:"
     configuration_file_name = '.conf'
+    info_file_name = '.info'
+    default_data_file_name = 'data'
     chunk_file_extension = '_chunk'
 
     def __init__(self, *args, data=None, path=None, name=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None,
                  override=True, compress=None, chunksize=int(1e9), chunklen=None, n_chunks=None,
-                 partition=None, archive_len=int(1e6), read_kwargs=None, write_kwargs=None,
+                 partition=None, archive_len=int(1e6), orient='columns', read_kwargs=None, write_kwargs=None,
                  **kwargs):
 
         '''
@@ -87,17 +89,22 @@ class BeamData(object):
         self.index = index
         self.label = label
         self.columns = columns
+        self.orient = orient
 
         self.stored = False
         self.cached = True
         self.indices = None
-        self.flatten_data = None
 
-        self.conf = None
         self._columns_map = None
         self._device = None
         self._len = None
-        self._orient = None
+        self._orientation = None
+        self._data_types = None
+        self._data_type = None
+        self._objects_type = None
+        self._flatten_data = None
+        self._info = None
+        self._conf = None
 
         self.read_kwargs = {} if read_kwargs is None else read_kwargs
         self.write_kwargs = {} if write_kwargs is None else write_kwargs
@@ -118,64 +125,96 @@ class BeamData(object):
             self.cached = False
             # in this case the data is not cached, so it should be stored ether in root_path or in all_paths
 
+        if device is not None:
+            self.as_tensor(device=device)
+
         path_type = check_type(path)
         if path_type.minor == 'str':
             path = Path(path)
 
-        path_type = check_type(path)
         if path_type.major != 'container' and name is not None:
             path = path.joinpath(name)
 
         if path_type.major == 'container':
             self.root_path = BeamData.recursive_root_finder(path)
-        else:
-            self.root_path = path
-
-
-
-        self.path = path
-
-        #TODO: start here
-        if not self.cached:
-            pass
-
-        if path is None:
-            self.root_path = root_path
-            if self.data is None:
-                self.all_paths = BeamData.recursive_map_path(root_path)
-        else:
             self.all_paths = path
-            self.root_path = BeamData.recursive_root_finder(path)
+        elif path is not None:
+            self.root_path = path
+            self.all_paths = BeamData.recursive_map_path(path)
+        else:
+            self.root_path = None
+            self.all_paths = None
 
-        if self.all_paths is not None and self.data is None:
-
+        if self.all_paths is not None and not self.cached:
             self.stored = True
             if not lazy:
                 self.cache()
-                # self.data = BeamData.read_tree(all_paths, **self.read_kwargs)
-            self.conf = BeamData.get_config_file(self.root_path)
-            self.info = BeamData.get_info_file(self.root_path)
 
-        elif self.data is not None:
+    @property
+    def objects_type(self):
 
-            self.data_types = recursive(check_type)(self.data)
-            self.index_mapper = None
-            self.info = None
+        if self._objects_type is not None:
+            return self._objects_type
 
-            objects_types = recursive_flatten(self.data_types)
-            objects_types = [v.minor for v in objects_types if v.minor != 'none']
+        objects_types = recursive_flatten(self.data_types)
+        objects_types = [v.minor for v in objects_types if v.minor != 'none']
+        self._objects_type = pd.Series(objects_types).value_counts().values[0]
+        return self._objects_type
 
-            self.objects_type = pd.Series(objects_types).value_counts().values[0]
+    @property
+    def conf(self):
 
-            if self.orient in ['index', 'other']:
-                self.index_orientation_prep()
+        if self._conf is not None:
+            return self._conf
 
-            if self.orient == 'columns':
-                self.columns_orientation_prep()
+        if self.stored:
+            conf_path = self.root_path.joinpath(BeamData.configuration_file_name)
+            if conf_path.is_file():
+                self._conf = BeamData.read_file(conf_path)
+                return self._conf
 
-        if device is not None:
-            self.to(device)
+        if self.cached:
+            self._conf = {'orientation': self.orientation,
+                          'objects_type': self.objects_type,
+                          'len': len(self), 'columns_map': self.columns_map}
+            return self._conf
 
+        self._conf = None
+        return self._conf
+
+    @property
+    def info(self):
+
+        if self._info is not None:
+            return self._info
+
+        if self.stored:
+            info_path = self.root_path.joinpath(BeamData.info_file_name)
+            if info_path.is_file():
+                self._info = BeamData.read_file(info_path)
+                return self._info
+
+        if self.cached:
+
+            if self.orientation in ['index', 'other']:
+                fold_index = np.concatenate([np.arange(len(d)) for d in self.flatten_data])
+                fold = np.concatenate([i * np.ones(len(d), dtype=np.int64) for i, d in enumerate(self.flatten_data)])
+                lengths = np.array([len(d) for d in self.flatten_data])
+                offset = np.cumsum(lengths, dim=0) - lengths
+                offset = offset[fold] + fold_index
+
+            else:
+                fold_index = None
+                fold = None
+                offset = None
+
+            index = np.concatenate(recursive_flatten([self.index]))
+            info = {'fold': fold, 'fold_index': fold_index, 'offset': offset, 'map': np.arange(len(index))}
+            self._info = pd.DataFrame(info, index=index)
+            return self._info
+
+        self._info = None
+        return self._info
 
     @staticmethod
     def recursive_filter(x, info):
@@ -215,56 +254,12 @@ class BeamData(object):
         index, data, _ = _recursive_filter(x, info)
         return DataBatch(index=index,data=data, label=None)
 
+    @property
+    def index_mapper(self):
 
-    def index_orientation_prep(self):
-
-        self.flatten_data = recursive_flatten(self.data)
-
-        fold_index = np.concatenate([np.arange(len(d)) for d in self.flatten_data])
-        fold = np.concatenate([i * np.ones(len(d), dtype=np.int64) for i, d in enumerate(self.flatten_data)])
-        lengths = np.array([len(d) for d in self.flatten_data])
-        offset = np.cumsum(lengths, dim=0) - lengths
-
-        offset = offset[fold] + fold_index
-
-        if self.index is not None:
-            index = np.concatenate(recursive_flatten(self.index))
-            self.index_mapper = pd.Series(np.arange(len(index), index=index))
-        else:
-            index = None
-
-        info = {'fold': fold, 'fold_index': fold_index, 'offset': offset}
-        self.info = pd.DataFrame(info, index=index)
-
-    def columns_orientation_prep(self):
-        if self.index is not None:
-            self.index_mapper = pd.Series(np.arange(len(self.index), index=self.index))
-
-    @staticmethod
-    def get_info_file(root_path):
-
-        if type(root_path) is str:
-            root_path = Path(root_path)
-
-        info_file = root_path.joinpath(BeamData.configuration_file_name)
-
-        if info_file.is_file():
-            info = BeamData.read_file_from_path(info_file)
-            return info
-
-        return None
-
-    @staticmethod
-    def get_config_file(root_path):
-
-        if type(root_path) is str:
-            root_path = Path(root_path)
-
-        conf_file = root_path.joinpath(BeamData.configuration_file_name)
-
-        if conf_file.is_file():
-            conf = BeamData.read_file_from_path(conf_file)
-            return conf
+        info = self.info
+        if 'map' in info.columns:
+            return info['map']
 
         return None
 
@@ -283,6 +278,13 @@ class BeamData(object):
         path.rmdir()
 
     @property
+    def flatten_data(self):
+        if self._flatten_data is not None:
+            return self._flatten_data
+        self._flatten_data = recursive_flatten(self.data)
+        return self._flatten_data
+
+    @property
     def device(self):
         if self._device is not None:
             return self._device
@@ -296,71 +298,91 @@ class BeamData(object):
         return self
 
     def __len__(self):
-        if self._len is None:
-            if self.cached:
-                if self.orient == 'columns':
-                    len = recursive_len(self.data)
-                elif self.dim == 'index':
-                    len = sum(recursive_flatten(recursive(lambda x: len(x) if hasattr(x, '__len__') else 0)(self.data)))
-                else:
-                    len = None
 
-            elif self.stored:
-                len = self.conf['len']
+        if self._len is not None:
+            return self._len
 
+        if self.stored and self.conf is not None:
+            self._len = self.conf['len']
+            return self._len
+
+        if self.cached:
+            if self.orientation == 'columns':
+                self._len = recursive_len(self.data)
             else:
-                len = None
+                self._len = sum(recursive_flatten(recursive(lambda x: len(x) if hasattr(x, '__len__') else 0)(self.data)))
+            return self._len
 
-            self._len = len
+        self._len = None
         return self._len
 
     @property
-    def orient(self):
-        if self._orient is not None:
-            return self._orient
+    def orientation(self):
+        if self._orientation is not None:
+            return self._orientation
         if self.cached:
 
             data_type = check_type(self.data)
 
             if data_type.major != 'container':
-                self._orient = 'simple'
+                self._orientation = 'simple'
 
             else:
 
-                lens = recursive_flatten(recursive(lambda x: len(x) if hasattr(x, '__len__') else None)([self.data]))
-                lens = list(filter(lambda x: x is not None, lens))
-
-                if len(np.unique(lens) == 1):
-                    self._orient = 'columns'
-                else:
-                    lens = recursive_flatten(
-                        recursive(lambda x: x.shape[1] if hasattr(x, 'shape') and len(x.shape) > 1 else None)([self.data]))
-
+                if self.orient == 'columns':
+                    lens = recursive_flatten(recursive(lambda x: len(x) if hasattr(x, '__len__') else None)([self.data]))
                     lens = list(filter(lambda x: x is not None, lens))
-                    if len(np.unique(lens) == 1):
-                        self._orient = 'index'
-                    else:
-                        self._orient = 'other'
+
+                    lens_index = recursive_flatten(
+                        recursive(lambda x: len(x) if hasattr(x, '__len__') else None)([self.index]))
+                    lens_index = list(filter(lambda x: x is not None, lens_index))
+
+                    if len(np.unique(lens) == 1) and sum(lens) > sum(lens_index):
+                        self._orientation = 'columns'
+                        return self._orientation
+
+                lens = recursive_flatten(
+                    recursive(lambda x: x.shape[1] if hasattr(x, 'shape') and len(x.shape) > 1 else None)([self.data]))
+
+                lens = list(filter(lambda x: x is not None, lens))
+                if len(np.unique(lens) == 1):
+                    self._orientation = 'index'
+                else:
+                    self._orientation = 'other'
 
         elif self.stored:
-            self._orient = self.conf['orientation']
+            self._orientation = self.conf['orientation']
 
         else:
-            self._orient = 'other'
+            self._orientation = 'other'
 
-        return self._orient
+        return self._orientation
 
-    def set_orientation(self):
-        self._orient = None
-        return self.orient
+    def set_property(self, p):
+        setattr(self, f"_{p}", None)
+        return getattr(self, p)
 
     @property
     def dim(self):
-        if self.orient == 'columns':
+        if self.orientation == 'columns':
             return 0
-        if self.orient == 'index':
+        if self.orientation == 'index':
             return 1
         return None
+
+    @property
+    def data_types(self):
+        if self._data_types is not None:
+            return self._data_types
+        self._data_types = recursive(check_type)(self.data)
+        return self._data_types
+
+    @property
+    def data_type(self):
+        if self._data_type is not None:
+            return self._data_type
+        self._data_type = check_type(self.data)
+        return self._data_type
 
     @staticmethod
     def read_file(path, **kwargs):
@@ -449,6 +471,7 @@ class BeamData(object):
 
         func = partial(as_tensor, device=device, dtype=dtype, return_vector=return_vector)
         self.data = recursive(func)(self.data)
+        self._objects_type = 'tensor'
 
     @property
     def values(self):
@@ -706,7 +729,6 @@ class BeamData(object):
                 if error:
                     logger.error(f"Could not write file: {path_i.name}.")
 
-
     @property
     def columns_map(self):
 
@@ -716,8 +738,8 @@ class BeamData(object):
         if self.columns is not None:
             self._columns_map = {str(k): i for i, k in enumerate(self.columns)}
 
+        self._columns_map = None
         return self._columns_map
-
 
     def concatenate_data(self, data):
 
@@ -758,17 +780,21 @@ class BeamData(object):
 
         self.data = self.read(path=path, **kwargs)
 
+        # self.data = BeamData.read_tree(all_paths, **self.read_kwargs)
+        self.conf = BeamData.get_config_file(self.root_path)
+        self.info = BeamData.get_info_file(self.root_path)
+
     def get_batch(self, index):
 
-        if self.orient == 'simple':
+        if self.orientation == 'simple':
             data = self.data[index]
 
-        elif self.orient == 'columns':
+        elif self.orientation == 'columns':
 
             data = recursive_batch(self.data, index)
             return BeamData(data, index=index)
 
-        elif self.orient == 'index':
+        elif self.orientation == 'index':
 
             info =  self.info.iloc[index]
             info['reverse_index'] = np.arange(len(info))
@@ -785,18 +811,17 @@ class BeamData(object):
             batch = batch[batch_index]
             return batch
 
-        elif self.orient == 'other':
+        elif self.orientation == 'other':
 
             info = self.info.iloc[index]
             db = BeamData.recursive_filter(self.data, info)
             return BeamData(db.data, index=db.index)
 
         else:
-            raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orient}")
+            raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
 
         label = self.label.loc[index]
         return DataBatch(data=data, index=index, label=label)
-
 
     def inverse_map(self, ind):
 
@@ -877,11 +902,11 @@ class BeamData(object):
             else:
                 all_paths = None
 
-        if self.orient == 'columns':
+        if self.orientation == 'columns':
             kwargs = dict(index=self.index, label=self.label)
-        elif self.orient == 'simple':
+        elif self.orientation == 'simple':
             kwargs = dict(columns=self.columns, index=self.index, label=self.label)
-        elif self.orient == 'index':
+        elif self.orientation == 'index':
             kwargs = dict(columns=self.columns, label=self.index)
         else:
             kwargs = dict()
@@ -916,7 +941,7 @@ class BeamData(object):
 
         '''
 
-        if self.orient == 'simple':
+        if self.orientation == 'simple':
             axes = ['index', 'columns', 'other']
         else:
             axes = ['keys', 'index', 'columns', 'other']
