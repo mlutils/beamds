@@ -2,12 +2,14 @@
 from examples.example_utils import add_beam_to_path
 add_beam_to_path()
 
-from src.beam.processor import BeamData, Transformer
+from src.beam.data import BeamData
+from src.beam.processor import Transformer
 import numpy as np
 import pandas as pd
 
 import string
 import random
+
 
 def rand_column(n=16):
     letters = string.ascii_letters
@@ -24,7 +26,6 @@ class MyTransformer(Transformer):
         return len(x)
 
 
-
 if __name__ == '__main__':
 
     n = 100
@@ -36,25 +37,15 @@ if __name__ == '__main__':
            'b': [pd.DataFrame(index=np.random.permutation(np.arange(n)),
                         data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)]}
 
-    # dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)), data=np.random.randn(n, m),
-    #                    columns=[rand_column() for _ in range(m)])
-
-    # dfs = [1, 2, 3]
-
-    path = '/tmp/sandbox/multi_dfs'
+    path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
-    # bd.write(dfs)
+    bd.store()
 
-    bd.write(dfs, n_chunks=2)
-
-    x = bd.read()
-
-    bd2 = BeamData(path=path)
-
-    bd2.to_memory()
-
-    # tf = MyTransformer(chunksize=1, n_jobs=0)
-    tf = MyTransformer(n_chunks=2, n_jobs=0)
-    y = tf.transform(bd2, parent_strategy='disk', worker_strategy='disk')
+    # bd2 = BeamData(path=path)
+    # bd2.to_memory()
+    #
+    # # tf = MyTransformer(chunksize=1, n_jobs=0)
+    # tf = MyTransformer(n_chunks=2, n_jobs=0)
+    # y = tf.transform(bd2, parent_strategy='disk', worker_strategy='disk')
 
     print("done")

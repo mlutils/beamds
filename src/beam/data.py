@@ -14,7 +14,7 @@ import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, recursive_len, is_arange, listdir_fullpath, is_chunk, rmtree, \
-    recursive_size,recursive_flatten
+    recursive_size, recursive_flatten, recursive_collate_chunks
 from .parallel import parallelize
 from collections import OrderedDict
 import os
@@ -38,10 +38,11 @@ class BeamData(object):
     info_file_name = '.info'
     default_data_file_name = 'data'
     chunk_file_extension = '_chunk'
+    partition_directory_name = '_part'
 
     def __init__(self, *args, data=None, path=None, name=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None,
-                 override=True, compress=None, chunksize=int(1e9), chunklen=None, n_chunks=None,
+                 override=True, compress=None, chunk_strategy='files', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  partition=None, archive_len=int(1e6), orient='columns', read_kwargs=None, write_kwargs=None,
                  **kwargs):
 
@@ -90,6 +91,7 @@ class BeamData(object):
         self.label = label
         self.columns = columns
         self.orient = orient
+        self.chunk_strategy = chunk_strategy
 
         self.stored = False
         self.cached = True
@@ -453,7 +455,7 @@ class BeamData(object):
                 values.append(BeamData.recursive_map_path(next_path))
 
             # if the directory contains chunks it is considered as a single path
-            if all([is_chunk(p, chunk_patter=BeamData.chunk_file_extension) for p in keys]):
+            if all([is_chunk(p, chunk_pattern=BeamData.chunk_file_extension) for p in keys]):
                 return path
 
             if not is_arange(keys):
@@ -502,9 +504,15 @@ class BeamData(object):
                     conf = pd.read_pickle(next_path)
                     orientation = conf['orientation']
 
-                keys.append(next_path.split(BeamData.chunk_file_extension)[0])
-                values.append(BeamData.read_file(next_path, **kwargs))
-            return collate_chunks(*values, keys=keys, dim=orientation)
+                elif not next_path.name.startswith('.'):
+                    keys.append(next_path.split(BeamData.chunk_file_extension)[0])
+                    values.append(BeamData.read_file(next_path, **kwargs))
+
+            if all([is_chunk(p, chunk_pattern=BeamData.chunk_file_extension) for p in keys]):
+                return collate_chunks(*values, keys=keys, dim=orientation)
+
+            if all([is_chunk(p, chunk_pattern=BeamData.partition_directory_name) for p in keys]):
+                return recursive_collate_chunks(*values, dim=orientation)
 
         else:
 
@@ -574,7 +582,6 @@ class BeamData(object):
             return
 
         BeamData.clean_path(path)
-
         ext = path.suffix
 
         if ext == '.fea':
@@ -605,7 +612,8 @@ class BeamData(object):
             raise ValueError("Unsupported extension type.")
 
     @staticmethod
-    def write_data(data, path, sizes=None, archive_size=int(1e6), **kwargs):
+    def write_data(data, path, sizes=None, chunk_strategy='files', archive_size=int(1e6), chunksize=int(1e9),
+              chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
 
         if type(path) is str:
             path = Path(path)
@@ -618,18 +626,49 @@ class BeamData(object):
         if data_type.major == 'container':
 
             size_summary = sum(recursive_flatten(sizes))
+
             if size_summary < archive_size:
                 BeamData.write_object(data, path, size=size_summary, archive=True, **kwargs)
+
+            elif chunk_strategy == 'data':
+
+                if (n_chunks is None) and (chunklen is None):
+                    n_chunks = max(int(np.round(size_summary / chunksize)), 1)
+                elif (n_chunks is not None) and (chunklen is not None):
+                    logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
+                elif n_chunks is None:
+                    n_chunks = max(int(np.round(recursive_len(data) / chunklen)), 1)
+
+                if n_chunks > 1:
+
+                    for i, part in enumerate(divide_chunks(data, n_chunks=n_chunks)):
+                        name = f'{i:06}{BeamData.partition_directory_name}'
+                        BeamData.write_data(part, path.joinpath(name), sizes=size_summary, archive_size=archive_size,
+                                            n_chunks=1, partition=partition, file_type=file_type, **kwargs)
+
+                else:
+
+                    for k, v in iter_container(data):
+                        if type(k) is not str:
+                            k = f'{k:06}'
+                        BeamData.write_data(v, path.joinpath(k), sizes=sizes[k], archive_size=archive_size,
+                                            n_chunks=1, partition=partition,
+                                            file_type=file_type, **kwargs)
 
             else:
                 for k, v in iter_container(data):
                     if type(k) is not str:
                         k = f'{k:06}'
-                    BeamData.write_data(v, path.joinpath(k), sizes=sizes[k] **kwargs)
+                    BeamData.write_data(v, path.joinpath(k), sizes=sizes[k], archive_size=archive_size,
+                                        chunksize=chunksize, chunklen=chunklen,
+                                        n_chunks=n_chunks, partition=partition,
+                                        file_type=file_type, **kwargs)
 
         else:
-            BeamData.write_object(data, path, size=sizes, **kwargs)
-
+            BeamData.write_object(data, path, size=sizes, archive_size=archive_size,
+                                        chunksize=chunksize, chunklen=chunklen,
+                                        n_chunks=n_chunks, partition=partition,
+                                        file_type=file_type, **kwargs)
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
@@ -750,39 +789,68 @@ class BeamData(object):
         if self.objects_type == 'numpy':
             return np.concatenate(data)
 
+    def store(self, data=None, path=None, compress=None, chunksize=int(1e9),
+              chunklen=None, n_chunks=None, partition=None, chunk_strategy='files',
+              archive_len=int(1e6), override=True, **kwargs):
 
-    def store(self, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, override=True, **kwargs):
-        assert self.root_path is not None, "path is unknown, Please define BeamData with path"
-        assert self.cached, "data is unavailable, Please define BeamData with valid data"
+        if path is None:
+            path = self.root_path
 
-        self.write(compress=compress, chunksize=chunksize,
-                   chunklen=chunklen, n_chunks=n_chunks, partition=partition,
-                   file_type=file_type, override=override, **kwargs)
+        if data is None:
+            data = self.data
 
-        self.all_paths = self.read(lazy=True)
+        compress = self.compress if compress is None else compress
+        chunksize = self.chunksize if chunksize is None else chunksize
+        chunklen = self.chunklen if chunklen is None else chunklen
+        n_chunks = self.n_chunks if n_chunks is None else n_chunks
+
+        partition = self.partition if partition is None else partition
+        override = self.override if override is None else override
+        archive_len = self.archive_len if archive_len is None else archive_len
+        chunk_strategy = self.chunk_strategy if chunk_strategy is None else chunk_strategy
+
+        BeamData.write_data(data, path, chunk_strategy=chunk_strategy, archive_size=archive_len, chunksize=chunksize,
+              chunklen=chunklen, n_chunks=n_chunks, partition=partition, compress=compress, override=override, **kwargs)
+
         self.stored = True
+        self.root_path = path
+        self.data = data
+        self.all_paths = BeamData.recursive_map_path(path)
 
-    def cache(self, all_paths=None, **kwargs):
+    def cache(self, path=None, **kwargs):
 
-        if all_paths is None:
-            all_paths = self.all_paths
+        if path is None:
+
+            if self.all_paths is not None:
+                path = self.all_paths
+            else:
+                path = self.root_path
+
+            root_path = self.root_path
+
+        else:
+
+            path_type = check_type(path)
+            if path_type.major == 'container':
+                root_path = BeamData.recursive_root_finder(path)
+            else:
+                root_path = path
 
         # read the conf and info files
 
-
         if not self.stored:
-            logger.warning("data is unavailable in disc, returning None object")
+            logger.warning("stored=False, data is seems to be un-synchronized")
 
-        path = None
-        if self.all_paths is not None:
-            path = self.all_paths
+        data = self.read_tree(path=path, **kwargs)
 
-        self.data = self.read(path=path, **kwargs)
+        if type(data) is dict and 'data' in data and len(data) == 1:
+            data = data['data']
 
-        # self.data = BeamData.read_tree(all_paths, **self.read_kwargs)
-        self.conf = BeamData.get_config_file(self.root_path)
-        self.info = BeamData.get_info_file(self.root_path)
+        self.root_path = root_path
+        self.all_paths = BeamData.recursive_map_path(root_path)
+        self.data = data
+        self.stored = True
+        self.cached = True
 
     def get_batch(self, index):
 
@@ -836,11 +904,9 @@ class BeamData(object):
 
         return ind
 
-
     def _loc(self, ind):
         ind = self.inverse_map(ind)
         return self.get_batch(ind)
-
 
     def _iloc(self, ind):
 
@@ -858,7 +924,6 @@ class BeamData(object):
             return BeamData(data, index=self.index, columns=self.columns, labels=self.label)
         else:
             raise LookupError(f"Cannot slice data as data is not cached")
-
 
     def slice_keys(self, keys):
 
@@ -922,6 +987,16 @@ class BeamData(object):
             columns = [columns_map[i] for i in columns]
 
         return columns
+
+    def __setitem__(self, key, value):
+
+        if self.orientation == 'simple':
+            self.data.__setitem__(key, value)
+
+        else:
+            self.data[key] = value
+
+        self.stored = False
 
     def __getitem__(self, item):
 

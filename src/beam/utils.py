@@ -483,8 +483,8 @@ def recursive_merge(dfs, method='tree', **kwargs):
     raise ValueError('Unknown method type')
 
 
-def is_chunk(path, chunk_patter='_chunk'):
-    return path.is_file() and bool(re.search(rf'\d{6}{chunk_patter}\.', str(path.name)))
+def is_chunk(path, chunk_pattern='_chunk'):
+    return path.is_file() and bool(re.search(rf'\d{6}{chunk_pattern}\.', str(path.name)))
 
 
 def iter_container(x):
@@ -512,6 +512,27 @@ def rmtree(path):
             else:
                 item.unlink()
         path.rmdir()
+
+
+def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
+
+    x_type = check_type(xs[0])
+    if x_type == 'container':
+
+        values = []
+        keys = []
+
+        for k, _ in iter_container(xs[0]):
+            values.append(recursive_collate_chunks(*[xi[k] for xi in xs], dim=dim, on=on, how=how, method=method))
+            keys.append(k)
+
+        if not is_arange(keys):
+            values = dict(zip(keys, values))
+
+        return values
+
+    else:
+        return collate_chunks(*xs, dim=dim, on=on, how=how, method=method)
 
 
 def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'):
