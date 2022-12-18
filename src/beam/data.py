@@ -130,10 +130,10 @@ class BeamData(object):
         if device is not None:
             self.as_tensor(device=device)
 
-        path_type = check_type(path)
-        if path_type.minor == 'str':
+        if type(path) is str:
             path = Path(path)
 
+        path_type = check_type(path)
         if path_type.major != 'container' and name is not None:
             path = path.joinpath(name)
 
@@ -400,6 +400,27 @@ class BeamData(object):
         return NotImplementedError
 
     @staticmethod
+    def write_file(data, path, overwrite=True, **kwargs):
+
+        if type(path) is str:
+            path = Path(path)
+
+        path_type = check_type(path)
+
+        if (not overwrite) and path.exists():
+            raise NameError(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
+
+        BeamData.clean_path(path)
+
+        if path_type.minor == 'path':
+            path = BeamData._write_file_to_path(data, path, **kwargs)
+        else:
+            raise NotImplementedError
+
+        return path
+
+
+    @staticmethod
     def read_tree(paths, **kwargs):
 
         if type(paths) is str:
@@ -524,7 +545,7 @@ class BeamData(object):
             return None
 
     @staticmethod
-    def read_file_from_path(path, **kwargs):
+    def _read_file_from_path(path, **kwargs):
 
         ext = path.suffix
 
@@ -572,16 +593,11 @@ class BeamData(object):
         return x
 
     @staticmethod
-    def write_file_to_path(x, path, overwrite=True, **kwargs):
+    def _write_file_to_path(x, path, **kwargs):
 
         if type(path) is str:
             path = Path(path)
 
-        if (not overwrite) and path.exists():
-            logger.error(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
-            return
-
-        BeamData.clean_path(path)
         ext = path.suffix
 
         if ext == '.fea':
@@ -610,6 +626,8 @@ class BeamData(object):
             torch.save(x, path, **kwargs)
         else:
             raise ValueError("Unsupported extension type.")
+
+        return path
 
     @staticmethod
     def write_data(data, path, sizes=None, chunk_strategy='files', archive_size=int(1e6), chunksize=int(1e9),
@@ -670,6 +688,8 @@ class BeamData(object):
                                         n_chunks=n_chunks, partition=partition,
                                         file_type=file_type, **kwargs)
 
+        return paths
+
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
@@ -683,7 +703,7 @@ class BeamData(object):
                 return
 
         if archive:
-            BeamData.write_file_to_path(data, path.with_suffix('.pkl'), override=override, **kwargs)
+            object_path = BeamData.write_file(data, path.with_suffix('.pkl'), override=override, **kwargs)
 
         else:
 
@@ -718,41 +738,45 @@ class BeamData(object):
 
             if len(data) > 1:
                 path.mkdir()
-                BeamData.write_file_to_path({'orientation': 0}, path.joinpath(BeamData.configuration_file_name))
+                BeamData.write_file({'orientation': 0}, path.joinpath(BeamData.configuration_file_name))
+                object_path = path
 
             for i, di in data:
 
                 if len(data) > 1:
                     path_i = path.joinpath(f"{i:06}{BeamData.chunk_file_extension}")
                 else:
-                    path_i = pathlib.Path(path)
+                    path_i = path
 
                 for ext in priority:
                     file_path = path_i.with_suffix(ext)
+
+                    if len(data) == 1:
+                        object_path = file_path
                     try:
                         kwargs = {}
                         if ext == '.parquet':
                             if compress is False:
                                 kwargs['compression'] = None
-                            BeamData.write_file_to_path(di, file_path, partition_cols=partition, coerce_timestamps='us',
+                            BeamData.write_file(di, file_path, partition_cols=partition, coerce_timestamps='us',
                                             allow_truncated_timestamps=True, **kwargs)
                         elif ext == '.fea':
                             if compress is False:
                                 kwargs['compression'] = 'uncompressed'
-                            BeamData.write_file_to_path(di, file_path, **kwargs)
+                            BeamData.write_file(di, file_path, **kwargs)
 
                         elif ext == '.pkl':
                             if compress is False:
                                 kwargs['compression'] = 'none'
-                            BeamData.write_file_to_path(di, file_path, **kwargs)
+                            BeamData.write_file(di, file_path, **kwargs)
 
                         elif ext == '.scipy_npz':
                             if compress is False:
                                 kwargs['compressed'] = True
-                            BeamData.write_file_to_path(di, file_path, **kwargs)
+                            BeamData.write_file(di, file_path, **kwargs)
 
                         else:
-                            BeamData.write_file_to_path(di, file_path, **kwargs)
+                            BeamData.write_file(di, file_path, **kwargs)
 
                         error = False
                         priority = [ext]
@@ -768,6 +792,7 @@ class BeamData(object):
                 if error:
                     logger.error(f"Could not write file: {path_i.name}.")
 
+        return object_path
     @property
     def columns_map(self):
 
@@ -809,8 +834,18 @@ class BeamData(object):
         archive_len = self.archive_len if archive_len is None else archive_len
         chunk_strategy = self.chunk_strategy if chunk_strategy is None else chunk_strategy
 
+        data_type = check_type(data)
+        if data_type.major != 'container':
+            data = {BeamData.default_data_file_name: data}
+
         BeamData.write_data(data, path, chunk_strategy=chunk_strategy, archive_size=archive_len, chunksize=chunksize,
               chunklen=chunklen, n_chunks=n_chunks, partition=partition, compress=compress, override=override, **kwargs)
+
+        # store info and conf files
+        info_path = path.joinpath(BeamData.info_file_name)
+        BeamData.write_object(self.info, info_path, archive=True)
+        conf_path = path.joinpath(BeamData.configuration_file_name)
+        BeamData.write_object(self.conf, conf_path, archive=True)
 
         self.stored = True
         self.root_path = path
@@ -1023,47 +1058,48 @@ class BeamData(object):
 
         obj = self
         item_type = check_type(item)
-        if item_type.minor == 'tuple':
-            for j, i in enumerate(item):
-                if i == slice(None):
-                    axes.pop(0)
-                    continue
+        if item_type.minor != 'tuple':
+            item = (item, )
+        for j, i in enumerate(item):
+            if i == slice(None):
+                axes.pop(0)
+                continue
 
-                i_type = check_type(i)
-                if axes[0] == 'keys' and i_type.minor in ['pandas', 'numpy', 'tensor']:
-                    axes.pop(0)
+            i_type = check_type(i)
+            if axes[0] == 'keys' and i_type.minor in ['pandas', 'numpy', 'tensor']:  # skip the first axis in this case
+                axes.pop(0)
 
-                a = axes[0]
-                if a == 'keys':
-                    obj = obj.slice_keys(i)
-                    axes.pop(0)
+            a = axes[0]
+            if a == 'keys':
+                obj = obj.slice_keys(i)
+                axes.pop(0)
 
-                elif a == 'index':
+            elif a == 'index':
 
-                    if i_type.major == 'slice':
-                        i = slice_to_index(i, l=len(obj))
+                if i_type.major == 'slice':
+                    i = slice_to_index(i, l=len(obj))
 
-                    if not obj.cached:
-                        obj.cache()
+                if not obj.cached:
+                    obj.cache()
 
-                    obj = obj.get_batch(i)
-                    axes.pop(0)
+                obj = obj.get_batch(i)
+                axes.pop(0)
+
+            else:
+
+                if a == 'columns' and self.columns is not None:
+                    ind = (self.inverse_map(i), *item[j+1:])
+                else:
+                    ind = item[j:]
+
+                if type(obj) is BeamData:
+                    obj = obj.slice_data(ind)
+
+                elif type(obj) is DataBatch:
+                    data = recursive_batch(obj.data, ind)
+                    obj = DataBatch(data=data, index=obj.index, label=obj.label)
 
                 else:
-
-                    if a == 'columns' and self.columns is not None:
-                        ind = (self.inverse_map(i), *item[j+1:])
-                    else:
-                        ind = item[j:]
-
-                    if type(obj) is BeamData:
-                        obj = obj.slice_data(ind)
-
-                    elif type(obj) is DataBatch:
-                        data = recursive_batch(obj.data, ind)
-                        obj = DataBatch(data=data, index=obj.index, label=obj.label)
-
-                    else:
-                        raise ValueError(f"Object type is {type(obj)}")
+                    raise ValueError(f"Object type is {type(obj)}")
 
         return obj

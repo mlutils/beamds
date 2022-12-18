@@ -39,6 +39,8 @@ if __name__ == '__main__':
 
     path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
+
+    bda = bd['a']
     bd.store()
 
     # bd2 = BeamData(path=path)

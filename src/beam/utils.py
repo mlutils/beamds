@@ -499,8 +499,7 @@ def listdir_fullpath(d):
 
 def rmtree(path):
 
-    path_type = check_type(path)
-    if path_type.minor == 'str':
+    if type(path) is str:
         path = Path(path)
 
     if path.is_file():
