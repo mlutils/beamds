@@ -14,7 +14,7 @@ import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, recursive_len, is_arange, listdir_fullpath, is_chunk, rmtree, \
-    recursive_size, recursive_flatten, recursive_collate_chunks
+    recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys
 from .parallel import parallelize
 from collections import OrderedDict
 import os
@@ -113,9 +113,7 @@ class BeamData(object):
 
         # first we check if the BeamData object is cached (i.e. the data is passed as an argument)
         if len(args) == 1:
-            arg_type = check_type(args[0])
-            if arg_type.major == 'container':
-                self.data = args[0]
+            self.data = args[0]
         elif len(args):
             self.data = list(args)
         elif len(kwargs):
@@ -328,6 +326,10 @@ class BeamData(object):
 
             if data_type.major != 'container':
                 self._orientation = 'simple'
+                if hasattr(self.data, 'columns') and self.columns is None:
+                    self.columns = self.data.columns
+                if hasattr(self.data, 'index') and self.index is None:
+                    self.index = self.data.index
 
             else:
 
@@ -805,6 +807,11 @@ class BeamData(object):
         self._columns_map = None
         return self._columns_map
 
+    def keys(self):
+        if self.orientation == 'simple':
+            return self.columns
+        return recursive_keys(self.data)
+
     def concatenate_data(self, data):
 
         if self.objects_type == 'tensor':
@@ -1045,17 +1052,15 @@ class BeamData(object):
 
         Optional item configuration:
 
+
         [keys] - keys is ether a slice, list or scalar.
         [index] - index is pandas/numpy/tensor array
         [keys, index] - keys is ether a slice, list or scalar and index is an array
 
         '''
 
-        if self.orientation == 'simple':
-            axes = ['index', 'columns', 'other']
-        else:
-            axes = ['keys', 'index', 'columns', 'other']
 
+        axes = ['keys', 'index', 'columns', 'other']
         obj = self
         item_type = check_type(item)
         if item_type.minor != 'tuple':
@@ -1066,7 +1071,11 @@ class BeamData(object):
                 continue
 
             i_type = check_type(i)
-            if axes[0] == 'keys' and i_type.minor in ['pandas', 'numpy', 'tensor']:  # skip the first axis in this case
+
+            # skip the first axis in this case
+            if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'tensor'] or self.orientation == 'simple'):
+                axes.pop(0)
+            if self.orientation == 'simple' and axes[0] == 'index' and i_type.element == 'str':
                 axes.pop(0)
 
             a = axes[0]
@@ -1086,6 +1095,8 @@ class BeamData(object):
                 axes.pop(0)
 
             else:
+
+                #todo: work on the case of simple orientation with columns
 
                 if a == 'columns' and self.columns is not None:
                     ind = (self.inverse_map(i), *item[j+1:])

@@ -32,15 +32,19 @@ if __name__ == '__main__':
     m = 100
     k = 4
 
-    dfs = {'a': {rand_column(): pd.DataFrame(index=np.random.permutation(np.arange(n)),
-                        data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)},
-           'b': [pd.DataFrame(index=np.random.permutation(np.arange(n)),
-                        data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)]}
+    # dfs = {'a': {rand_column(): pd.DataFrame(index=np.random.permutation(np.arange(n)),
+    #                     data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)},
+    #        'b': [pd.DataFrame(index=np.random.permutation(np.arange(n)),
+    #                     data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)]}
+
+    dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)),
+                        data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)])
 
     path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
 
-    bda = bd['a']
+    bda = bd[bd.keys()[0]]
+    # bda = bd['a']
     bd.store()
 
     # bd2 = BeamData(path=path)

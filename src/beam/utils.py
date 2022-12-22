@@ -249,7 +249,7 @@ def is_arange(x):
     arr_x = np.array(x)
     try:
         arr_x = arr_x.astype(int)
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
     return np.issubdtype(arr_x.dtype, np.number) and (np.abs(np.arange(len(x)) - arr_x).sum() == 0)
@@ -326,7 +326,7 @@ def recursive_size(x):
             keys.append(k)
             values.append(recursive_size(v))
 
-        if not is_arange(keys):
+        if x_type.minor == 'dict':
             values = dict(zip(keys, values))
 
         return values
@@ -357,7 +357,7 @@ def recursive(func):
                 keys.append(k)
                 values.append(apply_recursively(v, *args, **kwargs))
 
-            if not is_arange(keys):
+            if x_type.minor == 'dict':
                 values = dict(zip(keys, values))
 
             return values
@@ -367,6 +367,26 @@ def recursive(func):
             return func(x, *args, **kwargs)
 
     return apply_recursively
+
+
+def recursive_keys(x, key=None):
+
+    x_type = check_type(x)
+    if x_type.major == 'container':
+
+        keys = []
+        values = []
+
+        for k, v in iter_container(x):
+            keys.append(k)
+            values.append(recursive_keys(v, k))
+
+        if x_type.minor == 'dict' and not is_arange(values):
+            values = dict(zip(keys, values))
+
+        return values
+
+    return key
 
 
 def recursive_size_summary(x, mode='sum'):
@@ -525,7 +545,7 @@ def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree')
             values.append(recursive_collate_chunks(*[xi[k] for xi in xs], dim=dim, on=on, how=how, method=method))
             keys.append(k)
 
-        if not is_arange(keys):
+        if x_type.minor == 'dict':
             values = dict(zip(keys, values))
 
         return values
