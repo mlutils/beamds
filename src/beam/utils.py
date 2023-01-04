@@ -21,12 +21,24 @@ import scipy
 from pathlib import Path
 import re
 from collections import Counter
+import time
 
 
 # logger.remove(handler_id=0)
 logger.remove()
 logger.add(sys.stdout, level='INFO', colorize=True,
            format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>')
+
+
+class Timer(object):
+
+    def __enter__(self):
+        logger.info(f"Starting timer")
+        self.t0 = time.time()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        td = time.time() - self.t0
+        logger.info(f"Time elapsed: {pretty_format_number(td)} Sec")
 
 
 def stack_train_results(results, batch_size=None):
