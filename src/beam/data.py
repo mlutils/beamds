@@ -894,7 +894,67 @@ class BeamData(object):
         self.stored = True
         self.cached = True
 
-    def get_batch(self, index):
+    def inverse_map(self, ind):
+
+        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+
+        index_type = check_type(ind)
+        if index_type.major == 'scalar':
+            ind = [ind]
+
+        if self.index_mapper is not None:
+            ind = self.index_mapper.loc[ind].values
+
+        return ind
+
+    def _loc(self, ind):
+        ind = self.inverse_map(ind)
+        return self.slice_index(ind)
+
+    def _iloc(self, ind):
+
+        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        index_type = check_type(ind)
+        if index_type.major == 'scalar':
+            ind = [ind]
+
+        return self.slice_index(ind)
+
+    def slice_data(self, item, index=None, columns=None, labels=None):
+        if self.cached:
+
+            # if index is None:
+
+            index = None, columns = None, labels = None
+
+            data = recursive_batch(self.data, item)
+            return BeamData(data, index=self.index, columns=self.columns, labels=self.label)
+        else:
+            raise LookupError(f"Cannot slice data as data is not cached")
+
+    def slice_columns(self, columns):
+
+        if not self.cached:
+            raise LookupError(f"Cannot slice by index as data is not cached")
+
+        if self.orientation == 'simple':
+            pass
+            data = self.data[columns]
+        elif self.orientation == 'columns':
+            pass
+        elif self.orientation == 'index':
+            pass
+        elif self.orientation == 'other':
+            pass
+        else:
+            raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
+
+        return BeamData(data=data, path=all_paths, lazy=self.lazy, **kwargs)
+
+    def slice_index(self, index):
+
+        if not self.cached:
+            raise LookupError(f"Cannot slice by index as data is not cached")
 
         if self.orientation == 'simple':
             data = self.data[index]
@@ -1091,7 +1151,7 @@ class BeamData(object):
                 if not obj.cached:
                     obj.cache()
 
-                obj = obj.get_batch(i)
+                obj = obj.slice_index(i)
                 axes.pop(0)
 
             elif a == 'columns':
@@ -1114,12 +1174,5 @@ class BeamData(object):
 
             else:
                 raise ValueError(f"Object type is {type(obj)}")
-
-                # #todo: work on the case of simple orientation with columns
-                #
-                # if a == 'columns' and self.columns is not None:
-                #     ind = (self.inverse_map(i), *item[j+1:])
-                # else:
-                #     ind = item[j:]
 
         return obj
