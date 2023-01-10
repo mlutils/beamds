@@ -1094,23 +1094,32 @@ class BeamData(object):
                 obj = obj.get_batch(i)
                 axes.pop(0)
 
+            elif a == 'columns':
+
+                if self.columns is None:
+                    axes.pop(0)
+                    break
             else:
+                break
 
-                #todo: work on the case of simple orientation with columns
+        if j <= len(item) - 1:
+            ind = item[j:]
 
-                if a == 'columns' and self.columns is not None:
-                    ind = (self.inverse_map(i), *item[j+1:])
-                else:
-                    ind = item[j:]
+            if type(obj) is BeamData:
+                obj = obj.slice_data(ind)
 
-                if type(obj) is BeamData:
-                    obj = obj.slice_data(ind)
+            elif type(obj) is DataBatch:
+                data = recursive_batch(obj.data, ind)
+                obj = DataBatch(data=data, index=obj.index, label=obj.label)
 
-                elif type(obj) is DataBatch:
-                    data = recursive_batch(obj.data, ind)
-                    obj = DataBatch(data=data, index=obj.index, label=obj.label)
+            else:
+                raise ValueError(f"Object type is {type(obj)}")
 
-                else:
-                    raise ValueError(f"Object type is {type(obj)}")
+                # #todo: work on the case of simple orientation with columns
+                #
+                # if a == 'columns' and self.columns is not None:
+                #     ind = (self.inverse_map(i), *item[j+1:])
+                # else:
+                #     ind = item[j:]
 
         return obj
