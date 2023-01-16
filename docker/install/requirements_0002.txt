@@ -15,3 +15,6 @@ pysolr
 JPype1
 JayDeBeApi
 PyHive
+
+elasticsearch5
+hdfs

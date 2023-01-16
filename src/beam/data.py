@@ -920,12 +920,10 @@ class BeamData(object):
 
         return self.slice_index(ind)
 
-    def slice_data(self, item, index=None, columns=None, labels=None):
+    def slice_data(self, item):
         if self.cached:
 
             # if index is None:
-
-            index = None, columns = None, labels = None
 
             data = recursive_batch(self.data, item)
             return BeamData(data, index=self.index, columns=self.columns, labels=self.label)

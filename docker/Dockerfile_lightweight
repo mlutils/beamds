@@ -26,7 +26,7 @@ RUN bash -c "./Miniconda3.sh -b -p ${CONDA_PATH}"
 
 
 ENV DEBIAN_FRONTEND noninteractive
-COPY docker/install_cudnn /workspace/install
+COPY docker/install_lightweight /workspace/install
 
 # pytorch geometric
 
