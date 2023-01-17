@@ -261,6 +261,7 @@ def is_arange(x):
     arr_x = np.array(x)
     try:
         arr_x = arr_x.astype(int)
+        arr_x.sort()
     except (ValueError, TypeError):
         return False
 
@@ -444,6 +445,9 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
     x_type = check_type(x, check_element=False)
 
     assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
+
+    if n_chunks is not None and hasattr(x, '__len__'):
+        n_chunks = min(len(x), n_chunks)
 
     if x_type.major == 'array':
 

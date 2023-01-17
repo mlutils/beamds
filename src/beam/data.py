@@ -907,14 +907,6 @@ class BeamData(object):
 
         return ind
 
-    def slice_data(self, index):
-        if self.cached:
-
-            data = recursive_batch(self.data, index)
-            return BeamData(data, index=self.index, columns=self.columns, labels=self.label)
-        else:
-            raise LookupError(f"Cannot slice data as data is not cached")
-
     def _loc(self, ind):
         ind = self.inverse_map(ind)
         return self.slice_index(ind)
@@ -1116,25 +1108,27 @@ class BeamData(object):
                 obj = obj.slice_index(i)
                 axes.pop(0)
 
-            elif a == 'columns':
-
-                if self.columns is None:
-                    axes.pop(0)
-                    break
             else:
-                break
 
-        if j <= len(item) - 1:
-            ind = item[j:]
+                #todo: work on the case of simple orientation with columns
 
-            if type(obj) is BeamData:
-                obj = obj.slice_data(ind)
+                if a == 'columns' and hasattr(self.data, 'columns'):
+                    ind = item[j:]
+                elif a == 'columns' and self.columns is not None:
+                    ind = (self.inverse_map(i), *item[j+1:])
+                else:
+                    ind = item[j:]
 
-            elif type(obj) is DataBatch:
-                data = recursive_batch(obj.data, ind)
-                obj = DataBatch(data=data, index=obj.index, label=obj.label)
 
-            else:
-                raise ValueError(f"Object type is {type(obj)}")
+
+                if type(obj) is BeamData:
+                    obj = obj.slice_data(ind)
+
+                elif type(obj) is DataBatch:
+                    data = recursive_batch(obj.data, ind)
+                    obj = DataBatch(data=data, index=obj.index, label=obj.label)
+
+                else:
+                    raise ValueError(f"Object type is {type(obj)}")
 
         return obj

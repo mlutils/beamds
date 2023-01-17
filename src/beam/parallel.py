@@ -5,6 +5,51 @@ import multiprocessing as mp
 import inspect
 from tqdm.contrib.concurrent import process_map, thread_map
 from joblib import Parallel, delayed
+from .utils import logger
+
+
+class BeamTask(object):
+
+    def __init__(self, func, *args, name=None, **kwargs):
+
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+        self.name = name
+        self.pid = None
+        self.is_pending = True
+        self.result = None
+
+    def __call__(self):
+
+        logger.debug(f"Starting task: {self.name}")
+        res = self.func(*self.args, **self.kwargs)
+        logger.debug(f"Finished task: {self.name}")
+        self.result = res
+
+        return res
+
+
+class BeamParallel(object):
+
+    def __init__(self, workers=0, method='joblib', reduce=True, reduce_dim=0, **kwargs):
+        self.reduce = reduce
+        self.reduce_dim = reduce_dim
+        self.queue = []
+
+    def __call__(self, func, iterable, **kwargs):
+        if self.reduce:
+            results = self._reduce(iterable)
+        else:
+            results = iterable
+        return results
+
+    def _reduce(self, results):
+        results = collate_chunks(*results, dim=self.reduce_dim)
+        return results
+
+
+
 
 
 def process_async(func, args, mp_context='spawn', num_workers=10):
@@ -92,31 +137,3 @@ def parallelize(func, args_list, kwargs_list=None, constant_kwargs=None, map_chu
         results = collate_chunks(*results, dim=dim)
 
     return results
-
-
-class ParallelWorkers:
-
-    def __init__(self, func, workers=10, context='spawn', method='apply_async', progressbar='beam',
-                 collate=True, dim=0, map_chunksize=None, constant_kwargs=None):
-
-        self.func = func
-        self.workers = workers
-        self.context = context
-        self.method = method
-        self.progressbar = progressbar
-        self.collate = collate
-        self.dim = dim
-        self.map_chunksize = map_chunksize
-        self.constant_kwargs = constant_kwargs
-
-    def __call__(self, args_list, kwargs_list=None):
-
-        return parallelize(self.func, args_list, kwargs_list=kwargs_list, constant_kwargs=self.constant_kwargs,
-                           map_chunksize=self.map_chunksize, context=self.context, workers=self.workers,
-                           method=self.method, progressbar=self.progressbar, collate=self.collate, dim=self.dim)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
