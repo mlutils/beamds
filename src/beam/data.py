@@ -907,6 +907,14 @@ class BeamData(object):
 
         return ind
 
+    def slice_data(self, index):
+        if self.cached:
+
+            data = recursive_batch(self.data, index)
+            return BeamData(data, index=self.index, columns=self.columns, labels=self.label)
+        else:
+            raise LookupError(f"Cannot slice data as data is not cached")
+
     def _loc(self, ind):
         ind = self.inverse_map(ind)
         return self.slice_index(ind)
@@ -919,18 +927,6 @@ class BeamData(object):
             ind = [ind]
 
         return self.slice_index(ind)
-
-    def slice_data(self, item, index=None, columns=None, labels=None):
-        if self.cached:
-
-            # if index is None:
-
-            index = None, columns = None, labels = None
-
-            data = recursive_batch(self.data, item)
-            return BeamData(data, index=self.index, columns=self.columns, labels=self.label)
-        else:
-            raise LookupError(f"Cannot slice data as data is not cached")
 
     def slice_columns(self, columns):
 
@@ -992,40 +988,6 @@ class BeamData(object):
 
         label = self.label.loc[index]
         return DataBatch(data=data, index=index, label=label)
-
-    def inverse_map(self, ind):
-
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
-
-        index_type = check_type(ind)
-        if index_type.major == 'scalar':
-            ind = [ind]
-
-        if self.index_mapper is not None:
-            ind = self.index_mapper.loc[ind].values
-
-        return ind
-
-    def _loc(self, ind):
-        ind = self.inverse_map(ind)
-        return self.get_batch(ind)
-
-    def _iloc(self, ind):
-
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
-        index_type = check_type(ind)
-        if index_type.major == 'scalar':
-            ind = [ind]
-
-        return self.get_batch(ind)
-
-    def slice_data(self, index):
-        if self.cached:
-
-            data = recursive_batch(self.data, index)
-            return BeamData(data, index=self.index, columns=self.columns, labels=self.label)
-        else:
-            raise LookupError(f"Cannot slice data as data is not cached")
 
     def slice_keys(self, keys):
 
