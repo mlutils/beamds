@@ -3,7 +3,7 @@
 apt update
 apt update
 
-apt install -y openssh-server
+apt install -y openssh-server -y libkrb5
 apt install -y htop -y tmux -y libtool -y dh-autoreconf -y debhelper -y libaio-dev
 apt install -y telnet -y iputils-ping -y net-tools -y python3-sphinx
 apt install -y graphviz -y graphviz pkg-config -y expect -y libgraphviz-dev -y cron

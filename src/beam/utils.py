@@ -32,13 +32,32 @@ logger.add(sys.stdout, level='INFO', colorize=True,
 
 class Timer(object):
 
+    def __init__(self, silence=False):
+        self.silence = silence
+        self._elapsed = 0
+        self.t0 = time.time()
+
     def __enter__(self):
-        logger.info(f"Starting timer")
+        if not self.silence:
+            logger.info(f"Starting timer")
+        self.t0 = time.time()
+        return self
+
+    @property
+    def elapsed(self):
+        return self._elapsed + time.time() - self.t0
+
+    def pause(self):
+        self._elapsed = self._elapsed + time.time() - self.t0
+        return self._elapsed
+
+    def run(self):
         self.t0 = time.time()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         td = time.time() - self.t0
-        logger.info(f"Time elapsed: {pretty_format_number(td)} Sec")
+        if not self.silence:
+            logger.info(f"Time elapsed: {pretty_format_number(td)} Sec")
 
 
 def stack_train_results(results, batch_size=None):

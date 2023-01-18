@@ -12,6 +12,7 @@ gssapi
 thrift-sasl
 python-snappy
 thriftpy
+modin
 
 category_encoders
 pyro-ppl

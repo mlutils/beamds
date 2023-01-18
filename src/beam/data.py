@@ -15,7 +15,6 @@ from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, recursive_len, is_arange, listdir_fullpath, is_chunk, rmtree, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys
-from .parallel import parallelize
 from collections import OrderedDict
 import os
 import fastavro
@@ -690,8 +689,6 @@ class BeamData(object):
                                         n_chunks=n_chunks, partition=partition,
                                         file_type=file_type, **kwargs)
 
-        return paths
-
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
@@ -920,6 +917,9 @@ class BeamData(object):
 
         return self.slice_index(ind)
 
+    def slice_data(self, index):
+        pass
+
     def slice_columns(self, columns):
 
         if not self.cached:
@@ -1062,7 +1062,7 @@ class BeamData(object):
         @return:
 
         The axes of BeamData objects are considered to be in order: [keys, index, columns, <rest of shape>]
-        if BeamData is orient==simple (meaning there are no keys), the first axis disappear.
+        if BeamData is orient==simple (meaning there are no keys), the first axis disappears.
 
         Optional item configuration:
 
@@ -1079,47 +1079,46 @@ class BeamData(object):
         item_type = check_type(item)
         if item_type.minor != 'tuple':
             item = (item, )
-        for j, i in enumerate(item):
-            if i == slice(None):
+        for i, ind_i in enumerate(item):
+            if ind_i == slice(None):
                 axes.pop(0)
                 continue
 
-            i_type = check_type(i)
+            i_type = check_type(ind_i)
 
-            # skip the first axis in this case
+            # skip the first axis in these case
             if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'tensor'] or self.orientation == 'simple'):
                 axes.pop(0)
             if self.orientation == 'simple' and axes[0] == 'index' and i_type.element == 'str':
                 axes.pop(0)
 
-            a = axes[0]
+            a = axes.pop(0)
             if a == 'keys':
-                obj = obj.slice_keys(i)
-                axes.pop(0)
+                obj = obj.slice_keys(ind_i)
 
             elif a == 'index':
 
                 if i_type.major == 'slice':
-                    i = slice_to_index(i, l=len(obj))
+                    ind_i = slice_to_index(ind_i, l=len(obj))
 
                 if not obj.cached:
                     obj.cache()
 
-                obj = obj.slice_index(i)
-                axes.pop(0)
+                obj = obj.slice_index(ind_i)
+
+            elif a == 'columns':
+                pass
 
             else:
 
                 #todo: work on the case of simple orientation with columns
 
                 if a == 'columns' and hasattr(self.data, 'columns'):
-                    ind = item[j:]
+                    ind = item[i:]
                 elif a == 'columns' and self.columns is not None:
-                    ind = (self.inverse_map(i), *item[j+1:])
+                    ind = (self.inverse_map(ind_i), *item[i+1:])
                 else:
-                    ind = item[j:]
-
-
+                    ind = item[i:]
 
                 if type(obj) is BeamData:
                     obj = obj.slice_data(ind)

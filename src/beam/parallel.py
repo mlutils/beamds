@@ -1,16 +1,23 @@
 from .utils import tqdm_beam
 from tqdm import tqdm
 from .utils import divide_chunks, collate_chunks
-import multiprocessing as mp
 import inspect
-from tqdm.contrib.concurrent import process_map, thread_map
-from joblib import Parallel, delayed
-from .utils import logger
+from .utils import logger, Timer
+
+
+def parallel(tasks, workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
+    bp = BeamParallel(func=func, workers=workers, method=method, progressbar=progressbar,
+                      reduce=reduce, reduce_dim=reduce_dim, **kwargs)
+    return bp(tasks)
+
+
+def task(func, name=None, silence=False):
+    return BeamTask(func, name=name, silence=silence)
 
 
 class BeamTask(object):
 
-    def __init__(self, func, *args, name=None, **kwargs):
+    def __init__(self, func, *args, name=None, silence=False, **kwargs):
 
         self.func = func
         self.args = args
@@ -19,123 +26,322 @@ class BeamTask(object):
         self.pid = None
         self.is_pending = True
         self.result = None
+        self.exception = None
+        self.queue_id = -1
+        self.silence = silence
 
-    def __call__(self):
+    def set_silent(self, silence):
+        self.silence = silence
 
-        logger.debug(f"Starting task: {self.name}")
-        res = self.func(*self.args, **self.kwargs)
-        logger.debug(f"Finished task: {self.name}")
-        self.result = res
+    def set_name(self, name):
+        self.name = name
+
+    def __call__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+        return self
+
+    def run(self):
+
+        if not self.silence:
+            logger.info(f"Starting task: {self.name}")
+        try:
+            with Timer(silence=True) as t:
+                res = self.func(*self.args, **self.kwargs)
+                self.result = res
+                if not self.silence:
+                    logger.info(f"Finished task: {self.name}. Elapsed time: {t.elapsed}")
+        except Exception as e:
+            self.exception = e
+            logger.error(f"Task {self.name} failed with exception: {e}")
+            res = e
+        finally:
+            self.is_pending = False
 
         return res
 
 
 class BeamParallel(object):
 
-    def __init__(self, workers=0, method='joblib', reduce=True, reduce_dim=0, **kwargs):
+    def __init__(self, workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
+
+        self.func = func
+        self.workers = workers
+        self.method = method
         self.reduce = reduce
         self.reduce_dim = reduce_dim
         self.queue = []
+        self.kwargs = kwargs
 
-    def __call__(self, func, iterable, **kwargs):
-        if self.reduce:
-            results = self._reduce(iterable)
+        if progressbar == 'beam':
+            self.progressbar = tqdm_beam
+        elif progressbar == 'tqdm':
+            self.progressbar = tqdm
         else:
-            results = iterable
+            self.progressbar = lambda x: x
+
+        # TODO: add support for other methods: apply, apply_async, starmap_async, dask, ray
+
+    def add(self, *args, **kwargs):
+
+        args_list = []
+        args_dict = {}
+        for a in args:
+            if isinstance(args[0], BeamTask):
+                if a.name is None:
+                    a.set_name(len(self.queue))
+                self.queue.append(a)
+            else:
+                args_list.append(a)
+
+        for k, v in kwargs.items():
+            if isinstance(v, BeamTask):
+                self.queue.append(v)
+                v.set_name(k)
+            else:
+                args_dict[k] = v
+
+        if len(args_list) > 0 or len(args_dict) > 0:
+            self.add_task(*args_list, **args_dict)
+
+    def add_task(self, *args, name=None, **kwargs):
+
+        if self.func is None:
+            func = args[0]
+            args = args[1:]
+        else:
+            func = self.func
+
+        if name is None:
+            name = len(self.queue)
+
+        task = BeamTask(func, *args, name=name, **kwargs)
+
+        self.queue.append(task)
+        return task
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if len(self.queue):
+            self.run()
+
+    def _run_joblib(self):
+
+        from joblib import Parallel, delayed
+
+        if 'verbose' not in self.kwargs:
+            self.kwargs['verbose'] = 10
+
+        # for task in self.queue:
+        #     task.set_silent(True)
+
+        results = Parallel(n_jobs=self.workers, **self.kwargs)(delayed(task.run)() for task in self.queue)
+        return results
+
+    def _run_process_map(self):
+
+        from tqdm.contrib.concurrent import process_map
+
+        if 'chunksize' not in self.kwargs.keys() or self.kwargs['chunksize'] is None:
+            self.kwargs['chunksize'] = 1
+
+        if self.func is None:
+            func = self.queue[0].func
+        else:
+            func = self.func
+
+        results = process_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.workers, **self.kwargs)
+
+        return results
+
+    def _run_thread_map(self):
+
+        from tqdm.contrib.concurrent import thread_map
+
+        if 'chunksize' not in self.kwargs.keys() or self.kwargs['chunksize'] is None:
+            self.kwargs['chunksize'] = 1
+
+        if self.func is None:
+            func = self.queue[0].func
+        else:
+            func = self.func
+
+        results = thread_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.workers, **self.kwargs)
+
+        return results
+
+    def _run_starmap(self):
+
+        import multiprocessing as mp
+
+        if 'chunksize' not in self.kwargs.keys() or self.kwargs['chunksize'] is None:
+            self.kwargs['chunksize'] = 1
+
+        if 'context' in self.kwargs:
+            context = self.kwargs['context']
+        else:
+            context = 'spawn'
+
+        if self.func is None:
+            func = self.queue[0].func
+        else:
+            func = self.func
+
+        ctx = mp.get_context(context)
+
+        with ctx.Pool(self.workers) as pool:
+            results = list(pool.starmap(func, *[t.args for t in self.queue], **self.kwargs))
+
+        return results
+
+
+    def _run_apply_async(self):
+
+        import multiprocessing as mp
+
+        if 'context' in self.kwargs:
+            context = self.kwargs['context']
+        else:
+            context = 'spawn'
+
+        ctx = mp.get_context(context)
+
+        with ctx.Pool(self.workers) as pool:
+
+            tasks = [pool.apply_async(task.run) for task in self.queue]
+            results = []
+            for res in self.progressbar(tasks):
+                results.append(res.get())
+
+        return results
+
+    def _run_apply(self):
+
+        import multiprocessing as mp
+
+        if 'context' in self.kwargs:
+            context = self.kwargs['context']
+        else:
+            context = 'spawn'
+
+        ctx = mp.get_context(context)
+
+        with ctx.Pool(self.workers) as pool:
+
+            results = []
+            for task in self.queue:
+                results.append(pool.apply(task.run))
+
+        return results
+
+    def _run_ray(self):
+
+        import ray
+
+        def func_wrapper(task):
+            return task.run()
+
+        if 'runtime_env' in self.kwargs:
+            runtime_env = self.kwargs.pop('runtime_env')
+        else:
+            runtime_env = {}
+
+        if 'dashboard_port' in self.kwargs:
+            dashboard_port = self.kwargs.pop('dashboard_port')
+        else:
+            dashboard_port = None
+
+        if 'include_dashboard' in self.kwargs:
+            include_dashboard = self.kwargs.pop('include_dashboard')
+        else:
+            include_dashboard = True
+
+        ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
+                 include_dashboard=include_dashboard, dashboard_host="0.0.0.0", ignore_reinit_error=True)
+
+        tasks = [ray.remote(num_cpus=self.workers)(func_wrapper).remote(task) for task in self.queue]
+        results = ray.get(tasks)
+
+        return results
+
+    def _run_dask(self):
+
+        # see https://docs.dask.org/en/latest/scheduler-overview.html#configuring-the-schedulers
+        # for more info on dask scheduler options
+        # set scheduler='single-threaded' for debugging
+
+        if 'context' in self.kwargs:
+            context = self.kwargs['context']
+        else:
+            context = 'spawn'
+
+        import dask
+
+        with dask.config.set({"multiprocessing.context": context, **self.kwargs}):
+            tasks = [dask.delayed(task.run)() for task in self.queue]
+            results = dask.compute(tasks, num_workers=self.workers)
+
+        return results[0]
+
+
+    def run(self):
+
+        if self.workers <= 1:
+            results = [task.run() for task in self.queue]
+        elif self.method == 'joblib':
+            results = self._run_joblib()
+        elif self.method == 'process_map':
+            results = self._run_process_map()
+        elif self.method == 'apply_async':
+            results = self._run_apply_async()
+        elif self.method == 'thread_map':
+            results = self._run_thread_map()
+        elif self.method in ['starmap', 'map']:
+            results = self._run_starmap()
+        elif self.method == 'ray':
+            results = self._run_ray()
+        elif self.method == 'dask':
+            results = self._run_dask()
+
+        else:
+            raise ValueError(f"Unknown method: {self.method}")
+
+        return results
+
+    def __call__(self, tasks=None, func=None, args_list=None, kwargs_list=None, name_list=None):
+
+        if tasks is not None:
+            if isinstance(tasks, list):
+                self.add(*tasks)
+            elif isinstance(tasks, dict):
+                self.add(**tasks)
+            else:
+                raise ValueError("tasks must be a list or a dict")
+
+        if func is None:
+            func = self.func
+
+        if (args_list is not None) or (kwargs_list is not None):
+            if args_list is None:
+                args_list = [()] * len(kwargs_list)
+            if kwargs_list is None:
+                kwargs_list = [{}] * len(args_list)
+            if name_list is None:
+                name_list = [None] * len(args_list)
+
+            for args, kwargs, name in zip(args_list, kwargs_list, name_list):
+                self.add_task(func, *args, **kwargs)
+
+        results = self.run()
+
+        if self.reduce:
+            results = self._reduce(results)
+
         return results
 
     def _reduce(self, results):
         results = collate_chunks(*results, dim=self.reduce_dim)
         return results
-
-
-
-
-
-def process_async(func, args, mp_context='spawn', num_workers=10):
-    ctx = mp.get_context(mp_context)
-    with ctx.Pool(num_workers) as pool:
-        res = [pool.apply_async(func, (arg,)) for arg in args]
-        results = []
-        for r in tqdm_beam(res):
-            results.append(r.get())
-
-    return results
-
-
-def parallelize(func, args_list, kwargs_list=None, constant_kwargs=None, map_chunksize=None,
-                context='spawn', workers=10, method='apply_async', progressbar='beam',
-                collate=True, dim=0):
-
-    if progressbar == 'beam':
-        progressbar = tqdm_beam
-    elif progressbar == 'tqdm':
-        progressbar = tqdm
-    else:
-        progressbar = lambda x: x
-
-    if constant_kwargs is None:
-        constant_kwargs = {}
-
-    if kwargs_list is None:
-        kwargs_list = [{}] * len(args_list)
-
-    if workers == 0:
-
-        results = []
-        for args_i, kwargs_i in progressbar(zip(args_list, kwargs_list)):
-            results.append(func(*args_i, **{**kwargs_i, **constant_kwargs}))
-
-    else:
-
-        # ars = inspect.getfullargspec(func)
-        # if len(ars.args) == 1:
-        #     if (type(args_list[0]) is tuple and len(args_list[0]) != len(ars.args)) or type(args_list[0]) is not tuple:
-        #         args_list = [(ai,) for ai in args_list]
-
-        if method == 'process_map' or method == 'thread_map':
-
-            mp_method = thread_map if method == 'thread_map' else process_map
-            args_list = list(zip(*args_list))
-
-            if map_chunksize is None:
-                map_chunksize = 1
-            results = mp_method(func, *args_list, max_workers=workers, chunksize=map_chunksize)
-
-        else:
-
-            ctx = mp.get_context(context)
-
-            with ctx.Pool(workers) as pool:
-
-                if method == 'apply_async':
-
-                    res = [pool.apply_async(func, tuple(args_i), {**kwargs_i, **constant_kwargs}) for args_i, kwargs_i in zip(args_list, kwargs_list)]
-                    results = []
-                    for r in progressbar(res):
-                        results.append(r.get())
-
-                # elif method == 'apply':
-                #
-                #     results = list(progressbar((pool.apply_async(func, tuple(args_i), {**kwargs_i, **constant_kwargs})
-                #                             for args_i, kwargs_i in zip(args_list, kwargs_list)), total=len(args_list)))
-
-                elif method in ['starmap', 'map']:
-                    results = list(pool.starmap(func, args_list, chunksize=map_chunksize))
-
-                # elif method == 'starmap_async':
-                #
-                #     res = pool.map_async(func, args_list, chunksize=chunksize)
-                #     results = []
-                #     for r in progressbar(res):
-                #         results.append(r.get())
-
-                else:
-                    raise NotImplementedError
-
-    if collate:
-        results = collate_chunks(*results, dim=dim)
-
-    return results
-
-#
