@@ -43,7 +43,7 @@ class BeamData(object):
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None,
                  override=True, compress=None, chunk_strategy='files', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  partition=None, archive_len=int(1e6), orient='columns', read_kwargs=None, write_kwargs=None,
-                 **kwargs):
+                 quick_getitem=False, orientation=None, **kwargs):
 
         '''
 
@@ -66,9 +66,10 @@ class BeamData(object):
         3. index:  in this orientation the rows are spread over different data elements so the data elements may have
          different length but their shape[1:] is identical so we can collect batch of elements and concat them together.
 
-         4. none: each data element represents different set of data points but each data point may have different nature.
+         4. none/packed: each data element represents different set of data points but each data point may have different nature.
          this could model for example node properties in Knowledge graph where there are many types of nodes with different
-         features.
+         features. In case there is a common index, it can be used to slice and collect the data like the original
+         PackedFold object.
 
          If data is both cached in self.data and stored in self.all_paths, the cached version is always preferred.
 
@@ -91,6 +92,7 @@ class BeamData(object):
         self.columns = columns
         self.orient = orient
         self.chunk_strategy = chunk_strategy
+        self.quick_getitem = quick_getitem
 
         self.stored = False
         self.cached = True
@@ -251,7 +253,7 @@ class BeamData(object):
                     return in_fold.index, x[in_fold], key + 1
 
         index, data, _ = _recursive_filter(x, info)
-        return DataBatch(index=index,data=data, label=None)
+        return DataBatch(index=index, data=data, label=None)
 
     @property
     def index_mapper(self):
@@ -419,7 +421,6 @@ class BeamData(object):
             raise NotImplementedError
 
         return path
-
 
     @staticmethod
     def read_tree(paths, **kwargs):
@@ -948,13 +949,12 @@ class BeamData(object):
             data = self.data[index]
 
         elif self.orientation == 'columns':
-
             data = recursive_batch(self.data, index)
             return BeamData(data, index=index)
 
         elif self.orientation == 'index':
 
-            info =  self.info.iloc[index]
+            info = self.info.iloc[index]
             info['reverse_index'] = np.arange(len(info))
             batch = []
             batch_index = []
@@ -981,58 +981,55 @@ class BeamData(object):
         label = self.label.loc[index]
         return DataBatch(data=data, index=index, label=label)
 
+    @staticmethod
+    def slice_scalar_or_list(data, keys, data_type=None, keys_type=None):
+
+        if data is None:
+            return None
+
+        if data_type is None:
+            data_type = check_type(data)
+
+        if keys_type is None:
+            keys_type = check_type(keys)
+
+        if keys_type.major == 'scalar':
+            return data[keys]
+        else:
+            sliced = [] if data_type.minor == 'list' else {}
+            for k in keys:
+                sliced[k] = data[k]
+            return sliced
+
     def slice_keys(self, keys):
 
+        data = None
+        all_paths = None
         keys_type = check_type(keys)
-        if keys_type.major == 'scalar':
-            if self.cached:
-                data = self.data[keys]
-            else:
-                data = None
 
-            if self.stored:
-                all_paths = self.all_paths[keys]
-            else:
-                all_paths = None
+        if self.cached:
+            data = BeamData.slice_scalar_or_list(self.data, keys, keys_type=keys_type, data_type=self.data_type)
 
-        else:
+        if self.stored:
+            all_paths = BeamData.slice_scalar_or_list(self.all_paths, keys, keys_type=keys_type,
+                                                      data_type=self.data_type)
 
-            data_type = check_type(self.data)
+        if not self.lazy and self.stored and data is None:
+            data = BeamData.read_tree(all_paths)
 
-            if self.cached:
+        index = self.index
+        label = self.label
 
-                data = [] if data_type.minor == 'list' else {}
-                for k in keys:
-                    data[k] = self.data[k]
+        if self.orientation != 'columns':
+            if index is not None:
+                index = BeamData.slice_scalar_or_list(index, keys, keys_type=keys_type, data_type=self.data_type)
+            if label is not None:
+                label = BeamData.slice_scalar_or_list(label, keys, keys_type=keys_type, data_type=self.data_type)
 
-            else:
+        if self.quick_getitem and data is not None:
+            return DataBatch(data=data, index=index, label=label)
 
-                data = None
-
-            if self.stored:
-
-                all_paths = [] if data_type.minor == 'list' else {}
-                for k in keys:
-                    all_paths[k] = self.all_paths[k]
-
-                if self.lazy:
-                    data = None
-                else:
-                    data = BeamData.read_tree(all_paths)
-
-            else:
-                all_paths = None
-
-        if self.orientation == 'columns':
-            kwargs = dict(index=self.index, label=self.label)
-        elif self.orientation == 'simple':
-            kwargs = dict(columns=self.columns, index=self.index, label=self.label)
-        elif self.orientation == 'index':
-            kwargs = dict(columns=self.columns, label=self.index)
-        else:
-            kwargs = dict()
-
-        return BeamData(data=data, path=all_paths, lazy=self.lazy, **kwargs)
+        return BeamData(data=data, path=all_paths, lazy=self.lazy, columns=self.columns, index=index, label=label)
 
     def inverse_columns_map(self, columns):
 
@@ -1073,13 +1070,18 @@ class BeamData(object):
 
         '''
 
+        if self.orientation == 'simple':
+            axes = ['index', 'columns', 'other']
+        else:
+            axes = ['keys', 'index', 'columns', 'other']
 
-        axes = ['keys', 'index', 'columns', 'other']
         obj = self
         item_type = check_type(item)
         if item_type.minor != 'tuple':
             item = (item, )
         for i, ind_i in enumerate(item):
+
+            # skip if this is a full slice
             if ind_i == slice(None):
                 axes.pop(0)
                 continue
@@ -1089,6 +1091,7 @@ class BeamData(object):
             # skip the first axis in these case
             if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'tensor'] or self.orientation == 'simple'):
                 axes.pop(0)
+            # for orientation == 'simple' we skip the first axis if we slice over columns
             if self.orientation == 'simple' and axes[0] == 'index' and i_type.element == 'str':
                 axes.pop(0)
 
