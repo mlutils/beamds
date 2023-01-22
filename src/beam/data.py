@@ -14,7 +14,8 @@ import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, recursive_len, is_arange, listdir_fullpath, is_chunk, rmtree, \
-    recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys
+    recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
+    recursive_slice, recursive_flatten_with_keys
 from collections import OrderedDict
 import os
 import fastavro
@@ -43,7 +44,7 @@ class BeamData(object):
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None,
                  override=True, compress=None, chunk_strategy='files', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  partition=None, archive_len=int(1e6), orient='columns', read_kwargs=None, write_kwargs=None,
-                 quick_getitem=False, orientation=None, **kwargs):
+                 quick_getitem=False, orientation=None, info=None, **kwargs):
 
         '''
 
@@ -66,7 +67,7 @@ class BeamData(object):
         3. index:  in this orientation the rows are spread over different data elements so the data elements may have
          different length but their shape[1:] is identical so we can collect batch of elements and concat them together.
 
-         4. none/packed: each data element represents different set of data points but each data point may have different nature.
+         4. packed: each data element represents different set of data points but each data point may have different nature.
          this could model for example node properties in Knowledge graph where there are many types of nodes with different
          features. In case there is a common index, it can be used to slice and collect the data like the original
          PackedFold object.
@@ -101,13 +102,14 @@ class BeamData(object):
         self._columns_map = None
         self._device = None
         self._len = None
-        self._orientation = None
         self._data_types = None
         self._data_type = None
         self._objects_type = None
         self._flatten_data = None
-        self._info = None
+        self._flatten_data_with_keys = None
         self._conf = None
+        self._info = info
+        self._orientation = orientation
 
         self.read_kwargs = {} if read_kwargs is None else read_kwargs
         self.write_kwargs = {} if write_kwargs is None else write_kwargs
@@ -177,7 +179,8 @@ class BeamData(object):
         if self.cached:
             self._conf = {'orientation': self.orientation,
                           'objects_type': self.objects_type,
-                          'len': len(self), 'columns_map': self.columns_map}
+                          'len': len(self),
+                          'columns_map': self.columns_map}
             return self._conf
 
         self._conf = None
@@ -197,9 +200,9 @@ class BeamData(object):
 
         if self.cached:
 
-            if self.orientation in ['index', 'other']:
+            if self.orientation in ['index', 'packed']:
                 fold_index = np.concatenate([np.arange(len(d)) for d in self.flatten_data])
-                fold = np.concatenate([i * np.ones(len(d), dtype=np.int64) for i, d in enumerate(self.flatten_data)])
+                fold = np.concatenate([np.full(len(d), k) for k, d in enumerate(self.flatten_data)])
                 lengths = np.array([len(d) for d in self.flatten_data])
                 offset = np.cumsum(lengths, dim=0) - lengths
                 offset = offset[fold] + fold_index
@@ -286,6 +289,13 @@ class BeamData(object):
         return self._flatten_data
 
     @property
+    def flatten_data_with_keys(self):
+        if self._flatten_data_with_keys is not None:
+            return self._flatten_data_with_keys
+        self._flatten_data_with_keys = recursive_flatten_with_keys(self.data)
+        return self._flatten_data_with_keys
+
+    @property
     def device(self):
         if self._device is not None:
             return self._device
@@ -319,8 +329,14 @@ class BeamData(object):
 
     @property
     def orientation(self):
+
         if self._orientation is not None:
             return self._orientation
+
+        if self._conf is not None:
+            self._orientation = self._conf['orientation']
+            return self._orientation
+
         if self.cached:
 
             data_type = check_type(self.data)
@@ -353,13 +369,13 @@ class BeamData(object):
                 if len(np.unique(lens) == 1):
                     self._orientation = 'index'
                 else:
-                    self._orientation = 'other'
+                    self._orientation = 'packed'
 
         elif self.stored:
             self._orientation = self.conf['orientation']
 
         else:
-            self._orientation = 'other'
+            self._orientation = 'packed'
 
         return self._orientation
 
@@ -919,26 +935,52 @@ class BeamData(object):
         return self.slice_index(ind)
 
     def slice_data(self, index):
-        pass
+
+        if type(index) is not tuple:
+            index = (index,)
+        index = tuple([slice(None), slice(None), *index])
+
+        if not self.cached:
+            raise LookupError(f"Cannot slice as data is not cached")
+
+        if self.orientation == 'simple':
+            data = self.data.__getitem(index)
+
+        elif self.orientation == 'index':
+            data = recursive_slice(self.data, index)
+
+        else:
+            raise LookupError(f"Cannot slice by columns as data is not in simple or index orientation")
+
+        if self.quick_getitem:
+            return DataBatch(data=data, index=self.index, label=self.label)
+
+        return BeamData(data=data, path=self.all_paths, lazy=self.lazy, index=self.index, label=self.label,
+                        orientation=self.orientation)
 
     def slice_columns(self, columns):
 
         if not self.cached:
-            raise LookupError(f"Cannot slice by index as data is not cached")
+            raise LookupError(f"Cannot slice by columns as data is not cached")
 
         if self.orientation == 'simple':
-            pass
-            data = self.data[columns]
-        elif self.orientation == 'columns':
-            pass
-        elif self.orientation == 'index':
-            pass
-        elif self.orientation == 'other':
-            pass
-        else:
-            raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
 
-        return BeamData(data=data, path=all_paths, lazy=self.lazy, **kwargs)
+            if hasattr(self.data, 'loc'):
+                data = self.data[columns]
+            else:
+                data = self.data[:, columns]
+
+        elif self.orientation == 'index':
+            data = recursive_slice_columns(self.data, columns)
+
+        else:
+            raise LookupError(f"Cannot slice by columns as data is not in simple or index orientation")
+
+        if self.quick_getitem:
+            return DataBatch(data=data, index=self.index, label=self.label)
+
+        return BeamData(data=data, path=self.all_paths, lazy=self.lazy, columns=columns,
+                        index=self.index, label=self.label, orientation=self.orientation)
 
     def slice_index(self, index):
 
@@ -946,15 +988,24 @@ class BeamData(object):
             raise LookupError(f"Cannot slice by index as data is not cached")
 
         if self.orientation == 'simple':
-            data = self.data[index]
+
+            if hasattr(self.data, 'loc'):
+                data = self.data.loc[index]
+            else:
+                data = self.data[index]
 
         elif self.orientation == 'columns':
-            data = recursive_batch(self.data, index)
-            return BeamData(data, index=index)
 
-        elif self.orientation == 'index':
+            if self.index is not None:
+                iloc = self.index[index]
+            else:
+                iloc = index
 
-            info = self.info.iloc[index]
+            data = recursive_batch(self.data, iloc)
+
+        elif self.orientation in ['index', 'packed']:
+
+            info = self.info.loc[index]
             info['reverse_index'] = np.arange(len(info))
             batch = []
             batch_index = []
@@ -969,7 +1020,7 @@ class BeamData(object):
             batch = batch[batch_index]
             return batch
 
-        elif self.orientation == 'other':
+        # elif self.orientation == 'packed':
 
             info = self.info.iloc[index]
             db = BeamData.recursive_filter(self.data, info)
@@ -1019,17 +1070,21 @@ class BeamData(object):
 
         index = self.index
         label = self.label
+        info = self._info
 
         if self.orientation != 'columns':
             if index is not None:
                 index = BeamData.slice_scalar_or_list(index, keys, keys_type=keys_type, data_type=self.data_type)
             if label is not None:
                 label = BeamData.slice_scalar_or_list(label, keys, keys_type=keys_type, data_type=self.data_type)
+            if info is not None:
+                info =
 
         if self.quick_getitem and data is not None:
             return DataBatch(data=data, index=index, label=label)
 
-        return BeamData(data=data, path=all_paths, lazy=self.lazy, columns=self.columns, index=index, label=label)
+        return BeamData(data=data, path=all_paths, lazy=self.lazy, columns=self.columns,
+                        index=index, label=label, orientation=self.orientation)
 
     def inverse_columns_map(self, columns):
 
@@ -1071,9 +1126,9 @@ class BeamData(object):
         '''
 
         if self.orientation == 'simple':
-            axes = ['index', 'columns', 'other']
+            axes = ['index', 'columns', 'else']
         else:
-            axes = ['keys', 'index', 'columns', 'other']
+            axes = ['keys', 'index', 'columns', 'else']
 
         obj = self
         item_type = check_type(item)
@@ -1104,8 +1159,8 @@ class BeamData(object):
                 if i_type.major == 'slice':
                     ind_i = slice_to_index(ind_i, l=len(obj))
 
-                if not obj.cached:
-                    obj.cache()
+                if not isinstance(obj, BeamData):
+                    ValueError(f"quick_getitem supports only a single index slice")
 
                 obj = obj.slice_index(ind_i)
 

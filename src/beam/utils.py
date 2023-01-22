@@ -896,7 +896,9 @@ def recursive_func(x, func, *args, **kwargs):
 
 def recursive_flatten(x):
 
-    if isinstance(x, dict) or isinstance(x, list) or isinstance(x, tuple):
+    x_type = check_type(x)
+
+    if x.major == 'container':
         l = []
         for i, xi in iter_container(x):
             l.extend(recursive_flatten(xi))
@@ -905,29 +907,50 @@ def recursive_flatten(x):
         return [x]
 
 
-@recursive
-def recursive_batch(x, index):
+def recursive_flatten_with_keys(x):
 
     x_type = check_type(x)
 
+    if x_type.major == 'container':
+        d = {}
+        for i, xi in iter_container(x):
+            di = recursive_flatten_with_keys(xi)
+            di = {(i, *k): v for k, v in di.items()}
+            d.update(di)
+        return d
+    else:
+        return {tuple(): x}
+
+
+@recursive
+def recursive_batch(x, index):
+
     if x is None:
         return None
-    elif x_type.minor == 'pandas':
+    elif hasattr(x, 'iloc'):
         return x.iloc[index]
     else:
         return x[index]
 
+
 @recursive
-def recursive_slice(x, index):
+def recursive_slice(x, s):
+    if x is None:
+        return None
+    return x.__getitem__(s)
+
+
+@recursive
+def recursive_slice_columns(x, columns):
 
     x_type = check_type(x)
 
     if x is None:
         return None
     elif x_type.minor == 'pandas':
-        return x[index]
+        return x[columns]
     else:
-        return x[:, index]
+        return x[:, columns]
 
 def recursive_device(x):
 
