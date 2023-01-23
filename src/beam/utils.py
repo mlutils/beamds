@@ -401,7 +401,7 @@ def recursive(func):
     return apply_recursively
 
 
-def recursive_keys(x, key=None):
+def recursive_keys(x):
 
     x_type = check_type(x)
     if x_type.major == 'container':
@@ -411,14 +411,17 @@ def recursive_keys(x, key=None):
 
         for k, v in iter_container(x):
             keys.append(k)
-            values.append(recursive_keys(v, k))
+            values.append(recursive_keys(v))
+
+        if all([v is None for v in values]):
+            return keys
 
         if x_type.minor == 'dict' and not is_arange(values):
             values = dict(zip(keys, values))
 
         return values
 
-    return key
+    return None
 
 
 def recursive_size_summary(x, mode='sum'):
@@ -718,7 +721,7 @@ def check_type(x, check_minor=True, check_element=True):
 
     major type: container, array, scalar, none, other
     minor type: dict, list, tuple, tensor, numpy, pandas, scipy_sparse, native, none
-    elements type: int, float, str, object, empty, none, unknown
+    elements type: array, int, float, str, object, empty, none, unknown
 
     '''
 
@@ -769,10 +772,21 @@ def check_type(x, check_minor=True, check_element=True):
         else:
             mjt = 'other'
         if isinstance(x, list) or isinstance(x, tuple):
-            if len(x):
-                elt = check_element_type(x[0])
-            else:
+            if not len(x):
                 elt = 'empty'
+            else:
+
+                if len(x) < 100:
+                    elts = [check_element_type(xi) for xi in x]
+
+                else:
+                    ind = np.random.choice(len(x), 100, replace=False)
+                    elts = [check_element_type(x[i]) for i in ind]
+
+                if len(set(elts)) == 1:
+                    elt = elts[0]
+                else:
+                    elt = 'object'
 
             if elt in ['array', 'object']:
                 mjt = 'container'
@@ -894,17 +908,48 @@ def recursive_func(x, func, *args, **kwargs):
         return func(x, *args, **kwargs)
 
 
-def recursive_flatten(x):
+def recursive_flat_array(x):
 
     x_type = check_type(x)
 
-    if x.major == 'container':
+    if x_type.minor == 'numpy':
+        return x.flatten().tolist()
+    elif x_type.minor == 'tensor':
+        return x.flatten().tolist()
+    elif x_type.minor == 'pandas':
+        return x.values.flatten().tolist()
+    elif x_type.minor == 'scipy_sparse':
+        return x.toarray().flatten().tolist()
+    elif x_type.minor in ['list', 'tuple']:
+        if x_type.element != 'array':
+            return list(x)
+
+        l = []
+        for xi in x:
+            l.extend(recursive_flat_array(xi))
+        return l
+
+    elif x_type.minor == 'native':
+        return [x]
+
+    else:
+        raise ValueError('Cannot flat array for type {}'.format(x_type))
+
+
+def recursive_flatten(x, flat_array=False):
+
+    x_type = check_type(x)
+
+    if x_type.major == 'container':
         l = []
         for i, xi in iter_container(x):
-            l.extend(recursive_flatten(xi))
+            l.extend(recursive_flatten(xi, flat_array=flat_array))
         return l
     else:
-        return [x]
+        if not flat_array:
+            return [x]
+        else:
+            return recursive_flat_array(x)
 
 
 def recursive_flatten_with_keys(x):

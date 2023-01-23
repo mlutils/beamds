@@ -6,6 +6,7 @@ from src.beam.data import BeamData
 from src.beam.processor import Transformer
 import numpy as np
 import pandas as pd
+import torch
 
 import string
 import random
@@ -37,13 +38,19 @@ if __name__ == '__main__':
     #        'b': [pd.DataFrame(index=np.random.permutation(np.arange(n)),
     #                     data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)]}
 
-    dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)),
-                        data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)])
+    dfs = {'a': torch.randn(200, m), 'b': torch.randn(300, m), 'c': torch.randn(400, m)}
+
+    # dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)),
+    #                     data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)])
 
     path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
 
+    print(bd.orientation)
+
     bda = bd[bd.keys()[0]]
+
+    info = bda.info
     # bda = bd['a']
     bd.store()
 

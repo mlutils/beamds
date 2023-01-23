@@ -43,7 +43,7 @@ class BeamData(object):
     def __init__(self, *args, data=None, path=None, name=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None,
                  override=True, compress=None, chunk_strategy='files', chunksize=int(1e9), chunklen=None, n_chunks=None,
-                 partition=None, archive_len=int(1e6), orient='columns', read_kwargs=None, write_kwargs=None,
+                 partition=None, archive_len=int(1e6), preferred_orientation='columns', read_kwargs=None, write_kwargs=None,
                  quick_getitem=False, orientation=None, info=None, **kwargs):
 
         '''
@@ -91,7 +91,7 @@ class BeamData(object):
         self.index = index
         self.label = label
         self.columns = columns
-        self.orient = orient
+        self.preferred_orientation = preferred_orientation
         self.chunk_strategy = chunk_strategy
         self.quick_getitem = quick_getitem
 
@@ -161,7 +161,14 @@ class BeamData(object):
 
         objects_types = recursive_flatten(self.data_types)
         objects_types = [v.minor for v in objects_types if v.minor != 'none']
-        self._objects_type = pd.Series(objects_types).value_counts().values[0]
+
+        u = np.unique(objects_types)
+
+        if len(u) == 1:
+            self._objects_type = u[0]
+        else:
+            self._objects_type = 'mixed'
+
         return self._objects_type
 
     @property
@@ -203,60 +210,39 @@ class BeamData(object):
             if self.orientation in ['index', 'packed']:
                 fold_index = np.concatenate([np.arange(len(d)) for d in self.flatten_data])
                 fold = np.concatenate([np.full(len(d), k) for k, d in enumerate(self.flatten_data)])
+
+                # still not sure if i really need this column. if so, it should be fixed
+                # fold_key = np.concatenate([np.full(len(d), k) for k, d in self.flatten_data_with_keys.items()])
                 lengths = np.array([len(d) for d in self.flatten_data])
-                offset = np.cumsum(lengths, dim=0) - lengths
+                offset = np.cumsum(lengths, axis=0) - lengths
                 offset = offset[fold] + fold_index
 
             else:
                 fold_index = None
                 fold = None
                 offset = None
+                # fold_key = None
 
-            index = np.concatenate(recursive_flatten([self.index]))
-            info = {'fold': fold, 'fold_index': fold_index, 'offset': offset, 'map': np.arange(len(index))}
+            if self.index is not None:
+                index = np.concatenate(recursive_flatten([self.index]))
+            else:
+                index = np.arange(len(fold))
+
+            if self.label is not None:
+                label = np.concatenate(recursive_flatten([self.label]))
+            else:
+                label = None
+
+            info = {'fold': fold, 'fold_index': fold_index,
+                    # 'fold_key': fold_key,
+                    'offset': offset,
+                    'map': np.arange(len(index)), 'label': label}
+
             self._info = pd.DataFrame(info, index=index)
             return self._info
 
         self._info = None
         return self._info
-
-    @staticmethod
-    def recursive_filter(x, info):
-
-        def _recursive_filter(x, info, key=0):
-            x_type = check_type(x)
-            if x_type.major == 'container':
-
-                keys = []
-                values = []
-                index = []
-
-                for k, v in iter_container(x):
-                    keys.append(k)
-                    i, v, key = _recursive_filter(v, info, key=key)
-                    values.append(v)
-                    index.append(i)
-
-                if not is_arange(keys):
-                    values = dict(zip(keys, values))
-                    index = dict(zip(keys, index))
-
-                return index, values, key
-
-            else:
-
-                in_fold = info['fold_index'][info['fold'] == key]
-                x_type = check_type(x)
-
-                if x is None:
-                    return None, None, key + 1
-                elif x_type.minor == 'pandas':
-                    return in_fold.index, x.iloc[in_fold], key + 1
-                else:
-                    return in_fold.index, x[in_fold], key + 1
-
-        index, data, _ = _recursive_filter(x, info)
-        return DataBatch(index=index, data=data, label=None)
 
     @property
     def index_mapper(self):
@@ -350,23 +336,24 @@ class BeamData(object):
 
             else:
 
-                if self.orient == 'columns':
-                    lens = recursive_flatten(recursive(lambda x: len(x) if hasattr(x, '__len__') else None)([self.data]))
+                if self.preferred_orientation == 'columns':
+                    lens = recursive_flatten(recursive(lambda x: len(x) if hasattr(x, '__len__') else None)([self.data]),
+                                             flat_array=True)
                     lens = list(filter(lambda x: x is not None, lens))
 
                     lens_index = recursive_flatten(
                         recursive(lambda x: len(x) if hasattr(x, '__len__') else None)([self.index]))
                     lens_index = list(filter(lambda x: x is not None, lens_index))
 
-                    if len(np.unique(lens) == 1) and sum(lens) > sum(lens_index):
+                    if len(np.unique(lens)) == 1 and sum(lens) > sum(lens_index):
                         self._orientation = 'columns'
                         return self._orientation
 
-                lens = recursive_flatten(
-                    recursive(lambda x: x.shape[1] if hasattr(x, 'shape') and len(x.shape) > 1 else None)([self.data]))
+                shapes = recursive_flatten(
+                    recursive(lambda x: tuple(x.shape[1:]) if hasattr(x, 'shape') and len(x.shape) > 1 else None)([self.data]))
 
-                lens = list(filter(lambda x: x is not None, lens))
-                if len(np.unique(lens) == 1):
+                shapes = list(filter(lambda x: x is not None, shapes))
+                if len(np.unique(shapes) == 1):
                     self._orientation = 'index'
                 else:
                     self._orientation = 'packed'
@@ -826,14 +813,31 @@ class BeamData(object):
             return self.columns
         return recursive_keys(self.data)
 
-    def concatenate_data(self, data):
+    def _concatenate(self, data):
+
+        if self.orientation == 'simple':
+            dim = None
+        elif self.orientation == 'columns':
+            dim = 1
+        elif self.orientation == 'index':
+            dim = 0
+        else:
+            return data
 
         if self.objects_type == 'tensor':
-            return torch.cat(data)
-        if self.objects_type == 'pandas':
-            return pd.concat(data, axis=0)
-        if self.objects_type == 'numpy':
-            return np.concatenate(data)
+            func = torch.cat = data
+            kwargs = {'dim': dim}
+        elif self.objects_type == 'pandas':
+            func = pd.concat
+            kwargs = {'axis': dim}
+        elif self.objects_type == 'numpy':
+            func = np.concatenate
+            kwargs = {'axis': dim}
+        else:
+            logger.warning(f"Concatenation not implemented for {self.objects_type}, returning the original data")
+            return data
+
+        return func(data, **kwargs)
 
     def store(self, data=None, path=None, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, chunk_strategy='files',
@@ -982,55 +986,97 @@ class BeamData(object):
         return BeamData(data=data, path=self.all_paths, lazy=self.lazy, columns=columns,
                         index=self.index, label=self.label, orientation=self.orientation)
 
+    @property
+    def stack_values(self):
+        data = self._concatenate(self.flatten_data)
+        return data
+
+    @staticmethod
+    def recursive_filter(x, info):
+
+        def _recursive_filter(x, info, flat_key=0):
+            x_type = check_type(x)
+            if x_type.major == 'container':
+
+                keys = []
+                values = []
+                index = []
+                label = []
+
+                for k, v in iter_container(x):
+                    i, v, l, flat_key = _recursive_filter(v, info, flat_key=flat_key)
+                    if len(v):
+                        values.append(v)
+                        index.append(i)
+                        keys.append(k)
+                        label.append(l)
+
+                if not is_arange(keys):
+                    values = dict(zip(keys, values))
+                    index = dict(zip(keys, index))
+                    label = dict(zip(keys, label))
+
+                return index, values, label, flat_key
+
+            else:
+
+                in_fold = info['fold_index'][info['fold'] == flat_key]
+                x_type = check_type(x)
+
+                if x is None:
+                    return None, None, None, flat_key + 1
+                elif x_type.minor == 'pandas':
+                    return in_fold.index, x.iloc[in_fold], in_fold['label'], flat_key + 1
+                else:
+                    return in_fold.index, x[in_fold], in_fold['label'], flat_key + 1
+
+        index, data, label, _ = _recursive_filter(x, info)
+        return DataBatch(index=index, data=data, label=label)
+
     def slice_index(self, index):
 
         if not self.cached:
             raise LookupError(f"Cannot slice by index as data is not cached")
 
-        if self.orientation == 'simple':
+        if self.orientation in ['simple', 'columns']:
 
-            if hasattr(self.data, 'loc'):
-                data = self.data.loc[index]
+            info = None
+            if self.label is not None:
+                label = self.label.loc[index]
             else:
-                data = self.data[index]
+                label = None
 
-        elif self.orientation == 'columns':
+            if self.orientation == 'simple':
+                if hasattr(self.data, 'loc'):
+                    data = self.data.loc[index]
+                else:
+                    data = self.data[index]
 
-            if self.index is not None:
-                iloc = self.index[index]
             else:
-                iloc = index
 
-            data = recursive_batch(self.data, iloc)
+                if self.index is not None:
+                    iloc = self.index[index]
+                else:
+                    iloc = index
+
+                data = recursive_batch(self.data, iloc)
 
         elif self.orientation in ['index', 'packed']:
 
             info = self.info.loc[index]
-            info['reverse_index'] = np.arange(len(info))
-            batch = []
-            batch_index = []
-            for i, d in enumerate(self.flatten_data):
-                fold_info = info[info['fold'] == i].values
-                batch.append(self.flatten_data[fold_info['fold_index']])
-                batch_index.append(fold_info['reverse_index'].values)
-
-            batch = self.concatenate_data(batch)
-            batch_index = pd.Series(np.arange(len(info)), index=np.concatenate([batch_index]))
-            batch_index = batch_index.sort_index().values
-            batch = batch[batch_index]
-            return batch
-
-        # elif self.orientation == 'packed':
-
-            info = self.info.iloc[index]
             db = BeamData.recursive_filter(self.data, info)
-            return BeamData(db.data, index=db.index)
+            data = db.data
+            index = db.index
+            label = db.label
 
         else:
             raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
 
-        label = self.label.loc[index]
-        return DataBatch(data=data, index=index, label=label)
+        if self.quick_getitem:
+            return DataBatch(data=data, index=index, label=self.label)
+
+        return BeamData(data=data, path=None, lazy=self.lazy, columns=self.columns,
+                        index=index, label=label, orientation=self.orientation, info=info)
 
     @staticmethod
     def slice_scalar_or_list(data, keys, data_type=None, keys_type=None):
@@ -1077,14 +1123,15 @@ class BeamData(object):
                 index = BeamData.slice_scalar_or_list(index, keys, keys_type=keys_type, data_type=self.data_type)
             if label is not None:
                 label = BeamData.slice_scalar_or_list(label, keys, keys_type=keys_type, data_type=self.data_type)
-            if info is not None:
-                info =
 
         if self.quick_getitem and data is not None:
             return DataBatch(data=data, index=index, label=label)
 
+        if self.orientation != 'columns' and info is not None:
+                info = info.loc[index]
+
         return BeamData(data=data, path=all_paths, lazy=self.lazy, columns=self.columns,
-                        index=index, label=label, orientation=self.orientation)
+                        index=index, label=label, orientation=self.orientation, info=info)
 
     def inverse_columns_map(self, columns):
 
@@ -1095,6 +1142,20 @@ class BeamData(object):
             columns = [columns_map[i] for i in columns]
 
         return columns
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        s = f"BeamData: \n"
+        s += f"  path: {self.root_path} \n"
+        s += f"  keys: {self.keys()} \n"
+        s += f"  lazy: {self.lazy}\t| stored: {self.stored}\t| cached: {self.cached} \n"
+        s += f"  info:\n"
+        s += f"  {self.info} \n"
+        s += f"  data:\n"
+        s += f"  {self.data} \n"
+        return s
 
     def __setitem__(self, key, value):
 
@@ -1165,27 +1226,16 @@ class BeamData(object):
                 obj = obj.slice_index(ind_i)
 
             elif a == 'columns':
-                pass
+
+                if not isinstance(obj, BeamData):
+                    ValueError(f"quick_getitem supports only a single index slice")
+
+                obj = obj.slice_columns(ind_i)
 
             else:
 
-                #todo: work on the case of simple orientation with columns
-
-                if a == 'columns' and hasattr(self.data, 'columns'):
-                    ind = item[i:]
-                elif a == 'columns' and self.columns is not None:
-                    ind = (self.inverse_map(ind_i), *item[i+1:])
-                else:
-                    ind = item[i:]
-
-                if type(obj) is BeamData:
-                    obj = obj.slice_data(ind)
-
-                elif type(obj) is DataBatch:
-                    data = recursive_batch(obj.data, ind)
-                    obj = DataBatch(data=data, index=obj.index, label=obj.label)
-
-                else:
-                    raise ValueError(f"Object type is {type(obj)}")
+                ind_i = item[i:]
+                obj = obj.slice_data(ind_i)
+                break
 
         return obj
