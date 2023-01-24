@@ -8,6 +8,14 @@ from tqdm import tqdm
 import random
 import torch
 import pandas as pd
+
+try:
+    import modin.pandas as mpd
+    has_modin = True
+except ImportError:
+    mpd = None
+    has_modin = False
+
 import socket
 from contextlib import closing
 from collections import namedtuple
@@ -695,6 +703,8 @@ def check_minor_type(x):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
+    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
+        return 'pandas'
     if scipy.sparse.issparse(x):
         return 'scipy_sparse'
     if isinstance(x, dict):
@@ -780,7 +790,7 @@ def check_type(x, check_minor=True, check_element=True):
                     elts = [check_element_type(xi) for xi in x]
 
                 else:
-                    ind = np.random.choice(len(x), 100, replace=False)
+                    ind = np.random.randint(len(x), 100)
                     elts = [check_element_type(x[i]) for i in ind]
 
                 if len(set(elts)) == 1:
@@ -979,6 +989,27 @@ def recursive_batch(x, index):
 
 
 @recursive
+def recursive_len(x):
+    if hasattr(x, '__len__'):
+        return len(x)
+    return None
+
+
+@recursive
+def recursive_types(x):
+    return check_type(x)
+
+
+@recursive
+def recursive_shape(x):
+    if hasattr(x, 'shape'):
+        return x.shape
+    if hasattr(x, '__len__'):
+        return len(x)
+    return None
+
+
+@recursive
 def recursive_slice(x, s):
     if x is None:
         return None
@@ -1016,12 +1047,12 @@ def recursive_device(x):
     return x.device
 
 
-def recursive_len(x):
+def container_len(x):
 
     if isinstance(x, dict):
         for xi in x.values():
             try:
-                return recursive_len(xi)
+                return container_len(xi)
             except TypeError:
                 # case of None
                 pass
@@ -1029,7 +1060,7 @@ def recursive_len(x):
     elif isinstance(x, list) or isinstance(x, tuple):
         for xi in x:
             try:
-                return recursive_len(xi)
+                return container_len(xi)
             except TypeError:
                 # case of None
                 pass

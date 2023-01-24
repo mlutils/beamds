@@ -8,7 +8,7 @@ import warnings
 import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, recursive_len, is_arange, listdir_fullpath
+    recursive_size_summary, container_len, is_arange, listdir_fullpath
 from .parallel import parallel, task
 from collections import OrderedDict
 from .data import BeamData
