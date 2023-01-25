@@ -26,7 +26,7 @@ import scipy
 import sys
 from pathlib import Path
 from functools import partial
-
+from collections import defaultdict
 
 DataBatch = namedtuple("DataBatch", "index label data")
 
@@ -34,8 +34,8 @@ DataBatch = namedtuple("DataBatch", "index label data")
 class BeamData(object):
 
     feather_index_mark = "index:"
-    configuration_file_name = '.conf'
-    info_file_name = '.info'
+    configuration_file_name = '.conf.pkl'
+    info_file_name = '.info.pkl'
     default_data_file_name = 'data'
     chunk_file_extension = '_chunk'
     partition_directory_name = '_part'
@@ -44,7 +44,7 @@ class BeamData(object):
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None,
                  override=True, compress=None, chunk_strategy='files', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  partition=None, archive_len=int(1e6), preferred_orientation='columns', read_kwargs=None, write_kwargs=None,
-                 quick_getitem=False, orientation=None, info=None, **kwargs):
+                 quick_getitem=False, orientation=None, glob_filter=None, info=None, **kwargs):
 
         '''
 
@@ -98,6 +98,7 @@ class BeamData(object):
         self.preferred_orientation = preferred_orientation
         self.chunk_strategy = chunk_strategy
         self.quick_getitem = quick_getitem
+        self.glob_filter = glob_filter
 
         self.stored = False
         self.cached = True
@@ -158,6 +159,10 @@ class BeamData(object):
                 self.cache()
 
     @classmethod
+    def from_path(cls, path, *args, **kwargs):
+        return cls(path=path, *args, **kwargs)
+
+    @classmethod
     def from_indexed_pandas(cls, data, *args, **kwargs):
 
         @recursive
@@ -195,6 +200,7 @@ class BeamData(object):
 
         if self.stored:
             conf_path = self.root_path.joinpath(BeamData.configuration_file_name)
+            print(conf_path)
             if conf_path.is_file():
                 self._conf = BeamData.read_file(conf_path)
                 return self._conf
@@ -207,7 +213,7 @@ class BeamData(object):
             return self._conf
 
         self._conf = None
-        return self._conf
+        return defaultdict(lambda: None)
 
     @property
     def info(self):
@@ -426,20 +432,20 @@ class BeamData(object):
         return NotImplementedError
 
     @staticmethod
-    def write_file(data, path, overwrite=True, **kwargs):
+    def write_file(data, path, override=True, **kwargs):
 
         if type(path) is str:
             path = Path(path)
 
         path_type = check_type(path)
 
-        if (not overwrite) and path.exists():
+        if (not override) and path.exists():
             raise NameError(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
 
         BeamData.clean_path(path)
 
         if path_type.minor == 'path':
-            path = BeamData._write_file_to_path(data, path, **kwargs)
+            path = BeamData.write_file_to_path(data, path, **kwargs)
         else:
             raise NotImplementedError
 
@@ -495,6 +501,8 @@ class BeamData(object):
 
             keys = []
             values = []
+
+            # todo: add glob pattern for filtering files
 
             for next_path in path.iterdir():
                 keys.append(next_path)
@@ -570,7 +578,7 @@ class BeamData(object):
             return None
 
     @staticmethod
-    def _read_file_from_path(path, **kwargs):
+    def read_file_from_path(path, **kwargs):
 
         ext = path.suffix
 
@@ -618,7 +626,7 @@ class BeamData(object):
         return x
 
     @staticmethod
-    def _write_file_to_path(x, path, **kwargs):
+    def write_file_to_path(x, path, **kwargs):
 
         if type(path) is str:
             path = Path(path)
@@ -656,7 +664,7 @@ class BeamData(object):
 
     @staticmethod
     def write_data(data, path, sizes=None, chunk_strategy='files', archive_size=int(1e6), chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
+              chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, **kwargs):
 
         if type(path) is str:
             path = Path(path)
@@ -671,6 +679,10 @@ class BeamData(object):
             size_summary = sum(recursive_flatten(sizes))
 
             if size_summary < archive_size:
+
+                if root:
+                    path = path.joinpath(BeamData.default_data_file_name)
+
                 BeamData.write_object(data, path, size=size_summary, archive=True, **kwargs)
 
             elif chunk_strategy == 'data':
@@ -884,7 +896,8 @@ class BeamData(object):
             data = {BeamData.default_data_file_name: data}
 
         BeamData.write_data(data, path, chunk_strategy=chunk_strategy, archive_size=archive_len, chunksize=chunksize,
-              chunklen=chunklen, n_chunks=n_chunks, partition=partition, compress=compress, override=override, **kwargs)
+              chunklen=chunklen, n_chunks=n_chunks, partition=partition, compress=compress, override=override,
+                            root=True, **kwargs)
 
         # store info and conf files
         info_path = path.joinpath(BeamData.info_file_name)
@@ -931,6 +944,21 @@ class BeamData(object):
         self.data = data
         self.stored = True
         self.cached = True
+
+        self.reset_parameters()
+
+
+    def reset_parameters(self, avoid_reset=None):
+
+        if avoid_reset is None:
+            avoid_reset = []
+
+        reset_params = ['_columns_map', '_device', '_len', '_data_types', '_data_type', '_objects_type', '_flatten_data',
+                        '_flatten_data_with_keys', '_conf', '_info', '_orientation']
+
+        for param in reset_params:
+            if param not in avoid_reset:
+                setattr(self, param, None)
 
     def inverse_map(self, ind):
 
@@ -1051,8 +1079,8 @@ class BeamData(object):
                 else:
                     return in_fold_index.index, x[in_fold_index.values], info_in_fold['label'], flat_key + 1
 
-        index, data, label, _ = _recursive_filter(x, info)
-        return DataBatch(index=index, data=data, label=label)
+        i, d, l, _ = _recursive_filter(x, info)
+        return DataBatch(index=i, data=d, label=l)
 
     def slice_index(self, index):
 
@@ -1198,7 +1226,7 @@ class BeamData(object):
         self.stored = False
 
     def apply(self, func, *args, **kwargs):
-        data = recursive(func, *args, **kwargs)(self.data)
+        data = recursive(func)(self.data,  *args, **kwargs)
 
         return BeamData(data, index=self.index, label=self.label)
 

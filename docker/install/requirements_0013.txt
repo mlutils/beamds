@@ -19,3 +19,6 @@ pyuwsgi
 gevent
 dill
 pipreqs
+
+smart-pathlib
+transparentpath

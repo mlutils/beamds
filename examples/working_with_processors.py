@@ -43,11 +43,13 @@ if __name__ == '__main__':
     # dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)),
     #                     data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)])
 
-    from src.beam import check_type
-    print(check_type(slice(None)))
-
     path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
+
+    bd.store()
+
+    be = BeamData.from_path(path)
+    be.cache()
 
     print(bd.orientation)
 
