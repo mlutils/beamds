@@ -1,22 +1,15 @@
 import itertools
 import numpy as np
 import torch
-from sklearn.model_selection import train_test_split
-from sklearn.utils.class_weight import compute_sample_weight
 from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, beam_device, \
     recursive_device, container_len, recursive, recursive_len, recursive_shape, recursive_types
 import pandas as pd
 import math
-import hashlib
-import sys
-import warnings
-import argparse
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, container_len, is_arange, listdir_fullpath, is_chunk, rmtree, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key
-from collections import OrderedDict
 import os
 import fastavro
 import pyarrow as pa
@@ -34,8 +27,11 @@ DataBatch = namedtuple("DataBatch", "index label data")
 class BeamData(object):
 
     feather_index_mark = "index:"
-    configuration_file_name = '.conf.pkl'
-    info_file_name = '.info.pkl'
+
+    # metadata files
+
+    metadata_files = {'conf': '.conf.pkl', 'info': '.info.fea', 'label': '.label', 'index': '.index'}
+
     default_data_file_name = 'data'
     chunk_file_extension = '_chunk'
     partition_directory_name = '_part'
@@ -199,7 +195,7 @@ class BeamData(object):
             return self._conf
 
         if self.stored:
-            conf_path = self.root_path.joinpath(BeamData.configuration_file_name)
+            conf_path = self.root_path.joinpath(BeamData.metadata_files['conf'])
             print(conf_path)
             if conf_path.is_file():
                 self._conf = BeamData.read_file(conf_path)
@@ -222,7 +218,7 @@ class BeamData(object):
             return self._info
 
         if self.stored:
-            info_path = self.root_path.joinpath(BeamData.info_file_name)
+            info_path = self.root_path.joinpath(BeamData.metadata_files['info'])
             if info_path.is_file():
                 self._info = BeamData.read_file(info_path)
                 return self._info
@@ -461,11 +457,9 @@ class BeamData(object):
         if paths_type.major == 'container':
             keys = []
             values = []
-            paths = []
             for k, next_path in iter_container(paths):
                 values.append(BeamData.read_tree(next_path, **kwargs))
                 keys.append(k)
-                paths.append(next_path)
 
             if not is_arange(keys):
                 values = dict(zip(keys, values))
@@ -500,16 +494,24 @@ class BeamData(object):
         if path.is_dir():
 
             keys = []
+            keys_paths = []
             values = []
 
             # todo: add glob pattern for filtering files
 
             for next_path in path.iterdir():
-                keys.append(next_path)
+
+                # skip hidden files which we use for metadata (see BeamData.metadata_files)
+                if next_path.name.startswith('.'):
+                    continue
+
+                k = next_path.stem if next_path.is_file() else next_path.name
+                keys.append(k)
+                keys_paths.append(next_path)
                 values.append(BeamData.recursive_map_path(next_path))
 
             # if the directory contains chunks it is considered as a single path
-            if all([is_chunk(p, chunk_pattern=BeamData.chunk_file_extension) for p in keys]):
+            if all([is_chunk(p, chunk_pattern=BeamData.chunk_file_extension) for p in keys_paths]):
                 return path
 
             if not is_arange(keys):
@@ -554,8 +556,8 @@ class BeamData(object):
 
             for next_path in path.iterdir():
 
-                if next_path.stem == BeamData.configuration_file_name:
-                    conf = pd.read_pickle(next_path)
+                if next_path.stem == BeamData.metadata_files['conf']:
+                    conf = BeamData.read_file(next_path, **kwargs)
                     orientation = conf['orientation']
 
                 elif not next_path.name.startswith('.'):
@@ -570,7 +572,7 @@ class BeamData(object):
 
         else:
 
-            for p in path.partent.iterdir():
+            for p in path.parent.iterdir():
                 if p.stem == path.stem:
                     return BeamData.read_file(p, **kwargs)
 
@@ -934,7 +936,7 @@ class BeamData(object):
         if not self.stored:
             logger.warning("stored=False, data is seems to be un-synchronized")
 
-        data = self.read_tree(path=path, **kwargs)
+        data = self.read_tree(path, **kwargs)
 
         if type(data) is dict and 'data' in data and len(data) == 1:
             data = data['data']
