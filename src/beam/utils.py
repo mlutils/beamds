@@ -977,6 +977,15 @@ def recursive_flatten_with_keys(x):
         return {tuple(): x}
 
 
+def get_item_with_tuple_key(x, key):
+
+    if isinstance(key, tuple):
+        for k in key:
+            x = x[k]
+        return x
+    else:
+        return x[key]
+
 @recursive
 def recursive_batch(x, index):
 
