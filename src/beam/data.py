@@ -15,7 +15,7 @@ from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, container_len, is_arange, listdir_fullpath, is_chunk, rmtree, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
-    recursive_slice, recursive_flatten_with_keys
+    recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key
 from collections import OrderedDict
 import os
 import fastavro
@@ -1208,10 +1208,28 @@ class BeamData(object):
     def __iter__(self):
         if self.cached:
             for k, v in self.flatten_data_with_keys:
-                yield k, v
+
+                index = None
+                if self.index is not None:
+                    index = get_item_with_tuple_key(self.index, k)
+
+                label = None
+                if self.label is not None:
+                    label = get_item_with_tuple_key(self.label, k)
+
+                yield k, BeamData(v, lazy=self.lazy, columns=self.columns, index=index, label=label)
         else:
             for k, p in recursive_flatten_with_keys(self.all_paths):
-                yield k, BeamData(path=p)
+
+                index = None
+                if self.index is not None:
+                    index = get_item_with_tuple_key(self.index, k)
+
+                label = None
+                if self.label is not None:
+                    label = get_item_with_tuple_key(self.label, k)
+
+                yield k, BeamData(path=p, lazy=self.lazy, columns=self.columns, index=index, label=label)
 
     def sample(self, n, replace=True):
 
