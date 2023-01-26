@@ -834,7 +834,7 @@ def reset_network(net):
     prev_hash = {n: hash_tensor(p) for n, p in net.named_parameters()}
     for n, m in net.named_modules():
         if hasattr(m, 'reset_parameters'):
-            m.reset_parameters()
+            m.reset_metadata()
     for n, p in net.named_parameters():
         if prev_hash[n] == hash_tensor(p):
             logger.warning(f"Parameter {n} was not reset. Check if its nn.Module supports .reset_parameters()")
@@ -872,7 +872,7 @@ def reset_networks_and_optimizers(networks=None, optimizers=None):
         for i in net_iter:
             for n, m in networks[i].named_modules():
                 if hasattr(m, 'reset_parameters'):
-                    m.reset_parameters()
+                    m.reset_metadata()
 
     if optimizers is not None:
         opt_iter = optimizers.keys() if isinstance(optimizers, dict) else range(len(optimizers))

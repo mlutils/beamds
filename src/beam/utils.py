@@ -1006,7 +1006,9 @@ def recursive_len(x):
 
 @recursive
 def recursive_types(x):
-    return check_type(x)
+
+    x_type = check_type(x)
+    return f'{x_type.major}.{x_type.minor}.{x_type.element}'
 
 
 @recursive

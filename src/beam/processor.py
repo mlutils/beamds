@@ -1,25 +1,9 @@
-import itertools
-import numpy as np
-import pandas as pd
-import math
-import hashlib
-import sys
-import warnings
-import argparse
-from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, container_len, is_arange, listdir_fullpath
 from .parallel import parallel, task
 from collections import OrderedDict
 from .data import BeamData
-import os
-import fastavro
-import pyarrow as pa
-import shutil
-import pathlib
-from argparse import Namespace
-import scipy
-import sys
+
 
 class Processor(object):
 
@@ -97,7 +81,7 @@ class Transformer(Processor):
         for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
             yield k, c
 
-    def _transform(self, x, key=None, is_chunk=False, fit=False, **kwargs):
+    def transform_callback(self, x, key=None, is_chunk=False, fit=False, **kwargs):
         raise NotImplementedError
 
     def worker(self, x, key=None, is_chunk=False, data_in='memory', strategy='memory', fit=False, **kwargs):
@@ -107,7 +91,7 @@ class Transformer(Processor):
             bd.to_memory()
             x = bd.data
 
-        x = self._transform(x, key=key, is_chunk=is_chunk, **kwargs)
+        x = self.transform_callback(x, key=key, is_chunk=is_chunk, **kwargs)
 
         if strategy == 'disk':
             bd = BeamData(x, path=self.path)

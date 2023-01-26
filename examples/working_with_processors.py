@@ -22,7 +22,7 @@ class MyTransformer(Transformer):
     def __init__(self, *args, n_jobs=0, n_chunks=None, chunksize=None, **kwargs):
         super().__init__(*args, n_jobs=n_jobs, n_chunks=n_chunks, chunksize=chunksize, **kwargs)
 
-    def _transform(self, x, key=None, is_chunk=True, **kwargs):
+    def transform_callback(self, x, key=None, is_chunk=True, **kwargs):
         print('xxx')
         return len(x)
 
@@ -45,6 +45,11 @@ if __name__ == '__main__':
 
     path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
+
+    l = list(iter(bd))
+
+    print(bd.stack)
+
 
     bd.store()
 
