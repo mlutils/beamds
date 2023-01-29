@@ -76,8 +76,7 @@ class BeamData(object):
 
         '''
 
-        assert len(list(filter(lambda x: x is not None, [data, path]))), \
-            "Requires ether data, root_path or all_paths to be not None"
+        #todo: add support for target device+to_tensor when returning DataBatch
 
         self.lazy = lazy
         self.override = override
@@ -136,8 +135,12 @@ class BeamData(object):
             path = Path(path)
 
         path_type = check_type(path)
+
+        self.name = name
         if path_type.major != 'container' and name is not None:
             path = path.joinpath(name)
+        elif name is None:
+            self.name = path.name
 
         if path_type.major == 'container':
             self.root_path = BeamData.recursive_root_finder(path)
@@ -301,6 +304,10 @@ class BeamData(object):
         if self._flatten_data_with_keys is not None:
             return self._flatten_data_with_keys
         self._flatten_data_with_keys = recursive_flatten_with_keys(self.data)
+        for k in self._flatten_data_with_keys.keys():
+            if len(k) == 1:
+                self._flatten_data_with_keys[k[0]] = self._flatten_data_with_keys.pop(k)
+
         return self._flatten_data_with_keys
 
     @property
@@ -1100,8 +1107,8 @@ class BeamData(object):
         if self.quick_getitem:
             return DataBatch(data=data, index=self.index, label=self.label)
 
-        return BeamData(data=data, path=self.all_paths, lazy=self.lazy, index=self.index, label=self.label,
-                        orientation=self.orientation)
+        return self.clone(data=data, path=self.all_paths, index=self.index,
+                          label=self.label, orientation=self.orientation)
 
     def slice_columns(self, columns):
 
@@ -1124,8 +1131,8 @@ class BeamData(object):
         if self.quick_getitem:
             return DataBatch(data=data, index=self.index, label=self.label)
 
-        return BeamData(data=data, path=self.all_paths, lazy=self.lazy, columns=columns,
-                        index=self.index, label=self.label, orientation=self.orientation)
+        return self.clone(data=data, path=self.all_paths, columns=columns, index=self.index,
+                          label=self.label, orientation=self.orientation)
 
     @property
     def stack_values(self):
@@ -1155,7 +1162,7 @@ class BeamData(object):
         if self.quick_getitem:
             return DataBatch(data=data, index=index, label=label)
 
-        return BeamData(data=data, index=index, label=label)
+        return self.clone(data=data, index=index, label=label)
 
     @staticmethod
     def recursive_filter(x, info):
@@ -1242,8 +1249,8 @@ class BeamData(object):
         if self.quick_getitem:
             return DataBatch(data=data, index=index, label=self.label)
 
-        return BeamData(data=data, path=None, lazy=self.lazy, columns=self.columns,
-                        index=index, label=label, orientation=self.orientation, info=info)
+        return self.clone(data=data, columns=self.columns, index=index, label=label,
+                          orientation=self.orientation, info=info)
 
     @staticmethod
     def slice_scalar_or_list(data, keys, data_type=None, keys_type=None):
@@ -1302,7 +1309,48 @@ class BeamData(object):
         # return BeamData(data=data, path=all_paths, lazy=self.lazy, columns=self.columns,
         #                 index=index, label=label, orientation=self.orientation, info=info)
 
-        return BeamData(data=data, path=all_paths, lazy=self.lazy, columns=self.columns, index=index, label=label)
+        return self.clone(data=data, path=all_paths, columns=self.columns, index=index, label=label)
+
+    def get_default(self, key, default=None):
+
+        if hasattr(self, key) and default is None:
+            return getattr(self, key)
+        else:
+            return default
+
+    def clone(self, *args, data=None, path=None, name=None,
+                 index=None, label=None, columns=None, lazy=None, device=None, target_device=None,
+                 override=None, compress=None, chunk_strategy=None, chunksize=None, chunklen=None, n_chunks=None,
+                 partition=None, archive_size=None, preferred_orientation=None, read_kwargs=None, write_kwargs=None,
+                 quick_getitem=None, orientation=None, glob_filter=None, info=None, constructor=None, **kwargs):
+
+        name = self.get_default('name', name)
+        lazy = self.get_default('lazy', lazy)
+        device = self.get_default('device', device)
+        target_device = self.get_default('target_device', target_device)
+        override = self.get_default('override', override)
+        compress = self.get_default('compress', compress)
+        chunk_strategy = self.get_default('chunk_strategy', chunk_strategy)
+        chunksize = self.get_default('chunksize', chunksize)
+        chunklen = self.get_default('chunklen', chunklen)
+        n_chunks = self.get_default('n_chunks', n_chunks)
+        partition = self.get_default('partition', partition)
+        archive_size = self.get_default('archive_size', archive_size)
+        preferred_orientation = self.get_default('preferred_orientation', preferred_orientation)
+        read_kwargs = self.get_default('read_kwargs', read_kwargs)
+        write_kwargs = self.get_default('write_kwargs', write_kwargs)
+        quick_getitem = self.get_default('quick_getitem', quick_getitem)
+        glob_filter = self.get_default('glob_filter', glob_filter)
+
+        if constructor is None:
+            constructor = BeamData
+
+        return constructor(*args, data=data, path=path, name=name,
+                 index=index, label=label, columns=columns, lazy=lazy, device=device, target_device=target_device,
+                 override=override, compress=compress, chunk_strategy=chunk_strategy, chunksize=chunksize,
+                 chunklen=chunklen, n_chunks=n_chunks, partition=partition, archive_size=archive_size,
+                 preferred_orientation=preferred_orientation, read_kwargs=read_kwargs, write_kwargs=write_kwargs,
+                 quick_getitem=quick_getitem, orientation=orientation, glob_filter=glob_filter, info=info, **kwargs)
 
     def inverse_columns_map(self, columns):
 
@@ -1325,7 +1373,7 @@ class BeamData(object):
                   'has_label': self.label is not None}
         params_line = ' | '.join([f"{k}: {v}" for k, v in params.items()])
 
-        s = f"BeamData: \n"
+        s = f"BeamData: {self.name}\n"
         s += f"  path: \n"
         s += f"  {self.root_path} \n"
         s += f"  params: \n"
@@ -1381,10 +1429,10 @@ class BeamData(object):
     def apply(self, func, *args, **kwargs):
         data = recursive(func)(self.data,  *args, **kwargs)
 
-        return BeamData(data, index=self.index, label=self.label)
+        return self.clone(data, index=self.index, label=self.label)
 
     def reset_index(self):
-        return BeamData(self.data, index=None, label=self.label)
+        return self.clone(self.data, index=None, label=self.label)
 
     def __iter__(self):
         if self.cached:
@@ -1404,7 +1452,7 @@ class BeamData(object):
                 if self.quick_getitem:
                     yield k, DataBatch(data=v, index=index, label=label)
                 else:
-                    yield k, BeamData(v, lazy=self.lazy, columns=self.columns, index=index, label=label)
+                    yield k, self.clone(v, columns=self.columns, index=index, label=label)
         else:
             for k, p in recursive_flatten_with_keys(self.all_paths):
 
@@ -1416,7 +1464,7 @@ class BeamData(object):
                 if self.label is not None:
                     label = get_item_with_tuple_key(self.label, k)
 
-                yield k, BeamData(path=p, lazy=self.lazy, columns=self.columns, index=index, label=label)
+                yield k, self.clone(path=p, columns=self.columns, index=index, label=label)
 
     def sample(self, n, replace=True):
 

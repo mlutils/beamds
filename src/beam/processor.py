@@ -1,6 +1,6 @@
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, container_len, is_arange, listdir_fullpath
-from .parallel import parallel, task
+from .parallel import parallel, task, BeamParallel
 from collections import OrderedDict
 from .data import BeamData
 
@@ -70,6 +70,10 @@ class Transformer(Processor):
         self.kwargs = kwargs
         self.path = path
 
+        self.queue = BeamParallel(workers=n_jobs, func=None, method='joblib',
+                                  progressbar='beam', reduce=False, reduce_dim=0, **kwargs)
+
+
     def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None):
 
         if (chunksize is None) and (n_chunks is None):
@@ -84,19 +88,17 @@ class Transformer(Processor):
     def transform_callback(self, x, key=None, is_chunk=False, fit=False, **kwargs):
         raise NotImplementedError
 
-    def worker(self, x, key=None, is_chunk=False, data_in='memory', strategy='memory', fit=False, **kwargs):
+    def worker(self, x, key=None, is_chunk=False, cache=False, fit=False, **kwargs):
 
-        if data_in == 'disk':
-            bd = BeamData(data_paths=x)
-            bd.to_memory()
-            x = bd.data
+        if isinstance(x, BeamData):
+            if not x.cached:
+                x.cache()
 
         x = self.transform_callback(x, key=key, is_chunk=is_chunk, **kwargs)
 
-        if strategy == 'disk':
-            bd = BeamData(x, path=self.path)
-            bd.to_disk()
-            x = bd.data_paths
+        if isinstance(x, BeamData):
+            if not cache:
+                x = x.clone(path=x.all_paths)
 
         return x
 
@@ -110,8 +112,7 @@ class Transformer(Processor):
     def collate(self, x, **kwargs):
         return collate_chunks(*x, dim=0, **kwargs)
 
-    def transform(self, x, chunksize=None, n_chunks=None, n_jobs=None, squeeze=None, parent_strategy='disk',
-                  worker_strategy='memory', **kwargs):
+    def transform(self, x, chunksize=None, n_chunks=None, n_jobs=None, squeeze=None, cache=False, **kwargs):
 
         if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
@@ -121,23 +122,6 @@ class Transformer(Processor):
         if n_jobs is None:
             n_jobs = self.n_jobs
 
-        data_in = 'memory'
-        if isinstance(x, BeamData):
-            if parent_strategy == 'disk':
-                if x.in_disk:
-                    x = x.data_paths
-                else:
-                    x.to_disk()
-                    x = x.data_paths
-                data_in = 'disk'
-
-            elif parent_strategy == 'memory':
-                if x.in_memory:
-                    x = x.data
-                else:
-                    x.to_memory()
-                    x = x.data
-
         chunks = []
         kwargs_list = []
 
@@ -145,8 +129,7 @@ class Transformer(Processor):
 
         for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
             chunks.append((c, ))
-            kwargs_list.append({'key': k, 'is_chunk': is_chunk,
-                                'strategy': worker_strategy, 'data_in': data_in})
+            kwargs_list.append({'key': k, 'is_chunk': is_chunk, 'cache': cache})
 
         x = parallel(self.worker, chunks, constant_kwargs=kwargs, kwargs_list=kwargs_list,
                            workers=n_jobs, method='apply_async', collate=False)
