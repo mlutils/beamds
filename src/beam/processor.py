@@ -141,6 +141,9 @@ class Transformer(Processor):
     def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, cache=False,
                   multiprocessing_method=None, fit=False, **kwargs):
 
+        if len(x) == 0:
+            return x
+
         if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
             n_chunks = self.n_chunks
@@ -149,17 +152,15 @@ class Transformer(Processor):
 
         is_chunk = (chunksize != 1) or (not squeeze)
 
-        if isinstance(x, BeamData):
-            is_beam = True
-        else:
-            is_beam = False
-
         for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
 
             self.queue.add(BeamTask(self.worker, (c, ), {'key': k, 'is_chunk': is_chunk,
                                                          'cache': cache, fit: fit},
                                     name=f"{self.name}/{k}", **kwargs))
         x = self.queue.run(n_workers=n_workers, method=multiprocessing_method)
+
+        if isinstance(x[0], BeamData):
+            return BeamData.collate(x)
 
         return self.collate(x, **kwargs)
 

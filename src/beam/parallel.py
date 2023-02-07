@@ -69,7 +69,8 @@ class BeamTask(object):
 
 class BeamParallel(object):
 
-    def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
+    def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0,
+                 **kwargs):
 
         self.func = func
         self.n_workers = n_workers
@@ -121,10 +122,10 @@ class BeamParallel(object):
         if name is None:
             name = len(self.queue)
 
-        task = BeamTask(func, *args, name=name, **kwargs)
+        t = BeamTask(func, *args, name=name, **kwargs)
 
-        self.queue.append(task)
-        return task
+        self.queue.append(t)
+        return t
 
     def __enter__(self):
         return self
@@ -144,7 +145,7 @@ class BeamParallel(object):
         # for task in self.queue:
         #     task.set_silent(True)
 
-        results = Parallel(n_jobs=self.n_workers, **self.kwargs)(delayed(task.run)() for task in self.queue)
+        results = Parallel(n_jobs=self.n_workers, **self.kwargs)(delayed(t.run)() for t in self.queue)
         return results
 
     def _run_process_map(self):
@@ -159,7 +160,8 @@ class BeamParallel(object):
         else:
             func = self.func
 
-        results = process_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.n_workers, **self.kwargs)
+        results = process_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.n_workers,
+                              **self.kwargs)
 
         return results
 
@@ -203,7 +205,6 @@ class BeamParallel(object):
 
         return results
 
-
     def _run_apply_async(self):
 
         import multiprocessing as mp
@@ -217,7 +218,7 @@ class BeamParallel(object):
 
         with ctx.Pool(self.n_workers) as pool:
 
-            tasks = [pool.apply_async(task.run) for task in self.queue]
+            tasks = [pool.apply_async(t.run) for t in self.queue]
             results = []
             for res in self.progressbar(tasks):
                 results.append(res.get())
@@ -238,8 +239,8 @@ class BeamParallel(object):
         with ctx.Pool(self.n_workers) as pool:
 
             results = []
-            for task in self.queue:
-                results.append(pool.apply(task.run))
+            for t in self.queue:
+                results.append(pool.apply(t.run))
 
         return results
 
@@ -247,8 +248,8 @@ class BeamParallel(object):
 
         import ray
 
-        def func_wrapper(task):
-            return task.run()
+        def func_wrapper(t):
+            return t.run()
 
         if 'runtime_env' in self.kwargs:
             runtime_env = self.kwargs.pop('runtime_env')
@@ -268,7 +269,7 @@ class BeamParallel(object):
         ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
                  include_dashboard=include_dashboard, dashboard_host="0.0.0.0", ignore_reinit_error=True)
 
-        tasks = [ray.remote(num_cpus=self.n_workers)(func_wrapper).remote(task) for task in self.queue]
+        tasks = [ray.remote(num_cpus=self.n_workers)(func_wrapper).remote(t) for t in self.queue]
         results = ray.get(tasks)
 
         return results
@@ -287,7 +288,7 @@ class BeamParallel(object):
         import dask
 
         with dask.config.set({"multiprocessing.context": context, **self.kwargs}):
-            tasks = [dask.delayed(task.run)() for task in self.queue]
+            tasks = [dask.delayed(t.run)() for t in self.queue]
             results = dask.compute(tasks, num_workers=self.n_workers)
 
         return results[0]
@@ -300,7 +301,7 @@ class BeamParallel(object):
             self.method = method
 
         if self.n_workers <= 1 or len(self.queue) == 1:
-            results = [task.run() for task in self.queue]
+            results = [t.run() for t in self.queue]
         elif self.method == 'joblib':
             results = self._run_joblib()
         elif self.method == 'process_map':
