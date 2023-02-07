@@ -1,12 +1,12 @@
 from .utils import tqdm_beam
 from tqdm import tqdm
-from .utils import divide_chunks, collate_chunks
+from .utils import divide_chunks, collate_chunks, retrieve_name
 import inspect
 from .utils import logger, Timer
 
 
-def parallel(tasks, workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
-    bp = BeamParallel(func=func, workers=workers, method=method, progressbar=progressbar,
+def parallel(tasks, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
+    bp = BeamParallel(func=func, n_workers=n_workers, method=method, progressbar=progressbar,
                       reduce=reduce, reduce_dim=reduce_dim, **kwargs)
     return bp(tasks)
 
@@ -22,7 +22,7 @@ class BeamTask(object):
         self.func = func
         self.args = args
         self.kwargs = kwargs
-        self.name = name
+        self._name = name
         self.pid = None
         self.is_pending = True
         self.result = None
@@ -30,11 +30,17 @@ class BeamTask(object):
         self.queue_id = -1
         self.silence = silence
 
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
+
     def set_silent(self, silence):
         self.silence = silence
 
     def set_name(self, name):
-        self.name = name
+        self._name = name
 
     def __call__(self, *args, **kwargs):
         self.args = args
@@ -63,10 +69,10 @@ class BeamTask(object):
 
 class BeamParallel(object):
 
-    def __init__(self, workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
+    def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
 
         self.func = func
-        self.workers = workers
+        self.n_workers = n_workers
         self.method = method
         self.reduce = reduce
         self.reduce_dim = reduce_dim
@@ -138,7 +144,7 @@ class BeamParallel(object):
         # for task in self.queue:
         #     task.set_silent(True)
 
-        results = Parallel(n_jobs=self.workers, **self.kwargs)(delayed(task.run)() for task in self.queue)
+        results = Parallel(n_jobs=self.n_workers, **self.kwargs)(delayed(task.run)() for task in self.queue)
         return results
 
     def _run_process_map(self):
@@ -153,7 +159,7 @@ class BeamParallel(object):
         else:
             func = self.func
 
-        results = process_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.workers, **self.kwargs)
+        results = process_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.n_workers, **self.kwargs)
 
         return results
 
@@ -169,7 +175,7 @@ class BeamParallel(object):
         else:
             func = self.func
 
-        results = thread_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.workers, **self.kwargs)
+        results = thread_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.n_workers, **self.kwargs)
 
         return results
 
@@ -192,7 +198,7 @@ class BeamParallel(object):
 
         ctx = mp.get_context(context)
 
-        with ctx.Pool(self.workers) as pool:
+        with ctx.Pool(self.n_workers) as pool:
             results = list(pool.starmap(func, *[t.args for t in self.queue], **self.kwargs))
 
         return results
@@ -209,7 +215,7 @@ class BeamParallel(object):
 
         ctx = mp.get_context(context)
 
-        with ctx.Pool(self.workers) as pool:
+        with ctx.Pool(self.n_workers) as pool:
 
             tasks = [pool.apply_async(task.run) for task in self.queue]
             results = []
@@ -229,7 +235,7 @@ class BeamParallel(object):
 
         ctx = mp.get_context(context)
 
-        with ctx.Pool(self.workers) as pool:
+        with ctx.Pool(self.n_workers) as pool:
 
             results = []
             for task in self.queue:
@@ -262,7 +268,7 @@ class BeamParallel(object):
         ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
                  include_dashboard=include_dashboard, dashboard_host="0.0.0.0", ignore_reinit_error=True)
 
-        tasks = [ray.remote(num_cpus=self.workers)(func_wrapper).remote(task) for task in self.queue]
+        tasks = [ray.remote(num_cpus=self.n_workers)(func_wrapper).remote(task) for task in self.queue]
         results = ray.get(tasks)
 
         return results
@@ -282,14 +288,18 @@ class BeamParallel(object):
 
         with dask.config.set({"multiprocessing.context": context, **self.kwargs}):
             tasks = [dask.delayed(task.run)() for task in self.queue]
-            results = dask.compute(tasks, num_workers=self.workers)
+            results = dask.compute(tasks, num_workers=self.n_workers)
 
         return results[0]
 
+    def run(self, n_workers=None, method=None):
 
-    def run(self):
+        if n_workers is not None:
+            self.n_workers = n_workers
+        if method is not None:
+            self.method = method
 
-        if self.workers <= 1:
+        if self.n_workers <= 1 or len(self.queue) == 1:
             results = [task.run() for task in self.queue]
         elif self.method == 'joblib':
             results = self._run_joblib()
@@ -311,7 +321,13 @@ class BeamParallel(object):
 
         return results
 
-    def __call__(self, tasks=None, func=None, args_list=None, kwargs_list=None, name_list=None):
+    def __call__(self, tasks=None, func=None, args_list=None, n_workers=None, method=None,
+                 kwargs_list=None, name_list=None):
+
+        if n_workers is not None:
+            self.n_workers = n_workers
+        if method is not None:
+            self.method = method
 
         if tasks is not None:
             if isinstance(tasks, list):

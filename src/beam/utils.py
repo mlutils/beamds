@@ -30,12 +30,20 @@ from pathlib import Path
 import re
 from collections import Counter
 import time
+import inspect
 
 
 # logger.remove(handler_id=0)
 logger.remove()
 logger.add(sys.stdout, level='INFO', colorize=True,
            format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>')
+
+
+def retrieve_name(var):
+    for fi in reversed(inspect.stack()):
+        names = [var_name for var_name, var_val in fi.frame.f_locals.items() if var_val is var]
+        if len(names) > 0:
+            return names[0]
 
 
 class Timer(object):
@@ -305,30 +313,12 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
                                        partition=partition, squeeze=squeeze, dim=dim) for k, v in x.items()}
 
             for i in itertools.count():
-                # d = {k: next(v) for k, v in gen.items()}
                 d = {}
                 for k, v in gen.items():
                     i, v = next(v)
                     d[k] = v
 
                 yield i, d
-
-                # TODO: groups with varying size
-                # keys = {}
-                # d = {}
-                # for g, v in gen.items():
-                #     try:
-                #         k, v = next(v)
-                #     except:
-                #         pass
-                #
-                #     keys[g] = k
-                #
-                # smallest_key = min(keys)
-                #
-                # yield i, d
-                #
-                # yield {k: next(v) for k, v in gen.items()}
 
         elif x_type.major == 'container':
 

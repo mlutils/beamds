@@ -2,7 +2,7 @@ import itertools
 import numpy as np
 import torch
 from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, beam_device, \
-    recursive_device, container_len, recursive, recursive_len, recursive_shape, recursive_types
+    recursive_device, container_len, recursive, recursive_len, recursive_shape, recursive_types, retrieve_name
 import pandas as pd
 import math
 from collections import namedtuple
@@ -136,11 +136,13 @@ class BeamData(object):
 
         path_type = check_type(path)
 
-        self.name = name
+        self._name = name
         if path_type.major != 'container' and name is not None:
             path = path.joinpath(name)
-        elif name is None:
-            self.name = path.name
+        elif name is None and path is not None:
+            self._name = path.name
+        else:
+            self._name = None
 
         if path_type.major == 'container':
             self.root_path = BeamData.recursive_root_finder(path)
@@ -157,6 +159,43 @@ class BeamData(object):
             if not lazy:
                 self.cache()
 
+    @staticmethod
+    def collate(*args, batch=None, **kwargs):
+
+        @recursive
+        def get_data(x):
+            return x.data
+
+        @recursive
+        def get_index(x):
+            return x.index
+
+        @recursive
+        def get_label(x):
+            return x.label
+
+        if len(args) == 1:
+            batch = args[0]
+        elif len(args):
+            batch = list(args)
+        elif len(kwargs):
+            batch = kwargs
+
+        k, bd = next(iter_container(batch))
+
+        orientation = bd.orientation
+        if orientation == 'index':
+            columns = bd.columns
+        else:
+            columns = None
+
+        data = get_data(batch)
+        index = get_index(batch)
+        label = get_label(batch)
+
+        return bd.clone(data, columns=columns, index=index, label=label)
+
+
     @classmethod
     def from_path(cls, path, *args, **kwargs):
         return cls(path=path, *args, **kwargs)
@@ -172,6 +211,13 @@ class BeamData(object):
         kwargs['index'] = index
 
         return cls(data, *args, **kwargs)
+
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
+
 
     @property
     def objects_type(self):
@@ -1157,7 +1203,6 @@ class BeamData(object):
                 index = self._concatenate(recursive_flatten(self.index))
             if label is not None:
                 label = self._concatenate(recursive_flatten(self.label))
-
 
         if self.quick_getitem:
             return DataBatch(data=data, index=index, label=label)

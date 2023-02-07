@@ -1,15 +1,20 @@
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, container_len, is_arange, listdir_fullpath
-from .parallel import parallel, task, BeamParallel
+    recursive_size_summary, container_len, is_arange, listdir_fullpath, retrieve_name
+from .parallel import parallel, BeamParallel, BeamTask
 from collections import OrderedDict
 from .data import BeamData
 
 
 class Processor(object):
 
-    def __init__(self, *args, **kwargs):
-        pass
+    def __init__(self, *args, name=None, **kwargs):
+        self._name = name
 
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
 
 
 class Pipeline(Processor):
@@ -53,8 +58,9 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, state=None, n_jobs=0, n_chunks=None,
-                 chunksize=None, squeeze=True, path=None, **kwargs):
+    def __init__(self, *args, state=None, n_workers=0, n_chunks=None,
+                 chunksize=None, squeeze=True, path=None, multiprocess_method='joblib',
+                 reduce_dim=0, **kwargs):
 
         super(Transformer, self).__init__(*args, **kwargs)
 
@@ -64,15 +70,16 @@ class Transformer(Processor):
         self.transformers = None
         self.chunksize = chunksize
         self.n_chunks = n_chunks
-        self.n_jobs = n_jobs
+        self.n_workers = n_workers
         self.state = state
         self.squeeze = squeeze
         self.kwargs = kwargs
         self.path = path
+        self.multiprocess_method = multiprocess_method
+        self.reduce_dim = reduce_dim
 
-        self.queue = BeamParallel(workers=n_jobs, func=None, method='joblib',
-                                  progressbar='beam', reduce=False, reduce_dim=0, **kwargs)
-
+        self.queue = BeamParallel(n_workers=n_workers, func=None, method=multiprocess_method,
+                                  progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
 
     def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None):
 
@@ -82,8 +89,22 @@ class Transformer(Processor):
         if squeeze is None:
             squeeze = self.squeeze
 
-        for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
-            yield k, c
+        if isinstance(x, BeamData) and x.cached and x.orientation == 'simple':
+
+            data_chunks = recursive_chunks(x.data, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
+            index_chunks = recursive_chunks(x.index, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
+            label_chunks = recursive_chunks(x.label, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
+
+            for dc, ic, lc in zip(data_chunks, index_chunks, label_chunks):
+
+                k = dc[0]
+                c = x.clone(data=dc[1], index=ic[1], label=lc[1], columns=x.columns)
+
+                yield k, c
+
+        else:
+            for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
+                yield k, c
 
     def transform_callback(self, x, key=None, is_chunk=False, fit=False, **kwargs):
         raise NotImplementedError
@@ -94,7 +115,7 @@ class Transformer(Processor):
             if not x.cached:
                 x.cache()
 
-        x = self.transform_callback(x, key=key, is_chunk=is_chunk, **kwargs)
+        x = self.transform_callback(x, key=key, is_chunk=is_chunk, fit=fit, **kwargs)
 
         if isinstance(x, BeamData):
             if not cache:
@@ -103,36 +124,42 @@ class Transformer(Processor):
         return x
 
     def fit(self, x, **kwargs):
-        return NotImplementedError
+        return x
 
     def fit_transform(self, x, **kwargs):
-        self.fit(x, **kwargs)
-        return self.transform(x, **kwargs)
+        return self.transform(x, fit=True, **kwargs)
+        # self.fit(x, **kwargs)
+        # return self.transform(x, **kwargs)
 
-    def collate(self, x, **kwargs):
-        return collate_chunks(*x, dim=0, **kwargs)
+    def collate(self, x, reduce_dim=None, **kwargs):
 
-    def transform(self, x, chunksize=None, n_chunks=None, n_jobs=None, squeeze=None, cache=False, **kwargs):
+        if reduce_dim is None:
+            reduce_dim = self.reduce_dim
+
+        return collate_chunks(*x, dim=reduce_dim, **kwargs)
+
+    def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, cache=False,
+                  multiprocessing_method=None, fit=False, **kwargs):
 
         if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
             n_chunks = self.n_chunks
         if squeeze is None:
             squeeze = self.squeeze
-        if n_jobs is None:
-            n_jobs = self.n_jobs
-
-        chunks = []
-        kwargs_list = []
 
         is_chunk = (chunksize != 1) or (not squeeze)
 
-        for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
-            chunks.append((c, ))
-            kwargs_list.append({'key': k, 'is_chunk': is_chunk, 'cache': cache})
+        if isinstance(x, BeamData):
+            is_beam = True
+        else:
+            is_beam = False
 
-        x = parallel(self.worker, chunks, constant_kwargs=kwargs, kwargs_list=kwargs_list,
-                           workers=n_jobs, method='apply_async', collate=False)
+        for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
+
+            self.queue.add(BeamTask(self.worker, (c, ), {'key': k, 'is_chunk': is_chunk,
+                                                         'cache': cache, fit: fit},
+                                    name=f"{self.name}/{k}", **kwargs))
+        x = self.queue.run(n_workers=n_workers, method=multiprocessing_method)
 
         return self.collate(x, **kwargs)
 

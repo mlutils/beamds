@@ -2,8 +2,8 @@
 fasttext
 
 # vision and image Packages
-opencv-contrib-python-headless<4.6
-# opencv-python-headless<4.6
+opencv-contrib-python-headless<4.5.5.64
+# opencv-python-headless<4.5.5.64
 
 scikit-image
 Pillow

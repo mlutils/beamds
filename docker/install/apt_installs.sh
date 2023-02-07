@@ -3,13 +3,34 @@
 apt update
 apt update
 
-apt install -y openssh-server -y libkrb5
-apt install -y htop -y tmux -y libtool -y dh-autoreconf -y debhelper -y libaio-dev
-apt install -y telnet -y iputils-ping -y net-tools -y python3-sphinx
-apt install -y graphviz -y graphviz pkg-config -y expect -y libgraphviz-dev -y cron
+apt install -y openssh-server
+apt install -y libkrb5
+apt install -y libkrb5-dev
+apt install -y htop
+apt install -y tmux
+apt install -y libtool
+apt install -y dh-autoreconf
+apt install -y debhelper
+apt install -y libaio-dev
+apt install -y telnet
+apt install -y iputils-ping
+apt install -y net-tools
+apt install -y python3-sphinx
+apt install -y graphviz
+apt install -y graphviz
+apt install -y pkg-config
+apt install -y expect
+apt install -y libgraphviz-dev
+apt install -y cron
 apt install -y default-jdk
-apt install -y ltrace -y binutils
-apt install -y alien -y libaio1 -y binwalk -y ncdu
+apt install -y ltrace
+apt install -y binutils
+apt install -y alien
+apt install -y libaio1
+apt install -y binwalk
+apt install -y ncdu
+
+pip install pykerberos
 
 # don't install libopenmpi as it messes up the pytorch geometric installation
 # libopenmpi-dev

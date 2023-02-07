@@ -2,6 +2,6 @@
 torch-scatter
 torch-sparse
 torch-geometric
-torch-spline-conv
+# torch-spline-conv
 torch-cluster
 torch-geometric-temporal
