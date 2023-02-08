@@ -55,7 +55,7 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 # Install faiss if you encounter GPU issues when using the pip version:
 # https://github.com/kyamagu/faiss-wheels/issues/54
 
-# need to see how to install faiss
+# need to see how to install faiss-gpu. for now we install only the cpu version
 # RUN conda install -y -c conda-forge faiss-gpu
 
 # install DGL from source
@@ -63,7 +63,8 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 RUN bash /workspace/install/install_dgl.sh
 
 # install RAPID framework
-# REMOVE FOR LITE VERSION
+# cannot install rapids as it does not support cuda 12.0 yet
+# see https://rapids.ai/pip.html#install
 # RUN bash /workspace/install/rapid_install.sh
 
 # download datasets and models

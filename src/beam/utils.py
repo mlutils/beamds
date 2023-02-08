@@ -459,8 +459,6 @@ def recursive_size_summary(x, mode='sum'):
 
 def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
 
-    #TODO: add divide by partition parameter
-
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = check_type(x, check_element=False)
 
@@ -946,7 +944,7 @@ def recursive_flatten(x, flat_array=False):
             l.extend(recursive_flatten(xi, flat_array=flat_array))
         return l
     else:
-        if not flat_array:
+        if not flat_array or x_type.major == 'scalar':
             return [x]
         else:
             return recursive_flat_array(x)

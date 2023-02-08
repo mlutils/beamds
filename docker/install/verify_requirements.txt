@@ -17,4 +17,5 @@ huggingface-hub>=0.8.1
 pandas>=1.4.3
 ipython>=8.4.0
 optuna>=2.10.1
+jupyter_server
 

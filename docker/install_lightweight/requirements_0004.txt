@@ -10,3 +10,4 @@ networkx
 cdlib
 # stellargraph
 # pykeen
+ogb

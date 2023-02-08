@@ -137,7 +137,7 @@ class BeamData(object):
         path_type = check_type(path)
 
         self._name = name
-        if path_type.major != 'container' and name is not None:
+        if path_type.major != 'container' and name is not None and path is not None:
             path = path.joinpath(name)
         elif name is None and path is not None:
             self._name = path.name
@@ -771,7 +771,7 @@ class BeamData(object):
 
         if data_type.major == 'container':
 
-            size_summary = sum(recursive_flatten(sizes))
+            size_summary = sum(recursive_flatten(sizes, flat_array=True))
 
             if size_summary < archive_size:
 
@@ -839,7 +839,7 @@ class BeamData(object):
 
             if (n_chunks is None) and (chunklen is None):
                 if size is None:
-                    size = sum(recursive_flatten(recursive_size(data)))
+                    size = sum(recursive_flatten(recursive_size(data), flat_array=True))
                 n_chunks = max(int(np.round(size / chunksize)), 1)
             elif (n_chunks is not None) and (chunklen is not None):
                 logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")

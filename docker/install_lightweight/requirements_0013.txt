@@ -22,3 +22,4 @@ pipreqs
 
 smart-pathlib
 transparentpath
+faiss-cpu

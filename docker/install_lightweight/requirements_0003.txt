@@ -5,6 +5,7 @@ pandarallel
 # don't install dask as it ships with the NVIDIA image
 # dask[complete]
 
+gendocs
 datatable
 # pyspark
 # pyspark[sql]
