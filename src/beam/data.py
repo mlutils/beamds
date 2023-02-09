@@ -11,13 +11,7 @@ from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_contain
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key
 import os
-import fastavro
-import pyarrow as pa
-import pathlib
-from argparse import Namespace
-import scipy
-import sys
-from pathlib import Path
+from .path import BeamPath as Path
 from functools import partial
 from collections import defaultdict
 
@@ -25,8 +19,6 @@ DataBatch = namedtuple("DataBatch", "index label data")
 
 
 class BeamData(object):
-
-    feather_index_mark = "index:"
 
     # metadata files
 
@@ -473,16 +465,10 @@ class BeamData(object):
 
     @staticmethod
     def read_file(path, **kwargs):
-
         if type(path) is str:
             path = Path(path)
 
-        path_type = check_type(path)
-
-        if path_type.minor == 'path':
-            return BeamData.read_file_from_path(path, **kwargs)
-
-        return NotImplementedError
+        return path.read(**kwargs)
 
     @staticmethod
     def write_file(data, path, override=True, **kwargs):
@@ -490,17 +476,11 @@ class BeamData(object):
         if type(path) is str:
             path = Path(path)
 
-        path_type = check_type(path)
-
         if (not override) and path.exists():
             raise NameError(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
 
         BeamData.clean_path(path)
-
-        if path_type.minor == 'path':
-            path = BeamData.write_file_to_path(data, path, **kwargs)
-        else:
-            raise NotImplementedError
+        path = path.write(data, **kwargs)
 
         return path
 
@@ -670,91 +650,6 @@ class BeamData(object):
 
             logger.warning(f"No object found in path: {path}")
             return None
-
-    @staticmethod
-    def read_file_from_path(path, **kwargs):
-
-        ext = path.suffix
-
-        if ext == '.fea':
-            x = pd.read_feather(path, **kwargs)
-
-            c = x.columns
-            for ci in c:
-                if BeamData.feather_index_mark in ci:
-                    index_name = ci.lstrip(BeamData.feather_index_mark)
-                    x = x.rename(columns={ci: index_name})
-                    x = x.set_index(index_name)
-                    break
-
-        elif ext == '.csv':
-            x = pd.read_csv(path, **kwargs)
-        elif ext in ['.pkl', '.pickle']:
-            x = pd.read_pickle(path, **kwargs)
-        elif ext in ['.npy', '.npz']:
-            x = np.load(path, allow_pickle=True, **kwargs)
-        elif ext == '.scipy_npz':
-            x = scipy.sparse.load_npz(path)
-        elif ext == '.parquet':
-            x = pd.read_parquet(path, **kwargs)
-        elif ext == '.pt':
-            x = torch.load(path, **kwargs)
-        elif ext in ['.xls', '.xlsx', '.xlsm', '.xlsb', '.odf', '.ods', '.odt']:
-            x = pd.read_excel(path, **kwargs)
-        elif ext == '.avro':
-            x = []
-            with open(path, 'rb') as fo:
-                for record in fastavro.reader(fo):
-                    x.append(record)
-        elif ext == '.json':
-            x = []
-            with open(path, 'r') as fo:
-                for record in fastavro.json_reader(fo):
-                    x.append(record)
-        elif ext == '.orc':
-            x = pa.orc.read(path, **kwargs)
-
-        else:
-            raise ValueError("Unknown extension type.")
-
-        return x
-
-    @staticmethod
-    def write_file_to_path(x, path, **kwargs):
-
-        if type(path) is str:
-            path = Path(path)
-
-        ext = path.suffix
-
-        if ext == '.fea':
-            x = pd.DataFrame(x)
-            index_name = x.index.name if x.index.name is not None else 'index'
-            df = x.reset_index()
-            new_name = BeamData.feather_index_mark + index_name
-            x = df.rename(columns={index_name: new_name})
-            x.to_feather(path, **kwargs)
-        elif ext == '.csv':
-            x = pd.DataFrame(x)
-            x.to_csv(path, **kwargs)
-        elif ext in ['.pkl', '.pickle']:
-            pd.to_pickle(x, path, **kwargs)
-        elif ext == '.npy':
-            np.save(path, x, **kwargs)
-        elif ext == '.npz':
-            np.savez(path, x, **kwargs)
-        elif ext == '.scipy_npz':
-            scipy.sparse.save_npz(path, x, **kwargs)
-            os.rename(f'{path}.npz', path)
-        elif ext == '.parquet':
-            x = pd.DataFrame(x)
-            x.to_parquet(path, **kwargs)
-        elif ext == '.pt':
-            torch.save(x, path, **kwargs)
-        else:
-            raise ValueError("Unsupported extension type.")
-
-        return path
 
     @staticmethod
     def write_data(data, path, sizes=None, chunk_strategy='files', archive_size=int(1e6), chunksize=int(1e9),
