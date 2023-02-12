@@ -29,6 +29,7 @@ apt install -y alien
 apt install -y libaio1
 apt install -y binwalk
 apt install -y ncdu
+apt install -y vim
 
 pip install pykerberos
 
