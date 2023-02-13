@@ -9,6 +9,7 @@ import random
 import torch
 import pandas as pd
 
+
 try:
     import modin.pandas as mpd
     has_modin = True
@@ -31,6 +32,8 @@ import re
 from collections import Counter
 import time
 import inspect
+from pathlib import PurePath
+from argparse import Namespace
 
 
 # logger.remove(handler_id=0)
@@ -44,6 +47,234 @@ def retrieve_name(var):
         names = [var_name for var_name, var_val in fi.frame.f_locals.items() if var_val is var]
         if len(names) > 0:
             return names[0]
+
+
+class PureBeamPath:
+
+    feather_index_mark = "feather_index:"
+
+    def __init__(self, *pathsegments, configuration=None, info=None, **kwargs):
+        super().__init__()
+
+        if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
+            pathsegments = pathsegments[0].parts
+
+        self.path = PurePath(*pathsegments)
+        self.configuration = Namespace(**kwargs)
+        if configuration is not None:
+            for k, v in configuration.items():
+                self.configuration[k] = v
+        self.info = info if info is not None else {}
+        self.mode = "rb"
+        self.file_object = None
+
+    def __call__(self, mode="rb"):
+        self.mode = mode
+        return self
+
+    def __str__(self):
+        return str(self.path)
+
+    def __repr__(self):
+        return self.path.as_uri()
+
+    def __enter__(self):
+        raise NotImplementedError
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        raise NotImplementedError
+
+    @property
+    def parts(self):
+        return self.path.parts
+
+    @property
+    def drive(self):
+        return self.path.drive
+
+    @property
+    def root(self):
+        return self.path.root
+
+    @property
+    def anchor(self):
+        return self.path.anchor
+
+    @property
+    def parents(self):
+        return self.path.parents
+
+    @property
+    def parent(self):
+        return self.path.parent
+
+    @property
+    def name(self):
+        return self.path.name
+
+    @property
+    def suffix(self):
+        return self.path.suffix
+
+    @property
+    def suffixes(self):
+        return self.path.suffixes
+
+    @property
+    def stem(self):
+        return self.path.stem
+
+    def as_posix(self):
+        return self.path.as_posix()
+
+    def as_uri(self):
+        return self.path.as_uri()
+
+    def is_absolute(self):
+        return self.path.is_absolute()
+
+    def is_relative_to(self, *other):
+        return self.path.is_relative_to(*other)
+
+    def is_reserved(self):
+        return self.path.is_reserved()
+
+    def joinpath(self, *other):
+        return self.path.joinpath(*other)
+
+    def match(self, pattern):
+        return self.path.match(pattern)
+
+    def relative_to(self, *other):
+        return self.path.relative_to(*other)
+
+    def with_name(self, name):
+        return self.path.with_name(name)
+
+    def with_stem(self, stem):
+        return self.path.with_stem(stem)
+
+    def with_suffix(self, suffix):
+        return self.path.with_suffix(suffix)
+
+    def samefile(self, other):
+        raise NotImplementedError
+
+    def iterdir(self):
+        raise NotImplementedError
+
+    def is_file(self):
+        raise NotImplementedError
+
+    def is_dir(self):
+        raise NotImplementedError
+
+    def mkdir(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def exists(self):
+        raise NotImplementedError
+
+    def glob(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def rename(self, target):
+        return NotImplementedError
+
+    def read(self, ext=None, **kwargs):
+
+        if ext is None:
+            ext = self.suffix
+
+        with self(mode="rb") as fo:
+
+            if ext == '.fea':
+                x = pd.read_feather(fo, **kwargs)
+
+                c = x.columns
+                for ci in c:
+                    if PureBeamPath.feather_index_mark in ci:
+                        index_name = ci.lstrip(PureBeamPath.feather_index_mark)
+                        x = x.rename(columns={ci: index_name})
+                        x = x.set_index(index_name)
+                        break
+
+            elif ext == '.csv':
+                x = pd.read_csv(fo, **kwargs)
+            elif ext in ['.pkl', '.pickle']:
+                x = pd.read_pickle(fo, **kwargs)
+            elif ext in ['.npy', '.npz']:
+                x = np.load(fo, allow_pickle=True, **kwargs)
+            elif ext == '.scipy_npz':
+                x = scipy.sparse.load_npz(fo, **kwargs)
+            elif ext == '.parquet':
+                x = pd.read_parquet(fo, **kwargs)
+            elif ext == '.pt':
+                x = torch.load(fo, **kwargs)
+            elif ext in ['.xls', '.xlsx', '.xlsm', '.xlsb', '.odf', '.ods', '.odt']:
+                x = pd.read_excel(fo, **kwargs)
+            elif ext == '.avro':
+                x = []
+                with open(fo, 'rb') as fo:
+                    import fastavro
+                    for record in fastavro.reader(fo):
+                        x.append(record)
+            elif ext == '.json':
+
+                #TODO: add json read with fastavro and shcema
+                # x = []
+                # with open(path, 'r') as fo:
+                #     for record in fastavro.json_reader(fo):
+                #         x.append(record)
+
+                x = pd.read_json(fo, **kwargs)
+
+            elif ext == '.orc':
+                import pyarrow as pa
+                x = pa.orc.read(fo, **kwargs)
+
+            else:
+                raise ValueError("Unknown extension type.")
+
+        return x
+
+    def write(self, x, ext=None, **kwargs):
+
+        if ext is None:
+            ext = self.suffix
+
+        path = str(self)
+
+        with self(mode="wb") as fo:
+
+            if ext == '.fea':
+                x = pd.DataFrame(x)
+                index_name = x.index.name if x.index.name is not None else 'index'
+                df = x.reset_index()
+                new_name = PureBeamPath.feather_index_mark + index_name
+                x = df.rename(columns={index_name: new_name})
+                x.to_feather(fo, **kwargs)
+            elif ext == '.csv':
+                x = pd.DataFrame(x)
+                x.to_csv(fo, **kwargs)
+            elif ext in ['.pkl', '.pickle']:
+                pd.to_pickle(x, fo, **kwargs)
+            elif ext == '.npy':
+                np.save(fo, x, **kwargs)
+            elif ext == '.npz':
+                np.savez(fo, x, **kwargs)
+            elif ext == '.scipy_npz':
+                scipy.sparse.save_npz(fo, x, **kwargs)
+                self.rename(f'{path}.npz', path)
+            elif ext == '.parquet':
+                x = pd.DataFrame(x)
+                x.to_parquet(fo, **kwargs)
+            elif ext == '.pt':
+                torch.save(x, fo, **kwargs)
+            else:
+                raise ValueError("Unsupported extension type.")
+
+        return self
 
 
 class Timer(object):
@@ -701,7 +932,7 @@ def check_minor_type(x):
         return 'list'
     if isinstance(x, tuple):
         return 'tuple'
-    if isinstance(x, Path):
+    if isinstance(x, Path) or isinstance(x, PureBeamPath):
         return 'path'
     else:
         return 'other'

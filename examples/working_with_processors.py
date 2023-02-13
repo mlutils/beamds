@@ -46,6 +46,8 @@ if __name__ == '__main__':
     path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
 
+    q = bd[:10]
+
     l = list(iter(bd))
 
     print(bd.stack)

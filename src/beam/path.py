@@ -12,10 +12,11 @@ from hdfs import InsecureClient
 from hdfs.ext.avro import AvroWriter, AvroReader
 from hdfs.ext.dataframe import read_dataframe, write_dataframe
 import boto3
+from .utils import PureBeamPath
+from io import StringIO
 
 
-def beam_path(path, protocol=None, username=None, hostname=None,
-              port=None, access_key=None, secret_key=None):
+def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kwargs):
     """
 
     @param secret_key: AWS secret key
@@ -29,7 +30,7 @@ def beam_path(path, protocol=None, username=None, hostname=None,
     """
 
     pattern = re.compile(
-        r'^((?P<protocol>[\w]+)://)?((?P<username>[\w]+)@)?(?P<hostname>[\.\w]+)?(:(?P<port>\d+))?(?P<path>/.*)$')
+        r'^((?P<protocol>[\w]+)://)?((?P<username>[\w]+)@)?(?P<hostname>[\.\w]+)?(:(?P<port>\d+))?(?P<path>.*)$')
     match = pattern.match(path)
     if match:
         protocol = match.group('protocol')
@@ -38,28 +39,17 @@ def beam_path(path, protocol=None, username=None, hostname=None,
         port = match.group('port')
         path = match.group('path')
 
-    if protocol is None:
-        protocol = 'file'
-    if username is None:
-        username = ''
-    if hostname is None:
-        hostname = 'localhost'
-
-    if protocol == 'file':
+    if protocol is None or (protocol == 'file'):
         return BeamPath(path)
 
-    elif protocol == 's3':
+    if path == '':
+        path = '/'
 
-        client = boto3.resource(endpoint_url=f'http://{hostname}:{port}',
-                                config=boto3.session.Config(signature_version='s3v4'),
-                                verify=False, service_name='s3', aws_access_key_id=access_key,
-                                aws_secret_access_key=secret_key)
-
-        return S3Path(path, client=client)
+    if protocol == 's3':
+        return S3Path(path, hostname=hostname, port=port,  **kwargs)
 
     elif protocol == 'hdfs':
-        client = InsecureClient(f'http://{hostname}:{port}', user=username)
-        return HDFSPath(path, client=client)
+        return HDFSPath(path, hostname=hostname, port=port, username=username, **kwargs)
 
     elif protocol == 'gs':
         raise NotImplementedError
@@ -77,184 +67,191 @@ def beam_path(path, protocol=None, username=None, hostname=None,
         raise NotImplementedError
 
 
-class PureBeamPath:
-
-    feather_index_mark = "feather_index:"
+class BeamPath(PureBeamPath):
 
     def __init__(self, *pathsegments, configuration=None, info=None, **kwargs):
-        super().__init__()
-        self.path = PurePath(*pathsegments)
-        self.configuration = Namespace(**kwargs)
-        if configuration is not None:
-            for k, v in configuration.items():
-                self.configuration[k] = v
-        self.info = info if info is not None else {}
+        PureBeamPath.__init__(self, *pathsegments, configuration=configuration, info=info, **kwargs)
 
-    def __str__(self):
-        return str(self.path)
+        if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
+            pathsegments = pathsegments[0].parts
 
-    def __repr__(self):
-        return self.path.as_uri()
+        self.path = Path(*pathsegments)
 
-    def parts(self):
-        return self.path.parts
+    @classmethod
+    def cwd(cls):
+        return cls(str(Path.cwd()))
 
-    @property
-    def name(self):
-        return self.path.name
+    @classmethod
+    def home(cls):
+        return cls(str(Path.home()))
 
-    @property
-    def parent(self):
-        return self.path.parent
+    def stat(self):  # add follow_symlinks=False for python 3.10
+        return self.path.stat()
 
-    @property
-    def stem(self):
-        return self.path.stem
-
-    @property
-    def suffix(self):
-        return self.path.suffix
-
-    def samefile(self, other):
-        raise NotImplementedError
-
-    def is_file(self):
-        raise NotImplementedError
-
-    def is_dir(self):
-        raise NotImplementedError
-
-    def joinpath(self, *other):
-        return self.path.joinpath(*other)
-
-    def mkdir(self, *args, **kwargs):
-        raise NotImplementedError
+    def chmod(self, mode):
+        return self.path.chmod(mode)
 
     def exists(self):
-        raise NotImplementedError
+        return self.path.exists()
+
+    def expanduser(self):
+        return self.path.expanduser()
 
     def glob(self, *args, **kwargs):
-        raise NotImplementedError
+        return self.path.glob(*args, **kwargs)
+
+    def group(self):
+        return self.path.group()
+
+    def is_dir(self):
+        return self.path.is_dir()
+
+    def is_file(self):
+        return self.path.is_file()
+
+    def is_mount(self):
+        return self.path.is_mount()
+
+    def is_symlink(self):
+        return self.path.is_symlink()
+
+    def is_socket(self):
+        return self.path.is_socket()
+
+    def is_fifo(self):
+        return self.path.is_fifo()
+
+    def is_block_device(self):
+        return self.path.is_block_device()
+
+    def is_char_device(self):
+        return self.path.is_char_device()
+
+    def iterdir(self):
+        return self.path.iterdir()
+
+    def lchmod(self, mode):
+        return self.path.lchmod(mode)
+
+    def lstat(self):
+        return self.path.lstat()
+
+    def mkdir(self, *args, **kwargs):
+        return self.path.mkdir(*args, **kwargs)
+
+    def open(self, *args, **kwargs):
+        return self.path.open(*args, **kwargs)
+
+    def owner(self):
+        return self.path.owner()
+
+    def read_bytes(self):
+        return self.path.read_bytes()
+
+    def read_text(self, *args, **kwargs):
+        return self.path.read_text(*args, **kwargs)
+
+    def readlink(self):
+        return self.path.readlink()
+
+    def rename(self, target):
+        return self.path.rename(target)
+
+    def replace(self, target):
+        return self.path.replace(target)
+
+    def absolute(self):
+        return self.path.absolute()
+
+    def resolve(self, strict=False):
+        return self.path.resolve(strict=strict)
+
+    def rglob(self, pattern):
+        return self.path.rglob(pattern)
+
+    def rmdir(self):
+        return self.path.rmdir()
+
+    def samefile(self, other):
+        return self.path.samefile(other)
+
+    def symlink_to(self, target, target_is_directory=False):
+        return self.path.symlink_to(target, target_is_directory=target_is_directory)
+
+    def hardlink_to(self, target):
+        return self.path.link_to(target)
+
+    def link_to(self, target):
+        return self.path.link_to(target)
+
+    def touch(self, *args, **kwargs):
+        return self.path.touch(*args, **kwargs)
+
+    def unlink(self, missing_ok=False):
+        return self.path.unlink(missing_ok=missing_ok)
+
+    def write_bytes(self, data):
+        return self.path.write_bytes(data)
+
+    def write_text(self, data, *args, **kwargs):
+        return self.path.write_text(data, *args, **kwargs)
+
+    def __enter__(self):
+        self.file_object = open(self.path, self.mode)
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.file_object.close()
 
 
-class BeamPath(Path, PureBeamPath):
+def normalize_host(hostname, port=None):
 
-    def __init__(self, *pathsegments):
-        Path.__init__(self, *pathsegments)
-        PureBeamPath.__init__(self, *pathsegments)
+    if hostname is None:
+        hostname = 'localhost'
+    if port is None:
+        host = f"{hostname}"
+    else:
+        host = f"{hostname}:{port}"
 
-    def read(self, **kwargs):
-
-        ext = self.suffix
-
-        path = str(self)
-
-        if ext == '.fea':
-            x = pd.read_feather(path, **kwargs)
-
-            c = x.columns
-            for ci in c:
-                if PureBeamPath.feather_index_mark in ci:
-                    index_name = ci.lstrip(PureBeamPath.feather_index_mark)
-                    x = x.rename(columns={ci: index_name})
-                    x = x.set_index(index_name)
-                    break
-
-        elif ext == '.csv':
-            x = pd.read_csv(path, **kwargs)
-        elif ext in ['.pkl', '.pickle']:
-            x = pd.read_pickle(path, **kwargs)
-        elif ext in ['.npy', '.npz']:
-            x = np.load(path, allow_pickle=True, **kwargs)
-        elif ext == '.scipy_npz':
-            x = scipy.sparse.load_npz(path, **kwargs)
-        elif ext == '.parquet':
-            x = pd.read_parquet(path, **kwargs)
-        elif ext == '.pt':
-            x = torch.load(path, **kwargs)
-        elif ext in ['.xls', '.xlsx', '.xlsm', '.xlsb', '.odf', '.ods', '.odt']:
-            x = pd.read_excel(path, **kwargs)
-        elif ext == '.avro':
-            x = []
-            with open(path, 'rb') as fo:
-                for record in fastavro.reader(fo):
-                    x.append(record)
-        elif ext == '.json':
-
-            #TODO: add json read with fastavro and shcema
-            # x = []
-            # with open(path, 'r') as fo:
-            #     for record in fastavro.json_reader(fo):
-            #         x.append(record)
-
-            x = pd.read_json(path, **kwargs)
-
-        elif ext == '.orc':
-            x = pa.orc.read(path, **kwargs)
-
-        else:
-            raise ValueError("Unknown extension type.")
-
-        return x
-
-    def write(self, x, **kwargs):
-
-        ext = self.suffix
-        path = str(self)
-
-        if ext == '.fea':
-            x = pd.DataFrame(x)
-            index_name = x.index.name if x.index.name is not None else 'index'
-            df = x.reset_index()
-            new_name = PureBeamPath.feather_index_mark + index_name
-            x = df.rename(columns={index_name: new_name})
-            x.to_feather(path, **kwargs)
-        elif ext == '.csv':
-            x = pd.DataFrame(x)
-            x.to_csv(path, **kwargs)
-        elif ext in ['.pkl', '.pickle']:
-            pd.to_pickle(x, path, **kwargs)
-        elif ext == '.npy':
-            np.save(path, x, **kwargs)
-        elif ext == '.npz':
-            np.savez(path, x, **kwargs)
-        elif ext == '.scipy_npz':
-            scipy.sparse.save_npz(path, x, **kwargs)
-            os.rename(f'{path}.npz', path)
-        elif ext == '.parquet':
-            x = pd.DataFrame(x)
-            x.to_parquet(path, **kwargs)
-        elif ext == '.pt':
-            torch.save(x, path, **kwargs)
-        else:
-            raise ValueError("Unsupported extension type.")
-
-        return self
+    return host
 
 
 class S3Path(PureBeamPath):
 
-    def __init__(self, *pathsegments, client=None):
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None, secret_key=None):
         super().__init__(*pathsegments)
-        self.bucket = self.parts[0]
-        self.key = self.parts[1]
+
+        if not self.is_absolute():
+            self.path = PurePath('/').joinpath(self.path)
+
+        if len(self.parts) > 1:
+            self.bucket = self.parts[1]
+        else:
+            self.bucket = None
+
+        if len(self.parts) > 2:
+            self.key = '/'.join(self.parts[2:])
+        else:
+            self.key = None
+
+        if client is None:
+            client = boto3.resource(endpoint_url=f'http://{normalize_host(hostname, port)}',
+                                    config=boto3.session.Config(signature_version='s3v4'),
+                                    verify=False, service_name='s3', aws_access_key_id=access_key,
+                                    aws_secret_access_key=secret_key)
+
         self.client = client
 
     def as_uri(self):
-        return f"s3://{self.client.bucket}{str(self)}"
+
+        return f"s3://{self.client.meta.client.meta.endpoint_url}{str(self)}"
 
     def __repr__(self):
         return self.as_uri()
 
-    # def exists(self):
-    #     return self.s3.exists(str(self))
-    #
-    # def rename(self, target):
-    #     self.s3.rename(str(self), str(target))
-
     def is_file(self):
         try:
-            self.client.Object(self.parts[0], self.parts[1]).load()
+            self.client.Object(self.bucket, self.key).load()
             return True
         except self.client.meta.client.exceptions.NoSuchKey:
             return False
@@ -265,32 +262,32 @@ class S3Path(PureBeamPath):
     def open(self, mode="r", **kwargs):
         if "w" in mode:
             raise NotImplementedError("Writing to S3 is not supported")
-        obj = self.client.Object(self.parts[0], self.parts[1]).get()
+        obj = self.client.Object(self.bucket, self.key).get()
         return obj["Body"]
 
     def read_text(self, encoding=None, errors=None):
-        obj = self.client.Object(self.parts[0], self.parts[1]).get()
+        obj = self.client.Object(self.bucket, self.key).get()
         return obj["Body"].read().decode(encoding, errors)
 
     def read_bytes(self):
-        obj = self.client.Object(self.parts[0], self.parts[1]).get()
+        obj = self.client.Object(self.bucket, self.key).get()
         return obj["Body"].read()
 
     def exists(self):
         try:
-            self.client.Object(self.parts[0], self.parts[1]).load()
+            self.client.Object(self.bucket, self.key).load()
             return True
         except self.client.meta.client.exceptions.NoSuchKey:
             return False
 
     def rename(self, target):
-        self.client.Object(self.parts[0], self.parts[1]).copy_from(
+        self.client.Object(self.bucket, self.key).copy_from(
             CopySource={
-                "Bucket": self.parts[0],
-                "Key": self.parts[1],
+                "Bucket": self.bucket,
+                "Key": self.key,
             },
-            Bucket=target.parts[0],
-            Key=target.parts[1],
+            Bucket=target.bucket,
+            Key=target.key,
         )
         self.unlink()
 
@@ -298,21 +295,31 @@ class S3Path(PureBeamPath):
         self.rename(target)
 
     def unlink(self):
-        self.client.Object(self.parts[0], self.parts[1]).delete()
+        self.client.Object(*self.parts).delete()
 
     def mkdir(self, parents=False, exist_ok=False):
+
         if exist_ok and self.exists():
             return
-        if self.exists():
-            raise FileExistsError("File already exists: %s" % self)
-        if not parents:
-            raise NotImplementedError("Creating parent directories is not supported")
-        self.client.Bucket(self.parts[0]).put_object(Key=self.parts[1] + "/")
+
+        if self.bucket is None:
+            raise ValueError("Cannot create root directory")
+
+        if self.key is None:
+            self.client.Bucket(self.bucket).create()
+
+        else:
+            if parents:
+                for i in range(2, len(self.parts)-1):
+                    S3Path(*self.parts[:i], client=self.client).mkdir(exist_ok=True)
+
+
+        self.client.Bucket(self.bucket).put_object(Key=self.key)
 
     def rmdir(self):
         if self.is_file():
             raise NotADirectoryError("Not a directory: %s" % self)
-        self.client.Bucket(self.parts[0]).delete_objects(
+        self.client.Bucket(self.bucket).delete_objects(
             Delete={
                 "Objects": [
                     {"Key": key} for key in self.iterdir()
@@ -324,51 +331,43 @@ class S3Path(PureBeamPath):
         return S3Path(str(super(S3Path, self).joinpath(*args)), client=self.client)
 
     def iterdir(self):
-        bucket = self.client.Bucket(self.parts[0])
-        prefix = self.parts[1]
-        for obj in bucket.objects.filter(Prefix=prefix):
+        bucket = self.client.Bucket(self.bucket)
+        for obj in bucket.objects.filter(Prefix=self.key):
             yield S3Path("/".join([obj.bucket_name, obj.key]), client=self.client)
 
     @property
     def parent(self):
         return S3Path(str(super(S3Path, self).parent), client=self.client)
 
-    def write(self, x, **kwargs):
-
-        ext = self.suffix
-        # path = str(self)
-
-        if ext == '.fea':
-            raise NotImplementedError
-        elif ext == '.csv':
-            self.client.Object(self.parts[0], self.parts[1]).put(Body=x.to_csv(index=False))
+    def __enter__(self):
+        if self.mode == "rb":
+            self.file_object = self.client.Object(self.bucket, self.key).get()['Body']
         else:
-            raise ValueError("Unsupported extension type.")
+            self.file_object = StringIO()
+        return self.file_object
 
-    def read(self):
+    def __exit__(self, exc_type, exc_val, exc_tb):
 
-        ext = self.suffix
-        path = str(self)
-
-        if ext == '.fea':
-            raise NotImplementedError
-        elif ext == '.csv':
-            obj = self.client.Object(self.parts[0], self.parts[1]).get()
-            x = pd.read_csv(obj["Body"])
+        if self.mode == "rb":
+            self.file_object.close()
         else:
-            raise ValueError("Unsupported extension type.")
-
-        return x
+            self.client.Object(self.bucket, self.key).put(Body=self.file_object.getvalue())
+            self.file_object.close()
 
 
 class HDFSPath(PureBeamPath):
 
     # TODO: use HadoopFileSystem
 
-    def __init__(self, *pathsegments, client=None, skip_trash=False, n_threads=1,  temp_dir=None, chunk_size=65536,
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None,
+                 username=None, skip_trash=False, n_threads=1,  temp_dir=None, chunk_size=65536,
                  progress=None, cleanup=True):
         super().__init__(*pathsegments, skip_trash=skip_trash, n_threads=n_threads,
                                        temp_dir=temp_dir, chunk_size=chunk_size, progress=progress, cleanup=cleanup)
+
+        if client is None:
+            client = InsecureClient(f'http://{normalize_host(hostname, port)}', user=username)
+
         self.client = client
 
     def as_uri(self):

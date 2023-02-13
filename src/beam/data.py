@@ -123,9 +123,7 @@ class BeamData(object):
         if device is not None:
             self.as_tensor(device=device)
 
-        if type(path) is str:
-            path = Path(path)
-
+        path = BeamData.normalize_path(path)
         path_type = check_type(path)
 
         self._name = name
@@ -317,6 +315,12 @@ class BeamData(object):
         return None
 
     @staticmethod
+    def normalize_path(path):
+        if not (isinstance(path, Path) or path is None):
+            path = Path(path)
+        return path
+
+    @staticmethod
     def clean_path(path):
 
         if path.exists():
@@ -465,16 +469,13 @@ class BeamData(object):
 
     @staticmethod
     def read_file(path, **kwargs):
-        if type(path) is str:
-            path = Path(path)
-
+        path = BeamData.normalize_path(path)
         return path.read(**kwargs)
 
     @staticmethod
     def write_file(data, path, override=True, **kwargs):
 
-        if type(path) is str:
-            path = Path(path)
+        path = BeamData.normalize_path(path)
 
         if (not override) and path.exists():
             raise NameError(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
@@ -614,8 +615,7 @@ class BeamData(object):
     @staticmethod
     def read_object(path, **kwargs):
 
-        if type(path) is str:
-            path = Path(path)
+        path = BeamData.normalize_path(path)
 
         if path.is_file():
             return BeamData.read_file(path, **kwargs)
@@ -655,9 +655,7 @@ class BeamData(object):
     def write_data(data, path, sizes=None, chunk_strategy='files', archive_size=int(1e6), chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, **kwargs):
 
-
-        if type(path) is str:
-            path = Path(path)
+        path = BeamData.normalize_path(path)
 
         if sizes is None:
             sizes = recursive_size(data)
@@ -719,8 +717,7 @@ class BeamData(object):
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
 
-        if type(path) is str:
-            path = Path(path)
+        path = BeamData.normalize_path(path)
 
         if not override:
             if path.exists() or (path.parent.is_dir() and any(p.stem == path.stem for p in path.parent.iterdir())):
@@ -759,7 +756,7 @@ class BeamData(object):
             if n_chunks > 1:
                 data = list(divide_chunks(data, n_chunks=n_chunks))
             else:
-                data = [data]
+                data = list(iter_container([data]))
 
             if len(data) > 1:
                 path.mkdir()
