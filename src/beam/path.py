@@ -1,19 +1,12 @@
 from pathlib import PurePath, Path
-import pandas as pd
-import numpy as np
-import torch
-import scipy
-import os
-import fastavro
-import pyarrow as pa
-from argparse import Namespace
+import botocore
 import re
 from hdfs import InsecureClient
 from hdfs.ext.avro import AvroWriter, AvroReader
 from hdfs.ext.dataframe import read_dataframe, write_dataframe
 import boto3
 from .utils import PureBeamPath
-from io import StringIO
+from io import StringIO, BytesIO
 
 
 def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kwargs):
@@ -84,6 +77,18 @@ class BeamPath(PureBeamPath):
     @classmethod
     def home(cls):
         return cls(str(Path.home()))
+
+    def joinpath(self, *other):
+        path = self.path.joinpath(*other)
+        return BeamPath(path)
+
+    def with_stem(self, stem):
+        path = self.path.with_stem(stem)
+        return BeamPath(path)
+
+    def with_suffix(self, suffix):
+        path = self.path.with_suffix(suffix)
+        return BeamPath(path)
 
     def stat(self):  # add follow_symlinks=False for python 3.10
         return self.path.stat()
@@ -225,9 +230,9 @@ class S3Path(PureBeamPath):
             self.path = PurePath('/').joinpath(self.path)
 
         if len(self.parts) > 1:
-            self.bucket = self.parts[1]
+            self.bucket_name = self.parts[1]
         else:
-            self.bucket = None
+            self.bucket_name = None
 
         if len(self.parts) > 2:
             self.key = '/'.join(self.parts[2:])
@@ -241,6 +246,20 @@ class S3Path(PureBeamPath):
                                     aws_secret_access_key=secret_key)
 
         self.client = client
+        self._bucket = None
+        self._object = None
+
+    @property
+    def bucket(self):
+        if self._bucket is None:
+            self._bucket = self.client.Bucket(self.bucket_name)
+        return self._bucket
+
+    @property
+    def object(self):
+        if self._object is None:
+            self._object = self.client.Object(self.bucket_name, self.key)
+        return self._object
 
     def as_uri(self):
 
@@ -250,88 +269,119 @@ class S3Path(PureBeamPath):
         return self.as_uri()
 
     def is_file(self):
+
+        key = self.key.rstrip('/')
+        return S3Path._exists(self.client, self.bucket_name, key)
+
+    @staticmethod
+    def _exists(client, bucket, key):
         try:
-            self.client.Object(self.bucket, self.key).load()
+            client.Object(bucket, key).load()
             return True
-        except self.client.meta.client.exceptions.NoSuchKey:
+        except botocore.exceptions.ClientError:
             return False
 
     def is_dir(self):
-        return not self.is_file()
+        key = f"{self.key.rstrip('/')}/"
+        return S3Path._exists(self.client, self.bucket_name, key)
 
     def open(self, mode="r", **kwargs):
         if "w" in mode:
             raise NotImplementedError("Writing to S3 is not supported")
-        obj = self.client.Object(self.bucket, self.key).get()
-        return obj["Body"]
+        return self.object.get()["Body"]
 
     def read_text(self, encoding=None, errors=None):
-        obj = self.client.Object(self.bucket, self.key).get()
-        return obj["Body"].read().decode(encoding, errors)
+        return self.object.get()["Body"].read().decode(encoding, errors)
 
     def read_bytes(self):
-        obj = self.client.Object(self.bucket, self.key).get()
-        return obj["Body"].read()
+        return self.object.get()["Body"].read()
 
     def exists(self):
-        try:
-            self.client.Object(self.bucket, self.key).load()
-            return True
-        except self.client.meta.client.exceptions.NoSuchKey:
-            return False
+        return S3Path._exists(self.client, self.bucket_name, self.key)
 
     def rename(self, target):
-        self.client.Object(self.bucket, self.key).copy_from(
+        self.object.copy_from(
             CopySource={
-                "Bucket": self.bucket,
+                "Bucket": self.bucket_name,
                 "Key": self.key,
             },
-            Bucket=target.bucket,
+            Bucket=target.bucket_name,
             Key=target.key,
         )
         self.unlink()
+
+    def _check_if_bucket_exists(self):
+        try:
+            self.client.meta.client.head_bucket(Bucket=self.bucket_name)
+            return True
+        except self.client.meta.client.exceptions.ClientError:
+            return False
 
     def replace(self, target):
         self.rename(target)
 
     def unlink(self):
-        self.client.Object(*self.parts).delete()
+        if self.is_file():
+            self.object.delete()
+        if self.is_dir():
+            obj = self.client.Object(self.bucket_name, f"{self.key}/")
+            obj.delete()
 
-    def mkdir(self, parents=False, exist_ok=False):
+    def mkdir(self, parents=True, exist_ok=False):
+
+        if not parents:
+            raise NotImplementedError("parents=False is not supported")
 
         if exist_ok and self.exists():
             return
 
-        if self.bucket is None:
-            raise ValueError("Cannot create root directory")
+        if not self._check_if_bucket_exists():
+            self.bucket.create()
 
-        if self.key is None:
-            self.client.Bucket(self.bucket).create()
+        key = f"{self.key.rstrip('/')}/"
+        self.bucket.put_object(Key=key)
 
-        else:
-            if parents:
-                for i in range(2, len(self.parts)-1):
-                    S3Path(*self.parts[:i], client=self.client).mkdir(exist_ok=True)
+    def _is_empty_bucket(self):
+        for _ in self.bucket.objects.all():
+            return False
+        return True
 
-
-        self.client.Bucket(self.bucket).put_object(Key=self.key)
+    def _is_empty(self):
+        for obj in self.bucket.objects.filter(Prefix=self.key):
+            if obj.key.rstrip('/') != self.key.rstrip('/'):
+                return False
+        return True
 
     def rmdir(self):
-        if self.is_file():
-            raise NotADirectoryError("Not a directory: %s" % self)
-        self.client.Bucket(self.bucket).delete_objects(
-            Delete={
-                "Objects": [
-                    {"Key": key} for key in self.iterdir()
-                ]
-            }
-        )
+
+        if self.key is None:
+            if not self._is_empty_bucket():
+                raise OSError("Directory not empty: %s" % self)
+            self.bucket.delete()
+
+        else:
+            if self.is_file():
+                raise NotADirectoryError("Not a directory: %s" % self)
+
+            if not self._is_empty():
+                raise OSError("Directory not empty: %s" % self)
+
+            self.unlink()
+            # self.bucket.delete_objects(Delete={"Objects": [{"Key": path.key} for path in self.iterdir()]})
+
+    def with_stem(self, stem):
+        path = self.path.with_stem(stem)
+        return S3Path(path, client=self.client)
+
+    def with_suffix(self, suffix):
+        path = self.path.with_suffix(suffix)
+        return S3Path(path, client=self.client)
 
     def joinpath(self, *args):
-        return S3Path(str(super(S3Path, self).joinpath(*args)), client=self.client)
+        return S3Path(self.path.joinpath(*args), client=self.client)
 
     def iterdir(self):
-        bucket = self.client.Bucket(self.bucket)
+        bucket = self.client.Bucket(self.bucket_name)
         for obj in bucket.objects.filter(Prefix=self.key):
             yield S3Path("/".join([obj.bucket_name, obj.key]), client=self.client)
 
@@ -341,9 +391,9 @@ class S3Path(PureBeamPath):
 
     def __enter__(self):
         if self.mode == "rb":
-            self.file_object = self.client.Object(self.bucket, self.key).get()['Body']
+            self.file_object = self.client.Object(self.bucket_name, self.key).get()['Body']
         else:
-            self.file_object = StringIO()
+            self.file_object = BytesIO()
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -351,7 +401,7 @@ class S3Path(PureBeamPath):
         if self.mode == "rb":
             self.file_object.close()
         else:
-            self.client.Object(self.bucket, self.key).put(Body=self.file_object.getvalue())
+            self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue())
             self.file_object.close()
 
 

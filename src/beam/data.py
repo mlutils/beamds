@@ -7,11 +7,11 @@ import pandas as pd
 import math
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, container_len, is_arange, listdir_fullpath, is_chunk, rmtree, \
+    recursive_size_summary, container_len, is_arange, listdir_fullpath, is_chunk, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
-    recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key
+    recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath
 import os
-from .path import BeamPath as Path
+from .path import BeamPath
 from functools import partial
 from collections import defaultdict
 
@@ -185,7 +185,6 @@ class BeamData(object):
 
         return bd.clone(data, columns=columns, index=index, label=label)
 
-
     @classmethod
     def from_path(cls, path, *args, **kwargs):
         return cls(path=path, *args, **kwargs)
@@ -207,7 +206,6 @@ class BeamData(object):
         if self._name is None:
             self._name = retrieve_name(self)
         return self._name
-
 
     @property
     def objects_type(self):
@@ -306,6 +304,10 @@ class BeamData(object):
         return self._info
 
     @property
+    def path(self):
+        return self.root_path
+
+    @property
     def index_mapper(self):
 
         info = self.info
@@ -316,23 +318,9 @@ class BeamData(object):
 
     @staticmethod
     def normalize_path(path):
-        if not (isinstance(path, Path) or path is None):
-            path = Path(path)
+        if not (isinstance(path, PureBeamPath) or path is None):
+            path = BeamPath(path)
         return path
-
-    @staticmethod
-    def clean_path(path):
-
-        if path.exists():
-            rmtree(path)
-        else:
-            if path.parent.exists():
-                for p in path.parent.iterdir():
-                    if p.stem == path.name:
-                        rmtree(p)
-
-        path.mkdir(parents=True)
-        path.rmdir()
 
     @property
     def flatten_data(self):
@@ -480,7 +468,7 @@ class BeamData(object):
         if (not override) and path.exists():
             raise NameError(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
 
-        BeamData.clean_path(path)
+        path.clean()
         path = path.write(data, **kwargs)
 
         return path
@@ -489,7 +477,7 @@ class BeamData(object):
     def read_tree(paths, **kwargs):
 
         if type(paths) is str:
-            paths = Path(paths)
+            paths = BeamPath(paths)
 
         paths_type = check_type(paths)
         if paths_type.major == 'container':

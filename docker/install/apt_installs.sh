@@ -30,6 +30,7 @@ apt install -y libaio1
 apt install -y binwalk
 apt install -y ncdu
 apt install -y vim
+apt install -y zip
 
 pip install pykerberos
 

@@ -68,6 +68,39 @@ class PureBeamPath:
         self.mode = "rb"
         self.file_object = None
 
+    def rmtree(self):
+        if self.is_file():
+            self.unlink()
+        elif self.is_dir():
+            for item in self.iterdir():
+                if item.is_dir():
+                    rmtree(item)
+                else:
+                    item.unlink()
+            self.rmdir()
+
+    def clean(self):
+
+        if self.exists():
+            rmtree(self)
+        else:
+            if self.parent.exists():
+                for p in self.parent.iterdir():
+                    if p.stem == self.name:
+                        rmtree(p)
+
+        self.mkdir(parents=True)
+        self.rmdir()
+
+    def rmdir(self):
+        raise NotImplementedError
+
+    def unlink(self):
+        raise NotImplementedError
+
+    def __truediv__(self, other):
+        return self.joinpath(str(other))
+
     def __call__(self, mode="rb"):
         self.mode = mode
         return self
@@ -140,7 +173,7 @@ class PureBeamPath:
         return self.path.is_reserved()
 
     def joinpath(self, *other):
-        return self.path.joinpath(*other)
+        raise NotImplementedError
 
     def match(self, pattern):
         return self.path.match(pattern)
@@ -152,10 +185,10 @@ class PureBeamPath:
         return self.path.with_name(name)
 
     def with_stem(self, stem):
-        return self.path.with_stem(stem)
+        raise NotImplementedError
 
     def with_suffix(self, suffix):
-        return self.path.with_suffix(suffix)
+        raise NotImplementedError
 
     def samefile(self, other):
         raise NotImplementedError
@@ -186,7 +219,7 @@ class PureBeamPath:
         if ext is None:
             ext = self.suffix
 
-        with self(mode="rb") as fo:
+        with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
             if ext == '.fea':
                 x = pd.read_feather(fo, **kwargs)
@@ -238,6 +271,18 @@ class PureBeamPath:
 
         return x
 
+    @staticmethod
+    def mode(op, ext):
+        if op == 'write':
+            m = 'w'
+        else:
+            m = 'r'
+
+        if ext not in ['.avro', '.json', '.orc']:
+            m = f"{m}b"
+
+        return m
+
     def write(self, x, ext=None, **kwargs):
 
         if ext is None:
@@ -245,7 +290,7 @@ class PureBeamPath:
 
         path = str(self)
 
-        with self(mode="wb") as fo:
+        with self(mode=PureBeamPath.mode('write', ext)) as fo:
 
             if ext == '.fea':
                 x = pd.DataFrame(x)

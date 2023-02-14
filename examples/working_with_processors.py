@@ -3,6 +3,7 @@ from examples.example_utils import add_beam_to_path
 add_beam_to_path()
 
 from src.beam.data import BeamData
+from src.beam.path import beam_path
 from src.beam.processor import Transformer
 import numpy as np
 import pandas as pd
@@ -43,7 +44,11 @@ if __name__ == '__main__':
     # dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)),
     #                     data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)])
 
-    path = '/tmp/sandbox/bd'
+    access_key = 'EBemHypH7I2NcHx1'
+    secret_key = 'cvYL26ItASAwE8ZUxRaZKhVVdcxHZ0SJ'
+
+    path = beam_path("s3://192.168.10.45:9000/data/bd", access_key=access_key, secret_key=secret_key)
+    # path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
 
     q = bd[:10]

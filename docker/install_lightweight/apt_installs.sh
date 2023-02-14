@@ -10,6 +10,7 @@ apt install -y graphviz -y graphviz pkg-config -y expect -y libgraphviz-dev -y c
 apt install -y default-jdk
 apt install -y ltrace -y binutils
 apt install -y alien -y libaio1 -y binwalk -y git -y ncdu
+apt install -y zip
 
 # don't install libopenmpi as it messes up the pytorch geometric installation
 # libopenmpi-dev
