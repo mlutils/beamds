@@ -282,8 +282,12 @@ class S3Path(PureBeamPath):
             return False
 
     def is_dir(self):
+
+        if self.key is None:
+            return self._check_if_bucket_exists()
+
         key = f"{self.key.rstrip('/')}/"
-        return S3Path._exists(self.client, self.bucket_name, key)
+        return S3Path._exists(self.client, self.bucket_name, key) or (not self._is_empty(key))
 
     def open(self, mode="r", **kwargs):
         if "w" in mode:
@@ -346,8 +350,10 @@ class S3Path(PureBeamPath):
             return False
         return True
 
-    def _is_empty(self):
-        for obj in self.bucket.objects.filter(Prefix=self.key):
+    def _is_empty(self, key=None):
+        if key is None:
+            key = self.key
+        for obj in self.bucket.objects.filter(Prefix=key):
             if obj.key.rstrip('/') != self.key.rstrip('/'):
                 return False
         return True
@@ -382,7 +388,13 @@ class S3Path(PureBeamPath):
 
     def iterdir(self):
         bucket = self.client.Bucket(self.bucket_name)
-        for obj in bucket.objects.filter(Prefix=self.key):
+
+        if self.key is None:
+            objects = bucket.objects.all()
+        else:
+            objects = bucket.objects.filter(Prefix=self.key)
+
+        for obj in objects:
             yield S3Path("/".join([obj.bucket_name, obj.key]), client=self.client)
 
     @property

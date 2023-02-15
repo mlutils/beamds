@@ -19,9 +19,9 @@ class Processor(object):
 
 class Pipeline(Processor):
 
-    def __init__(self, *ts, track_steps=False, **kwts):
+    def __init__(self, *ts, track_steps=False, name=None, **kwts):
 
-        super().__init__()
+        super().__init__(name=name)
         self.track_steps = track_steps
         self.steps = {}
 

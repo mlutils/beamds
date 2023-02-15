@@ -24,7 +24,6 @@ class MyTransformer(Transformer):
         super().__init__(*args, n_workers=n_workers, n_chunks=n_chunks, chunksize=chunksize, **kwargs)
 
     def transform_callback(self, x, key=None, is_chunk=True, **kwargs):
-        print('xxx')
         return len(x)
 
 
@@ -39,6 +38,8 @@ if __name__ == '__main__':
            'b': [pd.DataFrame(index=np.random.permutation(np.arange(n)),
                         data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)]}
 
+    dfs['a']['x'] = pd.DataFrame(data=np.random.permutation(np.arange(n)))
+
     # dfs = {'a': torch.randn(200, m), 'b': torch.randn(300, m), 'c': torch.randn(400, m)}
 
     # dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)),
@@ -50,6 +51,8 @@ if __name__ == '__main__':
     path = beam_path("s3://192.168.10.45:9000/data/bd", access_key=access_key, secret_key=secret_key)
     # path = '/tmp/sandbox/bd'
     bd = BeamData(dfs, path=path)
+
+    print(bd.key['a', 'x'])
 
     q = bd[:10]
 
@@ -64,17 +67,17 @@ if __name__ == '__main__':
 
     print(bd.orientation)
 
-    bda = bd[bd.keys()[0]]
+    keys = list(bd.keys().keys())
+    bda = bd[keys[0]]
 
     info = bda.info
     # bda = bd['a']
     bd.store()
 
-    # bd2 = BeamData(path=path)
-    # bd2.to_memory()
-    #
-    # # tf = MyTransformer(chunksize=1, n_workers=0)
-    # tf = MyTransformer(n_chunks=2, n_workers=0)
-    # y = tf.transform(bd2, parent_strategy='disk', worker_strategy='disk')
+    bd2 = BeamData(path=path)
+    bd2.cache()
+
+    tf = MyTransformer(n_chunks=2, n_workers=0)
+    y = tf.transform(bd2)
 
     print("done")

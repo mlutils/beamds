@@ -9,13 +9,40 @@ from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
     recursive_size_summary, container_len, is_arange, listdir_fullpath, is_chunk, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
-    recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath
+    recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key
 import os
 from .path import BeamPath
 from functools import partial
 from collections import defaultdict
 
 DataBatch = namedtuple("DataBatch", "index label data")
+
+
+class Iloc(object):
+
+    def __init__(self, pointer):
+        self.pointer = pointer
+
+    def __getitem__(self, ind):
+        return self.pointer._iloc(ind)
+
+
+class Loc(object):
+
+    def __init__(self, pointer):
+        self.pointer = pointer
+
+    def __getitem__(self, ind):
+        return self.pointer._loc(ind)
+
+
+class Key(object):
+
+    def __init__(self, pointer):
+        self.pointer = pointer
+
+    def __getitem__(self, ind):
+        return self.pointer._key(ind)
 
 
 class BeamData(object):
@@ -98,10 +125,14 @@ class BeamData(object):
         self._data_type = None
         self._objects_type = None
         self._flatten_data = None
-        self._flatten_data_with_keys = None
+        self._flatten_items = None
         self._conf = None
         self._info = info
         self._orientation = orientation
+
+        self.iloc = Iloc(self)
+        self.loc = Loc(self)
+        self.key = Key(self)
 
         self.read_kwargs = {} if read_kwargs is None else read_kwargs
         self.write_kwargs = {} if write_kwargs is None else write_kwargs
@@ -271,7 +302,7 @@ class BeamData(object):
                 fold = np.concatenate([np.full(len(d), k) for k, d in enumerate(self.flatten_data)])
 
                 # still not sure if i really need this column. if so, it should be fixed
-                # fold_key = np.concatenate([np.full(len(d), k) for k, d in self.flatten_data_with_keys.items()])
+                # fold_key = np.concatenate([np.full(len(d), k) for k, d in self.flatten_items.items()])
                 lengths = np.array([len(d) for d in self.flatten_data])
                 offset = np.cumsum(lengths, axis=0) - lengths
                 offset = offset[fold] + fold_index
@@ -330,15 +361,15 @@ class BeamData(object):
         return self._flatten_data
 
     @property
-    def flatten_data_with_keys(self):
-        if self._flatten_data_with_keys is not None:
-            return self._flatten_data_with_keys
-        self._flatten_data_with_keys = recursive_flatten_with_keys(self.data)
-        for k in self._flatten_data_with_keys.keys():
+    def flatten_items(self):
+        if self._flatten_items is not None:
+            return self._flatten_items
+        self._flatten_items = recursive_flatten_with_keys(self.data)
+        for k in self._flatten_items.keys():
             if len(k) == 1:
-                self._flatten_data_with_keys[k[0]] = self._flatten_data_with_keys.pop(k)
+                self._flatten_items[k[0]] = self._flatten_items.pop(k)
 
-        return self._flatten_data_with_keys
+        return self._flatten_items
 
     @property
     def device(self):
@@ -962,7 +993,7 @@ class BeamData(object):
             avoid_reset = []
 
         reset_params = ['_columns_map', '_device', '_len', '_data_types', '_data_type', '_objects_type', '_flatten_data',
-                        '_flatten_data_with_keys', '_conf', '_info', '_orientation']
+                        '_flatten_items', '_conf', '_info', '_orientation']
 
         for param in reset_params:
             if param not in avoid_reset:
@@ -999,6 +1030,14 @@ class BeamData(object):
     def __le__(self, other):
         return self.values.__le__(other)
 
+    def _key(self, key):
+        """
+        Get the data of a hierarchical key
+        @param key:
+        @return:
+        """
+        return self.__getitem__((key, ))
+
     def _loc(self, ind):
         ind = self.inverse_map(ind)
         return self.slice_index(ind)
@@ -1033,8 +1072,7 @@ class BeamData(object):
         if self.quick_getitem:
             return DataBatch(data=data, index=self.index, label=self.label)
 
-        return self.clone(data=data, path=self.all_paths, index=self.index,
-                          label=self.label, orientation=self.orientation)
+        return self.clone(data=data, index=self.index, label=self.label, orientation=self.orientation)
 
     def slice_columns(self, columns):
 
@@ -1057,7 +1095,7 @@ class BeamData(object):
         if self.quick_getitem:
             return DataBatch(data=data, index=self.index, label=self.label)
 
-        return self.clone(data=data, path=self.all_paths, columns=columns, index=self.index,
+        return self.clone(data=data, columns=columns, index=self.index,
                           label=self.label, orientation=self.orientation)
 
     @property
@@ -1191,6 +1229,8 @@ class BeamData(object):
 
         if keys_type.major == 'scalar':
             return data[keys]
+        elif keys_type.minor == 'tuple':
+            return get_item_with_tuple_key(data, keys)
         else:
             sliced = [] if data_type.minor == 'list' else {}
             for k in keys:
@@ -1206,11 +1246,14 @@ class BeamData(object):
         if self.cached:
             data = BeamData.slice_scalar_or_list(self.data, keys, keys_type=keys_type, data_type=self.data_type)
 
-        if self.stored:
-            all_paths = BeamData.slice_scalar_or_list(self.all_paths, keys, keys_type=keys_type,
-                                                      data_type=self.data_type)
-
         if not self.lazy and self.stored and data is None:
+
+            try:
+                all_paths = BeamData.slice_scalar_or_list(self.all_paths, keys, keys_type=keys_type,
+                                                          data_type=self.data_type)
+            except KeyError:
+                raise KeyError(f"Cannot find keys: {keys} in stored BeamData object. "
+                               f"If the object is archived you should cache it before slicing.")
             data = BeamData.read_tree(all_paths)
 
         index = self.index
@@ -1319,14 +1362,31 @@ class BeamData(object):
         @param key:
         @param value:
         """
+
+        key_type = check_type(key)
+
         if not self.cached:
 
             kwargs = self.get_default_params(['compress', 'chunksize', 'chunklen', 'n_chunks', 'partition',
                                               'chunk_strategy', 'archive_size', 'override'])
+            if key_type.major == 'scalar':
+                path = self.root_path.joinpath(key)
+                path = BeamData.write_object(value, path, **kwargs)
+                self.all_paths[key] = path
+            else:
+                path = self.root_path
 
-            path = self.root_path.joinpath(key)
-            path = BeamData.write_object(value, path, **kwargs)
-            self.all_paths[key] = path
+                for k in key:
+                    path = path.joinpath(k)
+
+                path = BeamData.write_object(value, path, **kwargs)
+
+                # TODO: add keys to all paths
+
+                all_paths = self.all_paths
+                for k in key:
+                    if all_paths is None:
+                        all_paths = {}
 
         else:
 
@@ -1361,7 +1421,7 @@ class BeamData(object):
 
     def __iter__(self):
         if self.cached:
-            for k, v in self.flatten_data_with_keys.items():
+            for k, v in self.flatten_items.items():
 
                 if v is None:
                     yield k, None

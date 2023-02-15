@@ -1250,6 +1250,17 @@ def get_item_with_tuple_key(x, key):
     else:
         return x[key]
 
+
+def set_item_with_tuple_key(x, key, value):
+
+    if isinstance(key, tuple):
+        for k in key[:-1]:
+            x = x[k]
+        x[key[-1]] = value
+    else:
+        x[key] = value
+
+
 @recursive
 def recursive_batch(x, index):
 
