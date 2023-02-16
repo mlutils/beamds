@@ -150,13 +150,21 @@ class Transformer(Processor):
         if squeeze is None:
             squeeze = self.squeeze
 
-        is_chunk = (chunksize != 1) or (not squeeze)
+        is_chunk = (n_chunks != 1) or (not squeeze)
+        self.queue.set_name(self.name)
 
-        for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
+        if is_chunk:
+            for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
 
-            self.queue.add(BeamTask(self.worker, (c, ), {'key': k, 'is_chunk': is_chunk,
+                self.queue.add(BeamTask(self.worker, (c, ), {'key': k, 'is_chunk': is_chunk,
+                                                             'cache': cache, fit: fit},
+                                        name=f"{self.name}/{k}", **kwargs))
+
+        else:
+            self.queue.add(BeamTask(self.worker, (x, ), {'key': None, 'is_chunk': is_chunk,
                                                          'cache': cache, fit: fit},
-                                    name=f"{self.name}/{k}", **kwargs))
+                                    name=f"{self.name}", **kwargs))
+
         x = self.queue.run(n_workers=n_workers, method=multiprocessing_method)
 
         if isinstance(x[0], BeamData):

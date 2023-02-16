@@ -57,7 +57,7 @@ class BeamData(object):
 
     def __init__(self, *args, data=None, path=None, name=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None,
-                 override=True, compress=None, chunk_strategy='files', chunksize=int(1e9), chunklen=None, n_chunks=None,
+                 override=True, compress=None, chunk_strategy='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None, write_kwargs=None,
                  quick_getitem=False, orientation=None, glob_filter=None, info=None, **kwargs):
 
@@ -68,6 +68,7 @@ class BeamData(object):
         @param path: if not str, requires to support the pathlib Path attributes and operations, can be container of paths
         @param lazy:
         @param kwargs:
+        @param chunk_strategy: 'keys' or 'blocks'. The data is chunked by keys or by blocks of data.
 
         Possible orientations are: row/column/other
 
@@ -352,6 +353,12 @@ class BeamData(object):
         if not (isinstance(path, PureBeamPath) or path is None):
             path = BeamPath(path)
         return path
+
+    @staticmethod
+    def normalize_key(key):
+        if type(key) is not str:
+            key = f'{key:06}'
+        return key
 
     @property
     def flatten_data(self):
@@ -671,7 +678,7 @@ class BeamData(object):
             return None
 
     @staticmethod
-    def write_data(data, path, sizes=None, chunk_strategy='files', archive_size=int(1e6), chunksize=int(1e9),
+    def write_data(data, path, sizes=None, chunk_strategy='keys', archive_size=int(1e6), chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, **kwargs):
 
         path = BeamData.normalize_path(path)
@@ -691,8 +698,9 @@ class BeamData(object):
                     path = path.joinpath(BeamData.default_data_file_name)
 
                 BeamData.write_object(data, path, size=size_summary, archive=True, **kwargs)
+                return
 
-            elif chunk_strategy == 'data':
+            if chunk_strategy == 'data':
 
                 if (n_chunks is None) and (chunklen is None):
                     n_chunks = max(int(np.round(size_summary / chunksize)), 1)
@@ -705,29 +713,24 @@ class BeamData(object):
 
                     for i, part in enumerate(divide_chunks(data, n_chunks=n_chunks)):
                         name = f'{i:06}{BeamData.partition_directory_name}'
-                        BeamData.write_data(part, path.joinpath(name), sizes=size_summary, archive_size=archive_size,
+                        BeamData.write_data(part, path.joinpath(name), sizes=size_summary,
+                                            chunk_strategy='keys', archive_size=archive_size, root=False,
                                             n_chunks=1, partition=partition, file_type=file_type, **kwargs)
-
-                else:
-
-                    for k, v in iter_container(data):
-                        if type(k) is not str:
-                            k = f'{k:06}'
-                        BeamData.write_data(v, path.joinpath(k), sizes=sizes[k], archive_size=archive_size,
-                                            n_chunks=1, partition=partition,
-                                            file_type=file_type, **kwargs)
-
+                    return
             else:
                 for k, v in iter_container(data):
-                    if type(k) is not str:
-                        k = f'{k:06}'
-                    BeamData.write_data(v, path.joinpath(k), sizes=sizes[k], archive_size=archive_size,
-                                        chunksize=chunksize, chunklen=chunklen,
-                                        n_chunks=n_chunks, partition=partition,
+
+                    BeamData.write_data(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
+                                        archive_size=archive_size,chunksize=chunksize, chunklen=chunklen,
+                                        chunk_strategy='keys', n_chunks=n_chunks, partition=partition, root=False,
                                         file_type=file_type, **kwargs)
 
         else:
-            BeamData.write_object(data, path, size=sizes, archive_size=archive_size,
+
+            if root:
+                path = path.joinpath(BeamData.default_data_file_name)
+
+            BeamData.write_object(data, path, size=sizes, archive=False,
                                         chunksize=chunksize, chunklen=chunklen,
                                         n_chunks=n_chunks, partition=partition,
                                         file_type=file_type, **kwargs)
@@ -775,7 +778,7 @@ class BeamData(object):
             if n_chunks > 1:
                 data = list(divide_chunks(data, n_chunks=n_chunks))
             else:
-                data = list(iter_container([data]))
+                data = [(0, data), ]
 
             if len(data) > 1:
                 path.mkdir()
@@ -827,8 +830,8 @@ class BeamData(object):
                         logger.warning(f"Failed to write file: {file_path.name}. Trying with the next file extension")
                         logger.debug(e)
                         error = True
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
+                        if file_path.exists():
+                            file_path.unlink()
 
                 if error:
                     logger.error(f"Could not write file: {path_i.name}.")
@@ -912,13 +915,11 @@ class BeamData(object):
         if data is None:
             data = self.data
 
+        path.clean()
+
         kwargs = self.get_default_params(compress=compress, chunksize=chunksize, chunklen=chunklen, n_chunks=n_chunks,
                                          partition=partition, chunk_strategy=chunk_strategy, archive_size=archive_size,
                                          override=override, **kwargs)
-
-        data_type = check_type(data)
-        if data_type.major != 'container':
-            data = {BeamData.default_data_file_name: data}
 
         BeamData.write_data(data, path, root=True, **kwargs)
 
@@ -941,31 +942,31 @@ class BeamData(object):
         self.data = data
         self.all_paths = BeamData.recursive_map_path(path, glob_filter=self.glob_filter)
 
-    def cache(self, path=None, **kwargs):
+    def cache(self, all_paths=None, **kwargs):
 
-        if path is None:
+        if all_paths is None:
 
             if self.all_paths is not None:
-                path = self.all_paths
+                all_paths = self.all_paths
             else:
-                path = self.root_path
+                all_paths = self.root_path
 
             root_path = self.root_path
 
         else:
 
-            path_type = check_type(path)
+            path_type = check_type(all_paths)
             if path_type.major == 'container':
-                root_path = BeamData.recursive_root_finder(path)
+                root_path = BeamData.recursive_root_finder(all_paths)
             else:
-                root_path = path
+                root_path = all_paths
 
         # read the conf and info files
 
         if not self.stored:
             logger.warning("stored=False, data is seems to be un-synchronized")
 
-        data = self.read_tree(path, **kwargs)
+        data = self.read_tree(all_paths, **kwargs)
 
         if type(data) is dict and 'data' in data and len(data) == 1:
             data = data['data']
@@ -986,8 +987,7 @@ class BeamData(object):
 
         self.reset_metadata()
 
-
-    def reset_metadata(self, avoid_reset=None):
+    def reset_metadata(self, *args, avoid_reset=None):
 
         if avoid_reset is None:
             avoid_reset = []
@@ -998,6 +998,9 @@ class BeamData(object):
         for param in reset_params:
             if param not in avoid_reset:
                 setattr(self, param, None)
+
+        for param in args:
+            setattr(self, param, None)
 
     def inverse_map(self, ind):
 
@@ -1365,51 +1368,48 @@ class BeamData(object):
 
         key_type = check_type(key)
 
-        if not self.cached:
+        if not self.cached or not self.lazy:
 
-            kwargs = self.get_default_params(['compress', 'chunksize', 'chunklen', 'n_chunks', 'partition',
-                                              'chunk_strategy', 'archive_size', 'override'])
-            if key_type.major == 'scalar':
-                path = self.root_path.joinpath(key)
-                path = BeamData.write_object(value, path, **kwargs)
-                self.all_paths[key] = path
-            else:
-                path = self.root_path
+            kwargs = self.get_default_params('compress', 'chunksize', 'chunklen', 'n_chunks', 'partition',
+                                              'chunk_strategy', 'archive_size', 'override')
 
-                for k in key:
-                    path = path.joinpath(k)
+            path = self.root_path
+            all_paths = self.all_paths
 
-                path = BeamData.write_object(value, path, **kwargs)
+            if key_type.major != 'scalar':
 
-                # TODO: add keys to all paths
+                for i, k in enumerate(key[:-1]):
 
-                all_paths = self.all_paths
-                for k in key:
-                    if all_paths is None:
-                        all_paths = {}
+                    if type(all_paths) is dict:
+                        assert type(k) is str, f"key {k} is not a string"
+                    if type(all_paths) is list:
+                        assert type(k) is int and k <= len(all_paths), f"key {k} is not an integer"
 
-        else:
+                    if k not in all_paths:
+                        if type(key[i + 1]) is int:
+                            all_paths[k] = []
+                        else:
+                            all_paths[k] = {}
+
+                    all_paths = all_paths[k]
+                    path = path.joinpath(BeamData.normalize_key(k))
+
+                key = key[-1]
+
+            path = path.joinpath(key)
+            path = BeamData.write_object(value, path, **kwargs)
+            all_paths[key] = path
+
+        if self.cached:
 
             if self.orientation == 'simple':
                 self.data.__setitem__(key, value)
-
             else:
-                self.data[key] = value
+                set_item_with_tuple_key(self.data, key, value)
 
             if self.lazy:
                 self.stored = False
-                self.reset_metadata()
-
-            elif self.stored:
-
-                kwargs = self.get_default_params(['compress', 'chunksize', 'chunklen', 'n_chunks', 'partition',
-                                                  'chunk_strategy', 'archive_size', 'override'])
-
-                path = self.root_path.joinpath(key)
-                path = BeamData.write_object(value, path, **kwargs)
-                self.all_paths[key] = path
-
-            self.reset_metadata()
+                self.reset_metadata('all_paths')
 
     def apply(self, func, *args, **kwargs):
         data = recursive(func)(self.data,  *args, **kwargs)

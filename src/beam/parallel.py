@@ -69,7 +69,8 @@ class BeamTask(object):
 
 class BeamParallel(object):
 
-    def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0,
+    def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam',
+                 reduce=False, reduce_dim=0, name=None,
                  **kwargs):
 
         self.func = func
@@ -79,6 +80,7 @@ class BeamParallel(object):
         self.reduce_dim = reduce_dim
         self.queue = []
         self.kwargs = kwargs
+        self._name = name
 
         if progressbar == 'beam':
             self.progressbar = tqdm_beam
@@ -88,6 +90,15 @@ class BeamParallel(object):
             self.progressbar = lambda x: x
 
         # TODO: add support for other methods: apply, apply_async, starmap_async, dask, ray
+
+    def set_name(self, name):
+        self._name = name
+
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
 
     def add(self, *args, **kwargs):
 
@@ -135,7 +146,10 @@ class BeamParallel(object):
         if len(self.queue):
             self.run()
 
-    def _run_joblib(self):
+    def _run_joblib(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
 
         from joblib import Parallel, delayed
 
@@ -145,10 +159,13 @@ class BeamParallel(object):
         # for task in self.queue:
         #     task.set_silent(True)
 
-        results = Parallel(n_jobs=self.n_workers, **self.kwargs)(delayed(t.run)() for t in self.queue)
+        results = Parallel(n_jobs=n_workers, **self.kwargs)(delayed(t.run)() for t in self.queue)
         return results
 
-    def _run_process_map(self):
+    def _run_process_map(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
 
         from tqdm.contrib.concurrent import process_map
 
@@ -160,12 +177,15 @@ class BeamParallel(object):
         else:
             func = self.func
 
-        results = process_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.n_workers,
+        results = process_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=n_workers,
                               **self.kwargs)
 
         return results
 
-    def _run_thread_map(self):
+    def _run_thread_map(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
 
         from tqdm.contrib.concurrent import thread_map
 
@@ -177,11 +197,14 @@ class BeamParallel(object):
         else:
             func = self.func
 
-        results = thread_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=self.n_workers, **self.kwargs)
+        results = thread_map(func, *list(zip(*[t.args for t in self.queue])), max_workers=n_workers, **self.kwargs)
 
         return results
 
-    def _run_starmap(self):
+    def _run_starmap(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
 
         import multiprocessing as mp
 
@@ -200,12 +223,15 @@ class BeamParallel(object):
 
         ctx = mp.get_context(context)
 
-        with ctx.Pool(self.n_workers) as pool:
+        with ctx.Pool(n_workers) as pool:
             results = list(pool.starmap(func, *[t.args for t in self.queue], **self.kwargs))
 
         return results
 
-    def _run_apply_async(self):
+    def _run_apply_async(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
 
         import multiprocessing as mp
 
@@ -216,7 +242,7 @@ class BeamParallel(object):
 
         ctx = mp.get_context(context)
 
-        with ctx.Pool(self.n_workers) as pool:
+        with ctx.Pool(n_workers) as pool:
 
             tasks = [pool.apply_async(t.run) for t in self.queue]
             results = []
@@ -225,7 +251,10 @@ class BeamParallel(object):
 
         return results
 
-    def _run_apply(self):
+    def _run_apply(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
 
         import multiprocessing as mp
 
@@ -236,7 +265,7 @@ class BeamParallel(object):
 
         ctx = mp.get_context(context)
 
-        with ctx.Pool(self.n_workers) as pool:
+        with ctx.Pool(n_workers) as pool:
 
             results = []
             for t in self.queue:
@@ -244,7 +273,10 @@ class BeamParallel(object):
 
         return results
 
-    def _run_ray(self):
+    def _run_ray(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
 
         import ray
 
@@ -269,12 +301,15 @@ class BeamParallel(object):
         ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
                  include_dashboard=include_dashboard, dashboard_host="0.0.0.0", ignore_reinit_error=True)
 
-        tasks = [ray.remote(num_cpus=self.n_workers)(func_wrapper).remote(t) for t in self.queue]
+        tasks = [ray.remote(num_cpus=n_workers)(func_wrapper).remote(t) for t in self.queue]
         results = ray.get(tasks)
 
         return results
 
-    def _run_dask(self):
+    def _run_dask(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
 
         # see https://docs.dask.org/en/latest/scheduler-overview.html#configuring-the-schedulers
         # for more info on dask scheduler options
@@ -289,33 +324,36 @@ class BeamParallel(object):
 
         with dask.config.set({"multiprocessing.context": context, **self.kwargs}):
             tasks = [dask.delayed(t.run)() for t in self.queue]
-            results = dask.compute(tasks, num_workers=self.n_workers)
+            results = dask.compute(tasks, num_workers=n_workers)
 
         return results[0]
 
     def run(self, n_workers=None, method=None):
 
         if n_workers is not None:
-            self.n_workers = n_workers
+            n_workers = self.n_workers
+        n_workers = min(n_workers, len(self.queue))
         if method is not None:
             self.method = method
+
+        logger.info(f"Running queue: {self.name}: {len(self.queue)} tasks with {self.n_workers} workers.")
 
         if self.n_workers <= 1 or len(self.queue) == 1:
             results = [t.run() for t in self.queue]
         elif self.method == 'joblib':
-            results = self._run_joblib()
+            results = self._run_joblib(n_workers=n_workers)
         elif self.method == 'process_map':
-            results = self._run_process_map()
+            results = self._run_process_map(n_workers=n_workers)
         elif self.method == 'apply_async':
-            results = self._run_apply_async()
+            results = self._run_apply_async(n_workers=n_workers)
         elif self.method == 'thread_map':
-            results = self._run_thread_map()
+            results = self._run_thread_map(n_workers=n_workers)
         elif self.method in ['starmap', 'map']:
-            results = self._run_starmap()
+            results = self._run_starmap(n_workers=n_workers)
         elif self.method == 'ray':
-            results = self._run_ray()
+            results = self._run_ray(n_workers=n_workers)
         elif self.method == 'dask':
-            results = self._run_dask()
+            results = self._run_dask(n_workers=n_workers)
 
         else:
             raise ValueError(f"Unknown method: {self.method}")

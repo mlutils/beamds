@@ -27,57 +27,145 @@ class MyTransformer(Transformer):
         return len(x)
 
 
-if __name__ == '__main__':
+def get_data(form=None):
 
     n = 100
     m = 100
     k = 4
 
-    dfs = {'a': {rand_column(): pd.DataFrame(index=np.random.permutation(np.arange(n)),
-                        data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)},
-           'b': [pd.DataFrame(index=np.random.permutation(np.arange(n)),
-                        data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)]}
+    if form == 1:
 
-    dfs['a']['x'] = pd.DataFrame(data=np.random.permutation(np.arange(n)))
+        data = {'a': {rand_column(): pd.DataFrame(index=np.random.permutation(np.arange(n)),
+                                                 data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for
+                     _ in range(k)},
+               'b': [pd.DataFrame(index=np.random.permutation(np.arange(n)),
+                                  data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in range(k)]}
 
-    # dfs = {'a': torch.randn(200, m), 'b': torch.randn(300, m), 'c': torch.randn(400, m)}
+    elif form == 2:
 
-    # dfs = pd.DataFrame(index=np.random.permutation(np.arange(n)),
-    #                     data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)])
+        data = {'a': {rand_column(): pd.DataFrame(index=np.random.permutation(np.arange(n)),
+                                                  data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)])
+                      for
+                      _ in range(k)},
+                'b': [pd.DataFrame(index=np.random.permutation(np.arange(n)),
+                                   data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)]) for _ in
+                      range(k)]}
+
+        data['a']['x'] = pd.DataFrame(data=np.random.permutation(np.arange(n)))
+
+    elif form == 3:
+
+        data = {'a': torch.randn(200, m), 'b': torch.randn(300, m), 'c': torch.randn(400, m)}
+
+    elif form == 4:
+
+        data = pd.DataFrame(index=np.random.permutation(np.arange(n)),
+                            data=np.random.randn(n, m), columns=[rand_column() for _ in range(m)])
+
+    else:
+        data = pd.DataFrame(index=np.random.permutation(np.arange(n)))
+
+    return data
+
+
+def get_path(path, storage='local'):
 
     access_key = 'EBemHypH7I2NcHx1'
     secret_key = 'cvYL26ItASAwE8ZUxRaZKhVVdcxHZ0SJ'
 
-    path = beam_path("s3://192.168.10.45:9000/data/bd", access_key=access_key, secret_key=secret_key)
-    # path = '/tmp/sandbox/bd'
-    bd = BeamData(dfs, path=path)
+    if storage == 's3':
+        path = beam_path(f"s3://192.168.10.45:9000{path}", access_key=access_key, secret_key=secret_key)
 
-    print(bd.key['a', 'x'])
+    return beam_path(path)
 
-    q = bd[:10]
 
-    l = list(iter(bd))
+if __name__ == '__main__':
 
-    print(bd.stack)
+    tests = ['transform']
+    storage = 'local'
 
-    bd.store()
+    if 'set_item' in tests:
 
-    be = BeamData.from_path(path)
-    be.cache()
+        print("starting set item")
 
-    print(bd.orientation)
+        path = get_path('/tmp/sandbox/bd', storage)
+        data = get_data(1)
 
-    keys = list(bd.keys().keys())
-    bda = bd[keys[0]]
+        bd = BeamData(data, path=path, archive_size=0)
+        bd.store()
 
-    info = bda.info
-    # bda = bd['a']
-    bd.store()
+        bd = BeamData.from_path(path=path)
+        bd['a', 'x'] = pd.DataFrame(data=np.random.permutation(np.arange(100)))
 
-    bd2 = BeamData(path=path)
-    bd2.cache()
+        bd.store()
+        print("done set item")
 
-    tf = MyTransformer(n_chunks=2, n_workers=0)
-    y = tf.transform(bd2)
+    if 'store_and_reload' in tests:
 
-    print("done")
+        print("starting store and reload")
+
+        path = get_path('/tmp/sandbox/xx', storage)
+        data = get_data(4)
+
+        xx = BeamData(data, path=path)
+        xx.store()
+
+        yy = BeamData.from_path(path)
+
+        print(yy)
+        yy.cache()
+
+        print("done store and reload")
+
+    if 'data_ops' in tests:
+
+        print("starting data ops")
+
+        path = get_path('/tmp/sandbox/bd', storage)
+        data = get_data(1)
+
+        bd = BeamData(data, path=path)
+
+        print(bd.key['a', 'x'])
+
+        q = bd[:10]
+
+        l = list(iter(bd))
+
+        print(bd.stack)
+
+        bd.store()
+
+        be = BeamData.from_path(path)
+        be.cache()
+
+        print(bd.orientation)
+
+        keys = list(bd.keys().keys())
+        bda = bd[keys[0]]
+
+        info = bda.info
+        # bda = bd['a']
+        bd.store()
+
+        print("done data ops")
+
+    if 'transform' in tests:
+
+        print("starting transform")
+
+        path = get_path('/tmp/sandbox/bd', storage)
+        data = get_data(2)
+
+        bd = BeamData(data, path=path)
+        bd.store()
+
+        bd2 = BeamData(path=path)
+        bd2.cache()
+
+        tf = MyTransformer(n_chunks=2, n_workers=0)
+        y = tf.transform(bd2)
+
+        print("done transform")
+
+    print("done all tests")
