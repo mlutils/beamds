@@ -336,7 +336,8 @@ class BeamParallel(object):
         if method is not None:
             self.method = method
 
-        logger.info(f"Running queue: {self.name}: {len(self.queue)} tasks with {self.n_workers} workers.")
+        logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {self.n_workers} workers,"
+                    f" method: {self.method}")
 
         if self.n_workers <= 1 or len(self.queue) == 1:
             results = [t.run() for t in self.queue]
@@ -358,6 +359,7 @@ class BeamParallel(object):
         else:
             raise ValueError(f"Unknown method: {self.method}")
 
+        logger.info(f"Finish running queue: {self.name}.")
         return results
 
     def __call__(self, tasks=None, func=None, args_list=None, n_workers=None, method=None,

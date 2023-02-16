@@ -141,6 +141,8 @@ class Transformer(Processor):
     def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, cache=False,
                   multiprocessing_method=None, fit=False, **kwargs):
 
+        logger.info(f"Starting transformer process: {self.name}")
+
         if len(x) == 0:
             return x
 
@@ -170,6 +172,7 @@ class Transformer(Processor):
         if isinstance(x[0], BeamData):
             return BeamData.collate(x)
 
+        logger.info(f"Finished transformer process: {self.name}. Collating results...")
         return self.collate(x, **kwargs)
 
 
