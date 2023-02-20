@@ -21,6 +21,11 @@ def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kw
     @param path: URI syntax: [protocol://][username@][hostname][:port][/path/to/file]
     @return: BeamPath object
     """
+    if path is None or isinstance(path, PureBeamPath):
+        return path
+
+    if ':' not in path:
+        return BeamPath(path)
 
     pattern = re.compile(
         r'^((?P<protocol>[\w]+)://)?((?P<username>[\w]+)@)?(?P<hostname>[\.\w]+)?(:(?P<port>\d+))?(?P<path>.*)$')
@@ -133,7 +138,8 @@ class BeamPath(PureBeamPath):
         return self.path.is_char_device()
 
     def iterdir(self):
-        return self.path.iterdir()
+        for path in self.path.iterdir():
+            yield BeamPath(path)
 
     def lchmod(self, mode):
         return self.path.lchmod(mode)

@@ -3,6 +3,7 @@ from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_contain
 from .parallel import parallel, BeamParallel, BeamTask
 from collections import OrderedDict
 from .data import BeamData
+from .path import beam_path
 
 
 class Processor(object):
@@ -58,11 +59,11 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, state=None, n_workers=0, n_chunks=None,
+    def __init__(self, *args, state=None, n_workers=0, n_chunks=None, name=None,
                  chunksize=None, squeeze=True, path=None, multiprocess_method='joblib',
                  reduce_dim=0, **kwargs):
 
-        super(Transformer, self).__init__(*args, **kwargs)
+        super(Transformer, self).__init__(*args, name=name, **kwargs)
 
         if (n_chunks is None) and (chunksize is None):
             n_chunks = 1
@@ -74,6 +75,12 @@ class Transformer(Processor):
         self.state = state
         self.squeeze = squeeze
         self.kwargs = kwargs
+
+        if path is not None:
+            path = beam_path(path)
+        if path is not None and name is not None:
+            path = path.joinpath(name)
+
         self.path = path
         self.multiprocess_method = multiprocess_method
         self.reduce_dim = reduce_dim
@@ -106,20 +113,21 @@ class Transformer(Processor):
             for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
                 yield k, c
 
-    def transform_callback(self, x, key=None, is_chunk=False, fit=False, **kwargs):
+    def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
         raise NotImplementedError
 
-    def worker(self, x, key=None, is_chunk=False, cache=False, fit=False, **kwargs):
+    def worker(self, x, key=None, is_chunk=False, fit=False, cache=True, store_path=None, **kwargs):
 
         if isinstance(x, BeamData):
-            if not x.cached:
+            if not x.cached and cache:
                 x.cache()
 
         x = self.transform_callback(x, key=key, is_chunk=is_chunk, fit=fit, **kwargs)
 
         if isinstance(x, BeamData):
-            if not cache:
-                x = x.clone(path=x.all_paths)
+            if store_path is not None:
+                x.store(path=store_path)
+                x = BeamData.from_path(path=store_path)
 
         return x
 
@@ -138,8 +146,11 @@ class Transformer(Processor):
 
         return collate_chunks(*x, dim=reduce_dim, **kwargs)
 
-    def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, cache=False,
-                  multiprocessing_method=None, fit=False, **kwargs):
+    def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, multiprocess_method=None,
+                  fit=False, cache=True, store=False, store_chunk=False, path=None, **kwargs):
+
+        if path is None:
+            path = self.path
 
         logger.info(f"Starting transformer process: {self.name}")
 
@@ -158,8 +169,13 @@ class Transformer(Processor):
         if is_chunk:
             for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
 
+                chunk_path = None
+                if store_chunk and path is not None:
+                    chunk_path = path.joinpath(beam_path(path), BeamData.normalize_key(k))
+
                 self.queue.add(BeamTask(self.worker, (c, ), {'key': k, 'is_chunk': is_chunk,
-                                                             'cache': cache, fit: fit},
+                                                             'cache': cache, fit: fit, 'path': chunk_path,
+                                                             'store': store_chunk},
                                         name=f"{self.name}/{k}", **kwargs))
 
         else:
@@ -167,13 +183,19 @@ class Transformer(Processor):
                                                          'cache': cache, fit: fit},
                                     name=f"{self.name}", **kwargs))
 
-        x = self.queue.run(n_workers=n_workers, method=multiprocessing_method)
-
-        if isinstance(x[0], BeamData):
-            return BeamData.collate(x)
+        x = self.queue.run(n_workers=n_workers, method=multiprocess_method)
 
         logger.info(f"Finished transformer process: {self.name}. Collating results...")
-        return self.collate(x, **kwargs)
+
+        if isinstance(x[0], BeamData):
+            x = BeamData.collate(x)
+            if store and path is not None:
+                x.store(path=path)
+                x = BeamData.from_path(path=path)
+        else:
+            x = self.collate(x, **kwargs)
+
+        return x
 
 
 

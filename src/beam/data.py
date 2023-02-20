@@ -11,7 +11,7 @@ from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_contain
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key
 import os
-from .path import BeamPath
+from .path import BeamPath, beam_path
 from functools import partial
 from collections import defaultdict
 
@@ -155,7 +155,7 @@ class BeamData(object):
         if device is not None:
             self.as_tensor(device=device)
 
-        path = BeamData.normalize_path(path)
+        path = beam_path(path)
         path_type = check_type(path)
 
         self._name = name
@@ -265,9 +265,8 @@ class BeamData(object):
 
         if self.stored:
             conf_path = self.root_path.joinpath(BeamData.metadata_files['conf'])
-            print(conf_path)
             if conf_path.is_file():
-                self._conf = BeamData.read_file(conf_path)
+                self._conf = conf_path.read()
                 return self._conf
 
         if self.cached:
@@ -293,7 +292,7 @@ class BeamData(object):
         if self.stored:
             info_path = self.root_path.joinpath(BeamData.metadata_files['info'])
             if info_path.is_file():
-                self._info = BeamData.read_file(info_path)
+                self._info = info_path.read()
                 return self._info
 
         if self.cached:
@@ -339,6 +338,17 @@ class BeamData(object):
     def path(self):
         return self.root_path
 
+    @path.setter
+    def path(self, value):
+        if self.root_path is not None:
+            logger.warning(f'path already set to {self.root_path}, overwriting with {value}')
+        value = beam_path(value)
+        if value.is_dir() and len(list(value.iterdir())):
+            raise ValueError(f'path {value} is not empty')
+        self.root_path = value
+        self.all_paths = None
+        self.stored = False
+
     @property
     def index_mapper(self):
 
@@ -347,12 +357,6 @@ class BeamData(object):
             return info['map']
 
         return None
-
-    @staticmethod
-    def normalize_path(path):
-        if not (isinstance(path, PureBeamPath) or path is None):
-            path = BeamPath(path)
-        return path
 
     @staticmethod
     def normalize_key(key):
@@ -494,14 +498,9 @@ class BeamData(object):
         return self._data_type
 
     @staticmethod
-    def read_file(path, **kwargs):
-        path = BeamData.normalize_path(path)
-        return path.read(**kwargs)
-
-    @staticmethod
     def write_file(data, path, override=True, **kwargs):
 
-        path = BeamData.normalize_path(path)
+        path = beam_path(path)
 
         if (not override) and path.exists():
             raise NameError(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
@@ -514,10 +513,8 @@ class BeamData(object):
     @staticmethod
     def read_tree(paths, **kwargs):
 
-        if type(paths) is str:
-            paths = BeamPath(paths)
-
         paths_type = check_type(paths)
+
         if paths_type.major == 'container':
             keys = []
             values = []
@@ -530,7 +527,8 @@ class BeamData(object):
 
             return values
 
-        return BeamData.read_object(paths, **kwargs)
+        path = beam_path(paths)
+        return BeamData.read_object(path, **kwargs)
 
     @staticmethod
     def recursive_root_finder(all_paths, head=None):
@@ -641,10 +639,9 @@ class BeamData(object):
     @staticmethod
     def read_object(path, **kwargs):
 
-        path = BeamData.normalize_path(path)
-
+        path = beam_path(path)
         if path.is_file():
-            return BeamData.read_file(path, **kwargs)
+            return path.read(path, **kwargs)
 
         elif path.is_dir():
 
@@ -655,12 +652,12 @@ class BeamData(object):
             for next_path in path.iterdir():
 
                 if next_path.stem == BeamData.metadata_files['conf']:
-                    conf = BeamData.read_file(next_path, **kwargs)
+                    conf = next_path.read(**kwargs)
                     orientation = conf['orientation']
 
                 elif not next_path.name.startswith('.'):
                     keys.append(next_path.split(BeamData.chunk_file_extension)[0])
-                    values.append(BeamData.read_file(next_path, **kwargs))
+                    values.append(next_path.read(**kwargs))
 
             if all([is_chunk(p, chunk_pattern=BeamData.chunk_file_extension) for p in keys]):
                 return collate_chunks(*values, keys=keys, dim=orientation)
@@ -672,7 +669,7 @@ class BeamData(object):
 
             for p in path.parent.iterdir():
                 if p.stem == path.stem:
-                    return BeamData.read_file(p, **kwargs)
+                    return p.read(**kwargs)
 
             logger.warning(f"No object found in path: {path}")
             return None
@@ -681,7 +678,7 @@ class BeamData(object):
     def write_data(data, path, sizes=None, chunk_strategy='keys', archive_size=int(1e6), chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, **kwargs):
 
-        path = BeamData.normalize_path(path)
+        path = beam_path(path)
 
         if sizes is None:
             sizes = recursive_size(data)
@@ -739,7 +736,7 @@ class BeamData(object):
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, file_type=None, **kwargs):
 
-        path = BeamData.normalize_path(path)
+        path = beam_path(path)
 
         if not override:
             if path.exists() or (path.parent.is_dir() and any(p.stem == path.stem for p in path.parent.iterdir())):
@@ -942,7 +939,14 @@ class BeamData(object):
         self.data = data
         self.all_paths = BeamData.recursive_map_path(path, glob_filter=self.glob_filter)
 
-    def cache(self, all_paths=None, **kwargs):
+    def cache(self, all_paths=None, update=False, **kwargs):
+
+        if self.cached:
+            if update:
+                logger.info(f"BeamData: Updating the cached data in path {self.path}")
+            else:
+                logger.info(f"BeamData: Data in path {self.path} is already cached. To update the cache use update=True")
+                return
 
         if all_paths is None:
 

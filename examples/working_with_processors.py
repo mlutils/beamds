@@ -81,7 +81,7 @@ def get_path(path, storage='local'):
 
 if __name__ == '__main__':
 
-    tests = ['transform']
+    tests = ['transform_dd']
     storage = 'local'
 
     if 'set_item' in tests:
@@ -150,7 +150,7 @@ if __name__ == '__main__':
 
         print("done data ops")
 
-    if 'transform' in tests:
+    if 'transform_dd' in tests:
 
         print("starting transform")
 
