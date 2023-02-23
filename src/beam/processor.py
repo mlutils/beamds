@@ -8,8 +8,34 @@ from .path import beam_path
 
 class Processor(object):
 
-    def __init__(self, *args, name=None, **kwargs):
+    def __init__(self, *args, name=None, state=None, path=None, **kwargs):
         self._name = name
+        self.state = state
+        self.path = beam_path(path)
+
+    def save_state(self, path=None):
+        if path is None:
+            path = self.path
+        if path is not None:
+            path = beam_path(path)
+
+        if isinstance(self.state, BeamData):
+            self.state.store(path=path)
+        else:
+            state = BeamData(self.state, path=path)
+            state.store()
+
+    def load_state(self, path=None):
+        if path is None:
+            path = self.path
+        if path is not None:
+            path = beam_path(path)
+
+        if isinstance(self.state, BeamData):
+            self.state.cache(path=path)
+        else:
+            state = BeamData.from_path(path=path)
+            self.state = state.cache()
 
     @property
     def name(self):
@@ -59,11 +85,10 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, state=None, n_workers=0, n_chunks=None, name=None,
-                 chunksize=None, squeeze=True, path=None, multiprocess_method='joblib',
-                 reduce_dim=0, **kwargs):
+    def __init__(self, *args, n_workers=0, n_chunks=None, name=None, path=None, state=None, store_path=None,
+                 chunksize=None, squeeze=True, multiprocess_method='joblib', reduce_dim=0, **kwargs):
 
-        super(Transformer, self).__init__(*args, name=name, **kwargs)
+        super(Transformer, self).__init__(*args, name=name, state=state, path=path,  **kwargs)
 
         if (n_chunks is None) and (chunksize is None):
             n_chunks = 1
@@ -72,16 +97,15 @@ class Transformer(Processor):
         self.chunksize = chunksize
         self.n_chunks = n_chunks
         self.n_workers = n_workers
-        self.state = state
         self.squeeze = squeeze
         self.kwargs = kwargs
 
-        if path is not None:
-            path = beam_path(path)
-        if path is not None and name is not None:
-            path = path.joinpath(name)
+        if store_path is not None:
+            store_path = beam_path(store_path)
+        if store_path is not None and name is not None:
+            store_path = path.joinpath(name)
 
-        self.path = path
+        self.store_path = store_path
         self.multiprocess_method = multiprocess_method
         self.reduce_dim = reduce_dim
 
@@ -150,7 +174,7 @@ class Transformer(Processor):
                   fit=False, cache=True, store=False, store_chunk=False, path=None, **kwargs):
 
         if path is None:
-            path = self.path
+            path = self.store_path
 
         logger.info(f"Starting transformer process: {self.name}")
 

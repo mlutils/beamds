@@ -24,17 +24,19 @@ from argparse import Namespace
 from tensorboard.notebook import start as start_tensorboard
 from ._version import __version__
 import inspect
+from .path import beam_path, BeamPath
 
 done = mp.Event()
 
 
-def gen_hparams_string(e):
-    tensorboard_hparams = pd.read_pickle(os.path.join(e, "hparams.pkl"))
+def gen_hparams_string(experiment_path):
+    experiment_path = beam_path(experiment_path)
+    tensorboard_hparams = experiment_path.joinpath("hparams.pkl").read()
     return '/'.join([f"{k}_{v}" for k, v in tensorboard_hparams.items()])
 
 
 def path_depth(path):
-    return len(os.path.normpath(path).split(os.sep))
+    return len(str(path.resolve()).split(os.sep))
 
 
 def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
@@ -98,7 +100,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
         logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates")
         if rank == 0:
-            checkpoint_file = os.path.join(experiment.checkpoints_dir, f'checkpoint_{alg.epoch+1:06d}')
+            checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
             alg.save_checkpoint(checkpoint_file)
 
     if world_size == 1:
@@ -179,21 +181,22 @@ class Experiment(object):
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.hparams.device = beam_device(self.hparams.device)
 
-        self.base_dir = os.path.join(self.hparams.root_path, self.hparams.project_name,
-                                     self.hparams.algorithm, self.hparams.identifier)
-        os.makedirs(self.base_dir, exist_ok=True)
+        root_path = beam_path(self.hparams.root_path)
+        self.base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
+        self.base_dir.mkdir(self.base_dir, exist_ok=True, parents=True)
 
         self.exp_name = None
         self.load_model = False
 
         pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
-        exp_names = list(filter(lambda x: re.match(pattern, x) is not None, os.listdir(self.base_dir)))
+        exp_names = list(filter(lambda x: re.match(pattern, x) is not None, self.base_dir.iterdir()))
         exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
 
         if self.hparams.reload:
 
             if type(self.hparams.resume) is str:
-                if os.path.isdir(os.path.join(self.base_dir, self.hparams.resume)):
+
+                if self.base_dir.joinpath(self.hparams.resume).is_dir():
                     self.exp_name = self.hparams.resume
                     exp_num = int(self.exp_name.split('_')[0])
                     self.load_model = True
@@ -230,13 +233,13 @@ class Experiment(object):
             self.exp_name = "%04d_%s" % (exp_num, self.exptime)
 
         # init experiment parameters
-        self.root = os.path.join(self.base_dir, self.exp_name)
+        self.root = self.base_dir.joinpath(self.exp_name)
 
         # set dirs
-        self.tensorboard_dir = os.path.join(self.root, 'tensorboard')
-        self.checkpoints_dir = os.path.join(self.root, 'checkpoints')
-        self.results_dir = os.path.join(self.root, 'results')
-        self.code_dir = os.path.join(self.root, 'code')
+        self.tensorboard_dir = self.root.joinpath('tensorboard')
+        self.checkpoints_dir = self.root.joinpath('checkpoints')
+        self.results_dir = self.root.joinpath('results')
+        self.code_dir = self.root.joinpath('code')
 
         if self.load_model:
             logger.info(f"Resuming existing experiment (Beam version: {__version__})")
@@ -251,22 +254,22 @@ class Experiment(object):
 
                 shutil.rmtree(self.root)
                 self.exp_name = "%04d_%s" % (exp_num, self.exptime)
-                self.root = os.path.join(self.base_dir, self.exp_name)
+                self.root = self.base_dir.joinpath(self.exp_name)
 
                 # set dirs
-                self.tensorboard_dir = os.path.join(self.root, 'tensorboard')
-                self.checkpoints_dir = os.path.join(self.root, 'checkpoints')
-                self.results_dir = os.path.join(self.root, 'results')
-                self.code_dir = os.path.join(self.root, 'code')
+                self.tensorboard_dir = self.root.joinpath('tensorboard')
+                self.checkpoints_dir = self.root.joinpath('checkpoints')
+                self.results_dir = self.root.joinpath('results')
+                self.code_dir = self.root.joinpath('code')
 
             logger.info(f"Experiment directory is: {self.root}")
 
-            os.makedirs(os.path.join(self.tensorboard_dir, 'logs'))
-            os.makedirs(os.path.join(self.tensorboard_dir, 'hparams'))
-            os.makedirs(self.checkpoints_dir)
+            self.tensorboard_dir.joinpath('logs').mkdir(exist_ok=True, parents=True)
+            self.tensorboard_dir.joinpath('hparams').mkdir(exist_ok=True, parents=True)
+            self.checkpoints_dir.mkdir(exist_ok=True, parents=True)
 
             # make log dirs
-            os.makedirs(os.path.join(self.results_dir))
+            self.results_dir.mkdir(exist_ok=True, parents=True)
 
             # copy code to dir
 
@@ -275,10 +278,14 @@ class Experiment(object):
             else:
                 code_root_path = sys.argv[0]
 
-            copytree(os.path.dirname(os.path.realpath(code_root_path)), self.code_dir,
-                     ignore=include_patterns('*.py', '*.md', '*.ipynb'))
+            #TODO: handle the case where root_path is not BeamPath object
+            if isinstance(self.code_dir, BeamPath):
+                copytree(os.path.dirname(os.path.realpath(code_root_path)), str(self.code_dir),
+                         ignore=include_patterns('*.py', '*.md', '*.ipynb'))
+            else:
+                logger.warning("Code directory is not BeamPath object. Skipping code copy.")
 
-            pd.to_pickle(self.vars_args, os.path.join(self.root, "args.pkl"))
+            self.root.joinpath('args.pkl').write(self.vars_args)
 
         self.writer = None
 
@@ -288,7 +295,7 @@ class Experiment(object):
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
 
-        log_file = os.path.join(self.root, "experiment.log")
+        log_file = self.root.joinpath('experiment.log')
         logger.add(log_file, level='INFO', colorize=True,
                    format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
 
@@ -329,20 +336,22 @@ class Experiment(object):
             else:
                 self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.parallel)]
 
-        pd.to_pickle(self.tensorboard_hparams, os.path.join(self.root, "hparams.pkl"))
+        self.root.joinpath('hparams.pkl').write(self.tensorboard_hparams)
 
     @staticmethod
     def reload_from_path(path, override_hparams=None, **argv):
 
+        path = beam_path(path)
         logger.info(f"Reload experiment from path: {path}")
-        args = pd.read_pickle(os.path.join(path, "args.pkl"))
+
+        args = path.joinpath('args.pkl').read()
         args = Namespace(**args)
         args.override = False
         args.reload = True
 
-        path, d = os.path.split(path)
+        path, d = path.parent, path.name
         if not d:
-            path, d = os.path.split(path)
+            path, d = path.parent, path.name
         args.resume = d
 
         if override_hparams is not None:
@@ -354,11 +363,11 @@ class Experiment(object):
     def reload_checkpoint(self, alg=None, iloc=-1, loc=None, name=None):
 
         if name is not None:
-            path = os.path.join(self.checkpoints_dir, name)
+            path = self.checkpoints_dir.joinpath(name)
 
         else:
 
-            checkpoints = os.listdir(self.checkpoints_dir)
+            checkpoints = list(self.checkpoints_dir.iterdir())
             checkpoints = [c for c in checkpoints if c.split('_')[-1].isnumeric()]
             checkpoints_int = [int(c.split('_')[-1]) for c in checkpoints]
 
@@ -371,10 +380,10 @@ class Experiment(object):
 
             if loc is not None:
                 chp = checkpoints.loc[loc]['name']
-                path = os.path.join(self.checkpoints_dir, chp)
+                path = self.checkpoints_dir.joinpath(chp)
             else:
                 chp = checkpoints.iloc[iloc]['name']
-                path = os.path.join(self.checkpoints_dir, chp)
+                path = self.checkpoints_dir.joinpath(chp)
 
         logger.info(f"Reload experiment from checkpoint: {path}")
 
@@ -404,8 +413,11 @@ class Experiment(object):
 
         if enable and self.writer is None and self.hparams.tensorboard:
             from tensorboardX import SummaryWriter
-            self.writer = SummaryWriter(log_dir=os.path.join(self.tensorboard_dir, 'logs'),
-                                        comment=self.hparams.identifier)
+            if isinstance(self.tensorboard_dir, BeamPath):
+                self.writer = SummaryWriter(log_dir=str(self.tensorboard_dir.joinpath('logs')),
+                                            comment=self.hparams.identifier)
+            else:
+                logger.warning(f"Tensorboard directory is not a BeamPath object. Tensorboard will not be enabled.")
 
         if networks is not None and enable and self.writer is not None:
             for k, net in networks.items():
@@ -453,23 +465,24 @@ class Experiment(object):
 
                 if store_results == 'yes' or store_results == 'logscale' and logscale:
 
-                    os.makedirs(os.path.join(self.results_dir, subset), exist_ok=True)
-                    torch.save(res, os.path.join(self.results_dir, subset, f'results_{epoch:06d}'))
+                    self.results_dir.joinpath(subset).mkdir(parents=True, exist_ok=True)
+                    self.results_dir.joinpath(subset, f'results_{epoch:06d}').write(res, ext='.pt')
 
                 alg = algorithm if visualize_weights else None
 
             if visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
                 self.log_data(results, epoch, print_log=print_results, alg=alg, argv=argv)
 
-            checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_{epoch:06d}')
+            checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
             algorithm.save_checkpoint(checkpoint_file)
+
             if algorithm.best_state:
-                checkpoint_file = os.path.join(self.checkpoints_dir, f'checkpoint_best')
+                checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_best')
                 algorithm.save_checkpoint(checkpoint_file)
 
             if store_networks == 'no' or store_networks == 'logscale' and not logscale:
                 try:
-                    os.remove(os.path.join(self.checkpoints_dir, f'checkpoint_{epoch - 1:06d}'))
+                    self.checkpoints_dir.joinpath(f'checkpoint_{epoch - 1:06d}').unlink()
                 except OSError:
                     pass
 
@@ -588,7 +601,6 @@ class Experiment(object):
 
         if len(metrics):
             self.writer.add_hparams(self.tensorboard_hparams, metrics, name=os.path.join('..', 'hparams'), global_step=n)
-            # self.writer.add_hparams(self.tensorboard_hparams, metrics, run_name=os.path.join('..', 'hparams'))
 
     @staticmethod
     def _tensorboard(port=None, get_port_from_beam_port_range=True, base_dir=None, log_dirs=None, hparams=False):
@@ -784,19 +796,18 @@ class Experiment(object):
 
             if reload_results:
                 results = {}
-                for subset in os.listdir(alg.results_dir):
+                for subset in alg.results_dir.iterdir():
 
-                    res = os.listdir(os.path.join(alg.results_dir, subset))
+                    res = list(subset.iterdir())
                     res = pd.DataFrame({'name': res, 'index': [int(c.split('_')[-1]) for c in res]})
                     res = res.sort_values('index')
 
                     res = res.iloc['name']
-                    path = os.path.join(alg.results_dir, subset, res)
-
+                    path = alg.results_dir.joinpath(subset, res)
                     results[subset] = path
 
                 if reload_results:
-                    results = {subset: pd.read_pickle(path) for subset, path in results.items()}
+                    results = {subset: path.read() for subset, path in results.items()}
 
         else:
             alg, results = res

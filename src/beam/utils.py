@@ -321,6 +321,9 @@ class PureBeamPath:
 
         return self
 
+    def resolve(self, strict=False):
+        return self
+
 
 class Timer(object):
 
@@ -1249,6 +1252,24 @@ def get_item_with_tuple_key(x, key):
         return x
     else:
         return x[key]
+
+
+def get_closest_item_with_tuple_key(x, key):
+
+    if not isinstance(key, tuple):
+        key = (key,)
+
+    for k in key:
+        x_type = check_type(x)
+        if x_type.minor == 'dict' and k in x:
+            x = x[k]
+        elif x_type.minor == 'list' and k < len(x):
+            x = x[k]
+        elif x_type.major == 'container':
+            return None
+        else:
+            return x
+    return x
 
 
 def set_item_with_tuple_key(x, key, value):

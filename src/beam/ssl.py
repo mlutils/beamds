@@ -461,7 +461,7 @@ class BeamBarlowTwins(BeamSSL):
                                                                     'betas': (self.hparams.momentum, self.hparams.beta2),
                                                                     'eps': self.hparams.eps}))
 
-        self.add_networks_and_optimizers(networks=ensemble, name='encoder', build_optimizers=False)
+        self.add_components(networks=ensemble, name='encoder', build_optimizers=False)
         beam_weights_initializer(self.networks['discriminator'], method='orthogonal')
 
     def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):

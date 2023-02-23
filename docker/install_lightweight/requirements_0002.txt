@@ -1,5 +1,6 @@
 # Database and formats
 elasticsearch
+elasticsearch-dsl
 impyla
 pyorc
 fastparquet

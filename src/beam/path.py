@@ -21,7 +21,7 @@ def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kw
     @param path: URI syntax: [protocol://][username@][hostname][:port][/path/to/file]
     @return: BeamPath object
     """
-    if path is None or isinstance(path, PureBeamPath):
+    if type(path) != str:
         return path
 
     if ':' not in path:
@@ -108,7 +108,8 @@ class BeamPath(PureBeamPath):
         return self.path.expanduser()
 
     def glob(self, *args, **kwargs):
-        return self.path.glob(*args, **kwargs)
+        for path in self.path.glob(*args, **kwargs):
+            yield BeamPath(path)
 
     def group(self):
         return self.path.group()
@@ -166,40 +167,46 @@ class BeamPath(PureBeamPath):
         return self.path.readlink()
 
     def rename(self, target):
-        return self.path.rename(target)
+        path = self.path.rename(target)
+        return BeamPath(path)
 
     def replace(self, target):
-        return self.path.replace(target)
+        path = self.path.replace(target)
+        return BeamPath(path)
 
     def absolute(self):
-        return self.path.absolute()
+
+        path = self.path.absolute()
+        return BeamPath(path)
 
     def resolve(self, strict=False):
-        return self.path.resolve(strict=strict)
+
+        path = self.path.resolve(strict=strict)
+        return BeamPath(path)
 
     def rglob(self, pattern):
         return self.path.rglob(pattern)
 
     def rmdir(self):
-        return self.path.rmdir()
+        self.path.rmdir()
 
     def samefile(self, other):
         return self.path.samefile(other)
 
     def symlink_to(self, target, target_is_directory=False):
-        return self.path.symlink_to(target, target_is_directory=target_is_directory)
+        self.path.symlink_to(target, target_is_directory=target_is_directory)
 
     def hardlink_to(self, target):
-        return self.path.link_to(target)
+        self.path.link_to(target)
 
     def link_to(self, target):
-        return self.path.link_to(target)
+        self.path.link_to(target)
 
     def touch(self, *args, **kwargs):
-        return self.path.touch(*args, **kwargs)
+        self.path.touch(*args, **kwargs)
 
     def unlink(self, missing_ok=False):
-        return self.path.unlink(missing_ok=missing_ok)
+        self.path.unlink(missing_ok=missing_ok)
 
     def write_bytes(self, data):
         return self.path.write_bytes(data)

@@ -15,11 +15,12 @@ from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from .experiment import Experiment
 from timeit import default_timer as timer
 from ray import tune
+from .path import beam_path, BeamPath
 
 
 class Algorithm(object):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None):
 
         self._experiment = None
         self.trial = None
@@ -75,7 +76,7 @@ class Algorithm(object):
         self.best_objective = None
         self.best_state = False
 
-        self.add_networks_and_optimizers(networks=networks, optimizers=optimizers, schedulers=schedulers)
+        self.add_components(networks=networks, optimizers=optimizers, schedulers=schedulers, processors=processors)
 
         if hparams.reload_path is not None:
             self.load_checkpoint(hparams.reload_path)
@@ -126,8 +127,8 @@ class Algorithm(object):
             experiment = Experiment(hparams)
         return experiment.algorithm_generator(cls)
 
-    def add_networks_and_optimizers(self, networks=None, optimizers=None, schedulers=None,
-                                    build_optimizers=True, build_schedulers=True, name='net'):
+    def add_components(self, networks=None, optimizers=None, schedulers=None, processors=None,
+                       build_optimizers=True, build_schedulers=True, name='net'):
 
         if networks is None:
             networks = self.networks
@@ -932,8 +933,8 @@ class Algorithm(object):
 
     def save_checkpoint(self, path=None, aux=None, pickle_model=False):
 
+        path = beam_path(path)
         state = {'aux': aux, 'epoch': self.epoch}
-
         wrapper = copy.deepcopy if path is None else (lambda x: x)
 
         for k, net in self.networks.items():
@@ -958,17 +959,19 @@ class Algorithm(object):
                             if scaler is not None else None for k, scaler in self.scalers.items()}
 
         if path is not None:
-            torch.save(state, path)
+            path.write(state, ext='.pt')
         else:
             return state
 
-    def load_checkpoint(self, path, strict=True):
+    def load_checkpoint(self, path_or_state, strict=True):
 
-        if type(path) is str:
-            logger.info(f"Loading network state from: {path}")
-            state = torch.load(path, map_location=self.device)
+        path_or_state = beam_path(path_or_state)
+
+        if isinstance(path_or_state, BeamPath):
+            logger.info(f"Loading network state from: {path_or_state}")
+            state = path_or_state.read(ext='.pt', map_location=self.device)
         else:
-            state = path
+            state = path_or_state
 
         for k, net in self.networks.items():
 
