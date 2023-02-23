@@ -53,6 +53,7 @@ class Algorithm(object):
         self.epoch = 0
 
         self.networks = {}
+        self.processors = {}
         self.swa_networks = {}
         self.inference_networks = {}
 

@@ -8,10 +8,14 @@ from .path import beam_path
 
 class Processor(object):
 
-    def __init__(self, *args, name=None, state=None, path=None, **kwargs):
+    def __init__(self, hparams, *args, name=None, state=None, path=None, **kwargs):
         self._name = name
         self.state = state
         self.path = beam_path(path)
+        self.hparams = hparams
+
+        if self.state is None and self.path is not None:
+            self.load_state()
 
     def save_state(self, path=None):
         if path is None:
@@ -46,9 +50,9 @@ class Processor(object):
 
 class Pipeline(Processor):
 
-    def __init__(self, *ts, track_steps=False, name=None, **kwts):
+    def __init__(self, hparams, *ts, track_steps=False, name=None, state=None, path=None, **kwts):
 
-        super().__init__(name=name)
+        super().__init__(hparams, name=name, state=state, path=path)
         self.track_steps = track_steps
         self.steps = {}
 
@@ -76,19 +80,20 @@ class Pipeline(Processor):
 
 class Reducer(Processor):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, hparams, *args, dim=1, **kwargs):
+        super().__init__(hparams, *args, **kwargs)
+        self.dim = dim
 
     def reduce(self, *xs, **kwargs):
-        return collate_chunks(*xs, dim=1, **kwargs)
+        return collate_chunks(*xs, dim=self.dim, **kwargs)
 
 
 class Transformer(Processor):
 
-    def __init__(self, *args, n_workers=0, n_chunks=None, name=None, path=None, state=None, store_path=None,
+    def __init__(self, hparams, *args, n_workers=0, n_chunks=None, name=None, store_path=None,
                  chunksize=None, squeeze=True, multiprocess_method='joblib', reduce_dim=0, **kwargs):
 
-        super(Transformer, self).__init__(*args, name=name, state=state, path=path,  **kwargs)
+        super(Transformer, self).__init__(hparams, *args, name=name, **kwargs)
 
         if (n_chunks is None) and (chunksize is None):
             n_chunks = 1
@@ -103,7 +108,7 @@ class Transformer(Processor):
         if store_path is not None:
             store_path = beam_path(store_path)
         if store_path is not None and name is not None:
-            store_path = path.joinpath(name)
+            store_path = store_path.joinpath(name)
 
         self.store_path = store_path
         self.multiprocess_method = multiprocess_method
@@ -163,7 +168,7 @@ class Transformer(Processor):
         # self.fit(x, **kwargs)
         # return self.transform(x, **kwargs)
 
-    def collate(self, x, reduce_dim=None, **kwargs):
+    def reduce(self, x, reduce_dim=None, **kwargs):
 
         if reduce_dim is None:
             reduce_dim = self.reduce_dim
@@ -217,7 +222,7 @@ class Transformer(Processor):
                 x.store(path=path)
                 x = BeamData.from_path(path=path)
         else:
-            x = self.collate(x, **kwargs)
+            x = self.reduce(x, **kwargs)
 
         return x
 
