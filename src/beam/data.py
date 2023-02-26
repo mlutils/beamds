@@ -7,7 +7,7 @@ import pandas as pd
 import math
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, container_len, is_arange, listdir_fullpath, is_chunk, \
+    recursive_size_summary, container_len, is_arange, is_chunk, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key, \
     get_closest_item_with_tuple_key
@@ -1014,6 +1014,17 @@ class BeamData(object):
         self.root_path = path
         self.data = data
         self.all_paths = BeamData.recursive_map_path(path, glob_filter=self.glob_filter)
+
+    def state_dict(self):
+        if not self.cached:
+            self.cache()
+
+        return {'data': self.data, 'info': self.info, 'conf': self.conf, 'index': self.index, 'label': self.label,
+                'schema': self.schema}
+
+    @classmethod
+    def load_state_dict(cls, state_dict):
+        return cls(**state_dict)
 
     def cache(self, all_paths=None, schema=None, update=False, **kwargs):
 

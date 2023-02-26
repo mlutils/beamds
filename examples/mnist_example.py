@@ -186,6 +186,9 @@ if __name__ == '__main__':
     # train
     alg = experiment(mnist_algorithm_generator)
 
+    ind, examples = alg.dataset[np.random.choice(len(alg.dataset), size=50000, replace=True)]
+    res = alg.predict(examples['x'])
+
     # ## Inference
     inference = alg('test')
 

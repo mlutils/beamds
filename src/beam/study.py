@@ -3,6 +3,7 @@ import os
 import copy
 
 from .utils import logger, find_port, print_beam_hyperparameters, check_type, is_notebook
+from .path import beam_path
 import pandas as pd
 import ray
 from ray.tune import JupyterNotebookReporter
@@ -92,8 +93,9 @@ class Study(object):
         if print_hyperparameters:
             print_beam_hyperparameters(hparams)
 
-        self.ray_logs = os.path.join(self.hparams.root_path, 'ray_results', self.hparams.project_name,
-                                     self.hparams.algorithm, self.hparams.identifier)
+        root_path = beam_path(self.hparams.root_dir)
+        self.ray_logs = root_path.joinpath('ray_results', self.hparams.project_name, self.hparams.algorithm,
+                                           self.hparams.identifier)
 
         self.experiments_tracker = []
         self.track_results = track_results

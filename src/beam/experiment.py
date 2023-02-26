@@ -181,15 +181,15 @@ class Experiment(object):
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.hparams.device = beam_device(self.hparams.device)
 
-        root_path = beam_path(self.hparams.root_path)
+        root_path = beam_path(self.hparams.root_dir)
         self.base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
-        self.base_dir.mkdir(self.base_dir, exist_ok=True, parents=True)
+        self.base_dir.mkdir(exist_ok=True, parents=True)
 
         self.exp_name = None
         self.load_model = False
 
         pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
-        exp_names = list(filter(lambda x: re.match(pattern, x) is not None, self.base_dir.iterdir()))
+        exp_names = list(filter(lambda x: re.match(pattern, str(x)) is not None, self.base_dir.iterdir()))
         exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
 
         if self.hparams.reload:
@@ -295,7 +295,7 @@ class Experiment(object):
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
 
-        log_file = self.root.joinpath('experiment.log')
+        log_file = str(self.root.joinpath('experiment.log'))
         logger.add(log_file, level='INFO', colorize=True,
                    format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
 
@@ -619,9 +619,9 @@ class Experiment(object):
 
     def normalize_experiment_path(self, path, level=0):
 
-        normal_path = [self.hparams.root_path, self.hparams.project_name,
+        normal_path = [self.hparams.root_dir, self.hparams.project_name,
                        self.hparams.algorithm, self.hparams.identifier]
-        pd = path_depth(self.hparams.root_path)
+        pd = path_depth(self.hparams.root_dir)
 
         return os.path.join(*normal_path[:len(normal_path)-pd-level], path)
 
@@ -704,13 +704,13 @@ class Experiment(object):
         suffix = 'hparams' if hparams else 'logs'
 
         if add_all_of_same_project:
-            base_dir = os.path.join(self.hparams.root_path, self.hparams.project_name)
+            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name)
             depth = 3
         elif add_all_of_same_algorithm:
-            base_dir = os.path.join(self.hparams.root_path, self.hparams.project_name, self.hparams.algorithm)
+            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm)
             depth = 2
         elif add_all_of_same_identifier:
-            base_dir = os.path.join(self.hparams.root_path, self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
+            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
             depth = 1
         else:
             base_dir = self.root

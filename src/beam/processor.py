@@ -1,5 +1,5 @@
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, container_len, is_arange, listdir_fullpath, retrieve_name
+    recursive_size_summary, container_len, is_arange, retrieve_name
 from .parallel import parallel, BeamParallel, BeamTask
 from collections import OrderedDict
 from .data import BeamData
@@ -28,6 +28,17 @@ class Processor(object):
         else:
             state = BeamData(self.state, path=path)
             state.store()
+
+    def state_dict(self):
+        if isinstance(self.state, BeamData):
+            if not self.state.cached:
+                self.state.cache()
+            return self.state.state_dict()
+        else:
+            return self.state
+
+    def load_state_dict(self, state_dict):
+        self.state = BeamData.load_state_dict(state_dict)
 
     def load_state(self, path=None):
         if path is None:

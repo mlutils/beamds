@@ -38,8 +38,8 @@ from argparse import Namespace
 
 # logger.remove(handler_id=0)
 logger.remove()
-logger.add(sys.stdout, level='INFO', colorize=True,
-           format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>')
+logger.add(sys.stdout, level='INFO', colorize=True, format=
+           '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
 
 
 def retrieve_name(var):
@@ -317,7 +317,7 @@ class PureBeamPath:
             elif ext == '.pt':
                 torch.save(x, fo, **kwargs)
             else:
-                raise ValueError("Unsupported extension type.")
+                raise ValueError(f"Unsupported extension type: {ext} for file {x}.")
 
         return self
 
@@ -363,42 +363,42 @@ def stack_train_results(results, batch_size=None):
         for k_name, v in results[k_type].items():
             stacked_results[k_type][k_name] = v
 
-    stacked_results = stack_inference_results(stacked_results, batch_size=batch_size)
+    stacked_results = stack_batched_results(stacked_results, batch_size=batch_size)
 
     return stacked_results
 
 
-def stack_inference_results(results, batch_size=None):
+def stack_batched_results(results, batch_size=None):
     for n, res in results.items():
         for k, v in res.items():
             v_type = check_type(v)
-            if v_type.major == 'container' and v_type.minor == 'list':
+            if v_type.major == 'container':
+                v = recursive_flatten(v)
+                v_type = check_type(v)
+
+            if v_type.major == 'container' and v_type.element == 'array':
+
+                if v_type.minor == 'tensor':
+                    oprs = {'cat': torch.cat, 'stack': torch.stack}
+                elif v_type.minor == 'numpy':
+                    oprs = {'cat': np.concatenate, 'stack': np.stack}
+                elif v_type.minor == 'pandas':
+                    oprs = {'cat': pd.concat, 'stack': pd.concat}
+                else:
+                    break
+
+                opr = oprs['cat']
+                if batch_size is not None and v[0].shape != batch_size:
+                    opr = oprs['stack']
+
+                results[n][k] = opr(results[n][k])
+
+            elif v_type.major == 'array' and v_type.minor in ['list', 'tuple']:
                 vi_type = check_type(v[0])
-                if vi_type.minor == 'numpy':
+                if vi_type.minor in ['numpy', 'native']:
                     results[n][k] = np.stack(results[n][k])
                 elif vi_type.minor == 'tensor':
                     results[n][k] = torch.stack(results[n][k])
-            elif v_type.major in ['array', 'container'] and v_type.element == 'array':
-                if v_type.minor in ['tensor', 'numpy', 'list']:
-
-                    if v_type.minor == 'tensor':
-                        oprs = {'cat': torch.cat, 'stack': torch.stack}
-                    elif v_type.minor == 'numpy':
-                        oprs = {'cat': np.concatenate, 'stack': np.stack}
-                    else:
-                        vi_type = check_type(v[0])
-                        if vi_type.minor == 'tensor':
-                            oprs = {'cat': torch.cat, 'stack': torch.stack}
-                        elif vi_type.minor == 'numpy':
-                            oprs = {'cat': np.concatenate, 'stack': np.stack}
-                        else:
-                            break
-
-                    opr = oprs['cat']
-                    if batch_size is not None and v[0].shape != batch_size:
-                        opr = oprs['stack']
-
-                    results[n][k] = opr(results[n][k])
 
     return results
 
@@ -438,6 +438,7 @@ def print_beam_hyperparameters(args, debug_only=False):
 
     log_func('----------------------------------------------------------'
              '---------------------------------------------------------------------')
+
 
 def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
 
@@ -826,10 +827,6 @@ def iter_container(x):
     return enumerate(x)
 
 
-def listdir_fullpath(d):
-    return [os.path.join(d, f) for f in os.listdir(d)]
-
-
 def rmtree(path):
 
     if type(path) is str:
@@ -971,7 +968,7 @@ def check_minor_type(x):
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
     if has_modin and isinstance(x, mpd.base.BasePandasDataset):
-        return 'pandas'
+        return 'modin'
     if scipy.sparse.issparse(x):
         return 'scipy_sparse'
     if isinstance(x, dict):
@@ -1057,7 +1054,7 @@ def check_type(x, check_minor=True, check_element=True):
                     elts = [check_element_type(xi) for xi in x]
 
                 else:
-                    ind = np.random.randint(len(x), 100)
+                    ind = np.random.randint(len(x), size=(100, ))
                     elts = [check_element_type(x[i]) for i in ind]
 
                 if len(set(elts)) == 1:

@@ -9,13 +9,14 @@ import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
-    stack_inference_results, as_numpy, stack_train_results
+    stack_batched_results, as_numpy, stack_train_results
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
 from timeit import default_timer as timer
 from ray import tune
 from .path import beam_path, BeamPath
+from .processor import Processor
 
 
 class Algorithm(object):
@@ -204,6 +205,19 @@ class Algorithm(object):
                                                    clip=self.get_hparam('clip_gradient', k), amp=self.amp,
                                                    accumulate=self.get_hparam('accumulate', k))
 
+        if processors is None:
+            processors = {}
+        elif isinstance(processors, Processor):
+            processors = {processors.name: processors}
+        elif isinstance(processors, list):
+            processors = {p.name: p for p in processors}
+
+        for k, v in processors.items():
+            if k in self.processors:
+                self.processors.pop(k)
+                logger.warning(f"Found processor with identical keys: {k}. Overriding previous processor.")
+            self.processors[k] = v
+
         if schedulers is None:
             schedulers = {}
 
@@ -259,7 +273,7 @@ class Algorithm(object):
     # a setter function
     @experiment.setter
     def experiment(self, experiment):
-        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root_path}")
+        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root}")
         self.trial = experiment.trial
         self._experiment = experiment
 
@@ -861,7 +875,7 @@ class Algorithm(object):
 
             index = torch.cat(index)
             transforms = concat_data(transforms)
-            results = stack_inference_results(results, batch_size=batch_size)
+            results = stack_batched_results(results, batch_size=batch_size)
 
             results = self.postprocess_inference(sample=sample, index=ind, transforms=transforms,
                                                  results=results, subset=subset, dataset=dataset,
@@ -949,6 +963,9 @@ class Algorithm(object):
         for k, scheduler in self.schedulers.items():
             state[f"{k}_scheduler"] = wrapper(scheduler.state_dict())
 
+        for k, processor in self.processors.items():
+            state[f"{k}_processor"] = wrapper(processor.state_dict())
+
         for k, swa_scheduler in self.swa_schedulers.items():
             state[f"{k}_swa_scheduler"] = wrapper(swa_scheduler.state_dict())
 
@@ -1003,6 +1020,12 @@ class Algorithm(object):
                 optimizer.load_state_dict(state[f"{k}_optimizer"])
             else:
                 logger.warning(f"Optimizer {k} is missing from the state-dict")
+
+        for k, processor in self.processors.items():
+            if f"{k}_processor" in state.keys():
+                processor.load_state_dict(state[f"{k}_processor"])
+            else:
+                logger.warning(f"Processor {k} is missing from the state-dict")
 
         for k, scheduler in self.schedulers.items():
             if f"{k}_scheduler" in state.keys():
