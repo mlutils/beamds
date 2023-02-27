@@ -1,5 +1,5 @@
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, container_len, is_arange, retrieve_name
+    recursive_size_summary, container_len, retrieve_name
 from .parallel import parallel, BeamParallel, BeamTask
 from collections import OrderedDict
 from .data import BeamData
@@ -8,11 +8,13 @@ from .path import beam_path
 
 class Processor(object):
 
-    def __init__(self, hparams, *args, name=None, state=None, path=None, **kwargs):
+    def __init__(self, *args, name=None, state=None, path=None, **kwargs):
         self._name = name
         self.state = state
         self.path = beam_path(path)
-        self.hparams = hparams
+
+        if len(args) > 0:
+            self.hparams = args[0]
 
         if self.state is None and self.path is not None:
             self.load_state()
@@ -101,10 +103,10 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, hparams, *args, n_workers=0, n_chunks=None, name=None, store_path=None,
+    def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None,
                  chunksize=None, squeeze=True, multiprocess_method='joblib', reduce_dim=0, **kwargs):
 
-        super(Transformer, self).__init__(hparams, *args, name=name, **kwargs)
+        super(Transformer, self).__init__(*args, name=name, **kwargs)
 
         if (n_chunks is None) and (chunksize is None):
             n_chunks = 1

@@ -27,11 +27,7 @@ class MyTransformer(Transformer):
         return len(x)
 
 
-def get_data(form=None):
-
-    n = 100
-    m = 100
-    k = 4
+def get_data(form=None, n=100, m=100, k=4):
 
     if form == 1:
 
@@ -152,6 +148,26 @@ if __name__ == '__main__':
 
     if 'transform_dd' in tests:
 
+        print("starting transform")
+
+        # path = get_path('/tmp/sandbox/bd', storage)
+        # data = get_data(2)
+        #
+        # bd = BeamData(data, path=path)
+        # bd.store()
+        #
+        # bd2 = BeamData(path=path)
+        # bd2.cache()
+
+        data = get_data(form=2, n=100, m=100, k=40)
+        bd2 = BeamData(data)
+
+        tf = MyTransformer(n_chunks=10, n_workers=0)
+        y = tf.transform(bd2)
+
+        print("done transform_dd")
+
+    if 'transform_df' in tests:
         print("starting transform")
 
         path = get_path('/tmp/sandbox/bd', storage)

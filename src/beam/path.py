@@ -83,18 +83,6 @@ class BeamPath(PureBeamPath):
     def home(cls):
         return cls(str(Path.home()))
 
-    def joinpath(self, *other):
-        path = self.path.joinpath(*other)
-        return BeamPath(path)
-
-    def with_stem(self, stem):
-        path = self.path.with_stem(stem)
-        return BeamPath(path)
-
-    def with_suffix(self, suffix):
-        path = self.path.with_suffix(suffix)
-        return BeamPath(path)
-
     def stat(self):  # add follow_symlinks=False for python 3.10
         return self.path.stat()
 
@@ -237,7 +225,8 @@ def normalize_host(hostname, port=None):
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None, secret_key=None):
-        super().__init__(*pathsegments)
+        super().__init__(*pathsegments, client=client, hostname=hostname, port=port,
+                         access_key=access_key, secret_key=secret_key)
 
         if not self.is_absolute():
             self.path = PurePath('/').joinpath(self.path)
@@ -387,17 +376,6 @@ class S3Path(PureBeamPath):
 
             self.unlink()
             # self.bucket.delete_objects(Delete={"Objects": [{"Key": path.key} for path in self.iterdir()]})
-
-    def with_stem(self, stem):
-        path = self.path.with_stem(stem)
-        return S3Path(path, client=self.client)
-
-    def with_suffix(self, suffix):
-        path = self.path.with_suffix(suffix)
-        return S3Path(path, client=self.client)
-
-    def joinpath(self, *args):
-        return S3Path(self.path.joinpath(*args), client=self.client)
 
     def iterdir(self):
         bucket = self.client.Bucket(self.bucket_name)

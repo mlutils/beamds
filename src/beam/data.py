@@ -159,6 +159,8 @@ class BeamData(object):
         self._schema_type = None
         self._flatten_data = None
         self._flatten_items = None
+        self._size = None
+        self._total_size = None
         self._conf = None
         self._info = info
         self._orientation = orientation
@@ -569,7 +571,7 @@ class BeamData(object):
             s = schema[key]
         elif schema_type.minor == 'list' and key < len(schema):
             s = schema[key]
-        elif schema.major == 'container':
+        elif schema_type.major == 'container':
             s = None
         else:
             s = schema
@@ -937,7 +939,12 @@ class BeamData(object):
 
     @property
     def size(self):
-        return recursive_size(self.data)
+
+        if self._size is not None:
+            return self._size
+
+        self._size = recursive_size(self.data)
+        return self._size
 
     def _concatenate(self, data):
 
@@ -978,6 +985,14 @@ class BeamData(object):
 
         return kwargs
 
+    @property
+    def total_size(self):
+
+        if self._total_size is not None:
+            return self._total_size
+        self._total_size = sum(recursive_flatten(self.size, flat_array=True))
+        return self._total_size
+
     def store(self, data=None, path=None, compress=None, chunksize=int(1e9),
               chunklen=None, n_chunks=None, partition=None, chunk_strategy='files',
               archive_size=int(1e6), override=True, **kwargs):
@@ -985,8 +1000,10 @@ class BeamData(object):
         if path is None:
             path = self.root_path
 
+        sizes = None
         if data is None:
             data = self.data
+            sizes = self.size
 
         path.clean()
 
@@ -994,7 +1011,7 @@ class BeamData(object):
                                          partition=partition, chunk_strategy=chunk_strategy, archive_size=archive_size,
                                          override=override, **kwargs)
 
-        BeamData.write_tree(data, path, root=True, **kwargs)
+        BeamData.write_tree(data, path, root=True, sizes=sizes, **kwargs)
 
         # store info and conf files
         info_path = path.joinpath(BeamData.metadata_files['info'])
@@ -1088,8 +1105,8 @@ class BeamData(object):
         if avoid_reset is None:
             avoid_reset = []
 
-        reset_params = ['_columns_map', '_device', '_len', '_data_types', '_data_type', '_objects_type', '_flatten_data',
-                        '_flatten_items', '_conf', '_info', '_orientation']
+        reset_params = ['_columns_map', '_device', '_len', '_data_types', '_data_type', '_objects_type',
+                        '_flatten_data', '_flatten_items', '_conf', '_info', '_orientation', '_size', '_total_size', ]
 
         for param in reset_params:
             if param not in avoid_reset:
@@ -1539,6 +1556,41 @@ class BeamData(object):
             self._schema_type = check_type(self.schema)
         return self._schema_type
 
+    def divide_chunks(self, chunksize=None, chunklen=None, n_chunks=None, partition=None, chunk_strategy=None):
+
+            if chunk_strategy is None:
+                chunk_strategy = self.chunk_strategy
+
+            if chunksize is None:
+                chunksize = self.chunksize
+
+            if chunklen is None:
+                chunklen = self.chunklen
+
+            if n_chunks is None:
+                n_chunks = self.n_chunks
+
+            if self.cached:
+
+                if (n_chunks is None) and (chunklen is None):
+                    size = self.total_size
+                    n_chunks = max(int(np.round(size / chunksize)), 1)
+                elif (n_chunks is not None) and (chunklen is not None):
+                    logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
+                elif n_chunks is None:
+                    n_chunks = max(int(np.round(container_len(self.data) / chunklen)), 1)
+
+                data_type = self.data
+                if self.orientation == 'simple':
+                    for index_i, label_i, data_i in recursive_chunks((self.index, self.data, self.label), n_chunks, chunk_strategy):
+                        if self.quick_getitem:
+                            yield DataBatch(data=data_i, index=index_i, label=label_i)
+                        else:
+                            yield self.clone(data_i, index=index_i, label=label_i)
+
+            else:
+                pass
+
     def __iter__(self):
         if self.cached:
             for k, v in self.flatten_items.items():
@@ -1560,6 +1612,7 @@ class BeamData(object):
 
                     schema = BeamData.get_schema(self.schema, k, self.schema_type)
                     yield k, self.clone(v, columns=self.columns, index=index, label=label, schema=schema)
+
         else:
             for k, p in recursive_flatten_with_keys(self.all_paths):
 

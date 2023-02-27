@@ -53,7 +53,7 @@ class PureBeamPath:
 
     feather_index_mark = "feather_index:"
 
-    def __init__(self, *pathsegments, configuration=None, info=None, **kwargs):
+    def __init__(self, *pathsegments, configuration=None, info=None, client=None, **kwargs):
         super().__init__()
 
         if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
@@ -62,11 +62,16 @@ class PureBeamPath:
         self.path = PurePath(*pathsegments)
         self.configuration = Namespace(**kwargs)
         if configuration is not None:
+
+            if type(configuration) == Namespace:
+                configuration = configuration.__dict__
             for k, v in configuration.items():
                 self.configuration[k] = v
+
         self.info = info if info is not None else {}
         self.mode = "rb"
         self.file_object = None
+        self.client = client
 
     def rmtree(self):
         if self.is_file():
@@ -117,6 +122,10 @@ class PureBeamPath:
     def __exit__(self, exc_type, exc_val, exc_tb):
         raise NotImplementedError
 
+    def gen(self, path):
+        PathType = type(self)
+        return PathType(path, configuration=self.configuration, info=self.info, client=self.client)
+
     @property
     def parts(self):
         return self.path.parts
@@ -135,11 +144,11 @@ class PureBeamPath:
 
     @property
     def parents(self):
-        return self.path.parents
+        return tuple([self.gen(p) for p in self.path.parents])
 
     @property
     def parent(self):
-        return self.path.parent
+        return self.gen(self.path.parent)
 
     @property
     def name(self):
@@ -173,22 +182,22 @@ class PureBeamPath:
         return self.path.is_reserved()
 
     def joinpath(self, *other):
-        raise NotImplementedError
+        return self.gen(self.path.joinpath(*other))
 
     def match(self, pattern):
         return self.path.match(pattern)
 
     def relative_to(self, *other):
-        return self.path.relative_to(*other)
+        return self.gen(self.path.relative_to(*other))
 
     def with_name(self, name):
-        return self.path.with_name(name)
+        return self.gen(self.path.with_name(name))
 
     def with_stem(self, stem):
-        raise NotImplementedError
+        return self.gen(self.path.with_stem(stem))
 
     def with_suffix(self, suffix):
-        raise NotImplementedError
+        return self.gen(self.path.with_suffix(suffix))
 
     def samefile(self, other):
         raise NotImplementedError
@@ -573,6 +582,11 @@ def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
 
 def is_arange(x):
 
+    x_type = check_type(x)
+
+    if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
+        return False
+
     arr_x = np.array(x)
     try:
         arr_x = arr_x.astype(int)
@@ -584,6 +598,9 @@ def is_arange(x):
 
 
 def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
+
+    if hasattr(x, 'divide_chunks'):
+        return x.divide_chunks(chunksize=chunksize, n_chunks=n_chunks, partition=partition, squeeze=squeeze, dim=dim)
 
     x_type = check_type(x)
 
@@ -623,6 +640,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
 
     except StopIteration:
         return
+
 
 def recursive_size(x):
 

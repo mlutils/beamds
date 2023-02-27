@@ -330,34 +330,34 @@ class BeamParallel(object):
 
     def run(self, n_workers=None, method=None):
 
-        if n_workers is not None:
+        if n_workers is None:
             n_workers = self.n_workers
         n_workers = min(n_workers, len(self.queue))
-        if method is not None:
-            self.method = method
+        if method is None:
+            method = self.method
 
-        logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {self.n_workers} workers,"
-                    f" method: {self.method}")
+        logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {n_workers} workers,"
+                    f" method: {method}")
 
-        if self.n_workers <= 1 or len(self.queue) == 1:
+        if n_workers <= 1 or len(self.queue) == 1:
             results = [t.run() for t in self.queue]
-        elif self.method == 'joblib':
+        elif method == 'joblib':
             results = self._run_joblib(n_workers=n_workers)
-        elif self.method == 'process_map':
+        elif method == 'process_map':
             results = self._run_process_map(n_workers=n_workers)
-        elif self.method == 'apply_async':
+        elif method == 'apply_async':
             results = self._run_apply_async(n_workers=n_workers)
-        elif self.method == 'thread_map':
+        elif method == 'thread_map':
             results = self._run_thread_map(n_workers=n_workers)
-        elif self.method in ['starmap', 'map']:
+        elif method in ['starmap', 'map']:
             results = self._run_starmap(n_workers=n_workers)
-        elif self.method == 'ray':
+        elif method == 'ray':
             results = self._run_ray(n_workers=n_workers)
-        elif self.method == 'dask':
+        elif method == 'dask':
             results = self._run_dask(n_workers=n_workers)
 
         else:
-            raise ValueError(f"Unknown method: {self.method}")
+            raise ValueError(f"Unknown method: {method}")
 
         logger.info(f"Finish running queue: {self.name}.")
         return results
@@ -365,10 +365,10 @@ class BeamParallel(object):
     def __call__(self, tasks=None, func=None, args_list=None, n_workers=None, method=None,
                  kwargs_list=None, name_list=None):
 
-        if n_workers is not None:
-            self.n_workers = n_workers
-        if method is not None:
-            self.method = method
+        if n_workers is None:
+            n_workers = self.n_workers
+        if method is None:
+            method = self.method
 
         if tasks is not None:
             if isinstance(tasks, list):
@@ -392,7 +392,7 @@ class BeamParallel(object):
             for args, kwargs, name in zip(args_list, kwargs_list, name_list):
                 self.add_task(func, *args, **kwargs)
 
-        results = self.run()
+        results = self.run(method=method, n_workers=n_workers)
 
         if self.reduce:
             results = self._reduce(results)
