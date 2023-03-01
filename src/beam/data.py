@@ -87,7 +87,7 @@ class BeamData(object):
 
     def __init__(self, *args, data=None, path=None, name=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
-                 override=True, compress=None, chunk_strategy='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
+                 override=True, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None, write_kwargs=None,
                  quick_getitem=False, orientation=None, glob_filter=None, info=None, **kwargs):
 
@@ -98,7 +98,7 @@ class BeamData(object):
         @param path: if not str, requires to support the pathlib Path attributes and operations, can be container of paths
         @param lazy:
         @param kwargs:
-        @param chunk_strategy: 'keys' or 'blocks'. The data is chunked by keys or by blocks of data.
+        @param split_by: 'keys', 'index', 'columns'. The data is split to chunks by the keys, index or columns.
 
         Possible orientations are: row/column/other
 
@@ -142,7 +142,7 @@ class BeamData(object):
         self._schema = schema
         self.columns = columns
         self.preferred_orientation = preferred_orientation
-        self.chunk_strategy = chunk_strategy
+        self.split_by = split_by
         self.quick_getitem = quick_getitem
         self.glob_filter = glob_filter
 
@@ -750,7 +750,7 @@ class BeamData(object):
             return None
 
     @staticmethod
-    def write_tree(data, path, sizes=None, chunk_strategy='keys', archive_size=int(1e6), chunksize=int(1e9),
+    def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9),
                    chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None, **kwargs):
 
         path = beam_path(path)
@@ -772,7 +772,7 @@ class BeamData(object):
                 BeamData.write_object(data, path, size=size_summary, archive=True, **kwargs)
                 return
 
-            if chunk_strategy == 'data':
+            if split_by == 'data':
 
                 if (n_chunks is None) and (chunklen is None):
                     n_chunks = max(int(np.round(size_summary / chunksize)), 1)
@@ -786,7 +786,7 @@ class BeamData(object):
                     for i, part in enumerate(divide_chunks(data, n_chunks=n_chunks)):
                         name = f'{i:06}{BeamData.partition_directory_name}'
                         BeamData.write_tree(part, path.joinpath(name), sizes=size_summary,
-                                            chunk_strategy='keys', archive_size=archive_size, root=False, schema=schema,
+                                            split_by='keys', archive_size=archive_size, root=False, schema=schema,
                                             n_chunks=1, partition=partition, file_type=file_type, **kwargs)
                     return
             else:
@@ -797,7 +797,7 @@ class BeamData(object):
                     s = BeamData.get_schema(schema, k, schema_type=schema_type)
                     BeamData.write_tree(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
                                         archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
-                                        chunk_strategy='keys', n_chunks=n_chunks, partition=partition, root=False,
+                                        split_by='keys', n_chunks=n_chunks, partition=partition, root=False,
                                         file_type=file_type, schema=s, **kwargs)
 
         else:
@@ -994,7 +994,7 @@ class BeamData(object):
         return self._total_size
 
     def store(self, data=None, path=None, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, chunk_strategy='files',
+              chunklen=None, n_chunks=None, partition=None, split_by='files',
               archive_size=int(1e6), override=True, **kwargs):
 
         if path is None:
@@ -1008,7 +1008,7 @@ class BeamData(object):
         path.clean()
 
         kwargs = self.get_default_params(compress=compress, chunksize=chunksize, chunklen=chunklen, n_chunks=n_chunks,
-                                         partition=partition, chunk_strategy=chunk_strategy, archive_size=archive_size,
+                                         partition=partition, split_by=split_by, archive_size=archive_size,
                                          override=override, **kwargs)
 
         BeamData.write_tree(data, path, root=True, sizes=sizes, **kwargs)
@@ -1422,7 +1422,7 @@ class BeamData(object):
 
     def clone(self, *args, data=None, path=None, name=None,
                  index=None, label=None, columns=None, lazy=None, device=None, target_device=None, schema=None,
-                 override=None, compress=None, chunk_strategy=None, chunksize=None, chunklen=None, n_chunks=None,
+                 override=None, compress=None, split_by=None, chunksize=None, chunklen=None, n_chunks=None,
                  partition=None, archive_size=None, preferred_orientation=None, read_kwargs=None, write_kwargs=None,
                  quick_getitem=None, orientation=None, glob_filter=None, info=None, constructor=None, **kwargs):
 
@@ -1432,7 +1432,7 @@ class BeamData(object):
         target_device = self.get_default('target_device', target_device)
         override = self.get_default('override', override)
         compress = self.get_default('compress', compress)
-        chunk_strategy = self.get_default('chunk_strategy', chunk_strategy)
+        split_by = self.get_default('split_by', split_by)
         chunksize = self.get_default('chunksize', chunksize)
         chunklen = self.get_default('chunklen', chunklen)
         n_chunks = self.get_default('n_chunks', n_chunks)
@@ -1449,7 +1449,7 @@ class BeamData(object):
 
         return constructor(*args, data=data, path=path, name=name,
                  index=index, label=label, columns=columns, lazy=lazy, device=device, target_device=target_device,
-                 override=override, compress=compress, chunk_strategy=chunk_strategy, chunksize=chunksize,
+                 override=override, compress=compress, split_by=split_by, chunksize=chunksize,
                  chunklen=chunklen, n_chunks=n_chunks, partition=partition, archive_size=archive_size, schema=schema,
                  preferred_orientation=preferred_orientation, read_kwargs=read_kwargs, write_kwargs=write_kwargs,
                  quick_getitem=quick_getitem, orientation=orientation, glob_filter=glob_filter, info=info, **kwargs)
@@ -1502,7 +1502,7 @@ class BeamData(object):
         if not self.cached or not self.lazy:
 
             kwargs = self.get_default_params('compress', 'chunksize', 'chunklen', 'n_chunks', 'partition',
-                                              'chunk_strategy', 'archive_size', 'override')
+                                              'split_by', 'archive_size', 'override')
 
             path = self.root_path
             all_paths = self.all_paths
@@ -1556,10 +1556,10 @@ class BeamData(object):
             self._schema_type = check_type(self.schema)
         return self._schema_type
 
-    def divide_chunks(self, chunksize=None, chunklen=None, n_chunks=None, partition=None, chunk_strategy=None):
+    def divide_chunks(self, chunksize=None, chunklen=None, n_chunks=None, partition=None, split_by=None):
 
-            if chunk_strategy is None:
-                chunk_strategy = self.chunk_strategy
+            if split_by is None:
+                split_by = self.split_by
 
             if chunksize is None:
                 chunksize = self.chunksize
@@ -1569,6 +1569,28 @@ class BeamData(object):
 
             if n_chunks is None:
                 n_chunks = self.n_chunks
+
+            if not self.cached and split_by != 'key':
+
+                if not self.lazy:
+                    self.cache()
+                else:
+                    raise ValueError(f"split_by={split_by} is not supported for not-cached and lazay data.")
+
+            if split_by == 'key':
+
+                if self.cached:
+                    data = self.data
+                else:
+                    data = self.all_paths
+
+                if self.orientation == 'simple':
+                    data = recursive_chunks(data, n_chunks, split_by)
+                else:
+                    data = recursive_chunks(data, n_chunks, split_by, key_type='tuple')
+
+                for data_i in data:
+                    yield self.clone(data_i, index=self.index, label=self.label, schema=self.schema)
 
             if self.cached:
 
@@ -1582,7 +1604,7 @@ class BeamData(object):
 
                 data_type = self.data
                 if self.orientation == 'simple':
-                    for index_i, label_i, data_i in recursive_chunks((self.index, self.data, self.label), n_chunks, chunk_strategy):
+                    for index_i, label_i, data_i in recursive_chunks((self.index, self.data, self.label), n_chunks, split_by):
                         if self.quick_getitem:
                             yield DataBatch(data=data_i, index=index_i, label=label_i)
                         else:

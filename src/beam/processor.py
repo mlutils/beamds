@@ -103,9 +103,41 @@ class Reducer(Processor):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None,
-                 chunksize=None, squeeze=True, multiprocess_method='joblib', reduce_dim=0, **kwargs):
+    def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
+                 chunksize=None, multiprocess_method='joblib', squeeze=True, reduce_dim=0, transform_strategy='SC',
+                 split_by='key', **kwargs):
+        """
 
+        @param args:
+        @param n_workers:
+        @param n_chunks:
+        @param name:
+        @param store_path:
+        @param chunksize:
+        @param multiprocess_method:
+        @param squeeze:
+        @param reduce_dim:
+        @param transform_strategy: Determines the strategy of cache/store operations during transformation:
+            'CC' - the data is cached before the split into multiple chunks and the split to multiprocess,
+            the output of each process remains cached and is returned to the main process as a list of cached data.
+            'CS' - the data is cached before the split into multiple chunks and the split to multiprocess,
+            the output of each process is stored and is returned to the main process as a list of paths.
+            This approach suits for enriching the data with additional information, e.g. embeddings
+            where the transformed data does not fit into the memory.
+            'SC' - the data stored and given to the transformer as a list of paths, the output of each process remains
+            cached and is returned to the main process as a list of cached data. This approach suits for the case
+            when the input data is too large to fit into the memory but the transformation generate a small output
+            that can be cached, e.g. aggregation operations.
+            'SS' - the data stored and given to the transformer as a list of paths, the output of each process is stored
+            and is returned to the main process as a list of paths. This approach suits for the case when the input data
+            is too large to fit into the memory and the transformation generate a large output that cannot be cached,
+            e.g. image transformations.
+        @param split_by: The split strategy of the data into chunks.
+        'key' - the data is split by the key,
+        'index' - the data is split by the index (i.e. dim=0).
+        'columns' - the data is split by the columns (i.e. dim=1).
+        @param kwargs:
+        """
         super(Transformer, self).__init__(*args, name=name, **kwargs)
 
         if (n_chunks is None) and (chunksize is None):
@@ -117,6 +149,12 @@ class Transformer(Processor):
         self.n_workers = n_workers
         self.squeeze = squeeze
         self.kwargs = kwargs
+        self.transform_strategy = transform_strategy
+        self.split_by = split_by
+        if self.transform_strategy in ['SC', 'SS'] and self.split_by != 'key':
+            logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"key\", '
+                           f'The split_by is set to "key".')
+            self.split_by = 'key'
 
         if store_path is not None:
             store_path = beam_path(store_path)
@@ -124,13 +162,20 @@ class Transformer(Processor):
             store_path = store_path.joinpath(name)
 
         self.store_path = store_path
+        self.partition = partition
         self.multiprocess_method = multiprocess_method
         self.reduce_dim = reduce_dim
 
         self.queue = BeamParallel(n_workers=n_workers, func=None, method=multiprocess_method,
                                   progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
 
-    def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None):
+    def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None, split_by=None, partition=None):
+
+        if split_by is None:
+            split_by = self.split_by
+
+        if partition is None:
+            partition = self.partition
 
         if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
@@ -138,22 +183,25 @@ class Transformer(Processor):
         if squeeze is None:
             squeeze = self.squeeze
 
-        if isinstance(x, BeamData) and x.cached and x.orientation == 'simple':
-
-            data_chunks = recursive_chunks(x.data, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
-            index_chunks = recursive_chunks(x.index, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
-            label_chunks = recursive_chunks(x.label, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
-
-            for dc, ic, lc in zip(data_chunks, index_chunks, label_chunks):
-
-                k = dc[0]
-                c = x.clone(data=dc[1], index=ic[1], label=lc[1], columns=x.columns)
-
-                yield k, c
+        if isinstance(x, BeamData):
+            return x.divide_chunks(chunksize=chunksize, n_chunks=n_chunks, partition=partition, split_by=split_by)
 
         else:
-            for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
+
+            dim = 0 if split_by == 'index' else 1 if split_by == 'column' else None
+            for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze, dim=dim):
                 yield k, c
+
+            # data_chunks = recursive_chunks(x.data, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
+            # index_chunks = recursive_chunks(x.index, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
+            # label_chunks = recursive_chunks(x.label, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
+            #
+            # for dc, ic, lc in zip(data_chunks, index_chunks, label_chunks):
+            #
+            #     k = dc[0]
+            #     c = x.clone(data=dc[1], index=ic[1], label=lc[1], columns=x.columns)
+            #
+            #     yield k, c
 
     def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
         raise NotImplementedError
@@ -189,7 +237,39 @@ class Transformer(Processor):
         return collate_chunks(*x, dim=reduce_dim, **kwargs)
 
     def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, multiprocess_method=None,
-                  fit=False, cache=True, store=False, store_chunk=False, path=None, **kwargs):
+                  fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=False,
+                  **kwargs):
+        """
+
+        @param x:
+        @param chunksize:
+        @param n_chunks:
+        @param n_workers:
+        @param squeeze:
+        @param multiprocess_method:
+        @param fit:
+        @param path:
+        @param split_by:
+        @param partition:
+        @param transform_strategy: see BeamTransformer.transform_strategy
+        @param cache: default True, cache the data before transformation if it is not cached.
+        @param store: default False, store the data after transformation if it is not stored.
+        @param kwargs:
+        @return:
+        """
+        if split_by is None:
+            split_by = self.split_by
+
+        if partition is None:
+            partition = self.partition
+
+        if transform_strategy is None:
+            transform_strategy = self.transform_strategy
+
+        if transform_strategy in ['SC', 'SS'] and split_by != 'key':
+            logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
+                           f'The split_by is set to "key".')
+            split_by = 'key'
 
         if path is None:
             path = self.store_path
@@ -208,21 +288,50 @@ class Transformer(Processor):
         is_chunk = (n_chunks != 1) or (not squeeze)
         self.queue.set_name(self.name)
 
+        if transform_strategy in ['CC', 'CS'] and type(x) == BeamData and not x.cached:
+            logger.warning(f"Data is not cached but the transformation strategy is {transform_strategy}, "
+                           f"caching data for transformer: {self.name} before the split to chunks.")
+            x.cache()
+
+        if transform_strategy in ['SC', 'SS'] and type(x) == BeamData and not x.stored:
+            logger.warning(f"Data is not stored but the transformation strategy is {transform_strategy}, "
+                           f"storing data for transformer: {self.name} before the split to chunks.")
+            x.store()
+
+        store_chunk = transform_strategy in ['CS', 'SS']
+
+        if path is None:
+
+            if isinstance(x, BeamData) and x.path is not None:
+                path = x.path
+                path = path.parent.joinpath(f"{path.name}_transformed_{self.name}")
+                logger.info(f"Path is not specified for transformer: {self.name}, "
+                            f"the chunk will be stored in a neighboring directory as the original data: {x.path}"
+                            f"to: {path}.")
+            else:
+                logger.warning(f"Path is not specified for transformer: {self.name}, "
+                               f"the chunk will not be stored.")
+                store_chunk = False
+
+            logger.warning(f"Path is not specified for transformer: {self.name}, "
+                           f"the chunk will not be stored.")
+
         if is_chunk:
-            for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze):
+            for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
+                                    squeeze=squeeze, split_by=split_by, partition=partition):
 
                 chunk_path = None
-                if store_chunk and path is not None:
+                if store_chunk:
                     chunk_path = path.joinpath(beam_path(path), BeamData.normalize_key(k))
 
                 self.queue.add(BeamTask(self.worker, (c, ), {'key': k, 'is_chunk': is_chunk,
-                                                             'cache': cache, fit: fit, 'path': chunk_path,
-                                                             'store': store_chunk},
+                                                             'fit': fit, 'path': chunk_path,
+                                                             'cache': cache, 'store': store_chunk},
                                         name=f"{self.name}/{k}", **kwargs))
 
         else:
-            self.queue.add(BeamTask(self.worker, (x, ), {'key': None, 'is_chunk': is_chunk,
-                                                         'cache': cache, fit: fit},
+            # TODO: take care of is_chunk == False and store_chunk == True
+            self.queue.add(BeamTask(self.worker, (x, ), {'key': None, 'is_chunk': is_chunk, 'fit': fit, 'cache': cache},
                                     name=f"{self.name}", **kwargs))
 
         x = self.queue.run(n_workers=n_workers, method=multiprocess_method)
@@ -230,16 +339,11 @@ class Transformer(Processor):
         logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
         if isinstance(x[0], BeamData):
-            x = BeamData.collate(x)
-            if store and path is not None:
+            x = BeamData.collate(x, **kwargs)
+            if store:
                 x.store(path=path)
                 x = BeamData.from_path(path=path)
         else:
             x = self.reduce(x, **kwargs)
 
         return x
-
-
-
-
-

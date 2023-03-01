@@ -599,9 +599,6 @@ def is_arange(x):
 
 def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
 
-    if hasattr(x, 'divide_chunks'):
-        return x.divide_chunks(chunksize=chunksize, n_chunks=n_chunks, partition=partition, squeeze=squeeze, dim=dim)
-
     x_type = check_type(x)
 
     try:
@@ -666,7 +663,11 @@ def recursive_size(x):
         elif x_type.minor in ['numpy', 'scipy_sparse']:
             return x.size * x.dtype.itemsize
         elif x_type.minor == 'pandas':
-            return np.sum(x.memory_usage(index=True, deep=True))
+            try:
+                return np.sum(x.memory_usage(index=True, deep=True))
+            except:
+                print('xxx')
+                return
         else:
             return sys.getsizeof(x)
 

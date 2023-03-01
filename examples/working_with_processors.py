@@ -77,7 +77,8 @@ def get_path(path, storage='local'):
 
 if __name__ == '__main__':
 
-    tests = ['transform_dd']
+    # tests = ['transform_dd']
+    tests = ['single_file']
     storage = 'local'
 
     if 'set_item' in tests:
@@ -183,5 +184,20 @@ if __name__ == '__main__':
         y = tf.transform(bd2)
 
         print("done transform")
+
+    if 'single_file':
+
+            print("starting single file")
+
+            path = get_path('/tmp/sandbox/bd', storage)
+            data = get_data(4)
+
+            bd = BeamData(data, path=path)
+            bd.store()
+
+            bd2 = BeamData(path=path)
+            bd2.cache()
+
+            print("done single file")
 
     print("done all tests")
