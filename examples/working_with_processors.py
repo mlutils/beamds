@@ -78,7 +78,8 @@ def get_path(path, storage='local'):
 if __name__ == '__main__':
 
     # tests = ['transform_dd']
-    tests = ['single_file']
+    # tests = ['single_file']
+    tests = ['chunks']
     storage = 'local'
 
     if 'set_item' in tests:
@@ -185,19 +186,47 @@ if __name__ == '__main__':
 
         print("done transform")
 
-    if 'single_file':
+    if 'single_file' in tests:
 
             print("starting single file")
 
             path = get_path('/tmp/sandbox/bd', storage)
-            data = get_data(4)
+            data = get_data(1)
 
-            bd = BeamData(data, path=path)
+            bd = BeamData(data, path=path, archive_size=0)
+            bd.store()
+
+            path2 = list(bd.all_paths['a'].values())[0]
+
+            bd2 = BeamData(path=path2)
+            bd2.cache()
+            print(bd2)
+
+            bd = BeamData(path=path)
+            bd.cache()
+            print(bd)
+
+            bd3 = BeamData(path=path, all_paths={'data': path2})
+            bd3.cache()
+            print(bd3)
+
+            print("done single file")
+
+    if 'chunks' in tests:
+
+            print("starting chunks")
+
+            path = get_path('/tmp/sandbox/bd', storage)
+            data = get_data(1)
+
+            bd = BeamData(data, path=path, archive_size=0, n_chunks=2, split_by='index')
             bd.store()
 
             bd2 = BeamData(path=path)
             bd2.cache()
 
-            print("done single file")
+            print(bd2)
+
+            print("done chunks")
 
     print("done all tests")

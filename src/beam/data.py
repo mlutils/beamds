@@ -85,7 +85,7 @@ class BeamData(object):
     chunk_file_extension = '_chunk'
     partition_directory_name = '_part'
 
-    def __init__(self, *args, data=None, path=None, name=None,
+    def __init__(self, *args, data=None, path=None, name=None, all_paths=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
                  override=True, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None, write_kwargs=None,
@@ -204,8 +204,14 @@ class BeamData(object):
             self.root_path = BeamData.recursive_root_finder(path)
             self.all_paths = path
         elif path is not None:
+
+            all_paths = BeamData.single_file_case(path, all_paths)
+
             self.root_path = path
-            self.all_paths = BeamData.recursive_map_path(path, glob_filter=self.glob_filter)
+            if all_paths is not None:
+                self.all_paths = all_paths
+            else:
+                self.all_paths = BeamData.recursive_map_path(path, glob_filter=self.glob_filter)
         else:
             self.root_path = None
             self.all_paths = None
@@ -214,6 +220,20 @@ class BeamData(object):
             self.stored = True
             if not lazy:
                 self.cache()
+
+    @staticmethod
+    def single_file_case(path, all_paths):
+
+        for p in path.parent.iterdir():
+            if p.stem == path.stem and p.is_file():
+                ext = p.suffix
+                p = p.rename(p.with_suffix('.temporary_name'))
+                path.mkdir()
+                p = p.rename(path.joinpath(f"{'data'}{ext}"))
+                all_paths = {'data': p}
+                break
+
+        return all_paths
 
     @staticmethod
     def collate(*args, batch=None, **kwargs):
@@ -578,29 +598,18 @@ class BeamData(object):
         return s
 
     @staticmethod
-    def read_tree(paths, schema=None, **kwargs):
+    def containerize_keys_and_values(keys, values):
 
-        paths_type = check_type(paths)
+        if not is_arange(keys):
+            values = dict(zip(keys, values))
+            # values = {k: values[k] for k in sorted(values.keys())}
+        else:
+            values = [values[i] for i in np.argsort(keys)]
 
-        if paths_type.major == 'container':
-            keys = []
-            values = []
+        if type(values) is dict and 'data' in values and len(values) == 1:
+            values = values['data']
 
-            schema_type = check_type(schema)
-
-            for k, next_path in iter_container(paths):
-
-                s = BeamData.get_schema(schema, k, schema_type=schema_type)
-                values.append(BeamData.read_tree(next_path, schema=s, **kwargs))
-                keys.append(k)
-
-            if not is_arange(keys):
-                values = dict(zip(keys, values))
-
-            return values
-
-        path = beam_path(paths)
-        return BeamData.read_object(path, schema=schema, **kwargs)
+        return values
 
     @staticmethod
     def recursive_root_finder(all_paths, head=None):
@@ -653,11 +662,13 @@ class BeamData(object):
                 values.append(BeamData.recursive_map_path(next_path, glob_filter=glob_filter))
 
             # if the directory contains chunks it is considered as a single path
-            if all([is_chunk(p, chunk_pattern=BeamData.chunk_file_extension) for p in keys_paths]):
+            if all([BeamData.chunk_file_extension in p.name for p in keys_paths]):
                 return path
 
             if not is_arange(keys):
                 values = dict(zip(keys, values))
+            else:
+                values = [values[i] for i in np.argsort(keys)]
 
             return values
 
@@ -709,16 +720,32 @@ class BeamData(object):
         return self.data
 
     @staticmethod
-    def read_object(path, schema=None, **kwargs):
+    def read(paths, schema=None, **kwargs):
 
+        paths_type = check_type(paths)
+
+        if paths_type.major == 'container':
+            keys = []
+            values = []
+
+            schema_type = check_type(schema)
+
+            for k, next_path in iter_container(paths):
+
+                s = BeamData.get_schema(schema, k, schema_type=schema_type)
+                values.append(BeamData.read(next_path, schema=s, **kwargs))
+                keys.append(k)
+
+            return BeamData.containerize_keys_and_values(keys, values)
+
+        path = beam_path(paths)
         if schema is not None:
             kwargs = {**schema.read_schema, **kwargs}
 
-        path = beam_path(path)
         if path.is_file():
-            return path.read(path, **kwargs)
+            return path.read(**kwargs)
 
-        elif path.is_dir():
+        if path.is_dir():
 
             keys = []
             values = []
@@ -731,23 +758,24 @@ class BeamData(object):
                     orientation = conf['orientation']
 
                 elif not next_path.name.startswith('.'):
-                    keys.append(next_path.split(BeamData.chunk_file_extension)[0])
-                    values.append(next_path.read(**kwargs))
+                    keys.append(next_path.stem)
+                    values.append(BeamData.read(next_path, schema=schema, **kwargs))
 
-            if all([is_chunk(p, chunk_pattern=BeamData.chunk_file_extension) for p in keys]):
+            if all([BeamData.chunk_file_extension in k for k in keys]):
                 return collate_chunks(*values, keys=keys, dim=orientation)
 
-            if all([is_chunk(p, chunk_pattern=BeamData.partition_directory_name) for p in keys]):
+            elif all([BeamData.partition_directory_name in k for k in keys]):
                 return recursive_collate_chunks(*values, dim=orientation)
 
-        else:
+            else:
+                return BeamData.containerize_keys_and_values(keys, values)
 
-            for p in path.parent.iterdir():
-                if p.stem == path.stem:
-                    return p.read(**kwargs)
+        for p in path.parent.iterdir():
+            if p.stem == path.stem:
+                return p.read(**kwargs)
 
-            logger.warning(f"No object found in path: {path}")
-            return None
+        logger.warning(f"No object found in path: {path}")
+        return None
 
     @staticmethod
     def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9),
@@ -772,33 +800,14 @@ class BeamData(object):
                 BeamData.write_object(data, path, size=size_summary, archive=True, **kwargs)
                 return
 
-            if split_by == 'data':
+            schema_type = check_type(schema)
+            for k, v in iter_container(data):
 
-                if (n_chunks is None) and (chunklen is None):
-                    n_chunks = max(int(np.round(size_summary / chunksize)), 1)
-                elif (n_chunks is not None) and (chunklen is not None):
-                    logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
-                elif n_chunks is None:
-                    n_chunks = max(int(np.round(container_len(data) / chunklen)), 1)
-
-                if n_chunks > 1:
-
-                    for i, part in enumerate(divide_chunks(data, n_chunks=n_chunks)):
-                        name = f'{i:06}{BeamData.partition_directory_name}'
-                        BeamData.write_tree(part, path.joinpath(name), sizes=size_summary,
-                                            split_by='keys', archive_size=archive_size, root=False, schema=schema,
-                                            n_chunks=1, partition=partition, file_type=file_type, **kwargs)
-                    return
-            else:
-
-                schema_type = check_type(schema)
-                for k, v in iter_container(data):
-
-                    s = BeamData.get_schema(schema, k, schema_type=schema_type)
-                    BeamData.write_tree(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
-                                        archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
-                                        split_by='keys', n_chunks=n_chunks, partition=partition, root=False,
-                                        file_type=file_type, schema=s, **kwargs)
+                s = BeamData.get_schema(schema, k, schema_type=schema_type)
+                BeamData.write_tree(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
+                                    archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
+                                    split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
+                                    file_type=file_type, schema=s, **kwargs)
 
         else:
 
@@ -806,13 +815,13 @@ class BeamData(object):
                 path = path.joinpath(BeamData.default_data_file_name)
 
             BeamData.write_object(data, path, size=sizes, archive=False,
-                                        chunksize=chunksize, chunklen=chunklen,
+                                        chunksize=chunksize, chunklen=chunklen, split_by=split_by,
                                         n_chunks=n_chunks, partition=partition, schema=schema,
                                         file_type=file_type, **kwargs)
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None, **kwargs):
+              chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None, split_by=None, **kwargs):
 
         path = beam_path(path)
 
@@ -826,14 +835,15 @@ class BeamData(object):
                                               schema=schema, **kwargs)
         else:
 
-            if (n_chunks is None) and (chunklen is None):
-                if size is None:
-                    size = sum(recursive_flatten(recursive_size(data), flat_array=True))
-                n_chunks = max(int(np.round(size / chunksize)), 1)
-            elif (n_chunks is not None) and (chunklen is not None):
-                logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
-            elif n_chunks is None:
-                n_chunks = max(int(np.round(container_len(data) / chunklen)), 1)
+            if split_by != 'keys':
+                if (n_chunks is None) and (chunklen is None):
+                    if size is None:
+                        size = sum(recursive_flatten(recursive_size(data), flat_array=True))
+                    n_chunks = max(int(np.round(size / chunksize)), 1)
+                elif (n_chunks is not None) and (chunklen is not None):
+                    logger.warning("writing chunks requires only one of chunklen|n_chunks. Defaults to using n_chunks")
+                elif n_chunks is None:
+                    n_chunks = max(int(np.round(container_len(data) / chunklen)), 1)
 
             data_type = check_type(data)
             if partition is not None and data_type.minor == 'pandas':
@@ -850,15 +860,14 @@ class BeamData(object):
             if file_type is not None:
                 priority.insert(file_type, 0)
 
-            if n_chunks > 1:
-                data = list(divide_chunks(data, n_chunks=n_chunks))
+            if split_by != 'keys' and n_chunks > 1:
+                orientation = {'index': 0, 'columns': 1}[split_by]
+                data = list(divide_chunks(data, n_chunks=n_chunks, dim=orientation))
+                BeamData.write_file({'orientation': orientation}, path.joinpath(BeamData.metadata_files['conf']))
+                object_path = path
+
             else:
                 data = [(0, data), ]
-
-            if len(data) > 1:
-                path.mkdir()
-                BeamData.write_file({'orientation': 0}, path.joinpath(BeamData.metadata_files['conf']))
-                object_path = path
 
             for i, di in data:
 
@@ -973,8 +982,15 @@ class BeamData(object):
         return func(data, **kwargs)
 
     def get_default_params(self, *args, **kwargs):
+        """
+        Get default parameters from the class
+
+        @param args:
+        @param kwargs:
+        @return:
+        """
         for k, v in kwargs.items():
-            if hasattr(self, k) and v is not None:
+            if hasattr(self, k) and v is None:
                 kwargs[k] = getattr(self, k)
 
         for k in args:
@@ -993,12 +1009,11 @@ class BeamData(object):
         self._total_size = sum(recursive_flatten(self.size, flat_array=True))
         return self._total_size
 
-    def store(self, data=None, path=None, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, split_by='files',
-              archive_size=int(1e6), override=True, **kwargs):
+    def store(self, data=None, path=None, compress=None, chunksize=None,
+              chunklen=None, n_chunks=None, partition=None, split_by=None,
+              archive_size=None, override=True, **kwargs):
 
-        if path is None:
-            path = self.root_path
+        path = self.get_default('root_path', path)
 
         sizes = None
         if data is None:
@@ -1011,7 +1026,7 @@ class BeamData(object):
                                          partition=partition, split_by=split_by, archive_size=archive_size,
                                          override=override, **kwargs)
 
-        BeamData.write_tree(data, path, root=True, sizes=sizes, **kwargs)
+        BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, **kwargs)
 
         # store info and conf files
         info_path = path.joinpath(BeamData.metadata_files['info'])
@@ -1078,13 +1093,14 @@ class BeamData(object):
         if not self.stored:
             logger.warning("stored=False, data is seems to be un-synchronized")
 
-        data = BeamData.read_tree(all_paths, schema=schema, **kwargs)
+        data = BeamData.read(all_paths, schema=schema, **kwargs)
 
-        if type(data) is dict and 'data' in data and len(data) == 1:
-            data = data['data']
+        # if type(data) is dict and 'data' in data and len(data) == 1:
+        #     data = data['data']
 
         self.root_path = root_path
-        self.all_paths = BeamData.recursive_map_path(root_path, glob_filter=self.glob_filter)
+        # self.all_paths = BeamData.recursive_map_path(root_path, glob_filter=self.glob_filter)
+        self.all_paths = all_paths
         self.data = data
         self.stored = True
         self.cached = True
@@ -1092,10 +1108,10 @@ class BeamData(object):
         for p in root_path.iterdir():
 
             if p.stem == BeamData.metadata_files['index']:
-                self.index = BeamData.read_object(p)
+                self.index = BeamData.read(p)
 
             if p.stem == BeamData.metadata_files['label']:
-                self.label = BeamData.read_object(p)
+                self.label = BeamData.read(p)
 
         self.reset_metadata()
         return self
@@ -1268,6 +1284,10 @@ class BeamData(object):
                     values = dict(zip(keys, values))
                     index = dict(zip(keys, index))
                     label = dict(zip(keys, label))
+                else:
+                    values = [values[j] for j in np.argsort(keys)]
+                    index = [index[j] for j in np.argsort(keys)]
+                    label = [label[j] for j in np.argsort(keys)]
 
                 return index, values, label, flat_key
 
@@ -1388,7 +1408,7 @@ class BeamData(object):
             except KeyError:
                 raise KeyError(f"Cannot find keys: {keys} in stored BeamData object. "
                                f"If the object is archived you should cache it before slicing.")
-            data = BeamData.read_tree(all_paths, schema=schema)
+            data = BeamData.read(all_paths, schema=schema)
 
         index = self.index
         label = self.label
@@ -1558,17 +1578,10 @@ class BeamData(object):
 
     def divide_chunks(self, chunksize=None, chunklen=None, n_chunks=None, partition=None, split_by=None):
 
-            if split_by is None:
-                split_by = self.split_by
-
-            if chunksize is None:
-                chunksize = self.chunksize
-
-            if chunklen is None:
-                chunklen = self.chunklen
-
-            if n_chunks is None:
-                n_chunks = self.n_chunks
+            split_by = self.get_default('split_by', split_by)
+            chunksize = self.get_default('chunksize', chunksize)
+            chunklen = self.get_default('chunklen', chunklen)
+            n_chunks = self.get_default('n_chunks', n_chunks)
 
             if not self.cached and split_by != 'key':
 
@@ -1580,8 +1593,20 @@ class BeamData(object):
             if split_by == 'key':
 
                 if self.cached:
-                    data = self.data
+
+                    for k, d in self.flatten_items():
+                        s = get_item_with_tuple_key(self.schema, k)
+                        index = None
+                        if self.index is not None:
+                            index = get_item_with_tuple_key(self.index, k)
+                        label = None
+                        if self.label is not None:
+                            label = get_item_with_tuple_key(self.label, k)
+                        yield self.clone(d, index=index, label=label, schema=s)
+
                 else:
+
+                    #TODO: START HERE NEXT TIME
                     data = self.all_paths
 
                 if self.orientation == 'simple':
@@ -1589,8 +1614,7 @@ class BeamData(object):
                 else:
                     data = recursive_chunks(data, n_chunks, split_by, key_type='tuple')
 
-                for data_i in data:
-                    yield self.clone(data_i, index=self.index, label=self.label, schema=self.schema)
+
 
             if self.cached:
 

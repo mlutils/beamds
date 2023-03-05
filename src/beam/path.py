@@ -155,11 +155,11 @@ class BeamPath(PureBeamPath):
         return self.path.readlink()
 
     def rename(self, target):
-        path = self.path.rename(target)
+        path = self.path.rename(str(target))
         return BeamPath(path)
 
     def replace(self, target):
-        path = self.path.replace(target)
+        path = self.path.replace(str(target))
         return BeamPath(path)
 
     def absolute(self):
@@ -182,13 +182,13 @@ class BeamPath(PureBeamPath):
         return self.path.samefile(other)
 
     def symlink_to(self, target, target_is_directory=False):
-        self.path.symlink_to(target, target_is_directory=target_is_directory)
+        self.path.symlink_to(str(target), target_is_directory=target_is_directory)
 
     def hardlink_to(self, target):
-        self.path.link_to(target)
+        self.path.link_to(str(target))
 
     def link_to(self, target):
-        self.path.link_to(target)
+        self.path.link_to(str(target))
 
     def touch(self, *args, **kwargs):
         self.path.touch(*args, **kwargs)

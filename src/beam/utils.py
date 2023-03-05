@@ -302,7 +302,15 @@ class PureBeamPath:
         with self(mode=PureBeamPath.mode('write', ext)) as fo:
 
             if ext == '.fea':
+
+                if len(x.shape) == 1:
+                    x = pd.Series(x)
+                    if x.name is None:
+                        x.name = 'val'
+
                 x = pd.DataFrame(x)
+                x = x.rename({c: str(c) for c in x.columns}, axis=1)
+
                 index_name = x.index.name if x.index.name is not None else 'index'
                 df = x.reset_index()
                 new_name = PureBeamPath.feather_index_mark + index_name
@@ -576,6 +584,8 @@ def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
 
     if not is_arange(keys):
         values = dict(zip(keys, values))
+    else:
+        values = [values[i] for i in np.argsort(keys)]
 
     return values
 
@@ -666,8 +676,7 @@ def recursive_size(x):
             try:
                 return np.sum(x.memory_usage(index=True, deep=True))
             except:
-                print('xxx')
-                return
+                return x.size * x.dtype.itemsize
         else:
             return sys.getsizeof(x)
 
@@ -713,8 +722,11 @@ def recursive_keys(x):
         if all([v is None for v in values]):
             return keys
 
-        if x_type.minor == 'dict' and not is_arange(values):
-            values = dict(zip(keys, values))
+        if x_type.minor == 'dict':
+            if not is_arange(values):
+                values = dict(zip(keys, values))
+            else:
+                values = [values[i] for i in np.argsort(keys)]
 
         return values
 
@@ -834,7 +846,6 @@ def recursive_merge(dfs, method='tree', **kwargs):
         return recursive_merge([recursive_merge(dfs[:len(dfs)//2], method='tree', **kwargs),
                                 recursive_merge(dfs[len(dfs)//2:], method='tree', **kwargs)], method='tree', **kwargs)
     raise ValueError('Unknown method type')
-
 
 def is_chunk(path, chunk_pattern='_chunk'):
     return path.is_file() and bool(re.search(rf'\d{6}{chunk_pattern}\.', str(path.name)))
