@@ -224,9 +224,10 @@ def normalize_host(hostname, port=None):
 
 class S3Path(PureBeamPath):
 
-    def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None, secret_key=None):
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
+                 secret_key=None, **kwargs):
         super().__init__(*pathsegments, client=client, hostname=hostname, port=port,
-                         access_key=access_key, secret_key=secret_key)
+                         access_key=access_key, secret_key=secret_key, **kwargs)
 
         if not self.is_absolute():
             self.path = PurePath('/').joinpath(self.path)
@@ -289,7 +290,8 @@ class S3Path(PureBeamPath):
             return self._check_if_bucket_exists()
 
         key = f"{self.key.rstrip('/')}/"
-        return S3Path._exists(self.client, self.bucket_name, key) or (not self._is_empty(key))
+        return S3Path._exists(self.client, self.bucket_name, key) or \
+               (self._check_if_bucket_exists() and (not self._is_empty(key)))
 
     def open(self, mode="r", **kwargs):
         if "w" in mode:

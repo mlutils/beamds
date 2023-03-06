@@ -79,8 +79,9 @@ if __name__ == '__main__':
 
     # tests = ['transform_dd']
     # tests = ['single_file']
-    tests = ['chunks']
-    storage = 'local'
+    # tests = ['chunks']
+    tests = ['set_item']
+    storage = 's3'
 
     if 'set_item' in tests:
 
@@ -228,5 +229,20 @@ if __name__ == '__main__':
             print(bd2)
 
             print("done chunks")
+    if 'iter' in tests:
+
+            print("starting iter")
+
+            path = get_path('/tmp/sandbox/bd', storage)
+            data = get_data(1)
+
+            bd = BeamData(data, path=path, archive_size=0, n_chunks=2, split_by='index')
+            bd.store()
+
+            for k, v in bd:
+                print(k, v)
+
+            print("done iter")
+
 
     print("done all tests")

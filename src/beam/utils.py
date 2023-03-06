@@ -66,7 +66,7 @@ class PureBeamPath:
             if type(configuration) == Namespace:
                 configuration = configuration.__dict__
             for k, v in configuration.items():
-                self.configuration[k] = v
+                setattr(self.configuration, k, v)
 
         self.info = info if info is not None else {}
         self.mode = "rb"

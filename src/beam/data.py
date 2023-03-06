@@ -224,14 +224,15 @@ class BeamData(object):
     @staticmethod
     def single_file_case(path, all_paths):
 
-        for p in path.parent.iterdir():
-            if p.stem == path.stem and p.is_file():
-                ext = p.suffix
-                p = p.rename(p.with_suffix('.temporary_name'))
-                path.mkdir()
-                p = p.rename(path.joinpath(f"{'data'}{ext}"))
-                all_paths = {'data': p}
-                break
+        if path.parent.is_dir():
+            for p in path.parent.iterdir():
+                if p.stem == path.stem and p.is_file():
+                    ext = p.suffix
+                    p = p.rename(p.with_suffix('.temporary_name'))
+                    path.mkdir()
+                    p = p.rename(path.joinpath(f"{'data'}{ext}"))
+                    all_paths = {'data': p}
+                    break
 
         return all_paths
 
@@ -582,7 +583,7 @@ class BeamData(object):
         return path
 
     @staticmethod
-    def get_schema(schema, key, schema_type=None):
+    def get_schema_from_subset(schema, key, schema_type=None):
 
         if schema_type is None:
             schema_type = check_type(schema)
@@ -596,6 +597,12 @@ class BeamData(object):
         else:
             s = schema
         return s
+
+    @staticmethod
+    def get_schema_from_tupled_key(schema, key, schema_type=None):
+        for k in key:
+            schema = BeamData.get_schema_from_subset(schema, k, schema_type=schema_type)
+        return schema
 
     @staticmethod
     def containerize_keys_and_values(keys, values):
@@ -732,7 +739,7 @@ class BeamData(object):
 
             for k, next_path in iter_container(paths):
 
-                s = BeamData.get_schema(schema, k, schema_type=schema_type)
+                s = BeamData.get_schema_from_subset(schema, k, schema_type=schema_type)
                 values.append(BeamData.read(next_path, schema=s, **kwargs))
                 keys.append(k)
 
@@ -803,7 +810,7 @@ class BeamData(object):
             schema_type = check_type(schema)
             for k, v in iter_container(data):
 
-                s = BeamData.get_schema(schema, k, schema_type=schema_type)
+                s = BeamData.get_schema_from_subset(schema, k, schema_type=schema_type)
                 BeamData.write_tree(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
                                     archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
                                     split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
@@ -836,14 +843,8 @@ class BeamData(object):
         else:
 
             if split_by != 'keys':
-                if (n_chunks is None) and (chunklen is None):
-                    if size is None:
-                        size = sum(recursive_flatten(recursive_size(data), flat_array=True))
-                    n_chunks = max(int(np.round(size / chunksize)), 1)
-                elif (n_chunks is not None) and (chunklen is not None):
-                    logger.warning("writing chunks requires only one of chunklen|n_chunks. Defaults to using n_chunks")
-                elif n_chunks is None:
-                    n_chunks = max(int(np.round(container_len(data) / chunklen)), 1)
+                n_chunks = BeamData.get_n_chunks(data, chunksize=chunksize, chunklen=chunklen,
+                                                 n_chunks=n_chunks, size=size)
 
             data_type = check_type(data)
             if partition is not None and data_type.minor == 'pandas':
@@ -1440,7 +1441,7 @@ class BeamData(object):
         else:
             return default
 
-    def clone(self, *args, data=None, path=None, name=None,
+    def clone(self, *args, data=None, path=None, name=None, all_paths=None,
                  index=None, label=None, columns=None, lazy=None, device=None, target_device=None, schema=None,
                  override=None, compress=None, split_by=None, chunksize=None, chunklen=None, n_chunks=None,
                  partition=None, archive_size=None, preferred_orientation=None, read_kwargs=None, write_kwargs=None,
@@ -1467,7 +1468,7 @@ class BeamData(object):
         if constructor is None:
             constructor = BeamData
 
-        return constructor(*args, data=data, path=path, name=name,
+        return constructor(*args, data=data, path=path, name=name, all_paths=all_paths,
                  index=index, label=label, columns=columns, lazy=lazy, device=device, target_device=target_device,
                  override=override, compress=compress, split_by=split_by, chunksize=chunksize,
                  chunklen=chunklen, n_chunks=n_chunks, partition=partition, archive_size=archive_size, schema=schema,
@@ -1570,6 +1571,20 @@ class BeamData(object):
     def reset_index(self):
         return self.clone(self.data, index=None, label=self.label, schema=self.schema)
 
+    @staticmethod
+    def get_n_chunks(data, n_chunks=None, chunklen=None, chunksize=None, size=None):
+
+        if (n_chunks is None) and (chunklen is None):
+            if size is None:
+                size = sum(recursive_flatten(recursive_size(data), flat_array=True))
+            n_chunks = max(int(np.round(size / chunksize)), 1)
+        elif (n_chunks is not None) and (chunklen is not None):
+            logger.warning("splitting to chunks requires only one of chunklen|n_chunks. Defaults to using n_chunks")
+        elif n_chunks is None:
+            n_chunks = max(int(np.round(container_len(data) / chunklen)), 1)
+
+        return n_chunks
+
     @property
     def schema_type(self):
         if self._schema_type is None:
@@ -1582,96 +1597,72 @@ class BeamData(object):
             chunksize = self.get_default('chunksize', chunksize)
             chunklen = self.get_default('chunklen', chunklen)
             n_chunks = self.get_default('n_chunks', n_chunks)
+            partition = self.get_default('partition', partition)
 
-            if not self.cached and split_by != 'key':
+            if not self.cached and split_by != 'keys':
 
                 if not self.lazy:
                     self.cache()
                 else:
                     raise ValueError(f"split_by={split_by} is not supported for not-cached and lazay data.")
 
-            if split_by == 'key':
+            if split_by == 'keys':
 
                 if self.cached:
 
-                    for k, d in self.flatten_items():
-                        s = get_item_with_tuple_key(self.schema, k)
+                    for i, (k, d) in enumerate(self.flatten_items.items()):
+
+                        s = BeamData.get_schema_from_tupled_key(self.schema, k)
                         index = None
                         if self.index is not None:
                             index = get_item_with_tuple_key(self.index, k)
                         label = None
                         if self.label is not None:
                             label = get_item_with_tuple_key(self.label, k)
-                        yield self.clone(d, index=index, label=label, schema=s)
+
+                        info = None
+                        if self.info is not None:
+                            info = self.info[self.info['fold_index'] == i]
+                        yield self.clone(d, index=index, label=label, schema=s, info=info)
 
                 else:
 
-                    #TODO: START HERE NEXT TIME
-                    data = self.all_paths
+                    for i, (k, p) in enumerate(recursive_flatten_with_keys(self.all_paths)):
+                        s = get_item_with_tuple_key(self.schema, k)
 
-                if self.orientation == 'simple':
-                    data = recursive_chunks(data, n_chunks, split_by)
+                        info = None
+                        if self.info is not None:
+                            info = self.info[self.info['fold_index'] == i]
+
+                        yield self.clone(path=self.root_path, all_paths={'data': p}, schema=s, info=info)
+
+            else:
+
+                n_chunks = BeamData.get_n_chunks(self.data, n_chunks=n_chunks, chunklen=chunklen, chunksize=chunksize,
+                                                 size=self.total_size)
+
+                if split_by == 'column':
+
+                    for i, data_i in enumerate(recursive_chunks(self.data, n_chunks, dim=split_by)):
+                        if self.quick_getitem:
+                            yield DataBatch(data=data_i, index=self.index, label=self.label)
+                        else:
+                            yield self.clone(data_i, index=self.index, label=self.label)
+
                 else:
-                    data = recursive_chunks(data, n_chunks, split_by, key_type='tuple')
 
-
-
-            if self.cached:
-
-                if (n_chunks is None) and (chunklen is None):
-                    size = self.total_size
-                    n_chunks = max(int(np.round(size / chunksize)), 1)
-                elif (n_chunks is not None) and (chunklen is not None):
-                    logger.warning("processor.write requires only one of chunklen|n_chunks. Defaults to using n_chunks")
-                elif n_chunks is None:
-                    n_chunks = max(int(np.round(container_len(self.data) / chunklen)), 1)
-
-                data_type = self.data
-                if self.orientation == 'simple':
-                    for index_i, label_i, data_i in recursive_chunks((self.index, self.data, self.label), n_chunks, split_by):
+                    for i, (index_i, label_i, data_i) in enumerate(recursive_chunks((self.index, self.data, self.label),
+                                                                                    n_chunks, dim=split_by,
+                                                                                    partition=partition)):
                         if self.quick_getitem:
                             yield DataBatch(data=data_i, index=index_i, label=label_i)
                         else:
                             yield self.clone(data_i, index=index_i, label=label_i)
 
-            else:
-                pass
-
     def __iter__(self):
-        if self.cached:
-            for k, v in self.flatten_items.items():
 
-                if v is None:
-                    yield k, None
-
-                index = None
-                if self.index is not None:
-                    index = get_item_with_tuple_key(self.index, k)
-
-                label = None
-                if self.label is not None:
-                    label = get_item_with_tuple_key(self.label, k)
-
-                if self.quick_getitem:
-                    yield k, DataBatch(data=v, index=index, label=label)
-                else:
-
-                    schema = BeamData.get_schema(self.schema, k, self.schema_type)
-                    yield k, self.clone(v, columns=self.columns, index=index, label=label, schema=schema)
-
-        else:
-            for k, p in recursive_flatten_with_keys(self.all_paths):
-
-                index = None
-                if self.index is not None:
-                    index = get_item_with_tuple_key(self.index, k)
-
-                label = None
-                if self.label is not None:
-                    label = get_item_with_tuple_key(self.label, k)
-
-                schema = BeamData.get_schema(self.schema, k, self.schema_type)
-                yield k, self.clone(path=p, columns=self.columns, index=index, label=label, schema=schema)
+        for v in self.divide_chunks():
+            yield v
 
     def sample(self, n, replace=True):
 
