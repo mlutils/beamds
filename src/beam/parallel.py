@@ -340,7 +340,7 @@ class BeamParallel(object):
                     f" method: {method}")
 
         if n_workers <= 1 or len(self.queue) == 1:
-            results = [t.run() for t in self.queue]
+            results = [t.run() for t in self.progressbar(self.queue)]
         elif method == 'joblib':
             results = self._run_joblib(n_workers=n_workers)
         elif method == 'process_map':

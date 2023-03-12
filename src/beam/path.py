@@ -305,7 +305,10 @@ class S3Path(PureBeamPath):
         return self.object.get()["Body"].read()
 
     def exists(self):
-        return S3Path._exists(self.client, self.bucket_name, self.key)
+
+        if self.key is None:
+            return self._check_if_bucket_exists()
+        return S3Path._exists(self.client, self.bucket_name, self.key) or self.is_dir()
 
     def rename(self, target):
         self.object.copy_from(
@@ -379,6 +382,11 @@ class S3Path(PureBeamPath):
             self.unlink()
             # self.bucket.delete_objects(Delete={"Objects": [{"Key": path.key} for path in self.iterdir()]})
 
+    def key_depth(self, key=None):
+        if key is None:
+            key = self.key
+        return len(list(filter(lambda x: len(x), key.split('/'))))
+
     def iterdir(self):
         bucket = self.client.Bucket(self.bucket_name)
 
@@ -387,8 +395,17 @@ class S3Path(PureBeamPath):
         else:
             objects = bucket.objects.filter(Prefix=self.key)
 
+        key_depth = self.key_depth()
+        paths = set()
         for obj in objects:
-            yield S3Path("/".join([obj.bucket_name, obj.key]), client=self.client)
+
+            key = list(filter(lambda x: len(x), obj.key.split('/')))
+            if len(key) <= key_depth:
+                continue
+            key = '/'.join(key[:key_depth+1])
+            if key not in paths:
+                paths.add(key)
+                yield S3Path("/".join([obj.bucket_name, key]), client=self.client)
 
     @property
     def parent(self):

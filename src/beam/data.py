@@ -237,19 +237,37 @@ class BeamData(object):
         return all_paths
 
     @staticmethod
-    def collate(*args, batch=None, **kwargs):
+    def collate(*args, batch=None, squeeze=True, dim=0, **kwargs):
 
         @recursive
         def get_data(x):
-            return x.data
+            if isinstance(x, BeamData):
+                return x.data
+            if type(x) is list:
+                x = [xi.data for xi in x]
+                if squeeze:
+                    x = collate_chunks(x, dim=dim)
+            return x
 
         @recursive
         def get_index(x):
-            return x.index
+            if isinstance(x, BeamData):
+                return x.index
+            if type(x) is list:
+                x = [xi.index for xi in x]
+                if squeeze:
+                    x = collate_chunks(x, dim=dim)
+            return x
 
         @recursive
         def get_label(x):
-            return x.label
+            if isinstance(x, BeamData):
+                return x.label
+            if type(x) is list:
+                x = [xi.label for xi in x]
+                if squeeze:
+                    x = collate_chunks(x, dim=dim)
+            return x
 
         if len(args) == 1:
             batch = args[0]
@@ -511,8 +529,7 @@ class BeamData(object):
             else:
 
                 if self.preferred_orientation == 'columns':
-                    lens = recursive_flatten(recursive(lambda x: len(x) if hasattr(x, '__len__') else None)([self.data]),
-                                             flat_array=True)
+                    lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
                     lens = list(filter(lambda x: x is not None, lens))
 
                     lens_index = recursive_flatten(
@@ -1623,7 +1640,7 @@ class BeamData(object):
                         info = None
                         if self.info is not None:
                             info = self.info[self.info['fold_index'] == i]
-                        yield self.clone(d, index=index, label=label, schema=s, info=info)
+                        yield k, self.clone(d, index=index, label=label, schema=s, info=info)
 
                 else:
 
@@ -1634,7 +1651,7 @@ class BeamData(object):
                         if self.info is not None:
                             info = self.info[self.info['fold_index'] == i]
 
-                        yield self.clone(path=self.root_path, all_paths={'data': p}, schema=s, info=info)
+                        yield k, self.clone(path=self.root_path, all_paths={'data': p}, schema=s, info=info)
 
             else:
 
@@ -1643,21 +1660,22 @@ class BeamData(object):
 
                 if split_by == 'column':
 
-                    for i, data_i in enumerate(recursive_chunks(self.data, n_chunks, dim=split_by)):
+                    for k, data_i in recursive_chunks(self.data, n_chunks, dim=split_by):
                         if self.quick_getitem:
-                            yield DataBatch(data=data_i, index=self.index, label=self.label)
+                            yield k, DataBatch(data=data_i, index=self.index, label=self.label)
                         else:
-                            yield self.clone(data_i, index=self.index, label=self.label)
+                            yield k, self.clone(data_i, index=self.index, label=self.label)
 
                 else:
 
-                    for i, (index_i, label_i, data_i) in enumerate(recursive_chunks((self.index, self.data, self.label),
-                                                                                    n_chunks, dim=split_by,
-                                                                                    partition=partition)):
+                    for k, data in recursive_chunks((self.index, self.data, self.label), n_chunks=n_chunks,
+                                                    dim=split_by, partition=partition):
+                        index_i, data_i, label_i = data
+
                         if self.quick_getitem:
-                            yield DataBatch(data=data_i, index=index_i, label=label_i)
+                            yield k, DataBatch(data=data_i, index=index_i, label=label_i)
                         else:
-                            yield self.clone(data_i, index=index_i, label=label_i)
+                            yield k, self.clone(data_i, index=index_i, label=label_i)
 
     def __iter__(self):
 

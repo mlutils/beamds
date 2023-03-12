@@ -6,6 +6,7 @@ deepchecks
 torchensemble
 rtdl
 transformers
+datasets
 tensorboardX
 diviner
 

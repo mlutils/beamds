@@ -104,7 +104,7 @@ class Reducer(Processor):
 class Transformer(Processor):
 
     def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
-                 chunksize=None, multiprocess_method='joblib', squeeze=True, reduce_dim=0, transform_strategy='SC',
+                 chunksize=None, multiprocess_method='joblib', squeeze=True, reduce_dim=0, transform_strategy=None,
                  split_by='key', **kwargs):
         """
 
@@ -132,6 +132,8 @@ class Transformer(Processor):
             and is returned to the main process as a list of paths. This approach suits for the case when the input data
             is too large to fit into the memory and the transformation generate a large output that cannot be cached,
             e.g. image transformations.
+            'C' - the input type is inferred from the BeamData object and the output is cached.
+            'S' - the input type is inferred from the BeamData object and the output is stored.
         @param split_by: The split strategy of the data into chunks.
         'key' - the data is split by the key,
         'index' - the data is split by the index (i.e. dim=0).
@@ -184,24 +186,14 @@ class Transformer(Processor):
             squeeze = self.squeeze
 
         if isinstance(x, BeamData):
-            return x.divide_chunks(chunksize=chunksize, n_chunks=n_chunks, partition=partition, split_by=split_by)
+            for k, c in x.divide_chunks(chunksize=chunksize, n_chunks=n_chunks, partition=partition, split_by=split_by):
+                yield k, c
 
         else:
 
             dim = 0 if split_by == 'index' else 1 if split_by == 'column' else None
             for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze, dim=dim):
                 yield k, c
-
-            # data_chunks = recursive_chunks(x.data, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
-            # index_chunks = recursive_chunks(x.index, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
-            # label_chunks = recursive_chunks(x.label, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze)
-            #
-            # for dc, ic, lc in zip(data_chunks, index_chunks, label_chunks):
-            #
-            #     k = dc[0]
-            #     c = x.clone(data=dc[1], index=ic[1], label=lc[1], columns=x.columns)
-            #
-            #     yield k, c
 
     def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
         raise NotImplementedError
@@ -288,6 +280,22 @@ class Transformer(Processor):
         is_chunk = (n_chunks != 1) or (not squeeze)
         self.queue.set_name(self.name)
 
+        if ((transform_strategy is None) or (transform_strategy == 'C')) and type(x) == BeamData:
+            if x.cached:
+                transform_strategy = 'CC'
+            elif x.stored:
+                transform_strategy = 'SC'
+            else:
+                raise ValueError(f"BeamData is not cached or stored, check your configuration")
+
+        if transform_strategy == 'S' and type(x) == BeamData:
+            if x.cached:
+                transform_strategy = 'CS'
+            elif x.stored:
+                transform_strategy = 'SS'
+            else:
+                raise ValueError(f"BeamData is not cached or stored, check your configuration")
+
         if transform_strategy in ['CC', 'CS'] and type(x) == BeamData and not x.cached:
             logger.warning(f"Data is not cached but the transformation strategy is {transform_strategy}, "
                            f"caching data for transformer: {self.name} before the split to chunks.")
@@ -300,7 +308,7 @@ class Transformer(Processor):
 
         store_chunk = transform_strategy in ['CS', 'SS']
 
-        if path is None:
+        if path is None and store_chunk:
 
             if isinstance(x, BeamData) and x.path is not None:
                 path = x.path
@@ -324,14 +332,15 @@ class Transformer(Processor):
                 if store_chunk:
                     chunk_path = path.joinpath(beam_path(path), BeamData.normalize_key(k))
 
-                self.queue.add(BeamTask(self.worker, (c, ), {'key': k, 'is_chunk': is_chunk,
+                self.queue.add(BeamTask(self.worker, c, {'key': k, 'is_chunk': is_chunk,
                                                              'fit': fit, 'path': chunk_path,
                                                              'cache': cache, 'store': store_chunk},
                                         name=f"{self.name}/{k}", **kwargs))
 
         else:
             # TODO: take care of is_chunk == False and store_chunk == True
-            self.queue.add(BeamTask(self.worker, (x, ), {'key': None, 'is_chunk': is_chunk, 'fit': fit, 'cache': cache},
+            self.queue.add(BeamTask(self.worker, x, {'key': None, 'is_chunk': is_chunk, 'fit': fit,
+                                                         'cache': cache, 'store': store_chunk},
                                     name=f"{self.name}", **kwargs))
 
         x = self.queue.run(n_workers=n_workers, method=multiprocess_method)

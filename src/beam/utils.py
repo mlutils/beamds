@@ -612,7 +612,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
     x_type = check_type(x)
 
     try:
-        if (x_type.major == 'container') and (x_type.minor == 'dict') :
+        if (x_type.major == 'container') and (x_type.minor == 'dict'):
             gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks,
                                        partition=partition, squeeze=squeeze, dim=dim) for k, v in x.items()}
 
@@ -677,6 +677,11 @@ def recursive_size(x):
                 return np.sum(x.memory_usage(index=True, deep=True))
             except:
                 return x.size * x.dtype.itemsize
+        elif x_type.minor == 'list':
+            if len(x) <= 1000:
+                return np.sum([sys.getsizeof(i) for i in x])
+            ind = np.random.randint(len(x), size=(1000,))
+            return len(x) * np.mean([sys.getsizeof(x[i]) for i in ind])
         else:
             return sys.getsizeof(x)
 
@@ -1322,6 +1327,12 @@ def recursive_batch(x, index):
 
 @recursive
 def recursive_len(x):
+
+    x_type = check_type(x)
+
+    if x_type.minor == 'scipy_sparse':
+        return x.shape[0]
+
     if hasattr(x, '__len__'):
         return len(x)
     return None
