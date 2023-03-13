@@ -237,37 +237,7 @@ class BeamData(object):
         return all_paths
 
     @staticmethod
-    def collate(*args, batch=None, squeeze=True, dim=0, **kwargs):
-
-        @recursive
-        def get_data(x):
-            if isinstance(x, BeamData):
-                return x.data
-            if type(x) is list:
-                x = [xi.data for xi in x]
-                if squeeze:
-                    x = collate_chunks(x, dim=dim)
-            return x
-
-        @recursive
-        def get_index(x):
-            if isinstance(x, BeamData):
-                return x.index
-            if type(x) is list:
-                x = [xi.index for xi in x]
-                if squeeze:
-                    x = collate_chunks(x, dim=dim)
-            return x
-
-        @recursive
-        def get_label(x):
-            if isinstance(x, BeamData):
-                return x.label
-            if type(x) is list:
-                x = [xi.label for xi in x]
-                if squeeze:
-                    x = collate_chunks(x, dim=dim)
-            return x
+    def collate(*args, batch=None, split_by=None, **kwargs):
 
         if len(args) == 1:
             batch = args[0]
@@ -283,6 +253,49 @@ class BeamData(object):
             columns = bd.columns
         else:
             columns = None
+
+        if split_by is None:
+            split_by = bd.split_by
+
+        if split_by == 'columns':
+            dim = 1
+            squeeze = True
+        elif split_by == 'index':
+            dim = 0
+            squeeze = True
+        else:
+            dim = None
+            squeeze = False
+
+        @recursive
+        def get_data(x):
+            if isinstance(x, BeamData):
+                return x.data
+            if type(x) is list:
+                x = [xi.data for xi in x]
+                if squeeze:
+                    x = recursive_collate_chunks(*x, dim=dim)
+            return x
+
+        @recursive
+        def get_index(x):
+            if isinstance(x, BeamData):
+                return x.index
+            if type(x) is list:
+                x = [xi.index for xi in x]
+                if squeeze and dim == 0:
+                    x = collate_chunks(*x, dim=0)
+            return x
+
+        @recursive
+        def get_label(x):
+            if isinstance(x, BeamData):
+                return x.label
+            if type(x) is list:
+                x = [xi.label for xi in x]
+                if squeeze and dim == 0:
+                    x = collate_chunks(*x, dim=0)
+            return x
 
         data = get_data(batch)
         index = get_index(batch)
@@ -532,16 +545,16 @@ class BeamData(object):
                     lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
                     lens = list(filter(lambda x: x is not None, lens))
 
-                    lens_index = recursive_flatten(
-                        recursive(lambda x: len(x) if hasattr(x, '__len__') else None)([self.index]))
+                    lens_index = recursive_flatten(recursive_len([self.index]), flat_array=True)
                     lens_index = list(filter(lambda x: x is not None, lens_index))
 
                     if len(np.unique(lens)) == 1 and sum(lens) > sum(lens_index):
                         self._orientation = 'columns'
                         return self._orientation
 
-                shapes = recursive_flatten(
-                    recursive(lambda x: tuple(x.shape[1:]) if hasattr(x, 'shape') and len(x.shape) > 1 else None)([self.data]))
+                shapes = recursive_flatten(recursive(
+                    lambda x: tuple(x.shape[1:]) if hasattr(x, 'shape') and len(x.shape) > 1 else None)([self.data]),
+                                           flat_array=True)
 
                 shapes = list(filter(lambda x: x is not None, shapes))
                 if len(np.unique(shapes) == 1):

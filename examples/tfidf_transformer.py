@@ -28,18 +28,23 @@ from pprint import pprint
 
 class TFIDFTransformer(Transformer):
 
-    def __init__(self, *args, strip_accents='ascii', stop_words='english', max_df=0.1, min_df=2, **kwargs):
+    def __init__(self, *args, state=None, strip_accents='ascii', stop_words='english', max_df=0.1, min_df=2, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.vectorizer = TfidfVectorizer(strip_accents=strip_accents, stop_words=stop_words,
+        self.tfidf = TfidfVectorizer(strip_accents=strip_accents, stop_words=stop_words,
                                           max_df=max_df, min_df=min_df)
+        if state is not None:
+            self.load_state_dict(state)
+            self.tfidf = self.state
 
     def transform_callback(self, bd, key=None, is_chunk=True, **kwargs):
-        x = self.vectorizer.transform(bd['text'].values)
-        return BeamData({'text': bd['label'], 'label': bd['label'], 'tfidf': x})
+        x = self.tfidf.transform(bd['text'].values)
+        bd['tfidf'] = x
+        return bd
 
     def fit(self, bd, **kwargs):
-        self.vectorizer.fit(bd['text'].values)
+        self.tfidf.fit(bd['text'].values)
+        self.state = self.tfidf
 
 
 if __name__ == '__main__':
@@ -51,5 +56,6 @@ if __name__ == '__main__':
 
     transformer.fit(data_train)
     preds = transformer.transform(data_predict)
+    print(preds)
     print('done tfidf_transformer example')
 

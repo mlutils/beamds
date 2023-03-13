@@ -1,9 +1,11 @@
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, container_len, retrieve_name
+    recursive_size_summary, container_len, retrieve_name, build_container_from_tupled_keys
 from .parallel import parallel, BeamParallel, BeamTask
 from collections import OrderedDict
 from .data import BeamData
 from .path import beam_path
+import pickle
+import io
 
 
 class Processor(object):
@@ -37,10 +39,21 @@ class Processor(object):
                 self.state.cache()
             return self.state.state_dict()
         else:
-            return self.state
+
+            mem_file = io.BytesIO()
+            pickle.dump(self.state, mem_file)
+
+            return {'pickle': mem_file}
 
     def load_state_dict(self, state_dict):
-        self.state = BeamData.load_state_dict(state_dict)
+
+        if 'pickle' in state_dict and len(state_dict) == 1:
+            mem_file = state_dict['pickle']
+            mem_file.seek(0)
+            self.state = pickle.load(mem_file)
+
+        else:
+            self.state = BeamData.load_state_dict(state_dict)
 
     def load_state(self, path=None):
         if path is None:
@@ -211,7 +224,7 @@ class Transformer(Processor):
                 x.store(path=store_path)
                 x = BeamData.from_path(path=store_path)
 
-        return x
+        return key, x
 
     def fit(self, x, **kwargs):
         return x
@@ -332,23 +345,26 @@ class Transformer(Processor):
                 if store_chunk:
                     chunk_path = path.joinpath(beam_path(path), BeamData.normalize_key(k))
 
-                self.queue.add(BeamTask(self.worker, c, {'key': k, 'is_chunk': is_chunk,
-                                                             'fit': fit, 'path': chunk_path,
-                                                             'cache': cache, 'store': store_chunk},
-                                        name=f"{self.name}/{k}", **kwargs))
+                self.queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, path=chunk_path,
+                                        cache=cache, store=store_chunk, name=f"{self.name}/{k}", **kwargs))
 
         else:
             # TODO: take care of is_chunk == False and store_chunk == True
-            self.queue.add(BeamTask(self.worker, x, {'key': None, 'is_chunk': is_chunk, 'fit': fit,
-                                                         'cache': cache, 'store': store_chunk},
-                                    name=f"{self.name}", **kwargs))
+            self.queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, fit=fit, cache=cache,
+                                    store=store_chunk,  name=f"{self.name}", **kwargs))
 
-        x = self.queue.run(n_workers=n_workers, method=multiprocess_method)
+        x_with_keys = self.queue.run(n_workers=n_workers, method=multiprocess_method)
+
+        values = [xi[1] for xi in x_with_keys]
+        keys = [xi[0] for xi in x_with_keys]
+        keys = [ki if type(ki) is tuple else (ki, ) for ki in keys]
+
+        x = build_container_from_tupled_keys(keys, values)
 
         logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
         if isinstance(x[0], BeamData):
-            x = BeamData.collate(x, **kwargs)
+            x = BeamData.collate(x, split_by=split_by, **kwargs)
             if store:
                 x.store(path=path)
                 x = BeamData.from_path(path=path)

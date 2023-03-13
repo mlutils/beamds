@@ -881,7 +881,7 @@ def rmtree(path):
 def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
 
     x_type = check_type(xs[0])
-    if x_type == 'container':
+    if x_type.major == 'container':
 
         values = []
         keys = []
@@ -1312,6 +1312,51 @@ def set_item_with_tuple_key(x, key, value):
         x[key[-1]] = value
     else:
         x[key] = value
+
+
+def new_container(k):
+    if type(k) is int:
+        x = []
+    else:
+        x = {}
+
+    return x
+
+
+def insert_tupled_key(x, k, v):
+    if x is None:
+        x = new_container(k[0])
+
+    xi = x
+
+    for ki, kip1 in zip(k[:-1], k[1:]):
+
+        if type(ki) is int and len(xi) == ki:
+            xi.append(new_container(kip1))
+
+        elif ki not in xi:
+            xi[ki] = new_container(kip1)
+
+        xi = xi[ki]
+
+    ki = k[-1]
+    if type(ki) is int and len(xi) == ki:
+        xi.append(v)
+    else:
+        xi[ki] = v
+
+    return x
+
+
+def build_container_from_tupled_keys(keys, values):
+
+    keys = sorted(keys)
+
+    x = None
+    for ki, vi in zip(keys, values):
+        x = insert_tupled_key(x, ki, vi)
+
+    return x
 
 
 @recursive
