@@ -1,10 +1,6 @@
 from pathlib import PurePath, Path
 import botocore
 import re
-from hdfs import InsecureClient
-from hdfs.ext.avro import AvroWriter, AvroReader
-from hdfs.ext.dataframe import read_dataframe, write_dataframe
-import boto3
 from .utils import PureBeamPath
 from io import StringIO, BytesIO
 
@@ -28,7 +24,7 @@ def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kw
         return BeamPath(path)
 
     pattern = re.compile(
-        r'^((?P<protocol>[\w]+)://)?((?P<username>[\w]+)@)?(?P<hostname>[\.\w]+)?(:(?P<port>\d+))?(?P<path>.*)$')
+        r'^((?P<protocol>[\w]+)://)?((?P<username>[\w\-_]+)@)?(?P<hostname>[\-\.\w]+)?(:(?P<port>\d+))?(?P<path>.*)$')
     match = pattern.match(path)
     if match:
         protocol = match.group('protocol')
@@ -225,9 +221,11 @@ def normalize_host(hostname, port=None):
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
-                 secret_key=None, **kwargs):
+                 secret_key=None, tls=True, **kwargs):
         super().__init__(*pathsegments, client=client, hostname=hostname, port=port,
                          access_key=access_key, secret_key=secret_key, **kwargs)
+
+        import boto3
 
         if not self.is_absolute():
             self.path = PurePath('/').joinpath(self.path)
@@ -242,8 +240,13 @@ class S3Path(PureBeamPath):
         else:
             self.key = None
 
+        if tls:
+            self.protocol = 'https'
+        else:
+            self.protocol = 'http'
+
         if client is None:
-            client = boto3.resource(endpoint_url=f'http://{normalize_host(hostname, port)}',
+            client = boto3.resource(endpoint_url=f'{self.protocol}://{normalize_host(hostname, port)}',
                                     config=boto3.session.Config(signature_version='s3v4'),
                                     verify=False, service_name='s3', aws_access_key_id=access_key,
                                     aws_secret_access_key=secret_key)
@@ -289,7 +292,7 @@ class S3Path(PureBeamPath):
         if self.key is None:
             return self._check_if_bucket_exists()
 
-        key = f"{self.key.rstrip('/')}/"
+        key = self.normalize_directory_key()
         return S3Path._exists(self.client, self.bucket_name, key) or \
                (self._check_if_bucket_exists() and (not self._is_empty(key)))
 
@@ -349,7 +352,7 @@ class S3Path(PureBeamPath):
         if not self._check_if_bucket_exists():
             self.bucket.create()
 
-        key = f"{self.key.rstrip('/')}/"
+        key = self.normalize_directory_key()
         self.bucket.put_object(Key=key)
 
     def _is_empty_bucket(self):
@@ -385,27 +388,54 @@ class S3Path(PureBeamPath):
     def key_depth(self, key=None):
         if key is None:
             key = self.key
+        if key is None:
+            return 0
         return len(list(filter(lambda x: len(x), key.split('/'))))
 
+    def normalize_directory_key(self, key=None):
+        if key is None:
+            key = self.key
+        if key is None:
+            return None
+        if not key.endswith('/'):
+            key += '/'
+        return key
+
     def iterdir(self):
-        bucket = self.client.Bucket(self.bucket_name)
 
-        if self.key is None:
-            objects = bucket.objects.all()
-        else:
-            objects = bucket.objects.filter(Prefix=self.key)
+        key = self.normalize_directory_key()
 
-        key_depth = self.key_depth()
-        paths = set()
-        for obj in objects:
+        objects = self.client.meta.client.list_objects_v2(Bucket=self.bucket_name, Prefix=key, Delimiter='/')
 
-            key = list(filter(lambda x: len(x), obj.key.split('/')))
-            if len(key) <= key_depth:
-                continue
-            key = '/'.join(key[:key_depth+1])
-            if key not in paths:
-                paths.add(key)
-                yield S3Path("/".join([obj.bucket_name, key]), client=self.client)
+        if 'CommonPrefixes' in objects:
+            for prefix in objects['CommonPrefixes']:
+                yield S3Path(f"{self.bucket_name}/{prefix['Prefix']}", client=self.client,
+                             configuration=self.configuration, info=self.info)
+
+        if 'Contents' in objects:
+            for content in objects['Contents']:
+                yield S3Path(f"{self.bucket_name}/{content['Key']}", client=self.client,
+                             configuration=self.configuration, info=self.info)
+
+    # def iterdir(self):
+    #     bucket = self.client.Bucket(self.bucket_name)
+    #
+    #     if self.key is None:
+    #         objects = bucket.objects.all()
+    #     else:
+    #         objects = bucket.objects.filter(Prefix=self.key)
+    #
+    #     key_depth = self.key_depth()
+    #     paths = set()
+    #     for obj in objects:
+    #
+    #         key = list(filter(lambda x: len(x), obj.key.split('/')))
+    #         if len(key) <= key_depth:
+    #             continue
+    #         key = '/'.join(key[:key_depth+1])
+    #         if key not in paths:
+    #             paths.add(key)
+    #             yield S3Path("/".join([obj.bucket_name, key]), client=self.client)
 
     @property
     def parent(self):
@@ -436,6 +466,8 @@ class HDFSPath(PureBeamPath):
                  progress=None, cleanup=True):
         super().__init__(*pathsegments, skip_trash=skip_trash, n_threads=n_threads,
                                        temp_dir=temp_dir, chunk_size=chunk_size, progress=progress, cleanup=cleanup)
+
+        from hdfs import InsecureClient
 
         if client is None:
             client = InsecureClient(f'http://{normalize_host(hostname, port)}', user=username)
@@ -507,6 +539,9 @@ class HDFSPath(PureBeamPath):
 
     def read(self, **kwargs):
 
+        from hdfs.ext.avro import AvroReader
+        from hdfs.ext.dataframe import read_dataframe
+
         ext = self.suffix
         path = str(self)
 
@@ -530,6 +565,9 @@ class HDFSPath(PureBeamPath):
         return x
 
     def write(self, x, **kwargs):
+
+        from hdfs.ext.avro import AvroWriter
+        from hdfs.ext.dataframe import write_dataframe
 
         ext = self.suffix
         path = str(self)

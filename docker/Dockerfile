@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:23.01-py3
+FROM nvcr.io/nvidia/pytorch:23.02-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -42,7 +42,7 @@ RUN pip install -U -r /workspace/install/requirements_0003.txt
 RUN pip install -U -r /workspace/install/requirements_0004.txt
 RUN pip install -U -r /workspace/install/requirements_0005.txt
 RUN pip install -U -r /workspace/install/requirements_0006.txt
-# RUN pip install -U -r /workspace/install/requirements_0007.txt
+RUN pip install -U -r /workspace/install/requirements_0007.txt
 RUN pip install -U -r /workspace/install/requirements_0008.txt
 RUN pip install -U -r /workspace/install/requirements_0009.txt
 RUN pip install -U -r /workspace/install/requirements_0010.txt
@@ -52,15 +52,20 @@ RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storag
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 
-# Install faiss if you encounter GPU issues when using the pip version:
-# https://github.com/kyamagu/faiss-wheels/issues/54
-
 # need to see how to install faiss-gpu. for now we install only the cpu version
 # RUN conda install -y -c conda-forge faiss-gpu
+RUN pip install faiss-gpu
+
+RUN pip install  dgl -f https://data.dgl.ai/wheels/repo.html
+RUN pip install  dglgo -f https://data.dgl.ai/wheels-test/repo.html
 
 # install DGL from source
 # REMOVE FOR LITE VERSION
-RUN bash /workspace/install/install_dgl.sh
+# RUN bash /workspace/install/install_dgl.sh
+
+# Install faiss if you encounter GPU issues when using the pip version:
+# https://github.com/kyamagu/faiss-wheels/issues/54
+
 
 # install RAPID framework
 # cannot install rapids as it does not support cuda 12.0 yet
@@ -69,20 +74,26 @@ RUN bash /workspace/install/install_dgl.sh
 
 # download datasets and models
 # REMOVE FOR LITE VERSION
-# RUN python /workspace/install/downloader.py
+RUN python /workspace/install/downloader.py
 
 ## download nlp data
 
 # REMOVE FOR LITE VERSION
-# RUN python -m nltk.downloader all
+RUN python -m nltk.downloader all
 
 #ENV LC_ALL C.UTF-8
 #ENV LANG C.UTF-8
 # REMOVE FOR LITE VERSION
-# RUN python -m spacy download zh_core_web_md
-# RUN python -m spacy download en_core_web_md
-# RUN python -m spacy download xx_ent_wiki_sm
-# RUN python -m spacy download ru_core_news_sm
+RUN python -m spacy download zh_core_web_md
+RUN python -m spacy download en_core_web_md
+RUN python -m spacy download xx_ent_wiki_sm
+RUN python -m spacy download ru_core_news_sm
+
+
+RUN pip install cudf-cu11 dask-cudf-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
+RUN pip install cuml-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
+RUN pip install cugraph-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
+
 
 # install beam
 
