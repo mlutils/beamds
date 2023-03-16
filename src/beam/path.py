@@ -442,15 +442,17 @@ class S3Path(PureBeamPath):
         return S3Path(str(super(S3Path, self).parent), client=self.client)
 
     def __enter__(self):
-        if self.mode == "rb":
-            self.file_object = self.client.Object(self.bucket_name, self.key).get()['Body']
+        if self.mode in ["rb", "r"]:
+            # self.file_object = self.client.Object(self.bucket_name, self.key).get()['Body']
+            self.file_object = self.client.meta.client.get_object(Bucket=self.bucket_name, Key=self.key)['Body']
+
         else:
             self.file_object = BytesIO()
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode == "rb":
+        if self.mode in ["rb", "r"]:
             self.file_object.close()
         else:
             self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue())

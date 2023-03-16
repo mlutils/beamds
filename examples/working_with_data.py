@@ -70,7 +70,7 @@ def get_path(path, storage='local'):
     secret_key = 'cvYL26ItASAwE8ZUxRaZKhVVdcxHZ0SJ'
 
     if storage == 's3':
-        path = beam_path(f"s3://192.168.10.45:9000{path}", access_key=access_key, secret_key=secret_key)
+        path = beam_path(f"s3://192.168.10.45:9000{path}", access_key=access_key, secret_key=secret_key, tls=False)
 
     return beam_path(path)
 
@@ -80,8 +80,45 @@ if __name__ == '__main__':
     # tests = ['transform_dd']
     # tests = ['single_file']
     # tests = ['chunks']
-    tests = ['set_item']
-    storage = 's3'
+    # tests = ['set_item']
+    tests = ['loc_ops']
+    storage = 'file'
+
+    if 'loc_ops' in tests:
+
+        print("starting loc ops")
+
+        path = get_path('/tmp/sandbox/bd', storage)
+
+        bd = BeamData(path=path)
+        bd.cache()
+
+        print(bd.iloc[0:2])
+
+        # iloc/loc operations for index type
+        bd = BeamData(data=get_data(form=3))
+        print(bd.iloc[0:2])
+
+        print("done loc ops")
+
+
+    if 'load_data' in tests:
+
+        print("starting load data")
+
+        path = get_path('/tmp/sandbox/bd', storage)
+
+        data = get_data(1)
+
+        bd = BeamData(data, path=path, archive_size=0)
+        bd.store()
+
+        bd = BeamData(path=path)
+        print(bd)
+        print(bd.values)
+
+        print("done load data")
+
 
     if 'set_item' in tests:
 

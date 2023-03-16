@@ -127,6 +127,7 @@ class BeamData(object):
         '''
 
         #todo: add support for target device+to_tensor when returning DataBatch
+        #TODO: add super_lazy where data and paths are not loaded and it supports only get item by key
 
         self.lazy = lazy
         self.override = override
@@ -137,8 +138,8 @@ class BeamData(object):
         self.partition = partition
         self.archive_size = archive_size
         self.target_device = target_device
-        self.index = index
-        self.label = label
+        self._index = index
+        self._label = label
         self._schema = schema
         self.columns = columns
         self.preferred_orientation = preferred_orientation
@@ -148,7 +149,6 @@ class BeamData(object):
 
         self.stored = False
         self.cached = True
-        self.indices = None
 
         self._columns_map = None
         self._device = None
@@ -221,6 +221,27 @@ class BeamData(object):
             if not lazy:
                 self.cache()
 
+    @property
+    def index(self):
+        if self._index is not None:
+            return self._index
+
+        info = self.info
+        if self.orientation in ['columns', 'simple']:
+            self._index = info.index.values
+        else:
+            self._index = BeamData.recursive_filter(self.size, self.info).index
+            if self.objects_type == 'tensor':
+
+                func = partial(as_tensor, device=self.device, dtype=None, return_vector=False)
+                self._index = recursive(func)(self._index)
+
+        return self._index
+
+    @property
+    def label(self):
+        return self._label
+
     @staticmethod
     def single_file_case(path, all_paths):
 
@@ -280,7 +301,7 @@ class BeamData(object):
         @recursive
         def get_index(x):
             if isinstance(x, BeamData):
-                return x.index
+                return x._index
             if type(x) is list:
                 x = [xi.index for xi in x]
                 if squeeze and dim == 0:
@@ -290,7 +311,7 @@ class BeamData(object):
         @recursive
         def get_label(x):
             if isinstance(x, BeamData):
-                return x.label
+                return x._label
             if type(x) is list:
                 x = [xi.label for xi in x]
                 if squeeze and dim == 0:
@@ -375,8 +396,8 @@ class BeamData(object):
                           'len': len(self),
                           'columns': self.columns,
                           'device': self.device,
-                          'has_index': self.index is not None,
-                          'has_label': self.label is not None,
+                          'has_index': self._index is not None,
+                          'has_label': self._label is not None,
                           'columns_map': self.columns_map}
             return self._conf
 
@@ -413,20 +434,24 @@ class BeamData(object):
                 offset = None
                 # fold_key = None
 
-            if self.index is not None:
-                index = np.concatenate(recursive_flatten([self.index]))
+            if self._index is not None:
+                # it is assumed that if orientation is in ['columns', 'simple'], then _index is a single array
+                index = np.concatenate([as_numpy(i) for i in recursive_flatten([self._index])])
             else:
                 index = np.arange(len(self))
 
-            if self.label is not None:
-                label = np.concatenate(recursive_flatten([self.label]))
+            if self._label is not None:
+                label = np.concatenate([as_numpy(l) for l in recursive_flatten([self._label])])
             else:
                 label = None
 
             info = {'fold': fold, 'fold_index': fold_index,
                     # 'fold_key': fold_key,
                     'offset': offset,
-                    'map': np.arange(len(index)), 'label': label}
+                    'map': np.arange(len(index))}
+
+            if self._label is not None:
+                info['label'] = label
 
             self._info = pd.DataFrame(info, index=index)
             return self._info
@@ -512,7 +537,7 @@ class BeamData(object):
             if self.orientation == 'columns':
                 self._len = container_len(self.data)
             else:
-                self._len = sum(recursive_flatten(recursive(lambda x: len(x) if hasattr(x, '__len__') else 0)(self.data)))
+                self._len = sum(recursive_flatten(recursive_len(self.data)))
             return self._len
 
         self._len = None
@@ -536,8 +561,8 @@ class BeamData(object):
                 self._orientation = 'simple'
                 if hasattr(self.data, 'columns') and self.columns is None:
                     self.columns = self.data.columns
-                if hasattr(self.data, 'index') and self.index is None:
-                    self.index = self.data.index
+                if hasattr(self.data, 'index') and self._index is None:
+                    self._index = self.data.index
 
             else:
 
@@ -545,7 +570,7 @@ class BeamData(object):
                     lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
                     lens = list(filter(lambda x: x is not None, lens))
 
-                    lens_index = recursive_flatten(recursive_len([self.index]), flat_array=True)
+                    lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
                     lens_index = list(filter(lambda x: x is not None, lens_index))
 
                     if len(np.unique(lens)) == 1 and sum(lens) > sum(lens_index):
@@ -709,9 +734,11 @@ class BeamData(object):
 
             return values
 
-        # we store the files without their extension
+        # we store the files without their extension? why?
+        # if path.is_file():
+        #     return path.parent.joinpath(path.stem)
         if path.is_file():
-            return path.parent.joinpath(path.stem)
+            return path
 
         return None
 
@@ -727,8 +754,8 @@ class BeamData(object):
 
         func = partial(as_tensor, device=device, dtype=dtype, return_vector=return_vector)
         self.data = recursive(func)(self.data)
-        self.index = func(self.index)
-        self.index = func(self.label)
+        self._index = func(self._index)
+        self._label = func(self._label)
         self._objects_type = 'tensor'
 
         return self
@@ -742,8 +769,8 @@ class BeamData(object):
 
         func = partial(as_numpy)
         self.data = recursive(func)(self.data)
-        self.index = func(self.index)
-        self.index = func(self.label)
+        self._index = func(self._index)
+        self._index = func(self._label)
         self._objects_type = 'numpy'
 
         return self
@@ -986,28 +1013,38 @@ class BeamData(object):
         self._size = recursive_size(self.data)
         return self._size
 
-    def _concatenate(self, data):
+    def _concatenate(self, data=None, orientation=None, objects_type=None):
 
-        if self.orientation == 'simple':
+        if data is None:
+            data = self.flatten_data
+            orientation = self.orientation
+            objects_type = self.objects_type
+        else:
+            if orientation is None:
+                orientation = 'index'
+            if objects_type is None:
+                objects_type = check_type(data).minor
+
+        if orientation == 'simple':
             dim = None
-        elif self.orientation == 'columns':
+        elif orientation == 'columns':
             dim = 1
-        elif self.orientation == 'index':
+        elif orientation == 'index':
             dim = 0
         else:
             return data
 
-        if self.objects_type == 'tensor':
+        if objects_type == 'tensor':
             func = torch.cat
             kwargs = {'dim': dim}
-        elif self.objects_type == 'pandas':
+        elif objects_type == 'pandas':
             func = pd.concat
             kwargs = {'axis': dim}
-        elif self.objects_type == 'numpy':
+        elif objects_type == 'numpy':
             func = np.concatenate
             kwargs = {'axis': dim}
         else:
-            logger.warning(f"Concatenation not implemented for {self.objects_type}, returning the original data")
+            logger.warning(f"Concatenation not implemented for {objects_type}, returning the original data")
             return data
 
         return func(data, **kwargs)
@@ -1066,12 +1103,12 @@ class BeamData(object):
         BeamData.write_object(self.conf, conf_path, archive=True)
 
         # store index and label
-        if self.index is not None:
+        if self._index is not None:
             index_path = path.joinpath(BeamData.metadata_files['index'])
-            BeamData.write_object(self.index, index_path)
-        if self.label is not None:
+            BeamData.write_object(self._index, index_path)
+        if self._label is not None:
             label_path = path.joinpath(BeamData.metadata_files['label'])
-            BeamData.write_object(self.label, label_path)
+            BeamData.write_object(self._label, label_path)
 
         self.stored = True
         self.root_path = path
@@ -1082,7 +1119,7 @@ class BeamData(object):
         if not self.cached:
             self.cache()
 
-        return {'data': self.data, 'info': self.info, 'conf': self.conf, 'index': self.index, 'label': self.label,
+        return {'data': self.data, 'info': self.info, 'conf': self.conf, 'index': self._index, 'label': self._label,
                 'schema': self.schema}
 
     @classmethod
@@ -1139,10 +1176,10 @@ class BeamData(object):
         for p in root_path.iterdir():
 
             if p.stem == BeamData.metadata_files['index']:
-                self.index = BeamData.read(p)
+                self._index = BeamData.read(p)
 
             if p.stem == BeamData.metadata_files['label']:
-                self.label = BeamData.read(p)
+                self._label = BeamData.read(p)
 
         self.reset_metadata()
         return self
@@ -1164,7 +1201,7 @@ class BeamData(object):
 
     def inverse_map(self, ind):
 
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        ind = slice_to_index(ind, l=len(self), sliced=self._index)
 
         index_type = check_type(ind)
         if index_type.major == 'scalar':
@@ -1207,7 +1244,7 @@ class BeamData(object):
 
     def _iloc(self, ind):
 
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        ind = slice_to_index(ind, l=len(self), sliced=self._index)
         index_type = check_type(ind)
         if index_type.major == 'scalar':
             ind = [ind]
@@ -1233,9 +1270,9 @@ class BeamData(object):
             raise LookupError(f"Cannot slice by columns as data is not in simple or index orientation")
 
         if self.quick_getitem:
-            return DataBatch(data=data, index=self.index, label=self.label)
+            return BeamData.data_batch(data=data, index=self._index, label=self._label)
 
-        return self.clone(data=data, index=self.index, label=self.label, orientation=self.orientation,
+        return self.clone(data=data, index=self._index, label=self._label, orientation=self.orientation,
                           schema=self.schema)
 
     def slice_columns(self, columns):
@@ -1257,15 +1294,26 @@ class BeamData(object):
             raise LookupError(f"Cannot slice by columns as data is not in simple or index orientation")
 
         if self.quick_getitem:
-            return DataBatch(data=data, index=self.index, label=self.label)
+            return BeamData.data_batch(data=data, index=self._index, label=self._label)
 
-        return self.clone(data=data, columns=columns, index=self.index,
-                          label=self.label, orientation=self.orientation)
+        return self.clone(data=data, columns=columns, index=self._index,
+                          label=self._label, orientation=self.orientation)
 
     @property
-    def stack_values(self):
-        data = self._concatenate(self.flatten_data)
+    def stacked_values(self):
+        data = self._concatenate()
         return data
+
+    @property
+    def stacked_index(self):
+        index = self.info.index
+        return index
+
+    @property
+    def stacked_labels(self):
+        if 'label' in self.info:
+            return self.info.label.values
+        return None
 
     @property
     def stack(self):
@@ -1275,19 +1323,19 @@ class BeamData(object):
         if self.orientation == 'packed':
             raise LookupError(f"Cannot stack for packed orientation")
 
-        data = self._concatenate(self.flatten_data)
+        data = self._concatenate()
 
-        index = self.index
-        label = self.label
+        index = self._index
+        label = self._label
         if self.orientation == 'index':
 
             if index is not None:
-                index = self._concatenate(recursive_flatten(self.index))
+                index = self._concatenate(recursive_flatten(self._index), orientation=self.orientation)
             if label is not None:
-                label = self._concatenate(recursive_flatten(self.label))
+                label = self._concatenate(recursive_flatten(self._label), orientation=self.orientation)
 
         if self.quick_getitem:
-            return DataBatch(data=data, index=index, label=label)
+            return BeamData.data_batch(data=data, index=index, label=label)
 
         return self.clone(data=data, index=index, label=label)
 
@@ -1328,15 +1376,19 @@ class BeamData(object):
                 in_fold_index = info_in_fold['fold_index']
                 x_type = check_type(xi)
 
+                label = info_in_fold['label'] if 'label' in info_in_fold else None
+
                 if xi is None:
                     return None, None, None, flat_key + 1
                 elif x_type.minor == 'pandas':
-                    return in_fold_index.index, xi.iloc[in_fold_index.values], info_in_fold['label'], flat_key + 1
+                    return in_fold_index.index, xi.iloc[in_fold_index.values], label, flat_key + 1
+                elif x_type.minor == 'native':
+                    return in_fold_index.index, [xi], label, flat_key + 1
                 else:
-                    return in_fold_index.index, xi[in_fold_index.values], info_in_fold['label'], flat_key + 1
+                    return in_fold_index.index, xi[in_fold_index.values], label, flat_key + 1
 
         i, d, l, _ = _recursive_filter(x, info)
-        return DataBatch(index=i, data=d, label=l)
+        return BeamData.data_batch(data=d, index=i, label=l)
 
     def slice_index(self, index):
 
@@ -1346,8 +1398,8 @@ class BeamData(object):
         if self.orientation in ['simple', 'columns']:
 
             info = None
-            if self.label is not None:
-                label = self.label.loc[index]
+            if self._label is not None:
+                label = self._label.loc[index]
             else:
                 label = None
 
@@ -1359,8 +1411,8 @@ class BeamData(object):
 
             else:
 
-                if self.index is not None:
-                    iloc = self.index[index]
+                if self._index is not None:
+                    iloc = self.info['map'].loc[index]
                 else:
                     iloc = index
 
@@ -1378,10 +1430,32 @@ class BeamData(object):
             raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
 
         if self.quick_getitem:
-            return DataBatch(data=data, index=index, label=self.label)
+            return BeamData.data_batch(data, index=index, label=label)
 
         return self.clone(data=data, columns=self.columns, index=index, label=label,
                           orientation=self.orientation, info=info)
+
+    @staticmethod
+    def data_batch(data, index=None, label=None):
+
+        data_type = check_type(data, check_element=False, check_minor=False)
+        if data_type.major == 'container' and len(data) == 1:
+            if isinstance(data, dict):
+                key = list(data.keys())[0]
+            else:
+                key = 0
+
+            data = data[key]
+            if index is not None:
+                index = index[key]
+                if isinstance(label, pd.Series):
+                    label = label.values
+            if label is not None:
+                label = label[key]
+                if isinstance(label, pd.Series):
+                    label = label.values
+
+        return DataBatch(data=data, index=index, label=label)
 
     @staticmethod
     def slice_scalar_or_list(data, keys, data_type=None, keys_type=None, replace_missing=False):
@@ -1452,7 +1526,7 @@ class BeamData(object):
                 label = BeamData.slice_scalar_or_list(label, keys, keys_type=keys_type, data_type=self.data_type)
 
         if self.quick_getitem and data is not None:
-            return DataBatch(data=data, index=index, label=label)
+            return BeamData.data_batch(data, index=index, label=label)
 
         # determining orientation and info can be ambiguous so we let BeamData to calculate it
         # from the index and label arguments
@@ -1522,8 +1596,8 @@ class BeamData(object):
 
         params = {'orientation': self.orientation, 'lazy': self.lazy, 'stored': self.stored,
                   'cached': self.cached, 'device': self.device, 'objects_type': self.objects_type,
-                  'quick_getitem': self.quick_getitem, 'has_index': self.index is not None,
-                  'has_label': self.label is not None}
+                  'quick_getitem': self.quick_getitem, 'has_index': self._index is not None,
+                  'has_label': self._label is not None}
         params_line = ' | '.join([f"{k}: {v}" for k, v in params.items()])
 
         s = f"BeamData: {self.name}\n"
@@ -1596,10 +1670,10 @@ class BeamData(object):
     def apply(self, func, *args, **kwargs):
         data = recursive(func)(self.data,  *args, **kwargs)
 
-        return self.clone(data, index=self.index, label=self.label)
+        return self.clone(data, index=self._index, label=self._label)
 
     def reset_index(self):
-        return self.clone(self.data, index=None, label=self.label, schema=self.schema)
+        return self.clone(self.data, index=None, label=self._label, schema=self.schema)
 
     @staticmethod
     def get_n_chunks(data, n_chunks=None, chunklen=None, chunksize=None, size=None):
@@ -1644,11 +1718,11 @@ class BeamData(object):
 
                         s = BeamData.get_schema_from_tupled_key(self.schema, k)
                         index = None
-                        if self.index is not None:
-                            index = get_item_with_tuple_key(self.index, k)
+                        if self._index is not None:
+                            index = get_item_with_tuple_key(self._index, k)
                         label = None
-                        if self.label is not None:
-                            label = get_item_with_tuple_key(self.label, k)
+                        if self._label is not None:
+                            label = get_item_with_tuple_key(self._label, k)
 
                         info = None
                         if self.info is not None:
@@ -1675,18 +1749,18 @@ class BeamData(object):
 
                     for k, data_i in recursive_chunks(self.data, n_chunks, dim=split_by):
                         if self.quick_getitem:
-                            yield k, DataBatch(data=data_i, index=self.index, label=self.label)
+                            yield k, BeamData.data_batch(data_i, index=self._index, label=self._label)
                         else:
-                            yield k, self.clone(data_i, index=self.index, label=self.label)
+                            yield k, self.clone(data_i, index=self._index, label=self._label)
 
                 else:
 
-                    for k, data in recursive_chunks((self.index, self.data, self.label), n_chunks=n_chunks,
+                    for k, data in recursive_chunks((self._index, self.data, self._label), n_chunks=n_chunks,
                                                     dim=split_by, partition=partition):
                         index_i, data_i, label_i = data
 
                         if self.quick_getitem:
-                            yield k, DataBatch(data=data_i, index=index_i, label=label_i)
+                            yield k, BeamData.data_batch(data_i, index=index_i, label=label_i)
                         else:
                             yield k, self.clone(data_i, index=index_i, label=label_i)
 
@@ -1736,7 +1810,7 @@ class BeamData(object):
         for i, ind_i in enumerate(item):
 
             # skip if this is a full slice
-            if ind_i == slice(None):
+            if type(ind_i) is slice and ind_i == slice(None):
                 axes.pop(0)
                 continue
 

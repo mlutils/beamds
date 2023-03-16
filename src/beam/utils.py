@@ -8,7 +8,7 @@ from tqdm import tqdm
 import random
 import torch
 import pandas as pd
-
+import pyarrow.feather as feather
 
 try:
     import modin.pandas as mpd
@@ -34,7 +34,7 @@ import time
 import inspect
 from pathlib import PurePath
 from argparse import Namespace
-
+import pyarrow as pa
 
 # logger.remove(handler_id=0)
 logger.remove()
@@ -231,7 +231,10 @@ class PureBeamPath:
         with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
             if ext == '.fea':
-                x = pd.read_feather(fo, **kwargs)
+
+                import pyarrow as pa
+                x = feather.read_feather(pa.BufferReader(fo.read()), **kwargs)
+                # x = pd.read_feather(fo, **kwargs)
 
                 c = x.columns
                 for ci in c:
@@ -1140,9 +1143,21 @@ def include_patterns(*patterns):
 
     return _ignore_patterns
 
+# def is_notebook():
+#     return '_' in os.environ and 'jupyter' in os.environ['_']
 
-def is_notebook():
-    return '_' in os.environ and 'jupyter' in os.environ['_']
+
+def is_notebook() -> bool:
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True   # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False      # Probably standard Python interpreter
 
 
 def setup(rank, world_size, port='7463'):
@@ -1380,7 +1395,11 @@ def recursive_len(x):
 
     if hasattr(x, '__len__'):
         return len(x)
-    return None
+
+    if x is None:
+        return None
+
+    return 1
 
 
 @recursive
@@ -1493,6 +1512,9 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
             dtype = torch.int64
         else:
             dtype = torch.float32
+
+    if check_type(x, check_element=False).minor == 'pandas':
+        x = x.values
 
     x = torch.as_tensor(x, device=device, dtype=dtype)
     if return_vector:

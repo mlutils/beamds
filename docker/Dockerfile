@@ -56,12 +56,14 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 # RUN conda install -y -c conda-forge faiss-gpu
 RUN pip install faiss-gpu
 
-RUN pip install  dgl -f https://data.dgl.ai/wheels/repo.html
-RUN pip install  dglgo -f https://data.dgl.ai/wheels-test/repo.html
+
+# Install dgl from source so it would be compatible with cuda 12.0
+# RUN pip install  dgl -f https://data.dgl.ai/wheels/repo.html
+# RUN pip install  dglgo -f https://data.dgl.ai/wheels-test/repo.html
 
 # install DGL from source
 # REMOVE FOR LITE VERSION
-# RUN bash /workspace/install/install_dgl.sh
+RUN bash /workspace/install/install_dgl.sh
 
 # Install faiss if you encounter GPU issues when using the pip version:
 # https://github.com/kyamagu/faiss-wheels/issues/54
@@ -79,6 +81,8 @@ RUN python /workspace/install/downloader.py
 ## download nlp data
 
 # REMOVE FOR LITE VERSION
+
+RUN pip install -U nltk
 RUN python -m nltk.downloader all
 
 #ENV LC_ALL C.UTF-8
@@ -90,9 +94,9 @@ RUN python -m spacy download xx_ent_wiki_sm
 RUN python -m spacy download ru_core_news_sm
 
 
-RUN pip install cudf-cu11 dask-cudf-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
-RUN pip install cuml-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
-RUN pip install cugraph-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
+# RUN pip install cudf-cu11 dask-cudf-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
+# RUN pip install cuml-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
+# RUN pip install cugraph-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
 
 
 # install beam
