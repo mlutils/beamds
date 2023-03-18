@@ -19,6 +19,20 @@ from collections import defaultdict
 DataBatch = namedtuple("DataBatch", "index label data")
 
 
+class Groups(object):
+
+    def __init__(self, groupby_pointer):
+        self.groupby_pointer = groupby_pointer
+        self.groups = {}
+
+    def __getitem__(self, ind):
+
+        if ind not in self.groups:
+            self.groups[ind] = self.groupby_pointer.get_group(ind)
+
+        return self.groups[ind]
+
+
 class Iloc(object):
 
     def __init__(self, pointer):
@@ -162,6 +176,9 @@ class BeamData(object):
         self._size = None
         self._total_size = None
         self._conf = None
+        self._info_groups = None
+        self.groups = Groups(self.info_groups)
+
         self._info = info
         self._orientation = orientation
 
@@ -220,6 +237,13 @@ class BeamData(object):
             self.stored = True
             if not lazy:
                 self.cache()
+
+    @property
+    def info_groups(self):
+        if self._info_groups is not None:
+            return self._info_groups
+        self._info_groupby = self.info.groupby('fold')
+        return self._info_groupby
 
     @property
     def index(self):
@@ -1390,6 +1414,56 @@ class BeamData(object):
         i, d, l, _ = _recursive_filter(x, info)
         return BeamData.data_batch(data=d, index=i, label=l)
 
+    def slice_groups_by_index(self, index):
+
+        def _recursive_filter(xi, ind, flat_key=0):
+            x_type = check_type(xi)
+            if x_type.major == 'container':
+
+                keys = []
+                values = []
+                index = []
+                label = []
+
+                for k, v in iter_container(xi):
+                    i, v, l, flat_key = _recursive_filter(v, ind, flat_key=flat_key)
+                    if len(v):
+                        values.append(v)
+                        index.append(i)
+                        keys.append(k)
+                        label.append(l)
+
+                if not is_arange(keys):
+                    values = dict(zip(keys, values))
+                    index = dict(zip(keys, index))
+                    label = dict(zip(keys, label))
+                else:
+                    values = [values[j] for j in np.argsort(keys)]
+                    index = [index[j] for j in np.argsort(keys)]
+                    label = [label[j] for j in np.argsort(keys)]
+
+                return index, values, label, flat_key
+
+            else:
+
+                info_in_fold = self.groups[flat_key]
+                in_fold_index = info_in_fold['fold_index']
+                x_type = check_type(xi)
+
+                label = info_in_fold['label'] if 'label' in info_in_fold else None
+
+                if xi is None:
+                    return None, None, None, flat_key + 1
+                elif x_type.minor == 'pandas':
+                    return in_fold_index.index, xi.iloc[in_fold_index.values], label, flat_key + 1
+                elif x_type.minor == 'native':
+                    return in_fold_index.index, [xi], label, flat_key + 1
+                else:
+                    return in_fold_index.index, xi[in_fold_index.values], label, flat_key + 1
+
+        i, d, l, _ = _recursive_filter(self.data, index)
+        return BeamData.data_batch(data=d, index=i, label=l)
+
     def slice_index(self, index):
 
         if not self.cached:
@@ -1420,8 +1494,9 @@ class BeamData(object):
 
         elif self.orientation in ['index', 'packed']:
 
-            info = self.info.loc[index]
-            db = BeamData.recursive_filter(self.data, info)
+            # info = self.info.loc[index]
+            # db = BeamData.recursive_filter(self.data, info)
+            db = self.slice_groups_by_index(index)
             data = db.data
             index = db.index
             label = db.label

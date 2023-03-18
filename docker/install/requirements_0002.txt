@@ -16,6 +16,7 @@ pysolr
 JPype1
 JayDeBeApi
 PyHive
+pyodbc
 
 elasticsearch5
 hdfs

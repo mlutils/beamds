@@ -1257,7 +1257,7 @@ def recursive_flat_array(x):
         return [x]
 
     else:
-        raise ValueError('Cannot flat array for type {}'.format(x_type))
+        return [x]
 
 
 def recursive_flatten(x, flat_array=False):
