@@ -28,7 +28,7 @@ class Groups(object):
     def __getitem__(self, ind):
 
         if ind not in self.groups:
-            self.groups[ind] = self.groupby_pointer.get_group(ind)
+            self.groups[ind] = self.groupby_pointer().get_group(ind)
 
         return self.groups[ind]
 
@@ -177,7 +177,7 @@ class BeamData(object):
         self._total_size = None
         self._conf = None
         self._info_groups = None
-        self.groups = Groups(self.info_groups)
+        self.groups = Groups(self.get_info_groups)
 
         self._info = info
         self._orientation = orientation
@@ -238,8 +238,7 @@ class BeamData(object):
             if not lazy:
                 self.cache()
 
-    @property
-    def info_groups(self):
+    def get_info_groups(self):
         if self._info_groups is not None:
             return self._info_groups
         self._info_groupby = self.info.groupby('fold')
@@ -255,7 +254,7 @@ class BeamData(object):
             self._index = info.index.values
         else:
             self._index = BeamData.recursive_filter(self.size, self.info).index
-            if self.objects_type == 'tensor':
+            if self._objects_type == 'tensor':
 
                 func = partial(as_tensor, device=self.device, dtype=None, return_vector=False)
                 self._index = recursive(func)(self._index)
@@ -1037,17 +1036,15 @@ class BeamData(object):
         self._size = recursive_size(self.data)
         return self._size
 
-    def _concatenate(self, data=None, orientation=None, objects_type=None):
+    @staticmethod
+    def _concatenate(data, orientation=None, objects_type=None):
 
-        if data is None:
-            data = self.flatten_data
-            orientation = self.orientation
-            objects_type = self.objects_type
-        else:
-            if orientation is None:
-                orientation = 'index'
-            if objects_type is None:
-                objects_type = check_type(data).minor
+        data = recursive_flatten(data)
+        if orientation is None:
+            orientation = 'index'
+        if objects_type is None:
+            _, v = next(iter_container(data))
+            objects_type = check_type(v).minor
 
         if orientation == 'simple':
             dim = None
@@ -1063,6 +1060,7 @@ class BeamData(object):
             kwargs = {'dim': dim}
         elif objects_type == 'pandas':
             func = pd.concat
+            data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
             kwargs = {'axis': dim}
         elif objects_type == 'numpy':
             func = np.concatenate
@@ -1072,6 +1070,15 @@ class BeamData(object):
             return data
 
         return func(data, **kwargs)
+
+    def concatenate(self, data=None, orientation=None, objects_type=None):
+
+        if data is None:
+            data = self.flatten_data
+            orientation = self.orientation
+            objects_type = self.objects_type
+
+        return BeamData._concatenate(data, orientation=orientation, objects_type=objects_type)
 
     def get_default_params(self, *args, **kwargs):
         """
@@ -1325,7 +1332,7 @@ class BeamData(object):
 
     @property
     def stacked_values(self):
-        data = self._concatenate()
+        data = self.concatenate()
         return data
 
     @property
@@ -1347,16 +1354,16 @@ class BeamData(object):
         if self.orientation == 'packed':
             raise LookupError(f"Cannot stack for packed orientation")
 
-        data = self._concatenate()
+        data = self.concatenate()
 
         index = self._index
         label = self._label
         if self.orientation == 'index':
 
             if index is not None:
-                index = self._concatenate(recursive_flatten(self._index), orientation=self.orientation)
+                index = self.concatenate(recursive_flatten(self._index), orientation=self.orientation)
             if label is not None:
-                label = self._concatenate(recursive_flatten(self._label), orientation=self.orientation)
+                label = self.concatenate(recursive_flatten(self._label), orientation=self.orientation)
 
         if self.quick_getitem:
             return BeamData.data_batch(data=data, index=index, label=label)
@@ -1366,7 +1373,10 @@ class BeamData(object):
     @staticmethod
     def recursive_filter(x, info):
 
-        def _recursive_filter(xi, inf, flat_key=0):
+        inf_g = info.groupby('fold')
+        folds = info['fold'].unique()
+
+        def _recursive_filter(xi, flat_key=0):
             x_type = check_type(xi)
             if x_type.major == 'container':
 
@@ -1376,7 +1386,7 @@ class BeamData(object):
                 label = []
 
                 for k, v in iter_container(xi):
-                    i, v, l, flat_key = _recursive_filter(v, inf, flat_key=flat_key)
+                    i, v, l, flat_key = _recursive_filter(v, flat_key=flat_key)
                     if len(v):
                         values.append(v)
                         index.append(i)
@@ -1396,7 +1406,11 @@ class BeamData(object):
 
             else:
 
-                info_in_fold = inf[inf['fold'] == flat_key]
+                if flat_key not in folds:
+                    return [], [], [], flat_key + 1
+
+                info_in_fold = inf_g.get_group(flat_key)
+
                 in_fold_index = info_in_fold['fold_index']
                 x_type = check_type(xi)
 
@@ -1411,58 +1425,9 @@ class BeamData(object):
                 else:
                     return in_fold_index.index, xi[in_fold_index.values], label, flat_key + 1
 
-        i, d, l, _ = _recursive_filter(x, info)
-        return BeamData.data_batch(data=d, index=i, label=l)
+        i, d, l, _ = _recursive_filter(x)
 
-    def slice_groups_by_index(self, index):
-
-        def _recursive_filter(xi, ind, flat_key=0):
-            x_type = check_type(xi)
-            if x_type.major == 'container':
-
-                keys = []
-                values = []
-                index = []
-                label = []
-
-                for k, v in iter_container(xi):
-                    i, v, l, flat_key = _recursive_filter(v, ind, flat_key=flat_key)
-                    if len(v):
-                        values.append(v)
-                        index.append(i)
-                        keys.append(k)
-                        label.append(l)
-
-                if not is_arange(keys):
-                    values = dict(zip(keys, values))
-                    index = dict(zip(keys, index))
-                    label = dict(zip(keys, label))
-                else:
-                    values = [values[j] for j in np.argsort(keys)]
-                    index = [index[j] for j in np.argsort(keys)]
-                    label = [label[j] for j in np.argsort(keys)]
-
-                return index, values, label, flat_key
-
-            else:
-
-                info_in_fold = self.groups[flat_key]
-                in_fold_index = info_in_fold['fold_index']
-                x_type = check_type(xi)
-
-                label = info_in_fold['label'] if 'label' in info_in_fold else None
-
-                if xi is None:
-                    return None, None, None, flat_key + 1
-                elif x_type.minor == 'pandas':
-                    return in_fold_index.index, xi.iloc[in_fold_index.values], label, flat_key + 1
-                elif x_type.minor == 'native':
-                    return in_fold_index.index, [xi], label, flat_key + 1
-                else:
-                    return in_fold_index.index, xi[in_fold_index.values], label, flat_key + 1
-
-        i, d, l, _ = _recursive_filter(self.data, index)
-        return BeamData.data_batch(data=d, index=i, label=l)
+        return DataBatch(data=d, index=i, label=l)
 
     def slice_index(self, index):
 
@@ -1494,9 +1459,8 @@ class BeamData(object):
 
         elif self.orientation in ['index', 'packed']:
 
-            # info = self.info.loc[index]
-            # db = BeamData.recursive_filter(self.data, info)
-            db = self.slice_groups_by_index(index)
+            info = self.info.loc[index]
+            db = BeamData.recursive_filter(self.data, info)
             data = db.data
             index = db.index
             label = db.label
@@ -1505,13 +1469,13 @@ class BeamData(object):
             raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
 
         if self.quick_getitem:
-            return BeamData.data_batch(data, index=index, label=label)
+            return BeamData.data_batch(data, index=index, label=label, orientation=self.orientation, info=info)
 
         return self.clone(data=data, columns=self.columns, index=index, label=label,
                           orientation=self.orientation, info=info)
 
     @staticmethod
-    def data_batch(data, index=None, label=None):
+    def data_batch(data, index=None, label=None, orientation=None, info=None):
 
         data_type = check_type(data, check_element=False, check_minor=False)
         if data_type.major == 'container' and len(data) == 1:
@@ -1529,6 +1493,30 @@ class BeamData(object):
                 label = label[key]
                 if isinstance(label, pd.Series):
                     label = label.values
+
+        elif data_type.major == 'container':
+            data = BeamData._concatenate(data=data, orientation=orientation)
+
+            if index is not None:
+                index = BeamData._concatenate(data=index, orientation=orientation)
+
+                if info is not None:
+                    flat_index = pd.Series(np.arange(len(info)), index=index)
+                    inverse_map = flat_index.loc[info.index].values
+
+            if label is not None:
+                label = BeamData._concatenate(data=label, orientation=orientation)
+
+            if index is not None and info is not None:
+
+                data = data[inverse_map]
+                index = info.index.values
+
+                if label is not None:
+
+                    if isinstance(label, pd.Series):
+                        label = label.values
+                    label = label[inverse_map]
 
         return DataBatch(data=data, index=index, label=label)
 
@@ -1601,7 +1589,7 @@ class BeamData(object):
                 label = BeamData.slice_scalar_or_list(label, keys, keys_type=keys_type, data_type=self.data_type)
 
         if self.quick_getitem and data is not None:
-            return BeamData.data_batch(data, index=index, label=label)
+            return BeamData.data_batch(data, index=index, label=label, orientation=self.orientation)
 
         # determining orientation and info can be ambiguous so we let BeamData to calculate it
         # from the index and label arguments
