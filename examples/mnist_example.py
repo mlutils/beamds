@@ -55,8 +55,11 @@ class MNISTDataset(UniversalDataset):
             x = data.stacked_values.float() / 255
             y = data.stacked_labels
         elif isinstance(data, DataBatch):
+
             x = data.data.float() / 255
             y = data.label
+            # x = data.data['train'].float() / 255
+            # y = data.label['train'].values
         else:
             x = self.data[index].float() / 255
             y = self.labels[index]
@@ -213,6 +216,7 @@ if __name__ == '__main__':
 
     # ## Inference
     inference = alg('test')
+    # inference = alg({'x': examples['x'], 'y': examples['y']})
 
     print('Test inference results:')
     for n, v in inference.statistics['metrics'].items():

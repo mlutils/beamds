@@ -871,7 +871,7 @@ def is_chunk(path, chunk_pattern='_chunk'):
 
 def iter_container(x):
     if hasattr(x, 'items'):
-        return x.items()
+        return iter(x.items())
     return enumerate(x)
 
 
