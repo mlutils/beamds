@@ -79,9 +79,9 @@ if __name__ == '__main__':
 
     # tests = ['transform_dd']
     # tests = ['single_file']
-    # tests = ['chunks']
-    # tests = ['set_item']
-    tests = ['load_data']
+    tests = ['chunks']
+    # tests = ['store_and_reload']
+    # tests = ['load_data']
     storage = 'file'
 
     if 'loc_ops' in tests:

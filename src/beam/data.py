@@ -498,9 +498,9 @@ class BeamData(object):
                 offset = None
                 # fold_key = None
 
-            if self.index is not None:
+            if self._index is not None:
                 # it is assumed that if orientation is in ['columns', 'simple'], then _index is a single array
-                index = np.concatenate([as_numpy(i) for i in recursive_flatten([self.index])])
+                index = np.concatenate([as_numpy(i) for i in recursive_flatten([self._index])])
             else:
                 index = np.arange(len(self))
 
@@ -534,8 +534,8 @@ class BeamData(object):
         value = beam_path(value)
         if value.is_dir() and len(list(value.iterdir())):
             raise ValueError(f'path {value} is not empty')
-        self.root_path = value
-        self.all_paths = None
+        self._root_path = value
+        self._all_paths = None
         self.stored = False
 
     @property
@@ -634,7 +634,7 @@ class BeamData(object):
                     lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
                     lens = list(filter(lambda x: x is not None, lens))
 
-                    lens_index = recursive_flatten(recursive_len([self.index]), flat_array=True)
+                    lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
                     lens_index = list(filter(lambda x: x is not None, lens_index))
 
                     if len(np.unique(lens)) == 1 and sum(lens) > sum(lens_index):
@@ -694,7 +694,8 @@ class BeamData(object):
         path = beam_path(path)
 
         if (not override) and path.exists():
-            raise NameError(f"File {path} exists. Please specify write_file(...,overwrite=True) to write on existing file")
+            raise NameError(f"File {path} exists. "
+                            f"Please specify write_file(...,overwrite=True) to write on existing file")
 
         path.clean()
         path = path.write(data, **kwargs)
@@ -1173,7 +1174,7 @@ class BeamData(object):
         info_path = path.joinpath(BeamData.metadata_files['info'])
         BeamData.write_object(self.info, info_path)
         conf_path = path.joinpath(BeamData.metadata_files['conf'])
-        BeamData.write_object(self.conf, conf_path, archive=True)
+        BeamData.write_object({**self.conf}, conf_path, archive=True)
 
         # store index and label
         if self.index is not None:
@@ -1186,7 +1187,10 @@ class BeamData(object):
         self.stored = True
         self._root_path = path
         self.data = data
-        self._all_paths = None
+
+        self._all_paths = BeamData.recursive_map_path(self.root_path, glob_filter=self.glob_filter)
+        path = self.root_path.joinpath(BeamData.metadata_files['all_paths'])
+        BeamData.write_file(self._all_paths, path)
 
     def state_dict(self):
         if not self.cached:
@@ -1255,7 +1259,8 @@ class BeamData(object):
             avoid_reset = []
 
         reset_params = ['_columns_map', '_device', '_len', '_data_types', '_data_type', '_objects_type',
-                        '_flatten_data', '_flatten_items', '_conf', '_info', '_orientation', '_size', '_total_size', ]
+                        '_info_groupby','_flatten_data', '_flatten_items', '_conf', '_info', '_orientation', '_size',
+                        '_total_size', ]
 
         for param in reset_params:
             if param not in avoid_reset:
@@ -1758,6 +1763,9 @@ class BeamData(object):
                 self.data.__setitem__(key, value)
             else:
                 set_item_with_tuple_key(self.data, key, value)
+
+            self._index = None
+            self._label = None
 
             if self.lazy:
                 self.stored = False
