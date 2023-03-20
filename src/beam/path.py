@@ -218,6 +218,75 @@ def normalize_host(hostname, port=None):
     return host
 
 
+class SFTPPath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, host=None, username=None, private_key=None, password=None, port=22,
+                 private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None, **kwargs):
+
+        super().__init__(*pathsegments, client=client, host=host, username=username, private_key=private_key,
+                         password=password, port=port, private_key_pass=private_key_pass, ciphers=ciphers,
+                         log=log, cnopts=cnopts, default_path=default_path, **kwargs)
+
+        if client is None:
+            import pysftp
+            self.client = pysftp.Connection(host=host, username=username, private_key=private_key, password=password,
+                                            port=port, private_key_pass=private_key_pass, ciphers=ciphers, log=log,
+                                            cnopts=cnopts, default_path=default_path)
+        else:
+            self.client = client
+
+    def samefile(self, other):
+        raise NotImplementedError
+
+    def iterdir(self):
+
+        for path in self.client.listdir(remotepath=str(self.path)):
+            yield SFTPPath(path, client=self.client)
+
+    def is_file(self):
+        return self.client.isfile(remotepath=str(self.path))
+
+    def is_dir(self):
+        return self.client.isdir(remotepath=str(self.path))
+
+    def mkdir(self, *args, **kwargs):
+        self.client.mkdir(str(self.path), *args, **kwargs)
+
+    def exists(self):
+        return self.client.exists(str(self.path))
+
+    def glob(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def rename(self, target):
+        self.client.rename(str(self.path), str(target))
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            self.file_object = self.client.open(str(self.path), self.mode)
+        else:
+            self.file_object = BytesIO()
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ["rb", "r"]:
+            self.file_object.close()
+        else:
+            self.client.putfo(self.file_object, remotepath=str(self.path))
+            self.file_object.close()
+
+    def rmdir(self):
+        self.client.rmdir(str(self.path))
+
+    def unlink(self, missing_ok=False):
+
+        if self.is_file():
+            self.client.remove(str(self.path))
+        else:
+            raise FileNotFoundError
+
+
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
