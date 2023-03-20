@@ -552,8 +552,8 @@ class BeamData(object):
         if self._len is not None:
             return self._len
 
-        if self.stored and self.conf is not None:
-            self._len = self.conf['len']
+        if self.stored and self._conf is not None:
+            self._len = self._conf['len']
             return self._len
 
         if self.cached:
