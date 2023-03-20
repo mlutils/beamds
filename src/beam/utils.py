@@ -73,6 +73,16 @@ class PureBeamPath:
         self.file_object = None
         self.client = client
 
+    def not_empty(self):
+
+        if self.is_dir():
+            for p in self.iterdir():
+                if p.not_empty():
+                    return True
+                if p.is_file():
+                    return True
+        return False
+
     def rmtree(self):
         if self.is_file():
             self.unlink()
