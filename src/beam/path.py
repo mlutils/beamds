@@ -5,7 +5,7 @@ from .utils import PureBeamPath
 from io import StringIO, BytesIO
 
 
-def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kwargs):
+def beam_path(path, protocol=None, username=None, hostname=None, port=None, private_key=None, **kwargs):
     """
 
     @param secret_key: AWS secret key
@@ -56,7 +56,11 @@ def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kw
     elif protocol == 'ftps':
         raise NotImplementedError
     elif protocol == 'sftp':
-        raise NotImplementedError
+
+        if private_key is None:
+            private_key = Path.home().joinpath('.ssh', 'id_rsa')
+
+        return SFTPPath(path, hostname=hostname, username=username, port=port, private_key=private_key, **kwargs)
     else:
         raise NotImplementedError
 
@@ -220,16 +224,19 @@ def normalize_host(hostname, port=None):
 
 class SFTPPath(PureBeamPath):
 
-    def __init__(self, *pathsegments, client=None, host=None, username=None, private_key=None, password=None, port=22,
-                 private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None, **kwargs):
+    def __init__(self, *pathsegments, client=None, hostname=None, username=None, private_key=None, password=None,
+                 port=None, private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None, **kwargs):
 
-        super().__init__(*pathsegments, client=client, host=host, username=username, private_key=private_key,
+        if port is None:
+            port = 22
+
+        super().__init__(*pathsegments, client=client, hostname=hostname, username=username, private_key=private_key,
                          password=password, port=port, private_key_pass=private_key_pass, ciphers=ciphers,
                          log=log, cnopts=cnopts, default_path=default_path, **kwargs)
 
         if client is None:
             import pysftp
-            self.client = pysftp.Connection(host=host, username=username, private_key=private_key, password=password,
+            self.client = pysftp.Connection(host=hostname, username=username, private_key=private_key, password=password,
                                             port=port, private_key_pass=private_key_pass, ciphers=ciphers, log=log,
                                             cnopts=cnopts, default_path=default_path)
         else:
@@ -240,8 +247,9 @@ class SFTPPath(PureBeamPath):
 
     def iterdir(self):
 
-        for path in self.client.listdir(remotepath=str(self.path)):
-            yield SFTPPath(path, client=self.client)
+        for p in self.client.listdir(remotepath=str(self.path)):
+            path = self.path.joinpath(p)
+            yield SFTPPath(path, client=self.client, configuration=self.configuration)
 
     def is_file(self):
         return self.client.isfile(remotepath=str(self.path))
@@ -249,8 +257,8 @@ class SFTPPath(PureBeamPath):
     def is_dir(self):
         return self.client.isdir(remotepath=str(self.path))
 
-    def mkdir(self, *args, **kwargs):
-        self.client.mkdir(str(self.path), *args, **kwargs)
+    def mkdir(self, *args, mode=777, **kwargs):
+        self.client.makedirs(str(self.path), mode=mode)
 
     def exists(self):
         return self.client.exists(str(self.path))
@@ -286,6 +294,12 @@ class SFTPPath(PureBeamPath):
         else:
             raise FileNotFoundError
 
+    def as_uri(self):
+
+        return f"sftp://{self.configuration.username}@{self.configuration.hostname}{str(self)}"
+
+    def __repr__(self):
+        return self.as_uri()
 
 class S3Path(PureBeamPath):
 

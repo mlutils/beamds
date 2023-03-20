@@ -254,7 +254,7 @@ class BeamData(object):
                 self._all_paths = path.read()
 
             else:
-                BeamData.recursive_map_path(self.root_path, glob_filter=self.glob_filter)
+                self._all_paths = BeamData.recursive_map_path(self.root_path, glob_filter=self.glob_filter)
                 BeamData.write_file(self._all_paths, path)
 
         return self._all_paths
