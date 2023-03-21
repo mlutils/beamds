@@ -15,6 +15,7 @@ import os
 from .path import BeamPath, beam_path
 from functools import partial
 from collections import defaultdict
+import time
 
 DataBatch = namedtuple("DataBatch", "index label data")
 
@@ -316,7 +317,7 @@ class BeamData(object):
                     p = p.rename(p.with_suffix('.temporary_name'))
                     path.mkdir()
                     p = p.rename(path.joinpath(f"{'data'}{ext}"))
-                    all_paths = {'data': p}
+                    all_paths = {'data': p.relative_to(path)}
                     break
 
         return all_paths
@@ -462,6 +463,7 @@ class BeamData(object):
                           'device': self.device,
                           'has_index': self._index is not None,
                           'has_label': self._label is not None,
+                          'time': time.time(),
                           'columns_map': self.columns_map}
             return self._conf
 
@@ -759,7 +761,13 @@ class BeamData(object):
         return all_paths
 
     @staticmethod
-    def recursive_map_path(path, glob_filter=None):
+    def recursive_map_path(root_path, relative_path=None, glob_filter=None):
+
+        if relative_path is None:
+            relative_path = ''
+            path = root_path
+        else:
+            path = root_path.joinpath(relative_path)
 
         if path.is_dir():
 
@@ -786,11 +794,12 @@ class BeamData(object):
                 k = next_path.stem if next_path.is_file() else next_path.name
                 keys.append(k)
                 keys_paths.append(next_path)
-                values.append(BeamData.recursive_map_path(next_path, glob_filter=glob_filter))
+                rp = str(next_path.relative_to(root_path))
+                values.append(BeamData.recursive_map_path(root_path, relative_path=rp, glob_filter=glob_filter))
 
             # if the directory contains chunks it is considered as a single path
             if all([BeamData.chunk_file_extension in p.name for p in keys_paths]):
-                return path
+                return relative_path
 
             if not is_arange(keys):
                 values = dict(zip(keys, values))
@@ -803,7 +812,7 @@ class BeamData(object):
         # if path.is_file():
         #     return path.parent.joinpath(path.stem)
         if path.is_file():
-            return path
+            return relative_path
 
         return None
 
@@ -1199,6 +1208,20 @@ class BeamData(object):
         return {'data': self.data, 'info': self.info, 'conf': self.conf, 'index': self.index, 'label': self.label,
                 'schema': self.schema}
 
+    def abs_all_paths(self, all_paths=None, root_path=None):
+
+        if root_path is None:
+            root_path = self.root_path
+
+        @recursive
+        def _abs_all_paths(path):
+            return root_path.joinpath(path)
+
+        if all_paths is None:
+            all_paths = self.all_paths
+
+        return _abs_all_paths(all_paths)
+
     @classmethod
     def load_state_dict(cls, state_dict):
         return cls(**state_dict)
@@ -1238,7 +1261,7 @@ class BeamData(object):
         if not self.stored:
             logger.warning("stored=False, data is seems to be un-synchronized")
 
-        data = BeamData.read(all_paths, schema=schema, **kwargs)
+        data = BeamData.read(self.abs_all_paths(all_paths), schema=schema, **kwargs)
 
         # if type(data) is dict and 'data' in data and len(data) == 1:
         #     data = data['data']
@@ -1614,7 +1637,7 @@ class BeamData(object):
             except KeyError:
                 raise KeyError(f"Cannot find keys: {keys} in stored BeamData object. "
                                f"If the object is archived you should cache it before slicing.")
-            data = BeamData.read(all_paths, schema=schema)
+            data = BeamData.read(self.abs_all_paths(all_paths), schema=schema)
 
         index = self.index
         label = self.label

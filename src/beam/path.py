@@ -301,6 +301,7 @@ class SFTPPath(PureBeamPath):
     def __repr__(self):
         return self.as_uri()
 
+
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
@@ -497,6 +498,8 @@ class S3Path(PureBeamPath):
 
         if 'Contents' in objects:
             for content in objects['Contents']:
+                if content['key'] == key:
+                    continue
                 yield S3Path(f"{self.bucket_name}/{content['Key']}", client=self.client,
                              configuration=self.configuration, info=self.info)
 

@@ -197,8 +197,12 @@ class PureBeamPath:
     def match(self, pattern):
         return self.path.match(pattern)
 
+    # def relative_to(self, *other):
+    #     return self.gen(self.path.relative_to(*other))
+
     def relative_to(self, *other):
-        return self.gen(self.path.relative_to(*other))
+        other = PureBeamPath(*other)
+        return PureBeamPath(self.path.relative_to(str(other)))
 
     def with_name(self, name):
         return self.gen(self.path.with_name(name))
