@@ -219,10 +219,11 @@ class Transformer(Processor):
 
         x = self.transform_callback(x, key=key, is_chunk=is_chunk, fit=fit, **kwargs)
 
-        if isinstance(x, BeamData):
-            if store_path is not None:
-                x.store(path=store_path)
-                x = BeamData.from_path(path=store_path)
+        if store_path is not None:
+            if not isinstance(x, BeamData):
+                x = BeamData(x)
+            x.store(path=store_path)
+            x = BeamData.from_path(path=store_path)
 
         return key, x
 
@@ -333,9 +334,8 @@ class Transformer(Processor):
                 logger.warning(f"Path is not specified for transformer: {self.name}, "
                                f"the chunk will not be stored.")
                 store_chunk = False
-
-            logger.warning(f"Path is not specified for transformer: {self.name}, "
-                           f"the chunk will not be stored.")
+        elif store_chunk:
+            logger.info(f"Storing transformed chunks of data in: {path}")
 
         if is_chunk:
             for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
@@ -343,32 +343,41 @@ class Transformer(Processor):
 
                 chunk_path = None
                 if store_chunk:
-                    chunk_path = path.joinpath(beam_path(path), BeamData.normalize_key(k))
+                    chunk_path = path.joinpath(f"{BeamData.normalize_key(k)}{BeamData.partition_directory_name}")
 
-                self.queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, path=chunk_path,
+                self.queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,
                                         cache=cache, store=store_chunk, name=f"{self.name}/{k}", **kwargs))
 
         else:
-            # TODO: take care of is_chunk == False and store_chunk == True
             self.queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, fit=fit, cache=cache,
                                     store=store_chunk,  name=f"{self.name}", **kwargs))
 
         x_with_keys = self.queue.run(n_workers=n_workers, method=multiprocess_method)
 
-        values = [xi[1] for xi in x_with_keys]
-        keys = [xi[0] for xi in x_with_keys]
-        keys = [ki if type(ki) is tuple else (ki, ) for ki in keys]
+        if is_chunk:
+            values = [xi[1] for xi in x_with_keys]
+            keys = [xi[0] for xi in x_with_keys]
+            keys = [ki if type(ki) is tuple else (ki, ) for ki in keys]
 
-        x = build_container_from_tupled_keys(keys, values)
+            x = build_container_from_tupled_keys(keys, values)
 
-        logger.info(f"Finished transformer process: {self.name}. Collating results...")
+            logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
-        if isinstance(x[0], BeamData):
-            x = BeamData.collate(x, split_by=split_by, **kwargs)
-            if store:
-                x.store(path=path)
-                x = BeamData.from_path(path=path)
+            if isinstance(x[0], BeamData):
+                x = BeamData.collate(x, split_by=split_by, **kwargs)
+            else:
+                x = self.reduce(x, **kwargs)
+
         else:
-            x = self.reduce(x, **kwargs)
+            logger.info(f"Finished transformer process: {self.name}.")
+            x = x_with_keys[0][1]
+
+        if store:
+
+            logger.info(f"Storing transformed of data in: {path}")
+            if not isinstance(x, BeamData):
+                x = BeamData(x)
+            x.store(path=path)
+            x = BeamData.from_path(path=path)
 
         return x

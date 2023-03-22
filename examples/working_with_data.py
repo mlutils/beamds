@@ -82,10 +82,20 @@ if __name__ == '__main__':
     # tests = ['transform_dd']
     # tests = ['single_file']
     # tests = ['chunks']
-    tests = ['store_and_reload']
+    # tests = ['store_and_reload']
     # tests = ['load_data']
+    tests = ['empty_path']
     storage = 'file'
     # storage = 'sftp'
+
+    if 'empty_path' in tests:
+        print('starting empty_path')
+
+        bd = BeamData.from_path('/tmp/sandbox/yy')
+        print(bd)
+        bd.cache()
+        print(bd)
+        print('done empty_path')
 
     if 'loc_ops' in tests:
 

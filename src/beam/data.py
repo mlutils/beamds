@@ -142,7 +142,6 @@ class BeamData(object):
         '''
 
         #todo: add support for target device+to_tensor when returning DataBatch
-        #TODO: add super_lazy where data and paths are not loaded and it supports only get item by key
 
         self.lazy = lazy
         self.override = override
@@ -283,11 +282,15 @@ class BeamData(object):
         if self.orientation in ['columns', 'simple']:
             self._index = info.index.values
         else:
-            self._index = BeamData.recursive_filter(self.size, self.info).index
-            if self._objects_type == 'tensor':
 
-                func = partial(as_tensor, device=self.device, dtype=None, return_vector=False)
-                self._index = recursive(func)(self._index)
+            # TODO: why is this needed?
+            info_filtered = BeamData.recursive_filter(self.size, self.info)
+            if info_filtered is not None:
+                self._index = info_filtered.index
+                if self._objects_type == 'tensor':
+
+                    func = partial(as_tensor, device=self.device, dtype=None, return_vector=False)
+                    self._index = recursive(func)(self._index)
 
         return self._index
 
@@ -485,8 +488,12 @@ class BeamData(object):
         if self.cached:
 
             if self.orientation in ['index', 'packed']:
-                fold_index = np.concatenate([np.arange(len(d)) for d in self.flatten_data])
-                fold = np.concatenate([np.full(len(d), k) for k, d in enumerate(self.flatten_data)])
+                filtered_data = list(filter(lambda x: x is not None, self.flatten_data))
+                if not len(filtered_data):
+                    self._info = None
+                    return self._info
+                fold_index = np.concatenate([np.arange(len(d)) for d in filtered_data])
+                fold = np.concatenate([np.full(len(d), k) for k, d in enumerate(filtered_data)])
 
                 # still not sure if i really need this column. if so, it should be fixed
                 # fold_key = np.concatenate([np.full(len(d), k) for k, d in self.flatten_items.items()])
@@ -797,6 +804,9 @@ class BeamData(object):
                 rp = str(next_path.relative_to(root_path))
                 values.append(BeamData.recursive_map_path(root_path, relative_path=rp, glob_filter=glob_filter))
 
+            if len(keys) == 0:
+                return None
+
             # if the directory contains chunks it is considered as a single path
             if all([BeamData.chunk_file_extension in p.name for p in keys_paths]):
                 return relative_path
@@ -861,6 +871,9 @@ class BeamData(object):
     def read(paths, schema=None, **kwargs):
 
         paths_type = check_type(paths)
+
+        if paths is None:
+            return None
 
         if paths_type.major == 'container':
             keys = []
@@ -1215,6 +1228,8 @@ class BeamData(object):
 
         @recursive
         def _abs_all_paths(path):
+            if path is None:
+                return None
             return root_path.joinpath(path)
 
         if all_paths is None:
@@ -1226,7 +1241,7 @@ class BeamData(object):
     def load_state_dict(cls, state_dict):
         return cls(**state_dict)
 
-    def cache(self, all_paths=None, schema=None, update=False, **kwargs):
+    def cache(self, path=None, all_paths=None, schema=None, update=False, **kwargs):
 
         if self.cached:
             if update:
@@ -1238,23 +1253,14 @@ class BeamData(object):
         if schema is None:
             schema = self.schema
 
+        if all_paths is None and path is None:
+            all_paths = self.all_paths
+
+        if path is None:
+            path = self.root_path
+
         if all_paths is None:
-
-            if self.all_paths is not None:
-                all_paths = self.all_paths
-            else:
-                all_paths = self.root_path
-
-            root_path = self.root_path
-
-        else:
-
-            path_type = check_type(all_paths)
-            if path_type.major == 'container':
-                root_path = BeamData.recursive_root_finder(all_paths)
-            else:
-                all_paths = BeamData.recursive_map_path(all_paths, glob_filter=self.glob_filter)
-                root_path = all_paths
+            all_paths = BeamData.recursive_map_path(path, glob_filter=self.glob_filter)
 
         # read the conf and info files
 
@@ -1266,7 +1272,7 @@ class BeamData(object):
         # if type(data) is dict and 'data' in data and len(data) == 1:
         #     data = data['data']
 
-        self._root_path = root_path
+        self._root_path = path
         # self.all_paths = BeamData.recursive_map_path(root_path, glob_filter=self.glob_filter)
         self._all_paths = all_paths
         self.data = data
@@ -1433,6 +1439,9 @@ class BeamData(object):
 
     @staticmethod
     def recursive_filter(x, info):
+
+        if info is None:
+            return None
 
         inf_g = info.groupby('fold')
         folds = info['fold'].unique()
@@ -1873,23 +1882,26 @@ class BeamData(object):
                                                  size=self.total_size)
 
                 if split_by == 'column':
-
-                    for k, data_i in recursive_chunks(self.data, n_chunks, dim=split_by):
+                    dim = 1
+                    for k, data_i in recursive_chunks(self.data, n_chunks, dim=dim):
                         if self.quick_getitem:
                             yield k, BeamData.data_batch(data_i, index=self.index, label=self.label)
                         else:
                             yield k, self.clone(data_i, index=self.index, label=self.label)
 
-                else:
-
+                elif split_by == 'index':
+                    dim = 0
                     for k, data in recursive_chunks((self.index, self.data, self.label), n_chunks=n_chunks,
-                                                    dim=split_by, partition=partition):
+                                                    dim=dim, partition=partition):
                         index_i, data_i, label_i = data
 
                         if self.quick_getitem:
                             yield k, BeamData.data_batch(data_i, index=index_i, label=label_i)
                         else:
                             yield k, self.clone(data_i, index=index_i, label=label_i)
+
+                else:
+                    raise ValueError(f"split_by={split_by} is not supported.")
 
     def __iter__(self):
 

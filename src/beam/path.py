@@ -139,9 +139,6 @@ class BeamPath(PureBeamPath):
     def mkdir(self, *args, **kwargs):
         return self.path.mkdir(*args, **kwargs)
 
-    def open(self, *args, **kwargs):
-        return self.path.open(*args, **kwargs)
-
     def owner(self):
         return self.path.owner()
 
@@ -380,11 +377,6 @@ class S3Path(PureBeamPath):
         return S3Path._exists(self.client, self.bucket_name, key) or \
                (self._check_if_bucket_exists() and (not self._is_empty(key)))
 
-    def open(self, mode="r", **kwargs):
-        if "w" in mode:
-            raise NotImplementedError("Writing to S3 is not supported")
-        return self.object.get()["Body"]
-
     def read_text(self, encoding=None, errors=None):
         return self.object.get()["Body"].read().decode(encoding, errors)
 
@@ -418,7 +410,7 @@ class S3Path(PureBeamPath):
     def replace(self, target):
         self.rename(target)
 
-    def unlink(self):
+    def unlink(self, **kwargs):
         if self.is_file():
             self.object.delete()
         if self.is_dir():
@@ -503,37 +495,22 @@ class S3Path(PureBeamPath):
                 yield S3Path(f"{self.bucket_name}/{content['Key']}", client=self.client,
                              configuration=self.configuration, info=self.info)
 
-    # def iterdir(self):
-    #     bucket = self.client.Bucket(self.bucket_name)
-    #
-    #     if self.key is None:
-    #         objects = bucket.objects.all()
-    #     else:
-    #         objects = bucket.objects.filter(Prefix=self.key)
-    #
-    #     key_depth = self.key_depth()
-    #     paths = set()
-    #     for obj in objects:
-    #
-    #         key = list(filter(lambda x: len(x), obj.key.split('/')))
-    #         if len(key) <= key_depth:
-    #             continue
-    #         key = '/'.join(key[:key_depth+1])
-    #         if key not in paths:
-    #             paths.add(key)
-    #             yield S3Path("/".join([obj.bucket_name, key]), client=self.client)
-
     @property
     def parent(self):
         return S3Path(str(super(S3Path, self).parent), client=self.client)
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
-            # self.file_object = self.client.Object(self.bucket_name, self.key).get()['Body']
-            self.file_object = self.client.meta.client.get_object(Bucket=self.bucket_name, Key=self.key)['Body']
-
-        else:
+            file_object = self.client.meta.client.get_object(Bucket=self.bucket_name, Key=self.key)['Body']
+            io_obj = StringIO if 'r' else BytesIO
+            self.file_object = io_obj(file_object.read())
+        elif self.mode == 'wb':
             self.file_object = BytesIO()
+        elif self.mode == 'w':
+            self.file_object = StringIO()
+        else:
+            raise ValueError
+
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
