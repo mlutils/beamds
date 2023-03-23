@@ -5,7 +5,7 @@ from .utils import PureBeamPath
 from io import StringIO, BytesIO
 
 
-def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kwargs):
+def beam_path(path, protocol=None, username=None, hostname=None, port=None, private_key=None, **kwargs):
     """
 
     @param secret_key: AWS secret key
@@ -56,7 +56,11 @@ def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kw
     elif protocol == 'ftps':
         raise NotImplementedError
     elif protocol == 'sftp':
-        raise NotImplementedError
+
+        if private_key is None:
+            private_key = Path.home().joinpath('.ssh', 'id_rsa')
+
+        return SFTPPath(path, hostname=hostname, username=username, port=port, private_key=private_key, **kwargs)
     else:
         raise NotImplementedError
 
@@ -134,9 +138,6 @@ class BeamPath(PureBeamPath):
 
     def mkdir(self, *args, **kwargs):
         return self.path.mkdir(*args, **kwargs)
-
-    def open(self, *args, **kwargs):
-        return self.path.open(*args, **kwargs)
 
     def owner(self):
         return self.path.owner()
@@ -218,6 +219,86 @@ def normalize_host(hostname, port=None):
     return host
 
 
+class SFTPPath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, hostname=None, username=None, private_key=None, password=None,
+                 port=None, private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None, **kwargs):
+
+        if port is None:
+            port = 22
+
+        super().__init__(*pathsegments, client=client, hostname=hostname, username=username, private_key=private_key,
+                         password=password, port=port, private_key_pass=private_key_pass, ciphers=ciphers,
+                         log=log, cnopts=cnopts, default_path=default_path, **kwargs)
+
+        if client is None:
+            import pysftp
+            self.client = pysftp.Connection(host=hostname, username=username, private_key=private_key, password=password,
+                                            port=port, private_key_pass=private_key_pass, ciphers=ciphers, log=log,
+                                            cnopts=cnopts, default_path=default_path)
+        else:
+            self.client = client
+
+    def samefile(self, other):
+        raise NotImplementedError
+
+    def iterdir(self):
+
+        for p in self.client.listdir(remotepath=str(self.path)):
+            path = self.path.joinpath(p)
+            yield SFTPPath(path, client=self.client, configuration=self.configuration)
+
+    def is_file(self):
+        return self.client.isfile(remotepath=str(self.path))
+
+    def is_dir(self):
+        return self.client.isdir(remotepath=str(self.path))
+
+    def mkdir(self, *args, mode=777, **kwargs):
+        self.client.makedirs(str(self.path), mode=mode)
+
+    def exists(self):
+        return self.client.exists(str(self.path))
+
+    def glob(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def rename(self, target):
+        self.client.rename(str(self.path), str(target))
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            self.file_object = self.client.open(str(self.path), self.mode)
+        else:
+            self.file_object = BytesIO()
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ["rb", "r"]:
+            self.file_object.close()
+        else:
+            self.client.putfo(self.file_object, remotepath=str(self.path))
+            self.file_object.close()
+
+    def rmdir(self):
+        self.client.rmdir(str(self.path))
+
+    def unlink(self, missing_ok=False):
+
+        if self.is_file():
+            self.client.remove(str(self.path))
+        else:
+            raise FileNotFoundError
+
+    def as_uri(self):
+
+        return f"sftp://{self.configuration.username}@{self.configuration.hostname}{str(self)}"
+
+    def __repr__(self):
+        return self.as_uri()
+
+
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
@@ -296,11 +377,6 @@ class S3Path(PureBeamPath):
         return S3Path._exists(self.client, self.bucket_name, key) or \
                (self._check_if_bucket_exists() and (not self._is_empty(key)))
 
-    def open(self, mode="r", **kwargs):
-        if "w" in mode:
-            raise NotImplementedError("Writing to S3 is not supported")
-        return self.object.get()["Body"]
-
     def read_text(self, encoding=None, errors=None):
         return self.object.get()["Body"].read().decode(encoding, errors)
 
@@ -334,7 +410,7 @@ class S3Path(PureBeamPath):
     def replace(self, target):
         self.rename(target)
 
-    def unlink(self):
+    def unlink(self, **kwargs):
         if self.is_file():
             self.object.delete()
         if self.is_dir():
@@ -414,28 +490,10 @@ class S3Path(PureBeamPath):
 
         if 'Contents' in objects:
             for content in objects['Contents']:
+                if content['key'] == key:
+                    continue
                 yield S3Path(f"{self.bucket_name}/{content['Key']}", client=self.client,
                              configuration=self.configuration, info=self.info)
-
-    # def iterdir(self):
-    #     bucket = self.client.Bucket(self.bucket_name)
-    #
-    #     if self.key is None:
-    #         objects = bucket.objects.all()
-    #     else:
-    #         objects = bucket.objects.filter(Prefix=self.key)
-    #
-    #     key_depth = self.key_depth()
-    #     paths = set()
-    #     for obj in objects:
-    #
-    #         key = list(filter(lambda x: len(x), obj.key.split('/')))
-    #         if len(key) <= key_depth:
-    #             continue
-    #         key = '/'.join(key[:key_depth+1])
-    #         if key not in paths:
-    #             paths.add(key)
-    #             yield S3Path("/".join([obj.bucket_name, key]), client=self.client)
 
     @property
     def parent(self):
@@ -443,11 +501,16 @@ class S3Path(PureBeamPath):
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
-            # self.file_object = self.client.Object(self.bucket_name, self.key).get()['Body']
-            self.file_object = self.client.meta.client.get_object(Bucket=self.bucket_name, Key=self.key)['Body']
-
-        else:
+            file_object = self.client.meta.client.get_object(Bucket=self.bucket_name, Key=self.key)['Body']
+            io_obj = StringIO if 'r' else BytesIO
+            self.file_object = io_obj(file_object.read())
+        elif self.mode == 'wb':
             self.file_object = BytesIO()
+        elif self.mode == 'w':
+            self.file_object = StringIO()
+        else:
+            raise ValueError
+
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):

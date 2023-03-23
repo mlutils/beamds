@@ -71,6 +71,8 @@ def get_path(path, storage='local'):
 
     if storage == 's3':
         path = beam_path(f"s3://192.168.10.45:9000{path}", access_key=access_key, secret_key=secret_key, tls=False)
+    elif storage == 'sftp':
+        path = beam_path(f'sftp://elads@dsigpu04/dsi/shared/elads/elads/{path}')
 
     return beam_path(path)
 
@@ -79,10 +81,21 @@ if __name__ == '__main__':
 
     # tests = ['transform_dd']
     # tests = ['single_file']
-    tests = ['chunks']
+    # tests = ['chunks']
     # tests = ['store_and_reload']
     # tests = ['load_data']
+    tests = ['empty_path']
     storage = 'file'
+    # storage = 'sftp'
+
+    if 'empty_path' in tests:
+        print('starting empty_path')
+
+        bd = BeamData.from_path('/tmp/sandbox/yy')
+        print(bd)
+        bd.cache()
+        print(bd)
+        print('done empty_path')
 
     if 'loc_ops' in tests:
 

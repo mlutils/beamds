@@ -110,13 +110,17 @@ class PureBeamPath:
     def rmdir(self):
         raise NotImplementedError
 
-    def unlink(self):
+    def unlink(self, **kwargs):
         raise NotImplementedError
 
     def __truediv__(self, other):
         return self.joinpath(str(other))
 
     def __call__(self, mode="rb"):
+        self.mode = mode
+        return self
+
+    def open(self, mode="rb"):
         self.mode = mode
         return self
 
@@ -197,8 +201,12 @@ class PureBeamPath:
     def match(self, pattern):
         return self.path.match(pattern)
 
+    # def relative_to(self, *other):
+    #     return self.gen(self.path.relative_to(*other))
+
     def relative_to(self, *other):
-        return self.gen(self.path.relative_to(*other))
+        other = PureBeamPath(*other)
+        return PureBeamPath(self.path.relative_to(str(other)))
 
     def with_name(self, name):
         return self.gen(self.path.with_name(name))
@@ -243,8 +251,8 @@ class PureBeamPath:
             if ext == '.fea':
 
                 import pyarrow as pa
-                x = feather.read_feather(pa.BufferReader(fo.read()), **kwargs)
-                # x = pd.read_feather(fo, **kwargs)
+                # x = feather.read_feather(pa.BufferReader(fo.read()), **kwargs)
+                x = pd.read_feather(fo, **kwargs)
 
                 c = x.columns
                 for ci in c:
