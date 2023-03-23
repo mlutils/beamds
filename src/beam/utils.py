@@ -260,8 +260,13 @@ class PureBeamPath:
                 x = pd.read_pickle(fo, **kwargs)
             elif ext in ['.npy', '.npz']:
                 x = np.load(fo, allow_pickle=True, **kwargs)
+            elif ext in ['.txt', '.text']:
+                x = fo.readlines()
             elif ext == '.scipy_npz':
                 x = scipy.sparse.load_npz(fo, **kwargs)
+            elif ext == '.flac':
+                import soundfile
+                x = soundfile.read(fo, **kwargs)
             elif ext == '.parquet':
                 x = pd.read_parquet(fo, **kwargs)
             elif ext == '.pt':
@@ -300,7 +305,7 @@ class PureBeamPath:
         else:
             m = 'r'
 
-        if ext not in ['.avro', '.json', '.orc']:
+        if ext not in ['.avro', '.json', '.orc', '.txt', '.text']:
             m = f"{m}b"
 
         return m
@@ -1403,11 +1408,14 @@ def recursive_len(x):
     if x_type.minor == 'scipy_sparse':
         return x.shape[0]
 
+    if x_type.element == 'none':
+        return 0
+
     if hasattr(x, '__len__'):
         return len(x)
 
     if x is None:
-        return None
+        return 0
 
     return 1
 

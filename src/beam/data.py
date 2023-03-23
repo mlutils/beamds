@@ -282,11 +282,13 @@ class BeamData(object):
         if self.orientation in ['columns', 'simple']:
             self._index = info.index.values
         else:
-            self._index = BeamData.recursive_filter(self.size, self.info).index
-            if self._objects_type == 'tensor':
-
-                func = partial(as_tensor, device=self.device, dtype=None, return_vector=False)
-                self._index = recursive(func)(self._index)
+            # TODO: support index for packed and index case
+            self._index = None
+            # self._index = BeamData.recursive_filter(self.size, self.info).index
+            # if self._objects_type == 'tensor':
+            #
+            #     func = partial(as_tensor, device=self.device, dtype=None, return_vector=False)
+            #     self._index = recursive(func)(self._index)
 
         return self._index
 
@@ -637,16 +639,15 @@ class BeamData(object):
                     lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
                     lens_index = list(filter(lambda x: x is not None, lens_index))
 
-                    if len(np.unique(lens)) == 1 and sum(lens) > sum(lens_index):
+                    if len(np.unique(lens)) == 1 and len(lens_index) <= 1:
                         self._orientation = 'columns'
                         return self._orientation
 
-                shapes = recursive_flatten(recursive(
-                    lambda x: tuple(x.shape[1:]) if hasattr(x, 'shape') and len(x.shape) > 1 else None)([self.data]),
-                                           flat_array=True)
+                shapes = recursive_flatten(recursive(lambda x: tuple(x.shape[1:])
+                                                     if hasattr(x, 'shape') else None)([self.data]))
 
                 shapes = list(filter(lambda x: x is not None, shapes))
-                if len(np.unique(shapes) == 1):
+                if len(np.unique(shapes)) == 1:
                     self._orientation = 'index'
                 else:
                     self._orientation = 'packed'
