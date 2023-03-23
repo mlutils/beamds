@@ -1,19 +1,22 @@
 from pathlib import PurePath, Path
 import botocore
 import re
-from .utils import PureBeamPath
+from .utils import PureBeamPath, BeamURL
 from io import StringIO, BytesIO
+import os
 
 
-def beam_path(path, protocol=None, username=None, hostname=None, port=None, private_key=None, **kwargs):
+def beam_path(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
+              **kwargs):
     """
 
-    @param secret_key: AWS secret key
-    @param access_key: AWS access key
     @param port:
     @param hostname:
     @param username:
     @param protocol:
+    @param private_key:
+    @param secret_key: AWS secret key
+    @param access_key: AWS access key
     @param path: URI syntax: [protocol://][username@][hostname][:port][/path/to/file]
     @return: BeamPath object
     """
@@ -23,40 +26,62 @@ def beam_path(path, protocol=None, username=None, hostname=None, port=None, priv
     if ':' not in path:
         return BeamPath(path)
 
-    pattern = re.compile(
-        r'^((?P<protocol>[\w]+)://)?((?P<username>[\w\-_]+)@)?(?P<hostname>[\-\.\w]+)?(:(?P<port>\d+))?(?P<path>.*)$')
-    match = pattern.match(path)
-    if match:
-        protocol = match.group('protocol')
-        username = match.group('username')
-        hostname = match.group('hostname')
-        port = match.group('port')
-        path = match.group('path')
+    url = BeamURL.from_string(path)
 
-    if protocol is None or (protocol == 'file'):
+    if url.hostname is not None:
+        hostname = url.hostname
+
+    if url.port is not None:
+        port = url.port
+
+    if url.username is not None:
+        username = url.username
+
+    query = url.query
+    for k, v in query.items():
+        kwargs[k] = v
+
+    if access_key is None and 'access_key' in kwargs:
+        access_key = kwargs.pop('access_key')
+
+    if private_key is None and 'private_key' in kwargs:
+        private_key = kwargs.pop('private_key')
+
+    if secret_key is None and 'secret_key' in kwargs:
+        secret_key = kwargs.pop('secret_key')
+
+    path = url.path
+
+    if url.protocol is None or (url.protocol == 'file'):
         return BeamPath(path)
 
     if path == '':
         path = '/'
 
-    if protocol == 's3':
-        return S3Path(path, hostname=hostname, port=port,  **kwargs)
+    if url.protocol == 's3':
 
-    elif protocol == 'hdfs':
+        if access_key is None:
+            access_key = os.environ.get('AWS_ACCESS_KEY_ID', None)
+
+        if secret_key is None:
+            secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY', None)
+
+        return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
+
+    elif url.protocol == 'hdfs':
         return HDFSPath(path, hostname=hostname, port=port, username=username, **kwargs)
 
-    elif protocol == 'gs':
+    elif url.protocol == 'gs':
         raise NotImplementedError
-    elif protocol == 'http':
+    elif url.protocol == 'http':
         raise NotImplementedError
-    elif protocol == 'https':
+    elif url.protocol == 'https':
         raise NotImplementedError
-    elif protocol == 'ftp':
+    elif url.protocol == 'ftp':
         raise NotImplementedError
-    elif protocol == 'ftps':
+    elif url.protocol == 'ftps':
         raise NotImplementedError
-    elif protocol == 'sftp':
-
+    elif url.protocol == 'sftp':
         if private_key is None:
             private_key = Path.home().joinpath('.ssh', 'id_rsa')
 
@@ -67,13 +92,9 @@ def beam_path(path, protocol=None, username=None, hostname=None, port=None, priv
 
 class BeamPath(PureBeamPath):
 
-    def __init__(self, *pathsegments, configuration=None, info=None, **kwargs):
-        PureBeamPath.__init__(self, *pathsegments, configuration=configuration, info=info, **kwargs)
-
-        if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
-            pathsegments = pathsegments[0].parts
-
-        self.path = Path(*pathsegments)
+    def __init__(self, *pathsegments, **kwargs):
+        PureBeamPath.__init__(self, *pathsegments, scheme='file', **kwargs)
+        self.path = Path(self.path)
 
     @classmethod
     def cwd(cls):
@@ -224,12 +245,14 @@ class SFTPPath(PureBeamPath):
     def __init__(self, *pathsegments, client=None, hostname=None, username=None, private_key=None, password=None,
                  port=None, private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None, **kwargs):
 
+        super().__init__(*pathsegments, scheme='sftp', client=client, hostname=hostname, username=username,
+                         private_key=private_key, password=password, port=port, private_key_pass=private_key_pass,
+                         ciphers=ciphers, log=log, cnopts=cnopts, default_path=default_path, **kwargs)
+
         if port is None:
             port = 22
-
-        super().__init__(*pathsegments, client=client, hostname=hostname, username=username, private_key=private_key,
-                         password=password, port=port, private_key_pass=private_key_pass, ciphers=ciphers,
-                         log=log, cnopts=cnopts, default_path=default_path, **kwargs)
+        elif isinstance(port, str):
+            port = int(port)
 
         if client is None:
             import pysftp
@@ -246,7 +269,7 @@ class SFTPPath(PureBeamPath):
 
         for p in self.client.listdir(remotepath=str(self.path)):
             path = self.path.joinpath(p)
-            yield SFTPPath(path, client=self.client, configuration=self.configuration)
+            yield SFTPPath(path, url=self.url, client=self.client)
 
     def is_file(self):
         return self.client.isfile(remotepath=str(self.path))
@@ -291,20 +314,16 @@ class SFTPPath(PureBeamPath):
         else:
             raise FileNotFoundError
 
-    def as_uri(self):
-
-        return f"sftp://{self.configuration.username}@{self.configuration.hostname}{str(self)}"
-
-    def __repr__(self):
-        return self.as_uri()
-
 
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
                  secret_key=None, tls=True, **kwargs):
-        super().__init__(*pathsegments, client=client, hostname=hostname, port=port,
-                         access_key=access_key, secret_key=secret_key, **kwargs)
+        super().__init__(*pathsegments, scheme='s3', client=client, hostname=hostname, port=port,
+                         access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+
+        if type(tls) is str:
+            tls = tls.lower() == 'true'
 
         import boto3
 
@@ -321,13 +340,9 @@ class S3Path(PureBeamPath):
         else:
             self.key = None
 
-        if tls:
-            self.protocol = 'https'
-        else:
-            self.protocol = 'http'
-
+        protocol = 'https' if tls else 'http'
         if client is None:
-            client = boto3.resource(endpoint_url=f'{self.protocol}://{normalize_host(hostname, port)}',
+            client = boto3.resource(endpoint_url=f'{protocol}://{normalize_host(hostname, port)}',
                                     config=boto3.session.Config(signature_version='s3v4'),
                                     verify=False, service_name='s3', aws_access_key_id=access_key,
                                     aws_secret_access_key=secret_key)
@@ -347,13 +362,6 @@ class S3Path(PureBeamPath):
         if self._object is None:
             self._object = self.client.Object(self.bucket_name, self.key)
         return self._object
-
-    def as_uri(self):
-
-        return f"s3://{self.client.meta.client.meta.endpoint_url}{str(self)}"
-
-    def __repr__(self):
-        return self.as_uri()
 
     def is_file(self):
 
@@ -485,25 +493,23 @@ class S3Path(PureBeamPath):
 
         if 'CommonPrefixes' in objects:
             for prefix in objects['CommonPrefixes']:
-                yield S3Path(f"{self.bucket_name}/{prefix['Prefix']}", client=self.client,
-                             configuration=self.configuration, info=self.info)
+                yield S3Path(f"{self.bucket_name}/{prefix['Prefix']}", client=self.client, url=self.url)
 
         if 'Contents' in objects:
             for content in objects['Contents']:
-                if content['key'] == key:
+                if content['Key'] == key:
                     continue
-                yield S3Path(f"{self.bucket_name}/{content['Key']}", client=self.client,
-                             configuration=self.configuration, info=self.info)
+                yield S3Path(f"{self.bucket_name}/{content['Key']}", client=self.client, url=self.url)
 
     @property
     def parent(self):
-        return S3Path(str(super(S3Path, self).parent), client=self.client)
+        return S3Path(str(super(S3Path, self).parent), client=self.client, url=self.url)
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
             file_object = self.client.meta.client.get_object(Bucket=self.bucket_name, Key=self.key)['Body']
-            io_obj = StringIO if 'r' else BytesIO
-            self.file_object = io_obj(file_object.read())
+            # io_obj = StringIO if 'r' else BytesIO
+            self.file_object = BytesIO(file_object.read())
         elif self.mode == 'wb':
             self.file_object = BytesIO()
         elif self.mode == 'w':
@@ -528,22 +534,22 @@ class HDFSPath(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None,
                  username=None, skip_trash=False, n_threads=1,  temp_dir=None, chunk_size=65536,
-                 progress=None, cleanup=True):
-        super().__init__(*pathsegments, skip_trash=skip_trash, n_threads=n_threads,
+                 progress=None, cleanup=True, tls=True):
+        super().__init__(*pathsegments, scheme='hdfs', hostname=hostname, port=port, skip_trash=skip_trash,
+                                        username=username, sn_threads=n_threads,
                                        temp_dir=temp_dir, chunk_size=chunk_size, progress=progress, cleanup=cleanup)
 
         from hdfs import InsecureClient
 
+        if type(tls) is str:
+            tls = tls.lower() == 'true'
+
+        protocol = 'https' if tls else 'http'
+
         if client is None:
-            client = InsecureClient(f'http://{normalize_host(hostname, port)}', user=username)
+            client = InsecureClient(f'{protocol}://{normalize_host(hostname, port)}', user=username)
 
         self.client = client
-
-    def as_uri(self):
-        return f"hdfs://{self.client.url}{str(self)}"
-
-    def __repr__(self):
-        return self.as_uri()
 
     def exists(self):
         return self.client.status(str(self), strict=False) is not None
@@ -558,8 +564,8 @@ class HDFSPath(PureBeamPath):
 
     def unlink(self, missing_ok=False):
         if not missing_ok:
-            self.client.delete(str(self), skip_trash=self.configuration['skip_trash'])
-        self.client.delete(str(self), skip_trash=self.configuration['skip_trash'])
+            self.client.delete(str(self), skip_trash=self['skip_trash'])
+        self.client.delete(str(self), skip_trash=self['skip_trash'])
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
         if not exist_ok:
@@ -568,7 +574,7 @@ class HDFSPath(PureBeamPath):
         self.client.makedirs(str(self), permission=mode)
 
     def rmdir(self):
-        self.client.delete(str(self), skip_trash=self.configuration['skip_trash'])
+        self.client.delete(str(self), skip_trash=self['skip_trash'])
 
     def joinpath(self, *other):
         return HDFSPath(str(super(HDFSPath, self).joinpath(*other)), client=self.client)

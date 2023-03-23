@@ -220,6 +220,7 @@ class Transformer(Processor):
         x = self.transform_callback(x, key=key, is_chunk=is_chunk, fit=fit, **kwargs)
 
         if store_path is not None:
+            store_path = beam_path(store_path)
             if not isinstance(x, BeamData):
                 x = BeamData(x)
             x.store(path=store_path)
@@ -344,6 +345,7 @@ class Transformer(Processor):
                 chunk_path = None
                 if store_chunk:
                     chunk_path = path.joinpath(f"{BeamData.normalize_key(k)}{BeamData.partition_directory_name}")
+                    chunk_path = chunk_path.as_uri()
 
                 self.queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,
                                         cache=cache, store=store_chunk, name=f"{self.name}/{k}", **kwargs))

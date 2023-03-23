@@ -97,8 +97,8 @@ class BeamData(object):
                       'index': '.index', 'all_paths': '.all_paths.pkl'}
 
     default_data_file_name = 'data'
-    chunk_file_extension = '_chunk'
-    partition_directory_name = '_part'
+    chunk_file_extension = '.chunk'
+    partition_directory_name = '.part'
 
     def __init__(self, *args, data=None, path=None, name=None, all_paths=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,

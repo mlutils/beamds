@@ -34,7 +34,132 @@ import time
 import inspect
 from pathlib import PurePath
 from argparse import Namespace
-import pyarrow as pa
+from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
+
+
+class BeamURL:
+
+    def __init__(self, url=None, scheme=None, hostname=None, port=None, username=None, password=None, path=None,
+                 fragment=None, params=None, **query):
+
+        self._url = url
+        self._parsed_url = None
+        if url is None:
+            netloc = BeamURL.to_netloc(hostname=hostname, port=port, username=username, password=password)
+            query = BeamURL.dict_to_query(**query)
+            self._parsed_url = ParseResult(scheme=scheme, netloc=netloc, path=path, params=params, query=query,
+                                           fragment=fragment)
+
+        assert self._url is not None or self._parsed_url is not None, 'Either url or parsed_url must be provided'
+
+    @property
+    def parsed_url(self):
+        if self._parsed_url is not None:
+            return self._parsed_url
+        self._parsed_url = urlparse(self._url)
+        return self._parsed_url
+
+    @property
+    def url(self):
+        if self._url is not None:
+            return self._url
+        self._url = urlunparse(self._parsed_url)
+        return self._url
+
+    def __repr__(self):
+        return self.url
+
+    def __str__(self):
+
+        netloc = BeamURL.to_netloc(hostname=self.hostname, port=self.port, username=self.username)
+        parsed_url = ParseResult(scheme=self.scheme, netloc=netloc, path=self.path, params=None, query=None,
+                                 fragment=None)
+        return urlunparse(parsed_url)
+
+    @property
+    def scheme(self):
+        return self.parsed_url.scheme
+
+    @property
+    def protocol(self):
+        return self.scheme
+
+    @property
+    def username(self):
+        if self.parsed_url.netloc is None:
+            return None
+        return self.parsed_url.username
+
+    @property
+    def hostname(self):
+        if self.parsed_url.netloc is None:
+            return None
+        return self.parsed_url.hostname
+
+    @property
+    def password(self):
+        if self.parsed_url.netloc is None:
+            return None
+        return self.parsed_url.password
+
+    @property
+    def port(self):
+        if self.parsed_url.netloc is None:
+            return None
+        return self.parsed_url.port
+
+    @property
+    def path(self):
+        return self.parsed_url.path
+
+    @property
+    def query_string(self):
+        return self.parsed_url.query
+
+    @property
+    def query(self):
+        return dict(parse_qsl(self.parsed_url.query))
+
+    @property
+    def fragment(self):
+        return self.parsed_url.fragment
+
+    @property
+    def params(self):
+        return self.parsed_url.params
+
+    @staticmethod
+    def to_netloc(hostname=None, port=None, username=None, password=None):
+
+        if not hostname:
+            return None
+
+        netloc = hostname
+        if username:
+            if password:
+                username = f"{username}:{password}"
+            netloc = f"{username}@{netloc}"
+        if port:
+            netloc = f"{netloc}:{port}"
+        return netloc
+
+    @staticmethod
+    def to_path(path):
+        return PurePath(path).as_posix()
+
+    @staticmethod
+    def query_to_dict(query):
+        return dict(parse_qsl(query))
+
+    @staticmethod
+    def dict_to_query(**query):
+        return '&'.join([f'{k}={v}' for k, v in query.items() if v is not None])
+
+    @classmethod
+    def from_string(cls, url):
+        parsed_url = urlparse(url)
+        return cls(url, parsed_url)
+
 
 # logger.remove(handler_id=0)
 logger.remove()
@@ -53,25 +178,36 @@ class PureBeamPath:
 
     feather_index_mark = "feather_index:"
 
-    def __init__(self, *pathsegments, configuration=None, info=None, client=None, **kwargs):
+    def __init__(self, *pathsegments, url=None, scheme=None, hostname=None, port=None, username=None, password=None,
+                 fragment=None, params=None, client=None, **kwargs):
         super().__init__()
 
         if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
             pathsegments = pathsegments[0].parts
 
         self.path = PurePath(*pathsegments)
-        self.configuration = Namespace(**kwargs)
-        if configuration is not None:
 
-            if type(configuration) == Namespace:
-                configuration = configuration.__dict__
-            for k, v in configuration.items():
-                setattr(self.configuration, k, v)
+        if url is not None:
+            scheme = url.scheme
+            hostname = url.hostname
+            port = url.port
+            username = url.username
+            password = url.password
+            fragment = url.fragment
+            params = url.params
+            kwargs = url.query
 
-        self.info = info if info is not None else {}
+        self.url = BeamURL(scheme=scheme, hostname=hostname, port=port, username=username, fragment=fragment,
+                           params=params, password=password, path=str(self.path), **kwargs)
+
         self.mode = "rb"
         self.file_object = None
         self.client = client
+
+    def __getitem__(self, item):
+        if item in self.url.query:
+            return self.url.query[item]
+        return None
 
     def not_empty(self):
 
@@ -125,10 +261,10 @@ class PureBeamPath:
         return self
 
     def __str__(self):
-        return str(self.path)
+        return str(self.url)
 
     def __repr__(self):
-        return self.path.as_uri()
+        return str(self.url)
 
     def __enter__(self):
         raise NotImplementedError
@@ -137,8 +273,19 @@ class PureBeamPath:
         raise NotImplementedError
 
     def gen(self, path):
+
         PathType = type(self)
-        return PathType(path, configuration=self.configuration, info=self.info, client=self.client)
+
+        hostname = self.url.hostname
+        port = self.url.port
+        username = self.url.username
+        password = self.url.password
+        fragment = self.url.fragment
+        params = self.url.params
+        query = self.url.query
+
+        return PathType(path, client=self.client, hostname=hostname, port=port, username=username,
+                        password=password, fragment=fragment, params=params, **query)
 
     @property
     def parts(self):
@@ -184,7 +331,7 @@ class PureBeamPath:
         return self.path.as_posix()
 
     def as_uri(self):
-        return self.path.as_uri()
+        return self.url.url
 
     def is_absolute(self):
         return self.path.is_absolute()

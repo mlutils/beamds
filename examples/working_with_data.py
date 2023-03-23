@@ -79,13 +79,24 @@ def get_path(path, storage='local'):
 
 if __name__ == '__main__':
 
+    access_key = 'EBemHypH7I2NcHx1'
+    secret_key = 'cvYL26ItASAwE8ZUxRaZKhVVdcxHZ0SJ'
+    path = '/tmp/sandbox/bd'
+
+    path = beam_path(f"s3://192.168.10.45:9000{path}", access_key=access_key, secret_key=secret_key, tls=False)
+    list(path.iterdir())[2].read()
+
+
+
+
+
     # tests = ['transform_dd']
     # tests = ['single_file']
     # tests = ['chunks']
     # tests = ['store_and_reload']
-    # tests = ['load_data']
-    tests = ['empty_path']
-    storage = 'file'
+    tests = ['load_data']
+    # tests = ['empty_path']
+    storage = 's3'
     # storage = 'sftp'
 
     if 'empty_path' in tests:
