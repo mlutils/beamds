@@ -261,7 +261,7 @@ class PureBeamPath:
         return self
 
     def __str__(self):
-        return str(self.url)
+        return str(self.path)
 
     def __repr__(self):
         return str(self.url)

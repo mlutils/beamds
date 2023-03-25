@@ -483,7 +483,7 @@ class BeamData(object):
     def key_map(self):
         if self._key_map is not None:
             return self._key_map
-        self._key_map = {i: k for i, (k, v) in enumerate(self.flatten_items)}
+        self._key_map = {k: i for i, (k, v) in enumerate(self.flatten_items.items())}
 
         return self._key_map
 
@@ -587,11 +587,12 @@ class BeamData(object):
     def flatten_items(self):
         if self._flatten_items is not None:
             return self._flatten_items
-        self._flatten_items = recursive_flatten_with_keys(self.data)
-        for k in self._flatten_items.keys():
+        flatten_items = recursive_flatten_with_keys(self.data)
+        for k in list(flatten_items.keys()):
             if len(k) == 1:
-                self._flatten_items[k[0]] = self._flatten_items.pop(k)
+                flatten_items[k[0]] = flatten_items.pop(k)
 
+        self._flatten_items = flatten_items
         return self._flatten_items
 
     @property
@@ -1431,24 +1432,26 @@ class BeamData(object):
         elif self.orientation == 'index':
             dim = 0
             orientation = 'simplified_index'
+            key_map = self.key_map
         elif self.orientation == 'columns':
             dim = 1
             orientation = 'simple'
+            key_map = None
         else:
             raise ValueError("Unknown orientation")
 
         info = None
         index = None
         label = None
-        data = collate_chunks(self.flatten_data, dim=dim)
+        data = collate_chunks(*self.flatten_data, dim=dim)
         if self.index is not None:
-            index = collate_chunks(recursive_flatten(self.index), dim=dim)
+            index = collate_chunks(*recursive_flatten(self.index), dim=dim)
         if self.label is not None:
-            label = collate_chunks(recursive_flatten(self.label), dim=dim)
+            label = collate_chunks(*recursive_flatten(self.label), dim=dim)
         if self._info is not None:
             info = self.info
 
-        return self.clone(data=data, index=index, label=label, info=info, orientation=orientation)
+        return self.clone(data=data, index=index, label=label, info=info, orientation=orientation, key_map=key_map)
 
     @property
     def stack(self):
@@ -1545,11 +1548,14 @@ class BeamData(object):
 
             info = None
             if self.label is not None:
-                label = self.label.loc[index]
+                if hasattr(self.label, 'loc'):
+                    label = self.label.loc[index]
+                else:
+                    label = self.label[index]
             else:
                 label = None
 
-            if self.orientation == 'simple':
+            if self.orientation in ['simple', 'simplified_index']:
                 if hasattr(self.data, 'loc'):
                     data = self.data.loc[index]
                 else:
@@ -1659,12 +1665,25 @@ class BeamData(object):
             return sliced
 
     def get_simplified_data_by_key(self, key):
-        ind = self.info['map'].loc[self.key_map[key]]
-        if hasattr(self.data, 'loc'):
+        ind = self.info['map'].loc[self.info['fold'] == self.key_map[key]].values
+        if hasattr(self.data, 'iloc'):
             data = self.data.iloc[ind]
         else:
             data = self.data[ind]
-        return data
+        label = None
+        index = None
+        if self.label is not None:
+            if hasattr(self.label, 'iloc'):
+                label = self.label.iloc[ind]
+            else:
+                label = self.label[ind]
+        if self.index is not None:
+            if hasattr(self.index, 'iloc'):
+                index = self.index.iloc[ind]
+            else:
+                index = self.index[ind]
+
+        return DataBatch(data=data, index=index, label=label)
 
     def slice_keys(self, keys):
 
@@ -1682,9 +1701,19 @@ class BeamData(object):
         if self.cached:
             if self.orientation == 'simplified_index':
                 if keys_type.major == 'scalar':
-                    data = self.get_simplified_data_by_key(keys)
+                    data_batch = self.get_simplified_data_by_key(keys)
                 else:
-                    data = {k: self.get_simplified_data_by_key(k) for k in keys}
+                    data_batch = {k: self.get_simplified_data_by_key(k) for k in keys}
+                    data_batch = DataBatch(data={k: v.data for k, v in data_batch.items()},
+                                           index={k: v.index for k, v in data_batch.items()},
+                                           label={k: v.label for k, v in data_batch.items()})
+
+                if self.quick_getitem and data is not None:
+                    return BeamData.data_batch(data_batch.data, index=data_batch.index,
+                                               label=data_batch.label, orientation=self.orientation)
+
+                return self.clone(data=data_batch.data, path=all_paths, columns=self.columns, index=data_batch.index,
+                                  label=data_batch.label, schema=schema)
             else:
                 data = BeamData.slice_scalar_or_list(self.data, keys, keys_type=keys_type, data_type=self.data_type)
 
