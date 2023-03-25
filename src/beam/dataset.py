@@ -327,7 +327,8 @@ class UniversalDataset(torch.utils.data.Dataset):
             pin_memory = pin_memory and pin_memory_
 
         persistent_workers = (num_workers > 0 and sampler.once)
-        return torch.utils.data.DataLoader(self, sampler=sampler, batch_size = None,
+        prefetch_factor = prefetch_factor if num_workers > 0 else None
+        return torch.utils.data.DataLoader(self, sampler=sampler, batch_size=None,
                                              num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
                                              worker_init_fn=worker_init_fn, collate_fn=collate_fn,
                                              multiprocessing_context=multiprocessing_context, generator=generator,

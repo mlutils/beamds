@@ -43,7 +43,12 @@ class MNISTDataset(UniversalDataset):
         # test_indices = len(dataset_train.data) + torch.arange(len(dataset_test.data))
         # self.split(validation=.2, test=test_indices, seed=seed)
 
-        self.data = BeamData({'train': dataset_train.data, 'test': dataset_test.data},
+        # self.data = BeamData({'train': dataset_train.data, 'test': dataset_test.data},
+        #                      label={'train': dataset_train.targets, 'test': dataset_test.targets}, quick_getitem=True)
+        # self.labels = self.data.label
+        # self.split(validation=.2, test=self.data['test'].index, seed=seed)
+
+        self.data = BeamData.simple({'train': dataset_train.data, 'test': dataset_test.data},
                              label={'train': dataset_train.targets, 'test': dataset_test.targets}, quick_getitem=True)
         self.labels = self.data.label
         self.split(validation=.2, test=self.data['test'].index, seed=seed)
@@ -51,15 +56,14 @@ class MNISTDataset(UniversalDataset):
     def getitem(self, index):
 
         data = self.data[index]
+
         if isinstance(data, BeamData):
             x = data.stacked_values.float() / 255
             y = data.stacked_labels
         elif isinstance(data, DataBatch):
-
             x = data.data.float() / 255
             y = data.label
-            # x = data.data['train'].float() / 255
-            # y = data.label['train'].values
+
         else:
             x = self.data[index].float() / 255
             y = self.labels[index]
@@ -199,8 +203,11 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data//dataset/mnist'
-    root_dir = '/home/shared/data/results'
+    # path_to_data = '/home/shared/data//dataset/mnist'
+    # root_dir = '/home/shared/data/results'
+
+    path_to_data = '/tmp/shared/data//dataset/mnist'
+    root_dir = '/tmp/shared/data/results'
 
     args = beam_arguments(
         f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cpu   ",
@@ -215,8 +222,8 @@ if __name__ == '__main__':
     res = alg.predict(examples['x'])
 
     # ## Inference
-    inference = alg('test')
-    # inference = alg({'x': examples['x'], 'y': examples['y']})
+    inference = alg('validation')
+    inference = alg({'x': examples['x'], 'y': examples['y']})
 
     print('Test inference results:')
     for n, v in inference.statistics['metrics'].items():

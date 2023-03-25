@@ -93,18 +93,20 @@ class BeamData(object):
 
     # metadata files
     metadata_files = {'conf': '.conf.pkl', 'schema': '.schema.pkl',
-                      'info': '.info.fea', 'label': '.label',
+                      'info': '.info.fea', 'label': '.label', 'aux': '.aux.pkl',
                       'index': '.index', 'all_paths': '.all_paths.pkl'}
 
     default_data_file_name = 'data'
-    chunk_file_extension = '.chunk'
-    partition_directory_name = '.part'
+    index_chunk_file_extension = '.index_chunk'
+    columns_chunk_file_extension = '.columns_chunk'
+    index_partition_directory_name = '.index_part'
+    columns_partition_directory_name = '.columns_part'
 
     def __init__(self, *args, data=None, path=None, name=None, all_paths=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
                  override=True, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
-                 partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None, write_kwargs=None,
-                 quick_getitem=False, orientation=None, glob_filter=None, info=None, **kwargs):
+                 key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None,
+                 write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None, **kwargs):
 
         '''
 
@@ -133,6 +135,8 @@ class BeamData(object):
          features. In case there is a common index, it can be used to slice and collect the data like the original
          PackedFold object.
 
+         5. simplified_index: a simple orientation that was generated from a collated version of index orientation.
+
          If data is both cached in self.data and stored in self.all_paths, the cached version is always preferred.
 
         The orientation is inferred from the data. If all objects have same length they are assumed to represent columns
@@ -160,6 +164,7 @@ class BeamData(object):
         self.split_by = split_by
         self.quick_getitem = quick_getitem
         self.glob_filter = glob_filter
+        self._key_map = key_map
 
         self.stored = False
         self.cached = True
@@ -226,7 +231,8 @@ class BeamData(object):
             self._all_paths = BeamData.single_file_case(path, all_paths)
             self._root_path = path
 
-        if ((self._all_paths is not None) or (self._root_path.not_empty())) and not self.cached:
+        if ((self._all_paths is not None) or (self._root_path is not None and self._root_path.not_empty())) and \
+                not self.cached:
             self.stored = True
             if not lazy:
                 self.cache()
@@ -279,7 +285,7 @@ class BeamData(object):
                         return self._index
 
         info = self.info
-        if self.orientation in ['columns', 'simple']:
+        if self.orientation in ['columns', 'simple',  'simplified_index']:
             self._index = info.index.values
         else:
             # TODO: support index for packed and index case
@@ -474,6 +480,14 @@ class BeamData(object):
         return defaultdict(lambda: None)
 
     @property
+    def key_map(self):
+        if self._key_map is not None:
+            return self._key_map
+        self._key_map = {i: k for i, (k, v) in enumerate(self.flatten_items)}
+
+        return self._key_map
+
+    @property
     def info(self):
 
         if self._info is not None:
@@ -610,7 +624,7 @@ class BeamData(object):
             if self.orientation == 'columns':
                 self._len = container_len(self.data)
             else:
-                self._len = sum(recursive_flatten(recursive_len(self.data)))
+                self._len = sum(recursive_len(self.flatten_data))
             return self._len
 
         self._len = None
@@ -670,14 +684,6 @@ class BeamData(object):
     def set_property(self, p):
         setattr(self, f"_{p}", None)
         return getattr(self, p)
-
-    @property
-    def dim(self):
-        if self.orientation == 'columns':
-            return 0
-        if self.orientation == 'index':
-            return 1
-        return None
 
     @property
     def data_types(self):
@@ -899,12 +905,6 @@ class BeamData(object):
 
             keys = []
             values = []
-            orientation = 0
-
-            conf_path = path.joinpath(BeamData.metadata_files['conf'])
-            if conf_path.is_file():
-                conf = conf_path.read(**kwargs)
-                orientation = conf['orientation']
 
             for next_path in path.iterdir():
 
@@ -912,12 +912,14 @@ class BeamData(object):
                     keys.append(next_path.stem)
                     values.append(BeamData.read(next_path, schema=schema, **kwargs))
 
-            if all([BeamData.chunk_file_extension in k for k in keys]):
-                return collate_chunks(*values, keys=keys, dim=orientation)
-
-            elif all([BeamData.partition_directory_name in k for k in keys]):
-                return recursive_collate_chunks(*values, dim=orientation)
-
+            if all([BeamData.index_chunk_file_extension in k for k in keys]):
+                return collate_chunks(*values, keys=keys, dim=0)
+            elif all([BeamData.columns_chunk_file_extension in k for k in keys]):
+                return collate_chunks(*values, keys=keys, dim=1)
+            elif all([BeamData.index_partition_directory_name in k for k in keys]):
+                return recursive_collate_chunks(*values, dim=0)
+            elif all([BeamData.columns_partition_directory_name in k for k in keys]):
+                return recursive_collate_chunks(*values, dim=1)
             else:
                 return BeamData.containerize_keys_and_values(keys, values)
 
@@ -1006,18 +1008,20 @@ class BeamData(object):
                 priority.insert(file_type, 0)
 
             if split_by != 'keys' and n_chunks > 1:
-                orientation = {'index': 0, 'columns': 1}[split_by]
-                data = list(divide_chunks(data, n_chunks=n_chunks, dim=orientation))
-                BeamData.write_file({'orientation': orientation}, path.joinpath(BeamData.metadata_files['conf']))
+                dim = {'index': 0, 'columns': 1}[split_by]
+                data = list(divide_chunks(data, n_chunks=n_chunks, dim=dim))
+                chunk_file_extension = {'index': BeamData.index_partition_directory_name,
+                                        'columns': BeamData.columns_partition_directory_name}[split_by]
                 object_path = path
 
             else:
                 data = [(0, data), ]
+                chunk_file_extension = ''
 
             for i, di in data:
 
                 if len(data) > 1:
-                    path_i = path.joinpath(f"{i:06}{BeamData.chunk_file_extension}")
+                    path_i = path.joinpath(f"{i:06}{chunk_file_extension}")
                 else:
                     path_i = path
 
@@ -1110,9 +1114,7 @@ class BeamData(object):
             _, v = next(iter_container(data))
             objects_type = check_type(v).minor
 
-        if orientation == 'simple':
-            dim = None
-        elif orientation == 'columns':
+        if orientation == 'columns':
             dim = 1
         elif orientation == 'index':
             dim = 0
@@ -1194,6 +1196,8 @@ class BeamData(object):
         # store info and conf files
         info_path = path.joinpath(BeamData.metadata_files['info'])
         BeamData.write_object(self.info, info_path)
+        conf_path = path.joinpath(BeamData.metadata_files['conf'])
+        BeamData.write_object({**self.conf}, conf_path, archive=True)
         conf_path = path.joinpath(BeamData.metadata_files['conf'])
         BeamData.write_object({**self.conf}, conf_path, archive=True)
 
@@ -1358,7 +1362,7 @@ class BeamData(object):
         if not self.cached:
             raise LookupError(f"Cannot slice as data is not cached")
 
-        if self.orientation == 'simple':
+        if self.orientation in ['simple', 'simplified_index']:
             data = self.data.__getitem(index)
 
         elif self.orientation == 'index':
@@ -1378,7 +1382,7 @@ class BeamData(object):
         if not self.cached:
             raise LookupError(f"Cannot slice by columns as data is not cached")
 
-        if self.orientation == 'simple':
+        if self.orientation in ['simple', 'simplified_index']:
 
             if hasattr(self.data, 'loc'):
                 data = self.data[columns]
@@ -1412,10 +1416,44 @@ class BeamData(object):
             return self.info.label.values
         return None
 
+    @classmethod
+    def simple(cls, *args, **kwargs):
+        bd = cls(*args, **kwargs)
+        return bd.simplified
+
+    @property
+    def simplified(self):
+
+        if self.orientation == 'packed':
+            raise ValueError("Cannot simplify packed data")
+        elif self.orientation == 'simple':
+            return self
+        elif self.orientation == 'index':
+            dim = 0
+            orientation = 'simplified_index'
+        elif self.orientation == 'columns':
+            dim = 1
+            orientation = 'simple'
+        else:
+            raise ValueError("Unknown orientation")
+
+        info = None
+        index = None
+        label = None
+        data = collate_chunks(self.flatten_data, dim=dim)
+        if self.index is not None:
+            index = collate_chunks(recursive_flatten(self.index), dim=dim)
+        if self.label is not None:
+            label = collate_chunks(recursive_flatten(self.label), dim=dim)
+        if self._info is not None:
+            info = self.info
+
+        return self.clone(data=data, index=index, label=label, info=info, orientation=orientation)
+
     @property
     def stack(self):
 
-        if self.orientation == 'simple':
+        if self.orientation in ['simple', 'simplified_index']:
             return self
         if self.orientation == 'packed':
             raise LookupError(f"Cannot stack for packed orientation")
@@ -1503,7 +1541,7 @@ class BeamData(object):
         if not self.cached:
             raise LookupError(f"Cannot slice by index as data is not cached")
 
-        if self.orientation in ['simple', 'columns']:
+        if self.orientation in ['simple', 'columns', 'simplified_index']:
 
             info = None
             if self.label is not None:
@@ -1620,6 +1658,14 @@ class BeamData(object):
                 sliced[k] = data[k]
             return sliced
 
+    def get_simplified_data_by_key(self, key):
+        ind = self.info['map'].loc[self.key_map[key]]
+        if hasattr(self.data, 'loc'):
+            data = self.data.iloc[ind]
+        else:
+            data = self.data[ind]
+        return data
+
     def slice_keys(self, keys):
 
         data = None
@@ -1634,7 +1680,13 @@ class BeamData(object):
             schema = self.schema
 
         if self.cached:
-            data = BeamData.slice_scalar_or_list(self.data, keys, keys_type=keys_type, data_type=self.data_type)
+            if self.orientation == 'simplified_index':
+                if keys_type.major == 'scalar':
+                    data = self.get_simplified_data_by_key(keys)
+                else:
+                    data = {k: self.get_simplified_data_by_key(k) for k in keys}
+            else:
+                data = BeamData.slice_scalar_or_list(self.data, keys, keys_type=keys_type, data_type=self.data_type)
 
         if not self.lazy and self.stored and data is None:
 
@@ -1651,7 +1703,7 @@ class BeamData(object):
         label = self.label
         # info = self._info
 
-        if self.orientation != 'columns':
+        if self.orientation in ['index', 'packed']:
             if index is not None:
                 index = BeamData.slice_scalar_or_list(index, keys, keys_type=keys_type, data_type=self.data_type)
             if label is not None:
@@ -1677,7 +1729,7 @@ class BeamData(object):
         else:
             return default
 
-    def clone(self, *args, data=None, path=None, name=None, all_paths=None,
+    def clone(self, *args, data=None, path=None, name=None, all_paths=None, key_map=None,
                  index=None, label=None, columns=None, lazy=None, device=None, target_device=None, schema=None,
                  override=None, compress=None, split_by=None, chunksize=None, chunklen=None, n_chunks=None,
                  partition=None, archive_size=None, preferred_orientation=None, read_kwargs=None, write_kwargs=None,
@@ -1704,7 +1756,7 @@ class BeamData(object):
         if constructor is None:
             constructor = BeamData
 
-        return constructor(*args, data=data, path=path, name=name, all_paths=all_paths,
+        return constructor(*args, data=data, path=path, name=name, all_paths=all_paths, key_map=key_map,
                  index=index, label=label, columns=columns, lazy=lazy, device=device, target_device=target_device,
                  override=override, compress=compress, split_by=split_by, chunksize=chunksize,
                  chunklen=chunklen, n_chunks=n_chunks, partition=partition, archive_size=archive_size, schema=schema,
@@ -1790,7 +1842,7 @@ class BeamData(object):
 
         if self.cached:
 
-            if self.orientation == 'simple':
+            if self.orientation in ['simple', 'simplified_index']:
                 self.data.__setitem__(key, value)
             else:
                 set_item_with_tuple_key(self.data, key, value)
@@ -1942,8 +1994,7 @@ class BeamData(object):
             axes = ['keys', 'index', 'columns', 'else']
 
         obj = self
-        item_type = check_type(item)
-        if item_type.minor != 'tuple':
+        if type(item) is not tuple:
             item = (item, )
         for i, ind_i in enumerate(item):
 
