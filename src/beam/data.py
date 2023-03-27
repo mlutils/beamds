@@ -1998,6 +1998,13 @@ class BeamData(object):
         ind = self.info.loc[ind].index
         return self[ind]
 
+    def head(self, n=20):
+
+        ind = np.arange(min(len(self), n))
+
+        ind = self.info.loc[ind].index
+        return self[ind]
+
     def __getitem__(self, item):
 
         '''
