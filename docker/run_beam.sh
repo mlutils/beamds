@@ -1,3 +1,5 @@
+#!/bin/bash
+
 IMAGE=$1
 NAME=$2
 INITIALS=$3
