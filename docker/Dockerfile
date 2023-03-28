@@ -15,11 +15,6 @@ COPY docker/install /workspace/install
 
 # pytorch geometric
 
-#export CPATH="/usr/local/cuda/include:$CPATH"
-#export PATH="/usr/local/cuda/bin:$PATH"
-#export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
-#export DYLD_LIBRARY_PATH="/usr/local/cuda/lib:$DYLD_LIBRARY_PATH"
-
 ENV CPATH "/usr/local/cuda/include:$CPATH"
 ENV PATH "/usr/local/cuda/bin:$PATH"
 ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
@@ -54,8 +49,11 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 
 # need to see how to install faiss-gpu. for now we install only the cpu version
 # RUN conda install -y -c conda-forge faiss-gpu
-RUN pip install faiss-gpu
+# RUN pip install faiss-gpu
+RUN bash /workspace/install/install_faiss.sh
 
+#install torchsig
+RUN bash /workspace/install/install_torchsig.sh
 
 # Install dgl from source so it would be compatible with cuda 12.0
 # RUN pip install  dgl -f https://data.dgl.ai/wheels/repo.html
@@ -82,18 +80,8 @@ RUN python /workspace/install/downloader.py
 
 # REMOVE FOR LITE VERSION
 
-RUN pip install -U nltk
-RUN python -m nltk.downloader all
-
-#ENV LC_ALL C.UTF-8
-#ENV LANG C.UTF-8
-# REMOVE FOR LITE VERSION
-RUN python -m spacy download zh_core_web_md
-RUN python -m spacy download en_core_web_md
-RUN python -m spacy download xx_ent_wiki_sm
-RUN python -m spacy download ru_core_news_sm
-
-
+# no need to install RAPIDS as it comes with the image, except cusignal which is not found
+RUN bash /workspace/install/install_cusignal.sh
 # RUN pip install cudf-cu11 dask-cudf-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
 # RUN pip install cuml-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
 # RUN pip install cugraph-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
