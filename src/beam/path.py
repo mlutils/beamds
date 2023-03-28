@@ -292,8 +292,12 @@ class SFTPPath(PureBeamPath):
     def __enter__(self):
         if self.mode in ["rb", "r"]:
             self.file_object = self.client.open(str(self.path), self.mode)
-        else:
+        elif self.mode == 'wb':
             self.file_object = BytesIO()
+        elif self.mode == 'w':
+            self.file_object = StringIO()
+        else:
+            raise ValueError
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -301,6 +305,7 @@ class SFTPPath(PureBeamPath):
         if self.mode in ["rb", "r"]:
             self.file_object.close()
         else:
+            self.file_object.seek(0)
             self.client.putfo(self.file_object, remotepath=str(self.path))
             self.file_object.close()
 
@@ -524,6 +529,7 @@ class S3Path(PureBeamPath):
         if self.mode in ["rb", "r"]:
             self.file_object.close()
         else:
+            self.file_object.seek(0)
             self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue())
             self.file_object.close()
 
