@@ -1097,6 +1097,8 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
 
     elif x_type.minor == 'pandas':
         if on is None or dim == 0:
+            if len(x[0].shape) == 1:
+                x = [pd.Series(xi) for xi in x]
             return pd.concat(x, axis=dim)
         elif on == 'index':
             return recursive_merge(x, method=method, how=how, left_index=True, right_index=True)
