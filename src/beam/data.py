@@ -561,6 +561,10 @@ class BeamData(object):
     def path(self):
         return self.root_path
 
+    @schema.setter
+    def schema(self, schema):
+        self._schema = schema
+
     @path.setter
     def path(self, value):
         if self.root_path is not None:
