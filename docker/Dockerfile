@@ -47,11 +47,6 @@ RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storag
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 
-# need to see how to install faiss-gpu. for now we install only the cpu version
-# RUN conda install -y -c conda-forge faiss-gpu
-# RUN pip install faiss-gpu
-RUN bash /workspace/install/install_faiss.sh
-
 #install torchsig
 RUN bash /workspace/install/install_torchsig.sh
 
@@ -65,7 +60,6 @@ RUN bash /workspace/install/install_dgl.sh
 
 # Install faiss if you encounter GPU issues when using the pip version:
 # https://github.com/kyamagu/faiss-wheels/issues/54
-
 
 # install RAPID framework
 # cannot install rapids as it does not support cuda 12.0 yet
@@ -86,6 +80,11 @@ RUN bash /workspace/install/install_cusignal.sh
 # RUN pip install cuml-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
 # RUN pip install cugraph-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
 
+
+# need to see how to install faiss-gpu. for now we install only the cpu version
+# RUN conda install -y -c conda-forge faiss-gpu
+# RUN pip install faiss-gpu
+#RUN bash /workspace/install/install_faiss.sh
 
 # install beam
 
