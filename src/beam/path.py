@@ -614,32 +614,27 @@ class HDFSPath(PureBeamPath):
     def glob(self, *args, **kwargs):
         raise NotImplementedError
 
-    def read(self, **kwargs):
+    def read(self, ext=None, **kwargs):
 
         from hdfs.ext.avro import AvroReader
         from hdfs.ext.dataframe import read_dataframe
 
-        ext = self.suffix
-        path = str(self)
+        if ext is None:
+            ext = self.suffix
 
         if ext == '.avro':
-
+            path = str(self)
             x = []
             with AvroReader(self.client, path, **kwargs) as reader:
-                self.info['schema'] = reader.writer_schema  # The remote file's Avro schema.
-                self.info['content'] = reader.content  # Content metadata (e.g. size).
+                # reader.writer_schema  # The remote file's Avro schema.
+                # reader.content  # Content metadata (e.g. size).
                 for record in reader:
                     x.append(record)
-
             return x
-
         elif ext == '.pd':
-            x = read_dataframe(self.client, path)
+            return read_dataframe(self.client, str(self))
 
-        else:
-            raise ValueError(f"Extension type: {ext} not supported for HDFSPath.")
-
-        return x
+        return super().read(ext=ext, **kwargs)
 
     def write(self, x, **kwargs):
 
@@ -658,6 +653,4 @@ class HDFSPath(PureBeamPath):
         elif ext == '.pd':
             write_dataframe(self.client, path, x, **kwargs)
         else:
-            raise ValueError(f"Extension type: {ext} not supported for HDFSPath.")
-
-        return self
+            super().write(x, **kwargs)
