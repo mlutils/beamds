@@ -204,6 +204,10 @@ class PureBeamPath:
         self.file_object = None
         self.client = client
 
+    def __iter__(self):
+        for p in self.iterdir():
+            yield p
+
     def __getitem__(self, item):
         if item in self.url.query:
             return self.url.query[item]

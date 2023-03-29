@@ -139,7 +139,7 @@ class BeamData(object):
 
          If data is both cached in self.data and stored in self.all_paths, the cached version is always preferred.
 
-        The orientation is inferred from the data. If all objects have same length they are assumed to represent columns
+        The orientation is inferred from the data. If all obje'data'cts have same length they are assumed to represent columns
         orientation. If all objects have same shape[1:] they are assumed to represent index orientation. If one wish to pass
         an index orientation data where all objects have same length, one can pass the preferred_orientation='index' argument.
 
@@ -184,6 +184,7 @@ class BeamData(object):
         self._info_groups = None
         self._all_paths = None
         self._root_path = None
+        self._metadata_paths = None
         self.groups = Groups(self.get_info_groups)
 
         self._info = info
@@ -217,9 +218,8 @@ class BeamData(object):
         path_type = check_type(path)
 
         self._name = name
-        if path_type.major != 'container' and name is not None and path is not None:
-            path = path.joinpath(name)
-        elif name is None and path is not None:
+
+        if path is not None:
             self._name = path.name
         else:
             self._name = None
@@ -228,7 +228,8 @@ class BeamData(object):
             self._all_paths = path
         elif path is not None:
 
-            self._all_paths = BeamData.single_file_case(path, all_paths)
+            self._root_path, self._all_paths, self._metadata_paths = BeamData.single_file_case(path, all_paths,
+                                                                                               self._metadata_paths)
             self._root_path = path
 
         if ((self._all_paths is not None) or (self._root_path is not None and self._root_path.not_empty())) and \
@@ -236,6 +237,15 @@ class BeamData(object):
             self.stored = True
             if not lazy:
                 self.cache()
+
+    @property
+    def metadata_paths(self):
+
+        if self._metadata_paths is not None:
+            return self._metadata_paths
+        self._metadata_paths = {k: self.root_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
+
+        return self._metadata_paths
 
     @property
     def root_path(self):
@@ -255,7 +265,7 @@ class BeamData(object):
             return self._all_paths
 
         if self.stored:
-            path = self.root_path.joinpath(BeamData.metadata_files['all_paths'])
+            path = self.metadata_paths['all_paths']
             if path.exists():
                 self._all_paths = path.read()
 
@@ -278,7 +288,7 @@ class BeamData(object):
 
         if self.stored:
 
-            for path in self.root_path.iterdir():
+            for path in self.metadata_paths['index'].parent.iterdir():
                 if path.stem == BeamData.metadata_files['index']:
                     if path.exists():
                         self._index = path.read()
@@ -308,7 +318,7 @@ class BeamData(object):
 
         if self.stored:
 
-            for path in self.root_path.iterdir():
+            for path in self.metadata_paths['label'].parent.iterdir():
                 if path.stem == BeamData.metadata_files['label']:
                     if path.exists():
                         self._label = path.read()
@@ -317,19 +327,20 @@ class BeamData(object):
         return self._label
 
     @staticmethod
-    def single_file_case(path, all_paths):
+    def single_file_case(root_path, all_paths, metadata_paths):
 
-        if path.parent.is_dir():
-            for p in path.parent.iterdir():
-                if p.stem == path.stem and p.is_file():
-                    ext = p.suffix
-                    p = p.rename(p.with_suffix('.temporary_name'))
-                    path.mkdir()
-                    p = p.rename(path.joinpath(f"{'data'}{ext}"))
-                    all_paths = {'data': p.relative_to(path)}
+        if root_path.parent.is_dir():
+            for p in root_path.parent.iterdir():
+                if p.stem == root_path.stem and p.is_file():
+
+                    meta_path = p.parent.joinpath(f'.{p.name}')
+                    meta_path.mkdir()
+                    metadata_paths = {k: meta_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
+                    root_path = p
+                    all_paths = {'data': ''}
                     break
 
-        return all_paths
+        return root_path, all_paths, metadata_paths
 
     @staticmethod
     def collate(*args, batch=None, split_by=None, **kwargs):
@@ -445,7 +456,7 @@ class BeamData(object):
             return self._schema
 
         if self.stored:
-            schema_path = self.root_path.joinpath(BeamData.metadata_files['schema'])
+            schema_path = self.metadata_paths['schema']
             if schema_path.is_file():
                 self._schema = schema_path.read()
                 return self._schema
@@ -459,7 +470,7 @@ class BeamData(object):
             return self._conf
 
         if self.stored:
-            conf_path = self.root_path.joinpath(BeamData.metadata_files['conf'])
+            conf_path = self.metadata_paths['conf']
             if conf_path.is_file():
                 self._conf = conf_path.read()
                 return self._conf
@@ -494,7 +505,7 @@ class BeamData(object):
             return self._info
 
         if self.stored:
-            info_path = self.root_path.joinpath(BeamData.metadata_files['info'])
+            info_path = self.metadata_paths['info']
             if info_path.is_file():
                 self._info = info_path.read()
                 return self._info
@@ -814,7 +825,9 @@ class BeamData(object):
                 return None
 
             # if the directory contains chunks it is considered as a single path
-            if all([BeamData.chunk_file_extension in p.name for p in keys_paths]):
+            if all([BeamData.index_chunk_file_extension in p.name for p in keys_paths]):
+                return relative_path
+            elif all([BeamData.columns_chunk_file_extension in p.name for p in keys_paths]):
                 return relative_path
 
             if not is_arange(keys):
@@ -1011,8 +1024,8 @@ class BeamData(object):
             if split_by != 'keys' and n_chunks > 1:
                 dim = {'index': 0, 'columns': 1}[split_by]
                 data = list(divide_chunks(data, n_chunks=n_chunks, dim=dim))
-                chunk_file_extension = {'index': BeamData.index_partition_directory_name,
-                                        'columns': BeamData.columns_partition_directory_name}[split_by]
+                chunk_file_extension = {'index': BeamData.index_chunk_file_extension,
+                                        'columns': BeamData.columns_chunk_file_extension}[split_by]
                 object_path = path
 
             else:
@@ -1086,7 +1099,9 @@ class BeamData(object):
     def keys(self):
         if self.orientation == 'simple':
             return self.columns
-        return recursive_keys(self.data)
+        if self.cached:
+            return recursive_keys(self.data)
+        return recursive_keys(self.all_paths)
 
     @property
     def dtypes(self):
@@ -1685,10 +1700,33 @@ class BeamData(object):
 
         return DataBatch(data=data, index=index, label=label)
 
+    @staticmethod
+    def update_hierarchy(root_path, all_paths):
+        @recursive
+        def reduce_hierarchy(x):
+            if isinstance(x, list):
+                return ['/'.join(xi.split('/')[1:]) for xi in x]
+            return '/'.join(x.split('/')[1:])
+
+        while True:
+            flat_paths = recursive_flatten(all_paths)
+            if len(flat_paths) == 1:
+                return root_path.joinpath(flat_paths[0]), None
+
+            h = flat_paths[0].split('/')[0]
+            if all([h == p.split('/')[0] for p in flat_paths]):
+                root_path = root_path.joinpath(h)
+                all_paths = reduce_hierarchy(all_paths)
+            else:
+                break
+
+        return root_path, all_paths
+
     def slice_keys(self, keys):
 
         data = None
         all_paths = None
+        root_path = self.root_path
         keys_type = check_type(keys)
         schema_type = check_type(self.schema)
 
@@ -1697,6 +1735,17 @@ class BeamData(object):
                                                    data_type=schema_type, replace_missing=True)
         else:
             schema = self.schema
+
+        if self.stored:
+
+            try:
+                all_paths = BeamData.slice_scalar_or_list(self.all_paths, keys, keys_type=keys_type,
+                                                          data_type=self.data_type)
+                root_path, all_paths = BeamData.update_hierarchy(root_path, all_paths)
+
+            except KeyError:
+                raise KeyError(f"Cannot find keys: {keys} in stored BeamData object. "
+                               f"If the object is archived you should cache it before slicing.")
 
         if self.cached:
             if self.orientation == 'simplified_index':
@@ -1712,20 +1761,13 @@ class BeamData(object):
                     return BeamData.data_batch(data_batch.data, index=data_batch.index,
                                                label=data_batch.label, orientation=self.orientation)
 
-                return self.clone(data=data_batch.data, path=all_paths, columns=self.columns, index=data_batch.index,
-                                  label=data_batch.label, schema=schema)
+                return self.clone(data=data_batch.data, path=root_path, all_paths=all_paths, columns=self.columns,
+                                  index=data_batch.index, label=data_batch.label, schema=schema)
             else:
                 data = BeamData.slice_scalar_or_list(self.data, keys, keys_type=keys_type, data_type=self.data_type)
 
         if not self.lazy and self.stored and data is None:
 
-            try:
-                all_paths = BeamData.slice_scalar_or_list(self.all_paths, keys, keys_type=keys_type,
-                                                          data_type=self.data_type)
-
-            except KeyError:
-                raise KeyError(f"Cannot find keys: {keys} in stored BeamData object. "
-                               f"If the object is archived you should cache it before slicing.")
             data = BeamData.read(self.abs_all_paths(all_paths), schema=schema)
 
         index = self.index
@@ -1749,7 +1791,8 @@ class BeamData(object):
         # return BeamData(data=data, path=all_paths, lazy=self.lazy, columns=self.columns,
         #                 index=index, label=label, orientation=self.orientation, info=info)
 
-        return self.clone(data=data, path=all_paths, columns=self.columns, index=index, label=label, schema=schema)
+        return self.clone(data=data, path=root_path, all_paths=all_paths, columns=self.columns, index=index,
+                          label=label, schema=schema)
 
     def get_default(self, key, default=None):
 
