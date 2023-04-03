@@ -1882,9 +1882,10 @@ class BeamData(object):
         @param value:
         """
 
+        org_key = key
         key_type = check_type(key)
 
-        if not self.cached or not self.lazy:
+        if self.stored:
 
             kwargs = self.get_default_params('compress', 'chunksize', 'chunklen', 'n_chunks', 'partition',
                                               'split_by', 'archive_size', 'override')
@@ -1918,17 +1919,21 @@ class BeamData(object):
 
         if self.cached:
 
+            key = org_key
             if self.orientation in ['simple', 'simplified_index']:
                 self.data.__setitem__(key, value)
             else:
                 set_item_with_tuple_key(self.data, key, value)
 
-            self._index = None
-            self._label = None
+            if self.orientation == 'index':
+                if self.index is not None:
+                    logger.warning("Previous index value conflicts with new item. Setting index to None.")
+                self._index = None
+                if self.label is not None:
+                    logger.warning("Previous label value conflicts with new item. Setting index to None.")
 
-            if self.lazy:
-                self.stored = False
-                self.reset_metadata('all_paths')
+            self._label = None
+            self.reset_metadata('all_paths')
 
     def apply(self, func, *args, **kwargs):
         data = recursive(func)(self.data,  *args, **kwargs)
