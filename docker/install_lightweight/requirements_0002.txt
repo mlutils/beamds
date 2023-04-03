@@ -19,4 +19,4 @@ fastavro
 pyodbc
 
 elasticsearch5
-hdfs
+hdfs[avro,dataframe,kerberos]

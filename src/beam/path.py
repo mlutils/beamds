@@ -269,7 +269,7 @@ class SFTPPath(PureBeamPath):
 
         for p in self.client.listdir(remotepath=str(self.path)):
             path = self.path.joinpath(p)
-            yield SFTPPath(path, url=self.url, client=self.client)
+            yield self.gen(path)
 
     def is_file(self):
         return self.client.isfile(remotepath=str(self.path))
@@ -498,17 +498,15 @@ class S3Path(PureBeamPath):
 
         if 'CommonPrefixes' in objects:
             for prefix in objects['CommonPrefixes']:
-                yield S3Path(f"{self.bucket_name}/{prefix['Prefix']}", client=self.client, url=self.url)
+                path = f"{self.bucket_name}/{prefix['Prefix']}"
+                yield self.gen(path)
 
         if 'Contents' in objects:
             for content in objects['Contents']:
                 if content['Key'] == key:
                     continue
-                yield S3Path(f"{self.bucket_name}/{content['Key']}", client=self.client, url=self.url)
-
-    @property
-    def parent(self):
-        return S3Path(str(super(S3Path, self).parent), client=self.client, url=self.url)
+                path = f"{self.bucket_name}/{content['Key']}"
+                yield self.gen(path)
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
@@ -538,12 +536,12 @@ class HDFSPath(PureBeamPath):
 
     # TODO: use HadoopFileSystem
 
-    def __init__(self, *pathsegments, client=None, hostname=None, port=None,
-                 username=None, skip_trash=False, n_threads=1,  temp_dir=None, chunk_size=65536,
-                 progress=None, cleanup=True, tls=True):
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, timeout=None,
+                 username=None, skip_trash=False, n_threads=0,  temp_dir=None, chunk_size=65536,
+                 progress=None, cleanup=True, tls=True, **kwargs):
         super().__init__(*pathsegments, scheme='hdfs', hostname=hostname, port=port, skip_trash=skip_trash,
-                                        username=username, sn_threads=n_threads,
-                                       temp_dir=temp_dir, chunk_size=chunk_size, progress=progress, cleanup=cleanup)
+                                        username=username, n_threads=n_threads, temp_dir=temp_dir, timeout=timeout,
+                                        chunk_size=chunk_size, progress=progress, cleanup=cleanup, **kwargs)
 
         from hdfs import InsecureClient
 
@@ -573,17 +571,16 @@ class HDFSPath(PureBeamPath):
             self.client.delete(str(self), skip_trash=self['skip_trash'])
         self.client.delete(str(self), skip_trash=self['skip_trash'])
 
-    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+    def mkdir(self, mode=0o777, parents=True, exist_ok=True):
         if not exist_ok:
             if self.exists():
                 raise FileExistsError
+        if not parents:
+            raise NotImplementedError('parents=False not implemented for HDFSPath.mkdir')
         self.client.makedirs(str(self), permission=mode)
 
     def rmdir(self):
         self.client.delete(str(self), skip_trash=self['skip_trash'])
-
-    def joinpath(self, *other):
-        return HDFSPath(str(super(HDFSPath, self).joinpath(*other)), client=self.client)
 
     def iterdir(self):
         files = self.client.list(str(self))
@@ -606,10 +603,6 @@ class HDFSPath(PureBeamPath):
         if status is None:
             return False
         return status['type'] == 'DIRECTORY'
-
-    @property
-    def parent(self):
-        return HDFSPath(str(super(HDFSPath, self).parent), client=self.client)
 
     def glob(self, *args, **kwargs):
         raise NotImplementedError
@@ -654,3 +647,24 @@ class HDFSPath(PureBeamPath):
             write_dataframe(self.client, path, x, **kwargs)
         else:
             super().write(x, **kwargs)
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+
+            chunk_size = self.query['chunk_size']
+            chunk_size = int(chunk_size) if chunk_size is not None else None
+            self.file_object = self.client.read(str(self), chunk_size=chunk_size)
+
+        elif self.mode in ['wb', 'w']:
+            self.file_object = self.client.write(str(self), overwrite=True, )
+        else:
+            raise ValueError
+
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ["rb", "r"]:
+            self.file_object.close()
+        else:
+            self.file_object.close()

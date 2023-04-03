@@ -276,20 +276,40 @@ class PureBeamPath:
     def __exit__(self, exc_type, exc_val, exc_tb):
         raise NotImplementedError
 
+    @property
+    def hostname(self):
+        return self.url.hostname
+
+    @property
+    def port(self):
+        return self.url.port
+
+    @property
+    def username(self):
+        return self.url.username
+
+    @property
+    def password(self):
+        return self.url.password
+
+    @property
+    def fragment(self):
+        return self.url.fragment
+
+    @property
+    def params(self):
+        return self.url.params
+
+    @property
+    def query(self):
+        return self.url.query
+
     def gen(self, path):
 
         PathType = type(self)
 
-        hostname = self.url.hostname
-        port = self.url.port
-        username = self.url.username
-        password = self.url.password
-        fragment = self.url.fragment
-        params = self.url.params
-        query = self.url.query
-
-        return PathType(path, client=self.client, hostname=hostname, port=port, username=username,
-                        password=password, fragment=fragment, params=params, **query)
+        return PathType(path, client=self.client, hostname=self.hostname, port=self.port, username=self.username,
+                        password=self.password, fragment=self.fragment, params=self.params, **self.query)
 
     @property
     def parts(self):
@@ -351,9 +371,6 @@ class PureBeamPath:
 
     def match(self, pattern):
         return self.path.match(pattern)
-
-    # def relative_to(self, *other):
-    #     return self.gen(self.path.relative_to(*other))
 
     def relative_to(self, *other):
         other = PureBeamPath(*other)

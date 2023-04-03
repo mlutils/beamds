@@ -7,4 +7,5 @@ scikit-plot
 tabulate
 altair
 vega_datasets
+pygwalker
 # PyQt5
