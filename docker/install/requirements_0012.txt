@@ -1,6 +1,6 @@
 # deep learning
-pytorch-tabnet
-pytorch-lightning
+# pytorch-tabnet
+# pytorch-lightning
 pytorch-forecasting
 deepchecks
 torchensemble

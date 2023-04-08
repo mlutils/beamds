@@ -25,27 +25,44 @@ ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 # apt installs
 #RUN chmod +x /workspace/install/apt_installs.sh
 RUN bash /workspace/install/apt_installs.sh
+RUN pip list
 
 # pip installs
 RUN pip install --upgrade pip
 RUN pip install -U -r /workspace/install/requirements.txt
 # REMOVE FOR LITE VERSION
 RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0001.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0002.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0003.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0004.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0005.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0006.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0007.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0008.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0009.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0010.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0011.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0012.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
+RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
+RUN pip list
 
 #install torchsig
 RUN bash /workspace/install/install_torchsig.sh

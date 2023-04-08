@@ -19,6 +19,22 @@ from .path import beam_path, BeamPath
 from .processor import Processor
 
 
+# class BeamResult(object):
+#
+#     def __init__(self, data_batch, results, objective, objective_name, objective_direction,
+#     best_state, best_objective, best_objective_name, best_objective_direction):
+#
+#         self.data_batch = data_batch
+#         self.results = results
+#         self.objective = objective
+#         self.objective_name = objective_name
+#         self.objective_direction = objective_direction
+#         self.best_state = best_state
+#         self.best_objective = best_objective
+#         self.best_objective_name = best_objective_name
+#         self.best_objective_direction = best_objective_direction
+
+
 class Algorithm(object):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None):
@@ -430,11 +446,19 @@ class Algorithm(object):
         self.persistent_dataloaders = {}
         self.dataloaders = {}
 
-        subsets = dataset.indices.keys()
+        if type(dataset) is not dict:
+            subsets = dataset.indices.keys()
+        else:
+            subsets = dataset.keys()
+
         self.eval_subset = 'validation' if 'validation' in subsets else 'test'
 
         for s in subsets:
-            sampler = dataset.build_sampler(batch_size_eval, subset=s, persistent=False)
+
+            if type(dataset) is not dict:
+                sampler = dataset.build_sampler(batch_size_eval, subset=s, persistent=False)
+            else:
+                sampler = dataset[s].build_sampler(batch_size_eval, subset=None, persistent=False)
 
             self.dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
                                                            pin_memory=self.pin_memory,
@@ -445,11 +469,18 @@ class Algorithm(object):
                                                            prefetch_factor=prefetch_factor)
         for s in ['train', self.eval_subset]:
 
-            sampler = dataset.build_sampler(batch_size_train, subset=s, persistent=True, oversample=oversample,
-                                            weight_factor=weight_factor, expansion_size=expansion_size,
-                                            dynamic=dynamic, buffer_size=buffer_size,
-                                            probs_normalization=probs_normalization,
-                                            sample_size=sample_size)
+            if type(dataset) is not dict:
+                sampler = dataset.build_sampler(batch_size_train, subset=s, persistent=True, oversample=oversample,
+                                                weight_factor=weight_factor, expansion_size=expansion_size,
+                                                dynamic=dynamic, buffer_size=buffer_size,
+                                                probs_normalization=probs_normalization,
+                                                sample_size=sample_size)
+            else:
+                sampler = dataset[s].build_sampler(batch_size_train, subset=None, persistent=True, oversample=oversample,
+                                                   weight_factor=weight_factor, expansion_size=expansion_size,
+                                                   dynamic=dynamic, buffer_size=buffer_size,
+                                                   probs_normalization=probs_normalization,
+                                                   sample_size=sample_size)
 
             self.persistent_dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
                                                                       pin_memory=self.pin_memory,
