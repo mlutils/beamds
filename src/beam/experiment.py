@@ -54,6 +54,8 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
 
     if inspect.isclass(Dataset):
         dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+    elif inspect.isfunction(Dataset):
+        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
     else:
         dataset = Dataset
 
