@@ -302,10 +302,12 @@ class UniversalDataset(torch.utils.data.Dataset):
         if oversample and subset in self.labels_split and self.labels_split[subset] is not None:
             probs = compute_sample_weight('balanced', y=self.labels_split[subset]) ** weight_factor
             probs_normalization = 'sum'
+        elif subset is None and check_type(self.probs).major == 'array':
+            probs = self.probs
         elif subset in self.probs:
             probs = self.probs[subset]
 
-        return UniversalBatchSampler(self.indices[subset],
+        return UniversalBatchSampler(indices,
                                      batch_size, probs=probs, shuffle=True, tail=True,
                                      once=False, expansion_size=expansion_size,
                                      dynamic=dynamic, buffer_size=buffer_size,
@@ -314,6 +316,10 @@ class UniversalDataset(torch.utils.data.Dataset):
 
     def build_dataloader(self, sampler, num_workers=0, pin_memory=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):
+
+        kwargs = {}
+        if num_workers > 0:
+            kwargs['prefetch_factor'] = prefetch_factor
 
         try:
             d = self.device.type if self.target_device is None else self.target_device
@@ -332,7 +338,7 @@ class UniversalDataset(torch.utils.data.Dataset):
                                              num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
                                              worker_init_fn=worker_init_fn, collate_fn=collate_fn,
                                              multiprocessing_context=multiprocessing_context, generator=generator,
-                                             prefetch_factor=prefetch_factor, persistent_workers=persistent_workers)
+                                             persistent_workers=persistent_workers, **kwargs)
 
 
 class TransformedDataset(torch.utils.data.Dataset):

@@ -367,7 +367,7 @@ class PureBeamPath:
         return self.path.is_reserved()
 
     def joinpath(self, *other):
-        return self.gen(self.path.joinpath(*other))
+        return self.gen(self.path.joinpath(*[str(o) for o in other]))
 
     def match(self, pattern):
         return self.path.match(pattern)
@@ -1154,6 +1154,8 @@ def beam_device(device):
     if isinstance(device, torch.device) or device is None:
         return device
     device = str(device)
+    if device == 'cuda':
+        device = '0'
     return torch.device(int(device) if device.isnumeric() else device)
 
 
@@ -1353,12 +1355,12 @@ def is_notebook() -> bool:
         return False      # Probably standard Python interpreter
 
 
-def setup(rank, world_size, port='7463'):
+def setup_distributed(rank, world_size, port='7463', backend='gloo'):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = port
 
     # initialize the process group
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
 
 
 def cleanup(rank, world_size):

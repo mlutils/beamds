@@ -446,7 +446,7 @@ class Algorithm(object):
         self.persistent_dataloaders = {}
         self.dataloaders = {}
 
-        if type(dataset) is not dict:
+        if not isinstance(dataset, dict):
             subsets = dataset.indices.keys()
         else:
             subsets = dataset.keys()
@@ -455,12 +455,14 @@ class Algorithm(object):
 
         for s in subsets:
 
-            if type(dataset) is not dict:
+            if not isinstance(dataset, dict):
                 sampler = dataset.build_sampler(batch_size_eval, subset=s, persistent=False)
+                d = dataset
             else:
                 sampler = dataset[s].build_sampler(batch_size_eval, subset=None, persistent=False)
+                d = dataset[s]
 
-            self.dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
+            self.dataloaders[s] = d.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
                                                            pin_memory=self.pin_memory,
                                                            timeout=timeout, collate_fn=collate_fn,
                                                            worker_init_fn=worker_init_fn,
@@ -469,20 +471,22 @@ class Algorithm(object):
                                                            prefetch_factor=prefetch_factor)
         for s in ['train', self.eval_subset]:
 
-            if type(dataset) is not dict:
+            if not isinstance(dataset, dict):
                 sampler = dataset.build_sampler(batch_size_train, subset=s, persistent=True, oversample=oversample,
                                                 weight_factor=weight_factor, expansion_size=expansion_size,
                                                 dynamic=dynamic, buffer_size=buffer_size,
                                                 probs_normalization=probs_normalization,
                                                 sample_size=sample_size)
+                d = dataset
             else:
                 sampler = dataset[s].build_sampler(batch_size_train, subset=None, persistent=True, oversample=oversample,
                                                    weight_factor=weight_factor, expansion_size=expansion_size,
                                                    dynamic=dynamic, buffer_size=buffer_size,
                                                    probs_normalization=probs_normalization,
                                                    sample_size=sample_size)
+                d = dataset[s]
 
-            self.persistent_dataloaders[s] = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
+            self.persistent_dataloaders[s] = d.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
                                                                       pin_memory=self.pin_memory,
                                                                       timeout=timeout, collate_fn=collate_fn,
                                                                       worker_init_fn=worker_init_fn,
@@ -493,8 +497,12 @@ class Algorithm(object):
         self.epoch_length = {'train': None, self.eval_subset: None}
 
         if self.hparams.epoch_length is not None:
-            l_train = len(dataset.indices['train'])
-            l_eval = len(dataset.indices[self.eval_subset])
+            if not isinstance(dataset, dict):
+                l_train = len(dataset.indices['train'])
+                l_eval = len(dataset.indices[self.eval_subset])
+            else:
+                l_train = len(dataset['train'])
+                l_eval = len(dataset[self.eval_subset])
 
             self.epoch_length['train'] = int(np.round(self.hparams.epoch_length * l_train / (l_train + l_eval)))
             self.epoch_length[self.eval_subset] = self.hparams.epoch_length - self.epoch_length['train']
@@ -598,7 +606,13 @@ class Algorithm(object):
         net = net.to(self.device)
 
         if self.ddp:
-            net_ddp = DDP(net, device_ids=[self.device],
+
+            if self.device.type == 'cuda':
+                device_ids = [self.device]
+            else:
+                device_ids = None
+
+            net_ddp = DDP(net, device_ids=device_ids,
                       find_unused_parameters=self.get_hparam('find_unused_parameters', name),
                       broadcast_buffers=self.get_hparam('broadcast_buffers', name))
 

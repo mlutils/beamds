@@ -334,7 +334,7 @@ class BeamData(object):
                 if p.stem == root_path.stem and p.is_file():
 
                     meta_path = p.parent.joinpath(f'.{p.name}')
-                    meta_path.mkdir()
+                    meta_path.mkdir(exist_ok=True)
                     metadata_paths = {k: meta_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
                     root_path = p
                     all_paths = {'data': ''}
