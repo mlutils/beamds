@@ -23,6 +23,6 @@ pipreqs
 
 smart-pathlib
 transparentpath
-faiss-cpu
+# faiss-cpu
 
 kubernetes

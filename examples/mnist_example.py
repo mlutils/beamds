@@ -17,6 +17,7 @@ from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm
 from src.beam import LinearNet
 from src.beam import DataTensor, PackedFolds, as_numpy
+from src.beam.data import BeamData, DataBatch
 
 
 # In[2]:
@@ -33,13 +34,41 @@ class MNISTDataset(UniversalDataset):
         dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
         dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
 
-        self.data = PackedFolds({'train': dataset_train.data, 'test': dataset_test.data})
-        self.labels = PackedFolds({'train': dataset_train.targets, 'test': dataset_test.targets})
-        # self.split(validation=.2, test=self.labels['test'].index, seed=seed)
-        self.split(test=self.labels['test'].index, seed=seed)
+        # self.data = PackedFolds({'train': dataset_train.data, 'test': dataset_test.data})
+        # self.labels = PackedFolds({'train': dataset_train.targets, 'test': dataset_test.targets})
+        # self.split(test=self.labels['test'].index, seed=seed)
+
+        # self.data = torch.cat([dataset_train.data, dataset_test.data])
+        # self.labels = torch.cat([dataset_train.targets, dataset_test.targets])
+        # test_indices = len(dataset_train.data) + torch.arange(len(dataset_test.data))
+        # self.split(validation=.2, test=test_indices, seed=seed)
+
+        # self.data = BeamData({'train': dataset_train.data, 'test': dataset_test.data},
+        #                      label={'train': dataset_train.targets, 'test': dataset_test.targets}, quick_getitem=True)
+        # self.labels = self.data.label
+        # self.split(validation=.2, test=self.data['test'].index, seed=seed)
+
+        self.data = BeamData.simple({'train': dataset_train.data, 'test': dataset_test.data},
+                             label={'train': dataset_train.targets, 'test': dataset_test.targets}, quick_getitem=True)
+        self.labels = self.data.label
+        self.split(validation=.2, test=self.data['test'].index, seed=seed)
 
     def getitem(self, index):
-        return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
+
+        data = self.data[index]
+
+        if isinstance(data, BeamData):
+            x = data.stacked_values.float() / 255
+            y = data.stacked_labels
+        elif isinstance(data, DataBatch):
+            x = data.data.float() / 255
+            y = data.label
+
+        else:
+            x = self.data[index].float() / 255
+            y = self.labels[index]
+
+        return {'x': x, 'y': y}
 
 
 class MNISTAlgorithm(Algorithm):
@@ -174,8 +203,11 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data//dataset/mnist'
-    root_dir = '/home/shared/data/results'
+    # path_to_data = '/home/shared/data//dataset/mnist'
+    # root_dir = '/home/shared/data/results'
+
+    path_to_data = '/tmp/shared/data//dataset/mnist'
+    root_dir = '/tmp/shared/data/results'
 
     args = beam_arguments(
         f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cpu   ",
@@ -190,7 +222,8 @@ if __name__ == '__main__':
     res = alg.predict(examples['x'])
 
     # ## Inference
-    inference = alg('test')
+    inference = alg('validation')
+    inference = alg({'x': examples['x'], 'y': examples['y']})
 
     print('Test inference results:')
     for n, v in inference.statistics['metrics'].items():

@@ -4,6 +4,7 @@ import time
 import numpy as np
 import os
 import warnings
+import inspect
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 # from torch.utils.tensorboard import SummaryWriter
@@ -16,7 +17,7 @@ from collections import defaultdict
 from .utils import include_patterns, logger, check_type, beam_device, check_element_type, print_beam_hyperparameters
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
+from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
     pretty_format_number, as_numpy
 import torch.distributed as dist
 from functools import partial
@@ -51,14 +52,14 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
     if dataset_kwargs is None:
         dataset_kwargs = dict()
 
-    if isinstance(Dataset, torch.utils.data.Dataset):
-        dataset = Dataset
-    elif Dataset is not None:
+    if inspect.isclass(Dataset):
+        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+    elif inspect.isfunction(Dataset):
         dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
     else:
-        dataset = None
+        dataset = Dataset
 
-    if type(Alg) == type:
+    if inspect.isclass(Alg):
 
         ars = inspect.getfullargspec(Alg)
 
@@ -112,7 +113,11 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
     if world_size > 1:
-        setup(rank, world_size, port=experiment.hparams.mp_port)
+        backend = experiment.hparams.mp_backend
+        if backend is None:
+            backend = 'nccl' if experiment.hparams.device.type == 'cuda' else 'gloo'
+
+        setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend)
 
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.hparams.seed, constant=rank+1, increment=False, deterministic=experiment.hparams.deterministic)
@@ -368,8 +373,8 @@ class Experiment(object):
         else:
 
             checkpoints = list(self.checkpoints_dir.iterdir())
-            checkpoints = [c for c in checkpoints if c.split('_')[-1].isnumeric()]
-            checkpoints_int = [int(c.split('_')[-1]) for c in checkpoints]
+            checkpoints = [c for c in checkpoints if str(c).split('_')[-1].isnumeric()]
+            checkpoints_int = [int(str(c).split('_')[-1]) for c in checkpoints]
 
             if not(len(checkpoints)):
                 logger.error(f"Directory of checkpoints does not contain valid checkpoint files")
@@ -799,7 +804,7 @@ class Experiment(object):
                 for subset in alg.results_dir.iterdir():
 
                     res = list(subset.iterdir())
-                    res = pd.DataFrame({'name': res, 'index': [int(c.split('_')[-1]) for c in res]})
+                    res = pd.DataFrame({'name': res, 'index': [int(str(c).split('_')[-1]) for c in res]})
                     res = res.sort_values('index')
 
                     res = res.iloc['name']
@@ -823,7 +828,7 @@ class Experiment(object):
 
         def _run(demo_fn, world_size):
 
-            ctx = mp.get_context('spawn')
+            ctx = mp.get_context(self.hparams.mp_context)
             results_queue = ctx.Queue()
             for rank in range(world_size):
                 ctx.Process(target=demo_fn, args=(rank, world_size, results_queue, *arguments),

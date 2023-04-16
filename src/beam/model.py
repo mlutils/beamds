@@ -102,6 +102,27 @@ class PositionalHarmonicExpansion(object):
         return out
 
 
+class GaussianHarmonicExpansion(object):
+
+    def __init__(self, xs, xe, delta, n=100):
+
+        self.xs = xs
+        self.xe = xe
+
+        delta = delta / (xe - xs)
+        self.b = (1 / delta) * np.random.randn(n, 2)
+
+    def transform(self, x, y):
+
+        xy = np.stack([x, y], axis=0)
+
+        xy = (xy - self.xs) / (self.xe - self.xs)
+        sin = np.sin(2 * np.pi * self.b @ xy)
+        cos = np.cos(2 * np.pi * self.b @ xy)
+
+        return np.concatenate([sin, cos], axis=0).T
+
+
 class LinearNet(nn.Module):
 
     def __init__(self, l_in, l_h=256, l_out=1, n_l=2, bias=True, activation='ReLU'):

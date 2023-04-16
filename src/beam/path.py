@@ -1,23 +1,24 @@
 from pathlib import PurePath, Path
 import botocore
 import re
-from hdfs import InsecureClient
-from hdfs.ext.avro import AvroWriter, AvroReader
-from hdfs.ext.dataframe import read_dataframe, write_dataframe
-import boto3
-from .utils import PureBeamPath
+from .utils import PureBeamPath, BeamURL
 from io import StringIO, BytesIO
+import os
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kwargs):
+def beam_path(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
+              **kwargs):
     """
 
-    @param secret_key: AWS secret key
-    @param access_key: AWS access key
     @param port:
     @param hostname:
     @param username:
     @param protocol:
+    @param private_key:
+    @param secret_key: AWS secret key
+    @param access_key: AWS access key
     @param path: URI syntax: [protocol://][username@][hostname][:port][/path/to/file]
     @return: BeamPath object
     """
@@ -27,53 +28,75 @@ def beam_path(path, protocol=None, username=None, hostname=None, port=None, **kw
     if ':' not in path:
         return BeamPath(path)
 
-    pattern = re.compile(
-        r'^((?P<protocol>[\w]+)://)?((?P<username>[\w]+)@)?(?P<hostname>[\.\w]+)?(:(?P<port>\d+))?(?P<path>.*)$')
-    match = pattern.match(path)
-    if match:
-        protocol = match.group('protocol')
-        username = match.group('username')
-        hostname = match.group('hostname')
-        port = match.group('port')
-        path = match.group('path')
+    url = BeamURL.from_string(path)
 
-    if protocol is None or (protocol == 'file'):
+    if url.hostname is not None:
+        hostname = url.hostname
+
+    if url.port is not None:
+        port = url.port
+
+    if url.username is not None:
+        username = url.username
+
+    query = url.query
+    for k, v in query.items():
+        kwargs[k] = v
+
+    if access_key is None and 'access_key' in kwargs:
+        access_key = kwargs.pop('access_key')
+
+    if private_key is None and 'private_key' in kwargs:
+        private_key = kwargs.pop('private_key')
+
+    if secret_key is None and 'secret_key' in kwargs:
+        secret_key = kwargs.pop('secret_key')
+
+    path = url.path
+
+    if url.protocol is None or (url.protocol == 'file'):
         return BeamPath(path)
 
     if path == '':
         path = '/'
 
-    if protocol == 's3':
-        return S3Path(path, hostname=hostname, port=port,  **kwargs)
+    if url.protocol == 's3':
 
-    elif protocol == 'hdfs':
+        if access_key is None:
+            access_key = os.environ.get('AWS_ACCESS_KEY_ID', None)
+
+        if secret_key is None:
+            secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY', None)
+
+        return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
+
+    elif url.protocol == 'hdfs':
         return HDFSPath(path, hostname=hostname, port=port, username=username, **kwargs)
 
-    elif protocol == 'gs':
+    elif url.protocol == 'gs':
         raise NotImplementedError
-    elif protocol == 'http':
+    elif url.protocol == 'http':
         raise NotImplementedError
-    elif protocol == 'https':
+    elif url.protocol == 'https':
         raise NotImplementedError
-    elif protocol == 'ftp':
+    elif url.protocol == 'ftp':
         raise NotImplementedError
-    elif protocol == 'ftps':
+    elif url.protocol == 'ftps':
         raise NotImplementedError
-    elif protocol == 'sftp':
-        raise NotImplementedError
+    elif url.protocol == 'sftp':
+        if private_key is None:
+            private_key = Path.home().joinpath('.ssh', 'id_rsa')
+
+        return SFTPPath(path, hostname=hostname, username=username, port=port, private_key=private_key, **kwargs)
     else:
         raise NotImplementedError
 
 
 class BeamPath(PureBeamPath):
 
-    def __init__(self, *pathsegments, configuration=None, info=None, **kwargs):
-        PureBeamPath.__init__(self, *pathsegments, configuration=configuration, info=info, **kwargs)
-
-        if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
-            pathsegments = pathsegments[0].parts
-
-        self.path = Path(*pathsegments)
+    def __init__(self, *pathsegments, **kwargs):
+        PureBeamPath.__init__(self, *pathsegments, scheme='file', **kwargs)
+        self.path = Path(self.path)
 
     @classmethod
     def cwd(cls):
@@ -138,9 +161,6 @@ class BeamPath(PureBeamPath):
 
     def mkdir(self, *args, **kwargs):
         return self.path.mkdir(*args, **kwargs)
-
-    def open(self, *args, **kwargs):
-        return self.path.open(*args, **kwargs)
 
     def owner(self):
         return self.path.owner()
@@ -210,10 +230,10 @@ class BeamPath(PureBeamPath):
         self.file_object.close()
 
 
-def normalize_host(hostname, port=None):
+def normalize_host(hostname, port=None, default='localhost'):
 
     if hostname is None:
-        hostname = 'localhost'
+        hostname = default
     if port is None:
         host = f"{hostname}"
     else:
@@ -222,12 +242,97 @@ def normalize_host(hostname, port=None):
     return host
 
 
+class SFTPPath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, hostname=None, username=None, private_key=None, password=None,
+                 port=None, private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None, **kwargs):
+
+        super().__init__(*pathsegments, scheme='sftp', client=client, hostname=hostname, username=username,
+                         private_key=private_key, password=password, port=port, private_key_pass=private_key_pass,
+                         ciphers=ciphers, log=log, cnopts=cnopts, default_path=default_path, **kwargs)
+
+        if port is None:
+            port = 22
+        elif isinstance(port, str):
+            port = int(port)
+
+        if client is None:
+            import pysftp
+            self.client = pysftp.Connection(host=hostname, username=username, private_key=private_key, password=password,
+                                            port=port, private_key_pass=private_key_pass, ciphers=ciphers, log=log,
+                                            cnopts=cnopts, default_path=default_path)
+        else:
+            self.client = client
+
+    def samefile(self, other):
+        raise NotImplementedError
+
+    def iterdir(self):
+
+        for p in self.client.listdir(remotepath=str(self.path)):
+            path = self.path.joinpath(p)
+            yield self.gen(path)
+
+    def is_file(self):
+        return self.client.isfile(remotepath=str(self.path))
+
+    def is_dir(self):
+        return self.client.isdir(remotepath=str(self.path))
+
+    def mkdir(self, *args, mode=777, **kwargs):
+        self.client.makedirs(str(self.path), mode=mode)
+
+    def exists(self):
+        return self.client.exists(str(self.path))
+
+    def glob(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def rename(self, target):
+        self.client.rename(str(self.path), str(target))
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            self.file_object = self.client.open(str(self.path), self.mode)
+        elif self.mode == 'wb':
+            self.file_object = BytesIO()
+        elif self.mode == 'w':
+            self.file_object = StringIO()
+        else:
+            raise ValueError
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ["rb", "r"]:
+            self.file_object.close()
+        else:
+            self.file_object.seek(0)
+            self.client.putfo(self.file_object, remotepath=str(self.path))
+            self.file_object.close()
+
+    def rmdir(self):
+        self.client.rmdir(str(self.path))
+
+    def unlink(self, missing_ok=False):
+
+        if self.is_file():
+            self.client.remove(str(self.path))
+        else:
+            raise FileNotFoundError
+
+
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
-                 secret_key=None, **kwargs):
-        super().__init__(*pathsegments, client=client, hostname=hostname, port=port,
-                         access_key=access_key, secret_key=secret_key, **kwargs)
+                 secret_key=None, tls=True, **kwargs):
+        super().__init__(*pathsegments, scheme='s3', client=client, hostname=hostname, port=port,
+                         access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+
+        if type(tls) is str:
+            tls = tls.lower() == 'true'
+
+        import boto3
 
         if not self.is_absolute():
             self.path = PurePath('/').joinpath(self.path)
@@ -242,11 +347,14 @@ class S3Path(PureBeamPath):
         else:
             self.key = None
 
+        protocol = 'https' if tls else 'http'
         if client is None:
-            client = boto3.resource(endpoint_url=f'http://{normalize_host(hostname, port)}',
-                                    config=boto3.session.Config(signature_version='s3v4'),
+            kwargs = {}
+            if hostname is not None:
+                kwargs['endpoint_url'] = f'{protocol}://{normalize_host(hostname, port)}'
+            client = boto3.resource(config=boto3.session.Config(signature_version='s3v4'),
                                     verify=False, service_name='s3', aws_access_key_id=access_key,
-                                    aws_secret_access_key=secret_key)
+                                    aws_secret_access_key=secret_key, **kwargs)
 
         self.client = client
         self._bucket = None
@@ -254,7 +362,10 @@ class S3Path(PureBeamPath):
 
     @property
     def bucket(self):
-        if self._bucket is None:
+
+        if self.bucket_name is None:
+            self._bucket = None
+        elif self._bucket is None:
             self._bucket = self.client.Bucket(self.bucket_name)
         return self._bucket
 
@@ -263,13 +374,6 @@ class S3Path(PureBeamPath):
         if self._object is None:
             self._object = self.client.Object(self.bucket_name, self.key)
         return self._object
-
-    def as_uri(self):
-
-        return f"s3://{self.client.meta.client.meta.endpoint_url}{str(self)}"
-
-    def __repr__(self):
-        return self.as_uri()
 
     def is_file(self):
 
@@ -289,14 +393,9 @@ class S3Path(PureBeamPath):
         if self.key is None:
             return self._check_if_bucket_exists()
 
-        key = f"{self.key.rstrip('/')}/"
+        key = self.normalize_directory_key()
         return S3Path._exists(self.client, self.bucket_name, key) or \
                (self._check_if_bucket_exists() and (not self._is_empty(key)))
-
-    def open(self, mode="r", **kwargs):
-        if "w" in mode:
-            raise NotImplementedError("Writing to S3 is not supported")
-        return self.object.get()["Body"]
 
     def read_text(self, encoding=None, errors=None):
         return self.object.get()["Body"].read().decode(encoding, errors)
@@ -331,7 +430,7 @@ class S3Path(PureBeamPath):
     def replace(self, target):
         self.rename(target)
 
-    def unlink(self):
+    def unlink(self, **kwargs):
         if self.is_file():
             self.object.delete()
         if self.is_dir():
@@ -349,7 +448,7 @@ class S3Path(PureBeamPath):
         if not self._check_if_bucket_exists():
             self.bucket.create()
 
-        key = f"{self.key.rstrip('/')}/"
+        key = self.normalize_directory_key()
         self.bucket.put_object(Key=key)
 
     def _is_empty_bucket(self):
@@ -385,44 +484,64 @@ class S3Path(PureBeamPath):
     def key_depth(self, key=None):
         if key is None:
             key = self.key
+        if key is None:
+            return 0
         return len(list(filter(lambda x: len(x), key.split('/'))))
 
+    def normalize_directory_key(self, key=None):
+        if key is None:
+            key = self.key
+        if key is None:
+            return None
+        if not key.endswith('/'):
+            key += '/'
+        return key
+
     def iterdir(self):
-        bucket = self.client.Bucket(self.bucket_name)
 
-        if self.key is None:
-            objects = bucket.objects.all()
-        else:
-            objects = bucket.objects.filter(Prefix=self.key)
+        if self.bucket is None:
+            for bucket in self.client.buckets.all():
+                yield self.gen(bucket.name)
+            return
 
-        key_depth = self.key_depth()
-        paths = set()
-        for obj in objects:
+        key = self.normalize_directory_key()
+        if key is None:
+            key = ''
 
-            key = list(filter(lambda x: len(x), obj.key.split('/')))
-            if len(key) <= key_depth:
-                continue
-            key = '/'.join(key[:key_depth+1])
-            if key not in paths:
-                paths.add(key)
-                yield S3Path("/".join([obj.bucket_name, key]), client=self.client)
+        objects = self.client.meta.client.list_objects_v2(Bucket=self.bucket_name, Prefix=key, Delimiter='/')
 
-    @property
-    def parent(self):
-        return S3Path(str(super(S3Path, self).parent), client=self.client)
+        if 'CommonPrefixes' in objects:
+            for prefix in objects['CommonPrefixes']:
+                path = f"{self.bucket_name}/{prefix['Prefix']}"
+                yield self.gen(path)
+
+        if 'Contents' in objects:
+            for content in objects['Contents']:
+                if content['Key'] == key:
+                    continue
+                path = f"{self.bucket_name}/{content['Key']}"
+                yield self.gen(path)
 
     def __enter__(self):
-        if self.mode == "rb":
-            self.file_object = self.client.Object(self.bucket_name, self.key).get()['Body']
-        else:
+        if self.mode in ["rb", "r"]:
+            file_object = self.client.meta.client.get_object(Bucket=self.bucket_name, Key=self.key)['Body']
+            # io_obj = StringIO if 'r' else BytesIO
+            self.file_object = BytesIO(file_object.read())
+        elif self.mode == 'wb':
             self.file_object = BytesIO()
+        elif self.mode == 'w':
+            self.file_object = StringIO()
+        else:
+            raise ValueError
+
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode == "rb":
+        if self.mode in ["rb", "r"]:
             self.file_object.close()
         else:
+            self.file_object.seek(0)
             self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue())
             self.file_object.close()
 
@@ -431,22 +550,24 @@ class HDFSPath(PureBeamPath):
 
     # TODO: use HadoopFileSystem
 
-    def __init__(self, *pathsegments, client=None, hostname=None, port=None,
-                 username=None, skip_trash=False, n_threads=1,  temp_dir=None, chunk_size=65536,
-                 progress=None, cleanup=True):
-        super().__init__(*pathsegments, skip_trash=skip_trash, n_threads=n_threads,
-                                       temp_dir=temp_dir, chunk_size=chunk_size, progress=progress, cleanup=cleanup)
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, timeout=None,
+                 username=None, skip_trash=False, n_threads=0,  temp_dir=None, chunk_size=65536,
+                 progress=None, cleanup=True, tls=True, **kwargs):
+        super().__init__(*pathsegments, scheme='hdfs', hostname=hostname, port=port, skip_trash=skip_trash,
+                                        username=username, n_threads=n_threads, temp_dir=temp_dir, timeout=timeout,
+                                        chunk_size=chunk_size, progress=progress, cleanup=cleanup, **kwargs)
+
+        from hdfs import InsecureClient
+
+        if type(tls) is str:
+            tls = tls.lower() == 'true'
+
+        protocol = 'https' if tls else 'http'
 
         if client is None:
-            client = InsecureClient(f'http://{normalize_host(hostname, port)}', user=username)
+            client = InsecureClient(f'{protocol}://{normalize_host(hostname, port)}', user=username)
 
         self.client = client
-
-    def as_uri(self):
-        return f"hdfs://{self.client.url}{str(self)}"
-
-    def __repr__(self):
-        return self.as_uri()
 
     def exists(self):
         return self.client.status(str(self), strict=False) is not None
@@ -461,20 +582,19 @@ class HDFSPath(PureBeamPath):
 
     def unlink(self, missing_ok=False):
         if not missing_ok:
-            self.client.delete(str(self), skip_trash=self.configuration['skip_trash'])
-        self.client.delete(str(self), skip_trash=self.configuration['skip_trash'])
+            self.client.delete(str(self), skip_trash=self['skip_trash'])
+        self.client.delete(str(self), skip_trash=self['skip_trash'])
 
-    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+    def mkdir(self, mode=0o777, parents=True, exist_ok=True):
         if not exist_ok:
             if self.exists():
                 raise FileExistsError
+        if not parents:
+            raise NotImplementedError('parents=False not implemented for HDFSPath.mkdir')
         self.client.makedirs(str(self), permission=mode)
 
     def rmdir(self):
-        self.client.delete(str(self), skip_trash=self.configuration['skip_trash'])
-
-    def joinpath(self, *other):
-        return HDFSPath(str(super(HDFSPath, self).joinpath(*other)), client=self.client)
+        self.client.delete(str(self), skip_trash=self['skip_trash'])
 
     def iterdir(self):
         files = self.client.list(str(self))
@@ -498,38 +618,35 @@ class HDFSPath(PureBeamPath):
             return False
         return status['type'] == 'DIRECTORY'
 
-    @property
-    def parent(self):
-        return HDFSPath(str(super(HDFSPath, self).parent), client=self.client)
-
     def glob(self, *args, **kwargs):
         raise NotImplementedError
 
-    def read(self, **kwargs):
+    def read(self, ext=None, **kwargs):
 
-        ext = self.suffix
-        path = str(self)
+        from hdfs.ext.avro import AvroReader
+        from hdfs.ext.dataframe import read_dataframe
+
+        if ext is None:
+            ext = self.suffix
 
         if ext == '.avro':
-
+            path = str(self)
             x = []
             with AvroReader(self.client, path, **kwargs) as reader:
-                self.info['schema'] = reader.writer_schema  # The remote file's Avro schema.
-                self.info['content'] = reader.content  # Content metadata (e.g. size).
+                # reader.writer_schema  # The remote file's Avro schema.
+                # reader.content  # Content metadata (e.g. size).
                 for record in reader:
                     x.append(record)
-
             return x
-
         elif ext == '.pd':
-            x = read_dataframe(self.client, path)
+            return read_dataframe(self.client, str(self))
 
-        else:
-            raise ValueError(f"Extension type: {ext} not supported for HDFSPath.")
-
-        return x
+        return super().read(ext=ext, **kwargs)
 
     def write(self, x, **kwargs):
+
+        from hdfs.ext.avro import AvroWriter
+        from hdfs.ext.dataframe import write_dataframe
 
         ext = self.suffix
         path = str(self)
@@ -543,6 +660,25 @@ class HDFSPath(PureBeamPath):
         elif ext == '.pd':
             write_dataframe(self.client, path, x, **kwargs)
         else:
-            raise ValueError(f"Extension type: {ext} not supported for HDFSPath.")
+            super().write(x, **kwargs)
 
-        return self
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+
+            chunk_size = self.query['chunk_size']
+            chunk_size = int(chunk_size) if chunk_size is not None else None
+            self.file_object = self.client.read(str(self), chunk_size=chunk_size)
+
+        elif self.mode in ['wb', 'w']:
+            self.file_object = self.client.write(str(self), overwrite=True, )
+        else:
+            raise ValueError
+
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ["rb", "r"]:
+            self.file_object.close()
+        else:
+            self.file_object.close()

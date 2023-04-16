@@ -18,6 +18,7 @@ from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm, PackedFolds, as_numpy
 from src.beam import DataTensor, BeamOptimizer, beam_logger
+from src.beam.data import BeamData
 
 from torchvision import transforms
 import torchvision
@@ -160,15 +161,24 @@ class CIFAR10Dataset(UniversalDataset):
         # test_indices = len(x_train) + torch.arange(len(x_test))
         # self.split(validation=.2, test=test_indices, seed=hparams.split_dataset_seed)
 
-        self.data = PackedFolds({'train': x_train, 'test': x_test})
-        self.labels = PackedFolds({'train': y_train, 'test': y_test})
-        self.split(validation=.2, test=self.labels['test'].index, seed=hparams.split_dataset_seed)
+        # self.data = PackedFolds({'train': x_train, 'test': x_test})
+        # self.labels = PackedFolds({'train': y_train, 'test': y_test})
+        # self.split(validation=.2, test=self.labels['test'].index, seed=hparams.split_dataset_seed)
+
+        self.data = BeamData({'train': x_train, 'test': x_test}, label={'train': y_train, 'test': y_test})
+        self.labels = self.data.label
+        self.split(validation=.2, test=self.data['test'].index, seed=hparams.split_dataset_seed)
 
     def getitem(self, ind):
 
-        x = self.data[ind]
+        data = self.data[ind]
 
-        # x = self.t_basic(x)
+        if isinstance(data, BeamData):
+            x = data.stacked_values
+            labels = data.stacked_labels
+        else:
+            x = data
+            labels = self.labels[ind]
 
         x = x.half() / 255
 
@@ -180,8 +190,7 @@ class CIFAR10Dataset(UniversalDataset):
 
         x = x.to(memory_format=torch.channels_last)
 
-        return {'x': x, 'y': self.labels[ind]}
-
+        return {'x': x, 'y': labels}
 
 # class CIFAR10Dataset(UniversalDataset):
 #
@@ -320,18 +329,19 @@ class CIFAR10Algorithm(Algorithm):
 
         return results
 
-    def report(self, results=None, epoch=None, **kwargs):
-
-        acc = np.mean(results['validation']['scalar']['acc'])
-
-        if self.hpo == 'tune':
-            tune.report(mean_accuracy=acc)
-        elif self.hpo == 'optuna':
-
-            self.trial.report(acc, epoch)
-            results['objective'] = acc
-
-        return results
+    # def report(self, objective, epoch=None, **kwargs):
+    #
+    #     # acc = np.mean(results['validation']['scalar']['acc'])
+    #     acc = objective
+    #
+    #     if self.hpo == 'tune':
+    #         tune.report(mean_accuracy=acc)
+    #     elif self.hpo == 'optuna':
+    #
+    #         self.trial.report(acc, epoch)
+    #         # results['objective'] = acc
+    #
+    #     return results
 
     def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
@@ -382,7 +392,7 @@ if __name__ == '__main__':
     args = beam_arguments(
         f"--project-name=cifar10 --root-dir={root_dir} --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
         "--n-epochs=2 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
-        "--weight-decay=.00256 --momentum=0.9 --beta2=0.9",
+        "--weight-decay=.00256 --momentum=0.9 --beta2=0.9 --temperature=1 --objective=acc",
         path_to_data=path_to_data, dropout=.0, activation='celu',
         channels=512, label_smoothing=.2, padding=4, scale_down=.7, scale_up=1.4, ratio_down=.7, ratio_up=1.4)
 

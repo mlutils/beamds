@@ -8,7 +8,7 @@ from tqdm import tqdm
 import random
 import torch
 import pandas as pd
-
+import pyarrow.feather as feather
 
 try:
     import modin.pandas as mpd
@@ -34,6 +34,131 @@ import time
 import inspect
 from pathlib import PurePath
 from argparse import Namespace
+from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
+
+
+class BeamURL:
+
+    def __init__(self, url=None, scheme=None, hostname=None, port=None, username=None, password=None, path=None,
+                 fragment=None, params=None, **query):
+
+        self._url = url
+        self._parsed_url = None
+        if url is None:
+            netloc = BeamURL.to_netloc(hostname=hostname, port=port, username=username, password=password)
+            query = BeamURL.dict_to_query(**query)
+            self._parsed_url = ParseResult(scheme=scheme, netloc=netloc, path=path, params=params, query=query,
+                                           fragment=fragment)
+
+        assert self._url is not None or self._parsed_url is not None, 'Either url or parsed_url must be provided'
+
+    @property
+    def parsed_url(self):
+        if self._parsed_url is not None:
+            return self._parsed_url
+        self._parsed_url = urlparse(self._url)
+        return self._parsed_url
+
+    @property
+    def url(self):
+        if self._url is not None:
+            return self._url
+        self._url = urlunparse(self._parsed_url)
+        return self._url
+
+    def __repr__(self):
+        return self.url
+
+    def __str__(self):
+
+        netloc = BeamURL.to_netloc(hostname=self.hostname, port=self.port, username=self.username)
+        parsed_url = ParseResult(scheme=self.scheme, netloc=netloc, path=self.path, params=None, query=None,
+                                 fragment=None)
+        return urlunparse(parsed_url)
+
+    @property
+    def scheme(self):
+        return self.parsed_url.scheme
+
+    @property
+    def protocol(self):
+        return self.scheme
+
+    @property
+    def username(self):
+        if self.parsed_url.netloc is None:
+            return None
+        return self.parsed_url.username
+
+    @property
+    def hostname(self):
+        if self.parsed_url.netloc is None:
+            return None
+        return self.parsed_url.hostname
+
+    @property
+    def password(self):
+        if self.parsed_url.netloc is None:
+            return None
+        return self.parsed_url.password
+
+    @property
+    def port(self):
+        if self.parsed_url.netloc is None:
+            return None
+        return self.parsed_url.port
+
+    @property
+    def path(self):
+        return self.parsed_url.path
+
+    @property
+    def query_string(self):
+        return self.parsed_url.query
+
+    @property
+    def query(self):
+        return dict(parse_qsl(self.parsed_url.query))
+
+    @property
+    def fragment(self):
+        return self.parsed_url.fragment
+
+    @property
+    def params(self):
+        return self.parsed_url.params
+
+    @staticmethod
+    def to_netloc(hostname=None, port=None, username=None, password=None):
+
+        if not hostname:
+            return None
+
+        netloc = hostname
+        if username:
+            if password:
+                username = f"{username}:{password}"
+            netloc = f"{username}@{netloc}"
+        if port:
+            netloc = f"{netloc}:{port}"
+        return netloc
+
+    @staticmethod
+    def to_path(path):
+        return PurePath(path).as_posix()
+
+    @staticmethod
+    def query_to_dict(query):
+        return dict(parse_qsl(query))
+
+    @staticmethod
+    def dict_to_query(**query):
+        return '&'.join([f'{k}={v}' for k, v in query.items() if v is not None])
+
+    @classmethod
+    def from_string(cls, url):
+        parsed_url = urlparse(url)
+        return cls(url, parsed_url)
 
 
 # logger.remove(handler_id=0)
@@ -53,25 +178,50 @@ class PureBeamPath:
 
     feather_index_mark = "feather_index:"
 
-    def __init__(self, *pathsegments, configuration=None, info=None, client=None, **kwargs):
+    def __init__(self, *pathsegments, url=None, scheme=None, hostname=None, port=None, username=None, password=None,
+                 fragment=None, params=None, client=None, **kwargs):
         super().__init__()
 
         if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
             pathsegments = pathsegments[0].parts
 
         self.path = PurePath(*pathsegments)
-        self.configuration = Namespace(**kwargs)
-        if configuration is not None:
 
-            if type(configuration) == Namespace:
-                configuration = configuration.__dict__
-            for k, v in configuration.items():
-                setattr(self.configuration, k, v)
+        if url is not None:
+            scheme = url.scheme
+            hostname = url.hostname
+            port = url.port
+            username = url.username
+            password = url.password
+            fragment = url.fragment
+            params = url.params
+            kwargs = url.query
 
-        self.info = info if info is not None else {}
+        self.url = BeamURL(scheme=scheme, hostname=hostname, port=port, username=username, fragment=fragment,
+                           params=params, password=password, path=str(self.path), **kwargs)
+
         self.mode = "rb"
         self.file_object = None
         self.client = client
+
+    def __iter__(self):
+        for p in self.iterdir():
+            yield p
+
+    def __getitem__(self, item):
+        if item in self.url.query:
+            return self.url.query[item]
+        return None
+
+    def not_empty(self):
+
+        if self.is_dir():
+            for p in self.iterdir():
+                if p.not_empty():
+                    return True
+                if p.is_file():
+                    return True
+        return False
 
     def rmtree(self):
         if self.is_file():
@@ -100,7 +250,7 @@ class PureBeamPath:
     def rmdir(self):
         raise NotImplementedError
 
-    def unlink(self):
+    def unlink(self, **kwargs):
         raise NotImplementedError
 
     def __truediv__(self, other):
@@ -110,11 +260,15 @@ class PureBeamPath:
         self.mode = mode
         return self
 
+    def open(self, mode="rb"):
+        self.mode = mode
+        return self
+
     def __str__(self):
         return str(self.path)
 
     def __repr__(self):
-        return self.path.as_uri()
+        return str(self.url)
 
     def __enter__(self):
         raise NotImplementedError
@@ -122,9 +276,40 @@ class PureBeamPath:
     def __exit__(self, exc_type, exc_val, exc_tb):
         raise NotImplementedError
 
+    @property
+    def hostname(self):
+        return self.url.hostname
+
+    @property
+    def port(self):
+        return self.url.port
+
+    @property
+    def username(self):
+        return self.url.username
+
+    @property
+    def password(self):
+        return self.url.password
+
+    @property
+    def fragment(self):
+        return self.url.fragment
+
+    @property
+    def params(self):
+        return self.url.params
+
+    @property
+    def query(self):
+        return self.url.query
+
     def gen(self, path):
+
         PathType = type(self)
-        return PathType(path, configuration=self.configuration, info=self.info, client=self.client)
+
+        return PathType(path, client=self.client, hostname=self.hostname, port=self.port, username=self.username,
+                        password=self.password, fragment=self.fragment, params=self.params, **self.query)
 
     @property
     def parts(self):
@@ -170,7 +355,7 @@ class PureBeamPath:
         return self.path.as_posix()
 
     def as_uri(self):
-        return self.path.as_uri()
+        return self.url.url
 
     def is_absolute(self):
         return self.path.is_absolute()
@@ -182,13 +367,14 @@ class PureBeamPath:
         return self.path.is_reserved()
 
     def joinpath(self, *other):
-        return self.gen(self.path.joinpath(*other))
+        return self.gen(self.path.joinpath(*[str(o) for o in other]))
 
     def match(self, pattern):
         return self.path.match(pattern)
 
     def relative_to(self, *other):
-        return self.gen(self.path.relative_to(*other))
+        other = PureBeamPath(*other)
+        return PureBeamPath(self.path.relative_to(str(other)))
 
     def with_name(self, name):
         return self.gen(self.path.with_name(name))
@@ -231,6 +417,9 @@ class PureBeamPath:
         with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
             if ext == '.fea':
+
+                import pyarrow as pa
+                # x = feather.read_feather(pa.BufferReader(fo.read()), **kwargs)
                 x = pd.read_feather(fo, **kwargs)
 
                 c = x.columns
@@ -247,8 +436,13 @@ class PureBeamPath:
                 x = pd.read_pickle(fo, **kwargs)
             elif ext in ['.npy', '.npz']:
                 x = np.load(fo, allow_pickle=True, **kwargs)
+            elif ext in ['.txt', '.text']:
+                x = fo.readlines()
             elif ext == '.scipy_npz':
                 x = scipy.sparse.load_npz(fo, **kwargs)
+            elif ext == '.flac':
+                import soundfile
+                x = soundfile.read(fo, **kwargs)
             elif ext == '.parquet':
                 x = pd.read_parquet(fo, **kwargs)
             elif ext == '.pt':
@@ -287,7 +481,7 @@ class PureBeamPath:
         else:
             m = 'r'
 
-        if ext not in ['.avro', '.json', '.orc']:
+        if ext not in ['.avro', '.json', '.orc', '.txt', '.text']:
             m = f"{m}b"
 
         return m
@@ -858,7 +1052,7 @@ def is_chunk(path, chunk_pattern='_chunk'):
 
 def iter_container(x):
     if hasattr(x, 'items'):
-        return x.items()
+        return iter(x.items())
     return enumerate(x)
 
 
@@ -924,6 +1118,8 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
 
     elif x_type.minor == 'pandas':
         if on is None or dim == 0:
+            if len(x[0].shape) == 1:
+                x = [pd.Series(xi) for xi in x]
             return pd.concat(x, axis=dim)
         elif on == 'index':
             return recursive_merge(x, method=method, how=how, left_index=True, right_index=True)
@@ -958,6 +1154,8 @@ def beam_device(device):
     if isinstance(device, torch.device) or device is None:
         return device
     device = str(device)
+    if device == 'cuda':
+        device = '0'
     return torch.device(int(device) if device.isnumeric() else device)
 
 
@@ -1140,17 +1338,29 @@ def include_patterns(*patterns):
 
     return _ignore_patterns
 
+# def is_notebook():
+#     return '_' in os.environ and 'jupyter' in os.environ['_']
 
-def is_notebook():
-    return '_' in os.environ and 'jupyter' in os.environ['_']
+
+def is_notebook() -> bool:
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True   # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False      # Probably standard Python interpreter
 
 
-def setup(rank, world_size, port='7463'):
+def setup_distributed(rank, world_size, port='7463', backend='gloo'):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = port
 
     # initialize the process group
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
 
 
 def cleanup(rank, world_size):
@@ -1242,7 +1452,7 @@ def recursive_flat_array(x):
         return [x]
 
     else:
-        raise ValueError('Cannot flat array for type {}'.format(x_type))
+        return [x]
 
 
 def recursive_flatten(x, flat_array=False):
@@ -1378,9 +1588,16 @@ def recursive_len(x):
     if x_type.minor == 'scipy_sparse':
         return x.shape[0]
 
+    if x_type.element == 'none':
+        return 0
+
     if hasattr(x, '__len__'):
         return len(x)
-    return None
+
+    if x is None:
+        return 0
+
+    return 1
 
 
 @recursive
@@ -1493,6 +1710,9 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
             dtype = torch.int64
         else:
             dtype = torch.float32
+
+    if check_type(x, check_element=False).minor == 'pandas':
+        x = x.values
 
     x = torch.as_tensor(x, device=device, dtype=dtype)
     if return_vector:

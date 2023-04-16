@@ -186,6 +186,9 @@ def get_beam_parser():
     parser.add_argument('--store-networks', type=str, default='logscale',
                         help='when to store network weights to the log directory')
 
+    parser.add_argument('--mp-context', type=str, default='spawn', help='The multiprocessing context to use')
+    parser.add_argument('--mp-backend', type=str, default=None, help='The multiprocessing backend to use')
+
     return parser
 
 

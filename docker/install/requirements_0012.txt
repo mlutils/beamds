@@ -1,7 +1,7 @@
 # deep learning
-pytorch-tabnet
-pytorch-lightning
-pytorch-forecasting
+# pytorch-tabnet
+# pytorch-lightning
+# pytorch-forecasting
 deepchecks
 torchensemble
 rtdl
@@ -10,7 +10,7 @@ datasets
 tensorboardX
 diviner
 
-lightning-bolts
+# lightning-bolts
 
 # this package creates dependencies collisions - use carefully only if needed.
 # lightning-flash
