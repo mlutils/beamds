@@ -1533,9 +1533,12 @@ def new_container(k):
     return x
 
 
-def insert_tupled_key(x, k, v):
-    if x is None:
+def insert_tupled_key(x, k, v, default=None):
+
+    if x is None and default is None:
         x = new_container(k[0])
+    elif x is None:
+        x = default
 
     xi = x
 
@@ -1562,9 +1565,15 @@ def build_container_from_tupled_keys(keys, values):
 
     keys = sorted(keys)
 
+    if is_arange(keys):
+        default = []
+    else:
+        keys = [str(k) for k in keys]
+        default = {}
+
     x = None
     for ki, vi in zip(keys, values):
-        x = insert_tupled_key(x, ki, vi)
+        x = insert_tupled_key(x, ki, vi, default=default)
 
     return x
 

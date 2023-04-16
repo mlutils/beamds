@@ -60,6 +60,23 @@ To analyze your code with Scalene use the following arguments:
 scalene --reduced-profile --outfile OUTFILE.html --html --- your_prog.py <your additional arguments>
 ```
 
+## Uploading the package to PyPi
+
+1. Install twine:
+```shell
+python -m pip install --user --upgrade twine
+```
+
+2. Build the package:
+```shell
+python -m build
+```
+
+3. Upload the package:
+```shell
+python -m twine upload --repository pypi dist/* 
+```
+
 
 
 

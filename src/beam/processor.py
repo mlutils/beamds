@@ -117,8 +117,8 @@ class Reducer(Processor):
 class Transformer(Processor):
 
     def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
-                 chunksize=None, multiprocess_method='joblib', squeeze=True, reduce_dim=0, transform_strategy=None,
-                 split_by='key', **kwargs):
+                 chunksize=None, multiprocess_method='joblib', squeeze=True, reduce=True, reduce_dim=0,
+                 transform_strategy=None, split_by='key', **kwargs):
         """
 
         @param args:
@@ -180,6 +180,8 @@ class Transformer(Processor):
         self.partition = partition
         self.multiprocess_method = multiprocess_method
         self.reduce_dim = reduce_dim
+        self.to_reduce = reduce
+        self._exceptions = None
 
         self.queue = BeamParallel(n_workers=n_workers, func=None, method=multiprocess_method,
                                   progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
@@ -231,6 +233,14 @@ class Transformer(Processor):
     def fit(self, x, **kwargs):
         return x
 
+    @property
+    def exceptions(self):
+        return self._exceptions
+
+    @exceptions.setter
+    def exceptions(self, exceptions):
+        self._exceptions = exceptions
+
     def fit_transform(self, x, **kwargs):
         return self.transform(x, fit=True, **kwargs)
         # self.fit(x, **kwargs)
@@ -245,7 +255,7 @@ class Transformer(Processor):
 
     def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, multiprocess_method=None,
                   fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=False,
-                  **kwargs):
+                  reduce=True, **kwargs):
         """
 
         @param x:
@@ -272,6 +282,9 @@ class Transformer(Processor):
 
         if transform_strategy is None:
             transform_strategy = self.transform_strategy
+
+        if reduce is None:
+            reduce = self.to_reduce
 
         if transform_strategy in ['SC', 'SS'] and split_by != 'key':
             logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
@@ -364,6 +377,16 @@ class Transformer(Processor):
 
         x_with_keys = self.queue.run(n_workers=n_workers, method=multiprocess_method)
 
+        exceptions = [{'exception': xi, 'task': self.queue.queue[i]} for i, xi in enumerate(x_with_keys)
+                      if isinstance(xi, Exception)]
+
+        if len(exceptions) > 0:
+            logger.error(f"Transformer {self.name} had {len(exceptions)} exceptions during operation.")
+            logger.info("Failed tasks can be obtained in self.exceptions")
+            self.exceptions = exceptions
+
+        x_with_keys = [xi for xi in x_with_keys if not isinstance(xi, Exception)]
+
         if is_chunk:
             values = [xi[1] for xi in x_with_keys]
             keys = [xi[0] for xi in x_with_keys]
@@ -373,10 +396,11 @@ class Transformer(Processor):
 
             logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
-            if isinstance(x[0], BeamData):
-                x = BeamData.collate(x, split_by=split_by, **kwargs)
-            else:
-                x = self.reduce(x, **kwargs)
+            if reduce:
+                if isinstance(next(iter_container(x))[1], BeamData):
+                    x = BeamData.collate(x, split_by=split_by, **kwargs)
+                else:
+                    x = self.reduce(x, **kwargs)
 
         else:
             logger.info(f"Finished transformer process: {self.name}.")
