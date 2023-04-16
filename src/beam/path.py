@@ -4,6 +4,8 @@ import re
 from .utils import PureBeamPath, BeamURL
 from io import StringIO, BytesIO
 import os
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def beam_path(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
@@ -228,10 +230,10 @@ class BeamPath(PureBeamPath):
         self.file_object.close()
 
 
-def normalize_host(hostname, port=None):
+def normalize_host(hostname, port=None, default='localhost'):
 
     if hostname is None:
-        hostname = 'localhost'
+        hostname = default
     if port is None:
         host = f"{hostname}"
     else:
@@ -347,10 +349,12 @@ class S3Path(PureBeamPath):
 
         protocol = 'https' if tls else 'http'
         if client is None:
-            client = boto3.resource(endpoint_url=f'{protocol}://{normalize_host(hostname, port)}',
-                                    config=boto3.session.Config(signature_version='s3v4'),
+            kwargs = {}
+            if hostname is not None:
+                kwargs['endpoint_url'] = f'{protocol}://{normalize_host(hostname, port)}'
+            client = boto3.resource(config=boto3.session.Config(signature_version='s3v4'),
                                     verify=False, service_name='s3', aws_access_key_id=access_key,
-                                    aws_secret_access_key=secret_key)
+                                    aws_secret_access_key=secret_key, **kwargs)
 
         self.client = client
         self._bucket = None
@@ -358,7 +362,10 @@ class S3Path(PureBeamPath):
 
     @property
     def bucket(self):
-        if self._bucket is None:
+
+        if self.bucket_name is None:
+            self._bucket = None
+        elif self._bucket is None:
             self._bucket = self.client.Bucket(self.bucket_name)
         return self._bucket
 
@@ -492,7 +499,14 @@ class S3Path(PureBeamPath):
 
     def iterdir(self):
 
+        if self.bucket is None:
+            for bucket in self.client.buckets.all():
+                yield self.gen(bucket.name)
+            return
+
         key = self.normalize_directory_key()
+        if key is None:
+            key = ''
 
         objects = self.client.meta.client.list_objects_v2(Bucket=self.bucket_name, Prefix=key, Delimiter='/')
 
