@@ -1544,7 +1544,8 @@ def insert_tupled_key(x, k, v, default=None):
 
     for ki, kip1 in zip(k[:-1], k[1:]):
 
-        if type(ki) is int and len(xi) == ki:
+        if isinstance(xi, list):
+            assert type(ki) is int and len(xi) == ki, 'Invalid key'
             xi.append(new_container(kip1))
 
         elif ki not in xi:
@@ -1553,7 +1554,8 @@ def insert_tupled_key(x, k, v, default=None):
         xi = xi[ki]
 
     ki = k[-1]
-    if type(ki) is int and len(xi) == ki:
+    if isinstance(xi, list):
+        assert type(ki) is int and len(xi) == ki, 'Invalid key'
         xi.append(v)
     else:
         xi[ki] = v
@@ -1565,15 +1567,9 @@ def build_container_from_tupled_keys(keys, values):
 
     keys = sorted(keys)
 
-    if is_arange(keys):
-        default = []
-    else:
-        keys = [str(k) for k in keys]
-        default = {}
-
     x = None
     for ki, vi in zip(keys, values):
-        x = insert_tupled_key(x, ki, vi, default=default)
+        x = insert_tupled_key(x, ki, vi)
 
     return x
 

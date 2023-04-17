@@ -243,12 +243,18 @@ class Transformer(Processor):
         # self.fit(x, **kwargs)
         # return self.transform(x, **kwargs)
 
-    def reduce(self, x, reduce_dim=None, **kwargs):
+    def reduce(self, x, reduce_dim=None, split_by=None , **kwargs):
 
-        if reduce_dim is None:
-            reduce_dim = self.reduce_dim
+        if isinstance(next(iter_container(x))[1], BeamData):
+            x = BeamData.collate(x, split_by=split_by, **kwargs)
+        else:
 
-        return collate_chunks(*x, dim=reduce_dim, **kwargs)
+            if reduce_dim is None:
+                reduce_dim = self.reduce_dim
+
+            x = collate_chunks(*x, dim=reduce_dim, **kwargs)
+
+        return x
 
     def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, multiprocess_method=None,
                   fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=False,
@@ -402,17 +408,24 @@ class Transformer(Processor):
             keys = [xi[0] for xi in x_with_keys]
             keys = [ki if type(ki) is tuple else (ki, ) for ki in keys]
 
-            x = build_container_from_tupled_keys(keys, values)
+            if len(exceptions) == 0:
+                x = build_container_from_tupled_keys(keys, values)
 
-            logger.info(f"Finished transformer process: {self.name}. Collating results...")
+                logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
-            if reduce:
-                if isinstance(next(iter_container(x))[1], BeamData):
-                    x = BeamData.collate(x, split_by=split_by, **kwargs)
-                else:
-                    x = self.reduce(x, **kwargs)
+                if reduce:
+                    x = self.reduce(x, split_by=split_by, **kwargs)
+            else:
+                x = {k: v for k, v in zip(keys, values)}
+                if store:
+                    logger.warning("Due to exceptions, the data will not be stored, "
+                                   "the data is returned as a dictionary of all the successful tasks.")
+                return x
 
         else:
+            if len(exceptions) > 0:
+                logger.warning("Exception occurred, the exception object and the task are returned.")
+                return x_with_keys
             logger.info(f"Finished transformer process: {self.name}.")
             x = x_with_keys[0][1]
 
