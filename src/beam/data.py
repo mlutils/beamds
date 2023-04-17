@@ -155,7 +155,7 @@ class BeamData(object):
         self.n_chunks = n_chunks
         self.partition = partition
         self.archive_size = archive_size
-        self.target_device = target_device
+        self.target_device = beam_device(target_device)
         self._index = index
         self._label = label
         self._schema = schema
@@ -212,7 +212,9 @@ class BeamData(object):
             # in this case the data is not cached, so it should be stored ether in root_path or in all_paths
 
         if device is not None:
+            device = beam_device(device)
             self.as_tensor(device=device)
+            self._device = device
 
         path = beam_path(path)
         path_type = check_type(path)

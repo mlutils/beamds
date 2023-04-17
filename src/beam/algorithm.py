@@ -9,7 +9,7 @@ import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
-    stack_batched_results, as_numpy, stack_train_results
+    stack_batched_results, as_numpy, stack_train_results, beam_device
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
@@ -44,7 +44,7 @@ class Algorithm(object):
 
         self.hparams = hparams
 
-        self.device = hparams.device
+        self.device = beam_device(hparams.device)
         self.ddp = hparams.ddp
         self.hpo = hparams.hpo
 

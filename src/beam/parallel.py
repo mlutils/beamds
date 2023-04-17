@@ -100,6 +100,9 @@ class BeamParallel(object):
             self._name = retrieve_name(self)
         return self._name
 
+    def __len__(self):
+        return len(self.queue)
+
     def add(self, *args, **kwargs):
 
         args_list = []

@@ -183,9 +183,6 @@ class Transformer(Processor):
         self.to_reduce = reduce
         self._exceptions = None
 
-        self.queue = BeamParallel(n_workers=n_workers, func=None, method=multiprocess_method,
-                                  progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
-
     def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None, split_by=None, partition=None):
 
         if split_by is None:
@@ -280,11 +277,19 @@ class Transformer(Processor):
         if partition is None:
             partition = self.partition
 
+        if multiprocess_method is None:
+            multiprocess_method = self.multiprocess_method
+
+        if n_workers is None:
+            n_workers = self.n_workers
+
         if transform_strategy is None:
             transform_strategy = self.transform_strategy
 
         if reduce is None:
             reduce = self.to_reduce
+
+        reduce_dim = self.reduce_dim
 
         if transform_strategy in ['SC', 'SS'] and split_by != 'key':
             logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
@@ -306,7 +311,6 @@ class Transformer(Processor):
             squeeze = self.squeeze
 
         is_chunk = (n_chunks != 1) or (not squeeze)
-        self.queue.set_name(self.name)
 
         if ((transform_strategy is None) or (transform_strategy == 'C')) and type(x) == BeamData:
             if x.cached:
@@ -351,6 +355,9 @@ class Transformer(Processor):
         elif store_chunk:
             logger.info(f"Storing transformed chunks of data in: {path}")
 
+        queue = BeamParallel(n_workers=n_workers, func=None, method=multiprocess_method, name=self.name,
+                                  progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
+
         if is_chunk:
             for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
                                     squeeze=squeeze, split_by=split_by, partition=partition):
@@ -368,16 +375,19 @@ class Transformer(Processor):
                     chunk_path = path.joinpath(f"{BeamData.normalize_key(k)}{part_name}")
                     chunk_path = chunk_path.as_uri()
 
-                self.queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,
+                queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,
                                         cache=cache, store=store_chunk, name=f"{self.name}/{k}", **kwargs))
 
         else:
-            self.queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, fit=fit, cache=cache,
+            queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, fit=fit, cache=cache,
                                     store=store_chunk,  name=f"{self.name}", **kwargs))
 
-        x_with_keys = self.queue.run(n_workers=n_workers, method=multiprocess_method)
+        logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "
+                    f"Number of queued tasks is {len(queue)}.")
 
-        exceptions = [{'exception': xi, 'task': self.queue.queue[i]} for i, xi in enumerate(x_with_keys)
+        x_with_keys = queue.run(n_workers=n_workers, method=multiprocess_method)
+
+        exceptions = [{'exception': xi, 'task': queue.queue[i]} for i, xi in enumerate(x_with_keys)
                       if isinstance(xi, Exception)]
 
         if len(exceptions) > 0:

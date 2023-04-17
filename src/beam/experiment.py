@@ -283,9 +283,10 @@ class Experiment(object):
             else:
                 code_root_path = sys.argv[0]
 
+            self.source_dir = os.path.dirname(os.path.realpath(code_root_path))
             #TODO: handle the case where root_path is not BeamPath object
             if isinstance(self.code_dir, BeamPath):
-                copytree(os.path.dirname(os.path.realpath(code_root_path)), str(self.code_dir),
+                copytree(self.source_dir, str(self.code_dir),
                          ignore=include_patterns('*.py', '*.md', '*.ipynb'))
             else:
                 logger.warning("Code directory is not BeamPath object. Skipping code copy.")
