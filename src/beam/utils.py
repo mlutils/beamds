@@ -1703,9 +1703,10 @@ def as_numpy(x):
 
 def as_tensor(x, device=None, dtype=None, return_vector=False):
 
-    if isinstance(x, dict):
+    x_type = check_type(x)
+    if x_type.major == 'container' and x_type.minor == 'dict':
         return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
-    elif isinstance(x, list) or isinstance(x, tuple):
+    elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
         return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
     elif x is None:
         return None

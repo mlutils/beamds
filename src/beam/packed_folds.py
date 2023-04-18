@@ -2,7 +2,7 @@
 import torch
 from .utils import check_type, slice_to_index, as_tensor, beam_device
 import pandas as pd
-from .data_tensor import DataTensor
+from .tensor import DataTensor
 
 
 class PackedFolds(object):

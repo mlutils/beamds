@@ -3,7 +3,112 @@ import pandas as pd
 import warnings
 from collections import namedtuple
 import numpy as np
-from .utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy
+from .utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy, beam_device
+from .path import beam_path
+import pickletools
+
+
+class LazyTensor:
+
+    def __init__(self, path, device=None):
+        self.path = beam_path(path)
+        self._device = device
+        self._dtype = None
+        self._shape = None
+        self._header = None
+        self._element_size = None
+        self.offset = 0x140
+
+    @property
+    def header(self):
+        if self._header is None:
+            with self.path.open('rb') as fo:
+
+                fo.seek(0x40)
+                frames = list(pickletools.genops(fo))
+                self._header = pd.DataFrame([{'name': op.name, 'val': v, 'index': p, 'proto': op.proto,
+                                              'arg_name': op.arg.name if op.arg is not None else None,
+                                              'arg_n': op.arg.n if op.arg is not None else None} for op, v, p in frames])
+
+        return self._header
+
+    @property
+    def dtype(self):
+        if self._dtype is None:
+            dtype = self.header[self.header.name == 'GLOBAL'].iloc[1].val
+            types_dict = {'torch LongStorage': torch.int64,
+                          'torch IntStorage': torch.int32,
+                          'torch FloatStorage': torch.float32,
+                          'torch DoubleStorage': torch.float64,
+                          'torch ByteStorage': torch.uint8,
+                          'torch CharStorage': torch.int8,
+                          'torch ShortStorage': torch.int16,
+                          'torch HalfStorage': torch.float16,
+                          'torch BoolStorage': torch.bool,
+                          'torch ComplexFloatStorage': torch.complex64,
+                          'torch ComplexDoubleStorage': torch.complex128,
+                          'torch BFloat16Storage': torch.bfloat16,
+                          }
+            self._dtype = types_dict[dtype]
+        return self._dtype
+
+    @property
+    def shape(self):
+        if self._shape is None:
+            mark_index = self.header[self.header.name == 'MARK'].iloc[2].name
+            df = self.header.iloc[mark_index + 1:]
+            self._shape = as_tensor(df.loc[:(df.name == 'TUPLE').idxmax() - 1].val.values)
+
+        return self._shape
+
+    @property
+    def device(self):
+        if self._device is None:
+            self._device = beam_device(self.header[self.header.name == 'BINUNICODE'].iloc[2].val)
+        return self._device
+
+    @property
+    def element_size(self):
+        if self._element_size is None:
+            self._element_size = torch.tensor([], dtype=self.dtype).element_size()
+        return self._element_size
+
+    @staticmethod
+    def is_contiguous(ind):
+
+        ind_type = check_type(ind)
+        if ind_type.major == 'slice':
+            return ind.step is None or ind.step == 1
+        elif ind_type.major == 'array':
+            ind = as_tensor(ind)
+            return bool(torch.all(torch.diff(ind) == 1))
+
+        return False
+
+    def __getitem__(self, item):
+
+        item_type = check_type(item)
+        if item_type.minr != 'tuple':
+            item = (item,)
+
+        offset = self.offset
+
+        for i, ind in enumerate(item):
+            ind_type = check_type(ind)
+            if ind_type.major == 'scalar':
+                assert ind_type.minor == 'int', "Index must be integer"
+                offset += ind * self.shape[i:].prod() * self.element_size
+            else:
+                break
+
+        item = item[i+1:]
+        ind = item[0]
+
+        offsets = []
+        if not LazyTensor.is_contiguous(ind):
+            pass
+
+        raise NotImplementedError
 
 
 class Iloc(object):

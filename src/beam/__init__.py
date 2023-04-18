@@ -9,7 +9,7 @@ from .utils import setup_distributed, cleanup, check_type, slice_to_index, beam_
 from .utils import tqdm_beam as tqdm
 from .algorithm import Algorithm
 from .model import LinearNet, PackedSet, BetterEmbedding, SplineEmbedding, copy_network, reset_network
-from .data_tensor import DataTensor
+from .tensor import DataTensor
 from .optim import BeamOptimizer, BeamScheduler
 # from .ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
 # from .server import BeamServer, BeamClient
