@@ -57,9 +57,23 @@ class LazyTensor:
         if self._shape is None:
             mark_index = self.header[self.header.name == 'MARK'].iloc[2].name
             df = self.header.iloc[mark_index + 1:]
-            self._shape = as_tensor(df.loc[:(df.name == 'TUPLE').idxmax() - 1].val.values)
+            self._shape = as_tensor(df.loc[:(df.name == 'TUPLE').idxmax() - 1].val.values.astype(np.int))
 
         return self._shape
+
+    def __len__(self):
+        return self.shape[0]
+
+    def read_buffer(self, fo, offset, shape):
+
+        count = shape.prod() if len(shape) > 0 else 1
+        fo.seek(offset)
+        data = torch.frombuffer(fo.read(count * self.element_size), dtype=self.dtype).reshape(*shape)
+
+        if self.device is not None:
+            data = data.to(self.device)
+
+        return data
 
     @property
     def device(self):
@@ -82,13 +96,15 @@ class LazyTensor:
         elif ind_type.major == 'array':
             ind = as_tensor(ind)
             return bool(torch.all(torch.diff(ind) == 1))
+        elif ind_type.major == 'scalar' and ind_type.minor == 'int':
+            return True
 
         return False
 
     def __getitem__(self, item):
 
         item_type = check_type(item)
-        if item_type.minr != 'tuple':
+        if item_type.minor != 'tuple':
             item = (item,)
 
         offset = self.offset
@@ -97,18 +113,41 @@ class LazyTensor:
             ind_type = check_type(ind)
             if ind_type.major == 'scalar':
                 assert ind_type.minor == 'int', "Index must be integer"
-                offset += ind * self.shape[i:].prod() * self.element_size
+                count = self.shape[i + 1:].prod() if i < len(self.shape) - 2 else 1
+                offset += ind * self.element_size * count
             else:
                 break
 
-        item = item[i+1:]
-        ind = item[0]
+        ind = item[i]
 
-        offsets = []
+        offsets = torch.LongTensor([offset])
         if not LazyTensor.is_contiguous(ind):
-            pass
+            ind = slice_to_index(ind, l=len(self))
+            count = self.shape[i + 1:].prod() if i < len(self.shape) - 2 else 1
+            offsets = offset + ind * self.element_size * count
+            i += 1
 
-        raise NotImplementedError
+        shape = self.shape[i + 1:]
+        if i < len(item):
+            ind = item[i]
+            if LazyTensor.is_contiguous(ind):
+                ind = slice_to_index(ind, l=len(self))
+                count = self.shape[i + 1:].prod() if i < len(self.shape) - 2 else 1
+                offsets = offsets + ind[0] * self.element_size * count
+                shape = torch.cat([torch.tensor([len(ind)]), self.shape[i + 1:]])
+
+        with self.path.open('rb') as fo:
+            data = [self.read_buffer(fo, offset, shape) for offset in offsets]
+
+        if len(data) > 1:
+            data = torch.cat(data)
+        else:
+            data = data[0]
+
+        if i < len(item) - 1:
+            data = data[item[i + 1:]]
+
+        return data
 
 
 class Iloc(object):

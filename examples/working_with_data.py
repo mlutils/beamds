@@ -5,6 +5,7 @@ add_beam_to_path()
 from src.beam.data import BeamData
 from src.beam.path import beam_path
 from src.beam.processor import Transformer
+from src.beam.tensor import LazyTensor
 import numpy as np
 import pandas as pd
 import torch
@@ -83,18 +84,14 @@ if __name__ == '__main__':
     secret_key = 'cvYL26ItASAwE8ZUxRaZKhVVdcxHZ0SJ'
     path = '/tmp/sandbox/bd'
 
-    path = beam_path(f"s3://192.168.10.45:9000{path}", access_key=access_key, secret_key=secret_key, tls=False)
-    list(path.iterdir())[2].read()
-
-
-
-
+    # path = beam_path(f"s3://192.168.10.45:9000{path}", access_key=access_key, secret_key=secret_key, tls=False)
+    # list(path.iterdir())[2].read()
 
     # tests = ['transform_dd']
     # tests = ['single_file']
     # tests = ['chunks']
     # tests = ['store_and_reload']
-    tests = ['load_data']
+    tests = ['lazy_tensor']
     # tests = ['empty_path']
     storage = 's3'
     # storage = 'sftp'
@@ -303,6 +300,21 @@ if __name__ == '__main__':
                 print(k, v)
 
             print("done iter")
+
+    if 'lazy_tensor' in tests:
+
+        print("starting lazy tensor")
+
+        x = torch.arange(1000000).reshape(1000, 4, 25, 10).to(1)
+        path = '/tmp/x.pt'
+        torch.save(x, path)
+
+        lt = LazyTensor(path, device=1)
+
+        xi = lt[2:4]
+
+        print(xi.shape)
+        print("done lazy tensor")
 
 
     print("done all tests")
