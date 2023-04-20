@@ -1163,6 +1163,9 @@ def check_element_type(x):
 
     unknown = (check_minor_type(x) == 'other')
 
+    if unknown:
+        return 'other'
+
     if not unknown and not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
         return 'array'
 
@@ -1185,9 +1188,6 @@ def check_element_type(x):
             return 'float'
     if 'str' in t:
         return 'str'
-
-    if unknown:
-        return 'other'
 
     return 'object'
 

@@ -6,12 +6,14 @@ from src.beam.data import BeamData
 from src.beam.path import beam_path
 from src.beam.processor import Transformer
 from src.beam.tensor import LazyTensor
+from src.beam.utils import Timer
 import numpy as np
 import pandas as pd
 import torch
 
 import string
 import random
+from src.beam import check_type
 
 
 def rand_column(n=4):
@@ -311,9 +313,64 @@ if __name__ == '__main__':
 
         lt = LazyTensor(path, device=1)
 
-        xi = lt[2:4]
+        print(check_type([lt, lt]))
 
+        with Timer():
+            xi = lt[2:4]
+        with Timer():
+            yi = x[2:4]
         print(xi.shape)
+        print(torch.abs(xi - yi).sum())
+
+        with Timer():
+            xi = lt[[2, 4, 6]]
+        with Timer():
+            yi = x[[2, 4, 6]]
+        print(xi.shape)
+        print(torch.abs(xi - yi).sum())
+
+        with Timer():
+            xi = lt[[2, 4, 6], 1:3]
+        with Timer():
+            yi = x[[2, 4, 6], 1:3]
+        print(xi.shape)
+        print(torch.abs(xi - yi).sum())
+
+        with Timer():
+            xi = lt[2, 3, 4, 5]
+        with Timer():
+            yi = x[2, 3, 4, 5]
+        print(xi.shape)
+        print(torch.abs(xi - yi).sum())
+
+        with Timer():
+            xi = lt[2, 3, 4:10]
+        with Timer():
+            yi = x[2, 3, 4:10]
+        print(xi.shape)
+        print(torch.abs(xi - yi).sum())
+
+        with Timer():
+            xi = lt[2, 3, [4, 7, 9]]
+        with Timer():
+            yi = x[2, 3, [4, 7, 9]]
+        print(xi.shape)
+        print(torch.abs(xi - yi).sum())
+
+        with Timer():
+            xi = lt[2, 3, [4, 7, 9], 4:7]
+        with Timer():
+            yi = x[2, 3, [4, 7, 9], 4:7]
+        print(xi.shape)
+        print(torch.abs(xi - yi).sum())
+
+        with Timer():
+            xi = lt[2, [1, 3], 4:7, 2:5]
+        with Timer():
+            yi = x[2, [1, 3], 4:7, 2:5]
+        print(xi.shape)
+        print(torch.abs(xi - yi).sum())
+
         print("done lazy tensor")
 
 
