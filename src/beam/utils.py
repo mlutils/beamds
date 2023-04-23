@@ -47,6 +47,18 @@ class BeamURL:
         if url is None:
             netloc = BeamURL.to_netloc(hostname=hostname, port=port, username=username, password=password)
             query = BeamURL.dict_to_query(**query)
+            if scheme is None:
+                scheme = 'file'
+            if path is None:
+                path = ''
+            if netloc is None:
+                netloc = ''
+            if query is None:
+                query = ''
+            if fragment is None:
+                fragment = ''
+            if params is None:
+                params = ''
             self._parsed_url = ParseResult(scheme=scheme, netloc=netloc, path=path, params=params, query=query,
                                            fragment=fragment)
 
@@ -268,7 +280,9 @@ class PureBeamPath:
         return str(self.path)
 
     def __repr__(self):
-        return str(self.url)
+        if self.is_absolute():
+            return str(self.url)
+        return str(self.path)
 
     def __enter__(self):
         raise NotImplementedError
@@ -373,8 +387,11 @@ class PureBeamPath:
         return self.path.match(pattern)
 
     def relative_to(self, *other):
-        other = PureBeamPath(*other)
-        return PureBeamPath(self.path.relative_to(str(other)))
+        if len(other) == 1 and isinstance(other[0], PureBeamPath):
+            other = str(other[0])
+        else:
+            other = str(PureBeamPath(*other))
+        return PureBeamPath(self.path.relative_to(other))
 
     def with_name(self, name):
         return self.gen(self.path.with_name(name))
@@ -1101,6 +1118,13 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
         return x
 
     x_type = check_type(x[0], check_element=False)
+
+    if x_type.major == 'container' and x_type.minor == 'dict':
+        dictionary = {}
+        for xi in x:
+            dictionary.update(xi)
+        return dictionary
+
     if (x_type.major not in ['array', 'other']) or (dim == 1 and x_type.minor not in ['tensor', 'numpy', 'pandas']):
         return x
 
@@ -1163,9 +1187,6 @@ def check_element_type(x):
 
     unknown = (check_minor_type(x) == 'other')
 
-    if unknown:
-        return 'other'
-
     if not unknown and not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
         return 'array'
 
@@ -1173,6 +1194,10 @@ def check_element_type(x):
         return 'none'
 
     if hasattr(x, 'dtype'):
+        # this case happens in custom classes that have a dtype attribute
+        if unknown:
+            return 'other'
+
         t = str(x.dtype).lower()
     else:
         t = str(type(x)).lower()

@@ -1917,7 +1917,7 @@ class BeamData(object):
 
             path = path.joinpath(key)
             path = BeamData.write_object(value, path, **kwargs)
-            all_paths[key] = path
+            all_paths[key] = str(path.relative_to(self.root_path))
 
         if self.cached:
 
