@@ -472,7 +472,7 @@ class Experiment(object):
                 if store_results == 'yes' or store_results == 'logscale' and logscale:
 
                     self.results_dir.joinpath(subset).mkdir(parents=True, exist_ok=True)
-                    self.results_dir.joinpath(subset, f'results_{epoch:06d}').write(res, ext='.pt')
+                    self.results_dir.joinpath(subset, f'results_{epoch:06d}.pt').write(res)
 
                 alg = algorithm if visualize_weights else None
 

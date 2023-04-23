@@ -879,7 +879,7 @@ class Algorithm(object):
 
         with torch.no_grad():
 
-            self.set_mode(training=eval_mode)
+            self.set_mode(training= not eval_mode)
             results = defaultdict(lambda: defaultdict(list))
             transforms = []
             index = []

@@ -157,15 +157,17 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.data_type = check_type(self.data).minor
 
         if self.data_type == 'dict':
-            return recursive_device(next(iter(self.data.values())))
+            device = recursive_device(next(iter(self.data.values())))
         elif self.data_type == 'list':
-            return recursive_device(self.data[0])
+            device = recursive_device(self.data[0])
         elif self.data_type == 'simple':
-            return self.data.device
+            device = self.data.device
         elif hasattr(self.data, 'device'):
-            return self.data.device
+            device = self.data.device
         else:
-            return self.__device__()
+            device = self.__device__()
+
+        return beam_device(device)
 
     def __repr__(self):
         return repr(self.data)
