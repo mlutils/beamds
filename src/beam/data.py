@@ -1236,8 +1236,7 @@ class BeamData(object):
         self.data = data
 
         self._all_paths = BeamData.recursive_map_path(self.root_path, glob_filter=self.glob_filter)
-        path = self.root_path.joinpath(BeamData.metadata_files['all_paths'])
-        BeamData.write_file(self._all_paths, path)
+        self.update_all_paths_file()
 
     def state_dict(self):
         if not self.cached:
@@ -1854,6 +1853,11 @@ class BeamData(object):
     def __repr__(self):
         return self.__str__()
 
+    def update_all_paths_file(self):
+
+        path = self.root_path.joinpath(BeamData.metadata_files['all_paths'])
+        BeamData.write_file(self.all_paths, path)
+
     def __str__(self):
 
         params = {'orientation': self.orientation, 'lazy': self.lazy, 'stored': self.stored,
@@ -1918,6 +1922,7 @@ class BeamData(object):
             path = path.joinpath(key)
             path = BeamData.write_object(value, path, **kwargs)
             all_paths[key] = str(path.relative_to(self.root_path))
+            self.update_all_paths_file()
 
         if self.cached:
 
