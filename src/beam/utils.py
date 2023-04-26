@@ -216,6 +216,16 @@ class PureBeamPath:
         self.file_object = None
         self.client = client
 
+    def __getstate__(self):
+        return self.as_uri()
+
+    def __setstate__(self, state):
+
+        url = BeamURL.from_string(state)
+
+        self.__init__(url.path, hostname=url.hostname, port=url.port, username=url.username,
+                      password=url.password, fragment=url.fragment, params=url.params, client=None, **url.query)
+
     def __iter__(self):
         for p in self.iterdir():
             yield p
@@ -337,9 +347,12 @@ class PureBeamPath:
     def root(self):
         return self.path.root
 
+    def is_root(self):
+        return str(self.path) == '/'
+
     @property
     def anchor(self):
-        return self.path.anchor
+        return self.gen(self.path.anchor)
 
     @property
     def parents(self):
@@ -1051,6 +1064,31 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
         yield i, c
 
 
+@recursive
+def empty_elements(x):
+    x_type = check_type(x)
+    if x_type.minor in ['numpy', 'pandas', 'tensor', 'scipy_sparse']:
+        return x.size == 0
+
+    if x_type.minor in ['list', 'tuple', 'set', 'dict']:
+        return len(x) == 0
+
+    if x_type.minor == 'native':
+        return x is None
+
+    if hasattr(x, '__len__'):
+        return x.__len__() == 0
+
+    return False
+
+
+def is_empty(x):
+
+        x = empty_elements(x)
+        x = recursive_flatten(x)
+        return all(x)
+
+
 def recursive_merge(dfs, method='tree', **kwargs):
     if len(dfs) == 1:
         return dfs[0]
@@ -1235,6 +1273,8 @@ def check_minor_type(x):
         return 'list'
     if isinstance(x, tuple):
         return 'tuple'
+    if isinstance(x, set):
+        return 'set'
     if isinstance(x, Path) or isinstance(x, PureBeamPath):
         return 'path'
     else:
@@ -1252,7 +1292,7 @@ def check_type(x, check_minor=True, check_element=True):
     <major type>, <minor type>, <elements type>
 
     major type: container, array, scalar, none, other
-    minor type: dict, list, tuple, tensor, numpy, pandas, scipy_sparse, native, none
+    minor type: dict, list, tuple, set, tensor, numpy, pandas, scipy_sparse, native, none
     elements type: array, int, float, str, object, empty, none, unknown
 
     '''
@@ -1303,7 +1343,7 @@ def check_type(x, check_minor=True, check_element=True):
             mjt = 'array'
         else:
             mjt = 'other'
-        if isinstance(x, list) or isinstance(x, tuple):
+        if isinstance(x, list) or isinstance(x, tuple) or isinstance(x, set):
             if not len(x):
                 elt = 'empty'
             else:
@@ -1444,7 +1484,7 @@ def recursive_func(x, func, *args, **kwargs):
 
     if isinstance(x, dict):
         return {k: recursive_func(v, func, *args, **kwargs) for k, v in x.items()}
-    elif isinstance(x, list) or isinstance(x, tuple):
+    elif isinstance(x, list):
         return [recursive_func(s, func, *args, **kwargs) for s in x]
     elif x is None:
         return None
@@ -1513,8 +1553,13 @@ def recursive_flatten_with_keys(x):
 
 def get_item_with_tuple_key(x, key):
 
+    if x is None:
+        return None
+
     if isinstance(key, tuple):
         for k in key:
+            if x is None:
+                return None
             x = x[k]
         return x
     else:
@@ -1665,6 +1710,7 @@ def recursive_slice_columns(x, columns):
     else:
         return x[:, columns]
 
+
 def recursive_device(x):
 
     if isinstance(x, dict):
@@ -1674,7 +1720,7 @@ def recursive_device(x):
             except AttributeError:
                 # case of None
                 pass
-    elif isinstance(x, list) or isinstance(x, tuple):
+    elif isinstance(x, list):
         for xi in x:
             try:
                 return recursive_device(xi)
@@ -1694,7 +1740,7 @@ def container_len(x):
                 # case of None
                 pass
 
-    elif isinstance(x, list) or isinstance(x, tuple):
+    elif isinstance(x, list):
         for xi in x:
             try:
                 return container_len(xi)
@@ -1709,7 +1755,7 @@ def as_numpy(x):
 
     if isinstance(x, dict):
         return {k: as_numpy(v) for k, v in x.items()}
-    elif isinstance(x, list) or isinstance(x, tuple):
+    elif isinstance(x, list):
         return [as_numpy(s) for s in x]
 
     if isinstance(x, torch.Tensor):

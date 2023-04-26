@@ -339,6 +339,10 @@ class BeamParallel(object):
         if method is None:
             method = self.method
 
+        if len(self.queue) == 0:
+            logger.info(f"Queue {self.name} is empty, returning empty list.")
+            return []
+
         logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {n_workers} workers,"
                     f" method: {method}")
 

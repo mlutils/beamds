@@ -377,18 +377,25 @@ class S3Path(PureBeamPath):
 
     def is_file(self):
 
+        if self.bucket_name is None or self.key is None:
+            return False
+
         key = self.key.rstrip('/')
         return S3Path._exists(self.client, self.bucket_name, key)
 
     @staticmethod
-    def _exists(client, bucket, key):
+    def _exists(client, bucket_name, key):
         try:
-            client.Object(bucket, key).load()
+            # client.Object(bucket_name, key).load()
+            client.meta.client.head_object(Bucket=bucket_name, Key=key)
             return True
         except botocore.exceptions.ClientError:
             return False
 
     def is_dir(self):
+
+        if self.bucket_name is None:
+            return True
 
         if self.key is None:
             return self._check_if_bucket_exists()

@@ -1,11 +1,12 @@
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, container_len, retrieve_name, build_container_from_tupled_keys
+    recursive_size_summary, container_len, retrieve_name, build_container_from_tupled_keys, is_empty
 from .parallel import parallel, BeamParallel, BeamTask
 from collections import OrderedDict
 from .data import BeamData
 from .path import beam_path
 import pickle
 import io
+from .utils import tqdm_beam as tqdm
 
 
 class Processor(object):
@@ -118,7 +119,7 @@ class Transformer(Processor):
 
     def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
                  chunksize=None, multiprocess_method='joblib', squeeze=True, reduce=True, reduce_dim=0,
-                 transform_strategy=None, split_by='key', **kwargs):
+                 transform_strategy=None, split_by='keys', **kwargs):
         """
 
         @param args:
@@ -148,7 +149,7 @@ class Transformer(Processor):
             'C' - the input type is inferred from the BeamData object and the output is cached.
             'S' - the input type is inferred from the BeamData object and the output is stored.
         @param split_by: The split strategy of the data into chunks.
-        'key' - the data is split by the key,
+        'keys' - the data is split by the key,
         'index' - the data is split by the index (i.e. dim=0).
         'columns' - the data is split by the columns (i.e. dim=1).
         @param kwargs:
@@ -166,10 +167,10 @@ class Transformer(Processor):
         self.kwargs = kwargs
         self.transform_strategy = transform_strategy
         self.split_by = split_by
-        if self.transform_strategy in ['SC', 'SS'] and self.split_by != 'key':
-            logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"key\", '
-                           f'The split_by is set to "key".')
-            self.split_by = 'key'
+        if self.transform_strategy in ['SC', 'SS'] and self.split_by != 'keys':
+            logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
+                           f'The split_by is set to "keys".')
+            self.split_by = 'keys'
 
         if store_path is not None:
             store_path = beam_path(store_path)
@@ -297,17 +298,17 @@ class Transformer(Processor):
 
         reduce_dim = self.reduce_dim
 
-        if transform_strategy in ['SC', 'SS'] and split_by != 'key':
+        if transform_strategy in ['SC', 'SS'] and split_by != 'keys':
             logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
                            f'The split_by is set to "key".')
-            split_by = 'key'
+            split_by = 'keys'
 
         if path is None:
             path = self.store_path
 
         logger.info(f"Starting transformer process: {self.name}")
 
-        if len(x) == 0:
+        if is_empty(x):
             return x
 
         if (chunksize is None) and (n_chunks is None):
@@ -316,7 +317,7 @@ class Transformer(Processor):
         if squeeze is None:
             squeeze = self.squeeze
 
-        is_chunk = (n_chunks != 1) or (not squeeze)
+        is_chunk = (n_chunks != 1) or (not squeeze) or (split_by == 'keys' and isinstance(x, BeamData) and x.stored)
 
         if ((transform_strategy is None) or (transform_strategy == 'C')) and type(x) == BeamData:
             if x.cached:
@@ -365,8 +366,9 @@ class Transformer(Processor):
                                   progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
 
         if is_chunk:
-            for k, c in self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
-                                    squeeze=squeeze, split_by=split_by, partition=partition):
+            logger.info(f"Splitting data to chunks for transformer: {self.name}")
+            for k, c in tqdm(self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
+                                    squeeze=squeeze, split_by=split_by, partition=partition)):
 
                 chunk_path = None
                 if store_chunk:
@@ -379,7 +381,7 @@ class Transformer(Processor):
                         part_name = ''
 
                     chunk_path = path.joinpath(f"{BeamData.normalize_key(k)}{part_name}")
-                    chunk_path = chunk_path.as_uri()
+                    # chunk_path = chunk_path.as_uri()
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,
                                         cache=cache, store=store_chunk, name=f"{self.name}/{k}", **kwargs))

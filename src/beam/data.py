@@ -185,6 +185,7 @@ class BeamData(object):
         self._all_paths = None
         self._root_path = None
         self._metadata_paths = None
+        self._metadata_path_exists = {}
         self.groups = Groups(self.get_info_groups)
 
         self._info = info
@@ -331,7 +332,7 @@ class BeamData(object):
     @staticmethod
     def single_file_case(root_path, all_paths, metadata_paths):
 
-        if root_path.parent.is_dir():
+        if all_paths is None and not root_path.is_root() and root_path.parent.is_dir():
             for p in root_path.parent.iterdir():
                 if p.stem == root_path.stem and p.is_file():
 
@@ -458,8 +459,8 @@ class BeamData(object):
             return self._schema
 
         if self.stored:
-            schema_path = self.metadata_paths['schema']
-            if schema_path.is_file():
+            if self.metadata_path_exists('schema'):
+                schema_path = self.metadata_paths['schema']
                 self._schema = schema_path.read()
                 return self._schema
 
@@ -472,8 +473,8 @@ class BeamData(object):
             return self._conf
 
         if self.stored:
-            conf_path = self.metadata_paths['conf']
-            if conf_path.is_file():
+            if self.metadata_path_exists('conf'):
+                conf_path = self.metadata_paths['conf']
                 self._conf = conf_path.read()
                 return self._conf
 
@@ -500,6 +501,11 @@ class BeamData(object):
 
         return self._key_map
 
+    def metadata_path_exists(self, key):
+        if key not in self._metadata_path_exists:
+            self._metadata_path_exists[key] = self.metadata_paths[key].is_file()
+        return self._metadata_path_exists[key]
+
     @property
     def info(self):
 
@@ -507,8 +513,8 @@ class BeamData(object):
             return self._info
 
         if self.stored:
-            info_path = self.metadata_paths['info']
-            if info_path.is_file():
+            if self.metadata_path_exists('info'):
+                info_path = self.metadata_paths['info']
                 self._info = info_path.read()
                 return self._info
 
@@ -589,6 +595,8 @@ class BeamData(object):
 
     @staticmethod
     def normalize_key(key):
+        if type(key) is tuple:
+            key = '/'.join([BeamData.normalize_key(k) for k in key])
         if type(key) is not str:
             key = f'{key:06}'
         return key
@@ -1322,6 +1330,9 @@ class BeamData(object):
         for param in args:
             setattr(self, param, None)
 
+        if 'metadata_path_exists' not in avoid_reset:
+            self._metadata_path_exists = {}
+
     def inverse_map(self, ind):
 
         ind = slice_to_index(ind, l=len(self), sliced=self.index)
@@ -2006,7 +2017,7 @@ class BeamData(object):
 
                 else:
 
-                    for i, (k, p) in enumerate(recursive_flatten_with_keys(self.all_paths)):
+                    for i, (k, p) in enumerate(recursive_flatten_with_keys(self.all_paths).items()):
                         s = get_item_with_tuple_key(self.schema, k)
 
                         info = None
