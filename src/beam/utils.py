@@ -439,6 +439,9 @@ class PureBeamPath:
     def rename(self, target):
         return NotImplementedError
 
+    def replace(self, target):
+        return NotImplementedError
+
     def read(self, ext=None, **kwargs):
 
         if ext is None:

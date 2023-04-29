@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:23.03-py3
+FROM nvcr.io/nvidia/pytorch:23.04-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -55,8 +55,8 @@ RUN pip install -U -r /workspace/install/requirements_0010.txt
 RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0011.txt
 RUN pip list
-# RUN pip install -U -r /workspace/install/requirements_0012.txt
-# RUN pip list
+RUN pip install -U -r /workspace/install/requirements_0012.txt
+RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt

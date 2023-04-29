@@ -106,7 +106,8 @@ class BeamData(object):
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
                  override=True, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None,
-                 write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None, **kwargs):
+                 write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None,
+                 write_metadata=True, metadata_path_prefix=None, **kwargs):
 
         '''
 
@@ -165,6 +166,8 @@ class BeamData(object):
         self.quick_getitem = quick_getitem
         self.glob_filter = glob_filter
         self._key_map = key_map
+        self.write_metadata = write_metadata
+        self.metadata_path_prefix = beam_path(metadata_path_prefix)
 
         self.stored = False
         self.cached = True
@@ -231,7 +234,7 @@ class BeamData(object):
             self._all_paths = path
         elif path is not None:
 
-            self._root_path, self._all_paths, self._metadata_paths = BeamData.single_file_case(path, all_paths,
+            self._root_path, self._all_paths, self._metadata_paths = self.single_file_case(path, all_paths,
                                                                                                self._metadata_paths)
             self._root_path = path
 
@@ -246,8 +249,15 @@ class BeamData(object):
 
         if self._metadata_paths is not None:
             return self._metadata_paths
-        self._metadata_paths = {k: self.root_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
 
+        root_path = self.root_path
+        if self.metadata_path_prefix is not None:
+            if self.metadata_path_prefix.is_absolute():
+                root_path = self.metadata_path_prefix
+            else:
+                root_path = self.root_path.joinpath(self.metadata_path_prefix)
+
+        self._metadata_paths = {k: root_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
         return self._metadata_paths
 
     @property
@@ -274,7 +284,8 @@ class BeamData(object):
 
             else:
                 self._all_paths = BeamData.recursive_map_path(self.root_path, glob_filter=self.glob_filter)
-                BeamData.write_file(self._all_paths, path)
+                if self.write_metadata:
+                    BeamData.write_file(self._all_paths, path)
 
         return self._all_paths
 
@@ -329,15 +340,20 @@ class BeamData(object):
 
         return self._label
 
-    @staticmethod
-    def single_file_case(root_path, all_paths, metadata_paths):
+    def single_file_case(self, root_path, all_paths, metadata_paths):
 
         if all_paths is None and not root_path.is_root() and root_path.parent.is_dir():
             for p in root_path.parent.iterdir():
                 if p.stem == root_path.stem and p.is_file():
 
-                    meta_path = p.parent.joinpath(f'.{p.name}')
-                    meta_path.mkdir(exist_ok=True)
+                    meta_root_path = p.parent
+                    if self.metadata_path_prefix is not None:
+                        if self.metadata_path_prefix.is_absolute():
+                            meta_root_path = self.metadata_path_prefix
+                        else:
+                            meta_root_path = meta_root_path.joinpath(self.metadata_path_prefix)
+
+                    meta_path = meta_root_path.joinpath(f'.{p.name}')
                     metadata_paths = {k: meta_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
                     root_path = p
                     all_paths = {'data': ''}
@@ -582,6 +598,7 @@ class BeamData(object):
             raise ValueError(f'path {value} is not empty')
         self._root_path = value
         self._all_paths = None
+        self._metadata_paths = None
         self.stored = False
 
     @property
@@ -1208,7 +1225,10 @@ class BeamData(object):
               chunklen=None, n_chunks=None, partition=None, split_by=None,
               archive_size=None, override=True, **kwargs):
 
-        path = self.get_default('root_path', path)
+        if path is not None:
+            self.path = path
+        else:
+            path = self.path
 
         sizes = None
         if data is None:
@@ -1224,23 +1244,23 @@ class BeamData(object):
         BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, **kwargs)
 
         # store info and conf files
-        info_path = path.joinpath(BeamData.metadata_files['info'])
-        BeamData.write_object(self.info, info_path)
-        conf_path = path.joinpath(BeamData.metadata_files['conf'])
-        BeamData.write_object({**self.conf}, conf_path, archive=True)
-        conf_path = path.joinpath(BeamData.metadata_files['conf'])
-        BeamData.write_object({**self.conf}, conf_path, archive=True)
+        if self.write_metadata:
+            info_path = self.metadata_paths['info']
+            BeamData.write_object(self.info, info_path)
+            conf_path = self.metadata_paths['conf']
+            BeamData.write_object({**self.conf}, conf_path, archive=True)
+            conf_path = self.metadata_paths['conf']
+            BeamData.write_object({**self.conf}, conf_path, archive=True)
 
         # store index and label
         if self.index is not None:
-            index_path = path.joinpath(BeamData.metadata_files['index'])
+            index_path = self.metadata_paths['index']
             BeamData.write_object(self.index, index_path)
         if self.label is not None:
-            label_path = path.joinpath(BeamData.metadata_files['label'])
+            label_path = self.metadata_paths['label']
             BeamData.write_object(self.label, label_path)
 
         self.stored = True
-        self._root_path = path
         self.data = data
 
         self._all_paths = BeamData.recursive_map_path(self.root_path, glob_filter=self.glob_filter)
@@ -1821,7 +1841,8 @@ class BeamData(object):
                  index=None, label=None, columns=None, lazy=None, device=None, target_device=None, schema=None,
                  override=None, compress=None, split_by=None, chunksize=None, chunklen=None, n_chunks=None,
                  partition=None, archive_size=None, preferred_orientation=None, read_kwargs=None, write_kwargs=None,
-                 quick_getitem=None, orientation=None, glob_filter=None, info=None, constructor=None, **kwargs):
+                 quick_getitem=None, orientation=None, glob_filter=None, info=None, constructor=None,
+                 write_metadata=None, metadata_path_prefix=None, **kwargs):
 
         name = self.get_default('name', name)
         lazy = self.get_default('lazy', lazy)
@@ -1840,6 +1861,8 @@ class BeamData(object):
         write_kwargs = self.get_default('write_kwargs', write_kwargs)
         quick_getitem = self.get_default('quick_getitem', quick_getitem)
         glob_filter = self.get_default('glob_filter', glob_filter)
+        write_metadata = self.get_default('write_metadata', write_metadata)
+        metadata_path_prefix = self.get_default('metadata_path_prefix', metadata_path_prefix)
 
         if constructor is None:
             constructor = BeamData
@@ -1849,7 +1872,8 @@ class BeamData(object):
                  override=override, compress=compress, split_by=split_by, chunksize=chunksize,
                  chunklen=chunklen, n_chunks=n_chunks, partition=partition, archive_size=archive_size, schema=schema,
                  preferred_orientation=preferred_orientation, read_kwargs=read_kwargs, write_kwargs=write_kwargs,
-                 quick_getitem=quick_getitem, orientation=orientation, glob_filter=glob_filter, info=info, **kwargs)
+                 quick_getitem=quick_getitem, orientation=orientation, glob_filter=glob_filter, info=info,
+                 write_metadata=write_metadata, metadata_path_prefix=metadata_path_prefix, **kwargs)
 
     def inverse_columns_map(self, columns):
 
@@ -1866,8 +1890,9 @@ class BeamData(object):
 
     def update_all_paths_file(self):
 
-        path = self.root_path.joinpath(BeamData.metadata_files['all_paths'])
-        BeamData.write_file(self.all_paths, path)
+        path = self.metadata_paths['all_paths']
+        if self.write_metadata:
+            BeamData.write_file(self.all_paths, path)
 
     def __str__(self):
 

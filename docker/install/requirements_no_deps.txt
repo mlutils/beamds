@@ -7,3 +7,5 @@ fastprogress
 
 lightning-flash
 functorch
+
+pytorch-tabnet
