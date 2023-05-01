@@ -55,7 +55,7 @@ RUN pip install -U -r /workspace/install/requirements_0010.txt
 RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0011.txt
 RUN pip list
-RUN pip install -U -r /workspace/install/requirements_0012.txt
+# RUN pip install -U -r /workspace/install/requirements_0012.txt
 RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 RUN pip list
@@ -65,7 +65,7 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 RUN pip list
 
 #install torchsig
-RUN bash /workspace/install/install_torchsig.sh
+# RUN bash /workspace/install/install_torchsig.sh
 
 # Install dgl from source so it would be compatible with cuda 12.0
 # RUN pip install  dgl -f https://data.dgl.ai/wheels/repo.html
