@@ -271,6 +271,17 @@ class BeamData(object):
 
         return self._root_path
 
+    @staticmethod
+    def clear_metadata(path):
+        path = beam_path(path)
+        if path.is_file():
+            name = path.stem
+            if name in ['.all_paths', '.info', '.conf']:
+                path.unlink()
+        elif path.is_dir():
+            for new_path in list(path):
+                BeamData.clear_metadata(new_path)
+
     @property
     def all_paths(self):
 
@@ -279,7 +290,7 @@ class BeamData(object):
 
         if self.stored:
             path = self.metadata_paths['all_paths']
-            if path.exists():
+            if self.write_metadata and path.exists():
                 logger.debug(f"Reading all_paths file: {path}")
                 self._all_paths = path.read()
 
@@ -492,7 +503,7 @@ class BeamData(object):
         if self._conf is not None:
             return self._conf
 
-        if self.stored:
+        if self.stored and self.write_metadata:
             if self.metadata_path_exists('conf'):
                 conf_path = self.metadata_paths['conf']
                 logger.debug(f"Reading conf file {conf_path}")
@@ -533,7 +544,7 @@ class BeamData(object):
         if self._info is not None:
             return self._info
 
-        if self.stored:
+        if self.stored and self.write_metadata:
             if self.metadata_path_exists('info'):
                 info_path = self.metadata_paths['info']
                 logger.debug(f"Reading info file {info_path}")

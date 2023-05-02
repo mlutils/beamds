@@ -109,6 +109,9 @@ class BeamPath(PureBeamPath):
     def stat(self):  # add follow_symlinks=False for python 3.10
         return self.path.stat()
 
+    def getmtime(self):
+        return os.path.getmtime(str(self.path))
+
     def chmod(self, mode):
         return self.path.chmod(mode)
 

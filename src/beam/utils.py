@@ -269,6 +269,11 @@ class PureBeamPath:
         self.mkdir(parents=True)
         self.rmdir()
 
+    def getmtime(self):
+        return None
+    def stat(self):
+        raise NotImplementedError
+
     def rmdir(self):
         raise NotImplementedError
 
@@ -824,7 +829,23 @@ def is_arange(x):
     if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
         return False
 
-    arr_x = np.array(x)
+    if x_type.element == 'str':
+        pattern = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)(?P<suffix>.*)$')
+        df = []
+        for xi in x:
+            match = pattern.match(xi)
+            if match:
+                df.append(match.groupdict())
+            else:
+                return False
+        df = pd.DataFrame(df)
+        if not df['prefix'].nunique() == 1 or not df['suffix'].nunique() == 1:
+            return False
+
+        arr_x = df['number'].astype(int).values
+    else:
+        arr_x = np.array(x)
+
     try:
         arr_x = arr_x.astype(int)
         arr_x.sort()
