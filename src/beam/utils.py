@@ -493,7 +493,7 @@ class PureBeamPath:
                     import fastavro
                     for record in fastavro.reader(fo):
                         x.append(record)
-            elif ext == '.json':
+            elif ext in ['.json', '.ndjson']:
 
                 #TODO: add json read with fastavro and shcema
                 # x = []
@@ -501,7 +501,8 @@ class PureBeamPath:
                 #     for record in fastavro.json_reader(fo):
                 #         x.append(record)
 
-                x = pd.read_json(fo, **kwargs)
+                nd = ext == '.ndjson'
+                x = pd.read_json(fo, lines=nd,  **kwargs)
 
             elif ext == '.orc':
                 import pyarrow as pa
@@ -519,7 +520,7 @@ class PureBeamPath:
         else:
             m = 'r'
 
-        if ext not in ['.avro', '.json', '.orc', '.txt', '.text']:
+        if ext not in ['.avro', '.json', '.orc', '.txt', '.text', '.ndjson']:
             m = f"{m}b"
 
         return m
@@ -555,6 +556,8 @@ class PureBeamPath:
                 pd.to_pickle(x, fo, **kwargs)
             elif ext == '.npy':
                 np.save(fo, x, **kwargs)
+            elif ext in ['.json', '.ndjson']:
+                raise NotImplementedError
             elif ext == '.npz':
                 np.savez(fo, x, **kwargs)
             elif ext == '.scipy_npz':
