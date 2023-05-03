@@ -1207,10 +1207,13 @@ def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree')
 
 def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'):
 
-    x = list(xs)
+    if len(xs) == 0:
+        return []
 
-    if not len(x):
-        return x
+    if len(xs) == 1:
+        return xs[0]
+
+    x = list(xs)
 
     x_type = check_type(x[0], check_element=False)
 
@@ -1417,7 +1420,7 @@ def check_type(x, check_minor=True, check_element=True):
                 else:
                     elt = 'object'
 
-            if elt in ['array', 'object']:
+            if elt in ['array', 'object', 'none']:
                 mjt = 'container'
 
         mit = check_minor_type(x) if check_minor else 'na'

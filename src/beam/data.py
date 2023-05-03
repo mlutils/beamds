@@ -1595,17 +1595,21 @@ class BeamData(object):
                 x_type = check_type(xi)
 
                 label = info_in_fold['label'] if 'label' in info_in_fold else None
+                index = info_in_fold.index
 
                 if xi is None:
                     return None, None, None, flat_key + 1
                 elif x_type.minor == 'pandas':
-                    return in_fold_index.index, xi.iloc[in_fold_index.values], label, flat_key + 1
+                    return index, xi.iloc[in_fold_index.values], label, flat_key + 1
                 elif x_type.minor == 'native':
-                    return in_fold_index.index, [xi], label, flat_key + 1
+                    return index, [xi], label, flat_key + 1
                 else:
-                    return in_fold_index.index, xi[in_fold_index.values], label, flat_key + 1
+                    return index, xi[in_fold_index.values], label, flat_key + 1
 
         i, d, l, _ = _recursive_filter(x)
+
+        if all([li is None for li in recursive_flatten(l)]):
+            l = None
 
         return DataBatch(data=d, index=i, label=l)
 
@@ -1614,6 +1618,7 @@ class BeamData(object):
         if not self.cached:
             raise LookupError(f"Cannot slice by index as data is not cached")
 
+        orientation = self.orientation
         if self.orientation in ['simple', 'columns', 'simplified_index']:
 
             info = None
@@ -1642,11 +1647,34 @@ class BeamData(object):
 
         elif self.orientation in ['index', 'packed']:
 
-            info = self.info.loc[index]
-            db = BeamData.recursive_filter(self.data, info)
+            info = None
+            batch_info = self.info.loc[index]
+            # batch_info['map'] = np.arange(len(batch_info))
+
+            db = BeamData.recursive_filter(self.data, batch_info)
             data = db.data
             index = db.index
             label = db.label
+            if self.orientation == 'index':
+                data = collate_chunks(*recursive_flatten(data), dim=0)
+                index = collate_chunks(*recursive_flatten(index), dim=0)
+                label = collate_chunks(*recursive_flatten(label), dim=0)
+
+                index_map = pd.Series(np.arange(len(index)), index=index)
+                index_map = index_map.loc[batch_info.index].values
+
+                data_type = check_type(data)
+
+                if data_type.minor == 'pandas':
+                    data = data.iloc[index_map]
+                else:
+                    data = data[index_map]
+
+                if label is not None:
+                    label = label[index_map]
+
+                index = batch_info.index
+                orientation = 'simplified_index'
 
         else:
             raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
@@ -1654,8 +1682,7 @@ class BeamData(object):
         if self.quick_getitem:
             return BeamData.data_batch(data, index=index, label=label, orientation=self.orientation, info=info)
 
-        return self.clone(data=data, columns=self.columns, index=index, label=label,
-                          orientation=self.orientation, info=info)
+        return self.clone(data=data, columns=self.columns, index=index, label=label, orientation=orientation, info=info)
 
     @staticmethod
     def data_batch(data, index=None, label=None, orientation=None, info=None):
