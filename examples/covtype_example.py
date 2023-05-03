@@ -27,7 +27,10 @@ from torch import Tensor
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 import math
 from sklearn.preprocessing import QuantileTransformer
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
+import math
 
+ModuleType = Union[str, Callable[..., nn.Module]]
 
 # def preprocess_feature(v, nq=20, feature_type=None):
 #     '''
@@ -100,6 +103,124 @@ from sklearn.preprocessing import QuantileTransformer
 #     metadata['total_features'] = n
 #
 #     return dfc, metadata
+
+
+def _make_nn_module(module_type: ModuleType, *args) -> nn.Module:
+    if isinstance(module_type, str):
+        if module_type == 'ReGLU':
+            return ReGLU()
+        elif module_type == 'GEGLU':
+            return GEGLU()
+        else:
+            try:
+                cls = getattr(nn, module_type)
+            except AttributeError as err:
+                raise ValueError(
+                    f'Failed to construct the module {module_type} with the arguments {args}'
+                ) from err
+            return cls(*args)
+    else:
+        return module_type(*args)
+
+
+def reglu(x: Tensor) -> Tensor:
+    """The ReGLU activation function from [1].
+    References:
+        [1] Noam Shazeer, "GLU Variants Improve Transformer", 2020
+    """
+    assert x.shape[-1] % 2 == 0
+    a, b = x.chunk(2, dim=-1)
+    return a * F.relu(b)
+
+def geglu(x: Tensor) -> Tensor:
+    """The GEGLU activation function from [1].
+    References:
+        [1] Noam Shazeer, "GLU Variants Improve Transformer", 2020
+    """
+    assert x.shape[-1] % 2 == 0
+    a, b = x.chunk(2, dim=-1)
+    return a * F.gelu(b)
+
+
+class ReGLU(nn.Module):
+    """The ReGLU activation function from [shazeer2020glu].
+    Examples:
+        .. testcode::
+            module = ReGLU()
+            x = torch.randn(3, 4)
+            assert module(x).shape == (3, 2)
+    References:
+        * [shazeer2020glu] Noam Shazeer, "GLU Variants Improve Transformer", 2020
+    """
+
+    def forward(self, x: Tensor) -> Tensor:
+        return reglu(x)
+
+
+class GEGLU(nn.Module):
+    def forward(self, x: Tensor) -> Tensor:
+        return geglu(x)
+
+
+def _is_glu_activation(activation: ModuleType):
+    return (
+            isinstance(activation, str)
+            and activation.endswith('GLU')
+            or activation in [ReGLU, GEGLU]
+    )
+
+
+class FFN(nn.Module):
+    """The Feed-Forward Network module used in every `Transformer` block."""
+
+    def __init__(
+            self,
+            *,
+            d_token: int,
+            d_hidden: int,
+            bias_first: bool,
+            bias_second: bool,
+            activation: ModuleType,
+    ):
+        super().__init__()
+        self.linear_first = nn.Linear(
+            d_token,
+            d_hidden * (2 if _is_glu_activation(activation) else 1),
+            bias_first,
+            )
+        self.activation = _make_nn_module(activation)
+        self.linear_second = nn.Linear(d_hidden, d_token, bias_second)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.linear_first(x)
+        x = self.activation(x)
+        x = self.linear_second(x)
+        return x
+
+
+class Head(nn.Module):
+    """The final module of the `Transformer` that performs BERT-like inference."""
+
+    def __init__(
+            self,
+            *,
+            d_in: int,
+            bias: bool,
+            activation: ModuleType,
+            normalization: ModuleType,
+            d_out: int,
+    ):
+        super().__init__()
+        self.normalization = _make_nn_module(normalization, d_in)
+        self.activation = _make_nn_module(activation)
+        self.linear = nn.Linear(d_in, d_out, bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x[:, -1]
+        x = self.normalization(x)
+        x = self.activation(x)
+        x = self.linear(x)
+        return x
 
 
 class BetterEmbedding(torch.nn.Module):
@@ -324,22 +445,22 @@ class CovtypeAlgorithm(Algorithm):
         self.eval_ensembles = hparams.eval_ensembles
         self.label_smoothing = hparams.label_smoothing
 
-        # net = RuleNet(dataset.n_num, dataset.n_cat, dataset.n_categories,
-        #               embedding_dim=hparams.channels, n_rules=hparams.n_rules, n_layers=hparams.n_layers,
-        #               dropout=hparams.dropout, n_out=dataset.n_classes, bias=True,
-        #               activation=hparams.activation, n_tables=hparams.n_tables, initial_mask=hparams.initial_mask,
-        #               k_p=hparams.k_p, k_i=hparams.k_i, k_d=hparams.k_d, T=hparams.T_pid, clip=hparams.clip_pid)
+        net = RuleNet(dataset.n_num, dataset.n_cat, dataset.n_categories,
+                      embedding_dim=hparams.channels, n_rules=hparams.n_rules, n_layers=hparams.n_layers,
+                      dropout=hparams.dropout, n_out=dataset.n_classes, bias=True,
+                      activation=hparams.activation, n_tables=hparams.n_tables, initial_mask=hparams.initial_mask,
+                      k_p=hparams.k_p, k_i=hparams.k_i, k_d=hparams.k_d, T=hparams.T_pid, clip=hparams.clip_pid)
 
         # net = LinearNet(dataset.n_num + dataset.n_cat, 256, dataset.n_classes, 4)
 
-        net = rtdl.FTTransformer.make_baseline(n_num_features=dataset.n_num,
-                                               cat_cardinalities=list(as_numpy(dataset.n_categories)),
-                                               d_token=hparams.channels, n_blocks=3, attention_dropout=hparams.dropout,
-                                               ffn_dropout=hparams.dropout, d_out=dataset.n_classes,
-                                               residual_dropout=hparams.dropout, ffn_d_hidden=hparams.channels)
+        # net = rtdl.FTTransformer.make_baseline(n_num_features=dataset.n_num,
+        #                                        cat_cardinalities=list(as_numpy(dataset.n_categories)),
+        #                                        d_token=hparams.channels, n_blocks=3, attention_dropout=hparams.dropout,
+        #                                        ffn_dropout=hparams.dropout, d_out=dataset.n_classes,
+        #                                        residual_dropout=hparams.dropout, ffn_d_hidden=hparams.channels)
 
-        optimizers = torch.optim.AdamW(net.optimization_param_groups(), lr=hparams.lr_dense,
-                                       weight_decay=hparams.weight_decay)
+        # optimizers = torch.optim.AdamW(net.optimization_param_groups(), lr=hparams.lr_dense,
+        #                                weight_decay=hparams.weight_decay)
 
         super().__init__(hparams, networks=net, dataset=dataset, optimizers=optimizers)
 

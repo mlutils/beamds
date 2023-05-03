@@ -540,7 +540,7 @@ class Algorithm(object):
                 k, ki = self.split_names(k)
 
                 state = self.schedulers_initial_state[k] if k in self.schedulers_initial_state else None
-                if ki is not None and k is not None:
+                if ki is not None and state is not None:
                     state = state[ki]
 
                 scheduler.update_total_steps(epochs=self.n_epochs,
