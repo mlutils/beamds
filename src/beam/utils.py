@@ -8,7 +8,9 @@ from tqdm import tqdm
 import random
 import torch
 import pandas as pd
+import json
 import pyarrow.feather as feather
+import __main__
 
 try:
     import modin.pandas as mpd
@@ -271,6 +273,7 @@ class PureBeamPath:
 
     def getmtime(self):
         return None
+
     def stat(self):
         raise NotImplementedError
 
@@ -282,6 +285,9 @@ class PureBeamPath:
 
     def __truediv__(self, other):
         return self.joinpath(str(other))
+
+    def __fspath__(self, mode="rb"):
+        raise TypeError("For BeamPath (named bp), use bp.open(mode) instead of open(bp, mode)")
 
     def __call__(self, mode="rb"):
         self.mode = mode
@@ -556,8 +562,14 @@ class PureBeamPath:
                 pd.to_pickle(x, fo, **kwargs)
             elif ext == '.npy':
                 np.save(fo, x, **kwargs)
-            elif ext in ['.json', '.ndjson']:
-                raise NotImplementedError
+            elif ext == '.json':
+                json.dump(x, fo, **kwargs)
+            elif ext == '.ndjson':
+                for xi in x:
+                    json.dump(xi, fo, **kwargs)
+                    fo.write("\n")
+            elif ext == '.txt':
+                fo.write(str(x))
             elif ext == '.npz':
                 np.savez(fo, x, **kwargs)
             elif ext == '.scipy_npz':
@@ -582,29 +594,47 @@ class Timer(object):
     def __init__(self, silence=False):
         self.silence = silence
         self._elapsed = 0
-        self.t0 = time.time()
+        self.paused = True
+        self.t0 = None
+
+    def reset(self):
+        self._elapsed = 0
+        self.paused = True
+        self.t0 = None
 
     def __enter__(self):
         if not self.silence:
             logger.info(f"Starting timer")
-        self.t0 = time.time()
+        self.run()
         return self
 
     @property
     def elapsed(self):
+        if self.paused:
+            return self._elapsed
         return self._elapsed + time.time() - self.t0
 
     def pause(self):
+        if self.paused:
+            return self._elapsed
         self._elapsed = self._elapsed + time.time() - self.t0
+        self.paused = True
         return self._elapsed
 
     def run(self):
+        self.paused = False
         self.t0 = time.time()
 
+    def __str__(self):
+        return f"Timer: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"
+
+    def __repr__(self):
+        return str(self)
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        td = time.time() - self.t0
+        elapsed = self.pause()
         if not self.silence:
-            logger.info(f"Time elapsed: {pretty_format_number(td)} Sec")
+            logger.info(f"Time elapsed: {pretty_format_number(elapsed)} Sec")
 
 
 def stack_train_results(results, batch_size=None):
@@ -1430,21 +1460,25 @@ def include_patterns(*patterns):
 
     return _ignore_patterns
 
-# def is_notebook():
-#     return '_' in os.environ and 'jupyter' in os.environ['_']
 
+def running_platform() -> str:
 
-def is_notebook() -> bool:
     try:
         shell = get_ipython().__class__.__name__
         if shell == 'ZMQInteractiveShell':
-            return True   # Jupyter notebook or qtconsole
+            return 'notebook' # Jupyter notebook or qtconsole
         elif shell == 'TerminalInteractiveShell':
-            return False  # Terminal running IPython
+            return 'ipython'  # Terminal running IPython
         else:
-            return False  # Other type (?)
+            return 'other'  # Other type (?)
     except NameError:
-        return False      # Probably standard Python interpreter
+        if hasattr(__main__, '__file__'):
+            return 'script'
+        else:
+            return 'console'
+
+def is_notebook() -> bool:
+    return running_platform() == 'notebook'
 
 
 def setup_distributed(rank, world_size, port='7463', backend='gloo'):

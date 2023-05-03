@@ -18,23 +18,6 @@ from ray import tune
 from .path import beam_path, BeamPath
 from .processor import Processor
 
-
-# class BeamResult(object):
-#
-#     def __init__(self, data_batch, results, objective, objective_name, objective_direction,
-#     best_state, best_objective, best_objective_name, best_objective_direction):
-#
-#         self.data_batch = data_batch
-#         self.results = results
-#         self.objective = objective
-#         self.objective_name = objective_name
-#         self.objective_direction = objective_direction
-#         self.best_state = best_state
-#         self.best_objective = best_objective
-#         self.best_objective_name = best_objective_name
-#         self.best_objective_direction = best_objective_direction
-
-
 class Algorithm(object):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None):
