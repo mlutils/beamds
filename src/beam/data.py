@@ -291,6 +291,7 @@ class BeamData(object):
         if self.stored:
             path = self.metadata_paths['all_paths']
             if self.write_metadata and path.exists():
+                logger.debug(f"Reading all_paths file: {path}")
                 self._all_paths = path.read()
 
             else:
@@ -316,6 +317,7 @@ class BeamData(object):
             for path in self.metadata_paths['index'].parent.iterdir():
                 if path.stem == BeamData.metadata_files['index']:
                     if path.exists():
+                        logger.debug(f"Reading index file: {path}")
                         self._index = path.read()
                         return self._index
 
@@ -346,6 +348,7 @@ class BeamData(object):
             for path in self.metadata_paths['label'].parent.iterdir():
                 if path.stem == BeamData.metadata_files['label']:
                     if path.exists():
+                        logger.debug(f"Reading label file: {path}")
                         self._label = path.read()
                         return self._label
 
@@ -488,6 +491,7 @@ class BeamData(object):
         if self.stored:
             if self.metadata_path_exists('schema'):
                 schema_path = self.metadata_paths['schema']
+                logger.debug(f"Reading schema file {schema_path}")
                 self._schema = schema_path.read()
                 return self._schema
 
@@ -502,6 +506,7 @@ class BeamData(object):
         if self.stored and self.write_metadata:
             if self.metadata_path_exists('conf'):
                 conf_path = self.metadata_paths['conf']
+                logger.debug(f"Reading conf file {conf_path}")
                 self._conf = conf_path.read()
                 return self._conf
 
@@ -542,6 +547,7 @@ class BeamData(object):
         if self.stored and self.write_metadata:
             if self.metadata_path_exists('info'):
                 info_path = self.metadata_paths['info']
+                logger.debug(f"Reading info file {info_path}")
                 self._info = info_path.read()
                 return self._info
 
@@ -766,6 +772,7 @@ class BeamData(object):
                             f"Please specify write_file(...,overwrite=True) to write on existing file")
 
         path.clean()
+        logger.debug(f"Writing file: {path}")
         path = path.write(data, **kwargs)
 
         return path
@@ -955,6 +962,7 @@ class BeamData(object):
             kwargs = {**schema.read_schema, **kwargs}
 
         if path.is_file():
+            logger.debug(f"Reading file: {path}")
             return path.read(**kwargs)
 
         if path.is_dir():
