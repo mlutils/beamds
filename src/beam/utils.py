@@ -399,7 +399,11 @@ class PureBeamPath:
         return self.path.is_absolute()
 
     def is_relative_to(self, *other):
-        return self.path.is_relative_to(*other)
+        if len(other) == 1 and isinstance(other[0], PureBeamPath):
+            other = str(other[0])
+        else:
+            other = str(PureBeamPath(*other))
+        return self.path.is_relative_to(other)
 
     def is_reserved(self):
         return self.path.is_reserved()
@@ -847,10 +851,11 @@ def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
         keys.append(k)
         values.append(v)
 
-    if not is_arange(keys):
+    argsort, isarange = is_arange(keys)
+    if not isarange:
         values = dict(zip(keys, values))
     else:
-        values = [values[i] for i in np.argsort(keys)]
+        values = [values[i] for i in argsort]
 
     return values
 
@@ -870,10 +875,10 @@ def is_arange(x):
             if match:
                 df.append(match.groupdict())
             else:
-                return False
+                return None, False
         df = pd.DataFrame(df)
         if not df['prefix'].nunique() == 1 or not df['suffix'].nunique() == 1:
-            return False
+            return None, False
 
         arr_x = df['number'].astype(int).values
     else:
@@ -881,11 +886,17 @@ def is_arange(x):
 
     try:
         arr_x = arr_x.astype(int)
-        arr_x.sort()
+        argsort = np.argsort(arr_x)
+        arr_x = arr_x[argsort]
     except (ValueError, TypeError):
-        return False
+        return None, False
 
-    return np.issubdtype(arr_x.dtype, np.number) and (np.abs(np.arange(len(x)) - arr_x).sum() == 0)
+    isa = np.issubdtype(arr_x.dtype, np.number) and (np.abs(np.arange(len(x)) - arr_x).sum() == 0)
+
+    if not isa:
+        argsort = None
+
+    return argsort, isa
 
 
 def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
@@ -1009,10 +1020,12 @@ def recursive_keys(x):
             return keys
 
         if x_type.minor == 'dict':
-            if not is_arange(values):
+
+            argsort, isarange = is_arange(keys)
+            if not isarange:
                 values = dict(zip(keys, values))
             else:
-                values = [values[i] for i in np.argsort(keys)]
+                values = [values[i] for i in argsort]
 
         return values
 

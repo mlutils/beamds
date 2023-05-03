@@ -802,11 +802,12 @@ class BeamData(object):
     @staticmethod
     def containerize_keys_and_values(keys, values):
 
-        if not is_arange(keys):
+        argsort, isarange = is_arange(keys)
+        if not isarange:
             values = dict(zip(keys, values))
             # values = {k: values[k] for k in sorted(values.keys())}
         else:
-            values = [values[i] for i in np.argsort(keys)]
+            values = [values[i] for i in argsort]
 
         if type(values) is dict and 'data' in values and len(values) == 1:
             values = values['data']
@@ -879,10 +880,12 @@ class BeamData(object):
             elif all([BeamData.columns_chunk_file_extension in p.name for p in keys_paths]):
                 return relative_path
 
-            if not is_arange(keys):
+            argsort, isarange = is_arange(keys)
+
+            if not isarange:
                 values = dict(zip(keys, values))
             else:
-                values = [values[i] for i in np.argsort(keys)]
+                values = [values[i] for i in argsort]
 
             return values
 
@@ -1547,8 +1550,7 @@ class BeamData(object):
 
         return self.clone(data=data, index=index, label=label)
 
-    @staticmethod
-    def recursive_filter(x, info):
+    def recursive_filter(self, x, info):
 
         if info is None:
             return None
@@ -1573,14 +1575,15 @@ class BeamData(object):
                         keys.append(k)
                         label.append(l)
 
-                if not is_arange(keys):
+                argsort, isarange = is_arange(keys)
+                if not isarange:
                     values = dict(zip(keys, values))
                     index = dict(zip(keys, index))
                     label = dict(zip(keys, label))
                 else:
-                    values = [values[j] for j in np.argsort(keys)]
-                    index = [index[j] for j in np.argsort(keys)]
-                    label = [label[j] for j in np.argsort(keys)]
+                    values = [values[j] for j in argsort]
+                    index = [index[j] for j in argsort]
+                    label = [label[j] for j in argsort]
 
                 return index, values, label, flat_key
 
@@ -1651,7 +1654,7 @@ class BeamData(object):
             batch_info = self.info.loc[index]
             # batch_info['map'] = np.arange(len(batch_info))
 
-            db = BeamData.recursive_filter(self.data, batch_info)
+            db = self.recursive_filter(self.data, batch_info)
             data = db.data
             index = db.index
             label = db.label
