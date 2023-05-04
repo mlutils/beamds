@@ -107,7 +107,11 @@ def beam_kpi(func):
             username = getpass.getuser()
 
         if algorithm is None:
-            algorithm_class = func.__name__
+            algorithm_class = type(algorithm).__name__
+            if hasattr(algorithm, 'name'):
+                algorithm_name = algorithm.name
+            if hasattr(algorithm, 'experiment') and algorithm.experiment is not None:
+                experiment_path = algorithm_clas
 
         result = None
         exception_message = None

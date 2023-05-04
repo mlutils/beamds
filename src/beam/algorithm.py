@@ -9,7 +9,7 @@ import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
-    stack_batched_results, as_numpy, stack_train_results, beam_device
+    stack_batched_results, as_numpy, stack_train_results, beam_device, retrieve_name
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
@@ -20,7 +20,8 @@ from .processor import Processor
 
 class Algorithm(object):
 
-    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None):
+    def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
+                 name=None, **kwargs):
 
         self._experiment = None
         self.trial = None
@@ -76,6 +77,7 @@ class Algorithm(object):
         self.objective = None
         self.best_objective = None
         self.best_state = False
+        self._name = name
 
         self.add_components(networks=networks, optimizers=optimizers, schedulers=schedulers, processors=processors)
 
