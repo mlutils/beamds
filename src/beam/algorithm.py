@@ -88,6 +88,12 @@ class Algorithm(object):
         if dataset is not None:
             self.load_dataset(dataset)
 
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
+
     def get_hparam(self, hparam, specific=None, default=None):
 
         if type(specific) is list:

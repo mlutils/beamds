@@ -187,6 +187,7 @@ class BeamData(object):
         self._info_groups = None
         self._all_paths = None
         self._root_path = None
+        self._keys = None
         self._metadata_paths = None
         self._metadata_path_exists = {}
         self.groups = Groups(self.get_info_groups)
@@ -887,6 +888,9 @@ class BeamData(object):
             else:
                 values = [values[i] for i in argsort]
 
+            # if type(values) is dict and 'data' in values and len(values) == 1:
+            #     values = values['data']
+
             return values
 
         # we store the files without their extension? why?
@@ -1150,11 +1154,14 @@ class BeamData(object):
         return self._columns_map
 
     def keys(self):
-        if self.orientation == 'simple':
-            return self.columns
-        if self.cached:
-            return recursive_keys(self.data)
-        return recursive_keys(self.all_paths)
+        if self._keys is None:
+            if self.orientation == 'simple':
+                self._keys = self.columns
+            if self.cached:
+                self._keys = recursive_keys(self.data)
+            else:
+                self._keys = recursive_keys(self.all_paths)
+        return self._keys
 
     @property
     def dtypes(self):
