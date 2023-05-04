@@ -10,7 +10,7 @@ from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_contain
     recursive_size_summary, container_len, is_arange, is_chunk, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key, \
-    get_closest_item_with_tuple_key
+    get_closest_item_with_tuple_key, Timer
 import os
 from .path import BeamPath, beam_path
 from functools import partial
@@ -1556,10 +1556,11 @@ class BeamData(object):
             return None
 
         inf_g = info.groupby('fold')
-        folds = info['fold'].unique()
+        folds = set(info['fold'].unique())
 
         def _recursive_filter(xi, flat_key=0):
-            x_type = check_type(xi)
+
+            x_type = check_type(xi, check_element=False)
             if x_type.major == 'container':
 
                 keys = []
@@ -1569,7 +1570,7 @@ class BeamData(object):
 
                 for k, v in iter_container(xi):
                     i, v, l, flat_key = _recursive_filter(v, flat_key=flat_key)
-                    if len(v):
+                    if v is not None:
                         values.append(v)
                         index.append(i)
                         keys.append(k)
@@ -1590,7 +1591,7 @@ class BeamData(object):
             else:
 
                 if flat_key not in folds:
-                    return [], [], [], flat_key + 1
+                    return None, None, None, flat_key + 1
 
                 info_in_fold = inf_g.get_group(flat_key)
 

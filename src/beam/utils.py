@@ -595,7 +595,8 @@ class PureBeamPath:
 
 class Timer(object):
 
-    def __init__(self, silence=False):
+    def __init__(self, name='', silence=False):
+        self.name = name
         self.silence = silence
         self._elapsed = 0
         self.paused = True
@@ -605,10 +606,11 @@ class Timer(object):
         self._elapsed = 0
         self.paused = True
         self.t0 = None
+        return self
 
     def __enter__(self):
         if not self.silence:
-            logger.info(f"Starting timer")
+            logger.info(f"Starting timer: {self.name}")
         self.run()
         return self
 
@@ -628,9 +630,10 @@ class Timer(object):
     def run(self):
         self.paused = False
         self.t0 = time.time()
+        return self
 
     def __str__(self):
-        return f"Timer: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"
+        return f"Timer {self.name}: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"
 
     def __repr__(self):
         return str(self)
@@ -638,7 +641,7 @@ class Timer(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         elapsed = self.pause()
         if not self.silence:
-            logger.info(f"Time elapsed: {pretty_format_number(elapsed)} Sec")
+            logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
 
 
 def stack_train_results(results, batch_size=None):
