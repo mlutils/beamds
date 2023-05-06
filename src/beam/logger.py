@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 import socket
 import getpass
+import traceback
 
 
 class BeamLogger:
@@ -93,27 +94,44 @@ beam_logger = BeamLogger()
 
 
 def beam_kpi(func):
-    def wrapper(*args, **kwargs):
-
-        # # Get the IP address of the computer
-        # ip_address = socket.gethostbyname(socket.gethostname())
-        #
-        # # Get the username of the current user
-        # username = getpass.getuser()
-        #
-        # print(f"IP Address: {ip_address}")
-        # print(f"Username: {username}")
+    def wrapper(x, *args, username=None, ip_address=None, algorithm=None, **kwargs):
 
         execution_time = datetime.now()
+
+        # Get the IP address of the computer
+        if ip_address is None:
+            ip_address = socket.gethostbyname(socket.gethostname())
+
+        # Get the username of the current user
+        if username is None:
+            username = getpass.getuser()
+
+        if algorithm is None:
+            algorithm_class = type(algorithm).__name__
+            if hasattr(algorithm, 'name'):
+                algorithm_name = algorithm.name
+            if hasattr(algorithm, 'experiment') and algorithm.experiment is not None:
+                experiment_path = algorithm_clas
+
         result = None
-        e = None
+        exception_message = None
+        exception_type = None
+        tb = None
         try:
             with Timer() as timer:
-                result = func(*args, **kwargs)
+                result = func(x, *args, **kwargs)
         except Exception as e:
+            exception_message = str(e)
+            exception_type = type(e).__name__
+            tb = traceback.format_exc()
             beam_logger.exception(e)
         finally:
-            kpi = BeamKPI(result=result, elapsed=timer.elapsed, exception=e)
+
+            metadata = dict(ip_address=ip_address, username=username, execution_time=execution_time,
+                            elapsed=timer.elapsed,
+                            exception_message=exception_message, exception_type=exception_type, traceback=tb)
+
+            kpi = BeamKPI(input=x, input_args=args, input_kwargs=kwargs, result=result, metadata=metadata)
             if e is not None:
                 raise e
         return kpi
@@ -122,8 +140,13 @@ def beam_kpi(func):
 
 class BeamKPI:
 
-    def __init__(self, result=None, elapsed=None, exception=None):
+    def __init__(self, input=None, input_args=None, input_kwargs=None, result=None, metadata=None):
         self.uuid = str(uuid.uuid4())
+        self.input = input
+        self.result = result
+        self.metadata = metadata
+        self.input_args = input_args
+        self.input_kwargs = input_kwargs
 
     def like(self, explanation=None):
         beam_logger.info('KPI: %s | like' % self.uuid)
