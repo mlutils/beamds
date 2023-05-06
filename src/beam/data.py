@@ -7,7 +7,7 @@ import pandas as pd
 import math
 from collections import namedtuple
 from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
-    recursive_size_summary, container_len, is_arange, is_chunk, \
+    recursive_size_summary, container_len, is_arange, is_chunk, is_container, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key, \
     get_closest_item_with_tuple_key, Timer
@@ -221,7 +221,6 @@ class BeamData(object):
             self._device = device
 
         path = beam_path(path)
-        path_type = check_type(path)
 
         self._name = name
 
@@ -230,7 +229,7 @@ class BeamData(object):
         else:
             self._name = None
 
-        if path_type.major == 'container':
+        if is_container(path):
             self._all_paths = path
         elif path is not None:
 
@@ -702,9 +701,7 @@ class BeamData(object):
 
         if self.cached:
 
-            data_type = check_type(self.data)
-
-            if data_type.major != 'container':
+            if not is_container(self.data):
                 self._orientation = 'simple'
                 if hasattr(self.data, 'columns') and self.columns is None:
                     self.columns = self.data.columns
@@ -819,8 +816,7 @@ class BeamData(object):
         if head is None:
             head = []
 
-        all_paths_type = check_type(all_paths)
-        if all_paths_type.major == 'container':
+        if is_container(all_paths):
 
             k, v = next(iter_container(all_paths))
             head.append(k)
@@ -941,12 +937,10 @@ class BeamData(object):
     @staticmethod
     def read(paths, schema=None, **kwargs):
 
-        paths_type = check_type(paths)
-
         if paths is None:
             return None
 
-        if paths_type.major == 'container':
+        if is_container(paths):
             keys = []
             values = []
 
@@ -1006,9 +1000,7 @@ class BeamData(object):
         if sizes is None:
             sizes = recursive_size(data)
 
-        data_type = check_type(data)
-
-        if data_type.major == 'container':
+        if is_container(data):
 
             size_summary = sum(recursive_flatten(sizes, flat_array=True))
 
@@ -1560,8 +1552,7 @@ class BeamData(object):
 
         def _recursive_filter(xi, flat_key=0):
 
-            x_type = check_type(xi, check_element=False)
-            if x_type.major == 'container':
+            if is_container(xi):
 
                 keys = []
                 values = []
@@ -1691,8 +1682,8 @@ class BeamData(object):
     @staticmethod
     def data_batch(data, index=None, label=None, orientation=None, info=None):
 
-        data_type = check_type(data, check_element=False, check_minor=False)
-        if data_type.major == 'container' and len(data) == 1:
+        ic = is_container(data)
+        if ic and len(data) == 1:
             if isinstance(data, dict):
                 key = list(data.keys())[0]
             else:
@@ -1708,7 +1699,7 @@ class BeamData(object):
                 if isinstance(label, pd.Series):
                     label = label.values
 
-        elif data_type.major == 'container':
+        elif ic:
             data = BeamData._concatenate(data=data, orientation=orientation)
 
             if index is not None:

@@ -981,12 +981,37 @@ def recursive_size(x):
             return sys.getsizeof(x)
 
 
+# def recursive(func):
+#
+#     def apply_recursively(x, *args, **kwargs):
+#
+#         x_type = check_type(x)
+#         if x_type.major == 'container':
+#
+#             keys = []
+#             values = []
+#
+#             for k, v in iter_container(x):
+#                 keys.append(k)
+#                 values.append(apply_recursively(v, *args, **kwargs))
+#
+#             if x_type.minor == 'dict':
+#                 values = dict(zip(keys, values))
+#
+#             return values
+#
+#         else:
+#
+#             return func(x, *args, **kwargs)
+#
+#     return apply_recursively
+
+
 def recursive(func):
 
     def apply_recursively(x, *args, **kwargs):
 
-        x_type = check_type(x)
-        if x_type.major == 'container':
+        if is_container(x):
 
             keys = []
             values = []
@@ -995,7 +1020,7 @@ def recursive(func):
                 keys.append(k)
                 values.append(apply_recursively(v, *args, **kwargs))
 
-            if x_type.minor == 'dict':
+            if isinstance(x, dict):
                 values = dict(zip(keys, values))
 
             return values
@@ -1358,6 +1383,52 @@ def check_minor_type(x):
 
 
 type_tuple = namedtuple('Type', 'major minor element')
+
+
+def elt_of_list(x):
+
+    if len(x) < 100:
+        sampled_indices = range(len(x))
+    else:
+        sampled_indices = np.random.randint(len(x), size=(100,))
+
+    elt0 = None
+    for i in sampled_indices:
+        elt = check_element_type(x[i])
+
+        if elt0 is None:
+            elt0 = elt
+
+        if elt != elt0:
+            return 'object'
+
+    return elt0
+
+
+def is_container(x):
+    if isinstance(x, dict):
+        return True
+    if isinstance(x, list):
+
+        if len(x) < 100:
+            sampled_indices = range(len(x))
+        else:
+            sampled_indices = np.random.randint(len(x), size=(100,))
+
+        elt0 = None
+        for i in sampled_indices:
+            elt = check_element_type(x[i])
+
+            if elt0 is None:
+                elt0 = elt
+
+            if elt != elt0:
+                return True
+
+            if elt in ['array', 'none']:
+                return True
+
+    return False
 
 
 def check_type(x, check_minor=True, check_element=True):
