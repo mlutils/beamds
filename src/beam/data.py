@@ -1475,6 +1475,10 @@ class BeamData(object):
 
     @property
     def stacked_values(self):
+
+        if not self.cached:
+            self.cache()
+
         data = self.concatenate()
         return data
 

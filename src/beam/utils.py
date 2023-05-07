@@ -552,6 +552,10 @@ class PureBeamPath:
                         x.name = 'val'
 
                 x = pd.DataFrame(x)
+
+                if isinstance(x.index, pd.MultiIndex):
+                    raise TypeError("MultiIndex not supported with feather extension.")
+
                 x = x.rename({c: str(c) for c in x.columns}, axis=1)
 
                 index_name = x.index.name if x.index.name is not None else 'index'
