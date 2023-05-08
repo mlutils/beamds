@@ -2,7 +2,8 @@ from .utils import tqdm_beam
 from tqdm import tqdm
 from .utils import divide_chunks, collate_chunks, retrieve_name
 import inspect
-from .utils import logger, Timer
+from .logger import Timer
+from .logger import beam_logger as logger
 
 
 def parallel(tasks, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):

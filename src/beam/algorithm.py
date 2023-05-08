@@ -4,7 +4,7 @@ from torch import nn
 import torch
 import copy
 from .utils import tqdm_beam as tqdm
-from .utils import logger
+from .logger import beam_logger as logger
 import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -17,7 +17,7 @@ from timeit import default_timer as timer
 from ray import tune
 from .path import beam_path, BeamPath
 from .processor import Processor
-# from .logger import beam_kpi, beam_logger
+from .logger import beam_kpi
 
 
 class Algorithm(object):

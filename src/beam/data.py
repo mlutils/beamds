@@ -1,3 +1,4 @@
+import copy
 import itertools
 import numpy as np
 import torch
@@ -6,16 +7,18 @@ from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_b
 import pandas as pd
 import math
 from collections import namedtuple
-from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
+from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, \
     recursive_size_summary, container_len, is_arange, is_chunk, is_container, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key, \
-    get_closest_item_with_tuple_key, Timer
-import os
+    get_closest_item_with_tuple_key
+from .logger import beam_logger as logger
 from .path import BeamPath, beam_path
 from functools import partial
 from collections import defaultdict
 import time
+from copy import deepcopy
+
 
 DataBatch = namedtuple("DataBatch", "index label data")
 
@@ -326,14 +329,10 @@ class BeamData(object):
             self._index = info.index.values
         else:
             # TODO: support index for packed and index case
-            self._index = None
-            # info_filtered = BeamData.recursive_filter(self.size, self.info)
-            # if info_filtered is not None:
-            #     self._index = info_filtered.index
-            #     if self._objects_type == 'tensor':
-            #
-            #         func = partial(as_tensor, device=self.device, dtype=None, return_vector=False)
-            #         self._index = recursive(func)(self._index)
+            @recursive
+            def replace_key_map_with_index(ind):
+                return self.info[self.info.fold == ind].index.values
+            self._index = replace_key_map_with_index(deepcopy(self.key_map))
 
         return self._index
 
@@ -473,10 +472,10 @@ class BeamData(object):
         objects_types = recursive_flatten(self.data_types)
         objects_types = [v.minor for v in objects_types if v.minor != 'none']
 
-        u = np.unique(objects_types)
+        u = set(objects_types)
 
         if len(u) == 1:
-            self._objects_type = u[0]
+            self._objects_type = next(iter(u))
         else:
             self._objects_type = 'mixed'
 
@@ -718,7 +717,7 @@ class BeamData(object):
                     lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
                     lens_index = list(filter(lambda x: x is not None, lens_index))
 
-                    if len(np.unique(lens)) == 1 and len(lens_index) <= 1:
+                    if len(set(lens)) == 1 and len(lens_index) <= 1:
                         self._orientation = 'columns'
                         return self._orientation
 
@@ -726,7 +725,7 @@ class BeamData(object):
                                                      if hasattr(x, 'shape') else None)([self.data]))
 
                 shapes = list(filter(lambda x: x is not None, shapes))
-                if len(np.unique(shapes)) == 1:
+                if len(set(shapes)) == 1:
                     self._orientation = 'index'
                 else:
                     self._orientation = 'packed'
@@ -1479,6 +1478,11 @@ class BeamData(object):
         if not self.cached:
             self.cache()
 
+        if self.orientation == 'packed':
+            raise ValueError("Cannot stack packed data")
+        elif self.orientation in ['simple', 'simplified_index']:
+            return self.data
+
         data = self.concatenate()
         return data
 
@@ -1677,7 +1681,7 @@ class BeamData(object):
                     data = data[index_map]
 
                 if label is not None:
-                    label = label[index_map]
+                    label = label.values[index_map]
 
                 index = batch_info.index
                 orientation = 'simplified_index'

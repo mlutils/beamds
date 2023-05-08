@@ -15,7 +15,7 @@ import os
 
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, beam_logger, LinearNet
+from src.beam import Algorithm, PackedFolds, LinearNet
 from src.beam.model import PID
 from src.beam.config import get_beam_parser
 from src.beam.model import GBN, MHRuleLayer, mySequential
@@ -29,6 +29,7 @@ import math
 from sklearn.preprocessing import QuantileTransformer
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 import math
+from src.beam import beam_logger as logger
 
 ModuleType = Union[str, Callable[..., nn.Module]]
 
@@ -582,7 +583,6 @@ if __name__ == '__main__':
     path_to_data = '/home/shared/data/dataset/covtype'
     root_dir = '/home/shared/data/results/covtype'
 
-    logger = beam_logger()
     args = beam_arguments(get_covtype_parser(),
                           f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1",
                           f" --no-half --lr-d=1e-3 --lr-s=1e-2 --batch-size=512",

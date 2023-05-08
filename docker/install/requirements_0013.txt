@@ -26,3 +26,4 @@ transparentpath
 # faiss-cpu
 
 kubernetes
+comet_ml

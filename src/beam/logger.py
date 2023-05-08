@@ -1,7 +1,7 @@
 import sys
 import json
 import loguru
-from .utils import running_platform, Timer
+from .utils import running_platform, pretty_format_number
 from .path import beam_path
 import atexit
 import uuid
@@ -10,6 +10,7 @@ import socket
 import getpass
 import traceback
 from .path import beam_path
+import time
 
 
 class BeamLogger:
@@ -214,3 +215,53 @@ class BeamResult:
         extra = {'type': 'kpi_notes', 'uuid': {self.uuid}, 'notes': notes}
         self.beam_logger.info(f'KPI: {self.uuid} | notes: {notes}', extra=extra)
 
+
+class Timer(object):
+
+    def __init__(self, name='', silence=False):
+        self.name = name
+        self.silence = silence
+        self._elapsed = 0
+        self.paused = True
+        self.t0 = None
+
+    def reset(self):
+        self._elapsed = 0
+        self.paused = True
+        self.t0 = None
+        return self
+
+    def __enter__(self):
+        if not self.silence:
+            beam_logger.info(f"Starting timer: {self.name}")
+        self.run()
+        return self
+
+    @property
+    def elapsed(self):
+        if self.paused:
+            return self._elapsed
+        return self._elapsed + time.time() - self.t0
+
+    def pause(self):
+        if self.paused:
+            return self._elapsed
+        self._elapsed = self._elapsed + time.time() - self.t0
+        self.paused = True
+        return self._elapsed
+
+    def run(self):
+        self.paused = False
+        self.t0 = time.time()
+        return self
+
+    def __str__(self):
+        return f"Timer {self.name}: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"
+
+    def __repr__(self):
+        return str(self)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        elapsed = self.pause()
+        if not self.silence:
+            beam_logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")

@@ -23,7 +23,6 @@ import socket
 from contextlib import closing
 from collections import namedtuple
 from timeit import default_timer as timer
-from loguru import logger
 from torchvision import transforms
 import hashlib
 from functools import partial
@@ -175,12 +174,6 @@ class BeamURL:
         return cls(url, parsed_url)
 
 
-# logger.remove(handler_id=0)
-logger.remove()
-logger.add(sys.stdout, level='INFO', colorize=True, format=
-           '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
-
-
 def retrieve_name(var):
     for fi in reversed(inspect.stack()):
         names = [var_name for var_name, var_val in fi.frame.f_locals.items() if var_val is var]
@@ -296,6 +289,11 @@ class PureBeamPath:
     def open(self, mode="rb"):
         self.mode = mode
         return self
+
+    def close(self):
+        if self.file_object is not None:
+            self.file_object.close()
+            self.file_object = None
 
     def __str__(self):
         return str(self.path)
@@ -597,57 +595,6 @@ class PureBeamPath:
         return self
 
 
-class Timer(object):
-
-    def __init__(self, name='', silence=False):
-        self.name = name
-        self.silence = silence
-        self._elapsed = 0
-        self.paused = True
-        self.t0 = None
-
-    def reset(self):
-        self._elapsed = 0
-        self.paused = True
-        self.t0 = None
-        return self
-
-    def __enter__(self):
-        if not self.silence:
-            logger.info(f"Starting timer: {self.name}")
-        self.run()
-        return self
-
-    @property
-    def elapsed(self):
-        if self.paused:
-            return self._elapsed
-        return self._elapsed + time.time() - self.t0
-
-    def pause(self):
-        if self.paused:
-            return self._elapsed
-        self._elapsed = self._elapsed + time.time() - self.t0
-        self.paused = True
-        return self._elapsed
-
-    def run(self):
-        self.paused = False
-        self.t0 = time.time()
-        return self
-
-    def __str__(self):
-        return f"Timer {self.name}: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"
-
-    def __repr__(self):
-        return str(self)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        elapsed = self.pause()
-        if not self.silence:
-            logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
-
-
 def stack_train_results(results, batch_size=None):
 
     stacked_results = defaultdict(dict)
@@ -702,11 +649,9 @@ def rate_string_format(n, t):
     return f"{t / n: .4} [sec/iter]"
 
 
-def beam_logger():
-    return logger
-
-
 def print_beam_hyperparameters(args, debug_only=False):
+
+    from .logger import beam_logger as logger
 
     if debug_only:
         log_func = logger.debug
@@ -734,6 +679,8 @@ def print_beam_hyperparameters(args, debug_only=False):
 
 
 def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
+
+    from .logger import beam_logger as logger
 
     if application == 'tensorboard':
         first_beam_range = 66

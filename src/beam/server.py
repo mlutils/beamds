@@ -3,8 +3,9 @@ from .experiment import Experiment
 import requests
 import io
 import torch
-from .utils import logger, find_port
+from .utils import find_port
 from gevent.pywsgi import WSGIServer
+from .logger import beam_logger as logger
 
 
 class BeamClient(object):

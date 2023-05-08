@@ -6,7 +6,8 @@ import math
 
 from .model import soft_target_update, reset_network, copy_network, BeamEnsemble
 from .model import beam_weights_initializer, freeze_network_params, free_network_params
-from .utils import as_numpy, pretty_format_number, logger, beam_logger
+from .utils import as_numpy, pretty_format_number
+from .logger import beam_logger as logger
 from .algorithm import Algorithm
 from .optim import BeamOptimizer
 from .config import boolean_feature, get_beam_parser
@@ -207,7 +208,7 @@ class BeamSSL(Algorithm):
         if encoder is not None:
             networks['encoder'] = encoder
 
-        self.logger = beam_logger()
+        self.logger = logger
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers)
 

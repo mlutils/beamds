@@ -6,7 +6,7 @@ from src.beam.data import BeamData
 from src.beam.path import beam_path
 from src.beam.processor import Transformer
 from src.beam.tensor import LazyTensor
-from src.beam.utils import Timer
+from src.beam import Timer
 import numpy as np
 import pandas as pd
 import torch

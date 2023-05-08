@@ -1,4 +1,4 @@
-from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, logger, \
+from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, \
     recursive_size_summary, container_len, retrieve_name, build_container_from_tupled_keys, is_empty
 from .parallel import parallel, BeamParallel, BeamTask
 from collections import OrderedDict
@@ -7,6 +7,7 @@ from .path import beam_path
 import pickle
 import io
 from .utils import tqdm_beam as tqdm
+from .logger import beam_logger as logger
 
 
 class Processor(object):

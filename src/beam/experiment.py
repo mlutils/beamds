@@ -14,7 +14,7 @@ import torch
 import copy
 import shutil
 from collections import defaultdict
-from .utils import include_patterns, logger, check_type, beam_device, check_element_type, print_beam_hyperparameters
+from .utils import include_patterns, check_type, beam_device, check_element_type, print_beam_hyperparameters
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
@@ -26,9 +26,10 @@ from tensorboard.notebook import start as start_tensorboard
 from ._version import __version__
 import inspect
 from .path import beam_path, BeamPath
+from .logger import beam_logger as logger
+
 
 done = mp.Event()
-
 
 def gen_hparams_string(experiment_path):
     experiment_path = beam_path(experiment_path)
@@ -301,9 +302,7 @@ class Experiment(object):
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
 
-        log_file = str(self.root.joinpath('experiment.log'))
-        logger.add(log_file, level='INFO', colorize=True,
-                   format='<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>')
+        logger.add_file_handlers(self.root.joinpath('experiment.log'))
 
         print_beam_hyperparameters(args, debug_only=not print_hyperparameters)
 
@@ -343,6 +342,35 @@ class Experiment(object):
                 self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.parallel)]
 
         self.root.joinpath('hparams.pkl').write(self.tensorboard_hparams)
+
+        self.comet_exp = None
+        if self.hparams.comet:
+
+            from comet_ml import Experiment
+            # from comet_ml.integration.pytorch import log_model
+
+            api_key = self.hparams.comet_api_key
+            if api_key is None:
+                api_key = os.environ.get('COMET_API_KEY', None)
+            git_directory = self.hparams.git_directory
+            if git_directory is None and isinstance(self.code_dir, BeamPath):
+                git_directory = str(self.code_dir)
+            if git_directory is not None:
+                os.environ['COMET_GIT_DIRECTORY'] = git_directory
+                log_code = True
+            else:
+                log_code = False
+
+            logger.info("Logging this experiment to comet.ml")
+
+            self.comet_exp = Experiment(api_key=api_key, project_name=self.hparams.project_name,
+                                        log_code=log_code, workspace=self.hparams.comet_workspace,
+                                        disabled=not self.hparams.comet)
+
+            self.comet_exp.add_tag(self.hparams.identifier)
+            self.comet_exp.set_name(self.exp_name)
+            self.comet_exp.log_parameters(self.tensorboard_hparams)
+
 
     @staticmethod
     def reload_from_path(path, override_hparams=None, **argv):
@@ -425,9 +453,12 @@ class Experiment(object):
             else:
                 logger.warning(f"Tensorboard directory is not a BeamPath object. Tensorboard will not be enabled.")
 
-        if networks is not None and enable and self.writer is not None:
-            for k, net in networks.items():
-                self.writer.add_graph(net, inputs[k])
+        if networks is not None and enable:
+            if self.writer is not None:
+                for k, net in networks.items():
+                    self.writer.add_graph(net, inputs[k])
+            if self.comet_exp is not None:
+                self.comet_exp.set_model_graph(str(networks))
 
     def save_model_results(self, results, algorithm, iteration, visualize_results='yes',
                            store_results='logscale', store_networks='logscale', print_results=True,

@@ -2,7 +2,8 @@ import argparse
 import copy
 import os
 import sys
-from .utils import is_notebook, check_type, logger
+from .utils import is_notebook, check_type
+from .logger import beam_logger as logger
 import re
 import math
 
@@ -188,6 +189,11 @@ def get_beam_parser():
 
     parser.add_argument('--mp-context', type=str, default='spawn', help='The multiprocessing context to use')
     parser.add_argument('--mp-backend', type=str, default=None, help='The multiprocessing backend to use')
+
+    boolean_feature(parser, "comet", False, "Whether to use comet.ml for logging")
+    parser.add_argument('--git-directory', type=str, default=None, help='The git directory to use for comet.ml logging')
+    parser.add_argument('--comet-api-key', type=str, default=None, help='The comet.ml api key to use for logging')
+    parser.add_argument('--comet-workspace', type=str, default=None, help='The comet.ml workspace to use for logging')
 
     return parser
 

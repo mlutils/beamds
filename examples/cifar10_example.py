@@ -17,7 +17,7 @@ import os
 from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm, PackedFolds, as_numpy
-from src.beam import DataTensor, BeamOptimizer, beam_logger
+from src.beam import DataTensor, BeamOptimizer
 from src.beam.data import BeamData
 
 from torchvision import transforms
@@ -25,6 +25,7 @@ import torchvision
 from ray import tune
 import kornia
 from kornia.augmentation.container import AugmentationSequential
+from src.beam import beam_logger as logger
 
 
 class ReBlock(nn.Module):
@@ -174,8 +175,10 @@ class CIFAR10Dataset(UniversalDataset):
         data = self.data[ind]
 
         if isinstance(data, BeamData):
-            x = data.stacked_values
-            labels = data.stacked_labels
+            # x = data.stacked_values
+            # labels = data.stacked_labels
+            x = data.data
+            labels = data.label
         else:
             x = data
             labels = self.labels[ind]
@@ -391,12 +394,10 @@ if __name__ == '__main__':
 
     args = beam_arguments(
         f"--project-name=cifar10 --root-dir={root_dir} --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
-        "--n-epochs=2 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --cudnn-benchmark",
-        "--weight-decay=.00256 --momentum=0.9 --beta2=0.9 --temperature=1 --objective=acc",
-        path_to_data=path_to_data, dropout=.0, activation='celu',
+        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --no-deterministic",
+        "--weight-decay=.00256 --momentum=0.9 --beta2=0.999 --temperature=1 --objective=acc --scheduler=one_cycle",
+        path_to_data=path_to_data, dropout=.0, activation='gelu',
         channels=512, label_smoothing=.2, padding=4, scale_down=.7, scale_up=1.4, ratio_down=.7, ratio_up=1.4)
-
-    logger = beam_logger()
 
     experiment = Experiment(args)
     alg = experiment.fit(CIFAR10Algorithm, CIFAR10Dataset, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})

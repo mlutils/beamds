@@ -2,7 +2,8 @@ import time
 import os
 import copy
 
-from .utils import logger, find_port, print_beam_hyperparameters, check_type, is_notebook
+from .utils import find_port, print_beam_hyperparameters, check_type, is_notebook
+from .logger import beam_logger as logger
 from .path import beam_path
 import pandas as pd
 import ray

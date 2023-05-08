@@ -13,7 +13,6 @@ import numpy as np
 
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, beam_logger, LinearNet
 from src.beam.ssl import get_ssl_parser
 from src.beam.config import get_beam_parser
 
@@ -23,6 +22,7 @@ from sklearn.preprocessing import QuantileTransformer, RobustScaler
 from src.beam.ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
 from src.beam import tqdm
 import faiss
+from src.beam import beam_logger as logger
 
 
 class EmbeddingCovtypeDataset(UniversalDataset):
@@ -765,7 +765,6 @@ if __name__ == '__main__':
     path_to_data = '/home/shared/data/dataset/covtype'
     root_dir = '/home/shared/data/results/covtype'
 
-    logger = beam_logger()
     hparams = beam_arguments(get_covtype_parser(),
                              f"--project-name=covtype_ssl --root-dir={root_dir} --algorithm=BeamVICReg --device=2",
                              "--batch-size=512 --n-epochs=100 --parallel=1 --momentum=0.9 --beta2=0.99",
