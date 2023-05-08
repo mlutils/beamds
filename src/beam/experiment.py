@@ -37,6 +37,10 @@ def gen_hparams_string(experiment_path):
 
 
 def path_depth(path):
+
+    if isinstance(path, str):
+        path = BeamPath(path)
+
     return len(str(path.resolve()).split(os.sep))
 
 
@@ -722,6 +726,8 @@ class Experiment(object):
             base_dir = self.root
             depth = 0
 
+        #TODO: add support for beampath
+        base_dir = str(base_dir)
         experiments = [d[0] for d in list(os.walk(base_dir)) if (path_depth(d[0]) - path_depth(base_dir)) == depth]
 
         if more_experiments is not None:
