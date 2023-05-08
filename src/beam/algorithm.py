@@ -17,6 +17,8 @@ from timeit import default_timer as timer
 from ray import tune
 from .path import beam_path, BeamPath
 from .processor import Processor
+# from .logger import beam_kpi, beam_logger
+
 
 class Algorithm(object):
 
@@ -1164,10 +1166,18 @@ class Algorithm(object):
         '''
         return self(*args, predicting=False, **kwargs)
 
-    def predict(self, dataset, *args, lazy=False, **kwargs):
+    def predict(self, dataset, *args, lazy=False, kpi=True, **kwargs):
         '''
         For real data purposes (when labels are unknown)
         '''
         if lazy:
             return TransformedDataset(dataset, self, *args, **kwargs)
-        return self(dataset, *args, predicting=True, **kwargs)
+
+        if not kpi:
+            self(dataset, *args, predicting=True, **kwargs)
+
+        @beam_kpi
+        def predict_wrapper(sample, algorithm=None, **kwargs):
+            return algorithm(sample, predicting=True, **kwargs)
+
+        return predict_wrapper(dataset, algorithm=self, *args, **kwargs)

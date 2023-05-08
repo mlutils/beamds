@@ -9,6 +9,7 @@ from datetime import datetime
 import socket
 import getpass
 import traceback
+from .path import beam_path
 
 
 class BeamLogger:
@@ -24,7 +25,7 @@ class BeamLogger:
         self.file_objects = {}
         self.path = None
         if path is not None:
-             self.add_file_handlers(path)
+            self.add_file_handlers(path)
 
         atexit.register(self.cleanup)
 
@@ -37,6 +38,7 @@ class BeamLogger:
 
     def add_file_handlers(self, path):
 
+        path = beam_path(path)
         self.path = path
 
         file_object = path.joinpath('debug.log').open('w')
@@ -106,21 +108,26 @@ def beam_kpi(func):
         if username is None:
             username = getpass.getuser()
 
+        algorithm_class = None
+        algorithm_name = None
+        experiment_path = None
         if algorithm is None:
             algorithm_class = type(algorithm).__name__
             if hasattr(algorithm, 'name'):
                 algorithm_name = algorithm.name
             if hasattr(algorithm, 'experiment') and algorithm.experiment is not None:
-                experiment_path = algorithm_clas
+                experiment_path = algorithm.experiment.root
 
         result = None
         exception_message = None
         exception_type = None
         tb = None
+        error = None
         try:
             with Timer() as timer:
                 result = func(x, *args, **kwargs)
         except Exception as e:
+            error = e
             exception_message = str(e)
             exception_type = type(e).__name__
             tb = traceback.format_exc()
@@ -128,17 +135,18 @@ def beam_kpi(func):
         finally:
 
             metadata = dict(ip_address=ip_address, username=username, execution_time=execution_time,
-                            elapsed=timer.elapsed,
-                            exception_message=exception_message, exception_type=exception_type, traceback=tb)
+                            elapsed=timer.elapsed, algorithm_class=algorithm_class, algorithm_name=algorithm_name,
+                            experiment_path=experiment_path, exception_message=exception_message,
+                            exception_type=exception_type, traceback=tb)
 
-            kpi = BeamKPI(input=x, input_args=args, input_kwargs=kwargs, result=result, metadata=metadata)
-            if e is not None:
-                raise e
+            kpi = BeamResult(input=x, input_args=args, input_kwargs=kwargs, result=result, metadata=metadata)
+            if error is not None:
+                raise error
         return kpi
     return wrapper
 
 
-class BeamKPI:
+class BeamResult:
 
     def __init__(self, input=None, input_args=None, input_kwargs=None, result=None, metadata=None):
         self.uuid = str(uuid.uuid4())
@@ -147,20 +155,62 @@ class BeamKPI:
         self.metadata = metadata
         self.input_args = input_args
         self.input_kwargs = input_kwargs
+        self.beam_logger = beam_logger
+
+        extra = {'type': 'kpi_metadata', 'uuid': {self.uuid}, 'input': self.input, 'input_args': self.input_args,
+                 'input_kwargs': self.input_kwargs, 'result': self.result, **self.metadata}
+
+        self.beam_logger.info(f'BeamResult: {self.uuid} | username: {self.metadata["username"]} | '
+                              f'ip_address: {self.metadata["ip_address"]} | '
+                              f'execution_time: {self.metadata["execution_time"]} | '
+                              f'elapsed: {self.metadata["elapsed"]} | '
+                              f'algorithm_class: {self.metadata["algorithm_class"]} | '
+                              f'algorithm_name: {self.metadata["algorithm_name"]} | '
+                              f'experiment_path: {self.metadata["experiment_path"]} |'
+                              f'exception_message: {self.metadata["exception_message"]} | '
+                              f'exception_type: {self.metadata["exception_type"]} | ',
+                              extra=extra)
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        return f'BeamResult(uuid={self.uuid}, input={self.input}, result={self.result}, metadata={self.metadata})'
 
     def like(self, explanation=None):
-        beam_logger.info('KPI: %s | like' % self.uuid)
+
+        extra = {'type': 'kpi_like', 'uuid': {self.uuid}, 'explanation': explanation}
+
+        self.beam_logger.info(f'KPI: {self.uuid} | like', extra=extra)
         if explanation is not None:
-            beam_logger.info('KPI: %s | explanation: %s' % (self.uuid, explanation))
+            self.beam_logger.info(f'KPI: {self.uuid} | like | explanation: {explanation}', extra=extra)
 
     def dislike(self, explanation=None):
-        beam_logger.info('KPI: %s | dislike' % self.uuid)
+
+        extra = {'type': 'kpi_dislike', 'uuid': {self.uuid}, 'explanation': explanation}
+
+        self.beam_logger.warning(f'KPI: {self.uuid} | dislike', extra=extra)
+        if explanation is not None:
+            self.beam_logger.warning(f'KPI: {self.uuid} | dislike | explanation: {explanation}', extra=extra)
 
     def rate(self, rating, explanation=None):
-        beam_logger.info('KPI: %s | rate: %s' % (self.uuid, rating))
+
+        extra = {'type': 'kpi_rate', 'uuid': {self.uuid}, 'rating': rating, 'explanation': explanation}
+
+        if rating < 0 or rating > 5:
+            raise ValueError('Rating must be between 0 and 5')
+
+        if rating < 3:
+            log_func = self.beam_logger.warning
+        else:
+            log_func = self.beam_logger.info
+
+        log_func(f'KPI: {self.uuid} | rating: {rating}/5', extra=extra)
         if explanation is not None:
-            beam_logger.info('KPI: %s | explanation: %s' % (self.uuid, explanation))
+            log_func(f'KPI: {self.uuid} | rating: {rating}/5 | explanation: {explanation}', extra=extra)
 
     def notes(self, notes):
-        beam_logger.info('KPI: %s | notes: %s' % (self.uuid, notes))
+
+        extra = {'type': 'kpi_notes', 'uuid': {self.uuid}, 'notes': notes}
+        self.beam_logger.info(f'KPI: {self.uuid} | notes: {notes}', extra=extra)
 
