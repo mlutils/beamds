@@ -4,7 +4,7 @@ import copy
 
 from .utils import find_port, print_beam_hyperparameters, check_type, is_notebook
 from .logger import beam_logger as logger
-from .path import beam_path
+from .path import beam_path, BeamPath
 import pandas as pd
 import ray
 from ray.tune import JupyterNotebookReporter
@@ -97,6 +97,10 @@ class Study(object):
         root_path = beam_path(self.hparams.root_dir)
         self.ray_logs = root_path.joinpath('ray_results', self.hparams.project_name, self.hparams.algorithm,
                                            self.hparams.identifier)
+
+        if not isinstance(self.ray_logs, BeamPath):
+            ValueError("Currently ray.tune does not support not-local-fs path, please provide local root_dir path")
+        self.ray_logs = str(self.ray_logs)
 
         self.experiments_tracker = []
         self.track_results = track_results

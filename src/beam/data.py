@@ -323,16 +323,16 @@ class BeamData(object):
                         logger.debug(f"Reading index file: {path}")
                         self._index = path.read()
                         return self._index
-
-        info = self.info
-        if self.orientation in ['columns', 'simple',  'simplified_index']:
-            self._index = info.index.values
-        else:
-            # TODO: support index for packed and index case
-            @recursive
-            def replace_key_map_with_index(ind):
-                return self.info[self.info.fold == ind].index.values
-            self._index = replace_key_map_with_index(deepcopy(self.key_map))
+        if self.cached:
+            info = self.info
+            if self.orientation in ['columns', 'simple',  'simplified_index']:
+                self._index = info.index.values
+            else:
+                # TODO: support index for packed and index case
+                @recursive
+                def replace_key_map_with_index(ind):
+                    return self.info[self.info.fold == ind].index.values
+                self._index = replace_key_map_with_index(deepcopy(self.key_map))
 
         return self._index
 
@@ -883,8 +883,8 @@ class BeamData(object):
             else:
                 values = [values[i] for i in argsort]
 
-            # if type(values) is dict and 'data' in values and len(values) == 1:
-            #     values = values['data']
+            if type(values) is dict and 'data' in values and len(values) == 1:
+                values = values['data']
 
             return values
 
@@ -1302,6 +1302,8 @@ class BeamData(object):
         def _abs_all_paths(path):
             if path is None:
                 return None
+            if isinstance(path, list):
+                return [root_path.joinpath(p) for p in path]
             return root_path.joinpath(path)
 
         if all_paths is None:
@@ -1801,7 +1803,7 @@ class BeamData(object):
             return '/'.join(x.split('/')[1:])
 
         while True:
-            flat_paths = recursive_flatten(all_paths)
+            flat_paths = recursive_flatten(all_paths, flat_array=True)
             if len(flat_paths) == 1:
                 return root_path.joinpath(flat_paths[0]), None
 

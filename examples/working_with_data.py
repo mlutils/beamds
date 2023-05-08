@@ -379,8 +379,8 @@ if __name__ == '__main__':
         BeamData.clear_metadata(path)
         bd = BeamData.from_path(path, write_metadata=False)
         bds = bd['seeking']
-        bds.cache()
         bdsi = bds['all_articles']
+        bdsi.cache()
         v = bdsi[np.array([5000, 4, 60, 10, 10000])]
 
     print("done all tests")
