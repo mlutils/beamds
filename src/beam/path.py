@@ -1,10 +1,11 @@
 from pathlib import PurePath, Path
 import botocore
 import re
-from .utils import PureBeamPath, BeamURL
+from .utils import PureBeamPath, BeamURL, normalize_host
 from io import StringIO, BytesIO
 import os
 import urllib3
+from .config import beam_key
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -62,11 +63,8 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
     if url.protocol == 's3':
 
-        if access_key is None:
-            access_key = os.environ.get('AWS_ACCESS_KEY_ID', None)
-
-        if secret_key is None:
-            secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY', None)
+        access_key = beam_key('aws_access_key', access_key)
+        secret_key = beam_key('aws_secret_key', secret_key)
 
         return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
 
@@ -84,9 +82,8 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     elif url.protocol == 'ftps':
         raise NotImplementedError
     elif url.protocol == 'sftp':
-        if private_key is None:
-            private_key = Path.home().joinpath('.ssh', 'id_rsa')
 
+        private_key = beam_key('ssh_private_key', private_key)
         return SFTPPath(path, hostname=hostname, username=username, port=port, private_key=private_key, **kwargs)
     else:
         raise NotImplementedError
@@ -231,18 +228,6 @@ class BeamPath(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.file_object.close()
-
-
-def normalize_host(hostname, port=None, default='localhost'):
-
-    if hostname is None:
-        hostname = default
-    if port is None:
-        host = f"{hostname}"
-    else:
-        host = f"{hostname}:{port}"
-
-    return host
 
 
 class SFTPPath(PureBeamPath):

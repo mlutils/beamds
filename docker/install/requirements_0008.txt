@@ -7,5 +7,4 @@ nfstream
 # commercial frameworks
 
 comet-ml
-openai
 wandb

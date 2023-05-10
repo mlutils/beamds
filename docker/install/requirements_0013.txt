@@ -12,6 +12,8 @@ boto3
 botocore
 s3transfer
 s3pathlib
+sqlalchemy
+pyathena
 
 scalene
 Flask

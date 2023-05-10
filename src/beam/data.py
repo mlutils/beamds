@@ -1352,9 +1352,7 @@ class BeamData(object):
         self.data = data
         self.stored = True
         self.cached = True
-
         self.reset_metadata()
-        return self
 
     def reset_metadata(self, *args, avoid_reset=None):
 
@@ -1944,6 +1942,8 @@ class BeamData(object):
         return columns
 
     def __repr__(self):
+        if self.cached and self.orientation == 'simple':
+            return repr(self.data)
         return self.__str__()
 
     def update_all_paths_file(self):

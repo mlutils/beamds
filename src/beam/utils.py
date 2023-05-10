@@ -36,6 +36,7 @@ import inspect
 from pathlib import PurePath
 from argparse import Namespace
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
+import Levenshtein as lev
 
 
 class BeamURL:
@@ -2030,3 +2031,23 @@ def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=
         else:
             for xi in iter_x:
                 yield xi
+
+
+def normalize_host(hostname, port=None, default='localhost'):
+
+    if hostname is None:
+        hostname = default
+    if port is None:
+        host = f"{hostname}"
+    else:
+        host = f"{hostname}:{port}"
+
+    return host
+
+
+def get_edit_ratio(s1, s2):
+    return lev.ratio(s1, s2)
+
+
+def get_edit_distance(s1, s2):
+    return lev.distance(s1, s2)
