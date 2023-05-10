@@ -1665,7 +1665,7 @@ class BeamData(object):
             data = db.data
             index = db.index
             label = db.label
-            if self.orientation == 'index':
+            if self.orientation == 'index' or batch_info['fold'].nunique() == 1:
                 data = collate_chunks(*recursive_flatten(data), dim=0)
                 index = collate_chunks(*recursive_flatten(index), dim=0)
                 label = collate_chunks(*recursive_flatten(label), dim=0)
