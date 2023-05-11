@@ -1,9 +1,10 @@
 # deep learning
 pytorch-lightning
-pytorch-forecasting
+# pytorch-forecasting
+# rtdl
+
 deepchecks
 torchensemble
-rtdl
 transformers
 datasets
 tensorboardX

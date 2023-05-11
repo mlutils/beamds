@@ -55,7 +55,7 @@ RUN pip install -U -r /workspace/install/requirements_0010.txt
 RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0011.txt
 RUN pip list
-# RUN pip install -U -r /workspace/install/requirements_0012.txt
+RUN pip install -U -r /workspace/install/requirements_0012.txt
 RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 RUN pip list
