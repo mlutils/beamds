@@ -1132,6 +1132,7 @@ class BeamData(object):
                     logger.error(f"Could not write file: {path_i.name}.")
 
         return object_path
+
     @property
     def columns_map(self):
 
@@ -1459,10 +1460,10 @@ class BeamData(object):
             if hasattr(self.data, 'loc'):
                 data = self.data[columns]
             else:
-                data = self.data[:, columns]
+                data = self.data[:, self.inverse_columns_map(columns)]
 
         elif self.orientation == 'index':
-            data = recursive_slice_columns(self.data, columns)
+            data = recursive_slice_columns(self.data, columns, self.inverse_columns_map(columns))
 
         else:
             raise LookupError(f"Cannot slice by columns as data is not in simple or index orientation")

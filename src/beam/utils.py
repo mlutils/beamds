@@ -1802,7 +1802,7 @@ def recursive_slice(x, s):
 
 
 @recursive
-def recursive_slice_columns(x, columns):
+def recursive_slice_columns(x, columns, columns_index):
 
     x_type = check_type(x)
 
@@ -1811,7 +1811,7 @@ def recursive_slice_columns(x, columns):
     elif x_type.minor == 'pandas':
         return x[columns]
     else:
-        return x[:, columns]
+        return x[:, columns_index]
 
 
 def recursive_device(x):
