@@ -10,12 +10,12 @@ from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
     stack_batched_results, as_numpy, stack_train_results, beam_device, retrieve_name
-from .config import beam_arguments, get_beam_parser
+from .config import beam_arguments, get_beam_parser, filter_dict
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
 from timeit import default_timer as timer
 from ray import tune
-from .path import beam_path, BeamPath
+from .path import beam_path, PureBeamPath
 from .processor import Processor
 from .logger import beam_kpi
 
@@ -128,17 +128,48 @@ class Algorithm(object):
         return get_beam_parser()
 
     @classmethod
-    def from_pretrained(cls, path=None, override_hparams=None, hparams=None, Dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None, **kwargs):
-        if path is not None:
-            experiment = Experiment.reload_from_path(path, override_hparams=override_hparams)
-        elif hparams is not None:
+    def from_pretrained(cls, path, override_hparams=None, hparams=None, Dataset=None, alg_args=None, alg_kwargs=None,
+                             dataset_args=None, dataset_kwargs=None, reload_iloc=-1, reload_loc=None, reload_name=None,
+                             **kwargs):
+
+        if hparams is not None:
+            override_hparams = hparams
+
+        experiment = Experiment.reload_from_path(path, override_hparams=override_hparams, reload_iloc=reload_iloc,
+                                                 reload_loc=reload_loc, reload_name=reload_name, **kwargs)
+
+        alg = experiment.algorithm_generator(cls, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                                       dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+
+        if hparams is not None:
             experiment = Experiment(hparams)
-        else:
-            hparams = beam_arguments(cls.get_parser(), **kwargs)
-            experiment = Experiment(hparams)
-        return experiment.algorithm_generator(cls, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+
+        alg.experiment = experiment
+        return alg
+
+    def add_networks(self, networks):
+        self.add_components(networks=networks)
+
+    def add_processors(self, processors):
+        self.add_components(processors=processors)
+
+    def add_optimizers(self, optimizers):
+        self.add_components(optimizers=optimizers)
+
+    def add_schedulers(self, schedulers):
+        self.add_components(schedulers=schedulers)
+
+    def add_network(self, network, name):
+        self.add_components(networks={name: network})
+
+    def add_processor(self, processor, name):
+        self.add_components(processors={name: processor})
+
+    def add_optimizer(self, optimizer, name):
+        self.add_components(optimizers={name: optimizer})
+
+    def add_scheduler(self, scheduler, name):
+        self.add_components(schedulers={name: scheduler})
 
     def add_components(self, networks=None, optimizers=None, schedulers=None, processors=None,
                        build_optimizers=True, build_schedulers=True, name='net'):
@@ -1021,17 +1052,18 @@ class Algorithm(object):
         else:
             return state
 
-    def load_checkpoint(self, path_or_state, strict=True):
+    def load_checkpoint(self, path_or_state, strict=True, networks=True, optimizers=True, schedulers=True,
+                        processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True, load_epoch=True):
 
         path_or_state = beam_path(path_or_state)
 
-        if isinstance(path_or_state, BeamPath):
+        if isinstance(path_or_state, PureBeamPath):
             logger.info(f"Loading network state from: {path_or_state}")
             state = path_or_state.read(ext='.pt', map_location=self.device)
         else:
             state = path_or_state
 
-        for k, net in self.networks.items():
+        for k, net in filter_dict(self.networks, networks).items():
 
             if f"{k}_parameters" in state.keys():
                 s = state[f"{k}_parameters"]
@@ -1043,7 +1075,7 @@ class Algorithm(object):
             else:
                 logger.warning(f"Network {k} is missing from the state-dict")
 
-        for k, net in self.swa_networks.items():
+        for k, net in filter_dict(self.swa_networks, swa_networks).items():
 
             if f"{k}_swa_network" in state.keys():
                 s = state[f"{k}_swa_network"]
@@ -1055,19 +1087,19 @@ class Algorithm(object):
             else:
                 logger.warning(f"SWA Network {k} is missing from the state-dict")
 
-        for k, optimizer in self.optimizers.items():
+        for k, optimizer in filter_dict(self.optimizers, optimizers).items():
             if f"{k}_optimizer" in state.keys():
                 optimizer.load_state_dict(state[f"{k}_optimizer"])
             else:
                 logger.warning(f"Optimizer {k} is missing from the state-dict")
 
-        for k, processor in self.processors.items():
+        for k, processor in filter_dict(self.processors, processors).items():
             if f"{k}_processor" in state.keys():
                 processor.load_state_dict(state[f"{k}_processor"])
             else:
                 logger.warning(f"Processor {k} is missing from the state-dict")
 
-        for k, scheduler in self.schedulers.items():
+        for k, scheduler in filter_dict(self.schedulers, schedulers).items():
             if f"{k}_scheduler" in state.keys():
                 self.schedulers_initial_state[k] = state[f"{k}_scheduler"]
                 try:
@@ -1077,20 +1109,24 @@ class Algorithm(object):
             else:
                 logger.warning(f"Scheduler {k} is missing from the state-dict")
 
-        for k, swa_scheduler in self.swa_schedulers.items():
+        for k, swa_scheduler in filter_dict(self.swa_schedulers, swa_schedulers).items():
             if f"{k}_swa_scheduler" in state.keys():
                 swa_scheduler.load_state_dict(state[f"{k}_swa_scheduler"])
             else:
                 logger.warning(f"SWA Scheduler {k} is missing from the state-dict")
 
-        if self.scaler is not None and 'scaler' in state.keys():
-            self.scaler.load_state_dict(state["scaler"])
+        if scaler:
+            if self.scaler is not None and 'scaler' in state.keys():
+                self.scaler.load_state_dict(state["scaler"])
 
-        for k, s in state["scalers"].items():
-            if k in self.scalers:
-                self.scalers[k].load_state_dict(s)
+        if "scalers" in state.keys():
+            for k, s in filter_dict(self.scalers, scalers).items():
+                if k in state["scalers"]:
+                    self.scalers[k].load_state_dict(state["scalers"][k])
 
-        self.epoch = state['epoch']
+        if load_epoch and 'epoch' in state.keys():
+            self.epoch = state['epoch']
+
         return state['aux']
 
     def optimize_for_inference(self, networks, half=True, eval=True):

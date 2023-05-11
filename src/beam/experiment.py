@@ -377,7 +377,7 @@ class Experiment(object):
 
 
     @staticmethod
-    def reload_from_path(path, override_hparams=None, **argv):
+    def reload_from_path(path, override_hparams=None, reload_iloc=-1, reload_loc=None, reload_name=None, **argv):
 
         path = beam_path(path)
         logger.info(f"Reload experiment from path: {path}")
@@ -394,9 +394,11 @@ class Experiment(object):
 
         if override_hparams is not None:
             for k, v in override_hparams.items():
+                if k in ['reload', 'resume', 'override', 'project', 'algorithm', 'identifier', 'root_dir']:
+                    continue
                 setattr(args, k, v)
 
-        return Experiment(args, **argv)
+        return Experiment(args, reload_iloc=reload_iloc, reload_loc=reload_loc, reload_name=reload_name, **argv)
 
     def reload_checkpoint(self, alg=None, iloc=-1, loc=None, name=None):
 
@@ -417,10 +419,10 @@ class Experiment(object):
             checkpoints = checkpoints.sort_index()
 
             if loc is not None:
-                chp = checkpoints.loc[loc]['name']
+                chp = str(checkpoints.loc[loc]['name'])
                 path = self.checkpoints_dir.joinpath(chp)
             else:
-                chp = checkpoints.iloc[iloc]['name']
+                chp = str(checkpoints.iloc[iloc]['name'])
                 path = self.checkpoints_dir.joinpath(chp)
 
         logger.info(f"Reload experiment from checkpoint: {path}")

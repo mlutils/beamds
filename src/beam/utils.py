@@ -2051,3 +2051,24 @@ def get_edit_ratio(s1, s2):
 
 def get_edit_distance(s1, s2):
     return lev.distance(s1, s2)
+
+
+def filter_dict(d, keys):
+
+    if keys is True:
+        return d
+
+    if keys is False:
+        return {}
+
+    keys_type = check_type(keys)
+
+    if keys_type.major == 'scalar':
+        keys = [keys]
+
+    elif keys_type.minor in ['list', 'tuple']:
+        keys = set(keys)
+    else:
+        raise ValueError(f"keys must be a scalar, list or tuple. Got {keys_type}")
+
+    return {k: v for k, v in d.items() if k in keys}
