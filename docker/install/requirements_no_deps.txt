@@ -9,3 +9,6 @@ lightning-flash
 functorch
 
 pytorch-tabnet
+
+pytorch-forecasting
+rtdl

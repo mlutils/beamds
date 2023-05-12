@@ -9,8 +9,8 @@ import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
-    stack_batched_results, as_numpy, stack_train_results, beam_device, retrieve_name
-from .config import beam_arguments, get_beam_parser, filter_dict
+    stack_batched_results, as_numpy, stack_train_results, beam_device, retrieve_name, filter_dict
+from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset, DataBatch
 from .experiment import Experiment
 from timeit import default_timer as timer
@@ -1129,48 +1129,15 @@ class Algorithm(object):
 
         return state['aux']
 
-    def optimize_for_inference(self, networks, half=True, eval=True):
-
-        import torch_tensorrt as trt
-        logger.warning("Currently we support only models on device=0")
-        sample = self.dataset[0]
+    def optimize_for_inference(self, networks=True, **kwargs):
 
         self.inference_networks = {}
 
-        for k, v in networks.items():
+        for k, v in filter_dict(self.networks, networks).items():
 
-            v_type = check_type(v)
-            if v_type.element == 'str':
-                shape = sample.data[v].shape
-            else:
-                shape = v
+            logger.warning(f"Optimizing model: {k} with torch compile")
+            self.inference_networks[k] = torch.compile(v, **kwargs)
 
-            opt_shape = list((self.batch_size_eval, *shape))
-            min_shape = list((1, *shape))
-
-            net = copy.deepcopy(self.networks[k])
-            if eval:
-                net = net.eval()
-            else:
-                net = net.train()
-
-            torch_script_module = torch.jit.optimize_for_inference(torch.jit.script(net.eval()))
-
-            dtype = torch.half if half else torch.float
-
-            # trt_ts_module = trt.compile(torch_script_module, inputs=[trt.Input(opt_shape=opt_shape,
-            #                                                                     min_shape=min_shape,
-            #                                                                     max_shape=opt_shape,
-            #                                                                     dtype=dtype)],
-            #                                        enabled_precisions={dtype},
-            #                             require_full_compilation=True)
-
-            trt_ts_module = trt.compile(torch_script_module, inputs=[trt.Input(shape=opt_shape,
-                                                                                dtype=dtype)],
-                                                   enabled_precisions={dtype},
-                                        require_full_compilation=False)
-
-            self.inference_networks[k] = trt_ts_module
 
     def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, **kwargs):
