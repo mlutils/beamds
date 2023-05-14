@@ -239,7 +239,6 @@ class BeamData(object):
 
             self._root_path, self._all_paths, self._metadata_paths = self.single_file_case(path, all_paths,
                                                                                                self._metadata_paths)
-            self._root_path = path
 
         if ((self._all_paths is not None) or (self._root_path is not None and self._root_path.not_empty())) and \
                 not self.cached:
@@ -315,7 +314,7 @@ class BeamData(object):
         if self._index is not None:
             return self._index
 
-        if self.stored:
+        if self.stored and self.metadata_paths['index'].parent.is_dir():
 
             for path in self.metadata_paths['index'].parent.iterdir():
                 if path.stem == BeamData.metadata_files['index']:
@@ -342,7 +341,7 @@ class BeamData(object):
         if self._label is not None:
             return self._label
 
-        if self.stored:
+        if self.stored and self.metadata_paths['label'].parent.is_dir():
 
             for path in self.metadata_paths['label'].parent.iterdir():
                 if path.stem == BeamData.metadata_files['label']:
@@ -355,22 +354,19 @@ class BeamData(object):
 
     def single_file_case(self, root_path, all_paths, metadata_paths):
 
-        if all_paths is None and not root_path.is_root() and root_path.parent.is_dir():
-            for p in root_path.parent.iterdir():
-                if p.stem == root_path.stem and p.is_file():
+        if all_paths is None and not root_path.is_root() and root_path.parent.is_dir() and root_path.is_file():
 
-                    meta_root_path = p.parent
-                    if self.metadata_path_prefix is not None:
-                        if self.metadata_path_prefix.is_absolute():
-                            meta_root_path = self.metadata_path_prefix
-                        else:
-                            meta_root_path = meta_root_path.joinpath(self.metadata_path_prefix)
+            meta_root_path = root_path.parent
+            if self.metadata_path_prefix is not None:
+                if self.metadata_path_prefix.is_absolute():
+                    meta_root_path = self.metadata_path_prefix
+                else:
+                    meta_root_path = meta_root_path.joinpath(self.metadata_path_prefix)
 
-                    meta_path = meta_root_path.joinpath(f'.{p.name}')
-                    metadata_paths = {k: meta_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
-                    root_path = p
-                    all_paths = {'data': ''}
-                    break
+            meta_path = meta_root_path.joinpath(f'.{root_path.name}')
+            metadata_paths = {k: meta_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
+            all_paths = {'data': root_path.name}
+            root_path = root_path.parent
 
         return root_path, all_paths, metadata_paths
 
@@ -987,9 +983,10 @@ class BeamData(object):
             else:
                 return BeamData.containerize_keys_and_values(keys, values)
 
-        for p in path.parent.iterdir():
-            if p.stem == path.stem:
-                return p.read(**kwargs)
+        if path.parent.is_dir():
+            for p in path.parent.iterdir():
+                if p.stem == path.stem:
+                    return p.read(**kwargs)
 
         logger.warning(f"No object found in path: {path}")
         return None

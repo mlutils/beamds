@@ -93,7 +93,7 @@ if __name__ == '__main__':
     # tests = ['single_file']
     # tests = ['chunks']
     # tests = ['store_and_reload']
-    tests = ['check_stocks']
+    tests = ['seeking']
     # tests = ['empty_path']
     storage = 's3'
     # storage = 'sftp'
@@ -373,7 +373,7 @@ if __name__ == '__main__':
 
         print("done lazy tensor")
 
-    if 'check_stocks':
+    if 'check_stocks' in tests:
 
         path = beam_path('/dsi/shared/elads/elads/fin/data_16042023/')
         BeamData.clear_metadata(path)
@@ -382,5 +382,12 @@ if __name__ == '__main__':
         bdsi = bds['all_articles']
         bdsi.cache()
         v = bdsi[np.array([5000, 4, 60, 10, 10000])]
+
+    if 'seeking' in tests:
+        path = beam_path('/dsi/shared/elads/elads/fin/data_16042023/seeking/all_articles')
+        bd = BeamData.from_path(path)
+        bdi = bd[2]
+        bdi.cache()
+        print(bdi)
 
     print("done all tests")
