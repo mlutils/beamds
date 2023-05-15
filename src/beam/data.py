@@ -354,8 +354,19 @@ class BeamData(object):
 
     def single_file_case(self, root_path, all_paths, metadata_paths):
 
-        if all_paths is None and not root_path.is_root() and root_path.parent.is_dir() and root_path.is_file():
+        single_file = False
+        if all_paths is None and not root_path.is_root() and root_path.parent.is_dir():
 
+            if root_path.is_file():
+                single_file = True
+
+            for p in root_path.parent.iterdir():
+                if p.stem == root_path.stem and p.is_file():
+                    single_file = True
+                    root_path = p
+                    break
+
+        if single_file:
             meta_root_path = root_path.parent
             if self.metadata_path_prefix is not None:
                 if self.metadata_path_prefix.is_absolute():
