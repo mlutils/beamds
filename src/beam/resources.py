@@ -9,9 +9,9 @@ import numpy as np
 
 from functools import partial
 from .utils import get_edit_ratio, get_edit_distance, is_notebook, BeamURL, normalize_host
-
 from sqlalchemy.engine import create_engine
 import openai
+import re
 
 
 class BeamSQL(Processor):
@@ -27,10 +27,102 @@ class BeamSQL(Processor):
     # 4. adding pandas like api whenever possible, for example, selecting columns with __getitem__, uploading columns and tables with __setitem__, loc, iloc
     # 5. the use of sqlalchemy and direct raw sql queries will be allowed.
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, llm=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._connection = None
         self._engine = None
+        self._table = None
+        self._database = None
+        self._index = None
+        self._columns = None
+        self._llm = llm
+
+    @property
+    def llm(self):
+        return self._llm
+
+    @property
+    def database(self):
+        return self._database
+
+    @property
+    def table(self):
+        return self._table
+
+    @property
+    def index(self):
+        return self._index
+
+    @property
+    def columns(self):
+        return self._columns
+
+    def set_database(self, database):
+        self._database = database
+
+    def set_llm(self, llm):
+        self._llm = llm
+
+    def set_index(self, index):
+        self._index = index
+
+    def set_columns(self, columns):
+        self._columns = columns
+
+    def set_table(self, table):
+        self._table = table
+
+    def __getitem__(self, item):
+
+        if not isinstance(item, tuple):
+            item = (item,)
+
+        if self.table is None:
+            axes = ['table', 'index', 'columns']
+        else:
+            axes = ['index', 'columns']
+
+        for i, ind_i in enumerate(item):
+            a = axes.pop(0)
+            if a == 'table':
+                self.set_table(ind_i)
+            elif a == 'index':
+                self.set_index(ind_i)
+            elif a == 'columns':
+                self.set_columns(ind_i)
+
+        return self
+
+    def sql(self, query, **kwargs):
+        return pd.read_sql(query, self._connection, **kwargs)
+
+    def get_sample(self, n=1, **kwargs):
+        raise NotImplementedError
+
+    def get_schema(self):
+        raise NotImplementedError
+
+    def nlp(self, query, **kwargs):
+
+        schema = self.get_schema()
+
+        prompt = f"Task: generate an SQL query that best describe the following text:\n {query}\n\n" \
+                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
+                 f"Additional instructions:\n\n" \
+                 f"1. The queried table name is: {self.database}.{self.table}\n" \
+                 f"2. Assume that the schema for the queried table is:\n{schema}\n\n" \
+                 f"3. Here are 4 example rows {self.get_sample(n=4)}\n\n" \
+                 f"4. In your response use only valid column names that best match the text\n\n" \
+                 f"5. Important: your response must contain only the SQL query and nothing else, and it must be valid.\n\n" \
+                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n" \
+                 f"Response: \"\"\"\n{{text input here}}\n\"\"\""
+
+        response = self.llm.ask(prompt, **kwargs)
+
+        query = response.choices[0].text
+        query = re.sub(r'\"\"\"', '', query)
+
+        return self.sql(query)
 
     @staticmethod
     def df2table(df, name, metadata=None):
@@ -81,6 +173,29 @@ class BeamAthena(BeamSQL):
                       'region_name': self.region_name, 'access_key': self.access_key, 'secret_key': self.secret_key}
 
         super().__init__(*args, state=state, **kwargs)
+
+    def get_sample(self, n=1, **kwargs):
+
+        from pyathena.pandas.util import as_pandas
+
+        query = f"SELECT * FROM {self.database}.{self.table} LIMIT {n}"
+
+        cursor = self.connection.cursor()
+        cursor.execute(query)
+        df = as_pandas(cursor)
+
+        return df
+
+    def get_schema(self):
+
+        query = f"DESCRIBE {self.database}.{self.table}"
+
+        cursor = self.connection.cursor()
+        cursor.execute(query)
+        # Fetch the result
+        result = cursor.fetchall()
+
+        return result
 
     @property
     def engine(self):
