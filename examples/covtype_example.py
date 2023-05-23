@@ -439,6 +439,31 @@ class CovtypeDataset(UniversalDataset):
     def qt_transform(self, df_num, device=None):
         return as_tensor(self.qt.transform(as_numpy(df_num)).astype(np.float32), device=device)
 
+class FActivation(nn.Module):
+
+    def __init__(self, activation=None):
+        super().__init__()
+        if activation is None:
+            activation = 'relu'
+        self.activation = getattr(F, activation)
+
+    def forward(self, x):
+        return self.activation(x)
+
+class LinearNetComb(nn.Module):
+
+    def __init__(self, n_num, n_cat, hidden_size, n_classes, n_layers, activation=None):
+        super().__init__()
+
+        activation = FActivation(activation)
+        self.linear = LinearNet(n_num + n_cat, hidden_size, n_classes, n_layers, activation=activation)
+
+    def forward(self, x_num, x_cat):
+        x = torch.cat([x_num, x_cat], dim=1)
+        return self.linear(x)
+
+
+
 class CovtypeAlgorithm(Algorithm):
 
     def __init__(self, hparams, dataset=None, optimizers=None):
@@ -452,7 +477,7 @@ class CovtypeAlgorithm(Algorithm):
                       activation=hparams.activation, n_tables=hparams.n_tables, initial_mask=hparams.initial_mask,
                       k_p=hparams.k_p, k_i=hparams.k_i, k_d=hparams.k_d, T=hparams.T_pid, clip=hparams.clip_pid)
 
-        # net = LinearNet(dataset.n_num + dataset.n_cat, 256, dataset.n_classes, 4)
+        # net = LinearNetComb(dataset.n_num, dataset.n_cat, 256, dataset.n_classes, 4, activation=hparams.activation)
 
         # net = rtdl.FTTransformer.make_baseline(n_num_features=dataset.n_num,
         #                                        cat_cardinalities=list(as_numpy(dataset.n_categories)),
@@ -583,17 +608,26 @@ if __name__ == '__main__':
     path_to_data = '/home/shared/data/dataset/covtype'
     root_dir = '/home/shared/data/results/covtype'
 
-    args = beam_arguments(get_covtype_parser(),
-                          f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1",
-                          f" --no-half --lr-d=1e-3 --lr-s=1e-2 --batch-size=512",
-                          "--n-epochs=100 --clip-gradient=0 --parallel=1 --accumulate=1",
-                          "--momentum=0.9 --beta2=0.99", weight_factor=.0, scheduler_patience=16,
-                          weight_decay=1e-5, label_smoothing=0.,
-                          k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
-                          path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
-                          n_layers=2, scheduler_factor=1 / math.sqrt(10))
+    # hparams = beam_arguments(get_covtype_parser(),
+    #                       f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1",
+    #                       f" --no-half --lr-d=1e-3 --lr-s=1e-2 --batch-size=512",
+    #                       "--n-epochs=100 --clip-gradient=0 --parallel=1 --accumulate=1",
+    #                       "--momentum=0.9 --beta2=0.99", weight_factor=.0, scheduler_patience=16,
+    #                       weight_decay=1e-5, label_smoothing=0.,
+    #                       k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
+    #                       path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
+    #                       n_layers=2, scheduler_factor=1 / math.sqrt(10))
 
-    experiment = Experiment(args)
+    hparams = beam_arguments(get_covtype_parser(),
+                             f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=0 --no-half --lr-d=1e-3 --lr-s=.01 --batch-size=512",
+                             "--n-epochs=20 --clip-gradient=0 --parallel=1 --accumulate=1 --scheduler=one_cycle",
+                             "--weight-decay=1e-5 --beta1=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
+                             label_smoothing=.1,
+                             k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
+                             path_to_data=path_to_data, dropout=.0, activation='gelu', channels=128, n_rules=64,
+                             n_layers=2, scheduler_factor=1 / math.sqrt(10))
+
+    experiment = Experiment(hparams)
     alg = experiment.fit(Alg=CovtypeAlgorithm, Dataset=CovtypeDataset, tensorboard_arguments=None)
 
     # ## Inference

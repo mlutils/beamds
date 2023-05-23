@@ -106,7 +106,7 @@ class BeamSQL(Processor):
 
         schema = self.get_schema()
 
-        prompt = f"Task: generate an SQL query that best describe the following text:\n {query}\n\n" \
+        prompt = f"Task: generate an SQL query that best describes the following text:\n {query}\n\n" \
                  f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
                  f"Additional instructions:\n\n" \
                  f"1. The queried table name is: {self.database}.{self.table}\n" \
@@ -228,6 +228,18 @@ class BeamAthena(BeamSQL):
 
         return bd
 
+class LLMResponse:
+    def __init__(self, response, llm):
+        self.response = response
+        self.llm = llm
+    @property
+    def text(self):
+        return self.llm.extract_text(self.response)
+
+    # @property
+    # def choices(self):
+    #     return self.llm.extract_choices(self.response)
+
 
 class BeamLLM(Processor):
 
@@ -264,7 +276,7 @@ class BeamLLM(Processor):
 
     def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, model=None, temperature=1,
              top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0, frequency_penalty=0.0,
-             logit_bias=None):
+             logit_bias=None, **kwargs):
 
         '''
 
@@ -331,7 +343,7 @@ class BeamLLM(Processor):
         response_message = response.choices[0].message
         self.chat_history.append({'role': response_message.role, 'content': response_message.content})
 
-        return response
+        return LLMResponse(response, self)
 
     def docstring(self, text, element_type, name=None, docstring_format=None, parent=None, parent_name=None,
                   parent_type=None, children=None, children_type=None, children_name=None, **kwargs):
@@ -383,7 +395,7 @@ class BeamLLM(Processor):
         return res
 
     def ask(self, question, max_tokens=1024, temperature=1, top_p=1, frequency_penalty=0.0,
-            presence_penalty=0.0, stop=None, n=1, stream=False, logprobs=None, echo=False):
+            presence_penalty=0.0, stop=None, n=1, stream=False, logprobs=None, echo=False, **kwargs):
         """
         Ask a question to the model
         :param n:
@@ -399,22 +411,28 @@ class BeamLLM(Processor):
         :param stop:
         :return:
         """
-        response = self.completion(
-            engine=self.model,
-            prompt=question,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            frequency_penalty=frequency_penalty,
-            presence_penalty=presence_penalty,
-            stop=stop,
-            n=n,
-            stream=stream,
-            logprobs=logprobs,
-            echo=echo
-        )
 
-        self.update_usage(response)
+        if self.is_chat:
+            response = self.chat(question, reset_chat=True, max_tokens=1024, temperature=1, top_p=1, frequency_penalty=0.0,
+            presence_penalty=0.0, stop=None, n=1, stream=False, logprobs=None, echo=False, **kwargs)
+        else:
+            response = self.completion(
+                engine=self.model,
+                prompt=question,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=top_p,
+                frequency_penalty=frequency_penalty,
+                presence_penalty=presence_penalty,
+                stop=stop,
+                n=n,
+                stream=stream,
+                logprobs=logprobs,
+                echo=echo
+            )
+
+            self.update_usage(response)
+            response = LLMResponse(response, self)
 
         return response
 
@@ -432,8 +450,15 @@ class BeamLLM(Processor):
         else:
             prompt = f"Task: summarize the following text into {n_paragraphs} paragraphs\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        return res.choices[0].text
+        res = self.ask(prompt, **kwargs).text
+        return res
+
+    def extract_text(self, res):
+        if not self.is_chat:
+            res = res.choices[0].text
+        else:
+            res = res.choices[0].message.content
+        return res
 
     def question(self, text, question, **kwargs):
         """
@@ -445,9 +470,7 @@ class BeamLLM(Processor):
         """
         prompt = f"Task: answer the following question\nText: {text}\nQuestion: {question}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text
-
+        res = self.ask(prompt, **kwargs).text
         return res
 
     def yes_or_no(self, question, text=None, **kwargs):
@@ -466,13 +489,25 @@ class BeamLLM(Processor):
 
         prompt = f"{preface}Task: answer the following question with yes or no\nQuestion: {question}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text.lower().strip()
+        res = self.ask(prompt, **kwargs).text
+
+        res = res.lower().strip()
         res = res.split(" ")[0]
 
         i = pd.Series(['no', 'yes']).apply(partial(get_edit_ratio, s2=res)).idxmax()
         # print(res)
         return bool(i)
+
+    def quant_analysis(self, text, source=None, **kwargs):
+        """
+        Perform a quantitative analysis on a text
+        :param text: text to perform the analysis on
+        :param kwargs: additional arguments for the ask function
+        :return: analysis
+        """
+        prompt = f"Task: here is an economic news article from {source}\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
+        res = self.ask(prompt, **kwargs).text
+        return res
 
     def names_of_people(self, text, **kwargs):
         """
@@ -483,9 +518,7 @@ class BeamLLM(Processor):
         """
         prompt = f"Task: extract names of people from the following text, return in a list of comma separated values\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text
-
+        res = self.ask(prompt, **kwargs).text
         res = res.strip().split(",")
 
         return res
@@ -503,8 +536,7 @@ class BeamLLM(Processor):
         prompt = f"{input_email_thread}\n---generate message---\nFrom: {responder_from}To: {receiver_to}\n\n###\n\n"
         # prompt = f"Text: {text}\nTask: answer the following question with yes or no\nQuestion: {question}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text  # response email from model
+        res = self.ask(prompt, **kwargs).text
         return res
 
     def classify(self, text, classes, **kwargs):
@@ -517,13 +549,41 @@ class BeamLLM(Processor):
         """
         prompt = f"Task: classify the following text into one of the following classes\nText: {text}\nClasses: {classes}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text
+        res = self.ask(prompt, **kwargs).text
         res = res.lower().strip()
 
         i = pd.Series(classes).str.lower().str.strip().apply(partial(get_edit_ratio, s2=res)).idxmax()
 
         return classes[i]
+
+    def features(self, text, features=None, **kwargs):
+        """
+        Extract features from a text
+        :param text: text to extract features from
+        :param kwargs: additional arguments for the ask function
+        :return: features
+        """
+
+        if features is None:
+            features = []
+
+        features = [f.lower().strip() for f in features]
+
+        prompt = f"Task: Out of the following set of terms: {features}\n" \
+                 f"list in comma separated values (csv) the terms that describe the following Text:\n" \
+                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
+                 f" {text}\n" \
+                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
+                 f"Important: do not list any other term that did not appear in the aforementioned list.\n" \
+                 f"Response: \"\"\"\n{{text input here}}\n\"\"\""
+
+        res = self.ask(prompt, **kwargs).text
+
+        llm_features = res.split(',')
+        llm_features = [f.lower().strip() for f in llm_features]
+        features = [f for f in llm_features if f in features]
+
+        return features
 
     def entities(self, text, humans=True, **kwargs):
         """
@@ -538,24 +598,27 @@ class BeamLLM(Processor):
         else:
             prompt = f"Task: extract entities from the following text in a comma separated list\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
+        res = self.ask(prompt, **kwargs).text
 
-        entities = res.choices[0].text.split(',')
+        entities = res.split(',')
         entities = [e.lower().strip() for e in entities]
 
         return entities
 
-    def title(self, text, **kwargs):
+    def title(self, text, n_words=None, **kwargs):
         """
         Extract title from a text
         :param text: text to extract title from
         :param kwargs: additional arguments for the ask function
         :return: title
         """
-        prompt = f"Task: extract title from the following text\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
+        if n_words is None:
+            prompt = f"Task: extract title from the following text\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
+        else:
+            prompt = f"Task: extract title from the following text. Restrict the answer to {n_words} words only." \
+                     f"\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text
+        res = self.ask(prompt, **kwargs).text
 
         return res
 
@@ -571,8 +634,8 @@ class BeamLLM(Processor):
         keywords = [e.lower().strip() for e in keywords]
         prompt = f"Keywords: {keywords}\nTask: find similar keywords in the following text\nText: {text}\n\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text.split(',')
+        res = self.ask(prompt, **kwargs).text
+        res = res.split(',')
         res = [e.lower().strip() for e in res]
 
         res = list(set(res) - set(keywords))
@@ -589,8 +652,8 @@ class BeamLLM(Processor):
         """
         prompt = f"Text: {text}\nTask: answer with yes or no if Text contains one of the keywords \nKeywords: {keywords}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text.lower().strip().replace('"', "")
+        res = self.ask(prompt, **kwargs).text
+        res = res.lower().strip().replace('"', "")
 
         i = pd.Series(['no', 'yes']).apply(partial(get_edit_ratio, s2=res)).idxmax()
         return bool(i)
@@ -604,8 +667,8 @@ class BeamLLM(Processor):
         """
         prompt = f"keywords: {keywords}\nTask: return all semantic terms for given Keywords \nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
-        res = self.ask(prompt, **kwargs)
-        res = res.choices[0].text.lower().strip()
+        res = self.ask(prompt, **kwargs).text
+        res = res.lower().strip()
         return res
 
 

@@ -12,3 +12,5 @@ pytorch-tabnet
 
 pytorch-forecasting
 rtdl
+
+beam-ds

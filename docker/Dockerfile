@@ -105,14 +105,14 @@ RUN bash /workspace/install/install_cusignal.sh
 # RUN pip install faiss-gpu
 #RUN bash /workspace/install/install_faiss.sh
 
-# install beam
+# install beam - from pip
 
-RUN mkdir /workspace/beamds/
-COPY . /workspace/beamds/
-WORKDIR /workspace/beamds/
-RUN python -m build
-RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
-WORKDIR /workspace
+#RUN mkdir /workspace/beamds/
+#COPY . /workspace/beamds/
+#WORKDIR /workspace/beamds/
+#RUN python -m build
+#RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
+#WORKDIR /workspace
 
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh

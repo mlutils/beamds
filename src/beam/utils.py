@@ -689,8 +689,12 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
     elif application == 'flask':
         first_beam_range = 50
         first_global_range = 25000
+    elif application == 'ray':
+        first_beam_range = 65 
+        first_global_range = 28265
     else:
-        raise NotImplementedError
+        first_beam_range = 2
+        first_global_range = 30000
 
     if port is None:
 

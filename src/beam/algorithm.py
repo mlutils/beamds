@@ -26,19 +26,20 @@ class Algorithm(object):
                  name=None, **kwargs):
 
         self._experiment = None
+        self._default_hparams = None
+        self.hparams_warnings = []
         self.trial = None
 
         self.hparams = hparams
 
-        self.device = beam_device(hparams.device)
-        self.ddp = hparams.ddp
-        self.hpo = hparams.hpo
-
-        self.rank = hparams.rank
-        self.world_size = hparams.world_size
+        self.device = beam_device(self.get_hparam('device'))
+        self.ddp = self.get_hparam('ddp')
+        self.hpo = self.get_hparam('hpo')
+        self.rank = self.get_hparam('rank')
+        self.world_size = self.get_hparam('world_size')
 
         # some experiment hyperparameters
-        self.half = hparams.half
+        self.half = self.get_hparam('half')
         self.enable_tqdm = hparams.enable_tqdm if hparams.tqdm_threshold == 0 or not hparams.enable_tqdm else None
         self.n_epochs = hparams.n_epochs
         self.swa_epochs = 0
@@ -83,7 +84,7 @@ class Algorithm(object):
 
         self.add_components(networks=networks, optimizers=optimizers, schedulers=schedulers, processors=processors)
 
-        if hparams.reload_path is not None:
+        if self.get_hparam('reload_path') is not None:
             self.load_checkpoint(hparams.reload_path)
 
         if hparams.store_initial_weights:
@@ -91,6 +92,14 @@ class Algorithm(object):
 
         if dataset is not None:
             self.load_dataset(dataset)
+
+    @property
+    def default_hparams(self):
+
+        if self._default_hparams is None:
+            self._default_hparams = beam_arguments(get_beam_parser())
+
+        return self._default_hparams
 
     @property
     def name(self):
@@ -109,7 +118,15 @@ class Algorithm(object):
 
         if hparam in self.hparams:
             return getattr(self.hparams, hparam)
-        logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
+
+        if default is None and hparam in self.default_hparams:
+            default = self.default_hparams[hparam]
+            setattr(self.hparams, hparam, default)
+
+        if hparam not in self.hparams_warnings:
+            logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
+            self.hparams_warnings.append(hparam)
+
         return default
 
     def to(self, device):
@@ -488,7 +505,7 @@ class Algorithm(object):
                 sampler = dataset[s].build_sampler(batch_size_eval, subset=None, persistent=False)
                 d = dataset[s]
 
-            self.dataloaders[s] = d.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
+            self.dataloaders[s] = d.build_dataloader(sampler, num_workers=self.get_hparam('cpu_workers'),
                                                            pin_memory=self.pin_memory,
                                                            timeout=timeout, collate_fn=collate_fn,
                                                            worker_init_fn=worker_init_fn,
@@ -512,7 +529,7 @@ class Algorithm(object):
                                                    sample_size=sample_size)
                 d = dataset[s]
 
-            self.persistent_dataloaders[s] = d.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
+            self.persistent_dataloaders[s] = d.build_dataloader(sampler, num_workers=self.get_hparam('cpu_workers'),
                                                                       pin_memory=self.pin_memory,
                                                                       timeout=timeout, collate_fn=collate_fn,
                                                                       worker_init_fn=worker_init_fn,
@@ -522,7 +539,7 @@ class Algorithm(object):
 
         self.epoch_length = {'train': None, self.eval_subset: None}
 
-        if self.hparams.epoch_length is not None:
+        if self.get_hparam('epoch_length') is not None:
             if not isinstance(dataset, dict):
                 l_train = len(dataset.indices['train'])
                 l_eval = len(dataset.indices[self.eval_subset])
@@ -530,14 +547,14 @@ class Algorithm(object):
                 l_train = len(dataset['train'])
                 l_eval = len(dataset[self.eval_subset])
 
-            self.epoch_length['train'] = int(np.round(self.hparams.epoch_length * l_train / (l_train + l_eval)))
-            self.epoch_length[self.eval_subset] = self.hparams.epoch_length - self.epoch_length['train']
+            self.epoch_length['train'] = int(np.round(self.get_hparam('epoch_length') * l_train / (l_train + l_eval)))
+            self.epoch_length[self.eval_subset] = self.get_hparam('epoch_length') - self.epoch_length['train']
 
-        if self.hparams.epoch_length_train is not None:
-            self.epoch_length['train'] = self.hparams.epoch_length_train
+        if self.get_hparam('epoch_length_train') is not None:
+            self.epoch_length['train'] = self.get_hparam('epoch_length_train')
 
-        if self.hparams.epoch_length_eval is not None:
-            self.epoch_length[self.eval_subset] = self.hparams.epoch_length_eval
+        if self.get_hparam('epoch_length_eval') is not None:
+            self.epoch_length[self.eval_subset] = self.get_hparam('epoch_length_eval')
 
         if self.epoch_length['train'] is None:
             dataset = self.persistent_dataloaders['train'].dataset
@@ -547,18 +564,18 @@ class Algorithm(object):
             dataset = self.persistent_dataloaders[self.eval_subset].dataset
             self.epoch_length[self.eval_subset] = len(dataset.indices[self.eval_subset])
 
-        if self.hparams.scale_epoch_by_batch_size:
+        if self.get_hparam('scale_epoch_by_batch_size'):
             self.epoch_length[self.eval_subset] = math.ceil(self.epoch_length[self.eval_subset] / self.batch_size_eval)
             self.epoch_length['train'] = math.ceil(self.epoch_length['train'] / self.batch_size_train)
 
         if self.n_epochs is None:
-            self.n_epochs = self.hparams.total_steps // self.epoch_length['train']
+            self.n_epochs = self.get_hparam('total_steps') // self.epoch_length['train']
 
         if self.get_hparam('swa') is not None:
-            if int(self.hparams.swa) == self.hparams.swa:
-                self.swa_epochs = int(self.hparams.swa)
+            if int(self.get_hparam('swa')) == self.get_hparam('swa'):
+                self.swa_epochs = int(self.get_hparam('swa'))
             else:
-                self.swa_epochs = int(np.round(self.hparams.swa * self.n_epochs))
+                self.swa_epochs = int(np.round(self.get_hparam('swa') * self.n_epochs))
 
         for k, scheduler in self.schedulers_flat.items():
             if type(scheduler) is BeamScheduler:
@@ -668,8 +685,8 @@ class Algorithm(object):
         elif isinstance(subset, torch.utils.data.Dataset):
 
             dataset = subset
-            sampler = dataset.build_sampler(self.hparams.batch_size_eval, persistent=False)
-            dataloader = dataset.build_dataloader(sampler, num_workers=self.hparams.cpu_workers,
+            sampler = dataset.build_sampler(self.get_hparam('batch_size_eval'), persistent=False)
+            dataloader = dataset.build_dataloader(sampler, num_workers=self.get_hparam('cpu_workers'),
                                                   pin_memory=self.pin_memory)
         else:
 
@@ -688,10 +705,10 @@ class Algorithm(object):
 
             if index is None:
                 index = len(dataset)
-            sampler = UniversalBatchSampler(index, self.hparams.batch_size_eval, shuffle=False,
+            sampler = UniversalBatchSampler(index, self.get_hparam('batch_size_eval'), shuffle=False,
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
-                                                     num_workers=self.hparams.cpu_workers,
+                                                     num_workers=self.get_hparam('cpu_workers'),
                                                      pin_memory=self.pin_memory)
         return dataloader
 
@@ -787,15 +804,15 @@ class Algorithm(object):
             data_generator = self.data_generator(subset, persistent=True)
             for i, (ind, sample) in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp),
-                                  threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
+                                  threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                   desc=subset, total=self.epoch_length[subset]):
 
                 with torch.autocast(self.autocast_device, enabled=self.amp):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
-                    objective = results['scalar'][self.hparams.objective] \
-                        if self.hparams.objective in results['scalar'] else None
+                    objective = results['scalar'][self.get_hparam('objective')] \
+                        if self.get_hparam('objective') in results['scalar'] else None
 
-                    if not training and n < self.n_epochs:
+                    if training and n < self.n_epochs:
                         self.schedulers_step(objective, step_type='iteration')
 
                     if self.amp and training:
@@ -862,8 +879,10 @@ class Algorithm(object):
         '''
 
         objective = None
-        if self.hparams.objective is not None and self.hparams.objective in results[self.eval_subset]['scalar']:
-            objective = np.mean(results[self.eval_subset]['scalar'][self.hparams.objective])
+        objective_name = self.get_hparam('objective')
+
+        if objective_name is not None and objective_name in results[self.eval_subset]['scalar']:
+            objective = np.mean(results[self.eval_subset]['scalar'][objective_name])
             self.objective = objective
             if self.best_objective is None:
                 self.best_objective = self.objective
@@ -874,8 +893,8 @@ class Algorithm(object):
             else:
                 self.best_state = False
             results['objective'] = objective
-        elif self.hparams.objective is not None and self.hparams.objective not in results[self.eval_subset]['scalar']:
-            logger.warning(f"The objective {self.hparams.objective} is missing from the validation results")
+        elif objective_name is not None and objective_name not in results[self.eval_subset]['scalar']:
+            logger.warning(f"The objective {objective_name} is missing from the validation results")
 
         return results, objective
 
@@ -886,8 +905,8 @@ class Algorithm(object):
         '''
 
         if self.hpo == 'tune':
-            if 'objective' in self.hparams:
-                kwargs = {self.hparams.objective: objective}
+            if self.get_hparam('objective') is not None:
+                kwargs = {self.get_hparam('objective'): objective}
             else:
                 kwargs = {'objective': objective}
             tune.report(**kwargs)
@@ -937,7 +956,7 @@ class Algorithm(object):
             data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
             total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
             for i, (ind, sample) in tqdm(data_generator, enable=enable_tqdm,
-                                  threshold=self.hparams.tqdm_threshold, stats_period=self.hparams.tqdm_stats,
+                                  threshold=self.get_hparam('tqdm_threshold'), stats_period=self.hparams('tqdm_stats'),
                                   notebook=(not self.ddp), desc=desc, total=total_iterations):
                 transform, results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting,
                                          index=ind, **kwargs)
@@ -1153,7 +1172,7 @@ class Algorithm(object):
 
             return self
 
-        if self.hparams.parallel == 1:
+        if self.get_hparam('parallel') == 1:
             algorithm_generator = algorithm_generator_single
         else:
             raise NotImplementedError("To continue training in parallel mode: please re-run experiment() with "
