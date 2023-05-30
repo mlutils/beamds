@@ -332,8 +332,7 @@ class ResRuleLayer(nn.Module):
 
     def forward(self, x, e, y):
 
-        r = x
-        r = self.bn1(r.transpose(1, 2)).transpose(1, 2)
+        r = self.bn1(x.transpose(1, 2)).transpose(1, 2)
         r = self.activation(r)
 
         r1, ai = self.rl1(r)
@@ -499,7 +498,7 @@ class CovtypeAlgorithm(Algorithm):
             self.last_train_loss = float(np.mean(results['scalar']['loss']))
         else:
             val_loss = float(np.mean(results['scalar']['loss']))
-            # self.networks['net'].emb.step(self.last_train_loss, val_loss)
+            self.networks['net'].emb.step(self.last_train_loss, val_loss)
 
         return results
 
@@ -620,12 +619,11 @@ if __name__ == '__main__':
 
     hparams = beam_arguments(get_covtype_parser(),
                              f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=0 --no-half --lr-d=1e-3 --lr-s=.01 --batch-size=512",
-                             "--n-epochs=20 --clip-gradient=0 --parallel=1 --accumulate=1 --scheduler=one_cycle",
+                             "--n-epochs=200 --clip-gradient=0 --parallel=1 --accumulate=1",
                              "--weight-decay=1e-5 --beta1=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
-                             label_smoothing=.1,
-                             k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
-                             path_to_data=path_to_data, dropout=.0, activation='gelu', channels=128, n_rules=64,
-                             n_layers=2, scheduler_factor=1 / math.sqrt(10))
+                             label_smoothing=.1, initial_mask=1,
+                             path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
+                             n_layers=5, scheduler_factor=1 / math.sqrt(10))
 
     experiment = Experiment(hparams)
     alg = experiment.fit(Alg=CovtypeAlgorithm, Dataset=CovtypeDataset, tensorboard_arguments=None)

@@ -39,6 +39,10 @@ from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 import Levenshtein as lev
 
 
+TypeTuple = namedtuple('Type', 'major minor element')
+DataBatch = namedtuple("DataBatch", "index label data")
+
+
 class BeamURL:
 
     def __init__(self, url=None, scheme=None, hostname=None, port=None, username=None, password=None, path=None,
@@ -1338,9 +1342,6 @@ def check_minor_type(x):
         return 'other'
 
 
-type_tuple = namedtuple('Type', 'major minor element')
-
-
 def elt_of_list(x):
 
     if len(x) < 100:
@@ -1485,7 +1486,7 @@ def check_type(x, check_minor=True, check_element=True):
             mjt = 'other'
             elt = 'other'
 
-    return type_tuple(major=mjt, minor=mit, element=elt)
+    return TypeTuple(major=mjt, minor=mit, element=elt)
 
 
 def include_patterns(*patterns):

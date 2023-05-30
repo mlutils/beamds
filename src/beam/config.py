@@ -204,6 +204,12 @@ def get_beam_parser():
     parser.add_argument('--ssh-secret-key', type=str, default=None, help='The ssh secret key to use for ssh connections')
     parser.add_argument('--openai-api-key', type=str, default=None, help='The openai api key to use for openai connections')
 
+    # catboost
+
+    boolean_feature(parser, "cb-ranker", False, "Whether to use catboost ranker instead of regression")
+    parser.add_argument('--cb-n-estimators', type=int, default=1000, metavar='hparam',
+                        help='The number of trees in the catboost model')
+
     return parser
 
 
