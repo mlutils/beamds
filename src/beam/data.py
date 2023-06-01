@@ -11,16 +11,13 @@ from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_contain
     recursive_size_summary, container_len, is_arange, is_chunk, is_container, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key, \
-    get_closest_item_with_tuple_key
+    get_closest_item_with_tuple_key, DataBatch
 from .logger import beam_logger as logger
 from .path import BeamPath, beam_path
 from functools import partial
 from collections import defaultdict
 import time
 from copy import deepcopy
-
-
-DataBatch = namedtuple("DataBatch", "index label data")
 
 
 class Groups(object):

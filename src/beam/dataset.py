@@ -4,7 +4,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
 from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, beam_device, \
-    recursive_device, container_len
+    recursive_device, container_len, DataBatch
 import pandas as pd
 import math
 import hashlib
@@ -13,12 +13,10 @@ import warnings
 import argparse
 from collections import namedtuple
 
-DataBatch = namedtuple("DataBatch", "index data")
-
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self, *args, index=None, device='cpu', target_device=None, **kwargs):
+    def __init__(self, *args, index=None, label=None, device='cpu', target_device=None, **kwargs):
         """
         Universal Beam dataset class
 
@@ -36,6 +34,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         target_device = beam_device(target_device)
 
         self.index = None
+        self.label = label
         self.set_index(index)
 
         if not hasattr(self, 'indices_split'):
@@ -145,7 +144,11 @@ class UniversalDataset(torch.utils.data.Dataset):
         if self.target_device is not None:
             sample = to_device(sample, device=self.target_device)
 
-        return DataBatch(index=ind, data=sample)
+        label = None
+        if self.label is not None:
+            label = self.label[iloc]
+
+        return DataBatch(index=ind, data=sample, label=label)
 
     def __device__(self):
         raise NotImplementedError(f"For data type: {type(self.data)}")
@@ -213,6 +216,11 @@ class UniversalDataset(torch.utils.data.Dataset):
                 labels: iterable
                     The corresponding ground truth for the examples in data
                 """
+
+        if labels is None:
+            labels = self.label
+        if self.label is None:
+            self.label = labels
 
         indices = np.arange(len(self))
         if time_index is None:
