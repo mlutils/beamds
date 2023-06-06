@@ -13,3 +13,5 @@ nltk
 kornia
 albumentations
 timm
+tsfresh
+tsai

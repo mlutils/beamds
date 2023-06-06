@@ -954,7 +954,7 @@ class Algorithm(object):
 
         for i, (ind, label, sample) in tqdm(data_generator, enable=enable_tqdm,
                                      threshold=self.get_hparam('tqdm_threshold'),
-                                     stats_period=self.hparams('tqdm_stats'),
+                                     stats_period=self.get_hparam('tqdm_stats'),
                                      notebook=(not self.ddp and self.is_notebook), total=len(dataloader)):
             data_train.append((ind, label, sample))
 
@@ -1060,7 +1060,7 @@ class Algorithm(object):
             data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
             total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
             for i, (ind, label, sample) in tqdm(data_generator, enable=enable_tqdm,
-                                  threshold=self.get_hparam('tqdm_threshold'), stats_period=self.hparams('tqdm_stats'),
+                                  threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                   notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
                 transform, results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting,
                                          index=ind, **kwargs)
@@ -1300,7 +1300,7 @@ class Algorithm(object):
             return TransformedDataset(dataset, self, *args, **kwargs)
 
         if not kpi:
-            self(dataset, *args, predicting=True, **kwargs)
+            return self(dataset, *args, predicting=True, **kwargs)
 
         @beam_kpi
         def predict_wrapper(sample, algorithm=None, **kwargs):
