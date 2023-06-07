@@ -90,6 +90,7 @@ RUN bash /workspace/install/install_dgl.sh
 RUN python /workspace/install/downloader.py
 
 ## download nlp data
+# RUN python /workspace/install/models_downloads.py
 
 # REMOVE FOR LITE VERSION
 
@@ -105,7 +106,7 @@ RUN bash /workspace/install/install_cusignal.sh
 # RUN pip install faiss-gpu
 #RUN bash /workspace/install/install_faiss.sh
 
-# install beam - from pip
+# install beam - from pip (see requirements_no_deps.txt file)
 
 #RUN mkdir /workspace/beamds/
 #COPY . /workspace/beamds/
