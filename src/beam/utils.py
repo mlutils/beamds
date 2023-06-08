@@ -256,6 +256,20 @@ class PureBeamPath:
                     item.unlink()
             self.rmdir()
 
+    def walk(self):
+        dirs = []
+        files = []
+        for p in self.iterdir():
+            if p.is_dir():
+                dirs.append(p.name)
+            else:
+                files.append(p.name)
+
+        yield self, dirs, files
+
+        for dir in dirs:
+            yield from dir.walk()
+
     def clean(self):
 
         if self.exists():

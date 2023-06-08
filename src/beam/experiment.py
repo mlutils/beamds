@@ -12,9 +12,8 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 from shutil import copytree
 import torch
 import copy
-import shutil
 from collections import defaultdict
-from .utils import include_patterns, check_type, beam_device, check_element_type, print_beam_hyperparameters
+from .utils import include_patterns, check_type, beam_device, check_element_type, print_beam_hyperparameters, rmtree
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
@@ -262,7 +261,7 @@ class Experiment(object):
             else:
                 logger.warning("Deleting old experiment")
 
-                shutil.rmtree(self.root)
+                rmtree(self.root)
                 self.exp_name = "%04d_%s" % (exp_num, self.exptime)
                 self.root = self.base_dir.joinpath(self.exp_name)
 
@@ -400,7 +399,13 @@ class Experiment(object):
 
         return Experiment(args, reload_iloc=reload_iloc, reload_loc=reload_loc, reload_name=reload_name, **argv)
 
-    def reload_checkpoint(self, alg=None, iloc=-1, loc=None, name=None):
+    def reload_checkpoint(self, alg=None, iloc=None, loc=None, name=None):
+
+        if iloc is None and loc is None and name is None:
+            if self.checkpoints_dir.joinpath('checkpoint_best').is_file():
+                name = 'checkpoint_best'
+            else:
+                iloc = -1
 
         if name is not None:
             path = self.checkpoints_dir.joinpath(name)

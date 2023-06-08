@@ -1,12 +1,12 @@
 import argparse
 import copy
 import os
-from pathlib import Path
 import sys
 from .utils import is_notebook, check_type
 import re
 import math
 import pandas as pd
+from .path import beam_path
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
@@ -40,6 +40,10 @@ def get_beam_parser():
         reload = True, resume = <n>: resume to the <n> experiment
         
     '''
+
+    parser.add_argument('experiment_configuration', nargs='?', default=None,
+                        help='A config file (optional) for the current experiment. '
+                             'If not provided no config file will be loaded')
     parser.add_argument('--project-name', type=str, default='beam', help='The name of the beam project')
     parser.add_argument('--algorithm', type=str, default='Algorithm', help='algorithm name')
     parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
@@ -319,6 +323,11 @@ def beam_arguments(*args, **kwargs):
     args, unknown = pr.parse_known_args()
     args = add_unknown_arguments(args, unknown)
 
+    if args.experiment_configuration is not None:
+        cf = beam_path(args.experiment_configuration).read()
+        for k, v in cf.items():
+            setattr(args, k, v)
+
     for k, v in kwargs.items():
         setattr(args, k, v)
 
@@ -330,73 +339,3 @@ def beam_arguments(*args, **kwargs):
     setattr(args, 'hparams', hparams)
 
     return args
-
-
-class BeamKey:
-
-    key_names_map = {
-        'comet_api_key': 'COMET_API_KEY',
-        'aws_access_key': 'AWS_ACCESS_KEY_ID',
-        'aws_private_key': 'AWS_SECRET_ACCESS_KEY',
-        'ssh_secret_key': 'SSH_SECRET_KEY',
-        'openai_api_key': 'OPENAI_API_KEY'
-    }
-
-    def __init__(self, **kwargs):
-        self.kwargs = kwargs
-        self.keys = {}
-        self._config_path = None
-        self._config_file = None
-        self._hparams = None
-
-    @property
-    def hparams(self):
-        if self._hparams is None:
-            self._hparams = beam_arguments(**self.kwargs)
-        return self._hparams
-
-    @property
-    def config_path(self):
-        if self._config_path is None:
-            self._config_path = Path(self.hparams.config_file)
-        return self._config_path
-
-    @property
-    def config_file(self):
-        if self._config_file is None:
-            if self.config_path.is_file():
-                self._config_file = pd.read_pickle(self.config_path)
-        return self._config_file
-
-    def store(self, name=None, value=None):
-        if name is not None:
-            self.keys[name] = value
-
-        for k, v in self.keys.items():
-            self.config_file[k] = v
-
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        pd.to_pickle(self.config_file, self.config_path)
-
-    def __call__(self, name, value=None):
-
-        if value is not None:
-            self.keys[name] = value
-        elif name in self.keys:
-            value = self.keys[name]
-        elif name in self.hparams and getattr(self.hparams, name) is not None:
-            value = self.hparams[name]
-            self.keys[name] = value
-        elif name in BeamKey.key_names_map and name in os.environ:
-            value = os.environ[name]
-            self.keys[name] = value
-        elif self.config_file is not None and name in self.config_file:
-            value = self.config_file[name]
-            self.keys[name] = value
-        else:
-            ValueError(f"Cannot find key: {name} in BeamKey")
-
-        return value
-
-
-beam_key = BeamKey()
