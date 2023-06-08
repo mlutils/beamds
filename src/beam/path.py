@@ -32,13 +32,14 @@ class BeamKey:
     @property
     def config_path(self):
         if self._config_path is None:
-            self._config_path = Path(self.hparams.config_file)
+            if 'config_file' in self.hparams:
+                self._config_path = Path(self.hparams['config_file'])
         return self._config_path
 
     @property
     def config_file(self):
         if self._config_file is None:
-            if self.config_path.is_file():
+            if self.config_path is not None and self.config_path.is_file():
                 self._config_file = pd.read_pickle(self.config_path)
         return self._config_file
 
@@ -58,11 +59,11 @@ class BeamKey:
             self.keys[name] = value
         elif name in self.keys:
             value = self.keys[name]
-        elif name in self.hparams and getattr(self.hparams, name) is not None:
+        elif name in self.hparams and self.hparams[name] is not None:
             value = self.hparams[name]
             self.keys[name] = value
-        elif name in BeamKey.key_names_map and name in os.environ:
-            value = os.environ[name]
+        elif name in BeamKey.key_names_map and BeamKey.key_names_map[name] in os.environ:
+            value = os.environ[BeamKey.key_names_map[name]]
             self.keys[name] = value
         elif self.config_file is not None and name in self.config_file:
             value = self.config_file[name]

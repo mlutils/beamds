@@ -1,6 +1,6 @@
 from .processor import Processor, Transformer
 from .data import BeamData
-from .config import beam_key
+from .path import beam_key
 import pandas as pd
 
 import json
@@ -12,6 +12,11 @@ from .utils import get_edit_ratio, get_edit_distance, is_notebook, BeamURL, norm
 from sqlalchemy.engine import create_engine
 import openai
 import re
+from typing import Any, List, Mapping, Optional
+
+from langchain.callbacks.manager import CallbackManagerForLLMRun
+from langchain.llms.base import LLM
+from pydantic import BaseModel, Field
 
 
 class BeamSQL(Processor):
@@ -241,19 +246,41 @@ class LLMResponse:
     #     return self.llm.extract_choices(self.response)
 
 
-class BeamLLM(Processor):
+class BeamLLM(LLM, Processor):
+
+    model: Optional[str] = Field(None)
+    usage: Any
+    chat_history: Any
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         if not hasattr(self, 'model'):
             self.model = None
-
         self.usage = {"prompt_tokens": 0,
                       "completion_tokens": 0,
                       "total_tokens": 0}
 
         self.chat_history = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "beam_llm"
+
+    def _call(
+            self,
+            prompt: str,
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+    ) -> str:
+        res = self.ask(prompt, stop=stop)
+        return res.text
+
+    @property
+    def _identifying_params(self) -> Mapping[str, Any]:
+        """Get the identifying parameters."""
+        return {"is_chat": self.is_chat,
+                'usuage': self.usage}
 
     @property
     def is_chat(self):
@@ -672,29 +699,32 @@ class BeamLLM(Processor):
         return res
 
 
-class Vicuna(BeamLLM):
+class FastChatLLM(BeamLLM):
+
+    base_url: Optional[str] = Field(None)
+    client_resource: Optional[Any] = Field(None)
 
     def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
-            self.base_url = f"http://{normalize_host(hostname, port)}"
-            self._client = None
-            self.model = model
+        super().__init__(*args, **kwargs)
 
-            if is_notebook():
-                import nest_asyncio
-                nest_asyncio.apply()
+        self.base_url = f"http://{normalize_host(hostname, port)}"
+        self.client_resource = None
+        self.model = model
 
-            super().__init__(*args, **kwargs)
+        if is_notebook():
+            import nest_asyncio
+            nest_asyncio.apply()
 
     @property
     def client(self):
 
-        if self._client is None:
+        if self.client_resource is None:
             from fastchat import client
             # from fastchat.client import openai_api_client as client
-            self._client = client
-            self._client.set_baseurl(self.base_url)
+            self.client_resource = client
+            self.client_resource.set_baseurl(self.base_url)
 
-        return self._client
+        return self.client_resource
 
     @property
     def is_chat(self):
@@ -711,6 +741,12 @@ class Vicuna(BeamLLM):
 
 class OpenAI(BeamLLM):
 
+    api_key: Optional[str] = Field(None)
+    organization_id: Optional[str] = Field(None)
+
+    class Config:
+        allow_population_by_field_name = True
+
     def __init__(self, model='gpt-3.5-turbo', api_key=None, organization_id=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -720,8 +756,6 @@ class OpenAI(BeamLLM):
         self.api_key = api_key
         openai.api_key = api_key
         openai.organization = organization_id
-
-        self._models = None
 
     @property
     def is_chat(self):
@@ -773,10 +807,9 @@ class OpenAI(BeamLLM):
 
     @property
     def models(self):
-        if self._models is None:
-            models = openai.Model.list()
-            self._models = {m.id: m for m in models.data}
-        return self._models
+        models = openai.Model.list()
+        models = {m.id: m for m in models.data}
+        return models
 
     def embedding(self, text, model=None):
         if model is None:
@@ -819,8 +852,8 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
         api_key = beam_key('openai_api_key', api_key)
         return OpenAI(model=model, api_key=api_key, **kwargs)
 
-    elif url.protocol == 'vicuna':
-        return Vicuna(model=model, hostname=hostname, port=port, **kwargs)
+    elif url.protocol == 'fastchat':
+        return FastChatLLM(model=model, hostname=hostname, port=port, **kwargs)
 
     else:
         raise NotImplementedError
