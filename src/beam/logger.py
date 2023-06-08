@@ -12,15 +12,18 @@ import traceback
 from .path import beam_path
 import time
 
+
 class BeamLogger:
 
-    def __init__(self, path=None):
+    def __init__(self, path=None, print=True):
         self.logger = loguru.logger
         self.logger.remove()
+        self.handlers_queue = []
         self.running_platform = running_platform()
         
-        self.handlers = {'stdout': self.logger.add(sys.stdout, level='INFO', colorize=True, format=
-           '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')}
+        self.handlers = {}
+        if print:
+            self.print()
 
         self.file_objects = {}
         self.path = None
@@ -28,6 +31,13 @@ class BeamLogger:
             self.add_file_handlers(path)
 
         atexit.register(self.cleanup)
+
+    def dont_print(self):
+        self.logger.remove(self.handlers['stdout'])
+
+    def print(self):
+        self.handlers['stdout'] = self.logger.add(sys.stdout, level='INFO', colorize=True, format=
+        '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
 
     def cleanup(self):
         for handler in self.handlers.values():
@@ -63,16 +73,18 @@ class BeamLogger:
 
         self.handlers[str(json_path)] = handler
 
-    def context_path(path):
-        self.add_file_handlers(path)
-        self.context.append(path)
+    def open(self, path):
+        path = beam_path(path)
+        self.handlers_queue.append(path)
+        return self
+
+    def __enter__(self):
+        self.add_file_handlers(self.handlers_queue[-1])
         return self
     
-    def __enter__():
-        return self
-    
-    def __exit__():
-        self.remove_path(self.context.pop())
+    def __exit__(self, exc_type, exc_value, traceback):
+        path = self.handlers_queue.pop()
+        self.remove_file_handler(path)
     
     def remove_file_handler(self, name):
         for suffix in ['debug.log', 'json.log']:
@@ -108,73 +120,67 @@ class BeamLogger:
 
 beam_logger = BeamLogger()
 
+
 def beam_kpi(beam_result_class, path=None):
-    
     def _beam_kpi(func):
         def wrapper(x, *args, username=None, ip_address=None, algorithm=None, **kwargs):
 
+            execution_time = datetime.now()
+
+            # Get the IP address of the computer
+            if ip_address is None:
+                ip_address = socket.gethostbyname(socket.gethostname())
+
+            # Get the username of the current user
+            if username is None:
+                username = getpass.getuser()
+
+            algorithm_class = None
+            algorithm_name = None
+            experiment_path = None
+            if algorithm is None:
+                algorithm_class = type(algorithm).__name__
+                if hasattr(algorithm, 'name'):
+                    algorithm_name = algorithm.name
+                if hasattr(algorithm, 'experiment') and algorithm.experiment is not None:
+                    experiment_path = algorithm.experiment.root
+
+            result = None
+            exception_message = None
+            exception_type = None
+            tb = None
+            error = None
+            try:
+                with Timer() as timer:
+                    result = func(x, *args, **kwargs)
+            except Exception as e:
+                error = e
+                exception_message = str(e)
+                exception_type = type(e).__name__
+                tb = traceback.format_exc()
+                beam_logger.exception(e)
+            finally:
+
+                metadata = dict(ip_address=ip_address, username=username, execution_time=execution_time,
+                                elapsed=timer.elapsed, algorithm_class=algorithm_class, algorithm_name=algorithm_name,
+                                experiment_path=experiment_path, exception_message=exception_message,
+                                exception_type=exception_type, traceback=tb)
+
                 logpaths = [path, kwargs.get('path')]
-                for logpath in logpaths:
-                    print(f'adding {logpath}')
-                    if logpath is not None:
-                        logpath = beam_path(logpath)
-                        beam_logger.add_file_handlers(logpath)
-                        print(beam_logger.handlers)
-                execution_time = datetime.now()
 
-                # Get the IP address of the computer
-                if ip_address is None:
-                    ip_address = socket.gethostbyname(socket.gethostname())
+                kpi = beam_result_class(input=x, input_args=args, input_kwargs=kwargs, result=result,
+                                        metadata=metadata, logpaths=logpaths)
+                if error is not None:
+                    raise error
 
-                # Get the username of the current user
-                if username is None:
-                    username = getpass.getuser()
-
-                algorithm_class = None
-                algorithm_name = None
-                experiment_path = None
-                if algorithm is None:
-                    algorithm_class = type(algorithm).__name__
-                    if hasattr(algorithm, 'name'):
-                        algorithm_name = algorithm.name
-                    if hasattr(algorithm, 'experiment') and algorithm.experiment is not None:
-                        experiment_path = algorithm.experiment.root
-
-                result = None
-                exception_message = None
-                exception_type = None
-                tb = None
-                error = None
-                try:
-                    with Timer() as timer:
-                        result = func(x, *args, **kwargs)
-                except Exception as e:
-                    error = e
-                    exception_message = str(e)
-                    exception_type = type(e).__name__
-                    tb = traceback.format_exc()
-                    beam_logger.exception(e)
-                finally:
-
-                    metadata = dict(ip_address=ip_address, username=username, execution_time=execution_time,
-                                    elapsed=timer.elapsed, algorithm_class=algorithm_class, algorithm_name=algorithm_name,
-                                    experiment_path=experiment_path, exception_message=exception_message,
-                                    exception_type=exception_type, traceback=tb)
-                    kpi = beam_result_class(input=x, input_args=args, input_kwargs=kwargs, result=result, metadata=metadata)
-                    if error is not None:
-                        raise error
-                for logpath in logpaths:
-                    if logpath is not None:
-                        logpath = beam_path(logpath)
-                        print(f'removing {logpath}')
-                        beam_logger.remove_file_handler(logpath)
                 return kpi
         return wrapper
     return _beam_kpi
 
+
 class BeamResult:
 
-    def __init__(self, input=None, input_args=None, input_kwargs=None, result=None, metadata=None):
+    def __init__(self, input=None, input_args=None, input_kwargs=None, result=None, metadata=None, logpaths=None):
         self.uuid = str(uuid.uuid4())
         self.input = input
         self.result = result
@@ -182,20 +188,26 @@ class BeamResult:
         self.input_args = input_args
         self.input_kwargs = input_kwargs
         self.beam_logger = beam_logger
+        if logpaths is None:
+            logpaths = []
+        logpaths = [path for path in logpaths if path is not None]
+        self.logpaths = logpaths
 
         extra = {'type': 'kpi_metadata', 'uuid': {self.uuid}, 'input': self.input, 'input_args': self.input_args,
                  'input_kwargs': self.input_kwargs, 'result': self.result, **self.metadata}
 
-        self.beam_logger.info(f'BeamResult: {self.uuid} | username: {self.metadata["username"]} | '
-                              f'ip_address: {self.metadata["ip_address"]} | '
-                              f'execution_time: {self.metadata["execution_time"]} | '
-                              f'elapsed: {self.metadata["elapsed"]} | '
-                              f'algorithm_class: {self.metadata["algorithm_class"]} | '
-                              f'algorithm_name: {self.metadata["algorithm_name"]} | '
-                              f'experiment_path: {self.metadata["experiment_path"]} |'
-                              f'exception_message: {self.metadata["exception_message"]} | '
-                              f'exception_type: {self.metadata["exception_type"]} | ',
-                              extra=extra)
+        for logpath in self.logpaths:
+            with self.beam_logger.open(logpath):
+                self.beam_logger.info(f'BeamResult: {self.uuid} | username: {self.metadata["username"]} | '
+                                      f'ip_address: {self.metadata["ip_address"]} | '
+                                      f'execution_time: {self.metadata["execution_time"]} | '
+                                      f'elapsed: {self.metadata["elapsed"]} | '
+                                      f'algorithm_class: {self.metadata["algorithm_class"]} | '
+                                      f'algorithm_name: {self.metadata["algorithm_name"]} | '
+                                      f'experiment_path: {self.metadata["experiment_path"]} |'
+                                      f'exception_message: {self.metadata["exception_message"]} | '
+                                      f'exception_type: {self.metadata["exception_type"]} | ',
+                                      extra=extra)
 
     def __repr__(self):
         return str(self)
@@ -207,17 +219,22 @@ class BeamResult:
 
         extra = {'type': 'kpi_like', 'uuid': {self.uuid}, 'explanation': explanation}
 
-        self.beam_logger.info(f'KPI: {self.uuid} | like', extra=extra)
-        if explanation is not None:
-            self.beam_logger.info(f'KPI: {self.uuid} | like | explanation: {explanation}', extra=extra)
+        for logpath in self.logpaths:
+            with self.beam_logger.open(logpath):
+
+                self.beam_logger.info(f'KPI: {self.uuid} | like', extra=extra)
+                if explanation is not None:
+                    self.beam_logger.info(f'KPI: {self.uuid} | like | explanation: {explanation}', extra=extra)
 
     def dislike(self, explanation=None):
 
         extra = {'type': 'kpi_dislike', 'uuid': {self.uuid}, 'explanation': explanation}
 
-        self.beam_logger.warning(f'KPI: {self.uuid} | dislike', extra=extra)
-        if explanation is not None:
-            self.beam_logger.warning(f'KPI: {self.uuid} | dislike | explanation: {explanation}', extra=extra)
+        for logpath in self.logpaths:
+            with self.beam_logger.open(logpath):
+                self.beam_logger.warning(f'KPI: {self.uuid} | dislike', extra=extra)
+                if explanation is not None:
+                    self.beam_logger.warning(f'KPI: {self.uuid} | dislike | explanation: {explanation}', extra=extra)
 
     def rate(self, rating, explanation=None):
 
@@ -231,14 +248,18 @@ class BeamResult:
         else:
             log_func = self.beam_logger.info
 
-        log_func(f'KPI: {self.uuid} | rating: {rating}/5', extra=extra)
-        if explanation is not None:
-            log_func(f'KPI: {self.uuid} | rating: {rating}/5 | explanation: {explanation}', extra=extra)
+        for logpath in self.logpaths:
+            with self.beam_logger.open(logpath):
+                log_func(f'KPI: {self.uuid} | rating: {rating}/5', extra=extra)
+                if explanation is not None:
+                    log_func(f'KPI: {self.uuid} | rating: {rating}/5 | explanation: {explanation}', extra=extra)
 
     def notes(self, notes):
 
         extra = {'type': 'kpi_notes', 'uuid': {self.uuid}, 'notes': notes}
-        self.beam_logger.info(f'KPI: {self.uuid} | notes: {notes}', extra=extra)
+        for logpath in self.logpaths:
+            with self.beam_logger.open(logpath):
+                self.beam_logger.info(f'KPI: {self.uuid} | notes: {notes}', extra=extra)
 
 
 class Timer(object):
