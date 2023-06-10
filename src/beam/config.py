@@ -6,7 +6,7 @@ from .utils import is_notebook, check_type
 import re
 import math
 import pandas as pd
-from .path import beam_path
+from .path import beam_path, beam_key
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
@@ -337,5 +337,7 @@ def beam_arguments(*args, **kwargs):
 
     hparams = [pai.dest for pai in pr._actions if pai.metavar == 'hparam']
     setattr(args, 'hparams', hparams)
+
+    beam_key.set_hparams(vars(args))
 
     return args

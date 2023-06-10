@@ -245,6 +245,18 @@ class PureBeamPath:
                     return True
         return False
 
+    def copy(self, dst):
+
+        if self.is_dir():
+            dst.mkdir(parents=True, exist_ok=True)
+            for p in self.iterdir():
+                p.copy(dst / p.name)
+        else:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            with self.open("rb") as f:
+                with dst.open("wb") as g:
+                    g.write(f.read())
+
     def rmtree(self):
         if self.is_file():
             self.unlink()
@@ -268,7 +280,7 @@ class PureBeamPath:
         yield self, dirs, files
 
         for dir in dirs:
-            yield from dir.walk()
+            yield from self.joinpath(dir).walk()
 
     def clean(self):
 
@@ -473,6 +485,18 @@ class PureBeamPath:
 
     def replace(self, target):
         return NotImplementedError
+
+    def read_io(self, mode=None, **kwargs):
+
+            if mode is None:
+                mode = self.mode
+
+            if mode == 'rb':
+                return self.file_object.read_bytes()
+            elif mode == 'r':
+                return self.file_object.read_text(**kwargs)
+            else:
+                raise NotImplementedError
 
     def read(self, ext=None, **kwargs):
 
