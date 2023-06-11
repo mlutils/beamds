@@ -28,6 +28,7 @@ class BeamImporter:
             'datetime': 'datetime.datetime',
             'date': 'datetime.date',
             'tqdm': 'tqdm.notebook.tqdm',
+            'beam': 'beam',
 
         }
         self.__all__ = list(self.aliases.keys())  # Iterable of attribute names

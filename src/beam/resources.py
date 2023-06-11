@@ -16,7 +16,7 @@ from typing import Any, List, Mapping, Optional
 
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class BeamSQL(Processor):
@@ -702,13 +702,13 @@ class BeamLLM(LLM, Processor):
 class FastChatLLM(BeamLLM):
 
     base_url: Optional[str] = Field(None)
-    client_resource: Optional[Any] = Field(None)
+    _client: Any = PrivateAttr()
 
     def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.base_url = f"http://{normalize_host(hostname, port)}"
-        self.client_resource = None
+        self._client = None
         self.model = model
 
         if is_notebook():
@@ -718,13 +718,13 @@ class FastChatLLM(BeamLLM):
     @property
     def client(self):
 
-        if self.client_resource is None:
+        if self._client is None:
             from fastchat import client
             # from fastchat.client import openai_api_client as client
-            self.client_resource = client
-            self.client_resource.set_baseurl(self.base_url)
+            self._client = client
+            self._client.set_baseurl(self.base_url)
 
-        return self.client_resource
+        return self._client
 
     @property
     def is_chat(self):
@@ -743,6 +743,7 @@ class OpenAI(BeamLLM):
 
     api_key: Optional[str] = Field(None)
     organization_id: Optional[str] = Field(None)
+    _models: Any = PrivateAttr()
 
     class Config:
         allow_population_by_field_name = True
@@ -754,6 +755,7 @@ class OpenAI(BeamLLM):
         self.model = model
         self.organization_id = organization_id
         self.api_key = api_key
+        self._models = None
         openai.api_key = api_key
         openai.organization = organization_id
 
@@ -807,9 +809,11 @@ class OpenAI(BeamLLM):
 
     @property
     def models(self):
-        models = openai.Model.list()
-        models = {m.id: m for m in models.data}
-        return models
+        if self._models is None:
+            models = openai.Model.list()
+            models = {m.id: m for m in models.data}
+            self._models = models
+        return self._models
 
     def embedding(self, text, model=None):
         if model is None:
