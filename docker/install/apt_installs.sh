@@ -31,6 +31,7 @@ apt install -y binwalk
 apt install -y ncdu
 apt install -y vim
 apt install -y zip
+apt install -y unixodbc-dev
 
 pip install pykerberos
 

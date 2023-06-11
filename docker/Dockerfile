@@ -115,6 +115,9 @@ RUN bash /workspace/install/install_cusignal.sh
 #RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
 #WORKDIR /workspace
 
+# install odbc driver
+# https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server?view=sql-server-ver16&tabs=ubuntu18-install%2Calpine17-install%2Cdebian8-install%2Credhat7-13-install%2Crhel7-offline
+
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh
 
