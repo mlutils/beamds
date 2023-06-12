@@ -108,8 +108,8 @@ RUN bash /workspace/install/install_cusignal.sh
 
 # install beam - from pip (see requirements_no_deps.txt file)
 
-#RUN mkdir /workspace/beamds/
-#COPY . /workspace/beamds/
+RUN mkdir /workspace/beamds/
+COPY . /workspace/beamds/
 #WORKDIR /workspace/beamds/
 #RUN python -m build
 #RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
@@ -117,6 +117,7 @@ RUN bash /workspace/install/install_cusignal.sh
 
 # install odbc driver
 # https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server?view=sql-server-ver16&tabs=ubuntu18-install%2Calpine17-install%2Cdebian8-install%2Credhat7-13-install%2Crhel7-offline
+RUN bash /workspace/install/install_odbc.sh
 
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh
