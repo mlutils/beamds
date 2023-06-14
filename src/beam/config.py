@@ -50,8 +50,12 @@ def get_beam_parser():
 
     parser.add_argument('--mp-port', type=str, default='random', help='Port to be used for multiprocessing')
 
-    parser.add_argument('--root-dir', type=str, default=os.path.join(os.path.expanduser('~'), 'beam_projects'),
-                         help='Root directory for Logs and results')
+    parser.add_argument('--root-dir', type=str,
+                        default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'results'),
+                        help='Root directory for Logs and results')
+    parser.add_argument('--ray-dir', type=str,
+                        default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'ray_results'),
+                        help='Root directory for Logs and results')
 
     parser.add_argument('--path-to-data', type=str, default=None, help='Where the dataset is located')
 

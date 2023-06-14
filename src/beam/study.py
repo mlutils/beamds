@@ -96,12 +96,15 @@ class Study(object):
             print_beam_hyperparameters(hparams)
 
         root_path = beam_path(self.hparams.root_dir)
-        self.ray_logs = root_path.joinpath('ray_results', self.hparams.project_name, self.hparams.algorithm,
-                                           self.hparams.identifier)
+        if type(root_path) is BeamPath:
+            self.ray_dir = str(root_path.joinpath('ray_results', self.hparams.project_name, self.hparams.algorithm,
+                                                  self.hparams.identifier))
+        else:
+            self.ray_dir = self.hparams.ray_dir
 
-        if not isinstance(self.ray_logs, BeamPath):
+        if not isinstance(self.ray_dir, BeamPath):
             ValueError("Currently ray.tune does not support not-local-fs path, please provide local root_dir path")
-        self.ray_logs = str(self.ray_logs)
+        self.ray_dir = str(self.ray_dir)
 
         self.experiments_tracker = []
         self.track_results = track_results
@@ -269,7 +272,7 @@ class Study(object):
 
         runner_tune = partial(self.runner_tune, parallel=parallel)
 
-        logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {self.ray_logs}")
+        logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {self.ray_dir}")
 
         if 'metric' not in kwargs.keys():
             if 'objective' in self.hparams and self.hparams.objective is not None:
@@ -282,7 +285,7 @@ class Study(object):
         if 'progress_reporter' not in kwargs.keys() and is_notebook():
             kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
 
-        analysis = tune.run(runner_tune, config=config, local_dir=self.ray_logs, *args, stop=stop, **kwargs)
+        analysis = tune.run(runner_tune, config=config, local_dir=self.ray_dir, *args, stop=stop, **kwargs)
 
         return analysis
 
