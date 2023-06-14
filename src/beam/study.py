@@ -90,6 +90,7 @@ class Study(object):
         else:
             self.ag = algorithm_generator
         self.hparams = hparams
+        self.conf = {}
 
         if print_hyperparameters:
             print_beam_hyperparameters(hparams)
@@ -107,6 +108,57 @@ class Study(object):
         self.track_algorithms = track_algorithms
         self.track_hparams = track_hparams
         self.track_suggestion = track_suggestion
+
+    def uniform(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'uniform', 'args': args, 'kwargs': kwargs}
+
+    def loguniform(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'loguniform', 'args': args, 'kwargs': kwargs}
+
+    def choice(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'choice', 'args': args, 'kwargs': kwargs}
+
+    def quniform(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'quniform', 'args': args, 'kwargs': kwargs}
+
+    def qloguniform(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'qloguniform', 'args': args, 'kwargs': kwargs}
+
+    def randn(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'randn', 'args': args, 'kwargs': kwargs}
+
+    def qrandn(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'qrandn', 'args': args, 'kwargs': kwargs}
+
+    def randint(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'randint', 'args': args, 'kwargs': kwargs}
+
+    def qrandint(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'qrandint', 'args': args, 'kwargs': kwargs}
+
+    def lograndint(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'lograndint', 'args': args, 'kwargs': kwargs}
+
+    def qlograndint(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'qlograndint', 'args': args, 'kwargs': kwargs}
+
+    def grid_search(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'grid_search', 'args': args, 'kwargs': kwargs}
+
+    def sample_from(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'sample_from', 'args': args, 'kwargs': kwargs}
+
+    def categorical(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'categorical', 'args': args, 'kwargs': kwargs}
+
+    def discrete_uniform(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'discrete_uniform', 'args': args, 'kwargs': kwargs}
+
+    def float(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'float', 'args': args, 'kwargs': kwargs}
+
+    def int(self, param, *args, **kwargs):
+        self.conf[param.strip('-').replace('-', '_')] = {'func': 'int', 'args': args, 'kwargs': kwargs}
 
     def tracker(self, algorithm=None, results=None, hparams=None, suggestion=None):
 
@@ -184,8 +236,14 @@ class Study(object):
             else:
                 return results['objective']
 
-    def tune(self, config, *args, timeout=0, runtime_env=None, dashboard_port=None,
+    def tune(self, *args, config=None, timeout=0, runtime_env=None, dashboard_port=None,
              get_port_from_beam_port_range=True, include_dashboard=True, **kwargs):
+
+        if config is None:
+            config = {}
+
+        base_conf = {k: getattr(tune, v['func'])(*v['args'], **v['kwargs']) for k, v in self.conf.items()}
+        config.update(base_conf)
 
         ray.shutdown()
 
@@ -214,8 +272,8 @@ class Study(object):
         logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {self.ray_logs}")
 
         if 'metric' not in kwargs.keys():
-            if 'objective' in self.hparams:
-                kwargs['metric'] = self.hparams['objective']
+            if 'objective' in self.hparams and self.hparams.objective is not None:
+                kwargs['metric'] = self.hparams.objective
             else:
                 kwargs['metric'] = 'objective'
         if 'mode' not in kwargs.keys():
@@ -281,8 +339,12 @@ class Study(object):
 
         return study
 
-    def optuna(self, suggest, load_study=False, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
+    def optuna(self, suggest=None, load_study=False, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
                load_if_exists=False, directions=None, *args, **kwargs):
+
+        if suggest is None:
+            suggest = lambda trial: {k: getattr(trial, f'suggest_{v["func"]}')(k, *v['args'], **v['kwargs'])
+                        for k, v in self.conf.items()}
 
         if not 'cpu' in self.hparams.device:
             if 'n_jobs' not in kwargs or kwargs['n_jobs'] != 1:
