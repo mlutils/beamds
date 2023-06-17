@@ -638,51 +638,35 @@ class PureBeamPath:
         return self
 
 
-def stack_train_results(results, batch_size=None):
-    stacked_results = defaultdict(dict)
-
-    for k_type in results.keys():
-        for k_name, v in results[k_type].items():
-            stacked_results[k_type][k_name] = v
-
-    stacked_results = stack_batched_results(stacked_results, batch_size=batch_size)
-
-    return stacked_results
-
-
 def stack_batched_results(results, batch_size=None):
+    # this step is done in order to be able to pickle the results
+    stacked_results = defaultdict(dict)
     for n, res in results.items():
         for k, v in res.items():
-            v_type = check_type(v)
-            if v_type.major == 'container':
-                v = recursive_flatten(v)
-                v_type = check_type(v)
-
-            if v_type.major == 'container' and v_type.element == 'array':
-
-                if v_type.minor == 'tensor':
+            if type(v) == list:
+                v_minor = check_type(v[0]).minor
+                if v_minor == 'tensor':
                     oprs = {'cat': torch.cat, 'stack': torch.stack}
-                elif v_type.minor == 'numpy':
+                elif v_minor == 'numpy':
                     oprs = {'cat': np.concatenate, 'stack': np.stack}
-                elif v_type.minor == 'pandas':
+                elif v_minor == 'pandas':
                     oprs = {'cat': pd.concat, 'stack': pd.concat}
+                elif v_minor == 'native':
+                    oprs = {'cat': torch.tensor, 'stack': torch.tensor}
                 else:
-                    break
+                    oprs = {'cat': lambda x: x, 'stack': lambda x: x}
 
                 opr = oprs['cat']
-                if batch_size is not None and v[0].shape != batch_size:
+                if batch_size is not None and hasattr(v[0], '__len__') \
+                        and len(v[0]) != batch_size and len(v[0]) == len(v[-1]):
                     opr = oprs['stack']
 
-                results[n][k] = opr(results[n][k])
+                stacked_results[n][k] = opr(results[n][k])
 
-            elif v_type.major == 'array' and v_type.minor in ['list', 'tuple']:
-                vi_type = check_type(v[0])
-                if vi_type.minor in ['numpy', 'native']:
-                    results[n][k] = np.stack(results[n][k])
-                elif vi_type.minor == 'tensor':
-                    results[n][k] = torch.stack(results[n][k])
+            else:
+                stacked_results[n][k] = results[n][k]
 
-    return results
+    return stacked_results
 
 
 def rate_string_format(n, t):
@@ -1918,16 +1902,29 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
     return x
 
 
-def concat_data(data):
+def recursive_concatenate(data, dim=0):
     d0 = data[0]
     if isinstance(d0, dict):
-        return {k: concat_data([di[k] for di in data]) for k in d0.keys()}
+        return {k: recursive_concatenate([di[k] for di in data], dim=dim) for k in d0.keys()}
     elif isinstance(d0, list) or isinstance(d0, tuple):
-        return [concat_data([di[n] for di in data]) for n in range(len(d0))]
-    elif isinstance(d0, torch.Tensor):
-        return torch.cat(data)
+        return [recursive_concatenate([di[n] for di in data], dim=dim) for n in range(len(d0))]
     else:
-        return data
+        minor_type = check_minor_type(d0)
+
+        if minor_type == 'tensor':
+            func = torch.cat
+            kwargs = {'dim': dim}
+        elif minor_type == 'pandas':
+            func = pd.concat
+            data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
+            kwargs = {'axis': dim}
+        elif minor_type == 'numpy':
+            func = np.concatenate
+            kwargs = {'axis': dim}
+        else:
+            raise ValueError(f"Concatenation not implemented for {minor_type}, returning the original data")
+
+        return func(data, **kwargs)
 
 
 def batch_augmentation_(x, augmentations):

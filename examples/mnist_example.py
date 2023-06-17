@@ -85,9 +85,9 @@ class MNISTAlgorithm(Algorithm):
     def early_stopping(self, results=None, epoch=None, **kwargs):
 
         if 'validation' in results:
-            acc = np.mean(results['validation']['scalar']['acc'])
+            acc = torch.mean(results['validation']['scalar']['acc'])
         else:
-            acc = np.mean(results['test']['scalar']['acc'])
+            acc = torch.mean(results['test']['scalar']['acc'])
 
         return acc > self.stop_at
 
@@ -147,11 +147,10 @@ class MNISTAlgorithm(Algorithm):
 
     def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
-        y_pred = torch.cat(results['predictions']['y_pred'])
-        y_pred = as_numpy(torch.argmax(y_pred, dim=1))
+        y_pred = as_numpy(torch.argmax(results['predictions']['y_pred'], dim=1))
 
         if not predicting:
-            y_true = as_numpy(torch.cat(results['predictions']['target']))
+            y_true = as_numpy(results['predictions']['target'])
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
             results['metrics']['recall'] = recall
@@ -218,12 +217,12 @@ if __name__ == '__main__':
     # train
     alg = experiment(mnist_algorithm_generator)
 
-    ind, examples = alg.dataset[np.random.choice(len(alg.dataset), size=50000, replace=True)]
-    res = alg.predict(examples['x'])
+    examples = alg.dataset[np.random.choice(len(alg.dataset), size=50000, replace=True)]
+    res = alg.predict(examples.data['x'])
 
     # ## Inference
     inference = alg('validation')
-    inference = alg({'x': examples['x'], 'y': examples['y']})
+    inference = alg({'x': examples.data['x'], 'y': examples.data['y']})
 
     print('Test inference results:')
     for n, v in inference.statistics['metrics'].items():

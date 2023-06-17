@@ -8,8 +8,8 @@ from .logger import beam_logger as logger
 import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
-from .utils import finite_iterations, to_device, check_type, rate_string_format, concat_data, \
-    stack_batched_results, as_numpy, stack_train_results, beam_device, retrieve_name, filter_dict, \
+from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
+    stack_batched_results, as_numpy, beam_device, retrieve_name, filter_dict, \
     recursive_collate_chunks, is_notebook, DataBatch
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
@@ -18,7 +18,8 @@ from timeit import default_timer as timer
 from ray import tune
 from .path import beam_path, PureBeamPath
 from .processor import Processor
-from .logger import beam_kpi
+from .logger import beam_kpi, BeamResult
+from .data import BeamData
 
 
 class Algorithm(object):
@@ -833,7 +834,7 @@ class Algorithm(object):
                             if scaler._scale is not None:
                                 scaler.update()
 
-            results = stack_train_results(results, batch_size=self.batch_size_train)
+            results = stack_batched_results(results, batch_size=self.batch_size_train)
             results = self.postprocess_epoch(sample=sample, index=ind, results=results, epoch=n, training=training)
 
             batch_size = self.batch_size_train if training else self.batch_size_eval
@@ -1068,7 +1069,7 @@ class Algorithm(object):
                 index.append(ind)
 
             index = torch.cat(index)
-            transforms = concat_data(transforms)
+            transforms = recursive_concatenate(transforms)
             results = stack_batched_results(results, batch_size=batch_size)
 
             results = self.postprocess_inference(sample=sample, index=ind, transforms=transforms,
@@ -1079,7 +1080,7 @@ class Algorithm(object):
                 dataset = UniversalDataset(transforms, index=index)
                 dataset.set_statistics(results)
             else:
-                dataset = DataBatch(index=index, data=transforms)
+                dataset = DataBatch(index=index, data=transforms, label=None)
 
         return dataset
 
@@ -1302,8 +1303,8 @@ class Algorithm(object):
         if not kpi:
             return self(dataset, *args, predicting=True, **kwargs)
 
-        @beam_kpi
-        def predict_wrapper(sample, algorithm=None, **kwargs):
+        @beam_kpi(BeamResult)
+        def predict_wrapper(sample, algorithm=self, **kwargs):
             return algorithm(sample, predicting=True, **kwargs)
 
         return predict_wrapper(dataset, algorithm=self, *args, **kwargs)

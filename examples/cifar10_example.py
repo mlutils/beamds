@@ -367,12 +367,11 @@ class CIFAR10Algorithm(Algorithm):
         return y_hat, results
 
     def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
-        y_pred = torch.cat(results['predictions']['y_pred'])
 
-        y_pred = as_numpy(torch.argmax(y_pred, dim=1))
+        y_pred = as_numpy(torch.argmax(results['predictions']['y_pred'], dim=1))
 
         if not predicting:
-            y_true = as_numpy(torch.cat(results['predictions']['target']))
+            y_true = as_numpy(results['predictions']['target'])
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
             results['metrics']['recall'] = recall

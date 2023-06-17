@@ -323,12 +323,17 @@ class BeamData(object):
             info = self.info
             if self.orientation in ['columns', 'simple',  'simplified_index']:
                 self._index = info.index.values
-            else:
+            elif self.orientation == 'index':
                 # TODO: support index for packed and index case
                 @recursive
                 def replace_key_map_with_index(ind):
                     return self.info[self.info.fold == ind].index.values
                 self._index = replace_key_map_with_index(deepcopy(self.key_map))
+            elif self.orientation == 'packed':
+                # no consistent definition of index for packed case
+                self._index = None
+            else:
+                raise ValueError(f"Unknown orientation: {self.orientation}")
 
         return self._index
 
