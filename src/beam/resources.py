@@ -12,6 +12,23 @@ from .utils import get_edit_ratio, get_edit_distance, is_notebook, BeamURL, norm
 from sqlalchemy.engine import create_engine
 import openai
 import re
+import torch
+import transformers
+from transformers import AutoTokenizer
+
+INSTRUCTION_KEY = "### Instruction:"
+RESPONSE_KEY = "### Response:"
+INTRO_BLURB = "Below is an instruction that describes a task. Write a response that appropriately completes the request."
+PROMPT_FOR_GENERATION_FORMAT = """{intro}
+{instruction_key}
+{instruction}
+{response_key}
+""".format(
+    intro=INTRO_BLURB,
+    instruction_key=INSTRUCTION_KEY,
+    instruction="{instruction}",
+    response_key=RESPONSE_KEY,
+)
 
 
 class BeamSQL(Processor):
@@ -428,7 +445,8 @@ class BeamLLM(Processor):
                 n=n,
                 stream=stream,
                 logprobs=logprobs,
-                echo=echo
+                echo=echo,
+                **kwargs
             )
 
             self.update_usage(response)
@@ -455,7 +473,11 @@ class BeamLLM(Processor):
 
     def extract_text(self, res):
         if not self.is_chat:
-            res = res.choices[0].text
+            if self.huggingface:
+                res = res[0]['generated_text']
+                res = res.split('#\n')[0]
+            else:
+                res = res.choices[0].text
         else:
             res = res.choices[0].message.content
         return res
@@ -486,9 +508,12 @@ class BeamLLM(Processor):
             preface = ''
         else:
             preface = f"Text: {text}\n"
-
-        prompt = f"{preface}Task: answer the following question with yes or no\nQuestion: {question}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
-
+        prompt_body = f"answer the following question with yes or no\nQuestion: {question}"
+        if self.huggingface:
+            instruction = f'{preface}{prompt_body}'
+            prompt = PROMPT_FOR_GENERATION_FORMAT.format(instruction=instruction)
+        else:
+            prompt = f"{preface}Task:{prompt_body}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
         res = self.ask(prompt, **kwargs).text
 
         res = res.lower().strip()
@@ -547,7 +572,12 @@ class BeamLLM(Processor):
         :param kwargs: additional arguments for the ask function
         :return: class
         """
-        prompt = f"Task: classify the following text into one of the following classes\nText: {text}\nClasses: {classes}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
+        prompt_body = f'classify the following text into one of the following classes\nText: {text}\nClasses: {classes}'
+        if self.huggingface:
+            instruction = f"{prompt_body}"
+            prompt = PROMPT_FOR_GENERATION_FORMAT.format(instruction=instruction)
+        else:
+            prompt = f"Task: {prompt_body}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
 
         res = self.ask(prompt, **kwargs).text
         res = res.lower().strip()
@@ -569,13 +599,20 @@ class BeamLLM(Processor):
 
         features = [f.lower().strip() for f in features]
 
-        prompt = f"Task: Out of the following set of terms: {features}\n" \
+        
+        prompt_body = f"Out of the following set of terms: {features}\n" \
                  f"list in comma separated values (csv) the terms that describe the following Text:\n" \
-                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
-                 f" {text}\n" \
-                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
-                 f"Important: do not list any other term that did not appear in the aforementioned list.\n" \
-                 f"Response: \"\"\"\n{{text input here}}\n\"\"\""
+                 f" {text}\n" 
+                 # f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
+
+                 # f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
+                 # f"Important: do not list any other term that did not appear in the aforementioned list.\n"
+        if self.huggingface:
+            instruction = f"{prompt_body}"
+            prompt = PROMPT_FOR_GENERATION_FORMAT.format(instruction=instruction)
+        else:
+            prompt = f"Task: {prompt_body}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
+            
 
         res = self.ask(prompt, **kwargs).text
 
@@ -594,10 +631,15 @@ class BeamLLM(Processor):
         :return: entities
         """
         if humans:
-            prompt = f"Task: extract people from the following text in a comma separated list\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
+            prompt_body = f'extract people from the following text in a comma separated list\nText: {text}'
         else:
-            prompt = f"Task: extract entities from the following text in a comma separated list\nText: {text}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
-
+            prompt_body = f'extract entities from the following text in a comma separated list\nText: {text}'
+        if self.huggingface:
+            instruction = f"{prompt_body}"
+            prompt = PROMPT_FOR_GENERATION_FORMAT.format(instruction=instruction)
+        else:
+            prompt = f"Task: {prompt_body}\nResponse: \"\"\"\n{{text input here}}\n\"\"\""
+               
         res = self.ask(prompt, **kwargs).text
 
         entities = res.split(',')
@@ -678,6 +720,7 @@ class Vicuna(BeamLLM):
             self.base_url = f"http://{normalize_host(hostname, port)}"
             self._client = None
             self.model = model
+            self.huggingface = False
 
             if is_notebook():
                 import nest_asyncio
@@ -707,8 +750,41 @@ class Vicuna(BeamLLM):
                                                  max_tokens=max_tokens, stop=stop, timeout=timeout,
                                                  # stream=stream
                                                  )
+    
+class MPT(BeamLLM):
 
+    def __init__(self, model=None, device=None, *args, **kwargs):
+            self._client = None
+            # self.model = model
+            self.huggingface = True
+            super().__init__(*args, **kwargs)
+            config = transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)
+            config.init_device = device # For fast initialization directly on GPU!
 
+            model = transformers.AutoModelForCausalLM.from_pretrained(
+              model,
+              config=config,
+              torch_dtype=torch.bfloat16, # Load model weights in bfloat16
+              trust_remote_code=True
+            )
+
+            tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+
+            pipeline = transformers.pipeline(model=model, tokenizer=tokenizer, task='text-generation', device=device)
+            self.model = pipeline
+
+    @property
+    def is_chat(self):
+        return False
+
+    def completion(self, engine=None, prompt=None, max_tokens=None, temperature=None, n=None,
+                   stop=None,top_p=None, frequency_penalty=None, presence_penalty=None,
+                   stream=None, logprobs=None, echo=None, **kwargs):
+        return engine(prompt, max_new_tokens=kwargs['max_new_tokens'], temperature=temperature, stop=stop, top_p=top_p, clean_up_tokenization_spaces=True, 
+                      return_full_text=kwargs['return_full_text'])
+
+                
+                
 class OpenAI(BeamLLM):
 
     def __init__(self, model='gpt-3.5-turbo', api_key=None, organization_id=None, *args, **kwargs):
@@ -720,7 +796,7 @@ class OpenAI(BeamLLM):
         self.api_key = api_key
         openai.api_key = api_key
         openai.organization = organization_id
-
+        self.huggingface = False
         self._models = None
 
     @property
@@ -786,7 +862,7 @@ class OpenAI(BeamLLM):
         return embedding
 
 
-def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwargs):
+def beam_llm(url, username=None, hostname=None, port=None, api_key=None, device=None, **kwargs):
 
     if type(url) != str:
         return url
@@ -808,6 +884,9 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
     if api_key is None and 'api_key' in kwargs:
         api_key = kwargs.pop('api_key')
+        
+    if device is None and 'device' in kwargs:
+        device = kwargs.pop('device')
 
     model = url.path
     model = model.lstrip('/')
@@ -821,6 +900,9 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
     elif url.protocol == 'vicuna':
         return Vicuna(model=model, hostname=hostname, port=port, **kwargs)
+    
+    elif url.protocol == 'mpt':
+        return MPT(model=model, device=device,**kwargs)
 
     else:
         raise NotImplementedError
