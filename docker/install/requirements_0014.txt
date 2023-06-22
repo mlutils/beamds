@@ -5,3 +5,4 @@ llama-index
 deeplake
 peft
 farm-haystack
+einops
