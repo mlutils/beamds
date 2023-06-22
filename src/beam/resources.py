@@ -407,7 +407,7 @@ class BeamLLM(LLM, Processor):
 
         if parent is not None:
             prompt = f"{prompt}" \
-                     f"where is parent {parent_type}: {parent_name}, has the following docstring\n\n" \
+                     f"where its parent {parent_type}: {parent_name}, has the following docstring\n\n" \
                      f"========================================================================\n\n" \
                      f"{parent}\n\n" \
                      f"========================================================================\n\n"
