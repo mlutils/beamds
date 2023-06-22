@@ -2,3 +2,4 @@ fschat
 openai
 langchain
 llama-index
+pypdf
