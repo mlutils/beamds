@@ -70,7 +70,7 @@ class Study(object):
     def __init__(self, hparams, Alg=None, Dataset=None, algorithm_generator=None, print_results=False,
                  alg_args=None, alg_kwargs=None, dataset_args=None, dataset_kwargs=None, enable_tqdm=False,
                  print_hyperparameters=True, track_results=False, track_algorithms=False,
-                 track_hparams=True, track_suggestion=True):
+                 track_hparams=True, track_suggestion=True, hpo_dir=None):
 
         logger.info(f"Creating new study (Beam version: {__version__})")
         hparams.reload = False
@@ -95,16 +95,23 @@ class Study(object):
         if print_hyperparameters:
             print_beam_hyperparameters(hparams)
 
-        root_path = beam_path(self.hparams.root_dir)
-        if type(root_path) is BeamPath:
-            self.ray_dir = str(root_path.joinpath('ray_results', self.hparams.project_name, self.hparams.algorithm,
-                                                  self.hparams.identifier))
-        else:
-            self.ray_dir = self.hparams.ray_dir
+        if hpo_dir is None:
+            if self.hparams.hpo_dir is not None:
 
-        if not isinstance(self.ray_dir, BeamPath):
-            ValueError("Currently ray.tune does not support not-local-fs path, please provide local root_dir path")
-        self.ray_dir = str(self.ray_dir)
+                root_path = beam_path(self.hparams.hpo_dir)
+                hpo_dir = str(root_path.joinpath('hpo_results', self.hparams.project_name, self.hparams.algorithm,
+                                                 self.hparams.identifier))
+
+            else:
+                root_path = beam_path(self.hparams.root_dir)
+                if type(root_path) is BeamPath:
+                    hpo_dir = str(root_path.joinpath('hpo_results', self.hparams.project_name, self.hparams.algorithm,
+                                                          self.hparams.identifier))
+
+        self.hpo_dir = hpo_dir
+
+        if hpo_dir is None:
+            logger.warning("No hpo_dir specified. HPO results will be saved only to each experiment directory.")
 
         self.experiments_tracker = []
         self.track_results = track_results
@@ -182,6 +189,11 @@ class Study(object):
         if len(tracker):
             self.experiments_tracker.append(tracker)
 
+        if self.hpo_dir is not None:
+            path = beam_path(self.hpo_dir).joinpath('tracker')
+            path.mkdir(parents=True, exist_ok=True)
+            path.joinpath('tracker.pkl').write(tracker)
+
     @staticmethod
     def init_ray(runtime_env=None, dashboard_port=None, include_dashboard=True):
 
@@ -240,10 +252,15 @@ class Study(object):
                 return results['objective']
 
     def tune(self, *args, config=None, timeout=0, runtime_env=None, dashboard_port=None,
-             get_port_from_beam_port_range=True, include_dashboard=True, **kwargs):
+             get_port_from_beam_port_range=True, include_dashboard=True, local_dir=None, **kwargs):
 
         if config is None:
             config = {}
+
+        if local_dir is None and self.hpo_dir is not None:
+            path = beam_path(self.hpo_dir)
+            local_dir = path.joinpath('tune')
+            local_dir.mkdir(parents=True, exist_ok=True)
 
         base_conf = {k: getattr(tune, v['func'])(*v['args'], **v['kwargs']) for k, v in self.conf.items()}
         config.update(base_conf)
@@ -272,7 +289,7 @@ class Study(object):
 
         runner_tune = partial(self.runner_tune, parallel=parallel)
 
-        logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {self.ray_dir}")
+        logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {local_dir}")
 
         if 'metric' not in kwargs.keys():
             if 'objective' in self.hparams and self.hparams.objective is not None:
@@ -285,7 +302,7 @@ class Study(object):
         if 'progress_reporter' not in kwargs.keys() and is_notebook():
             kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
 
-        analysis = tune.run(runner_tune, config=config, local_dir=self.ray_dir, *args, stop=stop, **kwargs)
+        analysis = tune.run(runner_tune, config=config, local_dir=local_dir, *args, stop=stop, **kwargs)
 
         return analysis
 
@@ -314,6 +331,14 @@ class Study(object):
 
         if study_name is None:
             study_name = f'{self.hparams.project_name}/{self.hparams.algorithm}/{self.hparams.identifier}'
+
+        if storage is None:
+            if self.hpo_dir is not None:
+
+                path = beam_path(self.hpo_dir)
+                path.joinpath('optuna').mkdir(parents=True, exist_ok=True)
+
+                storage = f'sqlite:///{self.hpo_dir}/{study_name}.db'
 
         if load_study:
             study = optuna.create_study(storage=storage, sampler=sampler, pruner=pruner, study_name=study_name)
@@ -365,6 +390,6 @@ class Study(object):
             study = optuna.create_study(storage=storage, sampler=sampler, pruner=pruner, study_name=study_name,
                                         direction=direction, load_if_exists=load_if_exists, directions=directions)
 
-        study.optimize(runner, *args, **kwargs)
+        study.optimize(runner, *args, gc_after_trial=True, **kwargs)
 
         return study

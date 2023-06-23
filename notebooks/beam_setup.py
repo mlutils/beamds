@@ -76,8 +76,8 @@ def load_ipython_extension(ipython):
     if beam_path is not None:
         sys.path.insert(0, beam_path)
 
-    sys.path.insert(0, '../..')
-    sys.path.insert(0, '../../src')
+    sys.path.insert(0, '..')
+    sys.path.insert(0, '../src')
     # import beam._imports as lazy_importer
 
     beam_importer = BeamImporter()

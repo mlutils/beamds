@@ -82,7 +82,8 @@ for d in pytorch_datasets:
 
 
 model_names = ["bert-base-cased", "aubmindlab/bert-base-arabertv02", "xlm-roberta-base",
-               "bert-base-multilingual-cased", "asafaya/bert-mini-arabic"]
+               "bert-base-multilingual-cased", "asafaya/bert-mini-arabic",
+               "facebook/contriever"]
 
 
 for m in model_names:

@@ -108,8 +108,10 @@ RUN bash /workspace/install/install_cusignal.sh
 
 # install beam - from pip (see requirements_no_deps.txt file)
 
-#RUN mkdir /workspace/beamds/
-#COPY . /workspace/beamds/
+RUN mkdir /workspace/beamds/
+COPY . /workspace/beamds/
+ENV PATH "$PATH:/workspace/beamds/notebooks/"
+
 #WORKDIR /workspace/beamds/
 #RUN python -m build
 #RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
