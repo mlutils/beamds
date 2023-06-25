@@ -17,6 +17,7 @@ from typing import Any, List, Mapping, Optional
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
 from pydantic import BaseModel, Field, PrivateAttr
+from transformers.pipelines import Conversation
 
 
 class BeamSQL(Processor):
@@ -250,7 +251,7 @@ class BeamLLM(LLM, Processor):
 
     model: Optional[str] = Field(None)
     usage: Any
-    chat_history: Any
+    _chat_history: PrivateAttr()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -261,7 +262,25 @@ class BeamLLM(LLM, Processor):
                       "completion_tokens": 0,
                       "total_tokens": 0}
 
-        self.chat_history = []
+        self._chat_history = None
+        self.reset_chat()
+
+    def conversation(self):
+        return self._chat_history
+
+    def reset_chat(self):
+        self._chat_history = Conversation()
+
+    def chat_history(self):
+        ch = list(self._chat_history.iter_texts())
+        return [{'role': 'user' if m[0] else 'assistant', 'content': m[1]} for m in ch]
+
+    def add_to_chat(self, text, is_user=True):
+        if is_user:
+            self._chat_history.add_user_input(text)
+        else:
+            self._chat_history.append_response(text)
+            self._chat_history.mark_processed()
 
     @property
     def _llm_type(self) -> str:
@@ -324,7 +343,7 @@ class BeamLLM(LLM, Processor):
         '''
 
         if reset_chat:
-            self.chat_history = []
+            self.reset_chat()
 
         messages = []
         if system is not None:
@@ -335,11 +354,11 @@ class BeamLLM(LLM, Processor):
 
         messages.extend(self.chat_history)
 
+        self.add_to_chat(message, is_user=True)
         message = {'role': 'user', 'content': message}
         if name is not None:
             message['name'] = name
 
-        self.chat_history.append(message)
         messages.append(message)
 
         kwargs = {}
@@ -368,7 +387,8 @@ class BeamLLM(LLM, Processor):
 
         self.update_usage(response)
         response_message = response.choices[0].message
-        self.chat_history.append({'role': response_message.role, 'content': response_message.content})
+        self.add_to_chat(response_message.content, is_user=False)
+        # self.chat_history.append({'role': response_message.role, 'content': response_message.content})
 
         return LLMResponse(response, self)
 
@@ -387,7 +407,7 @@ class BeamLLM(LLM, Processor):
 
         if parent is not None:
             prompt = f"{prompt}" \
-                     f"where is parent {parent_type}: {parent_name}, has the following docstring\n\n" \
+                     f"where its parent {parent_type}: {parent_name}, has the following docstring\n\n" \
                      f"========================================================================\n\n" \
                      f"{parent}\n\n" \
                      f"========================================================================\n\n"
@@ -737,7 +757,66 @@ class FastChatLLM(BeamLLM):
                                                  max_tokens=max_tokens, stop=stop, timeout=timeout,
                                                  # stream=stream
                                                  )
+import transformers
+from transformers import AutoTokenizer
+from .utils import beam_device
+import torch
 
+class HuggingFaceLLM(BeamLLM):
+
+    def __init__(self, model, tokenizer=None, device=None, dtype=None, chat=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if device is None:
+            kwargs['device_map'] = 'auto'
+        else:
+            kwargs['device'] = beam_device(device)
+
+        if dtype is None:
+            dtype = torch.bfloat16
+        else:
+            dtype = getattr(torch, dtype)
+
+        if chat:
+            task = 'conversational'
+        else:
+            task = 'text-generation'
+
+        tokenizer = AutoTokenizer.from_pretrained(model)
+
+        pipeline = transformers.pipeline(model=model,
+                                         tokenizer=tokenizer,
+                                         task=task,
+                                         trust_remote_code=True,
+                                         **kwargs)
+
+        self._pipeline = pipeline
+
+    # engine = self.model,
+    # prompt = question,
+    # temperature = temperature,
+    # max_tokens = max_tokens,
+    # top_p = top_p,
+    # frequency_penalty = frequency_penalty,
+    # presence_penalty = presence_penalty,
+    # stop = stop,
+    # n = n,
+    # stream = stream,
+    # logprobs = logprobs,
+    # echo = echo
+
+    def completion(self, prompt=None, **kwargs):
+        return self._pipeline(prompt, pad_token_id=self._pipeline.tokenizer.eos_token_id, **kwargs)
+
+        # config = transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)
+        # config.init_device = device  # For fast initialization directly on GPU!
+        #
+        # model = transformers.AutoModelForCausalLM.from_pretrained(
+        #     model,
+        #     config=config,
+        #     torch_dtype=torch.bfloat16,  # Load model weights in bfloat16
+        #     trust_remote_code=True
+        # )
 
 class OpenAI(BeamLLM):
 

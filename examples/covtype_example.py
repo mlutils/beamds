@@ -495,9 +495,9 @@ class CovtypeAlgorithm(Algorithm):
         # x_num, x_cat, y = sample['x_num'], sample['x_cat'], sample['y']
 
         if training:
-            self.last_train_loss = float(np.mean(results['scalar']['loss']))
+            self.last_train_loss = float(torch.mean(results['scalar']['loss']))
         else:
-            val_loss = float(np.mean(results['scalar']['loss']))
+            val_loss = float(torch.mean(results['scalar']['loss']))
             self.networks['net'].emb.step(self.last_train_loss, val_loss)
 
         return results
@@ -555,11 +555,10 @@ class CovtypeAlgorithm(Algorithm):
 
     def postprocess_inference(self, sample=None, results=None, subset=None, with_labels=True, **kwargs):
 
-        y_pred = torch.cat(results['predictions']['y_pred'])
-        y_pred = as_numpy(torch.argmax(y_pred, dim=1))
+        y_pred = as_numpy(torch.argmax(results['predictions']['y_pred'], dim=1))
 
         if with_labels:
-            y_true = as_numpy(torch.cat(results['predictions']['target']))
+            y_true = as_numpy(results['predictions']['target'])
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
             results['metrics']['precision'] = precision
             results['metrics']['recall'] = recall

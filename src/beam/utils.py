@@ -11,9 +11,11 @@ import pandas as pd
 import json
 import pyarrow.feather as feather
 import __main__
+import pickle
 
 try:
     import modin.pandas as mpd
+
     has_modin = True
 except ImportError:
     mpd = None
@@ -37,7 +39,6 @@ from pathlib import PurePath
 from argparse import Namespace
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 import Levenshtein as lev
-
 
 TypeTuple = namedtuple('Type', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
@@ -187,7 +188,6 @@ def retrieve_name(var):
 
 
 class PureBeamPath:
-
     feather_index_mark = "feather_index:"
 
     def __init__(self, *pathsegments, url=None, scheme=None, hostname=None, port=None, username=None, password=None,
@@ -488,15 +488,15 @@ class PureBeamPath:
 
     def read_io(self, mode=None, **kwargs):
 
-            if mode is None:
-                mode = self.mode
+        if mode is None:
+            mode = self.mode
 
-            if mode == 'rb':
-                return self.file_object.read_bytes()
-            elif mode == 'r':
-                return self.file_object.read_text(**kwargs)
-            else:
-                raise NotImplementedError
+        if mode == 'rb':
+            return self.file_object.read_bytes()
+        elif mode == 'r':
+            return self.file_object.read_text(**kwargs)
+        else:
+            raise NotImplementedError
 
     def read(self, ext=None, **kwargs):
 
@@ -546,14 +546,14 @@ class PureBeamPath:
                         x.append(record)
             elif ext in ['.json', '.ndjson']:
 
-                #TODO: add json read with fastavro and shcema
+                # TODO: add json read with fastavro and shcema
                 # x = []
                 # with open(path, 'r') as fo:
                 #     for record in fastavro.json_reader(fo):
                 #         x.append(record)
 
                 nd = ext == '.ndjson'
-                x = pd.read_json(fo, lines=nd,  **kwargs)
+                x = pd.read_json(fo, lines=nd, **kwargs)
 
             elif ext == '.orc':
                 import pyarrow as pa
@@ -638,52 +638,35 @@ class PureBeamPath:
         return self
 
 
-def stack_train_results(results, batch_size=None):
-
-    stacked_results = defaultdict(dict)
-
-    for k_type in results.keys():
-        for k_name, v in results[k_type].items():
-            stacked_results[k_type][k_name] = v
-
-    stacked_results = stack_batched_results(stacked_results, batch_size=batch_size)
-
-    return stacked_results
-
-
 def stack_batched_results(results, batch_size=None):
+    # this step is done in order to be able to pickle the results
+    stacked_results = defaultdict(dict)
     for n, res in results.items():
         for k, v in res.items():
-            v_type = check_type(v)
-            if v_type.major == 'container':
-                v = recursive_flatten(v)
-                v_type = check_type(v)
-
-            if v_type.major == 'container' and v_type.element == 'array':
-
-                if v_type.minor == 'tensor':
+            if type(v) == list:
+                v_minor = check_type(v[0]).minor
+                if v_minor == 'tensor':
                     oprs = {'cat': torch.cat, 'stack': torch.stack}
-                elif v_type.minor == 'numpy':
+                elif v_minor == 'numpy':
                     oprs = {'cat': np.concatenate, 'stack': np.stack}
-                elif v_type.minor == 'pandas':
+                elif v_minor == 'pandas':
                     oprs = {'cat': pd.concat, 'stack': pd.concat}
+                elif v_minor == 'native':
+                    oprs = {'cat': torch.tensor, 'stack': torch.tensor}
                 else:
-                    break
+                    oprs = {'cat': lambda x: x, 'stack': lambda x: x}
 
                 opr = oprs['cat']
-                if batch_size is not None and v[0].shape != batch_size:
+                if batch_size is not None and hasattr(v[0], '__len__') \
+                        and len(v[0]) != batch_size and len(v[0]) == len(v[-1]):
                     opr = oprs['stack']
 
-                results[n][k] = opr(results[n][k])
+                stacked_results[n][k] = opr(results[n][k])
 
-            elif v_type.major == 'array' and v_type.minor in ['list', 'tuple']:
-                vi_type = check_type(v[0])
-                if vi_type.minor in ['numpy', 'native']:
-                    results[n][k] = np.stack(results[n][k])
-                elif vi_type.minor == 'tensor':
-                    results[n][k] = torch.stack(results[n][k])
+            else:
+                stacked_results[n][k] = results[n][k]
 
-    return results
+    return stacked_results
 
 
 def rate_string_format(n, t):
@@ -693,7 +676,6 @@ def rate_string_format(n, t):
 
 
 def print_beam_hyperparameters(args, debug_only=False):
-
     from .logger import beam_logger as logger
 
     if debug_only:
@@ -722,7 +704,6 @@ def print_beam_hyperparameters(args, debug_only=False):
 
 
 def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
-
     from .logger import beam_logger as logger
 
     if application == 'tensorboard':
@@ -732,7 +713,7 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
         first_beam_range = 50
         first_global_range = 25000
     elif application == 'ray':
-        first_beam_range = 65 
+        first_beam_range = 65
         first_global_range = 28265
     else:
         first_beam_range = 2
@@ -754,7 +735,6 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
                 base_range = int(conf.set_index('parameters').loc['initials'])
 
             if base_range is not None:
-
                 port_range = range(base_range * 100, (base_range + 1) * 100)
                 port_range = np.roll(np.array(port_range), -first_beam_range)
 
@@ -779,7 +759,6 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
 
 
 def is_boolean(x):
-
     x_type = check_type(x)
     if x_type.minor in ['numpy', 'pandas', 'tensor'] and 'bool' in str(x.dtype).lower():
         return True
@@ -790,7 +769,6 @@ def is_boolean(x):
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
-
     if isinstance(s, slice):
 
         f = torch.arange if arr_type == 'tensor' else np.arange
@@ -809,7 +787,7 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
 
         start = s.start
         if start is None:
-            start = 0 if step > 0 else l-1
+            start = 0 if step > 0 else l - 1
         elif start < 0:
             start = l + start
 
@@ -845,7 +823,6 @@ def get_notebook_name():
 
 
 def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
-
     keys = []
     values = []
     for k, v in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition, dim=dim):
@@ -862,7 +839,6 @@ def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
 
 
 def is_arange(x):
-
     x_type = check_type(x)
 
     if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
@@ -901,7 +877,6 @@ def is_arange(x):
 
 
 def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
-
     x_type = check_type(x)
 
     try:
@@ -943,7 +918,6 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
 
 
 def recursive_size(x):
-
     x_type = check_type(x)
     if x_type.major == 'container':
 
@@ -961,52 +935,31 @@ def recursive_size(x):
 
     else:
 
-        if x_type.minor == 'tensor':
-            return x.element_size() * x.nelement()
-        elif x_type.minor in ['numpy', 'scipy_sparse']:
+        return object_size(x, x_type=x_type)
+
+
+def object_size(x, x_type=None):
+    if x_type is None:
+        x_type = check_type(x)
+    if x_type.minor == 'tensor':
+        return x.element_size() * x.nelement()
+    elif x_type.minor in ['numpy', 'scipy_sparse']:
+        return x.size * x.dtype.itemsize
+    elif x_type.minor == 'pandas':
+        try:
+            return np.sum(x.memory_usage(index=True, deep=True))
+        except:
             return x.size * x.dtype.itemsize
-        elif x_type.minor == 'pandas':
-            try:
-                return np.sum(x.memory_usage(index=True, deep=True))
-            except:
-                return x.size * x.dtype.itemsize
-        elif x_type.minor == 'list':
-            if len(x) <= 1000:
-                return np.sum([sys.getsizeof(i) for i in x])
-            ind = np.random.randint(len(x), size=(1000,))
-            return len(x) * np.mean([sys.getsizeof(x[i]) for i in ind])
-        else:
-            return sys.getsizeof(x)
-
-
-# def recursive(func):
-#
-#     def apply_recursively(x, *args, **kwargs):
-#
-#         x_type = check_type(x)
-#         if x_type.major == 'container':
-#
-#             keys = []
-#             values = []
-#
-#             for k, v in iter_container(x):
-#                 keys.append(k)
-#                 values.append(apply_recursively(v, *args, **kwargs))
-#
-#             if x_type.minor == 'dict':
-#                 values = dict(zip(keys, values))
-#
-#             return values
-#
-#         else:
-#
-#             return func(x, *args, **kwargs)
-#
-#     return apply_recursively
+    elif x_type.minor == 'list':
+        if len(x) <= 1000:
+            return np.sum([sys.getsizeof(i) for i in x])
+        ind = np.random.randint(len(x), size=(1000,))
+        return len(x) * np.mean([sys.getsizeof(x[i]) for i in ind])
+    else:
+        return sys.getsizeof(x)
 
 
 def recursive(func):
-
     def apply_recursively(x, *args, **kwargs):
 
         if is_container(x):
@@ -1030,8 +983,39 @@ def recursive(func):
     return apply_recursively
 
 
-def recursive_keys(x):
+def beam_hash(x):
+    h = hashlib.sha1()
+    _beam_hash(x, h)
+    return h.hexdigest()
 
+
+@recursive
+def _beam_hash(x, h, bytes_threshold=int(1e6), fast=True):
+    if object_size(x) > bytes_threshold and fast:
+        h.update(big_array_representation(x))
+    else:
+        h.update(pickle.dumps(x))
+
+
+def big_array_representation(x):
+    n = 100
+    nl = 1000
+
+    metadata = None
+    minor_type = check_minor_type(x)
+    if minor_type == 'pandas':
+        metadata = x.columns
+        x = x.values
+    if minor_type in ['numpy', 'tensor', 'pandas', 'modin']:
+        ind = tuple(slice(0, i, i // n) if i > n else slice(None) for i in x.shape)
+        x = x.__getitem__(ind)
+    if minor_type in ['list', 'tuple', 'set']:
+        x = list(x)[::len(x) // nl]
+
+    return str((minor_type, metadata, x)).encode('utf-8')
+
+
+def recursive_keys(x):
     x_type = check_type(x)
     if x_type.major == 'container':
 
@@ -1059,7 +1043,6 @@ def recursive_keys(x):
 
 
 def recursive_size_summary(x, mode='sum'):
-
     x_type = check_type(x)
 
     if x_type.minor == 'dict':
@@ -1094,7 +1077,6 @@ def recursive_size_summary(x, mode='sum'):
 
 
 def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
-
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = check_type(x, check_element=False)
 
@@ -1136,7 +1118,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
         else:
             for j, i in enumerate(np.array_split(np.arange(l), n_chunks)):
 
-                v = x[i[0]:i[-1]+1]
+                v = x[i[0]:i[-1] + 1]
                 if squeeze and len(v) == 1:
                     v = v[0]
                 yield j, v
@@ -1156,7 +1138,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
                 c = []
 
-        i = i+1 if i > 0 else i
+        i = i + 1 if i > 0 else i
         yield i, c
 
 
@@ -1179,10 +1161,9 @@ def empty_elements(x):
 
 
 def is_empty(x):
-
-        x = empty_elements(x)
-        x = recursive_flatten(x)
-        return all(x)
+    x = empty_elements(x)
+    x = recursive_flatten(x)
+    return all(x)
 
 
 def recursive_merge(dfs, method='tree', **kwargs):
@@ -1193,9 +1174,10 @@ def recursive_merge(dfs, method='tree', **kwargs):
     if method == 'series':
         return recursive_merge([dfs[0], recursive_merge(dfs[1:], method='series', **kwargs)], method='series', **kwargs)
     if method == 'tree':
-        return recursive_merge([recursive_merge(dfs[:len(dfs)//2], method='tree', **kwargs),
-                                recursive_merge(dfs[len(dfs)//2:], method='tree', **kwargs)], method='tree', **kwargs)
+        return recursive_merge([recursive_merge(dfs[:len(dfs) // 2], method='tree', **kwargs),
+                                recursive_merge(dfs[len(dfs) // 2:], method='tree', **kwargs)], method='tree', **kwargs)
     raise ValueError('Unknown method type')
+
 
 def is_chunk(path, chunk_pattern='_chunk'):
     return path.is_file() and bool(re.search(rf'\d{6}{chunk_pattern}\.', str(path.name)))
@@ -1208,7 +1190,6 @@ def iter_container(x):
 
 
 def rmtree(path):
-
     if type(path) is str:
         path = Path(path)
 
@@ -1224,7 +1205,6 @@ def rmtree(path):
 
 
 def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
-
     x_type = check_type(xs[0])
     if x_type.major == 'container':
 
@@ -1245,7 +1225,6 @@ def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree')
 
 
 def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'):
-
     if len(xs) == 0:
         return []
 
@@ -1295,7 +1274,6 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
 
 
 def pretty_format_number(x):
-
     if x is None or np.isinf(x) or np.isnan(x):
         return f'{x}'.ljust(10)
     if int(x) == x and np.abs(x) < 10000:
@@ -1321,7 +1299,6 @@ def beam_device(device):
 
 
 def check_element_type(x):
-
     unknown = (check_minor_type(x) == 'other')
 
     if not unknown and not np.isscalar(x) and (not (torch.is_tensor(x) and (not len(x.shape)))):
@@ -1355,7 +1332,6 @@ def check_element_type(x):
 
 
 def check_minor_type(x):
-
     if isinstance(x, torch.Tensor):
         return 'tensor'
     if isinstance(x, np.ndarray):
@@ -1381,7 +1357,6 @@ def check_minor_type(x):
 
 
 def elt_of_list(x):
-
     if len(x) < 100:
         sampled_indices = range(len(x))
     else:
@@ -1494,7 +1469,7 @@ def check_type(x, check_minor=True, check_element=True):
                     elts = [check_element_type(xi) for xi in x]
 
                 else:
-                    ind = np.random.randint(len(x), size=(100, ))
+                    ind = np.random.randint(len(x), size=(100,))
                     elts = [check_element_type(x[i]) for i in ind]
 
                 if len(set(elts)) == 1:
@@ -1547,11 +1522,10 @@ def include_patterns(*patterns):
 
 
 def running_platform() -> str:
-
     try:
         shell = get_ipython().__class__.__name__
         if shell == 'ZMQInteractiveShell':
-            return 'notebook' # Jupyter notebook or qtconsole
+            return 'notebook'  # Jupyter notebook or qtconsole
         elif shell == 'TerminalInteractiveShell':
             return 'ipython'  # Terminal running IPython
         else:
@@ -1561,6 +1535,7 @@ def running_platform() -> str:
             return 'script'
         else:
             return 'console'
+
 
 def is_notebook() -> bool:
     return running_platform() == 'notebook'
@@ -1613,7 +1588,6 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
 
 
 def to_device(data, device='cuda', half=False):
-
     if isinstance(data, dict):
         return {k: to_device(v, device=device, half=half) for k, v in data.items()}
     elif isinstance(data, list) or isinstance(data, tuple):
@@ -1627,7 +1601,6 @@ def to_device(data, device='cuda', half=False):
 
 
 def recursive_func(x, func, *args, **kwargs):
-
     if isinstance(x, dict):
         return {k: recursive_func(v, func, *args, **kwargs) for k, v in x.items()}
     elif isinstance(x, list):
@@ -1639,7 +1612,6 @@ def recursive_func(x, func, *args, **kwargs):
 
 
 def recursive_flat_array(x):
-
     x_type = check_type(x)
 
     if x_type.minor == 'numpy':
@@ -1667,7 +1639,6 @@ def recursive_flat_array(x):
 
 
 def recursive_flatten(x, flat_array=False):
-
     x_type = check_type(x)
 
     if x_type.major == 'container':
@@ -1683,7 +1654,6 @@ def recursive_flatten(x, flat_array=False):
 
 
 def recursive_flatten_with_keys(x):
-
     x_type = check_type(x)
 
     if x_type.major == 'container':
@@ -1698,7 +1668,6 @@ def recursive_flatten_with_keys(x):
 
 
 def get_item_with_tuple_key(x, key):
-
     if x is None:
         return None
 
@@ -1713,7 +1682,6 @@ def get_item_with_tuple_key(x, key):
 
 
 def get_closest_item_with_tuple_key(x, key):
-
     if not isinstance(key, tuple):
         key = (key,)
 
@@ -1731,7 +1699,6 @@ def get_closest_item_with_tuple_key(x, key):
 
 
 def set_item_with_tuple_key(x, key, value):
-
     if isinstance(key, tuple):
         for k in key[:-1]:
             x = x[k]
@@ -1750,7 +1717,6 @@ def new_container(k):
 
 
 def insert_tupled_key(x, k, v, default=None):
-
     if x is None and default is None:
         x = new_container(k[0])
     elif x is None:
@@ -1780,7 +1746,6 @@ def insert_tupled_key(x, k, v, default=None):
 
 
 def build_container_from_tupled_keys(keys, values):
-
     keys = sorted(keys)
 
     x = None
@@ -1792,7 +1757,6 @@ def build_container_from_tupled_keys(keys, values):
 
 @recursive
 def recursive_batch(x, index):
-
     if x is None:
         return None
     elif hasattr(x, 'iloc'):
@@ -1803,7 +1767,6 @@ def recursive_batch(x, index):
 
 @recursive
 def recursive_len(x):
-
     x_type = check_type(x)
 
     if x_type.minor == 'scipy_sparse':
@@ -1823,7 +1786,6 @@ def recursive_len(x):
 
 @recursive
 def recursive_types(x):
-
     x_type = check_type(x)
     return f'{x_type.major}.{x_type.minor}.{x_type.element}'
 
@@ -1846,7 +1808,6 @@ def recursive_slice(x, s):
 
 @recursive
 def recursive_slice_columns(x, columns, columns_index):
-
     x_type = check_type(x)
 
     if x is None:
@@ -1858,7 +1819,6 @@ def recursive_slice_columns(x, columns, columns_index):
 
 
 def recursive_device(x):
-
     if isinstance(x, dict):
         for xi in x.values():
             try:
@@ -1877,7 +1837,6 @@ def recursive_device(x):
 
 
 def container_len(x):
-
     if isinstance(x, dict):
         for xi in x.values():
             try:
@@ -1898,7 +1857,6 @@ def container_len(x):
 
 
 def as_numpy(x):
-
     if isinstance(x, dict):
         return {k: as_numpy(v) for k, v in x.items()}
     elif isinstance(x, list):
@@ -1919,7 +1877,6 @@ def as_numpy(x):
 
 
 def as_tensor(x, device=None, dtype=None, return_vector=False):
-
     x_type = check_type(x)
     if x_type.major == 'container' and x_type.minor == 'dict':
         return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
@@ -1945,17 +1902,29 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
     return x
 
 
-def concat_data(data):
-
+def recursive_concatenate(data, dim=0):
     d0 = data[0]
     if isinstance(d0, dict):
-        return {k: concat_data([di[k] for di in data]) for k in d0.keys()}
+        return {k: recursive_concatenate([di[k] for di in data], dim=dim) for k in d0.keys()}
     elif isinstance(d0, list) or isinstance(d0, tuple):
-        return [concat_data([di[n] for di in data]) for n in range(len(d0))]
-    elif isinstance(d0, torch.Tensor):
-        return torch.cat(data)
+        return [recursive_concatenate([di[n] for di in data], dim=dim) for n in range(len(d0))]
     else:
-        return data
+        minor_type = check_minor_type(d0)
+
+        if minor_type == 'tensor':
+            func = torch.cat
+            kwargs = {'dim': dim}
+        elif minor_type == 'pandas':
+            func = pd.concat
+            data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
+            kwargs = {'axis': dim}
+        elif minor_type == 'numpy':
+            func = np.concatenate
+            kwargs = {'axis': dim}
+        else:
+            raise ValueError(f"Concatenation not implemented for {minor_type}, returning the original data")
+
+        return func(data, **kwargs)
 
 
 def batch_augmentation_(x, augmentations):
@@ -1963,7 +1932,6 @@ def batch_augmentation_(x, augmentations):
 
 
 def batch_augmentation(augmentations):
-
     ba = partial(batch_augmentation_, augmentations=augmentations)
     return transforms.Lambda(ba)
 
@@ -2001,7 +1969,6 @@ def hash_tensor(x, fast=False, coarse=False):
 
 
 def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=None, notebook=True, **argv):
-
     """
     Beam's wrapper for the tqdm progress bar. It features a universal interface for both jupyter notebooks and .py files.
     In addition, it provides a "lazy progress bar initialization". The progress bar is initialized only if its estimated
@@ -2077,7 +2044,6 @@ def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=
 
 
 def normalize_host(hostname, port=None, default='localhost'):
-
     if hostname is None:
         hostname = default
     if port is None:
@@ -2097,7 +2063,6 @@ def get_edit_distance(s1, s2):
 
 
 def filter_dict(d, keys):
-
     if keys is True:
         return d
 

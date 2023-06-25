@@ -6,6 +6,7 @@ HEBO
 flaml
 flaml[blendsearch]
 cma
+cmaes
 
 
 # hyperparameter optimizations

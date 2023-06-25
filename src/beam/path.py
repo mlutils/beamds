@@ -571,19 +571,23 @@ class S3Path(PureBeamPath):
         if key is None:
             key = ''
 
-        objects = self.client.meta.client.list_objects_v2(Bucket=self.bucket_name, Prefix=key, Delimiter='/')
+        # objects = self.client.meta.client.list_objects_v2(Bucket=self.bucket_name, Prefix=key, Delimiter='/')
 
-        if 'CommonPrefixes' in objects:
-            for prefix in objects['CommonPrefixes']:
-                path = f"{self.bucket_name}/{prefix['Prefix']}"
-                yield self.gen(path)
+        paginator = self.client.meta.client.get_paginator('list_objects_v2')
+        page_iterator = paginator.paginate(Bucket=self.bucket_name, Prefix=key, Delimiter='/')
 
-        if 'Contents' in objects:
-            for content in objects['Contents']:
-                if content['Key'] == key:
-                    continue
-                path = f"{self.bucket_name}/{content['Key']}"
-                yield self.gen(path)
+        for objects in page_iterator:
+            if 'CommonPrefixes' in objects:
+                for prefix in objects['CommonPrefixes']:
+                    path = f"{self.bucket_name}/{prefix['Prefix']}"
+                    yield self.gen(path)
+
+            if 'Contents' in objects:
+                for content in objects['Contents']:
+                    if content['Key'] == key:
+                        continue
+                    path = f"{self.bucket_name}/{content['Key']}"
+                    yield self.gen(path)
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
