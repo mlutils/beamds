@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:23.04-py3
+FROM nvcr.io/nvidia/pytorch:23.05-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -32,42 +32,42 @@ RUN pip install --upgrade pip
 RUN pip install -U -r /workspace/install/requirements.txt
 # REMOVE FOR LITE VERSION
 RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0001.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0002.txt
-RUN pip list
-RUN pip install -U -r /workspace/install/requirements_0003.txt
-RUN pip list
-RUN pip install -U -r /workspace/install/requirements_0004.txt
-RUN pip list
+# RUN pip list
+# RUN pip install -U -r /workspace/install/requirements_0003.txt
+# RUN pip list
+# RUN pip install -U -r /workspace/install/requirements_0004.txt
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0005.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0006.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0007.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0008.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0009.txt
-RUN pip list
-RUN pip install -U -r /workspace/install/requirements_0010.txt
-RUN pip list
+# RUN pip list
+# RUN pip install -U -r /workspace/install/requirements_0010.txt
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0011.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0012.txt
-RUN pip list
-RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-RUN pip list
+# RUN pip list
+# RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+# RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0014.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
-RUN pip list
+# RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
-RUN pip list
+# RUN pip list
 
 #install torchsig
-# RUN bash /workspace/install/install_torchsig.sh
+RUN bash /workspace/install/install_torchsig.sh
 
 # Install dgl from source so it would be compatible with cuda 12.0
 # RUN pip install  dgl -f https://data.dgl.ai/wheels/repo.html
@@ -104,7 +104,7 @@ RUN bash /workspace/install/install_cusignal.sh
 # need to see how to install faiss-gpu. for now we install only the cpu version
 # RUN conda install -y -c conda-forge faiss-gpu
 # RUN pip install faiss-gpu
-#RUN bash /workspace/install/install_faiss.sh
+RUN bash /workspace/install/install_faiss.sh
 
 # install beam - from pip (see requirements_no_deps.txt file)
 

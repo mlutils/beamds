@@ -753,8 +753,8 @@ class OpenAIBase(BeamLLM):
             res = res.choices[0].message.content
         return res
 
-class FastChatLLM(OpenAIBase):
 
+class FastChatLLM(OpenAIBase):
 
     def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
 
@@ -780,6 +780,7 @@ import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 from .utils import beam_device
 import torch
+
 
 class HuggingFaceLLM(BeamLLM):
 

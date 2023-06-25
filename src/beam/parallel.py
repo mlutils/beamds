@@ -6,6 +6,7 @@ from .logger import Timer
 from .logger import beam_logger as logger
 from .path import beam_path
 
+
 def parallel_copy_path(src, dst, chunklen=10, **kwargs):
 
     src = beam_path(src)
@@ -38,6 +39,7 @@ def parallel_copy_path(src, dst, chunklen=10, **kwargs):
 
     parallel(jobs, **kwargs)
 
+
 def parallel(tasks, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
     bp = BeamParallel(func=func, n_workers=n_workers, method=method, progressbar=progressbar,
                       reduce=reduce, reduce_dim=reduce_dim, **kwargs)
@@ -46,6 +48,56 @@ def parallel(tasks, n_workers=0, func=None, method='joblib', progressbar='beam',
 
 def task(func, name=None, silence=False):
     return BeamTask(func, name=name, silence=silence)
+
+
+class TaskResult:
+    def __init__(self, async_result, method):
+        self.async_result = async_result
+        self.method = method
+
+    @property
+    def done(self):
+        if self.method == 'celery':
+            return self.async_result.ready()
+        else:  # method == 'apply_async'
+            return self.async_result.ready()
+
+    @property
+    def result(self):
+        if self.method == 'celery':
+            return self.async_result.result if self.async_result.ready() else None
+        else:  # method == 'apply_async'
+            return self.async_result.get() if self.async_result.ready() else None
+
+
+class TaskManager:
+    def __init__(self, method='apply_async'):
+        self.method = method
+        if method == 'apply_async':
+            self.pool = Pool(processes=1)
+        elif method != 'celery':
+            raise ValueError("Method should be either 'apply_async' or 'celery'")
+
+    def run_async(self, func, *args, **kwargs):
+        if self.method == 'apply_async':
+            async_result = self.pool.apply_async(func, args, kwargs)
+            return TaskResult(async_result, self.method)
+        else:  # self.method == 'celery'
+            async_result = celery_task.delay(func, *args, **kwargs)
+            return TaskResult(async_result, self.method)
+
+
+# Example usage
+def test_func(a, b):
+    time.sleep(2)  # simulating a long running task
+    return a + b
+
+if __name__ == "__main__":
+    tm = TaskManager('celery')
+    task = tm.run_async(test_func, 1, 2)
+    while not task.done:  # checking if task is done
+        time.sleep(1)
+    print(f"Task done: {task.done}, result: {task.result}")
 
 
 class BeamTask(object):
