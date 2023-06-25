@@ -9,3 +9,4 @@ farm-haystack
 einops
 guidance
 pypdf
+celery

@@ -11,7 +11,7 @@ from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_contain
     recursive_size_summary, container_len, is_arange, is_chunk, is_container, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key, \
-    get_closest_item_with_tuple_key, DataBatch
+    get_closest_item_with_tuple_key, DataBatch, beam_hash
 from .logger import beam_logger as logger
 from .path import BeamPath, beam_path
 from functools import partial
@@ -566,12 +566,14 @@ class BeamData(object):
                 if not len(filtered_data):
                     self._info = None
                     return self._info
-                fold_index = np.concatenate([np.arange(len(d)) for d in filtered_data])
-                fold = np.concatenate([np.full(len(d), k) for k, d in enumerate(filtered_data)])
+                fold_index = np.concatenate([np.arange(len(d)) if hasattr(d, '__len__') else np.array([0]) for d in filtered_data])
+                fold = np.concatenate([np.full(len(d), k) if hasattr(d, '__len__')
+                                       else np.array([k]) for k, d in enumerate(filtered_data)])
 
                 # still not sure if i really need this column. if so, it should be fixed
                 # fold_key = np.concatenate([np.full(len(d), k) for k, d in self.flatten_items.items()])
-                lengths = np.array([len(d) for d in self.flatten_data])
+                lengths = np.array([len(d) if hasattr(d, '__len__') else 1
+                                    for d in self.flatten_data])
                 offset = np.cumsum(lengths, axis=0) - lengths
                 offset = offset[fold] + fold_index
 
@@ -1168,6 +1170,10 @@ class BeamData(object):
             else:
                 self._keys = recursive_keys(self.all_paths)
         return self._keys
+
+    def items(self):
+        for k in self.keys():
+            yield k, self[k]
 
     @property
     def dtypes(self):
@@ -1989,6 +1995,10 @@ class BeamData(object):
         s += f"  types:\n"
         s += f"  {self.dtypes} \n"
         return s
+
+    @property
+    def hash(self):
+        return beam_hash(DataBatch(index=self.index, label=self.label, data=self.data))
 
     def __setitem__(self, key, value):
         """

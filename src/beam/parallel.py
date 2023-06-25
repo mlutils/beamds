@@ -6,7 +6,6 @@ from .logger import Timer
 from .logger import beam_logger as logger
 from .path import beam_path
 
-
 def parallel_copy_path(src, dst, chunklen=10, **kwargs):
 
     src = beam_path(src)
@@ -51,9 +50,19 @@ def task(func, name=None, silence=False):
 
 
 class TaskResult:
-    def __init__(self, async_result, method):
+    def __init__(self, async_result):
+
+        from celery.result import AsyncResult as CeleryAsyncResult
+        from multiprocessing.pool import AsyncResult as MultiprocessingAsyncResult
+
         self.async_result = async_result
-        self.method = method
+        if isinstance(async_result, CeleryAsyncResult):
+            self.method = 'celery'
+        elif isinstance(async_result, MultiprocessingAsyncResult):
+            self.method = 'apply_async'
+        else:
+            raise ValueError(
+                "Invalid async_result type. It must be either CeleryAsyncResult or MultiprocessingAsyncResult.")
 
     @property
     def done(self):
@@ -64,40 +73,70 @@ class TaskResult:
 
     @property
     def result(self):
+
         if self.method == 'celery':
-            return self.async_result.result if self.async_result.ready() else None
+            return self.async_result.result if self.done else None
         else:  # method == 'apply_async'
-            return self.async_result.get() if self.async_result.ready() else None
+            return self.async_result.get() if self.done else None
 
 
-class TaskManager:
-    def __init__(self, method='apply_async'):
+class BeamAsync(object):
+    def __init__(self, method='apply_async', name=None, silence=False, context='spawn', n_workers=1,
+                 backend='redis://localhost', broker='pyamqp://guest@localhost//', local_celery=False):
         self.method = method
-        if method == 'apply_async':
-            self.pool = Pool(processes=1)
-        elif method != 'celery':
-            raise ValueError("Method should be either 'apply_async' or 'celery'")
+        self._name = name
+        self.silence = silence
 
-    def run_async(self, func, *args, **kwargs):
+        if method == 'apply_async':
+
+            import multiprocessing as mp
+            ctx = mp.get_context(context)
+            self.pool = ctx.Pool(n_workers)
+
+        elif method == 'celery':
+
+            import celery
+            import threading
+            # Creating a celery instance with redis as the result backend
+            celery_app = celery.Celery('tasks', broker=broker, backend=backend)
+
+            if local_celery:
+                worker = celery.bin.worker.worker(app=celery_app)
+                options = {
+                    'pool': 'solo',
+                    'concurrency': n_workers,
+                    'loglevel': 'INFO',
+                }
+                threading.Thread(target=worker.run, kwargs=options).start()
+
+            @celery_app.task
+            def celery_task(func, *args, **kwargs):
+                return func(*args, **kwargs)
+
+            self.celery_task = celery_task
+        else:
+            raise ValueError('method must be one of {apply_async, celery}')
+
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
+
+    def set_silent(self, silence):
+        self.silence = silence
+
+    def set_name(self, name):
+        self._name = name
+
+    def run(self, func, *args, **kwargs):
+
         if self.method == 'apply_async':
             async_result = self.pool.apply_async(func, args, kwargs)
-            return TaskResult(async_result, self.method)
         else:  # self.method == 'celery'
-            async_result = celery_task.delay(func, *args, **kwargs)
-            return TaskResult(async_result, self.method)
+            async_result = self.celery_task.delay(func, *args, **kwargs)
 
-
-# Example usage
-def test_func(a, b):
-    time.sleep(2)  # simulating a long running task
-    return a + b
-
-if __name__ == "__main__":
-    tm = TaskManager('celery')
-    task = tm.run_async(test_func, 1, 2)
-    while not task.done:  # checking if task is done
-        time.sleep(1)
-    print(f"Task done: {task.done}, result: {task.result}")
+        return TaskResult(async_result)
 
 
 class BeamTask(object):
