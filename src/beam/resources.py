@@ -251,7 +251,7 @@ class BeamLLM(LLM, Processor):
 
     model: Optional[str] = Field(None)
     usage: Any
-    _chat_history: PrivateAttr()
+    _chat_history: Any = PrivateAttr()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -265,12 +265,14 @@ class BeamLLM(LLM, Processor):
         self._chat_history = None
         self.reset_chat()
 
+    @property
     def conversation(self):
         return self._chat_history
 
     def reset_chat(self):
         self._chat_history = Conversation()
 
+    @property
     def chat_history(self):
         ch = list(self._chat_history.iter_texts())
         return [{'role': 'user' if m[0] else 'assistant', 'content': m[1]} for m in ch]
@@ -305,6 +307,10 @@ class BeamLLM(LLM, Processor):
     def is_chat(self):
         raise NotImplementedError
 
+    @property
+    def is_completions(self):
+        return not self.is_chat
+
     def chat_completion(self, **kwargs):
         raise NotImplementedError
 
@@ -312,15 +318,9 @@ class BeamLLM(LLM, Processor):
         raise NotImplementedError
 
     def update_usage(self, response):
+        raise NotImplementedError
 
-        if 'usage' in response:
-            response = response['usage']
-
-            self.usage["prompt_tokens"] += response["prompt_tokens"]
-            self.usage["completion_tokens"] += response["completion_tokens"]
-            self.usage["total_tokens"] += response["prompt_tokens"] + response["completion_tokens"]
-
-    def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, model=None, temperature=1,
+    def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=1,
              top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0, frequency_penalty=0.0,
              logit_bias=None, **kwargs):
 
@@ -369,11 +369,8 @@ class BeamLLM(LLM, Processor):
         if stop is not None:
             kwargs['stop'] = stop
 
-        if model is None:
-            model = self.model
 
         response = self.chat_completion(
-            model=model,
             messages=messages,
             temperature=temperature,
             top_p=top_p,
@@ -386,11 +383,11 @@ class BeamLLM(LLM, Processor):
         )
 
         self.update_usage(response)
-        response_message = response.choices[0].message
-        self.add_to_chat(response_message.content, is_user=False)
-        # self.chat_history.append({'role': response_message.role, 'content': response_message.content})
+        response = LLMResponse(response, self)
 
-        return LLMResponse(response, self)
+        self.add_to_chat(response.text, is_user=False)
+
+        return response
 
     def docstring(self, text, element_type, name=None, docstring_format=None, parent=None, parent_name=None,
                   parent_type=None, children=None, children_type=None, children_name=None, **kwargs):
@@ -423,7 +420,7 @@ class BeamLLM(LLM, Processor):
         prompt = f"{prompt}" \
                  f"Response: \"\"\"\n{{docstring text here (do not add anything else)}}\n\"\"\""
 
-        if self.is_chat:
+        if not self.is_completions:
             try:
                 res = self.chat(prompt, **kwargs)
             except Exception as e:
@@ -459,12 +456,11 @@ class BeamLLM(LLM, Processor):
         :return:
         """
 
-        if self.is_chat:
+        if not self.is_completions:
             response = self.chat(question, reset_chat=True, max_tokens=1024, temperature=1, top_p=1, frequency_penalty=0.0,
             presence_penalty=0.0, stop=None, n=1, stream=False, logprobs=None, echo=False, **kwargs)
         else:
             response = self.completion(
-                engine=self.model,
                 prompt=question,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -501,11 +497,7 @@ class BeamLLM(LLM, Processor):
         return res
 
     def extract_text(self, res):
-        if not self.is_chat:
-            res = res.choices[0].text
-        else:
-            res = res.choices[0].message.content
-        return res
+        raise NotImplementedError
 
     def question(self, text, question, **kwargs):
         """
@@ -719,124 +711,153 @@ class BeamLLM(LLM, Processor):
         return res
 
 
-class FastChatLLM(BeamLLM):
+class OpenAIBase(BeamLLM):
 
-    base_url: Optional[str] = Field(None)
-    _client: Any = PrivateAttr()
+    api_key: Optional[str] = Field(None)
+    api_base: Optional[str] = Field(None)
+    organization: Optional[str] = Field(None)
 
-    def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
+    def __init__(self, api_key=None, api_base=None, organization=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.base_url = f"http://{normalize_host(hostname, port)}"
-        self._client = None
+        self.api_key = api_key
+        self.api_base = api_base
+        self.organization = organization
+
+    def update_usage(self, response):
+
+        if 'usage' in response:
+            response = response['usage']
+
+            self.usage["prompt_tokens"] += response["prompt_tokens"]
+            self.usage["completion_tokens"] += response["completion_tokens"]
+            self.usage["total_tokens"] += response["prompt_tokens"] + response["completion_tokens"]
+
+    def sync_openai(self):
+        openai.api_key = self.api_key
+        openai.api_base = self.api_base
+        openai.organization = self.organization
+
+    def chat_completion(self, **kwargs):
+        self.sync_openai()
+        return openai.ChatCompletion.create(model=self.model, **kwargs)
+
+    def completion(self, **kwargs):
+        self.sync_openai()
+        return openai.Completion.create(engine=self.model, **kwargs)
+
+    def extract_text(self, res):
+        if not self.is_chat:
+            res = res.choices[0].text
+        else:
+            res = res.choices[0].message.content
+        return res
+
+class FastChatLLM(OpenAIBase):
+
+
+    def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
+
+        api_base = f"http://{normalize_host(hostname, port)}/v1"
+        api_key = "EMPTY"  # Not support yet
+        organization = "EMPTY"  # Not support yet
+
+        super().__init__(api_key=api_key, api_base=api_base, organization=organization,
+                         *args, **kwargs)
+
         self.model = model
 
-        if is_notebook():
-            import nest_asyncio
-            nest_asyncio.apply()
-
-    @property
-    def client(self):
-
-        if self._client is None:
-            from fastchat import client
-            # from fastchat.client import openai_api_client as client
-            self._client = client
-            self._client.set_baseurl(self.base_url)
-
-        return self._client
+        # if is_notebook():
+        #     import nest_asyncio
+        #     nest_asyncio.apply()
 
     @property
     def is_chat(self):
         return True
 
-    def chat_completion(self, model=None, messages=None, max_tokens=None, temperature=0.7, n=1,
-                        stop=None, timeout=None, stream=False, **kwargs):
 
-        return self.client.ChatCompletion.create(model, messages=messages, temperature=temperature, n=n,
-                                                 max_tokens=max_tokens, stop=stop, timeout=timeout,
-                                                 # stream=stream
-                                                 )
 import transformers
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 from .utils import beam_device
 import torch
 
 class HuggingFaceLLM(BeamLLM):
 
+    config: Any
+    tokenizer: Any
+    model: Any
+
     def __init__(self, model, tokenizer=None, device=None, dtype=None, chat=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        transformers.logging.set_verbosity_error()
+
+        model_kwargs = {}
         if device is None:
-            kwargs['device_map'] = 'auto'
+            model_kwargs['device_map'] = 'auto'
         else:
-            kwargs['device'] = beam_device(device)
+            model_kwargs['device'] = beam_device(device)
 
         if dtype is None:
-            dtype = torch.bfloat16
+            model_kwargs['torch_dtype'] = torch.bfloat16
         else:
-            dtype = getattr(torch, dtype)
+            model_kwargs['torch_dtype'] = getattr(torch, dtype)
 
-        if chat:
-            task = 'conversational'
+        self.config = AutoConfig.from_pretrained(model, trust_remote_code=True,  **kwargs)
+        tokenizer_name = tokenizer or model
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+
+        self.model = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True,
+                                                     config=self.config, **model_kwargs)
+
+    def update_usage(self, response):
+        pass
+
+    def extract_text(self, res):
+        if type(res) is list:
+            res = res[0]
+
+        if type(res) is Conversation:
+            res = res.generated_responses[-1]
         else:
-            task = 'text-generation'
+            res = res['generated_text']
 
-        tokenizer = AutoTokenizer.from_pretrained(model)
+        return res
 
-        pipeline = transformers.pipeline(model=model,
-                                         tokenizer=tokenizer,
-                                         task=task,
-                                         trust_remote_code=True,
-                                         **kwargs)
+    @property
+    def is_chat(self):
+        return True
 
-        self._pipeline = pipeline
-
-    # engine = self.model,
-    # prompt = question,
-    # temperature = temperature,
-    # max_tokens = max_tokens,
-    # top_p = top_p,
-    # frequency_penalty = frequency_penalty,
-    # presence_penalty = presence_penalty,
-    # stop = stop,
-    # n = n,
-    # stream = stream,
-    # logprobs = logprobs,
-    # echo = echo
+    @property
+    def is_completions(self):
+        return True
 
     def completion(self, prompt=None, **kwargs):
-        return self._pipeline(prompt, pad_token_id=self._pipeline.tokenizer.eos_token_id, **kwargs)
 
-        # config = transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)
-        # config.init_device = device  # For fast initialization directly on GPU!
-        #
-        # model = transformers.AutoModelForCausalLM.from_pretrained(
-        #     model,
-        #     config=config,
-        #     torch_dtype=torch.bfloat16,  # Load model weights in bfloat16
-        #     trust_remote_code=True
-        # )
+        pipeline = transformers.pipeline('text-generation', model=self.model,
+                                         tokenizer=self.tokenizer)
 
-class OpenAI(BeamLLM):
+        return pipeline(prompt, pad_token_id=pipeline.tokenizer.eos_token_id)
 
-    api_key: Optional[str] = Field(None)
-    organization_id: Optional[str] = Field(None)
+    def chat_completion(self, **kwargs):
+
+        pipeline = transformers.pipeline('conversational', model=self.model,
+                                        tokenizer=self.tokenizer)
+
+        return pipeline(self.conversation, pad_token_id=pipeline.tokenizer.eos_token_id)
+
+class OpenAI(OpenAIBase):
+
     _models: Any = PrivateAttr()
 
-    class Config:
-        allow_population_by_field_name = True
+    def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
 
-    def __init__(self, model='gpt-3.5-turbo', api_key=None, organization_id=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        api_key = beam_key('openai_api_key', api_key)
+        super().__init__(api_key=api_key, api_base='https://api.openai.com/v1',
+                         organization=organization, *args, **kwargs)
 
-        self.api_key = beam_key('openai_api_key', api_key)
         self.model = model
-        self.organization_id = organization_id
-        self.api_key = api_key
         self._models = None
-        openai.api_key = api_key
-        openai.organization = organization_id
 
     @property
     def is_chat(self):
@@ -844,12 +865,6 @@ class OpenAI(BeamLLM):
         if any([m in self.model for m in chat_models]):
             return True
         return False
-
-    def chat_completion(self, **kwargs):
-        return openai.ChatCompletion.create(**kwargs)
-
-    def completion(self, **kwargs):
-        return openai.Completion.create(**kwargs)
 
     def file_list(self):
         return openai.File.list()
@@ -937,6 +952,9 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
     elif url.protocol == 'fastchat':
         return FastChatLLM(model=model, hostname=hostname, port=port, **kwargs)
+
+    elif url.protocol == 'huggingface':
+        return HuggingFaceLLM(model=model, **kwargs)
 
     else:
         raise NotImplementedError

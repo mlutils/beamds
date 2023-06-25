@@ -230,10 +230,12 @@ class PureBeamPath:
         for p in self.iterdir():
             yield p
 
-    def __getitem__(self, item):
-        if item in self.url.query:
-            return self.url.query[item]
-        return None
+    def __getitem__(self, name):
+        return self.joinpath(name)
+
+    def __setitem__(self, key, value):
+        p = self.joinpath(key)
+        p.write(value)
 
     def not_empty(self):
 

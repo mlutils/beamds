@@ -1144,6 +1144,10 @@ class BeamData(object):
         return object_path
 
     @property
+    def parent(self):
+        return BeamData.from_path(self.path.parent)
+
+    @property
     def columns_map(self):
 
         if self._columns_map is not None:

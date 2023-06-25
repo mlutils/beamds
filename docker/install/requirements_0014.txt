@@ -1,3 +1,4 @@
+# llm tools
 fschat
 openai
 langchain
@@ -6,4 +7,5 @@ deeplake
 peft
 farm-haystack
 einops
+guidance
 pypdf

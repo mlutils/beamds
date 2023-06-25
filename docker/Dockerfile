@@ -110,6 +110,8 @@ RUN bash /workspace/install/install_cusignal.sh
 
 RUN mkdir /workspace/beamds/
 COPY . /workspace/beamds/
+ENV PATH "$PATH:/workspace/beamds/notebooks/"
+
 #WORKDIR /workspace/beamds/
 #RUN python -m build
 #RUN pip install "dist/beam_ds-$(python src/beam/_version.py)-py3-none-any.whl"
