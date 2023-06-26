@@ -9,11 +9,12 @@ scikit-learn
 
 # others
 gssapi
-thrift-sasl
-python-snappy
-thriftpy
 # remove for python 3.10
-# modin[all]
+# thrift-sasl
+# thriftpy
+
+python-snappy
+modin[all]
 
 category_encoders
 pyro-ppl

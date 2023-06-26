@@ -2,7 +2,11 @@
 zoopt
 scikit-optimize
 nevergrad
-HEBO
+
+# install only the dependencies of HEBO
+#HEBO
+pymoo
+
 flaml
 flaml[blendsearch]
 cma
