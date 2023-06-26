@@ -107,7 +107,7 @@ class BeamData(object):
                  override=True, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None,
                  write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None,
-                 write_metadata=True, metadata_path_prefix=None, **kwargs):
+                 write_metadata=True, read_metadata=True, metadata_path_prefix=None, **kwargs):
 
         '''
 
@@ -167,6 +167,7 @@ class BeamData(object):
         self.glob_filter = glob_filter
         self._key_map = key_map
         self.write_metadata = write_metadata
+        self.read_metadata = read_metadata
         self.metadata_path_prefix = beam_path(metadata_path_prefix)
 
         self.stored = False
@@ -289,7 +290,7 @@ class BeamData(object):
 
         if self.stored:
             path = self.metadata_paths['all_paths']
-            if self.write_metadata and path.exists():
+            if self.read_metadata and path.exists():
                 logger.debug(f"Reading all_paths file: {path}")
                 self._all_paths = path.read()
 
@@ -511,7 +512,7 @@ class BeamData(object):
         if self._conf is not None:
             return self._conf
 
-        if self.stored and self.write_metadata:
+        if self.stored and self.read_metadata:
             if self.metadata_path_exists('conf'):
                 conf_path = self.metadata_paths['conf']
                 logger.debug(f"Reading conf file {conf_path}")
@@ -552,7 +553,7 @@ class BeamData(object):
         if self._info is not None:
             return self._info
 
-        if self.stored and self.write_metadata:
+        if self.stored and self.read_metadata:
             if self.metadata_path_exists('info'):
                 info_path = self.metadata_paths['info']
                 logger.debug(f"Reading info file {info_path}")
@@ -1919,7 +1920,7 @@ class BeamData(object):
                  override=None, compress=None, split_by=None, chunksize=None, chunklen=None, n_chunks=None,
                  partition=None, archive_size=None, preferred_orientation=None, read_kwargs=None, write_kwargs=None,
                  quick_getitem=None, orientation=None, glob_filter=None, info=None, constructor=None,
-                 write_metadata=None, metadata_path_prefix=None, **kwargs):
+                 write_metadata=None, read_metadata=None, metadata_path_prefix=None, **kwargs):
 
         name = self.get_default('name', name)
         lazy = self.get_default('lazy', lazy)
@@ -1939,6 +1940,7 @@ class BeamData(object):
         quick_getitem = self.get_default('quick_getitem', quick_getitem)
         glob_filter = self.get_default('glob_filter', glob_filter)
         write_metadata = self.get_default('write_metadata', write_metadata)
+        read_metadata = self.get_default('read_metadata', read_metadata)
         metadata_path_prefix = self.get_default('metadata_path_prefix', metadata_path_prefix)
 
         if constructor is None:
@@ -1950,7 +1952,8 @@ class BeamData(object):
                  chunklen=chunklen, n_chunks=n_chunks, partition=partition, archive_size=archive_size, schema=schema,
                  preferred_orientation=preferred_orientation, read_kwargs=read_kwargs, write_kwargs=write_kwargs,
                  quick_getitem=quick_getitem, orientation=orientation, glob_filter=glob_filter, info=info,
-                 write_metadata=write_metadata, metadata_path_prefix=metadata_path_prefix, **kwargs)
+                 write_metadata=write_metadata, read_metadata=read_metadata, metadata_path_prefix=metadata_path_prefix,
+                           **kwargs)
 
     def inverse_columns_map(self, columns):
 
