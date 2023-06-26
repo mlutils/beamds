@@ -5,7 +5,8 @@ pandarallel
 # don't install dask as it ships with the NVIDIA image
 # dask[complete]
 
-datatable
+# remove for python 3.10
+# datatable
 pyspark
 pyspark[sql]
 pyspark[pandas_on_spark]

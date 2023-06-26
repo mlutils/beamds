@@ -12,7 +12,8 @@ gssapi
 thrift-sasl
 python-snappy
 thriftpy
-modin[all]
+# remove for python 3.10
+# modin[all]
 
 category_encoders
 pyro-ppl
