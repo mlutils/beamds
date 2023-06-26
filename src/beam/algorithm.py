@@ -931,98 +931,97 @@ class Algorithm(object):
         '''
         return False
 
-    def train_catboost(self, eval_mode=False, enable_tqdm=None, fit_kwargs=None, **kwargs):
-        """
-        Use this function to train a catboost model
-        @param eval_mode: set eval_mode to True to disable dataset augmentations
-        @param kwargs:
-        @return:
-        """
-        if fit_kwargs is None:
-            fit_kwargs = {}
-
-        if enable_tqdm is None:
-            enable_tqdm = self.enable_tqdm
-
-        self.set_mode(training=not eval_mode)
-
-        dataloader = self.build_dataloader('train')
-        data_generator = self.data_generator(dataloader)
-
-
-        logger.info(f"Build train dataset with {len(dataloader)} batches")
-        data_train = []
-
-        for i, (ind, label, sample) in tqdm(data_generator, enable=enable_tqdm,
-                                     threshold=self.get_hparam('tqdm_threshold'),
-                                     stats_period=self.get_hparam('tqdm_stats'),
-                                     notebook=(not self.ddp and self.is_notebook), total=len(dataloader)):
-            data_train.append((ind, label, sample))
-
-        ind_train, label_train, data_train = recursive_collate_chunks(data_train)
-        logger.info(f"Train dataset built with {len(data_train)} samples")
-
-        dataloader = self.build_dataloader(self.eval_subset)
-        data_generator = self.data_generator(dataloader)
-
-        logger.info(f"Build eval dataset with {len(dataloader)} batches")
-        data_eval = []
-
-        for i, (ind, label, sample) in tqdm(data_generator, enable=enable_tqdm,
-                                        threshold=self.get_hparam('tqdm_threshold'),
-                                        stats_period=self.hparams('tqdm_stats'),
-                                        notebook=(not self.ddp and self.is_notebook), total=len(dataloader)):
-                data_eval.append((ind, label, sample))
-
-        ind_eval, label_eval, data_eval = recursive_collate_chunks(data_eval)
-        logger.info(f"Eval dataset built with {len(data_eval)} samples")
-
-        # find the label
-        if 'y' in data_train:
-            y_train = data_train['y']
-            y_eval = data_eval['y']
-        else:
-            y_train = label_train
-            y_eval = label_eval
-
-        y_train = as_numpy(y_train)
-        y_eval = as_numpy(y_eval)
-
-        x_train = as_numpy(x_train)
-        x_eval = as_numpy(x_eval)
-
-
-        fit_args = {**fit_kwargs, 'X': x_train, 'y': y_train, 'eval_set': (x_eval, y_eval),}
-
-        y_type = check_type(y_train)
-        if 'int' in y_type.element:
-            from catboost import CatBoostClassifier
-            catboost_model = CatBoostClassifier
-        else:
-            if self.get_hparam('cb_ranker'):
-                from catboost import CatBoostRanker
-                catboost_model = CatBoostRanker
-
-                if label_train is not None:
-                    fit_args['group_id'] = label_train
-            else:
-                from catboost import CatBoostRegressor
-                catboost_model = CatBoostRegressor
-
-        # find the data
-        cb_kwargs = {'learning_rate': self.get_hparam('lr'),
-                     'n_estimators': self.get_hparam('cb_n_estimators'),
-                     'random_seed': self.get_hparam('seed'),
-                     'l2_leaf_reg': self.get_hparam('weight_decay'),
-        }
-
-
-        cb_kwargs = {**cb_kwargs, **kwargs}
-        cb = catboost_model(**cb_kwargs)
-        cb.fit(**fit_args)
-
-
-        return
+    # def train_catboost(self, eval_mode=False, enable_tqdm=None, fit_kwargs=None, **kwargs):
+    #     """
+    #     Use this function to train a catboost model
+    #     @param eval_mode: set eval_mode to True to disable dataset augmentations
+    #     @param kwargs:
+    #     @return:
+    #     """
+    #     if fit_kwargs is None:
+    #         fit_kwargs = {}
+    #
+    #     if enable_tqdm is None:
+    #         enable_tqdm = self.enable_tqdm
+    #
+    #     self.set_mode(training=not eval_mode)
+    #
+    #     dataloader = self.build_dataloader('train')
+    #     data_generator = self.data_generator(dataloader)
+    #
+    #
+    #     logger.info(f"Build train dataset with {len(dataloader)} batches")
+    #     data_train = []
+    #
+    #     for i, (ind, label, sample) in tqdm(data_generator, enable=enable_tqdm,
+    #                                  threshold=self.get_hparam('tqdm_threshold'),
+    #                                  stats_period=self.get_hparam('tqdm_stats'),
+    #                                  notebook=(not self.ddp and self.is_notebook), total=len(dataloader)):
+    #         data_train.append((ind, label, sample))
+    #
+    #     ind_train, label_train, data_train = recursive_collate_chunks(data_train)
+    #     logger.info(f"Train dataset built with {len(data_train)} samples")
+    #
+    #     dataloader = self.build_dataloader(self.eval_subset)
+    #     data_generator = self.data_generator(dataloader)
+    #
+    #     logger.info(f"Build eval dataset with {len(dataloader)} batches")
+    #     data_eval = []
+    #
+    #     for i, (ind, label, sample) in tqdm(data_generator, enable=enable_tqdm,
+    #                                     threshold=self.get_hparam('tqdm_threshold'),
+    #                                     stats_period=self.hparams('tqdm_stats'),
+    #                                     notebook=(not self.ddp and self.is_notebook), total=len(dataloader)):
+    #             data_eval.append((ind, label, sample))
+    #
+    #     ind_eval, label_eval, data_eval = recursive_collate_chunks(data_eval)
+    #     logger.info(f"Eval dataset built with {len(data_eval)} samples")
+    #
+    #     # find the label
+    #     if 'y' in data_train:
+    #         y_train = data_train['y']
+    #         y_eval = data_eval['y']
+    #     else:
+    #         y_train = label_train
+    #         y_eval = label_eval
+    #
+    #     y_train = as_numpy(y_train)
+    #     y_eval = as_numpy(y_eval)
+    #
+    #     x_train = as_numpy(x_train)
+    #     x_eval = as_numpy(x_eval)
+    #
+    #
+    #     fit_args = {**fit_kwargs, 'X': x_train, 'y': y_train, 'eval_set': (x_eval, y_eval),}
+    #
+    #     y_type = check_type(y_train)
+    #     if 'int' in y_type.element:
+    #         from catboost import CatBoostClassifier
+    #         catboost_model = CatBoostClassifier
+    #     else:
+    #         if self.get_hparam('cb_ranker'):
+    #             from catboost import CatBoostRanker
+    #             catboost_model = CatBoostRanker
+    #
+    #             if label_train is not None:
+    #                 fit_args['group_id'] = label_train
+    #         else:
+    #             from catboost import CatBoostRegressor
+    #             catboost_model = CatBoostRegressor
+    #
+    #     # find the data
+    #     cb_kwargs = {'learning_rate': self.get_hparam('lr'),
+    #                  'n_estimators': self.get_hparam('cb_n_estimators'),
+    #                  'random_seed': self.get_hparam('seed'),
+    #                  'l2_leaf_reg': self.get_hparam('weight_decay'),
+    #     }
+    #
+    #
+    #     cb_kwargs = {**cb_kwargs, **kwargs}
+    #     cb = catboost_model(**cb_kwargs)
+    #     cb.fit(**fit_args)
+    #
+    #     return
 
     def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None, eval_mode=True,
                  return_dataset=None, **kwargs):

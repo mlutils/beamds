@@ -13,12 +13,12 @@ class MFBeamAlgWrapper(mlflow.pyfunc.PythonModel):
     def load_context(self, context):
 
         path_to_hparams = context.artifacts['hparams']
-        path_to_state = context.artifacts['state']
+        state = context.artifacts['state']
 
         hparams = beam_path(path_to_hparams).read()
 
         self.alg = Algorithm(hparams)
-        self.alg.load_checkpoint(path_to_state)
+        self.alg.load_checkpoint(state)
 
     def predict(self, context, model_input):
         return self.alg.predict(model_input)

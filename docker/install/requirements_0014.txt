@@ -9,4 +9,5 @@ farm-haystack
 einops
 guidance
 pypdf
+InstructorEmbedding
 celery

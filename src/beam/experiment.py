@@ -374,6 +374,18 @@ class Experiment(object):
             self.comet_exp.set_name(self.exp_name)
             self.comet_exp.log_parameters(self.tensorboard_hparams)
 
+        if self.hparams.mlflow:
+            import mlflow
+            # import mlflow.pytorch
+            mlflow_uri = self.hparams.mlflow_url
+            if mlflow_uri is None:
+                mlflow_uri = os.environ['$MLFLOW_TRACKING_URI']
+
+            mlflow.set_tracking_uri(mlflow_uri)
+            mlflow.set_experiment(self.exp_name)
+
+            for param_name, param_value in params.items():
+                mlflow.log_param(param_name, param_value)
 
     @staticmethod
     def reload_from_path(path, override_hparams=None, reload_iloc=-1, reload_loc=None, reload_name=None, **argv):
