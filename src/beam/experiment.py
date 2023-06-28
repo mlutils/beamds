@@ -8,7 +8,7 @@ import inspect
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 # from torch.utils.tensorboard import SummaryWriter
-# from tensorboardX import SummaryWriter
+from tensorboardX import SummaryWriter
 from shutil import copytree
 import torch
 import copy
@@ -26,6 +26,7 @@ from ._version import __version__
 import inspect
 from .path import beam_path, BeamPath
 from .logger import beam_logger as logger
+import atexit
 
 
 done = mp.Event()
@@ -168,6 +169,7 @@ class Experiment(object):
         @param trial:
         @param print_hyperparameters: If None, default behavior is to print hyperparameters only outside of jupyter notebooks
         """
+        atexit.register(self.cleanup)
 
         if print_hyperparameters is None:
             print_hyperparameters = not is_notebook()
@@ -346,46 +348,16 @@ class Experiment(object):
 
         self.root.joinpath('hparams.pkl').write(self.tensorboard_hparams)
 
-        self.comet_exp = None
-        if self.hparams.comet:
+    def __del__(self):
+        self.cleanup()
 
-            from comet_ml import Experiment
-            # from comet_ml.integration.pytorch import log_model
+    def cleanup(self):
+        if self.comet_exp is not None:
+            self.comet_exp.end()
 
-            api_key = self.hparams.comet_api_key
-            if api_key is None:
-                api_key = os.environ.get('COMET_API_KEY', None)
-            git_directory = self.hparams.git_directory
-            if git_directory is None and isinstance(self.code_dir, BeamPath):
-                git_directory = str(self.code_dir)
-            if git_directory is not None:
-                os.environ['COMET_GIT_DIRECTORY'] = git_directory
-                log_code = True
-            else:
-                log_code = False
-
-            logger.info("Logging this experiment to comet.ml")
-
-            self.comet_exp = Experiment(api_key=api_key, project_name=self.hparams.project_name,
-                                        log_code=log_code, workspace=self.hparams.comet_workspace,
-                                        disabled=not self.hparams.comet)
-
-            self.comet_exp.add_tag(self.hparams.identifier)
-            self.comet_exp.set_name(self.exp_name)
-            self.comet_exp.log_parameters(self.tensorboard_hparams)
-
-        if self.hparams.mlflow:
+        if self.mlflow_run is not None:
             import mlflow
-            # import mlflow.pytorch
-            mlflow_uri = self.hparams.mlflow_url
-            if mlflow_uri is None:
-                mlflow_uri = os.environ['$MLFLOW_TRACKING_URI']
-
-            mlflow.set_tracking_uri(mlflow_uri)
-            mlflow.set_experiment(self.exp_name)
-
-            for param_name, param_value in params.items():
-                mlflow.log_param(param_name, param_value)
+            mlflow.end_run()
 
     @staticmethod
     def reload_from_path(path, override_hparams=None, reload_iloc=-1, reload_loc=None, reload_name=None, **argv):
@@ -469,12 +441,56 @@ class Experiment(object):
     def writer_control(self, enable=True, networks=None, inputs=None):
 
         if enable and self.writer is None and self.hparams.tensorboard:
-            from tensorboardX import SummaryWriter
             if isinstance(self.tensorboard_dir, BeamPath):
                 self.writer = SummaryWriter(log_dir=str(self.tensorboard_dir.joinpath('logs')),
                                             comment=self.hparams.identifier)
             else:
                 logger.warning(f"Tensorboard directory is not a BeamPath object. Tensorboard will not be enabled.")
+
+        self.comet_exp = None
+        if self.hparams.comet:
+
+            from comet_ml import Experiment
+            # from comet_ml.integration.pytorch import log_model
+
+            api_key = self.hparams.comet_api_key
+            if api_key is None:
+                api_key = os.environ.get('COMET_API_KEY', None)
+            git_directory = self.hparams.git_directory
+            if git_directory is None and isinstance(self.code_dir, BeamPath):
+                git_directory = str(self.code_dir)
+            if git_directory is not None:
+                os.environ['COMET_GIT_DIRECTORY'] = git_directory
+                log_code = True
+            else:
+                log_code = False
+
+            logger.info("Logging this experiment to comet.ml")
+
+            self.comet_exp = Experiment(api_key=api_key, project_name=self.hparams.project_name,
+                                        log_code=log_code, workspace=self.hparams.comet_workspace,
+                                        disabled=not self.hparams.comet)
+
+            self.comet_exp.add_tag(self.hparams.identifier)
+            self.comet_exp.set_name(self.exp_name)
+            self.comet_exp.log_parameters(self.tensorboard_hparams)
+            # self.commet_writer = SummaryWriter(comet_config={"disabled": False})
+
+        self.mlflow_run = None
+        if self.hparams.mlflow:
+            import mlflow
+            # import mlflow.pytorch
+            mlflow_uri = self.hparams.mlflow_url
+            if mlflow_uri is None:
+                mlflow_uri = os.environ['$MLFLOW_TRACKING_URI']
+
+            mlflow.set_tracking_uri(mlflow_uri)
+            mlflow.set_experiment(self.exp_name)
+
+            self.mlflow_run = mlflow.start_run(run_name=self.exp_name)
+
+            for param_name, param_value in self.tensorboard_hparams.items():
+                mlflow.log_param(param_name, param_value)
 
         if networks is not None and enable:
             if self.writer is not None:
@@ -617,10 +633,11 @@ class Experiment(object):
 
                             logger.info(f'{paramp: <12} | {stat}')
 
-        if self.writer is None:
-            return
+        if self.writer is not None:
+            logger.info(f"Tensorboard results are stored to: {self.root}")
+        if self.comet_exp is not None:
+            logger.info(f"Comet results are stored to: {self.comet_exp.get_key()}")
 
-        logger.info(f"Tensorboard results are stored to: {self.root}")
         defaults_argv = defaultdict(lambda: defaultdict(dict))
         if argv is not None:
             for log_type in argv:
@@ -632,21 +649,23 @@ class Experiment(object):
             for net in networks:
                 for name, param in networks[net].named_parameters():
                     try:
-                        self.writer.add_histogram("weight_%s/%s" % (net, name), as_numpy(param), n,
-                                                  bins='tensorflow')
-                        self.writer.add_histogram("grad_%s/%s" % (net, name), as_numpy(param.grad), n,
-                                                  bins='tensorflow')
-                        if hasattr(param, 'intermediate'):
-                            self.writer.add_histogram("iterm_%s/%s" % (net, name), as_numpy(param.intermediate),
-                                                      n,
+                        if self.writer is not None:
+                            self.writer.add_histogram("weight_%s/%s" % (net, name), as_numpy(param), n,
                                                       bins='tensorflow')
+                            self.writer.add_histogram("grad_%s/%s" % (net, name), as_numpy(param.grad), n,
+                                                      bins='tensorflow')
+                            if hasattr(param, 'intermediate'):
+                                self.writer.add_histogram("iterm_%s/%s" % (net, name), as_numpy(param.intermediate),
+                                                          n,
+                                                          bins='tensorflow')
                     except:
                         pass
+
         metrics = {}
         for subset, res in results.items():
             if isinstance(res, dict) and subset != 'objective':
                 for log_type in res:
-                    if hasattr(self.writer, f'add_{log_type}'):
+                    if hasattr(SummaryWriter, f'add_{log_type}'):
                         log_func = getattr(self.writer, f'add_{log_type}')
                         for param in res[log_type]:
                             if type(res[log_type][param]) is dict or type(res[log_type][param]) is defaultdict:
@@ -661,6 +680,7 @@ class Experiment(object):
 
         if len(metrics):
             self.writer.add_hparams(self.tensorboard_hparams, metrics, name=os.path.join('..', 'hparams'), global_step=n)
+
 
     @staticmethod
     def _tensorboard(port=None, get_port_from_beam_port_range=True, base_dir=None, log_dirs=None, hparams=False):
