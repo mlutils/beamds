@@ -18,6 +18,11 @@ ray[tune,rllib,serve]
 optuna
 hyperopt
 bayesian-optimization
-botorch
+
+# install only the dependencies of BoTorch
+# botorch
+pyro-ppl
+multipledispatch
+
 bayesian-torch
 blitz-bayesian-pytorch

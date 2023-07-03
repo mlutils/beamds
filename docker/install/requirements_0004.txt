@@ -8,6 +8,7 @@ pygraphviz
 gensim
 networkx
 # remove for python 3.10
+
 # cdlib
 stellargraph
 pykeen

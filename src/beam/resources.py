@@ -12,7 +12,7 @@ from .utils import get_edit_ratio, get_edit_distance, is_notebook, BeamURL, norm
 from sqlalchemy.engine import create_engine
 import openai
 import re
-from typing import Any, List, Mapping, Optional
+from typing import Any, List, Mapping, Optional, Dict
 
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
@@ -252,9 +252,29 @@ class BeamLLM(LLM, Processor):
     model: Optional[str] = Field(None)
     usage: Any
     _chat_history: Any = PrivateAttr()
+    temperature: float = Field(1.0, ge=0.0, le=1.0)
+    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    n: int = Field(1, ge=1)
+    stream: bool = Field(False)
+    stop: Optional[str] = Field(None)
+    max_tokens: Optional[int] = Field(None)
+    presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
+    frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
+    logit_bias: Optional[Dict[str, float]] = Field(None)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, temperature=1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
+                 frequency_penalty=0.0, logit_bias=None, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.temperature = temperature
+        self.top_p = top_p
+        self.n = n
+        self.stream = stream
+        self.stop = stop
+        self.max_tokens = max_tokens
+        self.presence_penalty = presence_penalty
+        self.frequency_penalty = frequency_penalty
+        self.logit_bias = logit_bias
 
         if not hasattr(self, 'model'):
             self.model = None
@@ -320,8 +340,36 @@ class BeamLLM(LLM, Processor):
     def update_usage(self, response):
         raise NotImplementedError
 
-    def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=1,
-             top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0, frequency_penalty=0.0,
+    def get_default_params(self, temperature=None,
+             top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None, logit_bias=None):
+
+        if temperature is None:
+            temperature = self.temperature
+        if top_p is None:
+            top_p = self.top_p
+        if n is None:
+            n = self.n
+        if stream is None:
+            stream = self.stream
+        if presence_penalty is None:
+            presence_penalty = self.presence_penalty
+        if frequency_penalty is None:
+            frequency_penalty = self.frequency_penalty
+        if logit_bias is None:
+            logit_bias = self.logit_bias
+
+        return {'temperature': temperature,
+                'top_p': top_p,
+                'n': n,
+                'stream': stream,
+                'stop': stop,
+                'max_tokens': max_tokens,
+                'presence_penalty': presence_penalty,
+                'frequency_penalty': frequency_penalty,
+                'logit_bias': logit_bias}
+
+    def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
+             top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
              logit_bias=None, **kwargs):
 
         '''
@@ -342,6 +390,13 @@ class BeamLLM(LLM, Processor):
         :return:
         '''
 
+        default_params = self.get_default_params(temperature=temperature,
+                                                 top_p=top_p, n=n, stream=stream,
+                                                 stop=stop, max_tokens=max_tokens,
+                                                 presence_penalty=presence_penalty,
+                                                 frequency_penalty=frequency_penalty,
+                                                 logit_bias=logit_bias)
+
         if reset_chat:
             self.reset_chat()
 
@@ -361,7 +416,7 @@ class BeamLLM(LLM, Processor):
 
         messages.append(message)
 
-        kwargs = {}
+        kwargs = default_params
         if logit_bias is not None:
             kwargs['logit_bias'] = logit_bias
         if max_tokens is not None:
@@ -369,18 +424,7 @@ class BeamLLM(LLM, Processor):
         if stop is not None:
             kwargs['stop'] = stop
 
-
-        response = self.chat_completion(
-            messages=messages,
-            temperature=temperature,
-            top_p=top_p,
-            n=n,
-            stream=stream,
-            stop=stop,
-            presence_penalty=presence_penalty,
-            frequency_penalty=frequency_penalty,
-            **kwargs
-        )
+        response = self.chat_completion(messages=messages, **kwargs)
 
         self.update_usage(response)
         response = LLMResponse(response, self)
@@ -438,8 +482,8 @@ class BeamLLM(LLM, Processor):
 
         return res
 
-    def ask(self, question, max_tokens=1024, temperature=1, top_p=1, frequency_penalty=0.0,
-            presence_penalty=0.0, stop=None, n=1, stream=False, logprobs=None, echo=False, **kwargs):
+    def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None,
+            presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False, **kwargs):
         """
         Ask a question to the model
         :param n:
@@ -456,23 +500,18 @@ class BeamLLM(LLM, Processor):
         :return:
         """
 
+        default_params = self.get_default_params(temperature=temperature,
+                                                 top_p=top_p, n=n, stream=stream,
+                                                 stop=stop, max_tokens=max_tokens,
+                                                 presence_penalty=presence_penalty,
+                                                 frequency_penalty=frequency_penalty,
+                                                 logit_bias=logit_bias)
+
         if not self.is_completions:
-            response = self.chat(question, reset_chat=True, max_tokens=1024, temperature=1, top_p=1, frequency_penalty=0.0,
-            presence_penalty=0.0, stop=None, n=1, stream=False, logprobs=None, echo=False, **kwargs)
+            kwargs = {**default_params, **kwargs}
+            response = self.chat(question, reset_chat=True, **kwargs)
         else:
-            response = self.completion(
-                prompt=question,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=top_p,
-                frequency_penalty=frequency_penalty,
-                presence_penalty=presence_penalty,
-                stop=stop,
-                n=n,
-                stream=stream,
-                logprobs=logprobs,
-                echo=echo
-            )
+            response = self.completion(prompt=question, logprobs=logprobs, echo=echo, **default_params)
 
             self.update_usage(response)
             response = LLMResponse(response, self)
@@ -740,10 +779,14 @@ class OpenAIBase(BeamLLM):
 
     def chat_completion(self, **kwargs):
         self.sync_openai()
+        # todo: remove this when logit_bias is supported
+        kwargs.pop('logit_bias')
         return openai.ChatCompletion.create(model=self.model, **kwargs)
 
     def completion(self, **kwargs):
         self.sync_openai()
+        # todo: remove this when logit_bias is supported
+        kwargs.pop('logit_bias')
         return openai.Completion.create(engine=self.model, **kwargs)
 
     def extract_text(self, res):

@@ -16,3 +16,4 @@ rtdl
 beam-ds
 HEBO
 GPy
+botorch
