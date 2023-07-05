@@ -27,6 +27,7 @@ import inspect
 from .path import beam_path, BeamPath
 from .logger import beam_logger as logger
 import atexit
+import traceback
 
 
 done = mp.Event()
@@ -102,9 +103,24 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
                                           visualize_weights=experiment.hparams.visualize_weights,
                                           argv=tensorboard_arguments)
 
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as e:
 
-        logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates")
+        tb = traceback.format_exc()
+        logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
+        logger.debug(f"KeyboardInterrupt: {e}")
+        logger.debug(f"KeyboardInterrupt: {tb}")
+
+        if rank == 0:
+            checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
+            alg.save_checkpoint(checkpoint_file)
+
+    except Exception as e:
+
+        tb = traceback.format_exc()
+        logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
+        logger.error(f"Exception: {e}")
+        logger.error(f"Exception: {tb}")
+
         if rank == 0:
             checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
             alg.save_checkpoint(checkpoint_file)
