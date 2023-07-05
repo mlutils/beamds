@@ -6,9 +6,9 @@ johnnydep
 
 # jupyter ipywidgets
 jupyterhub
-jupyterlab
+# jupyterlab
 configurable-http-proxy
-notebook
+# notebook
 jupyter-resource-usage
 ipywidgets
 ipympl
