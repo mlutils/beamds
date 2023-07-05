@@ -831,7 +831,7 @@ class HuggingFaceLLM(BeamLLM):
     tokenizer: Any
     model: Any
 
-    def __init__(self, model, tokenizer=None, device=None, dtype=None, chat=False, *args, **kwargs):
+    def __init__(self, model, tokenizer=None, device=None, dtype=None, chat=False, compile=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         transformers.logging.set_verbosity_error()
@@ -853,6 +853,8 @@ class HuggingFaceLLM(BeamLLM):
 
         self.model = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True,
                                                      config=self.config, **model_kwargs)
+        if compile:
+            self.model = torch.compile(self.model)
 
     def update_usage(self, response):
         pass
@@ -889,6 +891,7 @@ class HuggingFaceLLM(BeamLLM):
                                         tokenizer=self.tokenizer)
 
         return pipeline(self.conversation, pad_token_id=pipeline.tokenizer.eos_token_id)
+
 
 class OpenAI(OpenAIBase):
 
