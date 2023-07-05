@@ -7,9 +7,12 @@ graphviz
 pygraphviz
 gensim
 networkx
-# remove for python 3.10
 
-# cdlib
-stellargraph
+cdlib
+
+# remove for python 3.10
+# No matching distribution found for stellargraph - deprecated
+# stellargraph
+
 pykeen
 ogb
