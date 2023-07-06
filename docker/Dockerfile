@@ -90,7 +90,7 @@ RUN bash /workspace/install/install_dgl.sh
 RUN python /workspace/install/downloader.py
 
 ## download nlp data
-# RUN python /workspace/install/models_downloads.py
+# RUN python /workspace/install/models_downloads.pyin
 
 # REMOVE FOR LITE VERSION
 

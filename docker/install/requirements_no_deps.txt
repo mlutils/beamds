@@ -17,4 +17,6 @@ beam-ds
 HEBO
 GPy
 botorch
-kornia
+
+# requires torch<=2.1.0
+tsai

@@ -11,9 +11,8 @@ spacy
 nltk
 
 # move kornia to the no_deps as it tries to install pytorch
-# kornia
+kornia
 
 albumentations
 timm
 tsfresh
-tsai
