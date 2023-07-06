@@ -852,6 +852,8 @@ class HuggingFaceLLM(BeamLLM):
 
         self.model = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True,
                                                      config=self.config, **model_kwargs)
+        if compile:
+            self.model = torch.compile(self.model)
 
         if compile:
             self.model = torch.compile(self.model)
