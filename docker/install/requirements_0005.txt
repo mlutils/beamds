@@ -10,7 +10,9 @@ Pillow
 spacy
 nltk
 
-kornia
+# move kornia to the no_deps as it tries to install pytorch
+# kornia
+
 albumentations
 timm
 tsfresh

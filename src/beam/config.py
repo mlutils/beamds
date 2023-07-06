@@ -66,6 +66,8 @@ def get_beam_parser():
     boolean_feature(parser, "override", False, "Override last experiment: active when reload=False")
 
     parser.add_argument('--cpu-workers', type=int, default=0, help='How many CPUs will be used for the data loading')
+    parser.add_argument('--data-fetch-timeout', type=float, default=0., help='Timeout for the dataloader fetching. '
+                                                                             'set to 0 for no timeout.')
     parser.add_argument('--device', type=str, default='0', help='GPU Number or cpu/cuda string')
     parser.add_argument("--device-list", nargs="+", default=None,
                         help='Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '

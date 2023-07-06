@@ -18,6 +18,9 @@ from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
 from pydantic import BaseModel, Field, PrivateAttr
 from transformers.pipelines import Conversation
+import transformers
+from .utils import beam_device
+import torch
 
 
 class BeamSQL(Processor):
@@ -819,20 +822,16 @@ class FastChatLLM(OpenAIBase):
         return True
 
 
-import transformers
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
-from .utils import beam_device
-import torch
-
-
 class HuggingFaceLLM(BeamLLM):
 
     config: Any
     tokenizer: Any
     model: Any
 
-    def __init__(self, model, tokenizer=None, device=None, dtype=None, chat=False, *args, **kwargs):
+    def __init__(self, model, tokenizer=None, device=None, dtype=None, chat=False, compile=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
         transformers.logging.set_verbosity_error()
 
@@ -853,6 +852,9 @@ class HuggingFaceLLM(BeamLLM):
 
         self.model = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True,
                                                      config=self.config, **model_kwargs)
+
+        if compile:
+            self.model = torch.compile(self.model)
 
     def update_usage(self, response):
         pass
@@ -889,6 +891,7 @@ class HuggingFaceLLM(BeamLLM):
                                         tokenizer=self.tokenizer)
 
         return pipeline(self.conversation, pad_token_id=pipeline.tokenizer.eos_token_id)
+
 
 class OpenAI(OpenAIBase):
 

@@ -17,3 +17,4 @@ beam-ds
 HEBO
 GPy
 botorch
+kornia

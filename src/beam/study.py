@@ -254,6 +254,8 @@ class Study(object):
     def tune(self, *args, config=None, timeout=0, runtime_env=None, dashboard_port=None,
              get_port_from_beam_port_range=True, include_dashboard=True, local_dir=None, **kwargs):
 
+        # TODO: move to tune.Tuner and tuner.run()
+
         if config is None:
             config = {}
 

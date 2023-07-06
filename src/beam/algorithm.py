@@ -81,6 +81,7 @@ class Algorithm(object):
         self.eval_subset = None
         self.objective = None
         self.best_objective = None
+        self.best_epoch = None
         self.best_state = False
         self._name = name
 
@@ -497,6 +498,7 @@ class Algorithm(object):
         buffer_size = self.get_hparam('buffer_size') if buffer_size is None else buffer_size
         probs_normalization = self.get_hparam('probs_normalization') if probs_normalization is None else probs_normalization
         sample_size = self.get_hparam('sample_size') if sample_size is None else sample_size
+        timeout = self.get_hparam('data_fetch_timeout') if timeout is None else timeout
 
         self.persistent_dataloaders = {}
         self.dataloaders = {}
@@ -721,6 +723,7 @@ class Algorithm(object):
                                             tail=True, once=True)
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=self.get_hparam('cpu_workers'),
+                                                     timeout=self.get_hparam('data_fetch_timeout'),
                                                      pin_memory=self.pin_memory)
         return dataloader
 
@@ -898,9 +901,11 @@ class Algorithm(object):
             self.objective = objective
             if self.best_objective is None:
                 self.best_objective = self.objective
+                self.best_epoch = self.epoch
             elif self.objective > self.best_objective:
                 logger.info(f"New best objective result: {self.objective}")
                 self.best_objective = self.objective
+                self.best_epoch = self.epoch
                 self.best_state = True
             else:
                 self.best_state = False
@@ -923,7 +928,12 @@ class Algorithm(object):
                 kwargs = {'objective': objective}
             tune.report(**kwargs)
         elif self.hpo == 'optuna':
+            import optuna
             self.trial.report(objective, epoch)
+            self.trial.set_user_attr('best_value', self.best_objective)
+            self.trial.set_user_attr('best_epoch', self.best_epoch)
+            if self.trial.should_prune():
+                raise optuna.TrialPruned()
 
     def early_stopping(self, results=None, epoch=None, **kwargs):
         '''
@@ -1143,7 +1153,7 @@ class Algorithm(object):
     def save_checkpoint(self, path=None, aux=None, pickle_model=False):
 
         path = beam_path(path)
-        state = {'aux': aux, 'epoch': self.epoch}
+        state = {'aux': aux, 'epoch': self.epoch, 'best_objective': self.best_objective, 'best_epoch': self.best_epoch,}
         wrapper = copy.deepcopy if path is None else (lambda x: x)
 
         for k, net in self.networks.items():
