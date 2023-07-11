@@ -19,7 +19,7 @@ from langchain.llms.base import LLM
 from pydantic import BaseModel, Field, PrivateAttr
 from transformers.pipelines import Conversation
 import transformers
-from .utils import beam_device
+from .utils import beam_device, BeamURL
 import torch
 
 
@@ -237,6 +237,7 @@ class BeamAthena(BeamSQL):
 
         return bd
 
+
 class LLMResponse:
     def __init__(self, response, llm):
         self.response = response
@@ -253,8 +254,11 @@ class LLMResponse:
 class BeamLLM(LLM, Processor):
 
     model: Optional[str] = Field(None)
+    scheme: Optional[str] = Field(None)
     usage: Any
+    instruction_history: Any
     _chat_history: Any = PrivateAttr()
+    _url: Any = PrivateAttr()
     temperature: float = Field(1.0, ge=0.0, le=1.0)
     top_p: float = Field(1.0, ge=0.0, le=1.0)
     n: int = Field(1, ge=1)
@@ -266,7 +270,7 @@ class BeamLLM(LLM, Processor):
     logit_bias: Optional[Dict[str, float]] = Field(None)
 
     def __init__(self, *args, temperature=1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
-                 frequency_penalty=0.0, logit_bias=None, **kwargs):
+                 frequency_penalty=0.0, logit_bias=None, scheme='unknown', **kwargs):
         super().__init__(*args, **kwargs)
 
         self.temperature = temperature
@@ -278,6 +282,9 @@ class BeamLLM(LLM, Processor):
         self.presence_penalty = presence_penalty
         self.frequency_penalty = frequency_penalty
         self.logit_bias = logit_bias
+        self.scheme = scheme
+        self._url = None
+        self.instruction_history = []
 
         if not hasattr(self, 'model'):
             self.model = None
@@ -287,6 +294,14 @@ class BeamLLM(LLM, Processor):
 
         self._chat_history = None
         self.reset_chat()
+
+    @property
+    def url(self):
+
+        if self._url is None:
+            self._url = BeamURL(scheme=self.scheme, path=self.model)
+
+        return str(self._url)
 
     @property
     def conversation(self):
@@ -317,8 +332,9 @@ class BeamLLM(LLM, Processor):
             stop: Optional[List[str]] = None,
             run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
-        res = self.ask(prompt, stop=stop)
-        return res.text
+
+        res = self.ask(prompt, stop=stop).text
+        return res
 
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
@@ -519,7 +535,12 @@ class BeamLLM(LLM, Processor):
             self.update_usage(response)
             response = LLMResponse(response, self)
 
+        self.instruction_history.append({'question': question, 'response': response.text, 'type': 'ask'})
+
         return response
+
+    def reset_instruction_history(self):
+        self.instruction_history = []
 
     def summary(self, text, n_words=100, n_paragraphs=None, **kwargs):
         """
@@ -808,6 +829,7 @@ class FastChatLLM(OpenAIBase):
         api_key = "EMPTY"  # Not support yet
         organization = "EMPTY"  # Not support yet
 
+        kwargs['scheme'] = 'fastchat'
         super().__init__(api_key=api_key, api_base=api_base, organization=organization,
                          *args, **kwargs)
 
@@ -823,38 +845,42 @@ class FastChatLLM(OpenAIBase):
 
 
 class HuggingFaceLLM(BeamLLM):
-
     config: Any
     tokenizer: Any
     model: Any
+    pipline_kwargs: Any
+    input_device: Optional[str] = Field(None)
 
-    def __init__(self, model, tokenizer=None, device=None, dtype=None, chat=False, compile=True, *args, **kwargs):
+    def __init__(self, model, tokenizer=None, dtype=None, chat=False, input_device=None, compile=True, *args,
+                 model_kwargs=None,
+                 config_kwargs=None, pipline_kwargs=None, **kwargs):
+
+        kwargs['scheme'] = 'huggingface'
         super().__init__(*args, **kwargs)
 
         from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
         transformers.logging.set_verbosity_error()
 
-        model_kwargs = {}
-        if device is None:
-            model_kwargs['device_map'] = 'auto'
-        else:
-            model_kwargs['device'] = beam_device(device)
+        if model_kwargs is None:
+            model_kwargs = {}
 
-        if dtype is None:
-            model_kwargs['torch_dtype'] = torch.bfloat16
-        else:
-            model_kwargs['torch_dtype'] = getattr(torch, dtype)
+        if config_kwargs is None:
+            config_kwargs = {}
 
-        self.config = AutoConfig.from_pretrained(model, trust_remote_code=True,  **kwargs)
+        if pipline_kwargs is None:
+            pipline_kwargs = {}
+
+        self.pipline_kwargs = pipline_kwargs
+
+        self.input_device = input_device
+
+        self.config = AutoConfig.from_pretrained(model, trust_remote_code=True, **config_kwargs)
         tokenizer_name = tokenizer or model
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
 
         self.model = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True,
-                                                     config=self.config, **model_kwargs)
-        if compile:
-            self.model = torch.compile(self.model)
-
+                                                          config=self.config, **model_kwargs)
         if compile:
             self.model = torch.compile(self.model)
 
@@ -883,16 +909,16 @@ class HuggingFaceLLM(BeamLLM):
     def completion(self, prompt=None, **kwargs):
 
         pipeline = transformers.pipeline('text-generation', model=self.model,
-                                         tokenizer=self.tokenizer)
+                                         tokenizer=self.tokenizer, device=self.input_device, return_full_text=False)
 
-        return pipeline(prompt, pad_token_id=pipeline.tokenizer.eos_token_id)
+        return pipeline(prompt, pad_token_id=pipeline.tokenizer.eos_token_id, **self.pipline_kwargs)
 
     def chat_completion(self, **kwargs):
 
         pipeline = transformers.pipeline('conversational', model=self.model,
-                                        tokenizer=self.tokenizer)
+                                         tokenizer=self.tokenizer, device=self.input_device)
 
-        return pipeline(self.conversation, pad_token_id=pipeline.tokenizer.eos_token_id)
+        return pipeline(self.conversation, pad_token_id=pipeline.tokenizer.eos_token_id, **self.pipline_kwargs)
 
 
 class OpenAI(OpenAIBase):
@@ -902,6 +928,8 @@ class OpenAI(OpenAIBase):
     def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
 
         api_key = beam_key('openai_api_key', api_key)
+
+        kwargs['scheme'] = 'openai'
         super().__init__(api_key=api_key, api_base='https://api.openai.com/v1',
                          organization=organization, *args, **kwargs)
 
