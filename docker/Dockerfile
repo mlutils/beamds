@@ -123,7 +123,9 @@ RUN bash /workspace/install/install_odbc.sh
 
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh
-RUN bash /workspace/install/language_servers.sh
+# RUN bash /workspace/install/language_servers.sh
+
+RUN bash /workspace/install/aux_installs.sh
 
 # for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.

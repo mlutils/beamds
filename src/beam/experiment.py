@@ -493,12 +493,12 @@ class Experiment(object):
             # self.commet_writer = SummaryWriter(comet_config={"disabled": False})
 
         self.mlflow_run = None
-        if self.hparams.mlflow:
+        if self.hparams.mlflow and (self.hparams.mlflow_url is not None or 'MLFLOW_TRACKING_URI' in os.environ):
             import mlflow
             # import mlflow.pytorch
             mlflow_uri = self.hparams.mlflow_url
             if mlflow_uri is None:
-                mlflow_uri = os.environ['$MLFLOW_TRACKING_URI']
+                mlflow_uri = os.environ['MLFLOW_TRACKING_URI']
 
             mlflow.set_tracking_uri(mlflow_uri)
             mlflow.set_experiment(self.exp_name)
