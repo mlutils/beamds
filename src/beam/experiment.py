@@ -363,6 +363,9 @@ class Experiment(object):
                 self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.parallel)]
 
         self.root.joinpath('hparams.pkl').write(self.tensorboard_hparams)
+        self.comet_exp = None
+        self.comet_writer = None
+        self.mlflow_run = None
 
     def __del__(self):
         self.cleanup()
@@ -463,10 +466,9 @@ class Experiment(object):
             else:
                 logger.warning(f"Tensorboard directory is not a BeamPath object. Tensorboard will not be enabled.")
 
-        self.comet_exp = None
         if self.hparams.comet:
 
-            from comet_ml import Experiment
+            import comet_ml
             # from comet_ml.integration.pytorch import log_model
 
             api_key = self.hparams.comet_api_key
@@ -483,16 +485,15 @@ class Experiment(object):
 
             logger.info("Logging this experiment to comet.ml")
 
-            self.comet_exp = Experiment(api_key=api_key, project_name=self.hparams.project_name,
+            self.comet_exp = comet_ml.Experiment(api_key=api_key, project_name=self.hparams.project_name,
                                         log_code=log_code, workspace=self.hparams.comet_workspace,
                                         disabled=not self.hparams.comet)
 
             self.comet_exp.add_tag(self.hparams.identifier)
             self.comet_exp.set_name(self.exp_name)
             self.comet_exp.log_parameters(self.tensorboard_hparams)
-            # self.commet_writer = SummaryWriter(comet_config={"disabled": False})
+            self.comet_writer = SummaryWriter(comet_config={"disabled": False})
 
-        self.mlflow_run = None
         if self.hparams.mlflow:
             import mlflow
             # import mlflow.pytorch

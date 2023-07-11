@@ -61,13 +61,20 @@ RUN pip install -U -r /workspace/install/requirements_0012.txt
 RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0014.txt
 RUN pip list
+RUN pip install -U -r /workspace/install/requirements_0015.txt
+RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 RUN pip list
 
 #install torchsig
+
 RUN bash /workspace/install/install_torchsig.sh
+
+# after failure use this to aviod restarting the build process
+#COPY docker/install_torchsig.sh /workspace/install_torchsig.sh
+#RUN bash /workspace/install_torchsig.sh
 
 # Install dgl from source so it would be compatible with cuda 12.0
 # RUN pip install  dgl -f https://data.dgl.ai/wheels/repo.html
@@ -123,7 +130,7 @@ RUN bash /workspace/install/install_odbc.sh
 
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh
-RUN bash /workspace/install/language_servers.sh
+#RUN bash /workspace/install/language_servers.sh
 
 # for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.
