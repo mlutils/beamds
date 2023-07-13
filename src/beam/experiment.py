@@ -499,7 +499,7 @@ class Experiment(object):
             # import mlflow.pytorch
             mlflow_uri = self.hparams.mlflow_url
             if mlflow_uri is None:
-                mlflow_uri = os.environ['$MLFLOW_TRACKING_URI']
+                mlflow_uri = os.environ['MLFLOW_TRACKING_URI']
 
             mlflow.set_tracking_uri(mlflow_uri)
             mlflow.set_experiment(self.exp_name)

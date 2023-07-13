@@ -69,7 +69,6 @@ RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 RUN pip list
 
 #install torchsig
-
 RUN bash /workspace/install/install_torchsig.sh
 
 # after failure use this to aviod restarting the build process
@@ -130,7 +129,9 @@ RUN bash /workspace/install/install_odbc.sh
 
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh
-#RUN bash /workspace/install/language_servers.sh
+# RUN bash /workspace/install/language_servers.sh
+
+RUN bash /workspace/install/aux_installs.sh
 
 # for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.
