@@ -844,6 +844,34 @@ class FastChatLLM(OpenAIBase):
         return True
 
 
+class LocalFastChat(BeamLLM):
+
+    def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
+        kwargs['scheme'] = 'fastchat'
+        super().__init__(*args, **kwargs)
+        self.model = ModelWorker(controller_addr='NA',
+                            worker_addr='NA',
+                            worker_id='default',
+                            model_path=model,
+                            model_names=['my model'],
+                            # limit_worker_concurrency=1,
+                            no_register=True,
+                            device='cuda',
+                            num_gpus=1,
+                            max_gpu_memory=None,
+                            load_8bit=False,
+                            cpu_offloading=False,
+                            gptq_config=None,
+                            # stream_interval=2)
+
+    @property
+    def is_chat(self):
+        return True
+
+    def chat(self, prompt, **kwargs):
+        return self.ask(prompt, **kwargs)
+
+
 class HuggingFaceLLM(BeamLLM):
     config: Any
     tokenizer: Any
