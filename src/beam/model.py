@@ -126,16 +126,33 @@ class GaussianHarmonicExpansion(object):
 
 class LinearNet(nn.Module):
 
-    def __init__(self, l_in, l_h=256, l_out=1, n_l=2, bias=True, activation='ReLU'):
+    def __init__(self, l_in, l_h=256, l_out=1, n_l=2, bias=True,
+                 activation='ReLU', batch_norm=False, input_dropout=0.0, dropout=0.0):
         super().__init__()
 
         if type(activation) is str:
             activation = getattr(nn, activation)()
 
-        self.lin = nn.Sequential(*([nn.Linear(l_in, l_h, bias=bias), activation] if n_l > 1 else []),
-                                 *sum([[nn.Linear(l_h, l_h, bias=bias), activation] for _ in range(max(n_l - 2, 0))],
-                                      []),
-                                 nn.Linear(l_h if n_l > 1 else l_in, l_out, bias=bias))
+        if batch_norm:
+            norm = nn.BatchNorm1d
+        else:
+            norm = nn.Identity
+
+        if dropout > 0.0:
+            d_layer = nn.Dropout
+        else:
+            d_layer = nn.Identity
+
+        sequence = []
+        if input_dropout > 0.0:
+            sequence.append(nn.Dropout(input_dropout))
+
+        if n_l > 1:
+            sequence.extend([nn.Linear(l_in, l_h, bias=bias), activation, d_layer(dropout), norm(l_h)])
+        sequence.extend(sum([[nn.Linear(l_h, l_h, bias=bias), activation, d_layer(dropout), norm(l_h)] for _ in range(max(n_l - 2, 0))], []))
+        sequence.append(nn.Linear(l_h if n_l > 1 else l_in, l_out, bias=bias))
+
+        self.lin = nn.Sequential(*sequence)
 
     def forward(self, x):
 

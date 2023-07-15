@@ -90,7 +90,7 @@ def get_beam_parser():
     # booleans
 
     boolean_feature(parser, "tensorboard", True, "Log results to tensorboard")
-    boolean_feature(parser, "mlflow", True, "Log results to MLFLOW server")
+    boolean_feature(parser, "mlflow", False, "Log results to MLFLOW server")
 
     boolean_feature(parser, "lognet", True, 'Log  networks parameters')
     boolean_feature(parser, "deterministic", False, 'Use deterministic pytorch optimization for reproducability'
@@ -116,6 +116,7 @@ def get_beam_parser():
     boolean_feature(parser, "capturable", False, 'Temporary workaround that should be removed in future pytorch releases '
                                                  'it makes possible to reload models with adam optimizers '
                                                  'see: https://github.com/pytorch/pytorch/issues/80809')
+    boolean_feature(parser, "copy-code", True, "Copy the code directory into the experiment directory")
 
     # experiment parameters
     parser.add_argument('--init', type=str, default='ortho', metavar='hparam',
@@ -146,12 +147,17 @@ def get_beam_parser():
     # Learning parameters
 
     parser.add_argument('--batch-size', type=int, default=256, metavar='hparam', help='Batch Size')
-    parser.add_argument('--batch-size-train', type=int, default=None, metavar='hparam', help='Batch Size for training iterations')
-    parser.add_argument('--batch-size-eval', type=int, default=None, metavar='hparam', help='Batch Size for testing/evaluation iterations')
+    parser.add_argument('--batch-size-train', type=int, default=None, metavar='hparam',
+                        help='Batch Size for training iterations')
+    parser.add_argument('--batch-size-eval', type=int, default=None, metavar='hparam',
+                        help='Batch Size for testing/evaluation iterations')
 
-    parser.add_argument('--reduction', type=str, metavar='hparam', default='sum', help='whether to sum loss elements or average them')
-    parser.add_argument('--lr-dense', '--lr', type=float, default=1e-3, metavar='hparam', help='learning rate for dense optimizers')
-    parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='hparam', help='learning rate for sparse optimizers')
+    parser.add_argument('--reduction', type=str, metavar='hparam', default='sum',
+                        help='whether to sum loss elements or average them [sum|mean|mean_batch|sqrt|mean_sqrt]')
+    parser.add_argument('--lr-dense', '--lr', type=float, default=1e-3, metavar='hparam',
+                        help='learning rate for dense optimizers')
+    parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='hparam',
+                        help='learning rate for sparse optimizers')
     parser.add_argument('--cycle-max-momentum', type=float, default=.95, metavar='hparam',
                         help='The maximum momentum in one-cycle optimizer')
     parser.add_argument('--cycle-base-momentum', type=float, default=.85, metavar='hparam',
@@ -190,6 +196,8 @@ def get_beam_parser():
     boolean_feature(parser, "print-results", True, "Print results after each epoch to screen")
     boolean_feature(parser, "visualize-weights", True, "Visualize network weights on tensorboard")
     boolean_feature(parser, "enable-tqdm", True, "Print tqdm progress bar when training")
+    parser.add_argument('--visualize-results-log-base', type=int, default=10,
+                        help='log base for the logarithmic based results visualization')
     parser.add_argument('--tqdm-threshold', type=float, default=10., help='Minimal expected epoch time to print tqdm bar'
                                                                          'set 0 to ignore and determine tqdm bar with tqdm-enable flag')
     parser.add_argument('--tqdm-stats', type=float, default=1., help='Take this period to calculate the experted epoch time')

@@ -170,8 +170,8 @@ class BeamData(object):
         self.read_metadata = read_metadata
         self.metadata_path_prefix = beam_path(metadata_path_prefix)
 
-        self.stored = False
-        self.cached = True
+        self.is_stored = False
+        self.is_cached = True
 
         self._columns_map = None
         self._device = None
@@ -214,7 +214,7 @@ class BeamData(object):
             self.data = data
         else:
             self.data = None
-            self.cached = False
+            self.is_cached = False
             # in this case the data is not cached, so it should be stored ether in root_path or in all_paths
 
         if device is not None:
@@ -239,8 +239,8 @@ class BeamData(object):
                                                                                                self._metadata_paths)
 
         if ((self._all_paths is not None) or (self._root_path is not None and self._root_path.not_empty())) and \
-                not self.cached:
-            self.stored = True
+                not self.is_cached:
+            self.is_stored = True
             if not lazy:
                 self.cache()
 
@@ -288,7 +288,7 @@ class BeamData(object):
         if self._all_paths is not None:
             return self._all_paths
 
-        if self.stored:
+        if self.is_stored:
             path = self.metadata_paths['all_paths']
             if self.read_metadata and path.exists():
                 logger.debug(f"Reading all_paths file: {path}")
@@ -312,7 +312,7 @@ class BeamData(object):
         if self._index is not None:
             return self._index
 
-        if self.stored and self.metadata_paths['index'].parent.is_dir():
+        if self.is_stored and self.metadata_paths['index'].parent.is_dir():
 
             for path in self.metadata_paths['index'].parent.iterdir():
                 if path.stem == BeamData.metadata_files['index']:
@@ -320,7 +320,7 @@ class BeamData(object):
                         logger.debug(f"Reading index file: {path}")
                         self._index = path.read()
                         return self._index
-        if self.cached:
+        if self.is_cached:
             info = self.info
             if self.orientation in ['columns', 'simple',  'simplified_index']:
                 self._index = info.index.values
@@ -344,7 +344,7 @@ class BeamData(object):
         if self._label is not None:
             return self._label
 
-        if self.stored and self.metadata_paths['label'].parent.is_dir():
+        if self.is_stored and self.metadata_paths['label'].parent.is_dir():
 
             for path in self.metadata_paths['label'].parent.iterdir():
                 if path.stem == BeamData.metadata_files['label']:
@@ -497,7 +497,7 @@ class BeamData(object):
         if self._schema is not None:
             return self._schema
 
-        if self.stored:
+        if self.is_stored:
             if self.metadata_path_exists('schema'):
                 schema_path = self.metadata_paths['schema']
                 logger.debug(f"Reading schema file {schema_path}")
@@ -512,14 +512,14 @@ class BeamData(object):
         if self._conf is not None:
             return self._conf
 
-        if self.stored and self.read_metadata:
+        if self.is_stored and self.read_metadata:
             if self.metadata_path_exists('conf'):
                 conf_path = self.metadata_paths['conf']
                 logger.debug(f"Reading conf file {conf_path}")
                 self._conf = conf_path.read()
                 return self._conf
 
-        if self.cached:
+        if self.is_cached:
             self._conf = {'orientation': self.orientation,
                           'objects_type': self.objects_type,
                           'len': len(self),
@@ -553,14 +553,14 @@ class BeamData(object):
         if self._info is not None:
             return self._info
 
-        if self.stored and self.read_metadata:
+        if self.is_stored and self.read_metadata:
             if self.metadata_path_exists('info'):
                 info_path = self.metadata_paths['info']
                 logger.debug(f"Reading info file {info_path}")
                 self._info = info_path.read()
                 return self._info
 
-        if self.cached:
+        if self.is_cached:
 
             if self.orientation in ['index', 'packed']:
                 filtered_data = list(filter(lambda x: x is not None, self.flatten_data))
@@ -611,6 +611,8 @@ class BeamData(object):
 
     @property
     def path(self):
+        if 'data' in self.all_paths and len(self.all_paths) == 1:
+            return self.root_path.joinpath(self.all_paths['data'])
         return self.root_path
 
     @schema.setter
@@ -627,7 +629,7 @@ class BeamData(object):
         self._root_path = value
         self._all_paths = None
         self._metadata_paths = None
-        self.stored = False
+        self.is_stored = False
 
     @property
     def index_mapper(self):
@@ -687,11 +689,11 @@ class BeamData(object):
         if self._len is not None:
             return self._len
 
-        if self.stored and self._conf is not None:
+        if self.is_stored and self._conf is not None:
             self._len = self._conf['len']
             return self._len
 
-        if self.cached:
+        if self.is_cached:
             if self.orientation == 'columns':
                 self._len = container_len(self.data)
             else:
@@ -711,7 +713,7 @@ class BeamData(object):
             self._orientation = self._conf['orientation']
             return self._orientation
 
-        if self.cached:
+        if self.is_cached:
 
             if not is_container(self.data):
                 self._orientation = 'simple'
@@ -742,7 +744,7 @@ class BeamData(object):
                 else:
                     self._orientation = 'packed'
 
-        elif self.stored:
+        elif self.is_stored:
             self._orientation = self.conf['orientation']
 
         else:
@@ -944,7 +946,7 @@ class BeamData(object):
     @property
     def values(self):
 
-        if not self.cached:
+        if not self.is_cached:
             self.cache()
 
         return self.data
@@ -1148,7 +1150,7 @@ class BeamData(object):
 
     @property
     def parent(self):
-        return BeamData.from_path(self.path.parent)
+        return BeamData.from_path(self.root_path.parent)
 
     @property
     def columns_map(self):
@@ -1166,7 +1168,7 @@ class BeamData(object):
         if self._keys is None:
             if self.orientation == 'simple':
                 self._keys = self.columns
-            if self.cached:
+            if self.is_cached:
                 self._keys = recursive_keys(self.data)
             else:
                 self._keys = recursive_keys(self.all_paths)
@@ -1302,14 +1304,14 @@ class BeamData(object):
             label_path = self.metadata_paths['label']
             BeamData.write_object(self.label, label_path)
 
-        self.stored = True
+        self.is_stored = True
         self.data = data
 
         self._all_paths = BeamData.recursive_map_path(self.root_path, glob_filter=self.glob_filter)
         self.update_all_paths_file()
 
     def state_dict(self):
-        if not self.cached:
+        if not self.is_cached:
             self.cache()
 
         return {'data': self.data, 'info': self.info, 'conf': self.conf, 'index': self.index, 'label': self.label,
@@ -1337,9 +1339,13 @@ class BeamData(object):
     def load_state_dict(cls, state_dict):
         return cls(**state_dict)
 
+    def cached(self, *args, **kwargs):
+        self.cache(*args, **kwargs)
+        return self
+
     def cache(self, path=None, all_paths=None, schema=None, update=False, **kwargs):
 
-        if self.cached:
+        if self.is_cached:
             if update:
                 logger.info(f"BeamData: Updating the cached data in path {self.path}")
             else:
@@ -1360,7 +1366,7 @@ class BeamData(object):
 
         # read the conf and info files
 
-        if not self.stored:
+        if not self.is_stored:
             logger.warning("stored=False, data is seems to be un-synchronized")
 
         data = BeamData.read(self.abs_all_paths(all_paths), schema=schema, **kwargs)
@@ -1372,8 +1378,8 @@ class BeamData(object):
         # self.all_paths = BeamData.recursive_map_path(root_path, glob_filter=self.glob_filter)
         self._all_paths = all_paths
         self.data = data
-        self.stored = True
-        self.cached = True
+        self.is_stored = True
+        self.is_cached = True
         self.reset_metadata()
 
     def reset_metadata(self, *args, avoid_reset=None):
@@ -1453,7 +1459,7 @@ class BeamData(object):
             index = (index,)
         index = tuple([slice(None), slice(None), *index])
 
-        if not self.cached:
+        if not self.is_cached:
             raise LookupError(f"Cannot slice as data is not cached")
 
         if self.orientation in ['simple', 'simplified_index']:
@@ -1473,7 +1479,7 @@ class BeamData(object):
 
     def slice_columns(self, columns):
 
-        if not self.cached:
+        if not self.is_cached:
             raise LookupError(f"Cannot slice by columns as data is not cached")
 
         if self.orientation in ['simple', 'simplified_index']:
@@ -1497,7 +1503,7 @@ class BeamData(object):
     @property
     def stacked_values(self):
 
-        if not self.cached:
+        if not self.is_cached:
             self.cache()
 
         if self.orientation == 'packed':
@@ -1647,7 +1653,7 @@ class BeamData(object):
 
     def slice_index(self, index):
 
-        if not self.cached:
+        if not self.is_cached:
             raise LookupError(f"Cannot slice by index as data is not cached")
 
         orientation = self.orientation
@@ -1850,7 +1856,7 @@ class BeamData(object):
         else:
             schema = self.schema
 
-        if self.stored:
+        if self.is_stored:
 
             try:
                 all_paths = BeamData.slice_scalar_or_list(self.all_paths, keys, keys_type=keys_type,
@@ -1861,7 +1867,7 @@ class BeamData(object):
                 raise KeyError(f"Cannot find keys: {keys} in stored BeamData object. "
                                f"If the object is archived you should cache it before slicing.")
 
-        if self.cached:
+        if self.is_cached:
             if self.orientation == 'simplified_index':
                 if keys_type.major == 'scalar':
                     data_batch = self.get_simplified_data_by_key(keys)
@@ -1880,7 +1886,7 @@ class BeamData(object):
             else:
                 data = BeamData.slice_scalar_or_list(self.data, keys, keys_type=keys_type, data_type=self.data_type)
 
-        if not self.lazy and self.stored and data is None:
+        if not self.lazy and self.is_stored and data is None:
 
             data = BeamData.read(self.abs_all_paths(all_paths), schema=schema)
 
@@ -1966,7 +1972,7 @@ class BeamData(object):
         return columns
 
     def __repr__(self):
-        if self.cached and self.orientation == 'simple':
+        if self.is_cached and self.orientation == 'simple':
             return repr(self.data)
         return self.__str__()
 
@@ -1978,8 +1984,8 @@ class BeamData(object):
 
     def __str__(self):
 
-        params = {'orientation': self.orientation, 'lazy': self.lazy, 'stored': self.stored,
-                  'cached': self.cached, 'device': self.device, 'objects_type': self.objects_type,
+        params = {'orientation': self.orientation, 'lazy': self.lazy, 'stored': self.is_stored,
+                  'cached': self.is_cached, 'device': self.device, 'objects_type': self.objects_type,
                   'quick_getitem': self.quick_getitem, 'has_index': self.index is not None,
                   'has_label': self.label is not None}
         params_line = ' | '.join([f"{k}: {v}" for k, v in params.items()])
@@ -2013,7 +2019,7 @@ class BeamData(object):
         org_key = key
         key_type = check_type(key)
 
-        if self.stored:
+        if self.is_stored:
 
             kwargs = self.get_default_params('compress', 'chunksize', 'chunklen', 'n_chunks', 'partition',
                                               'split_by', 'archive_size', 'override')
@@ -2046,7 +2052,7 @@ class BeamData(object):
             all_paths[key] = str(path.relative_to(self.root_path))
             self.update_all_paths_file()
 
-        if self.cached:
+        if self.is_cached:
 
             key = org_key
             if self.orientation in ['simple', 'simplified_index']:
@@ -2100,7 +2106,7 @@ class BeamData(object):
             n_chunks = self.get_default('n_chunks', n_chunks)
             partition = self.get_default('partition', partition)
 
-            if not self.cached and split_by != 'keys':
+            if not self.is_cached and split_by != 'keys':
 
                 if not self.lazy:
                     self.cache()
@@ -2109,7 +2115,7 @@ class BeamData(object):
 
             if split_by == 'keys':
 
-                if self.cached:
+                if self.is_cached:
 
                     for i, (k, d) in enumerate(self.flatten_items.items()):
 

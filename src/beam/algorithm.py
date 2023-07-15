@@ -10,7 +10,7 @@ from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
     stack_batched_results, as_numpy, beam_device, retrieve_name, filter_dict, \
-    recursive_collate_chunks, is_notebook, DataBatch
+    recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from .experiment import Experiment
@@ -72,7 +72,7 @@ class Algorithm(object):
         self.schedulers_name_by_id = {}
         self.schedulers_flat = {}
         self.optimizers_flat = {}
-        self.optimizers_steps = defaultdict(lambda: 0)
+        self.optimizers_steps = {}
         self.epoch_length = None
 
         self.dataset = None
@@ -137,7 +137,12 @@ class Algorithm(object):
             setattr(self.hparams, hparam, default)
 
         if hparam not in self.hparams_warnings:
-            logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
+            experment_generated_hparams = ['ddp', 'hpo', 'rank', 'world_size', 'reload_path']
+            if hparam in experment_generated_hparams:
+                logger.error("Please pass to the algorithm the hparams object from the experiment: Algorithm(hparams=experiment.hparams).")
+                self.hparams_warnings.extend(experment_generated_hparams)
+            else:
+                logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
             self.hparams_warnings.append(hparam)
 
         return default
@@ -327,6 +332,14 @@ class Algorithm(object):
 
         self.refresh_optimizers_and_schedulers_pointers()
 
+    def reset_optimizers_and_schedulers(self):
+
+        self.schedulers = {}
+        self.optimizers = {}
+        self.swa_schedulers = {}
+        self.add_components()
+        self.load_dataset(self.dataset)
+
     def refresh_optimizers_and_schedulers_pointers(self):
         self.optimizers_name_by_id = {id(opt): k for k, opt in self.optimizers.items()}
         self.schedulers_name_by_id = {id(sch): k for k, sch in self.schedulers.items()}
@@ -441,6 +454,8 @@ class Algorithm(object):
 
                 for k, op in optimizers.items():
 
+                    if k not in self.optimizers_steps:
+                        self.optimizers_steps[k] = 0
                     it[k] = self.optimizers_steps[k] if iteration is None else iteration
                     it[k] = (it[k] % self.get_hparam('accumulate', name))
 
@@ -680,9 +695,6 @@ class Algorithm(object):
 
         return net
 
-    def process_sample(self, sample):
-        return to_device(sample, self.device, half=self.half)
-
     def return_dataset(self, subset):
 
         if type(subset) is str or isinstance(subset, torch.utils.data.DataLoader) \
@@ -757,7 +769,8 @@ class Algorithm(object):
         for i, (ind, label, sample) in enumerate(dataloader):
             if max_iterations is not None and i >= max_iterations:
                 break
-            sample = self.process_sample(sample)
+            sample = to_device(sample, self.device, half=self.half)
+            label = to_device(label, self.device, half=False)
             yield i, DataBatch(index=ind, label=label, data=sample)
 
     def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
@@ -770,7 +783,8 @@ class Algorithm(object):
         '''
         return results
 
-    def iteration(self, sample=None, results=None, counter=None, subset=None, training=True, **kwargs):
+    def iteration(self, sample=None, label=None, index=None,
+                  results=None, counter=None, subset=None, training=True, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -783,7 +797,8 @@ class Algorithm(object):
         '''
         return results
 
-    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
+    def postprocess_epoch(self, sample=None, label=None, index=None,
+                          results=None, epoch=None, subset=None, training=True, **kwargs):
         '''
         :param epoch: epoch number
         :param subset: name of dataset subset (usually train/validation/test)
@@ -823,7 +838,8 @@ class Algorithm(object):
                                   desc=subset, total=self.epoch_length[subset]):
 
                 with torch.autocast(self.autocast_device, enabled=self.amp):
-                    results = self.iteration(sample=sample, results=results, counter=i, training=training, index=ind)
+                    results = self.iteration(sample=sample, results=results, counter=i, training=training,
+                                             index=ind, label=label)
                     objective = results['scalar'][self.get_hparam('objective')] \
                         if self.get_hparam('objective') in results['scalar'] else None
 
@@ -838,7 +854,8 @@ class Algorithm(object):
                                 scaler.update()
 
             results = stack_batched_results(results, batch_size=self.batch_size_train)
-            results = self.postprocess_epoch(sample=sample, index=ind, results=results, epoch=n, training=training)
+            results = self.postprocess_epoch(sample=sample, index=ind, label=label,
+                                             results=results, epoch=n, training=training)
 
             batch_size = self.batch_size_train if training else self.batch_size_eval
 
@@ -866,7 +883,7 @@ class Algorithm(object):
         '''
         return results
 
-    def inference(self, sample=None, results=None, subset=None, predicting=False, **kwargs):
+    def inference(self, sample=None, label=None, index=None, results=None, subset=None, predicting=False, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -876,10 +893,10 @@ class Algorithm(object):
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
-        results = self.iteration(sample=sample, results=results, subset=subset, counter=0, training=False, **kwargs)
+        results = self.iteration(sample=sample, label=label, index=index, results=results, subset=subset, counter=0, training=False, **kwargs)
         return {}, results
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=False, **kwargs):
+    def postprocess_inference(self, sample=None, label=None, index=None, results=None, subset=None, predicting=False, **kwargs):
         '''
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
@@ -897,19 +914,21 @@ class Algorithm(object):
         objective_name = self.get_hparam('objective')
 
         if objective_name is not None and objective_name in results[self.eval_subset]['scalar']:
-            objective = np.mean(results[self.eval_subset]['scalar'][objective_name])
+            objective = float(torch.mean(results[self.eval_subset]['scalar'][objective_name]))
             self.objective = objective
             if self.best_objective is None:
                 self.best_objective = self.objective
                 self.best_epoch = self.epoch
             elif self.objective > self.best_objective:
-                logger.info(f"New best objective result: {self.objective}")
+                logger.info(f"New best objective result: {pretty_format_number(self.objective)}")
                 self.best_objective = self.objective
                 self.best_epoch = self.epoch
                 self.best_state = True
             else:
                 self.best_state = False
             results['objective'] = objective
+            results['global']['best_objective'] = self.best_objective
+            results['global']['best_epoch'] = self.best_epoch
         elif objective_name is not None and objective_name not in results[self.eval_subset]['scalar']:
             logger.warning(f"The objective {objective_name} is missing from the validation results")
 
@@ -1110,7 +1129,7 @@ class Algorithm(object):
                 if type(scheduler) is BeamScheduler and scheduler.method in ['one_cycle']:
                     train_results['scalar'][f'momentum_{k}'] = scheduler.get_current_state()['momentum']
 
-            results = {'train': train_results, self.eval_subset: eval_results}
+            results = {'train': train_results, self.eval_subset: eval_results, 'global': {}}
             eval_results, objective = self.calculate_objective(results=results)
             self.report(objective, i)
 

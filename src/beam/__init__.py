@@ -13,7 +13,7 @@ from .optim import BeamOptimizer, BeamScheduler
 from .logger import beam_logger, beam_kpi, Timer
 from .data import BeamData
 from .path import beam_path, beam_key
-from .resources import beam_llm
+from .llm import beam_llm
 
 # from .ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
 # from .server import BeamServer, BeamClient

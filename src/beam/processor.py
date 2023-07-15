@@ -37,7 +37,7 @@ class Processor(object):
 
     def state_dict(self):
         if isinstance(self.state, BeamData):
-            if not self.state.cached:
+            if not self.state.is_cached:
                 self.state.cache()
             return self.state.state_dict()
         else:
@@ -215,7 +215,7 @@ class Transformer(Processor):
     def worker(self, x, key=None, is_chunk=False, fit=False, cache=True, store_path=None, **kwargs):
 
         if isinstance(x, BeamData):
-            if not x.cached and cache:
+            if not x.is_cached and cache:
                 x.cache()
 
         x = self.transform_callback(x, key=key, is_chunk=is_chunk, fit=fit, **kwargs)
@@ -318,30 +318,30 @@ class Transformer(Processor):
         if squeeze is None:
             squeeze = self.squeeze
 
-        is_chunk = (n_chunks != 1) or (not squeeze) or (split_by == 'keys' and isinstance(x, BeamData) and x.stored)
+        is_chunk = (n_chunks != 1) or (not squeeze) or (split_by == 'keys' and isinstance(x, BeamData) and x.is_stored)
 
         if ((transform_strategy is None) or (transform_strategy == 'C')) and type(x) == BeamData:
-            if x.cached:
+            if x.is_cached:
                 transform_strategy = 'CC'
-            elif x.stored:
+            elif x.is_stored:
                 transform_strategy = 'SC'
             else:
                 raise ValueError(f"BeamData is not cached or stored, check your configuration")
 
         if transform_strategy == 'S' and type(x) == BeamData:
-            if x.cached:
+            if x.is_cached:
                 transform_strategy = 'CS'
-            elif x.stored:
+            elif x.is_stored:
                 transform_strategy = 'SS'
             else:
                 raise ValueError(f"BeamData is not cached or stored, check your configuration")
 
-        if transform_strategy in ['CC', 'CS'] and type(x) == BeamData and not x.cached:
+        if transform_strategy in ['CC', 'CS'] and type(x) == BeamData and not x.is_cached:
             logger.warning(f"Data is not cached but the transformation strategy is {transform_strategy}, "
                            f"caching data for transformer: {self.name} before the split to chunks.")
             x.cache()
 
-        if transform_strategy in ['SC', 'SS'] and type(x) == BeamData and not x.stored:
+        if transform_strategy in ['SC', 'SS'] and type(x) == BeamData and not x.is_stored:
             logger.warning(f"Data is not stored but the transformation strategy is {transform_strategy}, "
                            f"storing data for transformer: {self.name} before the split to chunks.")
             x.store()

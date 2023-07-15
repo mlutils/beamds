@@ -3,7 +3,7 @@
 cp /workspace/install/motd /etc/motd
 echo "cat /etc/motd" >> /root/.bashrc
 
-pip install jupyterlab-tensorboard-pro notebook-shim
+pip install jupyterlab-tensorboard-pro notebook-shim async_lru
 
 jupyter nbextension enable --py widgetsnbextension
 

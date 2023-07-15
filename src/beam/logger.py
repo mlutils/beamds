@@ -39,12 +39,23 @@ class BeamLogger:
         self.handlers['stdout'] = self.logger.add(sys.stdout, level='INFO', colorize=True, format=
         '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
 
-    def cleanup(self):
-        for handler in self.handlers.values():
-            self.logger.remove(handler)
+    def cleanup(self, print=True):
+        for k, handler in self.handlers.items():
+            if k == 'stdout' and print:
+                continue
+            try:
+                self.logger.remove(handler)
+            except ValueError:
+                pass
 
-        for file_object in self.file_objects.values():
+        if print:
+            self.handlers = {k: v for k, v in self.handlers.items() if k == 'stdout'}
+        else:
+            self.handlers = {}
+
+        for k, file_object in self.file_objects.items():
             file_object.close()
+        self.file_objects = {}
 
     def add_file_handlers(self, path):
 

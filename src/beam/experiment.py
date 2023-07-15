@@ -17,7 +17,7 @@ from .utils import include_patterns, check_type, beam_device, check_element_type
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
-    pretty_format_number, as_numpy
+    pretty_format_number, as_numpy, pretty_print_timedelta
 import torch.distributed as dist
 from functools import partial
 from argparse import Namespace
@@ -94,14 +94,20 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     experiment.writer_control(enable=not (bool(rank)))
     results = {}
 
+    t0 = time.time()
+
     try:
         for i, results in enumerate(iter(alg)):
+
+            total_time = time.time() - t0
+            estimated_time = total_time * (alg.hparams.n_epochs - i - 1) / (i + 1)
+
             experiment.save_model_results(copy.deepcopy(results), alg, i,
                                           print_results=experiment.hparams.print_results,
                                           visualize_results=experiment.hparams.visualize_results,
                                           store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
                                           visualize_weights=experiment.hparams.visualize_weights,
-                                          argv=tensorboard_arguments)
+                                          argv=tensorboard_arguments, total_time=total_time, estimated_time=estimated_time)
 
     except KeyboardInterrupt as e:
 
@@ -189,6 +195,7 @@ class Experiment(object):
 
         if print_hyperparameters is None:
             print_hyperparameters = not is_notebook()
+        self.print_hyperparameters = print_hyperparameters
 
         self.tensorboard_hparams = {}
 
@@ -200,6 +207,7 @@ class Experiment(object):
                 self.tensorboard_hparams[k] = v
 
         self.hparams = copy.copy(args)
+        self.args_to_print = copy.copy(args)
 
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 
@@ -219,6 +227,7 @@ class Experiment(object):
         exp_names = list(filter(lambda x: re.match(pattern, str(x)) is not None, self.base_dir.iterdir()))
         exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
 
+        exp_num = None
         if self.hparams.reload:
 
             if type(self.hparams.resume) is str:
@@ -259,6 +268,7 @@ class Experiment(object):
             exp_num = np.max(exp_indices) + 1 if len(exp_indices) else 0
             self.exp_name = "%04d_%s" % (exp_num, self.exptime)
 
+        self.exp_num = exp_num
         # init experiment parameters
         self.root = self.base_dir.joinpath(self.exp_name)
 
@@ -269,51 +279,9 @@ class Experiment(object):
         self.code_dir = self.root.joinpath('code')
 
         if self.load_model:
+            logger.cleanup()
+            logger.add_file_handlers(self.root.joinpath('experiment.log'))
             logger.info(f"Resuming existing experiment (Beam version: {__version__})")
-
-        else:
-
-            if not self.hparams.override:
-                logger.info(f"Creating new experiment (Beam version: {__version__})")
-
-            else:
-                logger.warning("Deleting old experiment")
-
-                rmtree(self.root)
-                self.exp_name = "%04d_%s" % (exp_num, self.exptime)
-                self.root = self.base_dir.joinpath(self.exp_name)
-
-                # set dirs
-                self.tensorboard_dir = self.root.joinpath('tensorboard')
-                self.checkpoints_dir = self.root.joinpath('checkpoints')
-                self.results_dir = self.root.joinpath('results')
-                self.code_dir = self.root.joinpath('code')
-
-            logger.info(f"Experiment directory is: {self.root}")
-
-            self.tensorboard_dir.joinpath('logs').mkdir(exist_ok=True, parents=True)
-            self.tensorboard_dir.joinpath('hparams').mkdir(exist_ok=True, parents=True)
-            self.checkpoints_dir.mkdir(exist_ok=True, parents=True)
-
-            # make log dirs
-            self.results_dir.mkdir(exist_ok=True, parents=True)
-
-            # copy code to dir
-
-            if is_notebook():
-                code_root_path = os.getcwd()
-            else:
-                code_root_path = sys.argv[0]
-
-            self.source_dir = os.path.dirname(os.path.realpath(code_root_path))
-            #TODO: handle the case where root_path is not BeamPath object
-            if isinstance(self.code_dir, BeamPath):
-                copytree(self.source_dir, str(self.code_dir),
-                         ignore=include_patterns('*.py', '*.md', '*.ipynb'))
-            else:
-                logger.warning("Code directory is not BeamPath object. Skipping code copy.")
-
-            self.root.joinpath('args.pkl').write(self.vars_args)
 
         self.writer = None
 
@@ -322,10 +290,6 @@ class Experiment(object):
 
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
-
-        logger.add_file_handlers(self.root.joinpath('experiment.log'))
-
-        print_beam_hyperparameters(args, debug_only=not print_hyperparameters)
 
         # replace zero split_dataset_seed to none (non-deterministic split) - if zero
         if self.hparams.split_dataset_seed == 0:
@@ -362,10 +326,10 @@ class Experiment(object):
             else:
                 self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.parallel)]
 
-        self.root.joinpath('hparams.pkl').write(self.tensorboard_hparams)
         self.comet_exp = None
         self.comet_writer = None
         self.mlflow_run = None
+        self.root_dir_is_built = False
 
     def __del__(self):
         self.cleanup()
@@ -518,7 +482,7 @@ class Experiment(object):
 
     def save_model_results(self, results, algorithm, iteration, visualize_results='yes',
                            store_results='logscale', store_networks='logscale', print_results=True,
-                           visualize_weights=False, argv=None):
+                           visualize_weights=False, argv=None, total_time=None, estimated_time=None):
 
         '''
 
@@ -547,12 +511,19 @@ class Experiment(object):
                             '---------------------------------------------------------------------')
                 objective_str = ''
                 if 'objective' in results and check_type(results['objective']).major == 'scalar':
-                    objective_str = f"Current objective: {pretty_format_number(results['objective'])}"
+                    objective_str = f"Current objective: {pretty_format_number(results['objective'])} " \
+                                    f"(Best objective: {pretty_format_number(results['global']['best_objective'])} " \
+                                    f" at epoch {results['global']['best_epoch']})"
                 logger.info(f'Finished epoch {iteration+1}/{algorithm.n_epochs} (Total trained epochs {epoch}). '
                             f'{objective_str}')
 
+                if total_time is not None:
+                    total_time = pretty_print_timedelta(total_time)
+                    estimated_time = pretty_print_timedelta(estimated_time)
+                    logger.info(f'Elapsed time: {total_time}. Estimated remaining time: {estimated_time}.',)
+
             decade = int(np.log10(epoch) + 1)
-            logscale = not (epoch - 1) % (10 ** (decade - 1))
+            logscale = not (epoch - 1) % (self.hparams.visualize_results_log_base ** (decade - 1))
 
             for subset, res in results.items():
 
@@ -563,7 +534,7 @@ class Experiment(object):
 
                 alg = algorithm if visualize_weights else None
 
-            if visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
+            if iteration+1 == algorithm.n_epochs or visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
                 self.log_data(results, epoch, print_log=print_results, alg=alg, argv=argv)
 
             checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
@@ -590,7 +561,7 @@ class Experiment(object):
 
         for subset, res in results.items():
 
-            if subset == 'objective':
+            if subset in ['objective', 'global']:
                 continue
 
             def format(v):
@@ -877,8 +848,63 @@ class Experiment(object):
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
 
+    def build_experiment_dir(self):
+
+        logger.cleanup()
+        logger.add_file_handlers(self.root.joinpath('experiment.log'))
+        print_beam_hyperparameters(self.args_to_print, debug_only=not self.print_hyperparameters)
+
+        self.root.joinpath('hparams.pkl').write(self.tensorboard_hparams)
+
+        if not self.hparams.override:
+            logger.info(f"Creating new experiment (Beam version: {__version__})")
+
+        else:
+            logger.warning("Deleting old experiment")
+
+            rmtree(self.root)
+            self.exp_name = "%04d_%s" % (self.exp_num, self.exptime)
+            self.root = self.base_dir.joinpath(self.exp_name)
+
+            # set dirs
+            self.tensorboard_dir = self.root.joinpath('tensorboard')
+            self.checkpoints_dir = self.root.joinpath('checkpoints')
+            self.results_dir = self.root.joinpath('results')
+            self.code_dir = self.root.joinpath('code')
+
+        logger.info(f"Experiment directory is: {self.root}")
+
+        self.tensorboard_dir.joinpath('logs').mkdir(exist_ok=True, parents=True)
+        self.tensorboard_dir.joinpath('hparams').mkdir(exist_ok=True, parents=True)
+        self.checkpoints_dir.mkdir(exist_ok=True, parents=True)
+
+        # make log dirs
+        self.results_dir.mkdir(exist_ok=True, parents=True)
+
+        # copy code to dir
+
+        if is_notebook():
+            code_root_path = os.getcwd()
+        else:
+            code_root_path = sys.argv[0]
+
+        self.source_dir = os.path.dirname(os.path.realpath(code_root_path))
+        #TODO: handle the case where root_path is not BeamPath object
+        if self.hparams.copy_code and isinstance(self.code_dir, BeamPath):
+            copytree(self.source_dir, str(self.code_dir),
+                     ignore=include_patterns('*.py', '*.md', '*.ipynb'))
+        else:
+            if not isinstance(self.code_dir, BeamPath):
+                logger.warning("Code directory is not BeamPath object. Skipping code copy.")
+
+        self.root.joinpath('args.pkl').write(self.vars_args)
+        self.root_dir_is_built = True
+
     def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False,
                   tensorboard_arguments=None, **kwargs):
+
+        if not self.load_model and not self.root_dir_is_built:
+            self.build_experiment_dir()
 
         try:
             res = self.run(default_runner, *(algorithm_generator, self, *args),

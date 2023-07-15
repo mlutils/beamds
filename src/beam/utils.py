@@ -12,6 +12,8 @@ import json
 import pyarrow.feather as feather
 import __main__
 import pickle
+from datetime import timedelta
+
 
 try:
     import modin.pandas as mpd
@@ -555,7 +557,16 @@ class PureBeamPath:
                 #         x.append(record)
 
                 nd = ext == '.ndjson'
-                x = pd.read_json(fo, lines=nd, **kwargs)
+                try:
+                    x = pd.read_json(fo, lines=nd, **kwargs)
+                except:
+                    fo.seek(0)
+                    if nd:
+                        x = []
+                        for line in fo:
+                            x.append(json.loads(line))
+                    else:
+                        x = json.load(fo)
 
             elif ext == '.orc':
                 import pyarrow as pa
@@ -1275,20 +1286,51 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
         return xc
 
 
-def pretty_format_number(x):
+def pretty_format_number(x, short=False):
+
+    just = 4 if short else 10
+    trim = 4 if short else 8
+    exp = 2 if short else 4
+
     if x is None or np.isinf(x) or np.isnan(x):
-        return f'{x}'.ljust(10)
+        return f'{x}'.ljust(just)
     if int(x) == x and np.abs(x) < 10000:
-        return f'{int(x)}'.ljust(10)
+        return f'{int(x)}'.ljust(just)
     if np.abs(x) >= 10000 or np.abs(x) < 0.0001:
-        return f'{float(x):.4}'.ljust(10)
+        return f'{float(x):.4}'.ljust(just)
     if np.abs(x) >= 1000:
-        return f'{x:.1f}'.ljust(10)
+        return f'{x:.1f}'.ljust(just)
     if np.abs(x) < 10000 and np.abs(x) >= 0.0001:
         nl = int(np.log10(np.abs(x)))
-        return f'{np.sign(x) * int(np.abs(x) * (10 ** (4 - nl))) * float(10 ** (nl - 4))}'.ljust(8)[:8].ljust(10)
+        return f'{np.sign(x) * int(np.abs(x) * (10 ** (exp - nl))) * float(10 ** (nl - exp))}'.ljust(trim)[:trim].ljust(just)
 
     return f'{x}:NoFormat'
+
+
+def pretty_print_timedelta(seconds):
+    # Convert seconds into timedelta
+    t_delta = timedelta(seconds=seconds)
+
+    # Extract days, hours, minutes and seconds
+    days = t_delta.days
+    if days > 0:
+        seconds = t_delta.seconds
+        frac_days = days + seconds / (3600 * 24)
+        return f"{pretty_format_number(frac_days, short=True)} days"
+
+    hours = t_delta.seconds // 3600
+    if hours > 0:
+        seconds = t_delta.seconds % 3600
+        frac_hours = hours + seconds / 3600
+        return f"{pretty_format_number(frac_hours, short=True)} hours"
+
+    minutes = t_delta.seconds // 60
+    if minutes > 0:
+        seconds = t_delta.seconds % 60
+        frac_minutes = minutes + seconds / 60
+        return f"{pretty_format_number(frac_minutes, short=True)} minutes"
+
+    return f"{pretty_format_number(t_delta.seconds, short=True)} seconds"
 
 
 def beam_device(device):
