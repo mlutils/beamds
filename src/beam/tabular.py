@@ -167,12 +167,10 @@ class TabularTransformer(torch.nn.Module):
         self.register_buffer('tokens_offset', tokens_offset.unsqueeze(0))
         self.register_buffer('cat_mask', cat_mask.unsqueeze(0))
         self.emb = nn.Embedding(total_tokens, hparams.emb_dim, sparse=True)
-        self.quantization_noize = hparams.quantization_noize
 
         n_rules = hparams.n_rules
 
         self.rules = nn.Parameter(torch.randn(1, n_rules, hparams.emb_dim))
-
         self.mask = distributions.Bernoulli(1 - hparams.features_mask_rate)
 
         self.transformer = nn.Transformer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
@@ -260,18 +258,3 @@ class DeepTabularAlg(Algorithm):
             results['metrics']['support'] = support
 
         return results
-
-
-if __name__ == 'main':
-
-    hparams = TabularHparams(identifier='spline', path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-                             path_to_results='/dsi/shared/elads/elads/data/tabular/results/', dataset_name='covtype',
-                             copy_code=False, stop_at=0.98, parallel=1)
-
-    exp = Experiment(hparams)
-
-    dataset = TabularDataset(exp.hparams)
-    net = TabularTransformer(exp.hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
-    alg = DeepTabularAlg(exp.hparams, networks=net)
-
-    alg = exp.fit(Alg=alg, Dataset=dataset)
