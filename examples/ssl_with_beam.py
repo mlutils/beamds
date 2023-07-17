@@ -159,7 +159,7 @@ def my_ssl_algorithm(algorithm):
         def __init__(self, hparams):
 
             self.hparams = hparams
-            self.model = hparams.model
+            self.model = hparams.net
             self.pretrained = hparams.pretrained
             self.layer = hparams.layer
 
@@ -168,14 +168,14 @@ def my_ssl_algorithm(algorithm):
         @property
         def p_dim(self):
             if self.hparams.p_dim is None:
-                return hidden_sizes[self.hparams.model]
+                return hidden_sizes[self.hparams.net]
             return self.hparams.p_dim
 
         @property
         def h_dim(self):
             if self.hparams.layer == 'last':
                 return 1000
-            return hidden_sizes[self.hparams.model]
+            return hidden_sizes[self.hparams.net]
 
         def generate_labeled_set(self, *args, pretrained=None, **kwargs):
             """

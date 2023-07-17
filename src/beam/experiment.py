@@ -7,8 +7,6 @@ import warnings
 import inspect
 
 warnings.filterwarnings('ignore', category=FutureWarning)
-# from torch.utils.tensorboard import SummaryWriter
-from tensorboardX import SummaryWriter
 from shutil import copytree
 import torch
 import copy
@@ -121,6 +119,9 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
             alg.save_checkpoint(checkpoint_file)
 
     except Exception as e:
+
+        if not is_notebook():
+            raise e
 
         tb = traceback.format_exc()
         logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
@@ -425,6 +426,7 @@ class Experiment(object):
 
         if enable and self.writer is None and self.hparams.tensorboard:
             if isinstance(self.tensorboard_dir, BeamPath):
+                from tensorboardX import SummaryWriter
                 self.writer = SummaryWriter(log_dir=str(self.tensorboard_dir.joinpath('logs')),
                                             comment=self.hparams.identifier)
             else:
@@ -456,6 +458,7 @@ class Experiment(object):
             self.comet_exp.add_tag(self.hparams.identifier)
             self.comet_exp.set_name(self.exp_name)
             self.comet_exp.log_parameters(self.tensorboard_hparams)
+            from tensorboardX import SummaryWriter
             self.comet_writer = SummaryWriter(comet_config={"disabled": False})
 
         if self.hparams.mlflow:
@@ -653,7 +656,7 @@ class Experiment(object):
         for subset, res in results.items():
             if isinstance(res, dict) and subset != 'objective':
                 for log_type in res:
-                    if hasattr(SummaryWriter, f'add_{log_type}'):
+                    if hasattr(self.writer, f'add_{log_type}'):
                         log_func = getattr(self.writer, f'add_{log_type}')
                         for param in res[log_type]:
                             if type(res[log_type][param]) is dict or type(res[log_type][param]) is defaultdict:

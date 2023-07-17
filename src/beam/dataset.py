@@ -1,8 +1,6 @@
 import itertools
 import numpy as np
 import torch
-from sklearn.model_selection import train_test_split
-from sklearn.utils.class_weight import compute_sample_weight
 from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, beam_device, \
     recursive_device, container_len, DataBatch
 import pandas as pd
@@ -217,6 +215,8 @@ class UniversalDataset(torch.utils.data.Dataset):
                     The corresponding ground truth for the examples in data
                 """
 
+        from sklearn.model_selection import train_test_split
+
         if labels is None:
             labels = self.label
         if self.label is None:
@@ -295,6 +295,8 @@ class UniversalDataset(torch.utils.data.Dataset):
 
     def build_sampler(self, batch_size, subset=None, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
                        dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
+
+        from sklearn.utils.class_weight import compute_sample_weight
 
         if subset is None:
             if self.index is not None:

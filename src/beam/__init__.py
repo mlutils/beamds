@@ -1,3 +1,6 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 from .dataset import UniversalBatchSampler, UniversalDataset
 from .packed_folds import PackedFolds
 from .config import get_beam_parser, beam_arguments
@@ -13,8 +16,8 @@ from .optim import BeamOptimizer, BeamScheduler
 from .logger import beam_logger, beam_kpi, Timer
 from .data import BeamData
 from .path import beam_path, beam_key
-from .llm import beam_llm
 
+# from .llm import beam_llm
 # from .ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
 # from .server import BeamServer, BeamClient
 
