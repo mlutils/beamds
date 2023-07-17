@@ -3,7 +3,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from .dataset import UniversalBatchSampler, UniversalDataset
 from .packed_folds import PackedFolds
-from .config import get_beam_parser, beam_arguments
+from .config import get_beam_parser, beam_arguments, BeamHparams
 from .config import boolean_feature as beam_boolean_feature
 from .experiment import Experiment, beam_algorithm_generator
 from .utils import setup_distributed, cleanup, check_type, slice_to_index, beam_device, as_tensor, \

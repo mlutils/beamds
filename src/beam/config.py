@@ -7,6 +7,8 @@ import re
 import math
 import pandas as pd
 from .path import beam_path, beam_key
+from argparse import Namespace
+from .logger import beam_logger as logger
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
@@ -19,6 +21,26 @@ def boolean_feature(parser, feature, default=False, help='', metavar=None):
         if a.dest == featurename:
             a.metavar = metavar
     parser.set_defaults(**{featurename: default})
+
+
+class BeamHparams(Namespace):
+    def __init__(self, *args, parser=None, **kwargs):
+        if parser is None:
+            parser = get_beam_parser()
+        parser = self._add(parser)
+        hparams = beam_arguments(parser, *args, **kwargs)
+        super().__init__(**vars(hparams))
+
+    def _add(self, parser):
+        if hasattr(super(), '_add'):
+            parser = super().add(parser)
+        parser = self.add(parser)
+        return parser
+
+    def add(self, parser):
+        if hasattr(super(), 'add'):
+            logger.warning('Use the add method to add arguments to the parser')
+        return parser
 
 
 def get_beam_parser():
@@ -186,6 +208,11 @@ def get_beam_parser():
                              '0-no oversampling and 1-full oversampling. Set 0 for no oversampling')
     parser.add_argument('--expansion-size', type=int, default=int(1e7),
                         help='largest expanded index size for oversampling')
+    parser.add_argument('--stop-at', type=float, default=0., metavar='hparam',
+                        help='Early stopping when objective >= stop_at')
+    parser.add_argument('--early-stopping-patience', type=int, default=0, metavar='hparam',
+                        help='Early stopping patience in epochs, '
+                             'stop when current_epoch - best_epoch >= early_stopping_patience')
 
     parser.add_argument('--swa', type=float, default=None,
                         help='SWA period. If float it is a fraction of the total number of epochs. '

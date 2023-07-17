@@ -127,6 +127,7 @@ class Algorithm(object):
 
     def get_hparam(self, hparam, specific=None, default=None):
 
+        # hparam.replace('-', '_')
         if type(specific) is list:
             for s in specific:
                 if f"{s}_{hparam}" in self.hparams:
@@ -966,6 +967,16 @@ class Algorithm(object):
         '''
         Use this function to early stop your model based on the results or any other metric in the algorithm class
         '''
+
+        stop_at = self.get_hparam('stop_at')
+        if stop_at is not None and stop_at > 0:
+            if self.best_objective is not None:
+                return self.best_objective > stop_at
+
+        early_stopping_patience = self.get_hparam('early_stopping_patience')
+        if early_stopping_patience is not None and early_stopping_patience > 0:
+            return self.epoch - self.best_epoch > early_stopping_patience
+
         return False
 
     # def train_catboost(self, eval_mode=False, enable_tqdm=None, fit_kwargs=None, **kwargs):
