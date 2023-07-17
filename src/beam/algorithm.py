@@ -1129,6 +1129,8 @@ class Algorithm(object):
                 if type(scheduler) is BeamScheduler and scheduler.method in ['one_cycle']:
                     train_results['scalar'][f'momentum_{k}'] = scheduler.get_current_state()['momentum']
 
+            self.epoch += 1
+            
             results = {'train': train_results, self.eval_subset: eval_results, 'global': {}}
             eval_results, objective = self.calculate_objective(results=results)
             self.report(objective, i)
@@ -1147,7 +1149,6 @@ class Algorithm(object):
             else:
                 self.schedulers_step(objective=objective, step_type='epoch')
 
-            self.epoch += 1
             yield results
 
             if self.early_stopping(results, i):
