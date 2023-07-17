@@ -1639,6 +1639,8 @@ def to_device(data, device='cuda', half=False):
     elif isinstance(data, torch.Tensor):
         if half and data.dtype in [torch.float32, torch.float64]:
             data = data.half()
+        if half and data.dtype in [torch.complex64, torch.complex128]:
+            data = data.astype(torch.complex32)
         return data.to(device)
     else:
         return data

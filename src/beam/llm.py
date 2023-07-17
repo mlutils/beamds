@@ -52,7 +52,7 @@ class BeamLLM(LLM, Processor):
     logit_bias: Optional[Dict[str, float]] = Field(None)
 
     def __init__(self, *args, temperature=1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
-                 frequency_penalty=0.0, logit_bias=None, scheme='unknown', **kwargs):
+                 frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.temperature = temperature
@@ -68,8 +68,10 @@ class BeamLLM(LLM, Processor):
         self._url = None
         self.instruction_history = []
 
-        if not hasattr(self, 'model'):
-            self.model = None
+        self.model = model
+        if self.model is None:
+            self.model = 'unknown'
+
         self.usage = {"prompt_tokens": 0,
                       "completion_tokens": 0,
                       "total_tokens": 0}
@@ -626,46 +628,51 @@ class FastChatLLM(OpenAIBase):
         return True
 
 
-class LocalFastChat(BeamLLM):
-
-    def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
-        kwargs['scheme'] = 'fastchat'
-        super().__init__(*args, **kwargs)
-        self.model = ModelWorker(controller_addr='NA',
-                            worker_addr='NA',
-                            worker_id='default',
-                            model_path=model,
-                            model_names=['my model'],
-                            # limit_worker_concurrency=1,
-                            no_register=True,
-                            device='cuda',
-                            num_gpus=1,
-                            max_gpu_memory=None,
-                            load_8bit=False,
-                            cpu_offloading=False,
-                            gptq_config=None,
-                            # stream_interval=2)
-
-    @property
-    def is_chat(self):
-        return True
-
-    def chat(self, prompt, **kwargs):
-        return self.ask(prompt, **kwargs)
+# class LocalFastChat(BeamLLM):
+#
+#     def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
+#         kwargs['scheme'] = 'fastchat'
+#         super().__init__(*args, **kwargs)
+#         self.model = ModelWorker(controller_addr='NA',
+#                             worker_addr='NA',
+#                             worker_id='default',
+#                             model_path=model,
+#                             model_names=['my model'],
+#                             # limit_worker_concurrency=1,
+#                             no_register=True,
+#                             device='cuda',
+#                             num_gpus=1,
+#                             max_gpu_memory=None,
+#                             load_8bit=False,
+#                             cpu_offloading=False,
+#                             gptq_config=None,)
+#                             # stream_interval=2)
+#
+#     @property
+#     def is_chat(self):
+#         return True
+#
+#     def chat(self, prompt, **kwargs):
+#         return self.ask(prompt, **kwargs)
 
 
 class HuggingFaceLLM(BeamLLM):
     config: Any
     tokenizer: Any
-    model: Any
+    net: Any
     pipline_kwargs: Any
     input_device: Optional[str] = Field(None)
+    eos_pattern: Optional[str] = Field(None)
+    _text_generation_pipeline: Any = PrivateAttr()
+    _conversational_pipeline: Any = PrivateAttr()
 
     def __init__(self, model, tokenizer=None, dtype=None, chat=False, input_device=None, compile=True, *args,
                  model_kwargs=None,
-                 config_kwargs=None, pipline_kwargs=None, **kwargs):
+                 config_kwargs=None, pipline_kwargs=None, text_generation_kwargs=None, conversational_kwargs=None,
+                 eos_pattern=None, **kwargs):
 
         kwargs['scheme'] = 'huggingface'
+        kwargs['model'] = model
         super().__init__(*args, **kwargs)
 
         from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
@@ -681,18 +688,34 @@ class HuggingFaceLLM(BeamLLM):
         if pipline_kwargs is None:
             pipline_kwargs = {}
 
+        if text_generation_kwargs is None:
+            text_generation_kwargs = {}
+
+        if conversational_kwargs is None:
+            conversational_kwargs = {}
+
         self.pipline_kwargs = pipline_kwargs
 
         self.input_device = input_device
+        self.eos_pattern = eos_pattern
 
         self.config = AutoConfig.from_pretrained(model, trust_remote_code=True, **config_kwargs)
         tokenizer_name = tokenizer or model
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
 
-        self.model = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True,
-                                                          config=self.config, **model_kwargs)
+        self.net = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True,
+                                                        config=self.config, **model_kwargs)
+
         if compile:
-            self.model = torch.compile(self.model)
+            self.net = torch.compile(self.net)
+
+        self._text_generation_pipeline = transformers.pipeline('text-generation', model=self.net,
+                                                               tokenizer=self.tokenizer, device=self.input_device,
+                                                               return_full_text=False, **text_generation_kwargs)
+
+        self._conversational_pipeline = transformers.pipeline('conversational', model=self.net,
+                                                              tokenizer=self.tokenizer, device=self.input_device,
+                                                              **conversational_kwargs)
 
     def update_usage(self, response):
         pass
@@ -706,6 +729,9 @@ class HuggingFaceLLM(BeamLLM):
         else:
             res = res['generated_text']
 
+        if self.eos_pattern:
+            res = res.split(self.eos_pattern)[0]
+
         return res
 
     @property
@@ -718,17 +744,22 @@ class HuggingFaceLLM(BeamLLM):
 
     def completion(self, prompt=None, **kwargs):
 
-        pipeline = transformers.pipeline('text-generation', model=self.model,
-                                         tokenizer=self.tokenizer, device=self.input_device, return_full_text=False)
+        # pipeline = transformers.pipeline('text-generation', model=self.model,
+        #                                  tokenizer=self.tokenizer, device=self.input_device, return_full_text=False)
 
-        return pipeline(prompt, pad_token_id=pipeline.tokenizer.eos_token_id, **self.pipline_kwargs)
+        res = self._text_generation_pipeline(prompt, pad_token_id=self._text_generation_pipeline.tokenizer.eos_token_id,
+                                             **self.pipline_kwargs)
+
+        return res
 
     def chat_completion(self, **kwargs):
 
-        pipeline = transformers.pipeline('conversational', model=self.model,
-                                         tokenizer=self.tokenizer, device=self.input_device)
+        # pipeline = transformers.pipeline('conversational', model=self.model,
+        #                                  tokenizer=self.tokenizer, device=self.input_device)
 
-        return pipeline(self.conversation, pad_token_id=pipeline.tokenizer.eos_token_id, **self.pipline_kwargs)
+        return self._conversational_pipeline(self.conversation,
+                                             pad_token_id=self._conversational_pipeline.tokenizer.eos_token_id,
+                                             **self.pipline_kwargs)
 
 
 class OpenAI(OpenAIBase):

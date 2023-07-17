@@ -1,6 +1,7 @@
 # beam_setup.py
 import importlib
 
+
 class BeamImporter:
     def __init__(self):
         self.modules = {}
@@ -8,11 +9,11 @@ class BeamImporter:
         self.aliases = {
             'pd': 'pandas',
             'np': 'numpy',
+            'torch': 'torch',
             'F': 'torch.nn.functional',
             'Path': 'pathlib.Path',
             'plt': 'matplotlib.pyplot',
-            'sns': 'seaborn',
-            'torch': 'torch',
+            # 'sns': 'seaborn',
             'tg': 'torch_geometric',
             'nn': 'torch.nn',
             'optim': 'torch.optim',
@@ -71,6 +72,11 @@ class BeamImporter:
 def load_ipython_extension(ipython):
     import sys
     import os
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+    if ipython is not None:
+        ipython.run_line_magic('load_ext', 'autoreload')
+        ipython.run_line_magic('autoreload', '2')
 
     beam_path = os.getenv('BEAM_PATH', None)
     if beam_path is not None:
@@ -80,23 +86,23 @@ def load_ipython_extension(ipython):
         sys.path.insert(0, '..')
         sys.path.insert(0, '../src')
 
-    # import beam._imports as lazy_importer
-
     beam_importer = BeamImporter()
 
     # Add the modules to the global namespace
     for alias in beam_importer.aliases:
         module = getattr(beam_importer, alias)
-        ipython.push({alias: module})
+        if ipython is not None:
+            ipython.push({alias: module})
         if alias == 'beam':
             for k in module.__dict__.keys():
                 if not k.startswith('_'):
                     ipython.push({k: module.__dict__[k]})
 
-    ipython.run_line_magic('load_ext', 'autoreload')
-    ipython.run_line_magic('autoreload', '2')
-
     print("Setting up the Beam environment for interactive use")
     print("Standard modules are imported automatically so you can use them without explicit import")
     print(f"Beam library is loaded from path: {os.path.dirname(beam_importer.beam.__file__)}")
     print(f"The Beam version is: {beam_importer.beam.__version__}")
+
+
+if __name__ == '__main__':
+    load_ipython_extension(None)

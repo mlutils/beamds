@@ -194,7 +194,7 @@ class BeamScheduler(object):
 
 class BeamOptimizer(object):
 
-    def __init__(self, net, dense_args=None, clip=0, accumulate=1, amp=False,
+    def __init__(self, net, dense_args=None, clip=0, accumulate=1, amp=False, amp_dtype='float16',
                  sparse_args=None, dense_optimizer='AdamW', sparse_optimizer='SparseAdam'):
 
         sparse_optimizer = getattr(torch.optim, sparse_optimizer)
@@ -210,6 +210,7 @@ class BeamOptimizer(object):
         self.iteration = 0
         self.amp = amp
         self.autocast_device = next(net.parameters()).device.type
+        self.amp_dtype = amp_dtype
         self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
 
         self.optimizers = {}
@@ -264,7 +265,7 @@ class BeamOptimizer(object):
 
     def apply(self, loss, set_to_none=True, gradient=None, retain_graph=None, create_graph=False, inputs=None):
 
-        with torch.autocast(self.autocast_device, enabled=False):
+        with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=False):
             self.iteration += 1
 
             if self.amp:

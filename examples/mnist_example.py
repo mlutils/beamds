@@ -160,14 +160,6 @@ class MNISTAlgorithm(Algorithm):
         return results
 
 
-def mnist_algorithm_generator(experiment):
-
-    dataset = MNISTDataset(experiment.hparams)
-    alg = MNISTAlgorithm(experiment.hparams)
-
-    return beam_algorithm_generator(experiment, alg, dataset)
-
-
 def run_mnist(rank, world_size, experiment):
 
     dataset = MNISTDataset(experiment.hparams)
@@ -209,13 +201,16 @@ if __name__ == '__main__':
     root_dir = '/tmp/shared/data/results'
 
     args = beam_arguments(
-        f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cpu   ",
-        "--epoch-length=20000 --n-epochs=10 --clip=1 --parallel=1", path_to_data=path_to_data, stop_at=.97)
+        f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cuda   ",
+        " --n-epochs=10 --clip=0 --parallel=1 --amp-dtype=bfloat16", path_to_data=path_to_data, stop_at=.97)
 
     experiment = Experiment(args)
 
+    dataset = MNISTDataset(experiment.hparams)
+    alg = MNISTAlgorithm(experiment.hparams)
+
     # train
-    alg = experiment(mnist_algorithm_generator)
+    alg = experiment.fit(Alg=alg, Dataset=dataset)
 
     examples = alg.dataset[np.random.choice(len(alg.dataset), size=50000, replace=True)]
     res = alg.predict(examples.data['x'])

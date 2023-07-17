@@ -7,7 +7,6 @@ from .utils import tqdm_beam as tqdm
 from .logger import beam_logger as logger
 import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
-from torch.nn.parallel import DistributedDataParallel as DDP
 from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
     stack_batched_results, as_numpy, beam_device, retrieve_name, filter_dict, \
     recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number
@@ -15,7 +14,6 @@ from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from .experiment import Experiment
 from timeit import default_timer as timer
-from ray import tune
 from .path import beam_path, PureBeamPath
 from .processor import Processor
 from .logger import beam_kpi, BeamResult
@@ -52,6 +50,13 @@ class Algorithm(object):
         self.cuda = (self.device.type == 'cuda')
         self.pin_memory = self.cuda
         self.autocast_device = 'cuda' if self.cuda else 'cpu'
+        amp_dtype = self.get_hparam('amp_dtype', default='float16')
+        if self.cuda:
+            self.amp_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[amp_dtype]
+        else:
+            if amp_dtype != 'bfloat16':
+                logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
+            self.amp_dtype = torch.bfloat16
         self.amp = hparams.amp if self.cuda else False
         self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
 
@@ -280,7 +285,8 @@ class Algorithm(object):
                                                                           self.get_hparam('beta2', k)),
                                                                 'eps': self.get_hparam('eps', k)},
                                                    clip=self.get_hparam('clip_gradient', k), amp=self.amp,
-                                                   accumulate=self.get_hparam('accumulate', k))
+                                                   accumulate=self.get_hparam('accumulate', k),
+                                                   amp_dtype=self.amp_dtype)
 
         if processors is None:
             processors = {}
@@ -448,7 +454,7 @@ class Algorithm(object):
                     optimizers = [optimizers]
                 optimizers = self.get_flat_optimizers(optimizers)
 
-            with torch.autocast(self.autocast_device, enabled=False):
+            with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=False):
 
                 it = {}
 
@@ -684,6 +690,7 @@ class Algorithm(object):
             else:
                 device_ids = None
 
+            from torch.nn.parallel import DistributedDataParallel as DDP
             net_ddp = DDP(net, device_ids=device_ids,
                       find_unused_parameters=self.get_hparam('find_unused_parameters', name),
                       broadcast_buffers=self.get_hparam('broadcast_buffers', name))
@@ -837,7 +844,7 @@ class Algorithm(object):
                                   threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                   desc=subset, total=self.epoch_length[subset]):
 
-                with torch.autocast(self.autocast_device, enabled=self.amp):
+                with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=self.amp):
                     results = self.iteration(sample=sample, results=results, counter=i, training=training,
                                              index=ind, label=label)
                     objective = results['scalar'][self.get_hparam('objective')] \
@@ -945,6 +952,7 @@ class Algorithm(object):
                 kwargs = {self.get_hparam('objective'): objective}
             else:
                 kwargs = {'objective': objective}
+            from ray import tune
             tune.report(**kwargs)
         elif self.hpo == 'optuna':
             import optuna
