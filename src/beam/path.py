@@ -48,16 +48,23 @@ class BeamKey:
         if name is not None:
             self.keys[name] = value
 
+        config_file = self.config_file
+        if config_file is None:
+            config_file = {}
+
         for k, v in self.keys.items():
-            self.config_file[k] = v
+            config_file[k] = v
 
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        pd.to_pickle(self.config_file, self.config_path)
+        self.config_path.parent.mkdirs(parents=True, exist_ok=True)
+        pd.to_pickle(config_file, self.config_path)
+        self._config_file = config_file
 
-    def __call__(self, name, value=None):
+    def __call__(self, name, value=None, store=True):
 
         if value is not None:
             self.keys[name] = value
+            if store:
+                self.store(name, value)
         elif name in self.keys:
             value = self.keys[name]
         elif name in self.hparams and self.hparams[name] is not None:

@@ -9,6 +9,7 @@ import pandas as pd
 from .path import beam_path, beam_key
 from argparse import Namespace
 from .logger import beam_logger as logger
+from pathlib import Path
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
@@ -245,7 +246,8 @@ def get_beam_parser():
     parser.add_argument('--git-directory', type=str, default=None, help='The git directory to use for comet.ml logging')
     parser.add_argument('--comet-workspace', type=str, default=None, help='The comet.ml workspace to use for logging')
 
-    parser.add_argument('--config-file', type=str, default='~/.beam/.conf.pkl', help='The beam config file to use with secret keys')
+    parser.add_argument('--config-file', type=str, default=str(Path.home().joinpath('conf.pkl')),
+                        help='The beam config file to use with secret keys')
 
     parser.add_argument('--mlflow-url', type=str, default=None, help='The url of the mlflow server to use for logging. '
                                                                      'If None, mlflow will log to $MLFLOW_TRACKING_URI')

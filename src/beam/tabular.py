@@ -11,6 +11,7 @@ from .dataset import UniversalDataset
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
 
+
 class TabularHparams(BeamHparams):
     def add(self, parser):
 
@@ -42,6 +43,7 @@ class TabularHparams(BeamHparams):
                                                     "categorical features")
 
         return parser
+
 
 class TabularDataset(UniversalDataset):
 
@@ -146,6 +148,7 @@ class TabularDataset(UniversalDataset):
         @return: mapping from one-hot to categorical
         """
         return x.cumsum(axis=1).max(axis=0)
+
 
 class TabularTransformer(torch.nn.Module):
 
