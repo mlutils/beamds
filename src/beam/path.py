@@ -24,7 +24,7 @@ class BeamKey:
 
         self._config_path = config_path
         if self._config_path is None:
-            self._config_path = str(Path.home().joinpath('conf.pkl'))
+            self._config_path = Path.home().joinpath('conf.pkl')
 
         self._config_file = None
         self.hparams = kwargs
@@ -33,6 +33,8 @@ class BeamKey:
 
         for k, v in hparams.items():
             self.hparams[k] = v
+        # clear config file
+        self._config_path = None
 
     @property
     def config_path(self):
@@ -59,7 +61,7 @@ class BeamKey:
         for k, v in self.keys.items():
             config_file[k] = v
 
-        self.config_path.parent.mkdirs(parents=True, exist_ok=True)
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
         pd.to_pickle(config_file, self.config_path)
         self._config_file = config_file
 
@@ -69,6 +71,7 @@ class BeamKey:
             self.keys[name] = value
             if store:
                 self.store(name, value)
+            return
         elif name in self.keys:
             value = self.keys[name]
         elif name in self.hparams and self.hparams[name] is not None:
