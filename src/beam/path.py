@@ -19,9 +19,13 @@ class BeamKey:
         'openai_api_key': 'OPENAI_API_KEY'
     }
 
-    def __init__(self, **kwargs):
+    def __init__(self, config_path=None, **kwargs):
         self.keys = {}
-        self._config_path = None
+
+        self._config_path = config_path
+        if self._config_path is None:
+            self._config_path = str(Path.home().joinpath('conf.pkl'))
+
         self._config_file = None
         self.hparams = kwargs
 
