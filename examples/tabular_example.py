@@ -19,10 +19,37 @@ from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams,
 
 if __name__ == '__main__':
 
-    hparams = TabularHparams(identifier='spline', path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-                             path_to_results='/dsi/shared/elads/elads/data/tabular/results/', dataset_name='covtype',
-                             copy_code=False, stop_at=0.98, parallel=4)
+    device = 3
 
+    hparams = TabularHparams(dataset_name='jannis', algorithm='deep_tabnet',
+                             path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+                             path_to_results='/dsi/shared/elads/elads/data/tabular/results/', batch_size=256,
+                             copy_code=False, stop_at=0.98, parallel=1, device=device, n_quantiles=6)
+
+    # hparams = TabularHparams(dataset_name='yahoo', algorithm='deep_tabnet',
+    #                          path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+    #                          path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
+    #                          copy_code=False, stop_at=0.98, parallel=1, device=device, n_quantiles=10)
+
+    # hparams = TabularHparams(dataset_name='aloi', algorithm='deep_tabnet',
+    #                          path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+    #                          path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
+    #                          copy_code=False, stop_at=0.98, parallel=1, device=device, n_quantiles=6)
+
+    # hparams = TabularHparams(algorithm='deep_tabnet', path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+    #                          path_to_results='/dsi/shared/elads/elads/data/tabular/results/', dataset_name='year',
+    #                          copy_code=False, stop_at=0.98, parallel=1, device=device, n_quantiles=6)
+
+    # hparams = TabularHparams(algorithm='deep_tabnet', path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+    #                          root_dir='/dsi/shared/elads/elads/data/tabular/results/', dataset_name='adult',
+    #                          copy_code=False, stop_at=0.98, parallel=1, batch_size=64, mask_rate=.15, n_rules=64,
+    #                          n_transformer_head=4, emb_dim=128, n_encoder_layers=2, n_decoder_layers=4, n_quantiles=6,)
+
+    # hparams = TabularHparams(algorithm='deep_tabnet', path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+    #                          path_to_results='/dsi/shared/elads/elads/data/tabular/results/', dataset_name='covtype',
+    #                          copy_code=False, stop_at=0.98, parallel=1)
+
+    hparams.identifier = hparams.dataset_name
     exp = Experiment(hparams)
 
     dataset = TabularDataset(exp.hparams)

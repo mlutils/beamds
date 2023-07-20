@@ -10,12 +10,15 @@ from torch import distributions
 from .dataset import UniversalDataset
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
+import pandas as pd
+
 
 class TabularHparams(BeamHparams):
     def add(self, parser):
 
         parser.set_defaults(project_name='deep_tabular', algorithm='TabularNet', n_epochs=100, scheduler='one_cycle',
-                            batch_size=512, objective='acc', lr_dense=2e-3, lr_sparse=2e-2)
+                            batch_size=512, objective='acc', lr_dense=2e-3, lr_sparse=2e-2,
+                            early_stopping_patience=16)
 
         parser.add_argument('--emb_dim', type=int, default=128, metavar='hparam', help='latent embedding dimension')
         parser.add_argument('--n_transformer_head', type=int, default=4, metavar='hparam',
@@ -25,7 +28,7 @@ class TabularHparams(BeamHparams):
         parser.add_argument('--transformer_hidden_dim', type=int, default=256, metavar='hparam',
                             help='transformer hidden dimension')
         parser.add_argument('--transformer_dropout', type=float, default=0., metavar='hparam', help='transformer dropout')
-        parser.add_argument('--features_mask_rate', type=float, default=0.15, metavar='hparam',
+        parser.add_argument('--mask_rate', type=float, default=0.15, metavar='hparam',
                             help='rate of masked features during training')
         parser.add_argument('--n_rules', type=int, default=64, metavar='hparam',
                             help='number of transformers rules in the decoder')
@@ -40,6 +43,7 @@ class TabularHparams(BeamHparams):
 
         boolean_feature(parser, "oh_to_cat", False, "Try to convert one-hot encoded categorical features to "
                                                     "categorical features")
+        boolean_feature(parser, "store_data_on_device", True, "Store the data on the device (GPU/CPU) in advance")
 
         return parser
 
@@ -49,6 +53,8 @@ class TabularDataset(UniversalDataset):
 
         bd = BeamData.from_path(hparams.path_to_data)
         dataset = bd[hparams.dataset_name].cached()
+        info = dataset['info'].values
+        self.task_type = info['task_type']
 
         x_train = dataset['N_train'].values
         x_val = dataset['N_val'].values
@@ -77,6 +83,26 @@ class TabularDataset(UniversalDataset):
             x_test_cat = np.stack([x_test_cat.T[self.oh_categories == c].argmax(axis=0)
                                    for c in np.unique(self.oh_categories)], axis=1)
 
+        if info['n_cat_features'] > 0:
+
+            d = dataset['C_trainval'].values
+            factors = [pd.factorize(d[:, i])[1] for i in range(d.shape[1])]
+
+            d = dataset['C_train'].values
+            x_train_cat_aux = np.stack([pd.Categorical(d[:, i], categories=f).codes
+                                        for i, f in enumerate(factors)], axis=1).astype(np.int64)
+            d = dataset['C_val'].values
+            x_val_cat_aux = np.stack([pd.Categorical(d[:, i], categories=f).codes
+                                      for i, f in enumerate(factors)], axis=1).astype(np.int64)
+            d = dataset['C_test'].values
+            x_test_cat_aux = np.stack([pd.Categorical(d[:, i], categories=f).codes
+                                        for i, f in enumerate(factors)], axis=1).astype(np.int64)
+
+            # plus 1 for nan values
+            x_train_cat = np.concatenate([x_train_cat, x_train_cat_aux+1], axis=1)
+            x_val_cat = np.concatenate([x_val_cat, x_val_cat_aux+1], axis=1)
+            x_test_cat = np.concatenate([x_test_cat, x_test_cat_aux+1], axis=1)
+
         if hparams.scaler == 'robust':
             from sklearn.preprocessing import RobustScaler
             self.scaler = RobustScaler()
@@ -92,9 +118,27 @@ class TabularDataset(UniversalDataset):
         x_val_num_scaled = torch.FloatTensor(self.scaler.transform(x_val_num))
         x_test_num_scaled = torch.FloatTensor(self.scaler.transform(x_test_num))
 
-        y_train = torch.LongTensor(dataset['y_train'].values)
-        y_val = torch.LongTensor(dataset['y_val'].values)
-        y_test = torch.LongTensor(dataset['y_test'].values)
+        self.y_mu = None
+        self.y_sigma = None
+        if self.task_type == 'regression':
+            y_train = torch.FloatTensor(dataset['y_train'].values)
+            y_val = torch.FloatTensor(dataset['y_val'].values)
+            y_test = torch.FloatTensor(dataset['y_test'].values)
+
+            mu = y_train.mean(dim=0, keepdim=True)
+            sigma = y_train.std(dim=0, keepdim=True)
+
+            self.y_mu = mu
+            self.y_sigma = sigma
+
+            y_train = (y_train - mu) / (sigma + 1e-8)
+            y_val = (y_val - mu) / (sigma + 1e-8)
+            y_test = (y_test - mu) / (sigma + 1e-8)
+
+        else:
+            y_train = torch.LongTensor(dataset['y_train'].values)
+            y_val = torch.LongTensor(dataset['y_val'].values)
+            y_test = torch.LongTensor(dataset['y_test'].values)
 
         n_quantiles = hparams.n_quantiles
         x_train_num_quantized = (x_train_num_scaled * n_quantiles).long()
@@ -122,9 +166,17 @@ class TabularDataset(UniversalDataset):
         x_frac = torch.cat([x_train_frac, x_val_frac, x_test_frac], dim=0)
         y = torch.cat([y_train, y_val, y_test], dim=0)
 
-        super().__init__(x=x, x_frac=x_frac, label=y)
+        device = None
+        if hparams.store_data_on_device:
+            device = hparams.device
 
-        self.n_classes = self.label.max() + 1
+        super().__init__(x=x, x_frac=x_frac, label=y, device=device)
+
+        if self.task_type == 'regression':
+            self.n_classes = 1
+        else:
+            self.n_classes = self.label.max() + 1
+
         self.split(validation=len(x_train_mixed) + np.arange(len(x_val_mixed)),
                            test=len(x_train_mixed) + len(x_val_mixed) + np.arange(len(x_test_mixed)))
 
@@ -171,7 +223,7 @@ class TabularTransformer(torch.nn.Module):
         n_rules = hparams.n_rules
 
         self.rules = nn.Parameter(torch.randn(1, n_rules, hparams.emb_dim))
-        self.mask = distributions.Bernoulli(1 - hparams.features_mask_rate)
+        self.mask = distributions.Bernoulli(1 - hparams.mask_rate)
 
         self.transformer = nn.Transformer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
                                           num_encoder_layers=hparams.n_encoder_layers,
@@ -205,6 +257,8 @@ class TabularTransformer(torch.nn.Module):
 
         x = self.transformer(x, torch.repeat_interleave(self.rules, len(x), dim=0))
         x = self.lin(x.max(dim=1).values)
+
+        x = x.squeeze(-1)
         return x
 
 
@@ -213,6 +267,23 @@ class DeepTabularAlg(Algorithm):
     def __init__(self, hparams, networks=None, **kwargs):
         # choose your network
         super().__init__(hparams, networks=networks, **kwargs)
+        self.loss_function = None
+        self.task_type = None
+
+    def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
+        if epoch == 0:
+            self.task_type = self.dataset.task_type
+            self.loss_function = F.mse_loss if self.task_type == 'regression' else F.cross_entropy
+
+        return results
+
+    def postprocess_epoch(self, sample=None, label=None, index=None,
+                          results=None, epoch=None, subset=None, training=True, **kwargs):
+        if self.task_type == 'regression':
+            results['scalar']['rmse'] = float(torch.sqrt(results['scalar']['mse'].mean()))
+            results['scalar']['objective'] = -results['scalar']['rmse']
+
+        return results
 
     def iteration(self, sample=None, label=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
@@ -220,12 +291,15 @@ class DeepTabularAlg(Algorithm):
         net = self.networks['net']
 
         y_hat = net(sample)
-        loss = F.cross_entropy(y_hat, y, reduction='none')
+        loss = self.loss_function(y_hat, y, reduction='none')
 
         self.apply(loss, training=training, results=results)
 
         # add scalar measurements
-        results['scalar']['acc'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
+        if self.task_type == 'regression':
+            results['scalar']['mse'].append(as_numpy(loss.mean()) * self.dataset.y_sigma ** 2)
+        else:
+            results['scalar']['acc'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
 
         return results
 

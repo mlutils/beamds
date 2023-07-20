@@ -127,7 +127,6 @@ class Algorithm(object):
 
     def get_hparam(self, hparam, specific=None, default=None):
 
-        # hparam.replace('-', '_')
         if type(specific) is list:
             for s in specific:
                 if f"{s}_{hparam}" in self.hparams:
@@ -919,11 +918,19 @@ class Algorithm(object):
         '''
 
         objective = None
-        objective_name = self.get_hparam('objective')
+        if 'objective' in results[self.eval_subset]['scalar']:
+            objective_name = 'objective'
+        else:
+            objective_name = self.get_hparam('objective')
 
         if objective_name is not None and objective_name in results[self.eval_subset]['scalar']:
-            objective = float(torch.mean(results[self.eval_subset]['scalar'][objective_name]))
-            self.objective = objective
+
+            objective = results[self.eval_subset]['scalar'][objective_name]
+            objective_type = check_type(objective)
+            if objective_type.major != 'scalar':
+                objective = float(torch.mean(objective))
+
+            self.objective = float(objective)
             if self.best_objective is None:
                 self.best_objective = self.objective
                 self.best_epoch = self.epoch
@@ -971,11 +978,17 @@ class Algorithm(object):
         stop_at = self.get_hparam('stop_at')
         if stop_at is not None and stop_at > 0:
             if self.best_objective is not None:
-                return self.best_objective > stop_at
+                res = self.best_objective > stop_at
+                if res:
+                    logger.info(f"Stopping training at {self.best_objective} > {stop_at}")
+                return res
 
         early_stopping_patience = self.get_hparam('early_stopping_patience')
         if early_stopping_patience is not None and early_stopping_patience > 0:
-            return self.epoch - self.best_epoch > early_stopping_patience
+            res = self.epoch - self.best_epoch > early_stopping_patience
+            if res:
+                logger.info(f"Stopping training at epoch {self.epoch} - best epoch {self.best_epoch} > {early_stopping_patience}")
+            return res
 
         return False
 

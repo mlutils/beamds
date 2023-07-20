@@ -14,7 +14,7 @@ from collections import namedtuple
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self, *args, index=None, label=None, device='cpu', target_device=None, **kwargs):
+    def __init__(self, *args, index=None, label=None, device=None, target_device=None, **kwargs):
         """
         Universal Beam dataset class
 
@@ -28,6 +28,8 @@ class UniversalDataset(torch.utils.data.Dataset):
         """
         super().__init__()
 
+        if device is None:
+            device = 'cpu'
         device = beam_device(device)
         target_device = beam_device(target_device)
 

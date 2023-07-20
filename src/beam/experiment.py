@@ -599,14 +599,17 @@ class Experiment(object):
                             val[p] = np.mean(v)
                     else:
 
-                        v = [report[param]] if np.isscalar(report[param]) else report[param]
-                        v = np.stack(v).flatten()
+                        v = report[param]
+                        v = as_numpy(v)
+                        v_type = check_type(v)
 
-                        report[param] = np.mean(v)
-                        if len(v) > 1 and np.var(v) > 0:
+                        if v_type.major != 'scalar':
+                            v = v.flatten()
+                            report[param] = v.mean()
+
+                        if v_type.major != 'scalar' and np.var(v) > 0:
                             stat = pd.Series(v, dtype=np.float32).describe()
                         else:
-                            v_type = check_type(v)
                             if v_type.major != 'scalar':
                                 v = v[0]
                             v = int(v) if v_type.element == 'int' else float(v)
