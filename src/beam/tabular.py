@@ -13,6 +13,7 @@ from sklearn.metrics import precision_recall_fscore_support
 import pandas as pd
 
 
+
 class TabularHparams(BeamHparams):
     def add(self, parser):
 
@@ -46,6 +47,7 @@ class TabularHparams(BeamHparams):
         boolean_feature(parser, "store_data_on_device", True, "Store the data on the device (GPU/CPU) in advance")
 
         return parser
+
 
 class TabularDataset(UniversalDataset):
 
@@ -198,6 +200,7 @@ class TabularDataset(UniversalDataset):
         @return: mapping from one-hot to categorical
         """
         return x.cumsum(axis=1).max(axis=0)
+
 
 class TabularTransformer(torch.nn.Module):
 

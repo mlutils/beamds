@@ -22,7 +22,7 @@ from argparse import Namespace
 from tensorboard.notebook import start as start_tensorboard
 from ._version import __version__
 import inspect
-from .path import beam_path, BeamPath
+from .path import beam_path, BeamPath, beam_key
 from .logger import beam_logger as logger
 import atexit
 import traceback
@@ -439,7 +439,8 @@ class Experiment(object):
 
             api_key = self.hparams.comet_api_key
             if api_key is None:
-                api_key = os.environ.get('COMET_API_KEY', None)
+                # api_key = os.environ.get('COMET_API_KEY', None)
+                api_key = beam_key('comet_api_key')
             git_directory = self.hparams.git_directory
             if git_directory is None and isinstance(self.code_dir, BeamPath):
                 git_directory = str(self.code_dir)
