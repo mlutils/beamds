@@ -162,6 +162,98 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     else:
         return res
 
+class BeamReport(object):
+
+    def __init__(self):
+
+        self.scalar = defaultdict(list)
+        self.scalars = defaultdict(lambda x: defaultdict(list))
+        self.data = defaultdict(dict)
+
+        self.buffer = defaultdict(lambda x: defaultdict(list))
+
+        self.scalar_kwargs = {}
+        self.scalars_kwargs = {}
+        self.data_kwargs = defaultdict(dict)
+
+        self.scalar_aggregation = {}
+        self.scalars_aggregation = {}
+
+        self.epoch = 0
+        self.best_epoch = None
+        self.objective = None
+        self.best_objective = None
+
+    def epoch_finalize(self):
+        self.epoch = self.epoch + 1
+
+    @staticmethod
+    def normalize_scalar(val):
+        val_type = check_type(val)
+        if val_type.major == 'scalar':
+            val = float(val)
+        elif val_type.minor == 'torch':
+            val = val.detach().cpu()
+        return val
+
+    def report_scalar(self, val, name, subset, aggregation=None, **kwargs):
+
+        val = self.normalize_scalar(val)
+
+        self.scalar[f'{subset}/{name}'].append(val)
+        kwargs['global_step'] = self.epoch
+        self.scalar_kwargs[f'{subset}/{name}'] = kwargs
+        if aggregation is None:
+            aggregation = 'mean'
+        self.scalar_aggregation[f'{subset}/{name}'] = aggregation
+
+    def report_scalars(self, val_dict, name, subset, aggregation=None, **kwargs):
+
+        for k, val in val_dict.items():
+
+            val = self.normalize_scalar(val)
+            self.scalars[f'{subset}/{name}'][k].append(val)
+
+        kwargs['global_step'] = self.epoch
+        self.scalar_kwargs[f'{subset}/{name}'] = kwargs
+        if aggregation is None:
+            aggregation = 'mean'
+        self.scalars_aggregation[f'{subset}/{name}'] = aggregation
+
+    def report_data(self, val, name, subset, data_type, **kwargs):
+        self.data[data_type][f'{subset}/{name}'] = val
+        kwargs['global_step'] = self.epoch
+        self.data_kwargs[data_type][f'{subset}/{name}'] = kwargs
+
+    def report_histogram(self, val, name, subset, **kwargs):
+        self.report_data(val, name, subset, 'histogram', **kwargs)
+
+    def report_image(self, val, name, subset, **kwargs):
+        self.report_data(val, name, subset, 'image', **kwargs)
+
+    def report_figure(self, val, name, subset, **kwargs):
+        self.report_data(val, name, subset, 'figure', **kwargs)
+
+    def report_video(self, val, name, subset, **kwargs):
+        self.report_data(val, name, subset, 'video', **kwargs)
+
+    def report_audio(self, val, name, subset, **kwargs):
+        self.report_data(val, name, subset, 'audio', **kwargs)
+
+    def report_text(self, val, name, subset, **kwargs):
+        self.report_data(val, name, subset, 'text', **kwargs)
+
+
+
+    def add_buffer(self, name, subset, val):
+        self.buffer[subset][name].append(val)
+
+    def __getstate__(self):
+
+        return {'data': {k: {**v} for k, v in self.data.items()},
+                'tensorboard_kwargs': {k: {**v} for k, v in self.tensorboard_kwargs.items()}}
+
+
 
 class Experiment(object):
     """
