@@ -1906,6 +1906,12 @@ def as_numpy(x):
     if isinstance(x, dict):
         return {k: as_numpy(v) for k, v in x.items()}
     elif isinstance(x, list):
+        x_type = check_type(x, check_minor=False, check_element=False)
+        if x_type.major != 'container':
+            # take care of the case of a list of scalar tensors
+            if isinstance(x[0], torch.Tensor):
+                return torch.stack(x).detach().cpu().numpy()
+            return np.array(x)
         return [as_numpy(s) for s in x]
 
     if isinstance(x, torch.Tensor):

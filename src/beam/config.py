@@ -43,6 +43,21 @@ class BeamHparams(Namespace):
             logger.warning('Use the add method to add arguments to the parser')
         return parser
 
+    def get(self, hparam, specific=None, default=None):
+
+        hparam = hparam.replace('-', '_')
+        if type(specific) is list:
+            for s in specific:
+                if f"{hparam}_{s}" in self:
+                    return getattr(self, f"{specific}_{hparam}")
+        elif specific is not None and f"{specific}_{hparam}" in self:
+            return getattr(self, f"{specific}_{hparam}")
+
+        if hparam in self:
+            return getattr(self, hparam)
+
+        return default
+
 
 def get_beam_parser():
 
