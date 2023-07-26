@@ -61,6 +61,10 @@ class Key(object):
         return self.pointer._key(ind)
 
 
+def return_none(*args, **kwargs):
+    return None
+
+
 class BeamSchema(object):
 
     def __init__(self, read_schema=None, write_schema=None,  **kwargs):
@@ -532,7 +536,7 @@ class BeamData(object):
             return self._conf
 
         self._conf = None
-        return defaultdict(lambda: None)
+        return defaultdict(return_none)
 
     @property
     def key_map(self):

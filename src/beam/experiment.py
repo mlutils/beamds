@@ -15,8 +15,9 @@ from .utils import include_patterns, check_type, beam_device, check_element_type
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
-    pretty_format_number, as_numpy, pretty_print_timedelta
+    pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format, nested_defaultdict
 import torch.distributed as dist
+from .utils import tqdm_beam as tqdm
 from functools import partial
 from argparse import Namespace
 from tensorboard.notebook import start as start_tensorboard
@@ -26,6 +27,9 @@ from .path import beam_path, BeamPath, beam_key
 from .logger import beam_logger as logger
 import atexit
 import traceback
+from contextlib import contextmanager
+from timeit import default_timer as timer
+from .data import BeamData
 
 
 done = mp.Event()
@@ -162,30 +166,112 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     else:
         return res
 
+
 class BeamReport(object):
 
-    def __init__(self):
+    def __init__(self, objective=None):
 
         self.scalar = defaultdict(list)
-        self.scalars = defaultdict(lambda x: defaultdict(list))
-        self.data = defaultdict(dict)
+        self.aux = defaultdict(dict)
 
-        self.buffer = defaultdict(lambda x: defaultdict(list))
+        self.scalars = nested_defaultdict(list)
+        self.buffer = nested_defaultdict(list)
 
         self.scalar_kwargs = {}
         self.scalars_kwargs = {}
-        self.data_kwargs = defaultdict(dict)
+        self.aux_kwargs = defaultdict(dict)
 
         self.scalar_aggregation = {}
         self.scalars_aggregation = {}
 
-        self.epoch = 0
+        self.objective_name = objective
+
+        self.epoch = None
         self.best_epoch = None
         self.objective = None
         self.best_objective = None
+        self.subset_context = None
+        self.iteration = None
+        self._data = None
 
-    def epoch_finalize(self):
-        self.epoch = self.epoch + 1
+    @property
+    def data(self):
+        if self._data is None:
+            data = nested_defaultdict(dict)
+            for k, v in self.scalar.items():
+                subset, name = k.split('/')
+                data[subset]['scalar'][k] = v
+            for k, v in self.scalars.items():
+                subset, name = k.split('/')
+                data[subset]['scalars'][k] = v
+            for k, v in self.aux.items():
+                subset, name = k.split('/')
+                data[subset]['aux'][k] = v
+
+            data['global'] = {'epoch': self.epoch,
+                              'best_epoch': self.best_epoch,
+                              'objective': self.objective,
+                              'best_objective': self.best_objective,
+                              }
+
+            self._data = BeamData(data)
+
+        return self._data
+
+    def write_to_path(self, path):
+        self.data.store(path=path)
+
+    def write_to_tensorboard(self, writer):
+
+        for k, v in self.scalar.items():
+            kwargs = self.scalar_kwargs.get(k, {})
+            agg = self.scalar_aggregation.get(k, None)
+            v = self.aggregate_scalar(v, agg)
+            writer.add_scalar(k, v, **kwargs)
+
+        for k, v in self.scalars.items():
+            kwargs = self.scalars_kwargs.get(k, {})
+            agg = self.scalars_aggregation.get(k, None)
+
+            for kk, vv in v.items():
+                v[kk] = self.aggregate_scalar(vv, agg)
+
+            writer.add_scalars(k, v, **kwargs)
+
+        for k, v in self.aux.items():
+            writer_func = getattr(writer, f'add_{k}')
+            for kk, vv in v.items():
+                kwargs = self.aux_kwargs.get(k, {}).get(kk, {})
+                writer_func(kk, vv, **kwargs)
+
+    @contextmanager
+    def track_epoch(self, subset, epoch, batch_size=None):
+        self.subset_context = subset
+        self.epoch = epoch
+        self.iteration = 0
+        t0 = timer()
+        yield
+        delta = timer() - t0
+        n_iter = self.iteration + 1
+
+        self.report_data(delta, 'seconds', data_type='stats')
+        self.report_data(n_iter, 'batches', data_type='stats')
+        self.report_data(n_iter * batch_size, 'samples', data_type='stats')
+        self.report_data(rate_string_format(n_iter, delta), 'batch_rate', data_type='stats')
+        self.report_data(rate_string_format(n_iter * batch_size, delta), 'sample_rate', data_type='stats')
+
+        for k, v in self.scalar.items():
+            self.scalar[k] = self.stack_scalar(v, batch_size=batch_size)
+        for k, v in self.scalars.items():
+            for kk, vv in v.items():
+                self.scalars[k][kk] = self.stack_scalar(vv, batch_size=batch_size)
+        for k, v in self.buffer.items():
+            self.buffer[k] = self.stack_scalar(v, batch_size=batch_size)
+
+    def iterate(self, generator, **kwargs):
+        for i, batch in tqdm(generator, **kwargs):
+            self.iteration = i
+            yield batch
 
     @staticmethod
     def normalize_scalar(val):
@@ -196,7 +282,56 @@ class BeamReport(object):
             val = val.detach().cpu()
         return val
 
-    def report_scalar(self, val, name, subset, aggregation=None, **kwargs):
+    @staticmethod
+    def stack_scalar(val, batch_size=None):
+
+        val_type = check_type(val)
+
+        if val_type.major == 'container' and val_type.minor == 'list':
+
+            v_minor = check_type(val[0]).minor
+            if v_minor == 'tensor':
+                oprs = {'cat': torch.cat, 'stack': torch.stack}
+            elif v_minor == 'numpy':
+                oprs = {'cat': np.concatenate, 'stack': np.stack}
+            elif v_minor == 'pandas':
+                oprs = {'cat': pd.concat, 'stack': pd.concat}
+            elif v_minor == 'native':
+                oprs = {'cat': torch.tensor, 'stack': torch.tensor}
+            else:
+                oprs = {'cat': lambda x: x, 'stack': lambda x: x}
+
+            opr = oprs['cat']
+            if batch_size is not None and hasattr(val[0], '__len__') \
+                    and len(val[0]) != batch_size and len(val[0]) == len(val[-1]):
+                opr = oprs['stack']
+
+            val = opr(val)
+
+        return val
+
+    @staticmethod
+    def aggregate_scalar(val, aggregation):
+
+        agg_dict = {'tensor': {'mean': torch.mean, 'sum': torch.sum, 'max': torch.max, 'min': torch.min, 'std': torch.std,
+                    'median': torch.median, 'var': torch.var},
+                    'numpy': {'mean': np.mean, 'sum': np.sum, 'max': np.max, 'min': np.min, 'std': np.std,
+                                'median': np.median, 'var': np.var},
+                    }
+
+        val = recursive_flatten(val, flat_array=True)
+        val_type = check_type(val)
+        if val_type.major == 'scalar':
+            val = float(val)
+        elif val_type.minor == 'pandas':
+            val = val.values
+            val = agg_dict['numpy'][aggregation](val)
+        else:
+            val = agg_dict[val_type.minor][aggregation](val)
+
+        return val
+
+    def report_scalar(self, val, name, subset=None, aggregation=None, **kwargs):
 
         val = self.normalize_scalar(val)
 
@@ -207,7 +342,7 @@ class BeamReport(object):
             aggregation = 'mean'
         self.scalar_aggregation[f'{subset}/{name}'] = aggregation
 
-    def report_scalars(self, val_dict, name, subset, aggregation=None, **kwargs):
+    def report_scalars(self, val_dict, name, subset=None, aggregation=None, **kwargs):
 
         for k, val in val_dict.items():
 
@@ -220,38 +355,47 @@ class BeamReport(object):
             aggregation = 'mean'
         self.scalars_aggregation[f'{subset}/{name}'] = aggregation
 
-    def report_data(self, val, name, subset, data_type, **kwargs):
-        self.data[data_type][f'{subset}/{name}'] = val
-        kwargs['global_step'] = self.epoch
-        self.data_kwargs[data_type][f'{subset}/{name}'] = kwargs
+    def report_data(self, val, name, subset=None, data_type=None, **kwargs):
 
-    def report_histogram(self, val, name, subset, **kwargs):
+        if data_type is None:
+            data_type = 'other'
+
+        self.aux[data_type][f'{subset}/{name}'] = val
+        kwargs['global_step'] = self.epoch
+        self.aux_kwargs[data_type][f'{subset}/{name}'] = kwargs
+
+    def report_histogram(self, val, name, subset=None, **kwargs):
         self.report_data(val, name, subset, 'histogram', **kwargs)
 
-    def report_image(self, val, name, subset, **kwargs):
+    def report_image(self, val, name, subset=None, **kwargs):
         self.report_data(val, name, subset, 'image', **kwargs)
 
-    def report_figure(self, val, name, subset, **kwargs):
+    def report_figure(self, val, name, subset=None, **kwargs):
         self.report_data(val, name, subset, 'figure', **kwargs)
 
-    def report_video(self, val, name, subset, **kwargs):
+    def report_video(self, val, name, subset=None, **kwargs):
         self.report_data(val, name, subset, 'video', **kwargs)
 
-    def report_audio(self, val, name, subset, **kwargs):
+    def report_audio(self, val, name, subset=None, **kwargs):
         self.report_data(val, name, subset, 'audio', **kwargs)
 
-    def report_text(self, val, name, subset, **kwargs):
+    def report_text(self, val, name, subset=None, **kwargs):
         self.report_data(val, name, subset, 'text', **kwargs)
 
+    def report_embedding(self, val, name, subset=None, **kwargs):
+        self.report_data(val, name, subset, 'embedding', **kwargs)
 
+    def report_mesh(self, val, name, subset=None, **kwargs):
+        self.report_data(val, name, subset, 'mesh', **kwargs)
 
-    def add_buffer(self, name, subset, val):
+    def report_pr_curve(self, labels, predictions, name, subset=None, **kwargs):
+        kwargs['predictions'] = predictions
+        self.report_data(labels, name, subset, 'pr_curve', **kwargs)
+
+    def add_buffer(self, val, name, subset=None):
+        if subset is None:
+            subset = self.subset_context
         self.buffer[subset][name].append(val)
-
-    def __getstate__(self):
-
-        return {'data': {k: {**v} for k, v in self.data.items()},
-                'tensorboard_kwargs': {k: {**v} for k, v in self.tensorboard_kwargs.items()}}
 
 
 
@@ -725,7 +869,7 @@ class Experiment(object):
         if self.comet_exp is not None:
             logger.info(f"Comet results are stored to: {self.comet_exp.get_key()}")
 
-        defaults_argv = defaultdict(lambda: defaultdict(dict))
+        defaults_argv = nested_defaultdict(list)
         if argv is not None:
             for log_type in argv:
                 for k in argv[log_type]:

@@ -651,6 +651,24 @@ class PureBeamPath:
         return self
 
 
+class nested_defaultdict(defaultdict):
+
+    @staticmethod
+    def default_factory_list():
+        return defaultdict(list)
+
+    @staticmethod
+    def default_factory_dict():
+        return defaultdict(dict)
+
+    def __init__(self, default_factory=None, **kwargs):
+        if default_factory is list:
+            default_factory = self.default_factory_list
+        elif default_factory is dict:
+            default_factory = self.default_factory_dict
+        super().__init__(default_factory, **kwargs)
+
+
 def stack_batched_results(results, batch_size=None):
     # this step is done in order to be able to pickle the results
     stacked_results = defaultdict(dict)

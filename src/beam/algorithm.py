@@ -9,7 +9,7 @@ import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
     stack_batched_results, as_numpy, beam_device, retrieve_name, filter_dict, \
-    recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number
+    recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from .experiment import Experiment
@@ -819,7 +819,7 @@ class Algorithm(object):
         for n in range(n_epochs):
 
             t0 = timer()
-            results = defaultdict(lambda: defaultdict(list))
+            results = nested_defaultdict(list)
 
             if not training and self.rank > 0:
                 yield results
@@ -1089,8 +1089,8 @@ class Algorithm(object):
 
         with torch.no_grad():
 
-            self.set_mode(training= not eval_mode)
-            results = defaultdict(lambda: defaultdict(list))
+            self.set_mode(training=not eval_mode)
+            results = nested_defaultdict(list)
             transforms = []
             index = []
 
