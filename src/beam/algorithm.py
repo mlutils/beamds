@@ -12,7 +12,7 @@ from .utils import finite_iterations, to_device, check_type, rate_string_format,
     recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
-from .experiment import Experiment
+from .experiment import Experiment, BeamReport
 from timeit import default_timer as timer
 from .path import beam_path, PureBeamPath
 from .processor import Processor
@@ -814,7 +814,7 @@ class Algorithm(object):
         '''
         return results
 
-    def epoch_iterator(self, n_epochs, subset, training):
+    def epoch_iterator(self, reporter, n_epochs, subset, training):
 
         for n in range(n_epochs):
 
@@ -1147,9 +1147,11 @@ class Algorithm(object):
     def __iter__(self):
 
         self.refresh_optimizers_and_schedulers_pointers()
-        eval_generator = self.epoch_iterator(self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
+
+        reporter = BeamReport(objective=self.get_hparam('objective'))
+        eval_generator = self.epoch_iterator(reporter, self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
                                              subset=self.eval_subset, training=False)
-        for i, train_results in enumerate(self.epoch_iterator(self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
+        for i, train_results in enumerate(self.epoch_iterator(reporter, self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
                                                               subset='train', training=True)):
             with torch.no_grad():
                 eval_results = next(eval_generator)
@@ -1185,6 +1187,7 @@ class Algorithm(object):
 
             if self.early_stopping(results, i):
                 return
+            reporter.reset()
 
     def set_mode(self, training=True):
 

@@ -171,6 +171,32 @@ class BeamReport(object):
 
     def __init__(self, objective=None):
 
+        self.scalar = None
+        self.aux = None
+
+        self.scalars = None
+        self.buffer = None
+
+        self.scalar_kwargs = None
+        self.scalars_kwargs = None
+        self.aux_kwargs = None
+
+        self.scalar_aggregation = None
+        self.scalars_aggregation = None
+
+        self.objective_name = objective
+
+        self.epoch = None
+        self.best_epoch = None
+        self.objective = None
+        self.best_objective = None
+        self.subset_context = None
+        self.iteration = None
+        self._data = None
+
+        self.reset()
+
+    def reset(self):
         self.scalar = defaultdict(list)
         self.aux = defaultdict(dict)
 
@@ -183,16 +209,6 @@ class BeamReport(object):
 
         self.scalar_aggregation = {}
         self.scalars_aggregation = {}
-
-        self.objective_name = objective
-
-        self.epoch = None
-        self.best_epoch = None
-        self.objective = None
-        self.best_objective = None
-        self.subset_context = None
-        self.iteration = None
-        self._data = None
 
     @property
     def data(self):
@@ -244,8 +260,16 @@ class BeamReport(object):
                 kwargs = self.aux_kwargs.get(k, {}).get(kk, {})
                 writer_func(kk, vv, **kwargs)
 
+    def set_objective(self, objective):
+
+        self.objective = objective
+
+        if self.best_objective is None and self.objective > self.best_objective:
+            self.best_objective = objective
+            self.best_epoch = self.epoch
+
     @contextmanager
-    def track_epoch(self, subset, epoch, batch_size=None):
+    def track_epoch(self, subset, epoch, batch_size=None, track_objective=True):
         self.subset_context = subset
         self.epoch = epoch
         self.iteration = 0
@@ -262,6 +286,12 @@ class BeamReport(object):
 
         for k, v in self.scalar.items():
             self.scalar[k] = self.stack_scalar(v, batch_size=batch_size)
+
+            subset, name = k.split('/')
+            if name == self.objective_name and track_objective:
+                agg = self.scalar_aggregation.get(k, None)
+                self.set_objective(self.aggregate_scalar(self.scalar[k], agg))
+
         for k, v in self.scalars.items():
             for kk, vv in v.items():
                 self.scalars[k][kk] = self.stack_scalar(vv, batch_size=batch_size)
@@ -396,7 +426,6 @@ class BeamReport(object):
         if subset is None:
             subset = self.subset_context
         self.buffer[subset][name].append(val)
-
 
 
 class Experiment(object):
