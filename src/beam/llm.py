@@ -18,6 +18,7 @@ from transformers.pipelines import Conversation
 import transformers
 from .utils import beam_device, BeamURL
 import torch
+import requests
 
 
 class LLMResponse:
@@ -656,6 +657,54 @@ class FastChatLLM(OpenAIBase):
 #         return self.ask(prompt, **kwargs)
 
 
+class FastAPILLM(BeamLLM):
+
+    model: Optional[str] = Field(None)
+    hostname: Optional[str] = Field(None)
+    headers: Optional[dict] = Field(None)
+    consumer: Optional[str] = Field(None)
+    _models: Any = PrivateAttr()
+
+    def __init__(self, *args, model=None, hostname=None, port=None, username=None, **kwargs):
+        kwargs['scheme'] = 'fastapi'
+        super().__init__(*args, **kwargs)
+        self.model = model
+        self.consumer = username
+        self.hostname = normalize_host(hostname, port)
+        self._models = None
+        self.headers = {'Content-Type': 'application/json'}
+
+    @property
+    def models(self):
+        if self._models is None:
+            res = requests.get(f"http://{self.hostname}/models", headers=self.headers)
+            self._models = res.json()
+        return self._models
+
+    def is_chat(self):
+        return False
+
+    def chat_completion(self, **kwargs):
+        raise NotImplementedError
+
+    def completion(self, **kwargs):
+
+        d = {}
+        d['model_name'] = self.model
+        d['consumer'] = self.consumer
+        d['input'] = kwargs.pop('prompt')
+        d['hyper_params'] = kwargs
+
+        res = requests.post(f"http://{self.hostname}/loop", headers=self.headers, json=d)
+        return res.json()
+
+    def extract_text(self, res):
+        if not self.is_chat:
+            res = res['res']
+        else:
+            raise NotImplementedError
+        return res
+
 class HuggingFaceLLM(BeamLLM):
     config: Any
     tokenizer: Any
@@ -873,6 +922,9 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
     elif url.protocol == 'huggingface':
         return HuggingFaceLLM(model=model, **kwargs)
+
+    elif url.protocol == 'fastapi':
+        return FastAPILLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
 
     else:
         raise NotImplementedError
