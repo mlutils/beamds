@@ -830,7 +830,7 @@ class Experiment(object):
 
         for subset, res in results.items():
 
-            if subset in ['objective', 'global']:
+            if subset in ['objective', 'global', 'aux']:
                 continue
 
             def format(v):
@@ -898,7 +898,7 @@ class Experiment(object):
         if self.comet_exp is not None:
             logger.info(f"Comet results are stored to: {self.comet_exp.get_key()}")
 
-        defaults_argv = nested_defaultdict(list)
+        defaults_argv = nested_defaultdict(dict)
         if argv is not None:
             for log_type in argv:
                 for k in argv[log_type]:

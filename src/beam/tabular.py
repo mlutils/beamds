@@ -11,7 +11,7 @@ from .dataset import UniversalDataset
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
 import pandas as pd
-
+from .logger import beam_logger as logger
 
 
 class TabularHparams(BeamHparams):
@@ -31,6 +31,12 @@ class TabularHparams(BeamHparams):
         parser.add_argument('--transformer_dropout', type=float, default=0., metavar='hparam', help='transformer dropout')
         parser.add_argument('--mask_rate', type=float, default=0.15, metavar='hparam',
                             help='rate of masked features during training')
+        parser.add_argument('--maximal_mask_rate', type=float, default=0.2, metavar='hparam',
+                            help='the maximal mask rate with dynamic masking')
+        parser.add_argument('--minimal_mask_rate', type=float, default=0.1, metavar='hparam',
+                            help='the minimal mask rate with dynamic masking')
+        parser.add_argument('--dynamic_delta', type=float, default=0.005, metavar='hparam',
+                            help='the incremental delta for dynamic masking')
         parser.add_argument('--n_rules', type=int, default=64, metavar='hparam',
                             help='number of transformers rules in the decoder')
         parser.add_argument('--activation', type=str, default='gelu', metavar='hparam', help='transformer activation')
@@ -41,10 +47,19 @@ class TabularHparams(BeamHparams):
         parser.add_argument('--dataset_name', type=str, default='covtype', metavar='hparam',
                             help='dataset name [year, california_housing, higgs_small, covtype, aloi, adult, epsilon, '
                                  'microsoft, yahoo, helena, jannis]')
+        parser.add_argument('--n_ensembles', type=int, default=32, metavar='hparam',
+                            help='number of ensembles of the model for prediction in inference mode')
+        parser.add_argument('--label_smoothing', type=float, default=0., metavar='hparam',
+                            help='label smoothing for the cross entropy loss')
+        parser.add_argument('--dropout', type=float, default=.0, metavar='hparam', help='Output layer dropout of the model')
 
         boolean_feature(parser, "oh_to_cat", False, "Try to convert one-hot encoded categorical features to "
                                                     "categorical features")
         boolean_feature(parser, "store_data_on_device", True, "Store the data on the device (GPU/CPU) in advance")
+        boolean_feature(parser, 'dynamic_masking', False, 'Use dynamic masking scheduling')
+
+        boolean_feature(parser, 'catboost', False, 'Train a catboost model on the data')
+        boolean_feature(parser, 'rulenet', True, 'Train our RuleNet model on the data')
 
         return parser
 
@@ -61,6 +76,12 @@ class TabularDataset(UniversalDataset):
         x_train = dataset['N_train'].values
         x_val = dataset['N_val'].values
         x_test = dataset['N_test'].values
+
+        if np.isnan(x_train).any() or np.isnan(x_val).any() or np.isnan(x_test).any():
+            logger.warning('NaN values in the data, replacing with 0')
+            x_train = np.nan_to_num(x_train)
+            x_val = np.nan_to_num(x_val)
+            x_test = np.nan_to_num(x_test)
 
         y_train = dataset['y_train'].values
 
@@ -119,6 +140,17 @@ class TabularDataset(UniversalDataset):
         x_train_num_scaled = torch.FloatTensor(self.scaler.transform(x_train_num))
         x_val_num_scaled = torch.FloatTensor(self.scaler.transform(x_val_num))
         x_test_num_scaled = torch.FloatTensor(self.scaler.transform(x_test_num))
+
+        # save these tables for catboost training
+        self.x_train_num_scaled = as_numpy(x_train_num_scaled)
+        self.x_val_num_scaled = as_numpy(x_val_num_scaled)
+        self.x_test_num_scaled = as_numpy(x_test_num_scaled)
+        self.x_train_cat = x_train_cat
+        self.x_val_cat = x_val_cat
+        self.x_test_cat = x_test_cat
+        self.y_train = dataset['y_train'].values
+        self.y_val = dataset['y_val'].values
+        self.y_test = dataset['y_test'].values
 
         self.y_mu = None
         self.y_sigma = None
@@ -236,7 +268,8 @@ class TabularTransformer(torch.nn.Module):
                                           activation=hparams.activation, layer_norm_eps=1e-05,
                                           batch_first=True, norm_first=True)
 
-        self.lin = nn.Linear(hparams.emb_dim, n_classes, bias=False)
+        self.lin = nn.Sequential(nn.ReLU(), nn.Dropout(hparams.dropout), nn.LayerNorm(hparams.emb_dim),
+            nn.Linear(hparams.emb_dim, n_classes, bias=False))
 
     def forward(self, sample):
 
@@ -271,12 +304,25 @@ class DeepTabularAlg(Algorithm):
         # choose your network
         super().__init__(hparams, networks=networks, **kwargs)
         self.loss_function = None
+        self.loss_kwargs = None
         self.task_type = None
+        self.train_acc = None
+        self.previous_masking = self.get_hparam('mask_rate')
+        self.best_masking = self.get_hparam('mask_rate')
 
     def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
         if epoch == 0:
             self.task_type = self.dataset.task_type
-            self.loss_function = F.mse_loss if self.task_type == 'regression' else F.cross_entropy
+
+            if self.task_type == 'regression':
+                self.loss_kwargs = {'reduction': 'none'}
+                self.loss_function = F.mse_loss
+            else:
+                self.loss_kwargs = {'label_smoothing': self.get_hparam('label_smoothing'), 'reduction': 'none'}
+                self.loss_function = F.cross_entropy
+
+        if self.best_state:
+            self.best_masking = self.previous_masking
 
         return results
 
@@ -286,15 +332,32 @@ class DeepTabularAlg(Algorithm):
             results['scalar']['rmse'] = float(torch.sqrt(results['scalar']['mse'].mean()))
             results['scalar']['objective'] = -results['scalar']['rmse']
 
+        if self.get_hparam('dynamic_masking'):
+            if training:
+                self.train_acc = float(torch.mean(results['scalar']['acc']))
+            else:
+                test_acc = float(torch.mean(results['scalar']['acc']))
+                if test_acc > self.train_acc:
+                    delta = self.get_hparam('dynamic_delta')
+                else:
+                    delta = -self.get_hparam('dynamic_delta')
+                self.previous_masking = float(self.networks['net'].mask.probs)
+                non_mask_rate = max(self.previous_masking + delta, 1. - self.get_hparam('maximal_mask_rate'))
+                non_mask_rate = min(non_mask_rate, 1. - self.get_hparam('minimal_mask_rate'))
+                self.networks['net'].mask = distributions.Bernoulli(non_mask_rate)
+
+            results['scalar']['mask_rate'] = float(1 - self.networks['net'].mask.probs)
+
         return results
 
-    def iteration(self, sample=None, label=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def iteration(self, sample=None, label=None, results=None, subset=None, counter=None, index=None,
+                  training=True, **kwargs):
 
         y = label
         net = self.networks['net']
 
         y_hat = net(sample)
-        loss = self.loss_function(y_hat, y, reduction='none')
+        loss = self.loss_function(y_hat, y, **self.loss_kwargs)
 
         self.apply(loss, training=training, results=results)
 
@@ -306,17 +369,38 @@ class DeepTabularAlg(Algorithm):
 
         return results
 
+    def set_best_masking(self):
+        logger.info(f'Setting best masking to {self.best_masking:.3f}')
+        self.networks['net'].mask = distributions.Bernoulli(self.best_masking)
+
     def inference(self, sample=None, label=None, results=None, subset=None, predicting=True, **kwargs):
 
         y = label
         net = self.networks['net']
-        y_hat = net(sample)
+        n_ensembles = self.get_hparam('n_ensembles')
+
+        if n_ensembles > 1:
+            net.train()
+            y_hat = []
+            for _ in range(n_ensembles):
+                y_hat.append(net(sample))
+            y_hat = torch.stack(y_hat, dim=0)
+            results['predictions']['y_pred_std'].append(y_hat.std(dim=0).detach())
+            y_hat = y_hat.mean(dim=0)
+        else:
+            y_hat = net(sample)
 
         # add scalar measurements
         results['predictions']['y_pred'].append(y_hat.detach())
 
         if not predicting:
-            results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
+
+            if self.task_type == 'regression':
+                results['scalar']['mse'].append(as_numpy(F.mse_loss(y_hat, y, reduction='mean'))
+                                                * self.dataset.y_sigma ** 2)
+            else:
+                results['scalar']['acc'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
+
             results['predictions']['target'].append(y)
             return {'y': y, 'y_hat': y_hat}, results
 
@@ -324,14 +408,21 @@ class DeepTabularAlg(Algorithm):
 
     def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
-        y_pred = as_numpy(torch.argmax(results['predictions']['y_pred'], dim=1))
-
         if not predicting:
-            y_true = as_numpy(results['predictions']['target'])
-            precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
-            results['metrics']['precision'] = precision
-            results['metrics']['recall'] = recall
-            results['metrics']['fscore'] = fscore
-            results['metrics']['support'] = support
+
+            if self.task_type == 'regression':
+                results['scalar']['rmse'] = float(torch.sqrt(results['scalar']['mse'].mean()))
+                results['scalar']['objective'] = -results['scalar']['rmse']
+
+            else:
+
+                y_pred = as_numpy(torch.argmax(results['predictions']['y_pred'], dim=1))
+                y_true = as_numpy(results['predictions']['target'])
+                precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
+                results['metrics']['precision'] = precision
+                results['metrics']['recall'] = recall
+                results['metrics']['fscore'] = fscore
+                results['metrics']['support'] = support
+                results['scalar']['objective'] = results['scalar']['acc'].mean()
 
         return results
