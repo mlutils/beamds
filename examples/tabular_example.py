@@ -28,11 +28,11 @@ if __name__ == '__main__':
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=256)
-    kwargs_all['adult'] = dict(batch_size=256)
-    kwargs_all['helena'] = dict(batch_size=512)
-    kwargs_all['jannis'] = dict(batch_size=512)
-    kwargs_all['higgs_small'] = dict(batch_size=512)
+    # kwargs_all['california_housing'] = dict(batch_size=256)
+    # kwargs_all['adult'] = dict(batch_size=256)
+    # kwargs_all['helena'] = dict(batch_size=512)
+    # kwargs_all['jannis'] = dict(batch_size=512)
+    # kwargs_all['higgs_small'] = dict(batch_size=512)
     # kwargs_all['aloi'] = dict(batch_size=512)
     kwargs_all['year'] = dict(batch_size=1024)
     kwargs_all['covtype'] = dict(batch_size=1024)

@@ -52,7 +52,7 @@ class BeamLLM(LLM, Processor):
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     logit_bias: Optional[Dict[str, float]] = Field(None)
 
-    def __init__(self, *args, temperature=1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
+    def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -681,6 +681,7 @@ class FastAPILLM(BeamLLM):
             self._models = res.json()
         return self._models
 
+    @property
     def is_chat(self):
         return False
 
@@ -695,7 +696,7 @@ class FastAPILLM(BeamLLM):
         d['input'] = kwargs.pop('prompt')
         d['hyper_params'] = kwargs
 
-        res = requests.post(f"http://{self.hostname}/loop", headers=self.headers, json=d)
+        res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
         return res.json()
 
     def extract_text(self, res):
