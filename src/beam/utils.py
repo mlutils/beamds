@@ -876,7 +876,7 @@ def is_arange(x):
         return False
 
     if x_type.element == 'str':
-        pattern = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)(?P<suffix>.*)$')
+        pattern = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)(?P<suffix>.*?)$')
         df = []
         for xi in x:
             match = pattern.match(xi)
