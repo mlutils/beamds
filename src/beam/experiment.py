@@ -73,19 +73,20 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
 
         # don't pass dataset if the algorithm cannot handle it on initialization
         if 'dataset' in ars.args or ars.varargs is not None:
-            alg = Alg(experiment.hparams, *alg_args, dataset=dataset, **alg_kwargs)
+            alg = Alg(experiment.hparams, *alg_args, dataset=dataset, experiment=experiment, **alg_kwargs)
         else:
             alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
     else:
+
         alg = Alg
+
+    alg.experiment = experiment
 
     if alg.dataset is None and dataset is not None:
         alg.load_dataset(dataset)
-
-    alg.experiment = experiment
 
     return alg
 
