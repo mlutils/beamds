@@ -2,7 +2,7 @@ import time
 import os
 import copy
 
-from .utils import find_port, print_beam_hyperparameters, check_type, is_notebook
+from .utils import find_port, print_beam_hyperparameters, check_type, is_notebook, beam_device
 from .logger import beam_logger as logger
 from .path import beam_path, BeamPath
 import pandas as pd
@@ -90,6 +90,7 @@ class Study(object):
         else:
             self.ag = algorithm_generator
         self.hparams = hparams
+        self.device = beam_device(hparams.device)
         self.conf = {}
 
         if print_hyperparameters:
@@ -205,7 +206,7 @@ class Study(object):
         hparams = copy.deepcopy(self.hparams)
 
         for k, v in config.items():
-            setattr(hparams, k, v)
+            setattr(hparams.replace('-', '_'), k, v)
 
         # set device to 0 (ray exposes only a single device
         hparams.device = '0'
@@ -236,7 +237,7 @@ class Study(object):
         hparams = copy.deepcopy(self.hparams)
 
         for k, v in config.items():
-            setattr(hparams, k, v)
+            setattr(hparams, k.replace('-', '_'), v)
 
         experiment = Experiment(hparams, hpo='optuna', trial=trial, print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
@@ -286,7 +287,7 @@ class Study(object):
         parallel = None
         if 'resources_per_trial' in kwargs and 'gpu' in kwargs['resources_per_trial']:
             gpus = kwargs['resources_per_trial']['gpu']
-            if 'cpu' not in self.hparams.device:
+            if 'cpu' not in self.device.type:
                 parallel = gpus
 
         runner_tune = partial(self.runner_tune, parallel=parallel)
@@ -326,7 +327,7 @@ class Study(object):
         df = df.reset_index(drop=True)
         n_trials = len(df)
 
-        if not 'cpu' in self.hparams.device:
+        if not 'cpu' in self.device.type:
             if 'n_jobs' not in kwargs or kwargs['n_jobs'] != 1:
                 logger.warning("Optuna does not support multi-GPU jobs. Setting number of parallel jobs to 1")
             kwargs['n_jobs'] = 1
@@ -376,7 +377,7 @@ class Study(object):
             suggest = lambda trial: {k: getattr(trial, f'suggest_{v["func"]}')(k, *v['args'], **v['kwargs'])
                         for k, v in self.conf.items()}
 
-        if not 'cpu' in self.hparams.device:
+        if not 'cpu' in self.device.type:
             if 'n_jobs' not in kwargs or kwargs['n_jobs'] != 1:
                 logger.warning("Optuna does not support multi-GPU jobs. Setting number of parallel jobs to 1")
             kwargs['n_jobs'] = 1

@@ -32,33 +32,30 @@ class Algorithm(object):
 
         self.hparams = hparams
 
-        self.device = beam_device(self.get_hparam('device'))
-        self.ddp = self.get_hparam('ddp')
-        self.hpo = self.get_hparam('hpo')
-        self.rank = self.get_hparam('rank')
-        self.world_size = self.get_hparam('world_size')
+        # the following are set by the experiment
+        self.device = None
+        self.ddp = None
+        self.hpo = None
+        self.rank = None
+        self.world_size = None
 
         # some experiment hyperparameters
-        self.half = self.get_hparam('half')
-        self.enable_tqdm = hparams.enable_tqdm if hparams.tqdm_threshold == 0 or not hparams.enable_tqdm else None
-        self.n_epochs = hparams.n_epochs
+        self.half = None
+        self.enable_tqdm = None
+        self.n_epochs = None
         self.swa_epochs = 0
 
-        self.batch_size_train = hparams.batch_size_train
-        self.batch_size_eval = hparams.batch_size_eval
+        self.batch_size_train = None
+        self.batch_size_eval = None
 
-        self.cuda = (self.device.type == 'cuda')
-        self.pin_memory = self.cuda
-        self.autocast_device = 'cuda' if self.cuda else 'cpu'
-        amp_dtype = self.get_hparam('amp_dtype', default='float16')
-        if self.cuda:
-            self.amp_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[amp_dtype]
-        else:
-            if amp_dtype != 'bfloat16':
-                logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
-            self.amp_dtype = torch.bfloat16
-        self.amp = hparams.amp if self.cuda else False
-        self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
+        self.cuda = None
+        self.pin_memory = None
+        self.autocast_device = None
+        self.amp_dtype = None
+        self.amp = None
+        self.scaler = None
+
+        self.set_experiment_properties()
 
         self.scalers = {}
         self.epoch = 0
@@ -103,6 +100,39 @@ class Algorithm(object):
 
         self.cb_model = None
         self._is_notebook = None
+
+    def set_experiment_properties(self):
+
+        self.device = beam_device(self.get_hparam('device'))
+
+        # the following are set by the experiment
+        self.ddp = self.get_hparam('ddp')
+        self.hpo = self.get_hparam('hpo')
+        self.rank = self.get_hparam('rank')
+        self.world_size = self.get_hparam('world_size')
+
+        # some experiment hyperparameters
+        self.half = self.get_hparam('half')
+        self.enable_tqdm = self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
+                                                              or not self.get_hparam('enable_tqdm')) else None
+        self.n_epochs = self.get_hparam('n_epochs')
+
+        self.batch_size_train = self.get_hparam('batch_size_train')
+        self.batch_size_eval = self.get_hparam('batch_size_eval')
+
+        self.cuda = (self.device.type == 'cuda')
+        self.pin_memory = self.cuda
+        self.autocast_device = 'cuda' if self.cuda else 'cpu'
+        amp_dtype = self.get_hparam('amp_dtype', default='float16')
+        if self.cuda:
+            self.amp_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[amp_dtype]
+        else:
+            if amp_dtype != 'bfloat16':
+                logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
+            self.amp_dtype = torch.bfloat16
+        self.amp = self.get_hparam('amp') if self.cuda else False
+        self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
+
 
     @property
     def is_notebook(self):
@@ -366,6 +396,14 @@ class Algorithm(object):
     def experiment(self, experiment):
         logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root}")
         self.trial = experiment.trial
+        self.hparams = experiment.hparams
+        self.set_experiment_properties()
+
+        self.ddp = experiment.hparams.ddp
+        self.hpo = experiment.hparams.hpo
+        self.rank = experiment.hparams.rank
+        self.world_size = experiment.hparams.world_size
+
         self._experiment = experiment
 
     def apply(self, *losses, weights=None, training=True, optimizers=None, set_to_none=True, gradient=None,

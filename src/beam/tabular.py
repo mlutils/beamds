@@ -300,15 +300,22 @@ class TabularTransformer(torch.nn.Module):
 
 class DeepTabularAlg(Algorithm):
 
-    def __init__(self, hparams, networks=None, **kwargs):
+    def __init__(self, hparams, networks=None, net_kwargs=None,  **kwargs):
         # choose your network
+
+        if networks is None:
+            if net_kwargs is None:
+                net_kwargs = dict()
+            net = TabularTransformer(hparams, **net_kwargs)
+            networks = {'net': net}
+
         super().__init__(hparams, networks=networks, **kwargs)
         self.loss_function = None
         self.loss_kwargs = None
         self.task_type = None
         self.train_acc = None
-        self.previous_masking = self.get_hparam('mask_rate')
-        self.best_masking = self.get_hparam('mask_rate')
+        self.previous_masking = 1 - self.get_hparam('mask_rate')
+        self.best_masking = 1 - self.get_hparam('mask_rate')
 
     def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
         if epoch == 0:
