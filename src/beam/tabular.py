@@ -363,7 +363,17 @@ class DeepTabularAlg(Algorithm):
         y = label
         net = self.networks['net']
 
-        y_hat = net(sample)
+        n_ensembles = self.get_hparam('n_ensembles')
+
+        if not training and n_ensembles > 1:
+            net.train()
+            y_hat = []
+            for _ in range(n_ensembles):
+                y_hat.append(net(sample))
+            y_hat = torch.stack(y_hat, dim=0).mean(dim=0)
+        else:
+            y_hat = net(sample)
+
         loss = self.loss_function(y_hat, y, **self.loss_kwargs)
 
         self.apply(loss, training=training, results=results)

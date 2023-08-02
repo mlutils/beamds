@@ -32,6 +32,7 @@ apt install -y ncdu
 apt install -y vim
 apt install -y zip
 apt install -y unixodbc-dev
+apt install -y sqlite3
 
 pip install pykerberos
 

@@ -335,6 +335,9 @@ class Study(object):
         if study_name is None:
             study_name = f'{self.hparams.project_name}/{self.hparams.algorithm}/{self.hparams.identifier}'
 
+        if direction is None:
+            direction = 'maximize'
+
         if storage is None:
             if self.hpo_dir is not None:
 
@@ -382,8 +385,20 @@ class Study(object):
                 logger.warning("Optuna does not support multi-GPU jobs. Setting number of parallel jobs to 1")
             kwargs['n_jobs'] = 1
 
+        if direction is None:
+            direction = 'maximize'
+
         if study_name is None:
             study_name = f'{self.hparams.project_name}/{self.hparams.algorithm}/{self.hparams.identifier}'
+
+        if storage is None:
+            if self.hpo_dir is not None:
+
+                path = beam_path(self.hpo_dir)
+                path.joinpath('optuna').mkdir(parents=True, exist_ok=True)
+
+                # storage = f'sqlite:///{self.hpo_dir}/{study_name}.db'
+                # logger.info(f"Using {storage} as storage to store the trials results")
 
         runner = partial(self.runner_optuna, suggest=suggest)
 

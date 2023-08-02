@@ -973,7 +973,7 @@ class Algorithm(object):
                 self.best_objective = self.objective
                 self.best_epoch = self.epoch
             elif self.objective > self.best_objective:
-                logger.info(f"New best objective result: {pretty_format_number(self.objective)}")
+                logger.info(f"Epoch {self.best_epoch}: The new best objective is {pretty_format_number(self.objective)}")
                 self.best_objective = self.objective
                 self.best_epoch = self.epoch
                 self.best_state = True
