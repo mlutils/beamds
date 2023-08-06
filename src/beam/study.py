@@ -16,6 +16,8 @@ from ray.tune.stopper import Stopper
 from typing import Union
 import datetime
 from ._version import __version__
+import numpy as np
+from scipy.special import erfinv
 
 
 class TimeoutStopper(Stopper):
@@ -119,6 +121,77 @@ class Study(object):
         self.track_algorithms = track_algorithms
         self.track_hparams = track_hparams
         self.track_suggestion = track_suggestion
+
+    def optuna_linspace(self, trial, param, start, end, n_steps, endpoint=True,  dtype=None):
+        x = np.linspace(start, end, n_steps, endpoint=endpoint)
+        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int, np.int64, 'int', 'int64']:
+            x = np.round(x).astype(int)
+        i = trial.suggest_int(param, 0, len(x) - 1)
+        return x[i]
+
+    def optuna_logspace(self, trial, param, start, end, n_steps,base=None, dtype=None):
+        x = np.logspace(start, end, n_steps, base=base)
+        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int, np.int64, 'int', 'int64']:
+            x = np.round(x).astype(int)
+        i = trial.suggest_int(param, 0, len(x) - 1)
+        return x[i]
+
+    def optuna_uniform(self, trial, param, start, end):
+        return trial.suggest_uniform(param, start, end)
+
+    def optuna_loguniform(self, trial, param, start, end):
+        return trial.suggest_loguniform(param, start, end)
+
+    def optuna_categorical(self, trial, param, choices):
+        return trial.suggest_categorical(param, choices)
+
+    def optuna_randn(self, trial, param, mu, sigma):
+        x = trial.suggest_uniform(param, 0, 1)
+        return mu + sigma * np.sqrt(2) * erfinv(2 * x - 1)
+
+    def tune_categorical(self, trial, param, choices):
+        return tune.choice(choices)
+
+    def tune_uniform(self, trial, param, start, end):
+        return tune.uniform(start, end)
+
+    def tune_loguniform(self, trial, param, start, end):
+        return tune.loguniform(start, end)
+
+    def tune_linspace(self, trial, param, start, end, n_steps, endpoint=True, dtype=None):
+        x = np.linspace(start, end, n_steps, endpoint=endpoint)
+        step_size = (end - start) / n_steps
+        end = end - step_size * (1 - endpoint)
+
+        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int, np.int64, 'int', 'int64']:
+
+            start = int(np.round(start))
+            step_size = int(np.round(step_size))
+            end = int(np.round(end))
+
+            return tune.qrandint(start, end, step_size)
+
+        return tune.quniform(start, end, (end - start) / n_steps)
+
+    def tune_logspace(self, trial, param, start, end, n_steps, base=None, dtype=None):
+
+        if base is None:
+            base = 10
+
+        emin = base ** start
+        emax = base ** end
+
+        x = np.logspace(start, end, n_steps, base=base)
+
+        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int, np.int64, 'int', 'int64']:
+            base = int(x[1] / x[0])
+            return tune.lograndint(int(emin), int(emax), base=base)
+
+        step_size = (x[1] / x[0]) ** ( (end - start) / n_steps )
+        return tune.qloguniform(emin, emax, step_size, base=base)
+
+    def tune_randn(self, trial, param, mu, sigma):
+        return tune.qrandn(mu, sigma)
 
     def uniform(self, param, *args, **kwargs):
         self.conf[param.strip('-').replace('-', '_')] = {'func': 'uniform', 'args': args, 'kwargs': kwargs}

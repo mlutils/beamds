@@ -8,7 +8,7 @@ from .logger import beam_logger as logger
 import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
-    stack_batched_results, as_numpy, beam_device, retrieve_name, filter_dict, \
+    as_numpy, beam_device, retrieve_name, filter_dict, \
     recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
@@ -100,6 +100,15 @@ class Algorithm(object):
 
         self.cb_model = None
         self._is_notebook = None
+        self._train_reporter = BeamReport(objective=self.get_hparam('objective'))
+        self._predict_reporter = None
+        self.reporter = None
+
+    def set_reporter(self, reporter=None):
+        self.reporter = reporter
+
+    def set_train_reporter(self):
+        self.reporter = self._train_reporter
 
     def set_experiment_properties(self):
 
@@ -132,7 +141,6 @@ class Algorithm(object):
             self.amp_dtype = torch.bfloat16
         self.amp = self.get_hparam('amp') if self.cuda else False
         self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
-
 
     @property
     def is_notebook(self):
@@ -240,6 +248,36 @@ class Algorithm(object):
 
     def add_scheduler(self, scheduler, name):
         self.add_components(schedulers={name: scheduler})
+
+    def report_scalar(self, val, name, subset=None, aggregation=None, append=None, **kwargs):
+        self.reporter.report_scalar(val, name, subset=subset, aggregation=aggregation, append=append, **kwargs)
+
+    def report_image(self, val_dict, name, subset=None, aggregation=None, append=None, **kwargs):
+        self.reporter.report_image(val_dict, name, subset=subset, aggregation=aggregation, append=append, **kwargs)
+
+    def report_scalars(self, val, name, subset=None, **kwargs):
+        self.reporter.report_scalars(val, name, subset=subset, **kwargs)
+
+    def report_histogram(self, val, name, subset=None, **kwargs):
+        self.reporter.report_histogram(val, name, subset=subset, **kwargs)
+
+    def report_figure(self, val, name, subset=None, **kwargs):
+        self.reporter.report_figure(val, name, subset=subset, **kwargs)
+
+    def report_video(self, val, name, subset=None, **kwargs):
+        self.reporter.report_video(val, name, subset=subset, **kwargs)
+
+    def report_audio(self, val, name, subset=None, **kwargs):
+        self.reporter.report_audio(val, name, subset=subset, **kwargs)
+
+    def report_text(self, val, name, subset=None, **kwargs):
+        self.reporter.report_text(val, name, subset=subset, **kwargs)
+
+    def report_mesh(self, val, name, subset=None, **kwargs):
+        self.reporter.report_mesh(val, name, subset=subset, **kwargs)
+
+    def report_pr_curve(self, val, name, subset=None, **kwargs):
+        self.reporter.report_pr_curve(val, name, subset=subset, **kwargs)
 
     def add_components(self, networks=None, optimizers=None, schedulers=None, processors=None,
                        build_optimizers=True, build_schedulers=True, name='net'):
@@ -407,8 +445,8 @@ class Algorithm(object):
         self._experiment = experiment
 
     def apply(self, *losses, weights=None, training=True, optimizers=None, set_to_none=True, gradient=None,
-              retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None,
-              name=None, results=None):
+              retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None, name=None,
+              report=True):
 
         if name is None:
             name = 'loss'
@@ -458,21 +496,22 @@ class Algorithm(object):
 
             total_loss = total_loss + loss * weights[k]
 
-        if results is not None:
+        if report:
             if len(losses) > 1:
                 for k, l in losses.items():
-                    results['scalar'][f'{k}_s'].append(as_numpy(l * weights[k]))
+
+                    self.report_scalar(l * weights[k], f'{k}_s')
 
                     if weights[k] > 1:
-                        results['scalar'][f'{k}_w'].append(as_numpy(weights[k]))
+                        self.report_scalar(weights[k], f'{k}_w')
                     elif weights[k] == 1:
                         pass
                     elif weights[k] == 0:
-                        results['scalar'][f'{k}_w'].append(0)
+                        self.report_scalar(0, f'{k}_w')
                     else:
-                        results['scalar'][f'{k}_f'].append(as_numpy(1 / weights[k]))
+                        self.report_scalar(1 / weights[k], f'{k}_f')
 
-            results['scalar'][name].append(as_numpy(total_loss))
+            self.report_scalar(total_loss, name)
 
         loss = total_loss
         if training:
@@ -818,7 +857,7 @@ class Algorithm(object):
             label = to_device(label, self.device, half=False)
             yield i, DataBatch(index=ind, label=label, data=sample)
 
-    def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
+    def preprocess_epoch(self, epoch=None, subset=None, training=True, **kwargs):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param epoch: epoch number
@@ -826,43 +865,38 @@ class Algorithm(object):
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
-        return results
+        pass
 
-    def iteration(self, sample=None, label=None, index=None,
-                  results=None, counter=None, subset=None, training=True, **kwargs):
+    def iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
-        :param results: a dictionary of dictionary of lists containing results of
         :param subset: name of dataset subset (usually train/validation/test)
         :param training: train/test flag
         :return:
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
-        return results
+        pass
 
-    def postprocess_epoch(self, sample=None, label=None, index=None,
-                          results=None, epoch=None, subset=None, training=True, **kwargs):
+    def postprocess_epoch(self, sample=None, label=None, index=None, epoch=None, subset=None, training=True, **kwargs):
         '''
         :param epoch: epoch number
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
-        return results
+        pass
 
-    def epoch_iterator(self, reporter, n_epochs, subset, training):
+    def iterate_epoch(self, subset, training, n):
 
-        for n in range(n_epochs):
+        if not training and self.rank > 0:
+            return
 
-            t0 = timer()
-            results = nested_defaultdict(list)
+        objective_name = self.get_hparam('objective')
+        batch_size = self.batch_size_train if training else self.batch_size_eval
 
-            if not training and self.rank > 0:
-                yield results
-                continue
-
+        with (self.reporter.track_epoch(subset, n, batch_size=batch_size, track_objective=not training)):
             if n == self.n_epochs + self.swa_epochs:
                 logger.warning("This is an extra epoch to calculate BN statistics. "
                                "It is not used for training so we set training=False.")
@@ -874,7 +908,7 @@ class Algorithm(object):
             else:
                 self.set_mode(training=training)
 
-            results = self.preprocess_epoch(results=results, epoch=n, training=training)
+            self.preprocess_epoch(epoch=n, training=training)
 
             data_generator = self.data_generator(subset, persistent=True)
             for i, (ind, label, sample) in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
@@ -883,10 +917,9 @@ class Algorithm(object):
                                   desc=subset, total=self.epoch_length[subset]):
 
                 with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=self.amp):
-                    results = self.iteration(sample=sample, results=results, counter=i, training=training,
-                                             index=ind, label=label)
-                    objective = results['scalar'][self.get_hparam('objective')] \
-                        if self.get_hparam('objective') in results['scalar'] else None
+                    self.iteration(sample=sample, counter=i, training=training, index=ind, label=label)
+
+                    objective = self.reporter.get_scalar(objective_name, subset=subset, aggreate=False)[-1]
 
                     if training and n < self.n_epochs:
                         self.schedulers_step(objective, step_type='iteration')
@@ -898,56 +931,41 @@ class Algorithm(object):
                             if scaler._scale is not None:
                                 scaler.update()
 
-            results = stack_batched_results(results, batch_size=self.batch_size_train)
-            results = self.postprocess_epoch(sample=sample, index=ind, label=label,
-                                             results=results, epoch=n, training=training)
-
-            batch_size = self.batch_size_train if training else self.batch_size_eval
-
-            delta = timer() - t0
-            n_iter = i + 1
-
-            results['stats']['seconds'] = delta
-            results['stats']['batches'] = n_iter
-            results['stats']['samples'] = n_iter * batch_size
-            results['stats']['batch_rate'] = rate_string_format(n_iter, delta)
-            results['stats']['sample_rate'] = rate_string_format(n_iter * batch_size, delta)
+            self.postprocess_epoch(sample=sample, index=ind, label=label, epoch=n, training=training)
 
             if n == self.n_epochs + self.swa_epochs:
                 self.set_mode(training=False)
                 self.networks = bu_networks
 
-            yield results
-
-    def preprocess_inference(self, results=None, subset=None, predicting=False, **argv):
+    def preprocess_inference(self, subset=None, predicting=False, **argv):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
-        return results
+        pass
 
-    def inference(self, sample=None, label=None, index=None, results=None, subset=None, predicting=False, **kwargs):
+    def inference(self, sample=None, label=None, index=None, subset=None, predicting=False, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
-        :param results: a dictionary of dictionary of lists containing results of
         :param subset: name of dataset subset (usually train/validation/test)
         :return:
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
-        results = self.iteration(sample=sample, label=label, index=index, results=results, subset=subset, counter=0, training=False, **kwargs)
-        return {}, results
+        self.iteration(sample=sample, label=label, index=index, subset=subset, counter=0, training=False, **kwargs)
+        return {}
 
-    def postprocess_inference(self, sample=None, label=None, index=None, results=None, subset=None, predicting=False, **kwargs):
+
+    def postprocess_inference(self, sample=None, label=None, index=None, subset=None, predicting=False, **kwargs):
         '''
         :param subset: name of dataset subset (usually train/validation/test)
         :return: None
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
-        return results
+        pass
 
     def calculate_objective(self, results=None, **argv):
         '''
@@ -1033,10 +1051,12 @@ class Algorithm(object):
     def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None, eval_mode=True,
                  return_dataset=None, **kwargs):
 
+        reporter = BeamReport(objective=self.get_hparam('objective'))
+        self.set_reporter(reporter)
+
         with torch.no_grad():
 
             self.set_mode(training=not eval_mode)
-            results = nested_defaultdict(list)
             transforms = []
             index = []
 
@@ -1062,29 +1082,26 @@ class Algorithm(object):
             if head is not None:
                 max_iterations = math.ceil(head / batch_size)
 
-            results = self.preprocess_inference(results=results, subset=subset, predicting=predicting, dataset=dataset,
-                                                **kwargs)
+            self.preprocess_inference(subset=subset, predicting=predicting, dataset=dataset, **kwargs)
             data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
             total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
             for i, (ind, label, sample) in tqdm(data_generator, enable=enable_tqdm,
                                   threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                   notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
-                transform, results = self.inference(sample=sample, results=results, subset=subset, predicting=predicting,
+                transform = self.inference(sample=sample, subset=subset, predicting=predicting,
                                                     label=label, index=ind, **kwargs)
                 transforms.append(transform)
                 index.append(ind)
 
             index = torch.cat(index)
             transforms = recursive_concatenate(transforms)
-            results = stack_batched_results(results, batch_size=batch_size)
 
-            results = self.postprocess_inference(sample=sample, index=ind, transforms=transforms, label=label,
-                                                 results=results, subset=subset, dataset=dataset,
-                                                 predicting=predicting, **kwargs)
+            self.postprocess_inference(sample=sample, index=ind, transforms=transforms, label=label,
+                                                 subset=subset, dataset=dataset, predicting=predicting, **kwargs)
 
             if return_dataset:
                 dataset = UniversalDataset(transforms, index=index)
-                dataset.set_statistics(results)
+                dataset.set_statistics(reporter.data)
             else:
                 dataset = DataBatch(index=index, data=transforms, label=None)
 
@@ -1093,21 +1110,24 @@ class Algorithm(object):
     def __iter__(self):
 
         self.refresh_optimizers_and_schedulers_pointers()
+        self.set_train_reporter()
 
-        reporter = BeamReport(objective=self.get_hparam('objective'))
-        eval_generator = self.epoch_iterator(reporter, self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
-                                             subset=self.eval_subset, training=False)
-        for i, train_results in enumerate(self.epoch_iterator(reporter, self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0),
-                                                              subset='train', training=True)):
+        n_epochs = self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0)
+        for i,  in range(n_epochs):
+
+            self.reporter.reset()
+
+            self.iterate_epoch(subset='train', training=True, n=i)
             with torch.no_grad():
-                eval_results = next(eval_generator)
+                self.iterate_epoch(subset=self.eval_subset, training=False, n=i)
 
             # add learning rate and momentum of schedulers_steps
             for k, scheduler in self.schedulers_flat.items():
                 lr = scheduler.optimizer.param_groups[0]['lr']
-                train_results['scalar'][f'lr_{k}'] = lr
+
+                self.report_scalar(f'lr_{k}', lr, subset='train')
                 if type(scheduler) is BeamScheduler and scheduler.method in ['one_cycle']:
-                    train_results['scalar'][f'momentum_{k}'] = scheduler.get_current_state()['momentum']
+                    self.report_scalar(f'momentum_{k}', scheduler.get_current_state()['momentum'], subset='train')
 
             self.epoch += 1
             
@@ -1125,15 +1145,14 @@ class Algorithm(object):
                     sch.step()
 
                     lr = sch.optimizer.param_groups[0]['lr']
-                    results['train']['scalar'][f'swalr_{k}'] = lr
+                    self.report_scalar(lr, f'swalr_{k}', subset='train')
             else:
                 self.schedulers_step(objective=objective, step_type='epoch')
 
-            yield results
+            yield self.reporter
 
             if self.early_stopping(results, i):
                 return
-            reporter.reset()
 
     def set_mode(self, training=True):
 

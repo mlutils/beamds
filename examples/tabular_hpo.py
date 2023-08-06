@@ -130,9 +130,10 @@ if __name__ == '__main__':
         study.categorical('n_transformer_head', [1, 2, 4, 8])
         study.categorical('transformer_hidden_dim', [128, 256, 512])
 
-        study.float('mask_rate', 0., 0.5)
-        study.float('transformer_dropout', 0., 0.5)
-        study.float('label_smoothing', 0., 0.5)
+        study.float('mask_rate', 0., 0.4)
+        study.float('rule_mask_rate', 0., 0.4)
+        study.float('transformer_dropout', 0., 0.4)
+        study.float('label_smoothing', 0., 0.4)
 
         study.optuna(n_trials=1000, timeout=60 * 60 * 24, n_jobs=1)
 
