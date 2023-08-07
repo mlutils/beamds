@@ -141,9 +141,6 @@ class BeamLLM(LLM, Processor):
     def completion(self, **kwargs):
         raise NotImplementedError
 
-    def update_usage(self, response):
-        raise NotImplementedError
-
     def get_default_params(self, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None, logit_bias=None):
 
@@ -558,6 +555,9 @@ class BeamLLM(LLM, Processor):
         res = res.lower().strip()
         return res
 
+    def update_usage(self, response):
+        pass
+
 
 class OpenAIBase(BeamLLM):
 
@@ -606,6 +606,168 @@ class OpenAIBase(BeamLLM):
         return res
 
 
+class FCConversationLLM(BeamLLM):
+
+    _ma: Any = PrivateAttr()
+    _conv: Any = PrivateAttr()
+
+    def __init__(self, *args, model=None, **kwargs):
+
+        super().__init__(*args, model=model, **kwargs)
+
+        from fastchat.model.model_adapter import get_model_adapter
+        self._ma = get_model_adapter(model)
+        self._conv = self._ma.get_default_conv_template('       ')
+
+    @property
+    def stop_sequence(self):
+        return self._conv.stop_str
+
+    def get_prompt(self, messages):
+
+        conv = self._ma.get_default_conv_template('       ')
+
+        for m in messages:
+
+            if 'system' in m:
+
+                role = m['system_name'] if 'system_name' in m else 'system'
+                content = m['system']
+
+            else:
+
+                if m['role'] == 'user':
+                    role = conv.roles[0]
+                else:
+                    role = conv.roles[1]
+
+                content = m['content']
+
+            conv.append_message(role, content)
+
+        conv.append_message(self._conv.roles[1], None)
+
+        return conv.get_prompt()
+
+    @property
+    def is_chat(self):
+        return True
+
+    @property
+    def is_completions(self):
+        return True
+
+
+class TGILLM(FCConversationLLM):
+
+    _info: Any = PrivateAttr()
+    _client: Any = PrivateAttr()
+
+    def __init__(self, hostname=None, port=None, *args, **kwargs):
+
+        api_base = f"http://{normalize_host(hostname, port)}"
+
+        from text_generation import Client
+        self._client = Client(api_base)
+
+        req = requests.get(f"{api_base}/info")
+        self._info = json.loads(req.text)
+
+        kwargs['model'] = self._info['model_id']
+        kwargs['scheme'] = 'tgi'
+        super().__init__(*args, **kwargs)
+
+    @property
+    def is_chat(self):
+        return False
+
+    @property
+    def is_completions(self):
+        return True
+
+    def generate_tgi_kwargs(self, prompt, **kwargs):
+
+        generate_kwargs = {}
+
+        max_tokens = kwargs.pop('max_tokens', None)
+        max_new_tokens = None
+
+        if max_tokens is not None:
+            max_new_tokens = int(max_tokens - len(prompt.split()) * 1.5)
+
+        max_new_tokens = kwargs.pop('max_new_tokens', max_new_tokens)
+        if max_new_tokens is not None:
+            generate_kwargs['max_new_tokens'] = max_new_tokens
+
+        temperature = kwargs.pop('temperature', None)
+        if temperature is not None:
+            generate_kwargs['temperature'] = temperature
+
+        top_p = kwargs.pop('top_p', None)
+        if top_p is not None and 0 < top_p < 1:
+            generate_kwargs['top_p'] = top_p
+
+        best_of = kwargs.pop('n', None)
+        if best_of is not None and best_of > 1:
+            generate_kwargs['best_of'] = best_of
+
+        stop_sequences = kwargs.pop('stop', None)
+        if stop_sequences is not None:
+            generate_kwargs['stop_sequences'] = [stop_sequences]
+        if self.stop_sequence is not None:
+            generate_kwargs['stop_sequences'].append(self.stop_sequence)
+
+        if 'top_k' in kwargs:
+            generate_kwargs['top_k'] = kwargs.pop('top_k')
+
+        if 'truncate' in kwargs:
+            generate_kwargs['truncate'] = kwargs.pop('truncate')
+
+        if 'typical_p' in kwargs:
+            generate_kwargs['typical_p'] = kwargs.pop('typical_p')
+
+        if 'watermark' in kwargs:
+            generate_kwargs['watermark'] = kwargs.pop('watermark')
+
+        if 'repetition_penalty' in kwargs:
+            generate_kwargs['repetition_penalty'] = kwargs.pop('repetition_penalty')
+
+        decoder_input_details = kwargs.pop('logprobs', None)
+        if decoder_input_details is not None:
+            generate_kwargs['decoder_input_details'] = decoder_input_details
+
+        if 'seed' in kwargs:
+            generate_kwargs['seed'] = kwargs.pop('seed')
+
+        do_sample = None
+        if temperature is not None and temperature > 0:
+            do_sample = True
+        do_sample = kwargs.pop('do_sample', do_sample)
+
+        if do_sample is not None:
+            generate_kwargs['do_sample'] = do_sample
+
+        return generate_kwargs
+
+    def completion(self, prompt=None, **kwargs):
+
+        prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
+        generate_kwargs = self.generate_tgi_kwargs(prompt, **kwargs)
+        return self._client.generate(prompt, **generate_kwargs)
+
+    def chat_completion(self, messages=None, **kwargs):
+
+        prompt = self.get_prompt(messages)
+        generate_kwargs = self.generate_tgi_kwargs(prompt, **kwargs)
+
+        print(prompt)
+        print("***********************************")
+        return self._client.generate(prompt, **generate_kwargs)
+
+    def extract_text(self, res):
+        return res.generated_text
+
+
 class FastChatLLM(OpenAIBase):
 
     def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
@@ -615,49 +777,16 @@ class FastChatLLM(OpenAIBase):
         organization = "EMPTY"  # Not support yet
 
         kwargs['scheme'] = 'fastchat'
-        super().__init__(api_key=api_key, api_base=api_base, organization=organization,
-                         *args, **kwargs)
+        super().__init__(*args, api_key=api_key, api_base=api_base, organization=organization, model=model, **kwargs)
 
         self.model = model
-
-        # if is_notebook():
-        #     import nest_asyncio
-        #     nest_asyncio.apply()
 
     @property
     def is_chat(self):
         return True
 
 
-# class LocalFastChat(BeamLLM):
-#
-#     def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
-#         kwargs['scheme'] = 'fastchat'
-#         super().__init__(*args, **kwargs)
-#         self.model = ModelWorker(controller_addr='NA',
-#                             worker_addr='NA',
-#                             worker_id='default',
-#                             model_path=model,
-#                             model_names=['my model'],
-#                             # limit_worker_concurrency=1,
-#                             no_register=True,
-#                             device='cuda',
-#                             num_gpus=1,
-#                             max_gpu_memory=None,
-#                             load_8bit=False,
-#                             cpu_offloading=False,
-#                             gptq_config=None,)
-#                             # stream_interval=2)
-#
-#     @property
-#     def is_chat(self):
-#         return True
-#
-#     def chat(self, prompt, **kwargs):
-#         return self.ask(prompt, **kwargs)
-
-
-class FastAPILLM(BeamLLM):
+class FastAPILLM(FCConversationLLM):
 
     model: Optional[str] = Field(None)
     hostname: Optional[str] = Field(None)
@@ -666,9 +795,10 @@ class FastAPILLM(BeamLLM):
     _models: Any = PrivateAttr()
 
     def __init__(self, *args, model=None, hostname=None, port=None, username=None, **kwargs):
+
         kwargs['scheme'] = 'fastapi'
-        super().__init__(*args, **kwargs)
-        self.model = model
+        super().__init__(*args, model=model, **kwargs)
+
         self.consumer = username
         self.hostname = normalize_host(hostname, port)
         self._models = None
@@ -683,17 +813,29 @@ class FastAPILLM(BeamLLM):
 
     @property
     def is_chat(self):
-        return False
+        return True
 
-    def chat_completion(self, **kwargs):
-        raise NotImplementedError
+    @property
+    def is_completions(self):
+        return True
 
-    def completion(self, **kwargs):
+    def chat_completion(self, messages=None, **kwargs):
 
         d = {}
         d['model_name'] = self.model
         d['consumer'] = self.consumer
-        d['input'] = kwargs.pop('prompt')
+        d['input'] = self.get_prompt(messages)
+        d['hyper_params'] = kwargs
+
+        res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
+        return res.json()
+
+    def completion(self, prompt=None, **kwargs):
+
+        d = {}
+        d['model_name'] = self.model
+        d['consumer'] = self.consumer
+        d['input'] = self.get_prompt([{'role': 'user', 'content': prompt}])
         d['hyper_params'] = kwargs
 
         res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
@@ -705,6 +847,7 @@ class FastAPILLM(BeamLLM):
         else:
             raise NotImplementedError
         return res
+
 
 class HuggingFaceLLM(BeamLLM):
     config: Any
@@ -766,9 +909,6 @@ class HuggingFaceLLM(BeamLLM):
         self._conversational_pipeline = transformers.pipeline('conversational', model=self.net,
                                                               tokenizer=self.tokenizer, device=self.input_device,
                                                               **conversational_kwargs)
-
-    def update_usage(self, response):
-        pass
 
     def extract_text(self, res):
         if type(res) is list:
@@ -927,5 +1067,14 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
     elif url.protocol == 'fastapi':
         return FastAPILLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
 
+    elif url.protocol == 'tgi':
+        return TGILLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
+
     else:
         raise NotImplementedError
+
+
+if __name__ == '__main__':
+    llm = beam_llm("tgi://192.168.10.45:40081")
+    print(llm.chat('hi my name is elad').text)
+    print(llm.chat('do you remember my name?').text)

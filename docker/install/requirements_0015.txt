@@ -1,6 +1,9 @@
 pandas-profiling
 pulearn
 rouge-score
+sentence-transformers
+text-generation
+rank_bm25
 
 
 # skypilot
