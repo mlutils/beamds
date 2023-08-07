@@ -15,7 +15,8 @@ from .utils import include_patterns, check_type, beam_device, check_element_type
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
-    pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format, nested_defaultdict
+    pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format, nested_defaultdict, \
+    as_tensor
 import torch.distributed as dist
 from .utils import tqdm_beam as tqdm
 from functools import partial
@@ -194,10 +195,13 @@ class BeamReport(object):
         self.subset_context = None
         self.iteration = None
         self._data = None
+        self.state = None
 
         self.reset()
 
     def reset(self):
+
+        self.state = 'before_epoch'
         self.scalar = defaultdict(list)
         self.aux = defaultdict(dict)
 
@@ -274,11 +278,13 @@ class BeamReport(object):
         self.subset_context = subset
         self.epoch = epoch
         self.iteration = 0
+        self.state = 'in_epoch'
         t0 = timer()
         yield
         delta = timer() - t0
         n_iter = self.iteration + 1
 
+        self.state = 'after_epoch'
         self.report_data(delta, 'seconds', data_type='stats')
         self.report_data(n_iter, 'batches', data_type='stats')
         self.report_data(n_iter * batch_size, 'samples', data_type='stats')
@@ -299,6 +305,16 @@ class BeamReport(object):
         for k, v in self.buffer.items():
             self.buffer[k] = self.stack_scalar(v, batch_size=batch_size)
 
+    def get_scalar(self, name, subset=None, aggreate=False):
+        if subset is None:
+            subset = self.subset_context
+        if f'{subset}/{name}' in self.scalar:
+            if aggreate:
+                agg = self.scalar_aggregation.get(f'{subset}/{name}', None)
+                return self.aggregate_scalar(self.scalar[f'{subset}/{name}'], agg)
+            return self.scalar[f'{subset}/{name}']
+        return None
+
     def iterate(self, generator, **kwargs):
         for i, batch in tqdm(generator, **kwargs):
             self.iteration = i
@@ -311,6 +327,9 @@ class BeamReport(object):
             val = float(val)
         elif val_type.minor == 'torch':
             val = val.detach().cpu()
+        elif val_type.major == 'container':
+            val = as_tensor(val, device='cpu')
+
         return val
 
     @staticmethod
@@ -362,23 +381,36 @@ class BeamReport(object):
 
         return val
 
-    def report_scalar(self, val, name, subset=None, aggregation=None, **kwargs):
+    def report_scalar(self, val, name, subset=None, aggregation=None, append=None, **kwargs):
+
+        if append is None:
+            append = self.state == 'in_epoch'
 
         val = self.normalize_scalar(val)
 
-        self.scalar[f'{subset}/{name}'].append(val)
+        if append:
+            self.scalar[f'{subset}/{name}'].append(val)
+        else:
+            self.scalar[f'{subset}/{name}'] = val
+
         kwargs['global_step'] = self.epoch
         self.scalar_kwargs[f'{subset}/{name}'] = kwargs
         if aggregation is None:
             aggregation = 'mean'
         self.scalar_aggregation[f'{subset}/{name}'] = aggregation
 
-    def report_scalars(self, val_dict, name, subset=None, aggregation=None, **kwargs):
+    def report_scalars(self, val_dict, name, subset=None, aggregation=None, append=None, **kwargs):
+
+        if append is None:
+            append = self.state == 'in_epoch'
 
         for k, val in val_dict.items():
 
             val = self.normalize_scalar(val)
-            self.scalars[f'{subset}/{name}'][k].append(val)
+            if append:
+                self.scalars[f'{subset}/{name}'][k].append(val)
+            else:
+                self.scalars[f'{subset}/{name}'][k] = val
 
         kwargs['global_step'] = self.epoch
         self.scalar_kwargs[f'{subset}/{name}'] = kwargs
@@ -400,6 +432,9 @@ class BeamReport(object):
 
     def report_image(self, val, name, subset=None, **kwargs):
         self.report_data(val, name, subset, 'image', **kwargs)
+
+    def report_images(self, val, name, subset=None, **kwargs):
+        self.report_data(val, name, subset, 'images', **kwargs)
 
     def report_figure(self, val, name, subset=None, **kwargs):
         self.report_data(val, name, subset, 'figure', **kwargs)

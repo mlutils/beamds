@@ -82,7 +82,7 @@ if __name__ == '__main__':
                        # path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
                        path_to_data='/home/dsi/elads/data/tabular/data/',
                        path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
-                       copy_code=False, dynamic_masking=False,
+                       copy_code=False, dynamic_masking=False, early_stopping_patience=30,
                        tensorboard=False, stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
@@ -120,19 +120,21 @@ if __name__ == '__main__':
         study.float('lr-dense', 1e-4, 1e-2)
         study.float('lr-sparse', 1e-3, 1e-1)
         study.categorical('batch_size', [hparams.batch_size // 4, hparams.batch_size // 2, hparams.batch_size,
-                                    hparams.batch_size * 2, hparams.batch_size * 4])
+                                    hparams.batch_size * 2])
         study.float('dropout', 0., 0.5)
-        study.categorical('emb_dim', [32, 64, 128, 256])
-        study.categorical('n_rules', [32, 64, 128, 256])
-        study.categorical('n_quantiles', [2, 6, 10, 14, 18, 22])
+        study.categorical('emb_dim', [64, 128, 256])
+        study.categorical('n_rules', [64, 128, 256])
+        study.categorical('n_quantiles', [2, 6, 10, 16, 20, 40, 100])
         study.categorical('n_encoder_layers', [1, 2, 4, 8])
         study.categorical('n_decoder_layers', [1, 2, 4, 8])
         study.categorical('n_transformer_head', [1, 2, 4, 8])
+        study.categorical('transformer_hidden_dim', [128, 256, 512])
 
-        study.float('mask_rate', 0., 0.5)
-        study.float('transformer_dropout', 0., 0.5)
-        study.float('label_smoothing', 0., 0.5)
+        study.float('mask_rate', 0., 0.4)
+        study.float('rule_mask_rate', 0., 0.4)
+        study.float('transformer_dropout', 0., 0.4)
+        study.float('label_smoothing', 0., 0.4)
 
-        study.optuna(n_trials=100, timeout=60 * 60 * 24, n_jobs=1)
+        study.optuna(n_trials=1000, timeout=60 * 60 * 24, n_jobs=1)
 
         logger.info(f"Done HPO for dataset: {k}")

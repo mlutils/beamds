@@ -29,6 +29,10 @@ class LLMResponse:
     def text(self):
         return self.llm.extract_text(self.response)
 
+    @property
+    def openai_format(self):
+        return self.llm.openai_format(self.response)
+
     # @property
     # def choices(self):
     #     return self.llm.extract_choices(self.response)
@@ -111,12 +115,8 @@ class BeamLLM(LLM, Processor):
     def _llm_type(self) -> str:
         return "beam_llm"
 
-    def _call(
-            self,
-            prompt: str,
-            stop: Optional[List[str]] = None,
-            run_manager: Optional[CallbackManagerForLLMRun] = None,
-    ) -> str:
+    def _call(self, prompt: str, stop: Optional[List[str]] = None,
+              run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs) -> str:
 
         res = self.ask(prompt, stop=stop).text
         return res
@@ -135,10 +135,24 @@ class BeamLLM(LLM, Processor):
     def is_completions(self):
         return not self.is_chat
 
-    def chat_completion(self, **kwargs):
+    def _chat_completion(self, **kwargs):
         raise NotImplementedError
 
+    def chat_completion(self, **kwargs):
+
+        response = self._chat_completion(**kwargs)
+        self.update_usage(response)
+        response = LLMResponse(response, self)
+        return response
+
     def completion(self, **kwargs):
+
+        response = self._completion(**kwargs)
+        self.update_usage(response)
+        response = LLMResponse(response, self)
+        return response
+
+    def _completion(self, **kwargs):
         raise NotImplementedError
 
     def get_default_params(self, temperature=None,
@@ -226,10 +240,6 @@ class BeamLLM(LLM, Processor):
             kwargs['stop'] = stop
 
         response = self.chat_completion(messages=messages, **kwargs)
-
-        self.update_usage(response)
-        response = LLMResponse(response, self)
-
         self.add_to_chat(response.text, is_user=False)
 
         return response
@@ -314,9 +324,6 @@ class BeamLLM(LLM, Processor):
         else:
             response = self.completion(prompt=question, logprobs=logprobs, echo=echo, **default_params)
 
-            self.update_usage(response)
-            response = LLMResponse(response, self)
-
         self.instruction_history.append({'question': question, 'response': response.text, 'type': 'ask'})
 
         return response
@@ -342,6 +349,9 @@ class BeamLLM(LLM, Processor):
         return res
 
     def extract_text(self, res):
+        raise NotImplementedError
+
+    def openai_format(self, res):
         raise NotImplementedError
 
     def question(self, text, question, **kwargs):
@@ -586,13 +596,13 @@ class OpenAIBase(BeamLLM):
         openai.api_base = self.api_base
         openai.organization = self.organization
 
-    def chat_completion(self, **kwargs):
+    def _chat_completion(self, **kwargs):
         self.sync_openai()
         # todo: remove this when logit_bias is supported
         kwargs.pop('logit_bias')
         return openai.ChatCompletion.create(model=self.model, **kwargs)
 
-    def completion(self, **kwargs):
+    def _completion(self, **kwargs):
         self.sync_openai()
         # todo: remove this when logit_bias is supported
         kwargs.pop('logit_bias')
@@ -603,6 +613,9 @@ class OpenAIBase(BeamLLM):
             res = res.choices[0].text
         else:
             res = res.choices[0].message.content
+        return res
+
+    def openai_format(self, res):
         return res
 
 
@@ -819,7 +832,7 @@ class FastAPILLM(FCConversationLLM):
     def is_completions(self):
         return True
 
-    def chat_completion(self, messages=None, **kwargs):
+    def _chat_completion(self, messages=None, **kwargs):
 
         d = {}
         d['model_name'] = self.model
@@ -830,7 +843,7 @@ class FastAPILLM(FCConversationLLM):
         res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
         return res.json()
 
-    def completion(self, prompt=None, **kwargs):
+    def _completion(self, prompt=None, **kwargs):
 
         d = {}
         d['model_name'] = self.model
@@ -932,7 +945,7 @@ class HuggingFaceLLM(BeamLLM):
     def is_completions(self):
         return True
 
-    def completion(self, prompt=None, **kwargs):
+    def _completion(self, prompt=None, **kwargs):
 
         # pipeline = transformers.pipeline('text-generation', model=self.model,
         #                                  tokenizer=self.tokenizer, device=self.input_device, return_full_text=False)
@@ -942,7 +955,7 @@ class HuggingFaceLLM(BeamLLM):
 
         return res
 
-    def chat_completion(self, **kwargs):
+    def _chat_completion(self, **kwargs):
 
         # pipeline = transformers.pipeline('conversational', model=self.model,
         #                                  tokenizer=self.tokenizer, device=self.input_device)
@@ -1073,6 +1086,17 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
     else:
         raise NotImplementedError
 
+
+from argparse import Namespace
+def simulate_openai_chat(model=None, **kwargs):
+    llm = beam_llm(model) if type(model) == str else model
+    return llm.chat_completion(**kwargs).openai_format
+def simulate_openai_completion(model=None, **kwargs):
+    llm = beam_llm(model) if type(model) == str else model
+    return llm.completion(**kwargs).openai_format
+
+openai_simulator = Namespace(ChatCompletion=Namespace(create=simulate_openai_chat),
+                             Completion=Namespace(create=simulate_openai_completion))
 
 if __name__ == '__main__':
     llm = beam_llm("tgi://192.168.10.45:40081")

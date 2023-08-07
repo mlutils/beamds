@@ -31,6 +31,8 @@ class TabularHparams(BeamHparams):
         parser.add_argument('--transformer_dropout', type=float, default=0., metavar='hparam', help='transformer dropout')
         parser.add_argument('--mask_rate', type=float, default=0.15, metavar='hparam',
                             help='rate of masked features during training')
+        parser.add_argument('--rule_mask_rate', type=float, default=0., metavar='hparam',
+                            help='rate of masked rules during training')
         parser.add_argument('--maximal_mask_rate', type=float, default=0.2, metavar='hparam',
                             help='the maximal mask rate with dynamic masking')
         parser.add_argument('--minimal_mask_rate', type=float, default=0.1, metavar='hparam',
@@ -255,10 +257,11 @@ class TabularTransformer(torch.nn.Module):
         self.register_buffer('cat_mask', cat_mask.unsqueeze(0))
         self.emb = nn.Embedding(total_tokens, hparams.emb_dim, sparse=True)
 
-        n_rules = hparams.n_rules
+        self.n_rules = hparams.n_rules
 
-        self.rules = nn.Parameter(torch.randn(1, n_rules, hparams.emb_dim))
+        self.rules = nn.Parameter(torch.randn(1, self.n_rules, hparams.emb_dim))
         self.mask = distributions.Bernoulli(1 - hparams.mask_rate)
+        self.rule_mask = distributions.Bernoulli(1 - hparams.rule_mask_rate)
 
         self.transformer = nn.Transformer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
                                           num_encoder_layers=hparams.n_encoder_layers,
@@ -291,7 +294,12 @@ class TabularTransformer(torch.nn.Module):
         x_frac = x_frac.unsqueeze(-1)
         x = (1 - x_frac) * x1 + x_frac * x2
 
-        x = self.transformer(x, torch.repeat_interleave(self.rules, len(x), dim=0))
+        if self.training:
+            rules = self.rule_mask.sample(torch.Size(len(x), self.n_rules, 1)).to(x.device) * self.rules
+        else:
+            rules = torch.repeat_interleave(self.rules, len(x), dim=0)
+
+        x = self.transformer(x, rules)
         x = self.lin(x.max(dim=1).values)
 
         x = x.squeeze(-1)
@@ -363,7 +371,17 @@ class DeepTabularAlg(Algorithm):
         y = label
         net = self.networks['net']
 
-        y_hat = net(sample)
+        n_ensembles = self.get_hparam('n_ensembles')
+
+        if not training and n_ensembles > 1:
+            net.train()
+            y_hat = []
+            for _ in range(n_ensembles):
+                y_hat.append(net(sample))
+            y_hat = torch.stack(y_hat, dim=0).mean(dim=0)
+        else:
+            y_hat = net(sample)
+
         loss = self.loss_function(y_hat, y, **self.loss_kwargs)
 
         self.apply(loss, training=training, results=results)
