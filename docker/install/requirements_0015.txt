@@ -5,6 +5,10 @@ sentence-transformers
 text-generation
 rank_bm25
 
+chainlit
+scikit-hubness
+pyahocorasick
+
 
 # skypilot
 # vllm

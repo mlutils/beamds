@@ -19,19 +19,24 @@ import transformers
 from .utils import beam_device, BeamURL
 import torch
 import requests
+import uuid
 
 
 class LLMResponse:
-    def __init__(self, response, llm):
+    def __init__(self, response, prompt, llm):
         self.response = response
+        self.prompt = prompt
         self.llm = llm
+        self.id = f'beamllm-{uuid.uuid4()}'
+        self.model = llm.model
+
     @property
     def text(self):
-        return self.llm.extract_text(self.response)
+        return self.llm.extract_text(self)
 
     @property
     def openai_format(self):
-        return self.llm.openai_format(self.response)
+        return self.llm.openai_format(self)
 
     # @property
     # def choices(self):
@@ -142,14 +147,14 @@ class BeamLLM(LLM, Processor):
 
         response = self._chat_completion(**kwargs)
         self.update_usage(response)
-        response = LLMResponse(response, self)
+        response = LLMResponse(response, kwargs, self)
         return response
 
     def completion(self, **kwargs):
 
         response = self._completion(**kwargs)
         self.update_usage(response)
-        response = LLMResponse(response, self)
+        response = LLMResponse(response, kwargs, self)
         return response
 
     def _completion(self, **kwargs):
@@ -609,6 +614,8 @@ class OpenAIBase(BeamLLM):
         return openai.Completion.create(engine=self.model, **kwargs)
 
     def extract_text(self, res):
+
+        res = res.response
         if not self.is_chat:
             res = res.choices[0].text
         else:
@@ -616,6 +623,8 @@ class OpenAIBase(BeamLLM):
         return res
 
     def openai_format(self, res):
+
+        res = res.response
         return res
 
 
@@ -725,10 +734,16 @@ class TGILLM(FCConversationLLM):
             generate_kwargs['best_of'] = best_of
 
         stop_sequences = kwargs.pop('stop', None)
-        if stop_sequences is not None:
-            generate_kwargs['stop_sequences'] = [stop_sequences]
+        if stop_sequences is None:
+            stop_sequences = []
+        elif type(stop_sequences) is str:
+            stop_sequences = [stop_sequences]
+
         if self.stop_sequence is not None:
-            generate_kwargs['stop_sequences'].append(self.stop_sequence)
+            stop_sequences.append(self.stop_sequence)
+
+        if len(stop_sequences) > 0:
+            generate_kwargs['stop_sequences'] = stop_sequences
 
         if 'top_k' in kwargs:
             generate_kwargs['top_k'] = kwargs.pop('top_k')
@@ -762,23 +777,25 @@ class TGILLM(FCConversationLLM):
 
         return generate_kwargs
 
-    def completion(self, prompt=None, **kwargs):
+    def _completion(self, prompt=None, **kwargs):
 
         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         generate_kwargs = self.generate_tgi_kwargs(prompt, **kwargs)
         return self._client.generate(prompt, **generate_kwargs)
 
-    def chat_completion(self, messages=None, **kwargs):
+    def _chat_completion(self, messages=None, **kwargs):
 
         prompt = self.get_prompt(messages)
         generate_kwargs = self.generate_tgi_kwargs(prompt, **kwargs)
 
-        print(prompt)
-        print("***********************************")
         return self._client.generate(prompt, **generate_kwargs)
 
     def extract_text(self, res):
-        return res.generated_text
+
+        res = res.response
+        text = res.generated_text
+        text = text.rstrip(self.stop_sequence)
+        return text
 
 
 class FastChatLLM(OpenAIBase):
@@ -855,6 +872,8 @@ class FastAPILLM(FCConversationLLM):
         return res.json()
 
     def extract_text(self, res):
+
+        res = res.response
         if not self.is_chat:
             res = res['res']
         else:
@@ -924,6 +943,8 @@ class HuggingFaceLLM(BeamLLM):
                                                               **conversational_kwargs)
 
     def extract_text(self, res):
+
+        res = res.response
         if type(res) is list:
             res = res[0]
 
@@ -1097,8 +1118,3 @@ def simulate_openai_completion(model=None, **kwargs):
 
 openai_simulator = Namespace(ChatCompletion=Namespace(create=simulate_openai_chat),
                              Completion=Namespace(create=simulate_openai_completion))
-
-if __name__ == '__main__':
-    llm = beam_llm("tgi://192.168.10.45:40081")
-    print(llm.chat('hi my name is elad').text)
-    print(llm.chat('do you remember my name?').text)
