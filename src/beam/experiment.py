@@ -193,6 +193,7 @@ class BeamReport(object):
         self.objective = None
         self.best_objective = None
         self.subset_context = None
+        self.best_state = False
         self.iteration = None
         self._data = None
         self.state = None
@@ -235,6 +236,8 @@ class BeamReport(object):
                               'best_objective': self.best_objective,
                               }
 
+            data['objective'] = self.objective
+
             self._data = BeamData(data)
 
         return self._data
@@ -270,8 +273,12 @@ class BeamReport(object):
         self.objective = objective
 
         if self.best_objective is None and self.objective > self.best_objective:
+            logger.info(f"Epoch {self.epoch}: The new best objective is {pretty_format_number(objective)}")
             self.best_objective = objective
             self.best_epoch = self.epoch
+            self.best_state = True
+        else:
+            self.best_state = False
 
     @contextmanager
     def track_epoch(self, subset, epoch, batch_size=None, track_objective=True):
@@ -291,6 +298,7 @@ class BeamReport(object):
         self.report_data(rate_string_format(n_iter, delta), 'batch_rate', data_type='stats')
         self.report_data(rate_string_format(n_iter * batch_size, delta), 'sample_rate', data_type='stats')
 
+        agg = None
         for k, v in self.scalar.items():
             self.scalar[k] = self.stack_scalar(v, batch_size=batch_size)
 
@@ -298,6 +306,9 @@ class BeamReport(object):
             if name == self.objective_name and track_objective:
                 agg = self.scalar_aggregation.get(k, None)
                 self.set_objective(self.aggregate_scalar(self.scalar[k], agg))
+
+        if self.objective_name and track_objective and agg is None:
+            logger.warning(f"The objective {self.objective_name} is missing from the validation results")
 
         for k, v in self.scalars.items():
             for kk, vv in v.items():
