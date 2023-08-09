@@ -106,9 +106,11 @@ class Algorithm(object):
 
     def set_reporter(self, reporter=None):
         self.reporter = reporter
+        self.reporter.reset_time(None)
 
     def set_train_reporter(self):
         self.reporter = self._train_reporter
+        self.reporter.reset_time(done_epochs=self.epoch, n_epochs=self.n_epochs)
 
     def set_experiment_properties(self):
 
@@ -896,7 +898,7 @@ class Algorithm(object):
         objective_name = self.get_hparam('objective')
         batch_size = self.batch_size_train if training else self.batch_size_eval
 
-        with (self.reporter.track_epoch(subset, n, batch_size=batch_size, track_objective=not training)):
+        with (self.reporter.track_epoch(subset, n, batch_size=batch_size, training=training)):
             if n == self.n_epochs + self.swa_epochs:
                 logger.warning("This is an extra epoch to calculate BN statistics. "
                                "It is not used for training so we set training=False.")
@@ -911,7 +913,7 @@ class Algorithm(object):
             self.preprocess_epoch(epoch=n, training=training)
 
             data_generator = self.data_generator(subset, persistent=True)
-            for i, (ind, label, sample) in tqdm(finite_iterations(data_generator, self.epoch_length[subset]),
+            for i, (ind, label, sample) in self.reporter.iterate(finite_iterations(data_generator, self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp and self.is_notebook),
                                   threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                   desc=subset, total=self.epoch_length[subset]):
@@ -957,7 +959,6 @@ class Algorithm(object):
         '''
         self.iteration(sample=sample, label=label, index=index, subset=subset, counter=0, training=False, **kwargs)
         return {}
-
 
     def postprocess_inference(self, sample=None, label=None, index=None, subset=None, predicting=False, **kwargs):
         '''
@@ -1060,7 +1061,7 @@ class Algorithm(object):
             self.preprocess_inference(subset=subset, predicting=predicting, dataset=dataset, **kwargs)
             data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
             total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
-            for i, (ind, label, sample) in tqdm(data_generator, enable=enable_tqdm,
+            for i, (ind, label, sample) in self.reporter.iterate(data_generator, enable=enable_tqdm,
                                   threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                   notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
                 transform = self.inference(sample=sample, subset=subset, predicting=predicting,

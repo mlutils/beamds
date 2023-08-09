@@ -197,6 +197,11 @@ class BeamReport(object):
         self.iteration = None
         self._data = None
         self.state = None
+        self.t0 = time.time()
+        self.n_epochs = None
+        self.total_time = None
+        self.estimated_time = None
+        self.done_epochs = None
 
         self.reset()
 
@@ -216,6 +221,15 @@ class BeamReport(object):
         self.scalar_aggregation = {}
         self.scalars_aggregation = {}
 
+    def reset_time(self, done_epochs=None, n_epochs=None):
+        self.t0 = time.time()
+        self.n_epochs = n_epochs
+        if done_epochs is None:
+            done_epochs = 0
+        self.done_epochs = done_epochs
+        self.estimated_time = None
+        self.total_time = None
+
     @property
     def data(self):
         if self._data is None:
@@ -234,6 +248,8 @@ class BeamReport(object):
                               'best_epoch': self.best_epoch,
                               'objective': self.objective,
                               'best_objective': self.best_objective,
+                              'total_time': self.total_time,
+                              'estimated_time': self.estimated_time,
                               }
 
             data['objective'] = self.objective
@@ -244,6 +260,26 @@ class BeamReport(object):
 
     def write_to_path(self, path):
         self.data.store(path=path)
+
+    def write_to_logger(self):
+
+        logger.info('----------------------------------------------------------'
+                    '---------------------------------------------------------------------')
+        objective_str = ''
+        if self.best_objective is not None:
+            objective_str = f"Current objective: {pretty_format_number(self.objective)} " \
+                            f"(Best objective: {pretty_format_number(self.best_objective)} " \
+                            f" at epoch {self.best_epoch})"
+
+        if self.epoch is not None:
+
+            logger.info(f'Finished epoch {self.epoch + 1}/{self.n_epochs} (Total trained epochs {epoch}). '
+                        f'{objective_str}')
+
+        if total_time is not None:
+            total_time = pretty_print_timedelta(total_time)
+            estimated_time = pretty_print_timedelta(estimated_time)
+            logger.info(f'Elapsed time: {total_time}. Estimated remaining time: {estimated_time}.', )
 
     def write_to_tensorboard(self, writer):
 
@@ -272,7 +308,7 @@ class BeamReport(object):
 
         self.objective = objective
 
-        if self.best_objective is None and self.objective > self.best_objective:
+        if self.best_objective is None or self.objective > self.best_objective:
             logger.info(f"Epoch {self.epoch}: The new best objective is {pretty_format_number(objective)}")
             self.best_objective = objective
             self.best_epoch = self.epoch
@@ -281,15 +317,16 @@ class BeamReport(object):
             self.best_state = False
 
     @contextmanager
-    def track_epoch(self, subset, epoch, batch_size=None, track_objective=True):
+    def track_epoch(self, subset, epoch, batch_size=None, training=True):
         self.subset_context = subset
         self.epoch = epoch
-        self.iteration = 0
         self.state = 'in_epoch'
         t0 = timer()
         yield
+        self.done_epochs += 1
         delta = timer() - t0
         n_iter = self.iteration + 1
+        track_objective = not training
 
         self.state = 'after_epoch'
         self.report_data(delta, 'seconds', data_type='stats')
@@ -297,6 +334,10 @@ class BeamReport(object):
         self.report_data(n_iter * batch_size, 'samples', data_type='stats')
         self.report_data(rate_string_format(n_iter, delta), 'batch_rate', data_type='stats')
         self.report_data(rate_string_format(n_iter * batch_size, delta), 'sample_rate', data_type='stats')
+
+        self.total_time = time.time() - self.t0
+        if (self.n_epochs is not None) and (self.n_epochs is not None) and (self.n_epochs > 0):
+            self.estimated_time = self.total_time * (self.n_epochs - self.epoch - 1) / (self.epoch + 1)
 
         agg = None
         for k, v in self.scalar.items():

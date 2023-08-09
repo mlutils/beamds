@@ -623,7 +623,8 @@ class OpenAIBase(BeamLLM):
     def _chat_completion(self, **kwargs):
         self.sync_openai()
         # todo: remove this when logit_bias is supported
-        kwargs.pop('logit_bias')
+        if 'logit_bias' in kwargs:
+            kwargs.pop('logit_bias')
         return openai.ChatCompletion.create(model=self.model, **kwargs)
 
     def _completion(self, **kwargs):
