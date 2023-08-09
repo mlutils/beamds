@@ -967,45 +967,20 @@ class Algorithm(object):
         '''
         pass
 
-    def calculate_objective(self, results=None, **argv):
+    def calculate_objective(self):
         '''
         This function calculates the optimization non-differentiable objective. It is used for hyperparameter optimization
         and for ReduceOnPlateau scheduling. It is also responsible for tracking the best checkpoint
         '''
 
-        objective = None
-        if 'objective' in results[self.eval_subset]['scalar']:
-            objective_name = 'objective'
-        else:
-            objective_name = self.get_hparam('objective')
+        self.best_objective = self.reporter.best_objective
+        self.best_epoch = self.reporter.best_epoch
+        self.objective = self.reporter.objective
+        self.best_state = self.reporter.best_state
 
-        if objective_name is not None and objective_name in results[self.eval_subset]['scalar']:
+        return self.objective
 
-            objective = results[self.eval_subset]['scalar'][objective_name]
-            objective_type = check_type(objective)
-            if objective_type.major != 'scalar':
-                objective = float(torch.mean(objective))
-
-            self.objective = float(objective)
-            if self.best_objective is None:
-                self.best_objective = self.objective
-                self.best_epoch = self.epoch
-            elif self.objective > self.best_objective:
-                logger.info(f"Epoch {self.best_epoch}: The new best objective is {pretty_format_number(self.objective)}")
-                self.best_objective = self.objective
-                self.best_epoch = self.epoch
-                self.best_state = True
-            else:
-                self.best_state = False
-            results['objective'] = objective
-            results['global']['best_objective'] = self.best_objective
-            results['global']['best_epoch'] = self.best_epoch
-        elif objective_name is not None and objective_name not in results[self.eval_subset]['scalar']:
-            logger.warning(f"The objective {objective_name} is missing from the validation results")
-
-        return results, objective
-
-    def report(self, objective, epoch=None, **argv):
+    def report(self, objective, epoch=None):
         '''
         Use this function to report results to hyperparameter optimization frameworks
         also you can add key 'objective' to the results dictionary to report the final scores.
@@ -1026,7 +1001,7 @@ class Algorithm(object):
             if self.trial.should_prune():
                 raise optuna.TrialPruned()
 
-    def early_stopping(self, results=None, epoch=None, **kwargs):
+    def early_stopping(self, epoch=None):
         '''
         Use this function to early stop your model based on the results or any other metric in the algorithm class
         '''
@@ -1131,8 +1106,7 @@ class Algorithm(object):
 
             self.epoch += 1
             
-            results = {'train': train_results, self.eval_subset: eval_results, 'global': {}}
-            eval_results, objective = self.calculate_objective(results=results)
+            objective = self.calculate_objective()
             self.report(objective, i)
 
             if i+1 == self.n_epochs and self.swa_epochs > 0:
@@ -1151,7 +1125,7 @@ class Algorithm(object):
 
             yield self.reporter
 
-            if self.early_stopping(results, i):
+            if self.early_stopping(i):
                 return
 
     def set_mode(self, training=True):
