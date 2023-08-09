@@ -20,15 +20,34 @@ from .utils import beam_device, BeamURL
 import torch
 import requests
 import uuid
+import time
+from argparse import Namespace
+
+
+def simulate_openai_chat(model=None, **kwargs):
+    llm = beam_llm(model) if type(model) == str else model
+    return llm.chat_completion(**kwargs).openai_format
+
+
+def simulate_openai_completion(model=None, **kwargs):
+    llm = beam_llm(model) if type(model) == str else model
+    return llm.completion(**kwargs).openai_format
+
+
+openai_simulator = Namespace(ChatCompletion=Namespace(create=simulate_openai_chat),
+                             Completion=Namespace(create=simulate_openai_completion))
 
 
 class LLMResponse:
-    def __init__(self, response, prompt, llm):
+    def __init__(self, response, prompt, llm, chat=False):
         self.response = response
         self.prompt = prompt
         self.llm = llm
         self.id = f'beamllm-{uuid.uuid4()}'
         self.model = llm.model
+        self.created = int(time.time())
+        self.chat = chat
+        self.object = "chat.completion" if chat else "text_completion"
 
     @property
     def text(self):
@@ -130,7 +149,7 @@ class BeamLLM(LLM, Processor):
     def _identifying_params(self) -> Mapping[str, Any]:
         """Get the identifying parameters."""
         return {"is_chat": self.is_chat,
-                'usuage': self.usage}
+                'usage': self.usage}
 
     @property
     def is_chat(self):
@@ -147,14 +166,14 @@ class BeamLLM(LLM, Processor):
 
         response = self._chat_completion(**kwargs)
         self.update_usage(response)
-        response = LLMResponse(response, kwargs, self)
+        response = LLMResponse(response, kwargs, self, chat=True)
         return response
 
     def completion(self, **kwargs):
 
         response = self._completion(**kwargs)
         self.update_usage(response)
-        response = LLMResponse(response, kwargs, self)
+        response = LLMResponse(response, kwargs, self, chat=False)
         return response
 
     def _completion(self, **kwargs):
@@ -699,6 +718,50 @@ class TGILLM(FCConversationLLM):
         kwargs['scheme'] = 'tgi'
         super().__init__(*args, **kwargs)
 
+    def update_usage(self, response):
+
+        self.usage["prompt_tokens"] += 0
+        self.usage["completion_tokens"] += response.details.generated_tokens
+        self.usage["total_tokens"] += 0 + response.details.generated_tokens
+
+    def openai_format(self, res):
+
+        text = self.extract_text(res)
+
+        if res.chat:
+            choice = {
+                      "finish_reason": "stop",
+                      "index": 0,
+                      "message": {
+                        "content": text,
+                        "role": "assistant"
+                      }
+                    }
+        else:
+            choice = {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": res.response.details.tokens,
+                "text": text
+            }
+
+        res = {
+                  "choices": [
+                    choice
+                  ],
+                  "created": res.created,
+                  "id": res.id,
+                  "model": res.model,
+                  "object": res.object,
+                  "usage": {
+                    "completion_tokens": res.response.details.generated_tokens,
+                    "prompt_tokens": 0,
+                    "total_tokens": res.response.details.generated_tokens
+                  }
+                }
+
+        return res
+
     @property
     def is_chat(self):
         return False
@@ -1106,15 +1169,3 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
     else:
         raise NotImplementedError
-
-
-from argparse import Namespace
-def simulate_openai_chat(model=None, **kwargs):
-    llm = beam_llm(model) if type(model) == str else model
-    return llm.chat_completion(**kwargs).openai_format
-def simulate_openai_completion(model=None, **kwargs):
-    llm = beam_llm(model) if type(model) == str else model
-    return llm.completion(**kwargs).openai_format
-
-openai_simulator = Namespace(ChatCompletion=Namespace(create=simulate_openai_chat),
-                             Completion=Namespace(create=simulate_openai_completion))
