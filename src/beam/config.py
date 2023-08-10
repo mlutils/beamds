@@ -157,6 +157,9 @@ def get_beam_parser():
                                                  'it makes possible to reload models with adam optimizers '
                                                  'see: https://github.com/pytorch/pytorch/issues/80809')
     boolean_feature(parser, "copy-code", True, "Copy the code directory into the experiment directory")
+    boolean_feature(parser, "restart-epochs-count", True,
+                    "When reloading an algorithm, restart counting epochs from zero "
+                    "(with respect to schedulers and swa training)", metavar='hparam')
 
     # experiment parameters
     parser.add_argument('--init', type=str, default='ortho', metavar='hparam',

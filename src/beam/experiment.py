@@ -202,6 +202,7 @@ class BeamReport(object):
         self.total_time = None
         self.estimated_time = None
         self.done_epochs = None
+        self.subsets_keys = None
 
         self.reset()
 
@@ -220,6 +221,8 @@ class BeamReport(object):
 
         self.scalar_aggregation = {}
         self.scalars_aggregation = {}
+
+        self.subsets_keys = nested_defaultdict(list)
 
     def reset_time(self, done_epochs=None, n_epochs=None):
         self.t0 = time.time()
@@ -240,9 +243,10 @@ class BeamReport(object):
             for k, v in self.scalars.items():
                 subset, name = k.split('/')
                 data[subset]['scalars'][k] = v
-            for k, v in self.aux.items():
-                subset, name = k.split('/')
-                data[subset]['aux'][k] = v
+            for dtype, v_dtype  in self.aux.items():
+                for k, v in v_dtype.items():
+                    subset, name = k.split('/')
+                    data[subset][dtype][k] = v
 
             data['global'] = {'epoch': self.epoch,
                               'best_epoch': self.best_epoch,
@@ -261,7 +265,58 @@ class BeamReport(object):
     def write_to_path(self, path):
         self.data.store(path=path)
 
-    def write_to_logger(self):
+    @staticmethod
+    def format_stat(k, v):
+        format = f"{k if k != 'mean' else 'avg'}:{pretty_format_number(v)}".ljust(15)
+        return format
+
+    @staticmethod
+    def format(v):
+        v_type = check_element_type(v)
+        if v_type == 'int':
+            if v >= 1000:
+                return f"{float(v): .4}"
+            else:
+                return str(v)
+        elif v_type == 'float':
+            return f"{v: .4}"
+        else:
+            return v
+
+    def print_stats(self):
+
+        for subset, data_keys in self.subsets_keys.items():
+
+            logger.info(f'{subset}:')
+
+            if 'stats' in data_keys:
+                stats = data_keys['stats']
+                logger.info('| '.join([f"{k}: {BeamReport.format(self.aux[f'{subset}/{k}']['stats'])} " for k in stats]))
+
+            if 'scalar' in data_keys:
+                scalars = data_keys['scalar']
+                for k in scalars:
+                    v = self.scalar[f'{subset}/{k}']
+
+                    v_type = check_element_type(v)
+                    if v_type.major != 'scalar' and np.var(v) > 0:
+                        stat = pd.Series(v, dtype=np.float32).describe()
+                    else:
+                        if v_type.major != 'scalar':
+                            v = v[0]
+                        v = int(v) if v_type.element == 'int' else float(v)
+                        stat = {'val': v}
+
+                    stat = '| '.join([BeamReport.format_stat(k, v) for k, v in dict(stat).items() if k != 'count'])
+
+                    if len(k) > 11:
+                        paramp = f'{k[:4]}...{k[-4:]}:'
+                    else:
+                        paramp = f'{k}:'
+
+                    logger.info(f'{paramp: <12} | {stat}')
+
+    def print_metadata(self):
 
         logger.info('----------------------------------------------------------'
                     '---------------------------------------------------------------------')
@@ -273,30 +328,37 @@ class BeamReport(object):
 
         if self.epoch is not None:
 
-            logger.info(f'Finished epoch {self.epoch + 1}/{self.n_epochs} (Total trained epochs {epoch}). '
+            logger.info(f'Finished epoch {self.done_epochs + 1}/{self.n_epochs} (Total trained epochs {self.epoch}). '
                         f'{objective_str}')
 
-        if total_time is not None:
-            total_time = pretty_print_timedelta(total_time)
-            estimated_time = pretty_print_timedelta(estimated_time)
+        if self.total_time is not None:
+            total_time = pretty_print_timedelta(self.total_time)
+            estimated_time = pretty_print_timedelta(self.estimated_time)
             logger.info(f'Elapsed time: {total_time}. Estimated remaining time: {estimated_time}.', )
 
-    def write_to_tensorboard(self, writer):
+    def write_to_tensorboard(self, writer, hparams=None):
 
+        metrics = {}
         for k, v in self.scalar.items():
             kwargs = self.scalar_kwargs.get(k, {})
             agg = self.scalar_aggregation.get(k, None)
             v = self.aggregate_scalar(v, agg)
             writer.add_scalar(k, v, **kwargs)
+            metrics[k] = v
+
+        if hparams is not None and len(metrics):
+            writer.add_hparams(hparams, metrics, name=os.path.join('..', 'hparams'), global_step=self.epoch)
 
         for k, v in self.scalars.items():
+
+            v_agg = {}
             kwargs = self.scalars_kwargs.get(k, {})
             agg = self.scalars_aggregation.get(k, None)
 
             for kk, vv in v.items():
-                v[kk] = self.aggregate_scalar(vv, agg)
+                v_agg[kk] = self.aggregate_scalar(vv, agg)
 
-            writer.add_scalars(k, v, **kwargs)
+            writer.add_scalars(k, v_agg, **kwargs)
 
         for k, v in self.aux.items():
             writer_func = getattr(writer, f'add_{k}')
@@ -319,6 +381,7 @@ class BeamReport(object):
     @contextmanager
     def track_epoch(self, subset, epoch, batch_size=None, training=True):
         self.subset_context = subset
+
         self.epoch = epoch
         self.state = 'in_epoch'
         t0 = timer()
@@ -447,6 +510,8 @@ class BeamReport(object):
 
         kwargs['global_step'] = self.epoch
         self.scalar_kwargs[f'{subset}/{name}'] = kwargs
+        self.subsets_keys[subset]['scalar'].append(name)
+
         if aggregation is None:
             aggregation = 'mean'
         self.scalar_aggregation[f'{subset}/{name}'] = aggregation
@@ -466,6 +531,8 @@ class BeamReport(object):
 
         kwargs['global_step'] = self.epoch
         self.scalar_kwargs[f'{subset}/{name}'] = kwargs
+        self.subsets_keys[subset]['scalars'].append(name)
+
         if aggregation is None:
             aggregation = 'mean'
         self.scalars_aggregation[f'{subset}/{name}'] = aggregation
@@ -476,6 +543,8 @@ class BeamReport(object):
             data_type = 'other'
 
         self.aux[data_type][f'{subset}/{name}'] = val
+        self.subsets_keys[subset][data_type].append(name)
+
         kwargs['global_step'] = self.epoch
         self.aux_kwargs[data_type][f'{subset}/{name}'] = kwargs
 
@@ -837,7 +906,7 @@ class Experiment(object):
             if self.comet_exp is not None:
                 self.comet_exp.set_model_graph(str(networks))
 
-    def save_model_results(self, results, algorithm, iteration, visualize_results='yes',
+    def save_model_results(self, reporter, algorithm, iteration, visualize_results='yes',
                            store_results='logscale', store_networks='logscale', print_results=True,
                            visualize_weights=False, argv=None, total_time=None, estimated_time=None):
 
@@ -864,35 +933,20 @@ class Experiment(object):
         if not self.rank:
 
             if print_results:
-                logger.info('----------------------------------------------------------'
-                            '---------------------------------------------------------------------')
-                objective_str = ''
-                if 'objective' in results and check_type(results['objective']).major == 'scalar':
-                    objective_str = f"Current objective: {pretty_format_number(results['objective'])} " \
-                                    f"(Best objective: {pretty_format_number(results['global']['best_objective'])} " \
-                                    f" at epoch {results['global']['best_epoch']})"
-                logger.info(f'Finished epoch {iteration+1}/{algorithm.n_epochs} (Total trained epochs {epoch}). '
-                            f'{objective_str}')
-
-                if total_time is not None:
-                    total_time = pretty_print_timedelta(total_time)
-                    estimated_time = pretty_print_timedelta(estimated_time)
-                    logger.info(f'Elapsed time: {total_time}. Estimated remaining time: {estimated_time}.',)
+                reporter.print_metadata()
 
             decade = int(np.log10(epoch) + 1)
             logscale = not (epoch - 1) % (self.hparams.visualize_results_log_base ** (decade - 1))
 
-            for subset, res in results.items():
+            if store_results == 'yes' or store_results == 'logscale' and logscale:
 
-                if store_results == 'yes' or store_results == 'logscale' and logscale:
+                self.results_dir.mkdir(parents=True, exist_ok=True)
+                reporter.write_to_path(self.results_dir.joinpath(f'results_{epoch:06d}'))
 
-                    self.results_dir.joinpath(subset).mkdir(parents=True, exist_ok=True)
-                    self.results_dir.joinpath(subset, f'results_{epoch:06d}.pt').write(res)
-
-                alg = algorithm if visualize_weights else None
+            alg = algorithm if visualize_weights else None
 
             if iteration+1 == algorithm.n_epochs or visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
-                self.log_data(results, epoch, print_log=print_results, alg=alg, argv=argv)
+                self.log_data(reporter, epoch, print_log=print_results, alg=alg, argv=argv)
 
             checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
             algorithm.save_checkpoint(checkpoint_file)
@@ -910,124 +964,42 @@ class Experiment(object):
         if self.world_size > 1:
             dist.barrier()
 
-    def log_data(self, results, n, print_log=True, alg=None, argv=None):
+    def log_data(self, reporter, n, print_log=True, alg=None, argv=None):
 
-        def format_stat(k, v):
-            format = f"{k if k != 'mean' else 'avg'}:{pretty_format_number(v)}".ljust(15)
-            return format
-
-        for subset, res in results.items():
-
-            if subset in ['objective', 'global', 'aux']:
-                continue
-
-            def format(v):
-                v_type = check_element_type(v)
-                if v_type == 'int':
-                    if v >= 1000:
-                        return f"{float(v): .4}"
-                    else:
-                        return str(v)
-                elif v_type == 'float':
-                    return f"{v: .4}"
-                else:
-                    return v
-
-            if print_log and 'stats' in res:
-                logger.info(f'{subset}:')
-                logger.info('| '.join([f"{k}: {format(v)} " for k, v in res['stats'].items()]))
-
-            report = None
-            if isinstance(res, dict):
-                if 'scalar' in res:
-                    report = res['scalar']
-                else:
-                    report = res
-
-            if report is not None:
-
-                for param, val in report.items():
-                    stat = None
-                    if type(val) is dict or type(val) is defaultdict:
-                        for p, v in val.items():
-                            val[p] = np.mean(v)
-                    else:
-
-                        v = report[param]
-                        v = as_numpy(v)
-                        v_type = check_type(v)
-
-                        if v_type.major != 'scalar':
-                            v = v.flatten()
-                            report[param] = v.mean()
-
-                        if v_type.major != 'scalar' and np.var(v) > 0:
-                            stat = pd.Series(v, dtype=np.float32).describe()
-                        else:
-                            if v_type.major != 'scalar':
-                                v = v[0]
-                            v = int(v) if v_type.element == 'int' else float(v)
-                            stat = {'val': v}
-
-                    if print_log:
-                        if not (type(report[param]) is dict or type(
-                                report[param]) is defaultdict):
-                            stat = '| '.join([format_stat(k, v) for k, v in dict(stat).items() if k != 'count'])
-
-                            if len(param) > 11:
-                                paramp = f'{param[:4]}...{param[-4:]}:'
-                            else:
-                                paramp = f'{param}:'
-
-                            logger.info(f'{paramp: <12} | {stat}')
+        if print_log:
+            reporter.print_stats()
 
         if self.writer is not None:
             logger.info(f"Tensorboard results are stored to: {self.root}")
-        if self.comet_exp is not None:
+            reporter.write_to_tensorboard(self.writer, hparams=self.tensorboard_hparams)
+        if self.comet_writer is not None:
             logger.info(f"Comet results are stored to: {self.comet_exp.get_key()}")
+            reporter.write_to_tensorboard(self.comet_writer, hparams=None)
 
-        defaults_argv = nested_defaultdict(dict)
-        if argv is not None:
-            for log_type in argv:
-                for k in argv[log_type]:
-                    defaults_argv[log_type][k] = argv[log_type][k]
+        def write_network(writer, net, name, n):
+
+            if writer is not None:
+                writer.add_histogram("weight_%s/%s" % (net, name), as_numpy(param), n,
+                                          bins='tensorflow')
+                writer.add_histogram("grad_%s/%s" % (net, name), as_numpy(param.grad), n,
+                                          bins='tensorflow')
+                if hasattr(param, 'intermediate'):
+                    writer.add_histogram("iterm_%s/%s" % (net, name), as_numpy(param.intermediate),
+                                              n,
+                                              bins='tensorflow')
 
         if alg is not None:
             networks = alg.networks
             for net in networks:
                 for name, param in networks[net].named_parameters():
                     try:
-                        if self.writer is not None:
-                            self.writer.add_histogram("weight_%s/%s" % (net, name), as_numpy(param), n,
-                                                      bins='tensorflow')
-                            self.writer.add_histogram("grad_%s/%s" % (net, name), as_numpy(param.grad), n,
-                                                      bins='tensorflow')
-                            if hasattr(param, 'intermediate'):
-                                self.writer.add_histogram("iterm_%s/%s" % (net, name), as_numpy(param.intermediate),
-                                                          n,
-                                                          bins='tensorflow')
+                        write_network(self.writer, net, name, n)
                     except:
                         pass
-
-        metrics = {}
-        for subset, res in results.items():
-            if isinstance(res, dict) and subset != 'objective':
-                for log_type in res:
-                    if hasattr(self.writer, f'add_{log_type}'):
-                        log_func = getattr(self.writer, f'add_{log_type}')
-                        for param in res[log_type]:
-                            if type(res[log_type][param]) is dict or type(res[log_type][param]) is defaultdict:
-                                for p, v in res[log_type][param].items():
-                                    log_func(f'{subset}_{param}/{p}', v, n, **defaults_argv[log_type][param])
-                            elif type(res[log_type][param]) is list:
-                                log_func(f'{subset}/{param}', *res[log_type][param], n, **defaults_argv[log_type][param])
-                            else:
-                                log_func(f'{subset}/{param}', res[log_type][param], n, **defaults_argv[log_type][param])
-                                if log_type == 'scalar':
-                                    metrics[f"{subset}/{param}"] = float(res[log_type][param])
-
-        if len(metrics):
-            self.writer.add_hparams(self.tensorboard_hparams, metrics, name=os.path.join('..', 'hparams'), global_step=n)
+                    try:
+                        write_network(self.comet_writer, net, name, n)
+                    except:
+                        pass
 
 
     @staticmethod

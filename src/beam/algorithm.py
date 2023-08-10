@@ -108,9 +108,13 @@ class Algorithm(object):
         self.reporter = reporter
         self.reporter.reset_time(None)
 
-    def set_train_reporter(self):
+    def set_train_reporter(self, n_epochs=None):
+
+        if n_epochs is None:
+            n_epochs = self.n_epochs
+
         self.reporter = self._train_reporter
-        self.reporter.reset_time(done_epochs=self.epoch, n_epochs=self.n_epochs)
+        self.reporter.reset_time(done_epochs=self.epoch, n_epochs=n_epochs)
 
     def set_experiment_properties(self):
 
@@ -899,7 +903,7 @@ class Algorithm(object):
         batch_size = self.batch_size_train if training else self.batch_size_eval
 
         with (self.reporter.track_epoch(subset, n, batch_size=batch_size, training=training)):
-            if n == self.n_epochs + self.swa_epochs:
+            if training and (n + 1 == self.n_epochs + self.swa_epochs):
                 logger.warning("This is an extra epoch to calculate BN statistics. "
                                "It is not used for training so we set training=False.")
                 training = False
@@ -935,7 +939,7 @@ class Algorithm(object):
 
             self.postprocess_epoch(sample=sample, index=ind, label=label, epoch=n, training=training)
 
-            if n == self.n_epochs + self.swa_epochs:
+            if n + 1 == self.n_epochs + self.swa_epochs:
                 self.set_mode(training=False)
                 self.networks = bu_networks
 
@@ -1085,17 +1089,20 @@ class Algorithm(object):
 
     def __iter__(self):
 
+        n_epochs = self.n_epochs + self.swa_epochs + int(self.swa_epochs > 0)
         self.refresh_optimizers_and_schedulers_pointers()
-        self.set_train_reporter()
+        self.set_train_reporter(n_epochs=n_epochs)
 
-        n_epochs = self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0)
-        for i,  in range(n_epochs):
+        epoch_start = 0 if self.get_hparam("restart_epochs_count", default=True) else self.epoch
+
+        for i  in range(epoch_start, n_epochs):
 
             self.reporter.reset()
+            n = i if self.get_hparam("restart_epochs_count", default=True) else self.epoch
 
-            self.iterate_epoch(subset='train', training=True, n=i)
+            self.iterate_epoch(subset='train', training=True, n=n)
             with torch.no_grad():
-                self.iterate_epoch(subset=self.eval_subset, training=False, n=i)
+                self.iterate_epoch(subset=self.eval_subset, training=False, n=n)
 
             # add learning rate and momentum of schedulers_steps
             for k, scheduler in self.schedulers_flat.items():
