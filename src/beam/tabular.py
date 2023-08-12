@@ -18,7 +18,7 @@ class TabularHparams(BeamHparams):
     def add(self, parser):
 
         parser.set_defaults(project_name='deep_tabular', algorithm='TabularNet', n_epochs=100, scheduler='one_cycle',
-                            batch_size=512, objective='acc', lr_dense=2e-3, lr_sparse=2e-2,
+                            batch_size=512, lr_dense=2e-3, lr_sparse=2e-2,
                             early_stopping_patience=16)
 
         parser.add_argument('--emb_dim', type=int, default=128, metavar='hparam', help='latent embedding dimension')
@@ -164,8 +164,8 @@ class TabularDataset(UniversalDataset):
             mu = y_train.mean(dim=0, keepdim=True)
             sigma = y_train.std(dim=0, keepdim=True)
 
-            self.y_mu = mu
-            self.y_sigma = sigma
+            self.y_mu = float(mu)
+            self.y_sigma = float(sigma)
 
             y_train = (y_train - mu) / (sigma + 1e-8)
             y_val = (y_val - mu) / (sigma + 1e-8)
@@ -295,7 +295,7 @@ class TabularTransformer(torch.nn.Module):
         x = (1 - x_frac) * x1 + x_frac * x2
 
         if self.training:
-            rules = self.rule_mask.sample(torch.Size(len(x), self.n_rules, 1)).to(x.device) * self.rules
+            rules = self.rule_mask.sample(torch.Size((len(x), self.n_rules, 1))).to(x.device) * self.rules
         else:
             rules = torch.repeat_interleave(self.rules, len(x), dim=0)
 
@@ -325,7 +325,7 @@ class DeepTabularAlg(Algorithm):
         self.previous_masking = 1 - self.get_hparam('mask_rate')
         self.best_masking = 1 - self.get_hparam('mask_rate')
 
-    def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
+    def preprocess_epoch(self, epoch=None, subset=None, training=True, **kwargs):
         if epoch == 0:
             self.task_type = self.dataset.task_type
 
@@ -339,19 +339,21 @@ class DeepTabularAlg(Algorithm):
         if self.best_state:
             self.best_masking = self.previous_masking
 
-        return results
-
-    def postprocess_epoch(self, sample=None, label=None, index=None,
-                          results=None, epoch=None, subset=None, training=True, **kwargs):
+    def postprocess_epoch(self, sample=None, label=None, index=None, epoch=None, subset=None, training=True, **kwargs):
         if self.task_type == 'regression':
-            results['scalar']['rmse'] = float(torch.sqrt(results['scalar']['mse'].mean()))
-            results['scalar']['objective'] = -results['scalar']['rmse']
+
+            rmse = np.sqrt(self.get_scalar('mse', aggregate=True))
+            self.report_scalar('rmse', rmse)
+            objective = -rmse
+            self.report_scalar('objective', objective)
+        else:
+            objective = self.get_scalar('acc', aggregate=True)
 
         if self.get_hparam('dynamic_masking'):
             if training:
-                self.train_acc = float(torch.mean(results['scalar']['acc']))
+                self.train_acc = float(objective)
             else:
-                test_acc = float(torch.mean(results['scalar']['acc']))
+                test_acc = float(objective)
                 if test_acc > self.train_acc:
                     delta = self.get_hparam('dynamic_delta')
                 else:
@@ -361,11 +363,9 @@ class DeepTabularAlg(Algorithm):
                 non_mask_rate = min(non_mask_rate, 1. - self.get_hparam('minimal_mask_rate'))
                 self.networks['net'].mask = distributions.Bernoulli(non_mask_rate)
 
-            results['scalar']['mask_rate'] = float(1 - self.networks['net'].mask.probs)
+            self.report_scalar('mask_rate', 1 - self.networks['net'].mask.probs)
 
-        return results
-
-    def iteration(self, sample=None, label=None, results=None, subset=None, counter=None, index=None,
+    def iteration(self, sample=None, label=None, subset=None, counter=None, index=None,
                   training=True, **kwargs):
 
         y = label
@@ -384,21 +384,19 @@ class DeepTabularAlg(Algorithm):
 
         loss = self.loss_function(y_hat, y, **self.loss_kwargs)
 
-        self.apply(loss, training=training, results=results)
+        self.apply(loss, training=training)
 
         # add scalar measurements
         if self.task_type == 'regression':
-            results['scalar']['mse'].append(as_numpy(loss.mean()) * self.dataset.y_sigma ** 2)
+            self.report_scalar('mse', loss.mean() * self.dataset.y_sigma ** 2)
         else:
-            results['scalar']['acc'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
-
-        return results
+            self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
     def set_best_masking(self):
         logger.info(f'Setting best masking to {self.best_masking:.3f}')
         self.networks['net'].mask = distributions.Bernoulli(self.best_masking)
 
-    def inference(self, sample=None, label=None, results=None, subset=None, predicting=True, **kwargs):
+    def inference(self, sample=None, label=None, subset=None, predicting=True, **kwargs):
 
         y = label
         net = self.networks['net']
@@ -410,44 +408,46 @@ class DeepTabularAlg(Algorithm):
             for _ in range(n_ensembles):
                 y_hat.append(net(sample))
             y_hat = torch.stack(y_hat, dim=0)
-            results['predictions']['y_pred_std'].append(y_hat.std(dim=0).detach())
+            self.report_scalar('y_pred_std', y_hat.std(dim=0))
             y_hat = y_hat.mean(dim=0)
         else:
             y_hat = net(sample)
 
         # add scalar measurements
-        results['predictions']['y_pred'].append(y_hat.detach())
+        self.report_scalar('y_pred', y_hat)
 
         if not predicting:
 
             if self.task_type == 'regression':
-                results['scalar']['mse'].append(as_numpy(F.mse_loss(y_hat, y, reduction='mean'))
-                                                * self.dataset.y_sigma ** 2)
+                self.report_scalar('mse', F.mse_loss(y_hat, y, reduction='mean') * self.dataset.y_sigma ** 2)
             else:
-                results['scalar']['acc'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
+                self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-            results['predictions']['target'].append(y)
-            return {'y': y, 'y_hat': y_hat}, results
+            self.report_data('predictions/target', y)
 
-        return y_hat, results
+            return {'y': y, 'y_hat': y_hat}
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
+        return y_hat
+
+    def postprocess_inference(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if not predicting:
 
             if self.task_type == 'regression':
-                results['scalar']['rmse'] = float(torch.sqrt(results['scalar']['mse'].mean()))
-                results['scalar']['objective'] = -results['scalar']['rmse']
+
+                rmse = np.sqrt(self.get_scalar('mse', aggregate=True))
+                self.report_scalar('rmse', rmse)
+                self.report_scalar('objective', -rmse)
 
             else:
 
-                y_pred = as_numpy(torch.argmax(results['predictions']['y_pred'], dim=1))
-                y_true = as_numpy(results['predictions']['target'])
+                y_pred = as_numpy(torch.argmax(self.get_data('predictions/y_pred'), dim=1))
+                y_true = as_numpy(self.get_data('predictions/target'))
                 precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
-                results['metrics']['precision'] = precision
-                results['metrics']['recall'] = recall
-                results['metrics']['fscore'] = fscore
-                results['metrics']['support'] = support
-                results['scalar']['objective'] = results['scalar']['acc'].mean()
 
-        return results
+                self.report_data('metrics/precision', precision)
+                self.report_data('metrics/recall', recall)
+                self.report_data('metrics/fscore', fscore)
+                self.report_data('metrics/support', support)
+
+                self.report_scalar('objective', self.get_scalar('acc', aggregate=True))

@@ -74,23 +74,24 @@ def train_catboost(dataset, exp, **kwargs):
 
 if __name__ == '__main__':
 
-    kwargs_base = dict(algorithm='catboost_default',
-                       path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-                       path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
-                       copy_code=False, dynamic_masking=False,
-                       tensorboard=True, stop_at=0.98, parallel=1, device=1, n_quantiles=6, catboost=True,
-                       rulenet=False)
-
-    # kwargs_base = dict(algorithm='run_night_20230730',
-    #                    # path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-    #                    path_to_data='/home/dsi/elads/data/tabular/data/',
+    # kwargs_base = dict(algorithm='catboost_default',
+    #                    path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
     #                    path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
     #                    copy_code=False, dynamic_masking=False,
-    #                    tensorboard=True, stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
+    #                    tensorboard=True, stop_at=0.98, parallel=1, device=1, n_quantiles=6, catboost=True,
+    #                    rulenet=False)
+
+    os.environ['COMET_API_KEY'] = 'jthyXB1jO4czVy63ntyWZSnlf'
+    kwargs_base = dict(algorithm='debug_reporter',
+                       # path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+                       path_to_data='/home/dsi/elads/data/tabular/data/',
+                       path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
+                       copy_code=False, dynamic_masking=False, comet=True, tensorboard=False,
+                       stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 
-    # kwargs_all['california_housing'] = dict(batch_size=128)
+    kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
@@ -99,7 +100,7 @@ if __name__ == '__main__':
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
-    kwargs_all['covtype'] = dict(batch_size=1024, n_quantiles=10)
+    # kwargs_all['covtype'] = dict(batch_size=1024, n_quantiles=10)
 
     for k in kwargs_all.keys():
 
@@ -112,13 +113,13 @@ if __name__ == '__main__':
 
         exp = Experiment(hparams)
 
-        dataset = TabularDataset(exp.hparams)
+        dataset = TabularDataset(hparams)
 
         if hparams.rulenet:
 
             logger.info(f"Training a RuleNet predictor")
-            net = TabularTransformer(exp.hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
-            alg = DeepTabularAlg(exp.hparams, networks=net)
+            net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
+            alg = DeepTabularAlg(hparams, networks=net)
 
             alg = exp.fit(Alg=alg, Dataset=dataset)
             logger.info(f"Training finished, reloading best model")

@@ -390,15 +390,7 @@ class LazyReplayBuffer(UniversalDataset):
         super().__init__(device=device)
 
     def build_buffer(self, x):
-        x_type = check_type(x)
-        if x_type.element == 'int':
-            dtype = torch.int64
-        elif x_type.element == 'float16':
-            dtype = torch.float16
-        else:
-            dtype = torch.float32
-
-        return torch.zeros(self.size, *x.shape, device=self.target_device, dtype=dtype)
+        return torch.zeros(self.size, *x.shape, device=self.target_device, dtype=x.dtype)
 
     def store(self, *args, **kwargs):
 

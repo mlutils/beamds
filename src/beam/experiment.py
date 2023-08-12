@@ -169,422 +169,6 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
         return res
 
 
-class BeamReport(object):
-
-    def __init__(self, objective=None):
-
-        self.scalar = None
-        self.aux = None
-
-        self.scalars = None
-        self.buffer = None
-
-        self.scalar_kwargs = None
-        self.scalars_kwargs = None
-        self.aux_kwargs = None
-
-        self.scalar_aggregation = None
-        self.scalars_aggregation = None
-
-        self.objective_name = objective
-
-        self.epoch = None
-        self.best_epoch = None
-        self.objective = None
-        self.best_objective = None
-        self.subset_context = None
-        self.best_state = False
-        self.iteration = None
-        self._data = None
-        self.state = None
-        self.t0 = time.time()
-        self.n_epochs = None
-        self.total_time = None
-        self.estimated_time = None
-        self.done_epochs = None
-        self.subsets_keys = None
-
-        self.reset()
-
-    def reset(self):
-
-        self.state = 'before_epoch'
-        self.scalar = defaultdict(list)
-        self.aux = defaultdict(dict)
-
-        self.scalars = nested_defaultdict(list)
-        self.buffer = nested_defaultdict(list)
-
-        self.scalar_kwargs = {}
-        self.scalars_kwargs = {}
-        self.aux_kwargs = defaultdict(dict)
-
-        self.scalar_aggregation = {}
-        self.scalars_aggregation = {}
-
-        self.subsets_keys = nested_defaultdict(list)
-
-    def reset_time(self, done_epochs=None, n_epochs=None):
-        self.t0 = time.time()
-        self.n_epochs = n_epochs
-        if done_epochs is None:
-            done_epochs = 0
-        self.done_epochs = done_epochs
-        self.estimated_time = None
-        self.total_time = None
-
-    @property
-    def data(self):
-        if self._data is None:
-            data = nested_defaultdict(dict)
-            for k, v in self.scalar.items():
-                subset, name = k.split('/')
-                data[subset]['scalar'][k] = v
-            for k, v in self.scalars.items():
-                subset, name = k.split('/')
-                data[subset]['scalars'][k] = v
-            for dtype, v_dtype  in self.aux.items():
-                for k, v in v_dtype.items():
-                    subset, name = k.split('/')
-                    data[subset][dtype][k] = v
-
-            data['global'] = {'epoch': self.epoch,
-                              'best_epoch': self.best_epoch,
-                              'objective': self.objective,
-                              'best_objective': self.best_objective,
-                              'total_time': self.total_time,
-                              'estimated_time': self.estimated_time,
-                              }
-
-            data['objective'] = self.objective
-
-            self._data = BeamData(data)
-
-        return self._data
-
-    def write_to_path(self, path):
-        self.data.store(path=path)
-
-    @staticmethod
-    def format_stat(k, v):
-        format = f"{k if k != 'mean' else 'avg'}:{pretty_format_number(v)}".ljust(15)
-        return format
-
-    @staticmethod
-    def format(v):
-        v_type = check_element_type(v)
-        if v_type == 'int':
-            if v >= 1000:
-                return f"{float(v): .4}"
-            else:
-                return str(v)
-        elif v_type == 'float':
-            return f"{v: .4}"
-        else:
-            return v
-
-    def print_stats(self):
-
-        for subset, data_keys in self.subsets_keys.items():
-
-            logger.info(f'{subset}:')
-
-            if 'stats' in data_keys:
-                stats = data_keys['stats']
-                logger.info('| '.join([f"{k}: {BeamReport.format(self.aux[f'{subset}/{k}']['stats'])} " for k in stats]))
-
-            if 'scalar' in data_keys:
-                scalars = data_keys['scalar']
-                for k in scalars:
-                    v = self.scalar[f'{subset}/{k}']
-
-                    v_type = check_element_type(v)
-                    if v_type.major != 'scalar' and np.var(v) > 0:
-                        stat = pd.Series(v, dtype=np.float32).describe()
-                    else:
-                        if v_type.major != 'scalar':
-                            v = v[0]
-                        v = int(v) if v_type.element == 'int' else float(v)
-                        stat = {'val': v}
-
-                    stat = '| '.join([BeamReport.format_stat(k, v) for k, v in dict(stat).items() if k != 'count'])
-
-                    if len(k) > 11:
-                        paramp = f'{k[:4]}...{k[-4:]}:'
-                    else:
-                        paramp = f'{k}:'
-
-                    logger.info(f'{paramp: <12} | {stat}')
-
-    def print_metadata(self):
-
-        logger.info('----------------------------------------------------------'
-                    '---------------------------------------------------------------------')
-        objective_str = ''
-        if self.best_objective is not None:
-            objective_str = f"Current objective: {pretty_format_number(self.objective)} " \
-                            f"(Best objective: {pretty_format_number(self.best_objective)} " \
-                            f" at epoch {self.best_epoch})"
-
-        if self.epoch is not None:
-
-            logger.info(f'Finished epoch {self.done_epochs + 1}/{self.n_epochs} (Total trained epochs {self.epoch}). '
-                        f'{objective_str}')
-
-        if self.total_time is not None:
-            total_time = pretty_print_timedelta(self.total_time)
-            estimated_time = pretty_print_timedelta(self.estimated_time)
-            logger.info(f'Elapsed time: {total_time}. Estimated remaining time: {estimated_time}.', )
-
-    def write_to_tensorboard(self, writer, hparams=None):
-
-        metrics = {}
-        for k, v in self.scalar.items():
-            kwargs = self.scalar_kwargs.get(k, {})
-            agg = self.scalar_aggregation.get(k, None)
-            v = self.aggregate_scalar(v, agg)
-            writer.add_scalar(k, v, **kwargs)
-            metrics[k] = v
-
-        if hparams is not None and len(metrics):
-            writer.add_hparams(hparams, metrics, name=os.path.join('..', 'hparams'), global_step=self.epoch)
-
-        for k, v in self.scalars.items():
-
-            v_agg = {}
-            kwargs = self.scalars_kwargs.get(k, {})
-            agg = self.scalars_aggregation.get(k, None)
-
-            for kk, vv in v.items():
-                v_agg[kk] = self.aggregate_scalar(vv, agg)
-
-            writer.add_scalars(k, v_agg, **kwargs)
-
-        for k, v in self.aux.items():
-            writer_func = getattr(writer, f'add_{k}')
-            for kk, vv in v.items():
-                kwargs = self.aux_kwargs.get(k, {}).get(kk, {})
-                writer_func(kk, vv, **kwargs)
-
-    def set_objective(self, objective):
-
-        self.objective = objective
-
-        if self.best_objective is None or self.objective > self.best_objective:
-            logger.info(f"Epoch {self.epoch}: The new best objective is {pretty_format_number(objective)}")
-            self.best_objective = objective
-            self.best_epoch = self.epoch
-            self.best_state = True
-        else:
-            self.best_state = False
-
-    @contextmanager
-    def track_epoch(self, subset, epoch, batch_size=None, training=True):
-        self.subset_context = subset
-
-        self.epoch = epoch
-        self.state = 'in_epoch'
-        t0 = timer()
-        yield
-        self.done_epochs += 1
-        delta = timer() - t0
-        n_iter = self.iteration + 1
-        track_objective = not training
-
-        self.state = 'after_epoch'
-        self.report_data(delta, 'seconds', data_type='stats')
-        self.report_data(n_iter, 'batches', data_type='stats')
-        self.report_data(n_iter * batch_size, 'samples', data_type='stats')
-        self.report_data(rate_string_format(n_iter, delta), 'batch_rate', data_type='stats')
-        self.report_data(rate_string_format(n_iter * batch_size, delta), 'sample_rate', data_type='stats')
-
-        self.total_time = time.time() - self.t0
-        if (self.n_epochs is not None) and (self.n_epochs is not None) and (self.n_epochs > 0):
-            self.estimated_time = self.total_time * (self.n_epochs - self.epoch - 1) / (self.epoch + 1)
-
-        agg = None
-        for k, v in self.scalar.items():
-            self.scalar[k] = self.stack_scalar(v, batch_size=batch_size)
-
-            subset, name = k.split('/')
-            if name == self.objective_name and track_objective:
-                agg = self.scalar_aggregation.get(k, None)
-                self.set_objective(self.aggregate_scalar(self.scalar[k], agg))
-
-        if self.objective_name and track_objective and agg is None:
-            logger.warning(f"The objective {self.objective_name} is missing from the validation results")
-
-        for k, v in self.scalars.items():
-            for kk, vv in v.items():
-                self.scalars[k][kk] = self.stack_scalar(vv, batch_size=batch_size)
-        for k, v in self.buffer.items():
-            self.buffer[k] = self.stack_scalar(v, batch_size=batch_size)
-
-    def get_scalar(self, name, subset=None, aggreate=False):
-        if subset is None:
-            subset = self.subset_context
-        if f'{subset}/{name}' in self.scalar:
-            if aggreate:
-                agg = self.scalar_aggregation.get(f'{subset}/{name}', None)
-                return self.aggregate_scalar(self.scalar[f'{subset}/{name}'], agg)
-            return self.scalar[f'{subset}/{name}']
-        return None
-
-    def iterate(self, generator, **kwargs):
-        for i, batch in tqdm(generator, **kwargs):
-            self.iteration = i
-            yield batch
-
-    @staticmethod
-    def normalize_scalar(val):
-        val_type = check_type(val)
-        if val_type.major == 'scalar':
-            val = float(val)
-        elif val_type.minor == 'torch':
-            val = val.detach().cpu()
-        elif val_type.major == 'container':
-            val = as_tensor(val, device='cpu')
-
-        return val
-
-    @staticmethod
-    def stack_scalar(val, batch_size=None):
-
-        val_type = check_type(val)
-
-        if val_type.major == 'container' and val_type.minor == 'list':
-
-            v_minor = check_type(val[0]).minor
-            if v_minor == 'tensor':
-                oprs = {'cat': torch.cat, 'stack': torch.stack}
-            elif v_minor == 'numpy':
-                oprs = {'cat': np.concatenate, 'stack': np.stack}
-            elif v_minor == 'pandas':
-                oprs = {'cat': pd.concat, 'stack': pd.concat}
-            elif v_minor == 'native':
-                oprs = {'cat': torch.tensor, 'stack': torch.tensor}
-            else:
-                oprs = {'cat': lambda x: x, 'stack': lambda x: x}
-
-            opr = oprs['cat']
-            if batch_size is not None and hasattr(val[0], '__len__') \
-                    and len(val[0]) != batch_size and len(val[0]) == len(val[-1]):
-                opr = oprs['stack']
-
-            val = opr(val)
-
-        return val
-
-    @staticmethod
-    def aggregate_scalar(val, aggregation):
-
-        agg_dict = {'tensor': {'mean': torch.mean, 'sum': torch.sum, 'max': torch.max, 'min': torch.min, 'std': torch.std,
-                    'median': torch.median, 'var': torch.var},
-                    'numpy': {'mean': np.mean, 'sum': np.sum, 'max': np.max, 'min': np.min, 'std': np.std,
-                                'median': np.median, 'var': np.var},
-                    }
-
-        val = recursive_flatten(val, flat_array=True)
-        val_type = check_type(val)
-        if val_type.major == 'scalar':
-            val = float(val)
-        elif val_type.minor == 'pandas':
-            val = val.values
-            val = agg_dict['numpy'][aggregation](val)
-        else:
-            val = agg_dict[val_type.minor][aggregation](val)
-
-        return val
-
-    def report_scalar(self, val, name, subset=None, aggregation=None, append=None, **kwargs):
-
-        if append is None:
-            append = self.state == 'in_epoch'
-
-        val = self.normalize_scalar(val)
-
-        if append:
-            self.scalar[f'{subset}/{name}'].append(val)
-        else:
-            self.scalar[f'{subset}/{name}'] = val
-
-        kwargs['global_step'] = self.epoch
-        self.scalar_kwargs[f'{subset}/{name}'] = kwargs
-        self.subsets_keys[subset]['scalar'].append(name)
-
-        if aggregation is None:
-            aggregation = 'mean'
-        self.scalar_aggregation[f'{subset}/{name}'] = aggregation
-
-    def report_scalars(self, val_dict, name, subset=None, aggregation=None, append=None, **kwargs):
-
-        if append is None:
-            append = self.state == 'in_epoch'
-
-        for k, val in val_dict.items():
-
-            val = self.normalize_scalar(val)
-            if append:
-                self.scalars[f'{subset}/{name}'][k].append(val)
-            else:
-                self.scalars[f'{subset}/{name}'][k] = val
-
-        kwargs['global_step'] = self.epoch
-        self.scalar_kwargs[f'{subset}/{name}'] = kwargs
-        self.subsets_keys[subset]['scalars'].append(name)
-
-        if aggregation is None:
-            aggregation = 'mean'
-        self.scalars_aggregation[f'{subset}/{name}'] = aggregation
-
-    def report_data(self, val, name, subset=None, data_type=None, **kwargs):
-
-        if data_type is None:
-            data_type = 'other'
-
-        self.aux[data_type][f'{subset}/{name}'] = val
-        self.subsets_keys[subset][data_type].append(name)
-
-        kwargs['global_step'] = self.epoch
-        self.aux_kwargs[data_type][f'{subset}/{name}'] = kwargs
-
-    def report_histogram(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'histogram', **kwargs)
-
-    def report_image(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'image', **kwargs)
-
-    def report_images(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'images', **kwargs)
-
-    def report_figure(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'figure', **kwargs)
-
-    def report_video(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'video', **kwargs)
-
-    def report_audio(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'audio', **kwargs)
-
-    def report_text(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'text', **kwargs)
-
-    def report_embedding(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'embedding', **kwargs)
-
-    def report_mesh(self, val, name, subset=None, **kwargs):
-        self.report_data(val, name, subset, 'mesh', **kwargs)
-
-    def report_pr_curve(self, labels, predictions, name, subset=None, **kwargs):
-        kwargs['predictions'] = predictions
-        self.report_data(labels, name, subset, 'pr_curve', **kwargs)
-
-    def add_buffer(self, val, name, subset=None):
-        if subset is None:
-            subset = self.subset_context
-        self.buffer[subset][name].append(val)
-
-
 class Experiment(object):
     """
     Experiment name:
@@ -751,19 +335,24 @@ class Experiment(object):
 
         self.comet_exp = None
         self.comet_writer = None
-        self.mlflow_run = None
+        self.mlflow_writer = None
         self.root_dir_is_built = False
 
     def __del__(self):
         self.cleanup()
 
     def cleanup(self):
-        if self.comet_exp is not None:
-            self.comet_exp.end()
+        if self.comet_writer is not None:
+            self.comet_writer.close()
+            self.comet_writer = None
 
-        if self.mlflow_run is not None:
-            import mlflow
-            mlflow.end_run()
+        if self.mlflow_writer is not None:
+            self.mlflow_writer.close()
+            self.mlflow_writer = None
+
+        if self.writer is not None:
+            self.writer.close()
+            self.writer = None
 
     @staticmethod
     def reload_from_path(path, override_hparams=None, reload_iloc=-1, reload_loc=None, reload_name=None, **argv):
@@ -874,30 +463,26 @@ class Experiment(object):
 
             logger.info("Logging this experiment to comet.ml")
 
-            self.comet_exp = comet_ml.Experiment(api_key=api_key, project_name=self.hparams.project_name,
-                                        log_code=log_code, workspace=self.hparams.comet_workspace,
-                                        disabled=not self.hparams.comet)
 
+            from tensorboardX import SummaryWriter
+            self.comet_writer = SummaryWriter(comet_config={'api_key': api_key,
+                                                            'project_name': self.hparams.project_name,
+                                                            'log_code': log_code,
+                                                            'workspace': self.hparams.comet_workspace,
+                                                            'disabled': False})
+
+            self.comet_writer.add_hparams(self.tensorboard_hparams, {})
+
+            self.comet_exp = self.comet_writer._get_comet_logger()._experiment
             self.comet_exp.add_tag(self.hparams.identifier)
             self.comet_exp.set_name(self.exp_name)
-            self.comet_exp.log_parameters(self.tensorboard_hparams)
-            from tensorboardX import SummaryWriter
-            self.comet_writer = SummaryWriter(comet_config={"disabled": False})
+
+
 
         if self.hparams.mlflow:
-            import mlflow
-            # import mlflow.pytorch
-            mlflow_uri = self.hparams.mlflow_url
-            if mlflow_uri is None:
-                mlflow_uri = os.environ['MLFLOW_TRACKING_URI']
 
-            mlflow.set_tracking_uri(mlflow_uri)
-            mlflow.set_experiment(self.exp_name)
-
-            self.mlflow_run = mlflow.start_run(run_name=self.exp_name)
-
-            for param_name, param_value in self.tensorboard_hparams.items():
-                mlflow.log_param(param_name, param_value)
+            from beam_mlflow import MLflowSummaryWriter
+            self.mlflow_writer = MLflowSummaryWriter(self.exp_name, self.tensorboard_hparams, self.hparams.mlflow_url)
 
         if networks is not None and enable:
             if self.writer is not None:
@@ -974,7 +559,10 @@ class Experiment(object):
             reporter.write_to_tensorboard(self.writer, hparams=self.tensorboard_hparams)
         if self.comet_writer is not None:
             logger.info(f"Comet results are stored to: {self.comet_exp.get_key()}")
-            reporter.write_to_tensorboard(self.comet_writer, hparams=None)
+            reporter.write_to_tensorboard(self.comet_writer, hparams=self.tensorboard_hparams)
+        if self.mlflow_writer is not None:
+            logger.info(f"MLFlow results are stored to: {self.mlflow_writer.url}")
+            reporter.write_to_tensorboard(self.mlflow_writer, hparams=self.tensorboard_hparams)
 
         def write_network(writer, net, name, n):
 
@@ -1315,3 +903,10 @@ class Experiment(object):
         if self.writer is not None:
             self.writer.close()
             self.writer = None
+
+        if self.comet_writer is not None:
+            self.comet_writer.close()
+            self.comet_writer = None
+
+
+

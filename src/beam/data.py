@@ -730,7 +730,7 @@ class BeamData(object):
 
                 if self.preferred_orientation == 'columns':
                     lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
-                    lens = list(filter(lambda x: x is not None, lens))
+                    lens = list(filter(lambda x: x != 0, lens))
 
                     lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
                     lens_index = list(filter(lambda x: x is not None, lens_index))
