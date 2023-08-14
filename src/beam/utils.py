@@ -533,7 +533,10 @@ class PureBeamPath:
             elif ext in ['.npy', '.npz']:
                 x = np.load(fo, allow_pickle=True, **kwargs)
             elif ext in PureBeamPath.text_extensions:
-                x = fo.read()
+                if 'readlines' in kwargs and kwargs['readlines']:
+                    x = fo.readlines()
+                else:
+                    x = fo.read()
             elif ext == '.scipy_npz':
                 x = scipy.sparse.load_npz(fo, **kwargs)
             elif ext == '.flac':
