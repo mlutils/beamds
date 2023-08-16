@@ -8,7 +8,7 @@ from .logger import beam_logger as logger
 import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
-    as_numpy, beam_device, retrieve_name, filter_dict, \
+    as_numpy, beam_device, retrieve_name, filter_dict, BeamDict, \
     recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
@@ -105,9 +105,16 @@ class Algorithm(object):
         self._predict_reporter = None
         self.reporter = None
 
+    def __getattr__(self, item):
+        if item in self.__dict__:
+            return self.__dict__[item]
+        else:
+            return self.networks[item]
+
     def set_reporter(self, reporter=None):
         self.reporter = reporter
         self.reporter.reset_time(None)
+        self.reporter.reset_epoch(0, total_epochs=None)
 
     def set_train_reporter(self, first_epoch, n_epochs=None):
 
@@ -970,7 +977,7 @@ class Algorithm(object):
         batch_size = self.batch_size_train if training else self.batch_size_eval
 
         with (self.reporter.track_epoch(subset, batch_size=batch_size, training=training)):
-            if training and (n + 1 == self.n_epochs + self.swa_epochs):
+            if training and (n == self.n_epochs + self.swa_epochs):
                 logger.warning("This is an extra epoch to calculate BN statistics. "
                                "It is not used for training so we set training=False.")
                 training = False
@@ -1006,7 +1013,7 @@ class Algorithm(object):
 
             self.postprocess_epoch(sample=sample, index=ind, label=label, epoch=n, training=training)
 
-            if n + 1 == self.n_epochs + self.swa_epochs:
+            if n == self.n_epochs + self.swa_epochs:
                 self.set_mode(training=False)
                 self.networks = bu_networks
 
@@ -1098,8 +1105,7 @@ class Algorithm(object):
     def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None, eval_mode=True,
                  return_dataset=None, **kwargs):
 
-        reporter = BeamReport(objective=self.get_hparam('objective'))
-        self.set_reporter(reporter)
+        self.set_reporter(BeamReport(objective=self.get_hparam('objective')))
 
         with torch.no_grad():
 
@@ -1129,26 +1135,27 @@ class Algorithm(object):
             if head is not None:
                 max_iterations = math.ceil(head / batch_size)
 
-            self.preprocess_inference(subset=subset, predicting=predicting, dataset=dataset, **kwargs)
-            data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
-            total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
-            for i, (ind, label, sample) in self.reporter.iterate(data_generator, enable=enable_tqdm,
-                                  threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
-                                  notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
-                transform = self.inference(sample=sample, subset=subset, predicting=predicting,
-                                                    label=label, index=ind, **kwargs)
-                transforms.append(transform)
-                index.append(ind)
+            with (self.reporter.track_epoch(subset, batch_size=batch_size, training=not eval_mode)):
+                self.preprocess_inference(subset=subset, predicting=predicting, dataset=dataset, **kwargs)
+                data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
+                total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
+                for i, (ind, label, sample) in self.reporter.iterate(data_generator, enable=enable_tqdm,
+                                      threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
+                                      notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
+                    transform = self.inference(sample=sample, subset=subset, predicting=predicting,
+                                                        label=label, index=ind, **kwargs)
+                    transforms.append(transform)
+                    index.append(ind)
 
-            index = torch.cat(index)
-            transforms = recursive_concatenate(transforms)
+                index = torch.cat(index)
+                transforms = recursive_concatenate(transforms)
 
-            self.postprocess_inference(sample=sample, index=ind, transforms=transforms, label=label,
-                                                 subset=subset, dataset=dataset, predicting=predicting, **kwargs)
+                self.postprocess_inference(sample=sample, index=ind, transforms=transforms, label=label,
+                                                     subset=subset, dataset=dataset, predicting=predicting, **kwargs)
 
             if return_dataset:
                 dataset = UniversalDataset(transforms, index=index)
-                dataset.set_statistics(reporter.data)
+                dataset.set_statistics(self.reporter.data)
             else:
                 dataset = DataBatch(index=index, data=transforms, label=None)
 

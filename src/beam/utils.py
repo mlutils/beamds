@@ -42,8 +42,61 @@ from argparse import Namespace
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 import Levenshtein as lev
 
-TypeTuple = namedtuple('Type', 'major minor element')
+TypeTuple = namedtuple('TypeTuple', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
+
+
+class BeamDict(dict, Namespace):
+    def __init__(self, initial_data=None, **kwargs):
+        if isinstance(initial_data, dict):
+            self.__dict__.update(initial_data)
+        elif isinstance(initial_data, BeamDict):
+            self.__dict__.update(initial_data.__dict__)
+        elif hasattr(initial_data, '__dict__'):  # This will check for Namespace or any other object with attributes
+            self.__dict__.update(initial_data.__dict__)
+        elif initial_data is not None:
+            raise TypeError(
+                "initial_data should be either a dictionary, an instance of DictNamespace, or a Namespace object")
+
+            # Handle additional kwargs
+        for key, value in kwargs.items():
+            self.__dict__[key] = value
+
+    def __getattr__(self, key):
+        try:
+            return self.__dict__[key]
+        except KeyError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{key}'")
+
+    def pop(self, key, default=None):
+        try:
+            return self.__dict__.pop(key)
+        except KeyError:
+            return default
+
+    def items(self):
+        return self.__dict__.items()
+
+    def keys(self):
+        return self.__dict__.keys()
+
+    def values(self):
+        return self.__dict__.values()
+
+    def __setattr__(self, key, value):
+        self.__dict__[key] = value
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
+
+    def __repr__(self):
+        return repr(self.__dict__)
+
+    def __contains__(self, key):
+        return key in self.__dict__
 
 
 class BeamURL:
@@ -1721,6 +1774,11 @@ def squeeze_scalar(x, x_type=None):
 
     if x_type is None:
         x_type = check_type(x)
+
+    if x_type.minor == 'list':
+        if len(x) == 1:
+            x = x[0]
+            x_type = check_type(x)
 
     if x_type.major == 'scalar':
         if x_type.element == 'int':

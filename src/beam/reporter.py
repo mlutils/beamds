@@ -99,14 +99,23 @@ class BeamReport(object):
             data = nested_defaultdict(dict)
             for k, v in self.scalar.items():
                 subset, name = self.extract_subset_and_name(k)
-                data[subset]['scalar'][k] = v
+                if subset is None:
+                    data['scalar'][name] = v
+                else:
+                    data[subset]['scalar'][name] = v
             for k, v in self.scalars.items():
                 subset, name = self.extract_subset_and_name(k)
-                data[subset]['scalars'][k] = v
+                if subset is None:
+                    data['scalars'][name] = v
+                else:
+                    data[subset]['scalars'][name] = v
             for dtype, v_dtype  in self.aux.items():
                 for k, v in v_dtype.items():
                     subset, name = self.extract_subset_and_name(k)
-                    data[subset][dtype][k] = v
+                    if subset is None:
+                        data[dtype][name] = v
+                    else:
+                        data[subset][dtype][name] = v
 
             data['global'] = {'epoch': self.epoch,
                               'best_epoch': self.best_epoch,
@@ -231,8 +240,12 @@ class BeamReport(object):
 
     @staticmethod
     def extract_subset_and_name(k):
-        subset = k.split('/')[0]
-        name = k.lstrip(f"{subset}/")
+        if '/' not in k:
+            subset = None
+            name = k
+        else:
+            subset = k.split('/')[0]
+            name = k.lstrip(f"{subset}/")
         return subset, name
 
     def set_objective(self, objective):
@@ -279,7 +292,7 @@ class BeamReport(object):
 
         for name in self.subsets_keys[subset]['scalar']:
 
-            k = f'{subset}/{name}'
+            k = f'{subset}/{name}' if subset is not None else name
             v= self.scalar[k]
 
             self.scalar[k] = self.stack_scalar(v, batch_size=batch_size)
@@ -291,7 +304,7 @@ class BeamReport(object):
             logger.warning(f"The objective {self.objective_name} is missing from the validation results")
 
         for name in self.subsets_keys[subset]['scalars']:
-            k = f'{subset}/{name}'
+            k = f'{subset}/{name}' if subset is not None else name
             v = self.scalar[k]
             for kk, vv in v.items():
                 self.scalars[k][kk] = self.stack_scalar(vv, batch_size=batch_size)
@@ -385,8 +398,10 @@ class BeamReport(object):
     def get_scalar(self, name, subset=None, aggregate=False, stack=False, index=None):
         if subset is None:
             subset = self.subset_context
-        if f'{subset}/{name}' in self.scalar:
-            v = self.scalar[f'{subset}/{name}']
+        k = name if subset is None else f'{subset}/{name}'
+
+        if k in self.scalar:
+            v = self.scalar[k]
             if aggregate:
                 agg = self.scalar_aggregation.get(f'{subset}/{name}', 'mean')
                 v = self.aggregate_scalar(v, agg, batch_size=self.batch_size_context)
@@ -400,31 +415,35 @@ class BeamReport(object):
     def get_scalars(self, name, subset=None, aggregate=False):
         if subset is None:
             subset = self.subset_context
-        if f'{subset}/{name}' in self.scalars:
+
+        key = name if subset is None else f'{subset}/{name}'
+        if key in self.scalars:
             if aggregate:
-                agg = self.scalar_aggregation.get(f'{subset}/{name}', 'mean')
-                val_dict = self.scalars[f'{subset}/{name}']
+                agg = self.scalar_aggregation.get(key, 'mean')
+                val_dict = self.scalars[key]
                 val_dict_agg = {}
 
                 for k, val in val_dict.items():
                     val_dict_agg[k] = self.aggregate_scalar(val, agg, batch_size=self.batch_size_context)
 
                 return val_dict_agg
-            return self.scalars[f'{subset}/{name}']
+            return self.scalars[key]
         return None
 
     def get_data(self, name, data_type=None, subset=None):
         if subset is None:
             subset = self.subset_context
-        if f'{subset}/{name}' in self.data[data_type]:
-            return self.data[data_type][f'{subset}/{name}']
+        key = name if subset is None else f'{subset}/{name}'
+        if key in self.data[data_type]:
+            return self.data[data_type][key]
         return None
 
     def get_buffer(self, name, subset=None):
         if subset is None:
             subset = self.subset_context
-        if f'{subset}/{name}' in self.buffer:
-            return self.buffer[f'{subset}/{name}']
+        key = name if subset is None else f'{subset}/{name}'
+        if key in self.buffer:
+            return self.buffer[key]
         return None
 
     def get_image(self, name, subset=None):
@@ -462,31 +481,33 @@ class BeamReport(object):
         if subset is None:
             subset = self.subset_context
 
+        key = name if subset is None else f'{subset}/{name}'
         if append is None:
             append = self.state == 'in_epoch'
 
         val = self.normalize_scalar(val)
 
         if append:
-            self.scalar[f'{subset}/{name}'].append(val)
+            self.scalar[key].append(val)
         else:
-            self.scalar[f'{subset}/{name}'] = val
+            self.scalar[key] = val
 
         kwargs['global_step'] = self.epoch
-        self.scalar_kwargs[f'{subset}/{name}'] = kwargs
+        self.scalar_kwargs[key] = kwargs
 
         if name not in self.subsets_keys[subset]['scalar']:
             self.subsets_keys[subset]['scalar'].append(name)
 
         if aggregation is None:
             aggregation = 'mean'
-        self.scalar_aggregation[f'{subset}/{name}'] = aggregation
+        self.scalar_aggregation[key] = aggregation
 
     def report_scalars(self, name, val_dict, subset=None, aggregation=None, append=None, **kwargs):
 
         if subset is None:
             subset = self.subset_context
 
+        key = name if subset is None else f'{subset}/{name}'
         if append is None:
             append = self.state == 'in_epoch'
 
@@ -494,35 +515,36 @@ class BeamReport(object):
 
             val = self.normalize_scalar(val)
             if append:
-                self.scalars[f'{subset}/{name}'][k].append(val)
+                self.scalars[key][k].append(val)
             else:
-                self.scalars[f'{subset}/{name}'][k] = val
+                self.scalars[key][k] = val
 
         kwargs['global_step'] = self.epoch
-        self.scalar_kwargs[f'{subset}/{name}'] = kwargs
+        self.scalar_kwargs[key] = kwargs
 
         if name not in self.subsets_keys[subset]['scalars']:
             self.subsets_keys[subset]['scalars'].append(name)
 
         if aggregation is None:
             aggregation = 'mean'
-        self.scalars_aggregation[f'{subset}/{name}'] = aggregation
+        self.scalars_aggregation[key] = aggregation
 
     def report_data(self, name, val, subset=None, data_type=None, **kwargs):
 
         if subset is None:
             subset = self.subset_context
 
+        key = name if subset is None else f'{subset}/{name}'
         if data_type is None:
             data_type = 'other'
 
-        self.aux[data_type][f'{subset}/{name}'] = val
+        self.aux[data_type][key] = val
 
         if name not in self.subsets_keys[subset][data_type]:
             self.subsets_keys[subset][data_type].append(name)
 
         kwargs['global_step'] = self.epoch
-        self.aux_kwargs[data_type][f'{subset}/{name}'] = kwargs
+        self.aux_kwargs[data_type][key] = kwargs
 
     def report_histogram(self, name, val, subset=None, **kwargs):
         self.report_data(name, val, subset, 'histogram', **kwargs)
@@ -562,4 +584,7 @@ class BeamReport(object):
         if name not in self.subsets_keys[subset]['buffer']:
             self.subsets_keys[subset]['buffer'].append(name)
 
-        self.buffer[subset][name].append(val)
+        if subset is None:
+            self.buffer[name].append(val)
+        else:
+            self.buffer[subset][name].append(val)

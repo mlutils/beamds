@@ -82,7 +82,7 @@ if __name__ == '__main__':
                        # path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
                        path_to_data='/home/dsi/elads/data/tabular/data/',
                        path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
-                       copy_code=False, dynamic_masking=False, comet=True, tensorboard=False,
+                       copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=2,
                        stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
@@ -123,7 +123,7 @@ if __name__ == '__main__':
             alg.set_best_masking()
 
             predictions = alg.evaluate('test')
-            logger.info(f"Test objective: {predictions.statistics['scalar']['objective']}")
+            logger.info(f"Test objective: {predictions.statistics['test']['scalar']['objective'].values}")
             exp.results_dir.joinpath('predictions.pt').write(predictions)
 
 

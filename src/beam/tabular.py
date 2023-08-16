@@ -358,18 +358,18 @@ class DeepTabularAlg(Algorithm):
                     delta = self.get_hparam('dynamic_delta')
                 else:
                     delta = -self.get_hparam('dynamic_delta')
-                self.previous_masking = float(self.networks['net'].mask.probs)
+                self.previous_masking = float(self.net.mask.probs)
                 non_mask_rate = max(self.previous_masking + delta, 1. - self.get_hparam('maximal_mask_rate'))
                 non_mask_rate = min(non_mask_rate, 1. - self.get_hparam('minimal_mask_rate'))
-                self.networks['net'].mask = distributions.Bernoulli(non_mask_rate)
+                self.net.mask = distributions.Bernoulli(non_mask_rate)
 
-            self.report_scalar('mask_rate', 1 - self.networks['net'].mask.probs)
+            self.report_scalar('mask_rate', 1 - self.net.mask.probs)
 
     def iteration(self, sample=None, label=None, subset=None, counter=None, index=None,
                   training=True, **kwargs):
 
         y = label
-        net = self.networks['net']
+        net = self.net
 
         n_ensembles = self.get_hparam('n_ensembles')
 
@@ -394,12 +394,12 @@ class DeepTabularAlg(Algorithm):
 
     def set_best_masking(self):
         logger.info(f'Setting best masking to {self.best_masking:.3f}')
-        self.networks['net'].mask = distributions.Bernoulli(self.best_masking)
+        self.net.mask = distributions.Bernoulli(self.best_masking)
 
     def inference(self, sample=None, label=None, subset=None, predicting=True, **kwargs):
 
         y = label
-        net = self.networks['net']
+        net = self.net
         n_ensembles = self.get_hparam('n_ensembles')
 
         if n_ensembles > 1:
