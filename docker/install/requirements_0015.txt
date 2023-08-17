@@ -8,6 +8,7 @@ rank_bm25
 chainlit
 scikit-hubness
 pyahocorasick
+netcal
 
 
 # skypilot

@@ -630,7 +630,8 @@ class OpenAIBase(BeamLLM):
     def _completion(self, **kwargs):
         self.sync_openai()
         # todo: remove this when logit_bias is supported
-        kwargs.pop('logit_bias')
+        if 'logit_bias' in kwargs:
+            kwargs.pop('logit_bias')
         return openai.Completion.create(engine=self.model, **kwargs)
 
     def extract_text(self, res):
@@ -936,13 +937,7 @@ class FastAPILLM(FCConversationLLM):
         return res.json()
 
     def extract_text(self, res):
-
-        res = res.response
-        if not self.is_chat:
-            res = res['res']
-        else:
-            raise NotImplementedError
-        return res
+        return res.response['res']
 
 
 class HuggingFaceLLM(BeamLLM):
