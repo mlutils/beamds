@@ -15,8 +15,67 @@ import warnings
 
 class AutoBeam:
 
-    def __init__(self):
+    def __init__(self, obj):
         self._top_levels = None
+        self._module_walk = None
+        self._module_spec = None
+        self._module_dependencies = None
+        self.obj = obj
+
+    @property
+    def module_spec(self):
+        if self._module_spec is None:
+            module_spec = importlib.util.find_spec(type(self.obj).__module__)
+            root_module = module_spec.name.split('.')[0]
+            self._module_spec = importlib.util.find_spec(root_module)
+
+        return self._module_spec
+
+    @property
+    def module_walk(self):
+        if self._module_walk is None:
+            module_walk = {}
+
+            root_path = beam_path(self.module_spec.origin).parent
+            for r, dirs, files in root_path.walk():
+
+                r_relative = r.relative_to(root_path)
+                dir_files = {}
+                for f in files:
+                    p = r.joinpath(f)
+                    if p.suffix == '.py':
+                        dir_files[f] = p.read()
+                if len(dir_files):
+                    module_walk[r_relative] = dir_files
+
+            self._module_walk = module_walk
+        return self._module_walk
+
+    @property
+    def module_dependencies(self):
+
+        if self._module_dependencies is None:
+
+            content = beam_path(inspect.getfile(type(self.obj))).read()
+            ast_tree = ast.parse(content)
+            module_name = self.module_spec.name
+
+            modules = []
+            for a in ast_tree.body:
+                if type(a) is ast.Import:
+                    for ai in a.names:
+                        root_name = ai.name.split('.')[0]
+                        if root_name != module_name:
+                            modules.append(root_name)
+
+                elif type(a) is ast.ImportFrom:
+
+                    root_name = a.module.split('.')[0]
+                    if root_name != module_name:
+                        modules.append(root_name)
+            self._module_dependencies = list(set(modules))
+
+        return self._module_dependencies
 
     @property
     def top_levels(self):
@@ -68,20 +127,9 @@ class AutoBeam:
 
         return self._top_levels
 
+    @classmethod
+    def to_bundle(cls, module):
+        return cls(module)
+
     def get_pip_package(self, module_name):
         return self.top_levels[module_name]
-
-
-content = beam_path(inspect.getfile(DeepTabularAlg)).read()
-ast_tree = ast.parse(content)
-modules = []
-
-for a in ast_tree.body:
-    if type(a) is ast.Import:
-        for ai in a.names:
-            modules.append(ai.name)
-    elif type(a) is ast.ImportFrom:
-        modules.append(a.module)
-
-
-importlib.util.find_spec('torch.nn')

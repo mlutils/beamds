@@ -248,6 +248,8 @@ class TabularTransformer(torch.nn.Module):
         """
         super().__init__()
 
+        n_tokens = as_tensor(n_tokens)
+        cat_mask = as_tensor(cat_mask)
         self.register_buffer('n_tokens', n_tokens.unsqueeze(0))
         n_tokens = n_tokens + 1  # add masking token
         tokens_offset = n_tokens.cumsum(0) - n_tokens
