@@ -9,6 +9,7 @@ chainlit
 scikit-hubness
 pyahocorasick
 netcal
+ordered_set
 
 
 # skypilot

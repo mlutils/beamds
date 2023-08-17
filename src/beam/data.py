@@ -144,7 +144,7 @@ class BeamData(object):
 
          If data is both cached in self.data and stored in self.all_paths, the cached version is always preferred.
 
-        The orientation is inferred from the data. If all obje'data'cts have same length they are assumed to represent columns
+        The orientation is inferred from the data. If all objects have same length they are assumed to represent columns
         orientation. If all objects have same shape[1:] they are assumed to represent index orientation. If one wish to pass
         an index orientation data where all objects have same length, one can pass the preferred_orientation='index' argument.
 
@@ -730,7 +730,7 @@ class BeamData(object):
 
                 if self.preferred_orientation == 'columns':
                     lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
-                    lens = list(filter(lambda x: x is not None, lens))
+                    lens = list(filter(lambda x: x != 0, lens))
 
                     lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
                     lens_index = list(filter(lambda x: x is not None, lens_index))
@@ -739,8 +739,16 @@ class BeamData(object):
                         self._orientation = 'columns'
                         return self._orientation
 
-                shapes = recursive_flatten(recursive(lambda x: tuple(x.shape[1:])
-                                                     if hasattr(x, 'shape') else None)([self.data]))
+                def shape_of(x):
+                    if hasattr(x, 'shape'):
+                        return tuple(x.shape[1:])
+                    if x is None:
+                        return None
+                    if hasattr(x, '__len__'):
+                        return ()
+                    return 'scalar'
+
+                shapes = recursive_flatten(recursive(shape_of)([self.data]))
 
                 shapes = list(filter(lambda x: x is not None, shapes))
                 if len(set(shapes)) == 1:

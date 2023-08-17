@@ -42,8 +42,61 @@ from argparse import Namespace
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 import Levenshtein as lev
 
-TypeTuple = namedtuple('Type', 'major minor element')
+TypeTuple = namedtuple('TypeTuple', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
+
+
+class BeamDict(dict, Namespace):
+    def __init__(self, initial_data=None, **kwargs):
+        if isinstance(initial_data, dict):
+            self.__dict__.update(initial_data)
+        elif isinstance(initial_data, BeamDict):
+            self.__dict__.update(initial_data.__dict__)
+        elif hasattr(initial_data, '__dict__'):  # This will check for Namespace or any other object with attributes
+            self.__dict__.update(initial_data.__dict__)
+        elif initial_data is not None:
+            raise TypeError(
+                "initial_data should be either a dictionary, an instance of DictNamespace, or a Namespace object")
+
+            # Handle additional kwargs
+        for key, value in kwargs.items():
+            self.__dict__[key] = value
+
+    def __getattr__(self, key):
+        try:
+            return self.__dict__[key]
+        except KeyError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{key}'")
+
+    def pop(self, key, default=None):
+        try:
+            return self.__dict__.pop(key)
+        except KeyError:
+            return default
+
+    def items(self):
+        return self.__dict__.items()
+
+    def keys(self):
+        return self.__dict__.keys()
+
+    def values(self):
+        return self.__dict__.values()
+
+    def __setattr__(self, key, value):
+        self.__dict__[key] = value
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
+
+    def __repr__(self):
+        return repr(self.__dict__)
+
+    def __contains__(self, key):
+        return key in self.__dict__
 
 
 class BeamURL:
@@ -191,6 +244,9 @@ def retrieve_name(var):
 
 class PureBeamPath:
     feather_index_mark = "feather_index:"
+
+    text_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css', '.html']
+    textual_extensions = text_extensions + ['.avro', '.json', '.orc', '.ndjson']
 
     def __init__(self, *pathsegments, url=None, scheme=None, hostname=None, port=None, username=None, password=None,
                  fragment=None, params=None, client=None, **kwargs):
@@ -529,8 +585,11 @@ class PureBeamPath:
                 x = pd.read_pickle(fo, **kwargs)
             elif ext in ['.npy', '.npz']:
                 x = np.load(fo, allow_pickle=True, **kwargs)
-            elif ext in ['.txt', '.text']:
-                x = fo.readlines()
+            elif ext in PureBeamPath.text_extensions:
+                if 'readlines' in kwargs and kwargs['readlines']:
+                    x = fo.readlines()
+                else:
+                    x = fo.read()
             elif ext == '.scipy_npz':
                 x = scipy.sparse.load_npz(fo, **kwargs)
             elif ext == '.flac':
@@ -584,7 +643,7 @@ class PureBeamPath:
         else:
             m = 'r'
 
-        if ext not in ['.avro', '.json', '.orc', '.txt', '.text', '.ndjson']:
+        if ext not in PureBeamPath.textual_extensions:
             m = f"{m}b"
 
         return m
@@ -1383,12 +1442,11 @@ def check_element_type(x):
     if 'bool' in t:
         return 'bool'
     if 'float' in t:
-        if '16' in t:
-            return 'float16'
-        else:
-            return 'float'
+        return 'float'
     if 'str' in t:
         return 'str'
+    if 'complex' in t:
+        return 'complex'
 
     return 'object'
 
@@ -1472,7 +1530,7 @@ def check_type(x, check_minor=True, check_element=True):
 
     major type: container, array, scalar, none, other
     minor type: dict, list, tuple, set, tensor, numpy, pandas, scipy_sparse, native, none
-    elements type: array, int, float, str, object, empty, none, unknown
+    elements type: array, int, float, complex, str, object, empty, none, unknown
 
     '''
 
@@ -1527,15 +1585,18 @@ def check_type(x, check_minor=True, check_element=True):
                 elt = 'empty'
             else:
 
-                if len(x) < 100:
+                if len(x) < 20:
                     elts = [check_element_type(xi) for xi in x]
 
                 else:
-                    ind = np.random.randint(len(x), size=(100,))
+                    ind = np.random.randint(len(x), size=(20,))
                     elts = [check_element_type(x[i]) for i in ind]
 
-                if len(set(elts)) == 1:
+                set_elts = set(elts)
+                if len(set_elts) == 1:
                     elt = elts[0]
+                elif set_elts == {'int', 'float'}:
+                    elt = 'float'
                 else:
                     elt = 'object'
 
@@ -1675,24 +1736,32 @@ def recursive_func(x, func, *args, **kwargs):
         return func(x, *args, **kwargs)
 
 
-def recursive_flat_array(x):
-    x_type = check_type(x)
+def recursive_flat_array(x, x_type=None, tolist=True):
+    if x_type is None:
+        x_type = check_type(x)
 
-    if x_type.minor == 'numpy':
-        return x.flatten().tolist()
-    elif x_type.minor == 'tensor':
-        return x.flatten().tolist()
+    if x_type.minor in ['numpy', 'tensor']:
+        x = x.flatten()
+        if tolist:
+            x = x.tolist()
+        return x
     elif x_type.minor == 'pandas':
-        return x.values.flatten().tolist()
+        x = x.values.flatten()
+        if tolist:
+            x = x.tolist()
+        return x
     elif x_type.minor == 'scipy_sparse':
-        return x.toarray().flatten().tolist()
+        x = x.toarray().flatten()
+        if tolist:
+            x = x.tolist()
+        return x
     elif x_type.minor in ['list', 'tuple']:
         if x_type.element != 'array':
             return list(x)
 
         l = []
         for xi in x:
-            l.extend(recursive_flat_array(xi))
+            l.extend(recursive_flat_array(xi, tolist=tolist))
         return l
 
     elif x_type.minor == 'native':
@@ -1701,9 +1770,34 @@ def recursive_flat_array(x):
     else:
         return [x]
 
+def squeeze_scalar(x, x_type=None):
 
-def recursive_flatten(x, flat_array=False):
-    x_type = check_type(x)
+    if x_type is None:
+        x_type = check_type(x)
+
+    if x_type.minor == 'list':
+        if len(x) == 1:
+            x = x[0]
+            x_type = check_type(x)
+
+    if x_type.major == 'scalar':
+        if x_type.element == 'int':
+            return int(x)
+        elif x_type.element == 'float':
+            return float(x)
+        elif x_type.element == 'complex':
+            return complex(x)
+        elif x_type.element == 'bool':
+            return bool(x)
+        elif x_type.element == 'str':
+            return str(x)
+
+    return x
+
+def recursive_flatten(x, flat_array=False, x_type=None, tolist=True):
+
+    if x_type is None:
+        x_type = check_type(x)
 
     if x_type.major == 'container':
         l = []
@@ -1714,7 +1808,7 @@ def recursive_flatten(x, flat_array=False):
         if not flat_array or x_type.major == 'scalar':
             return [x]
         else:
-            return recursive_flat_array(x)
+            return recursive_flat_array(x, x_type=x_type, tolist=tolist)
 
 
 def recursive_flatten_with_keys(x):
@@ -1840,7 +1934,10 @@ def recursive_len(x):
         return 0
 
     if hasattr(x, '__len__'):
-        return len(x)
+        try:
+            return len(x)
+        except TypeError:
+            return 1
 
     if x is None:
         return 0
@@ -1938,10 +2035,13 @@ def as_numpy(x):
         x = np.array(x)
 
     if x.size == 1:
-        if 'int' in str(x.dtype):
-            x = int(x)
-        else:
+        str_type = str(x.dtype)
+        if 'float' in str_type:
             x = float(x)
+        elif 'int' in str_type:
+            x = int(x)
+        elif 'complex' in str_type:
+            x = complex(x)
 
     return x
 
@@ -1958,8 +2058,10 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
     if dtype is None and hasattr(x, 'dtype'):
         if 'int' in str(x.dtype):
             dtype = torch.int64
-        else:
+        elif 'float' in str(x.dtype):
             dtype = torch.float32
+        elif 'complex' in str(x.dtype):
+            dtype = torch.complex64
 
     if check_type(x, check_element=False).minor == 'pandas':
         x = x.values

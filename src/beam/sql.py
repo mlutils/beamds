@@ -219,3 +219,75 @@ class BeamAthena(BeamSQL):
         bd = BeamData(df)
 
         return bd
+
+
+# from sqlalchemy import create_engine, func, MetaData, Table, and_
+# import pandas as pd
+#
+#
+# class BeamSQL:
+#     def __init__(self, uri):
+#         self.engine = create_engine(uri)
+#         self.metadata = MetaData(bind=self.engine)
+#         self.current_table = None
+#         self.groupby_columns = []
+#         self.filter_conditions = []
+#
+#     def table(self, table_name):
+#         """Select the current working table."""
+#         self.current_table = Table(table_name, self.metadata, autoload=True)
+#         return self
+#
+#     def groupby(self, *column_names):
+#         self.groupby_columns = column_names
+#         return self
+#
+#     def count(self):
+#         if not self.current_table or not self.groupby_columns:
+#             raise Exception("Table not selected or columns for grouping not provided")
+#
+#         columns_to_select = [getattr(self.current_table.c, col) for col in self.groupby_columns]
+#         s = select(columns_to_select + [func.count()]) \
+#             .where(and_(*self.filter_conditions)) \
+#             .group_by(*columns_to_select)
+#
+#         result = self.engine.execute(s)
+#         return pd.DataFrame(result.fetchall(), columns=self.groupby_columns + ['count'])
+#
+#     def filter(self, column_name, operator, value):
+#         column = getattr(self.current_table.c, column_name)
+#         op_map = {
+#             "==": column.__eq__,
+#             ">": column.__gt__,
+#             "<": column.__lt__,
+#             ">=": column.__ge__,
+#             "<=": column.__le__,
+#         }
+#
+#         if operator not in op_map:
+#             raise Exception(f"Operator {operator} not supported")
+#
+#         condition = op_map[operator](value)
+#         self.filter_conditions.append(condition)
+#         return self
+#
+#     def query(self, raw_sql):
+#         result = self.engine.execute(raw_sql)
+#         columns = result.keys()
+#         return pd.DataFrame(result.fetchall(), columns=columns)
+#
+#
+# # Sample usage:
+# bs = BeamSQL("sqlite:////path/to/sqlite3.db")
+#
+# # Equivalent to df.groupby(['name', 'age']).count()
+# result = bs.table('your_table_name').groupby('name', 'age').count()
+# print(result)
+#
+# # Equivalent to df[df['age'] > 25].groupby(['name']).count()
+# result = bs.table('your_table_name').filter('age', '>', 25).groupby('name').count()
+# print(result)
+#
+# # Raw SQL
+# result = bs.query("SELECT name, COUNT(*) FROM your_table_name GROUP BY name")
+# print(result)

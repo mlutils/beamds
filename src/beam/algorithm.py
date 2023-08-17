@@ -8,11 +8,12 @@ from .logger import beam_logger as logger
 import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
-    as_numpy, beam_device, retrieve_name, filter_dict, \
+    as_numpy, beam_device, retrieve_name, filter_dict, BeamDict, \
     recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
-from .experiment import Experiment, BeamReport
+from .experiment import Experiment
+from .reporter import BeamReport
 from timeit import default_timer as timer
 from .path import beam_path, PureBeamPath
 from .processor import Processor
@@ -104,13 +105,24 @@ class Algorithm(object):
         self._predict_reporter = None
         self.reporter = None
 
+    def __getattr__(self, item):
+        if item in self.__dict__:
+            return self.__dict__[item]
+        else:
+            return self.networks[item]
+
     def set_reporter(self, reporter=None):
         self.reporter = reporter
         self.reporter.reset_time(None)
+        self.reporter.reset_epoch(0, total_epochs=None)
 
-    def set_train_reporter(self):
+    def set_train_reporter(self, first_epoch, n_epochs=None):
+
+        if n_epochs is None:
+            n_epochs = self.n_epochs
+
         self.reporter = self._train_reporter
-        self.reporter.reset_time(done_epochs=self.epoch, n_epochs=self.n_epochs)
+        self.reporter.reset_time(first_epoch=first_epoch, n_epochs=n_epochs)
 
     def set_experiment_properties(self):
 
@@ -251,35 +263,101 @@ class Algorithm(object):
     def add_scheduler(self, scheduler, name):
         self.add_components(schedulers={name: scheduler})
 
-    def report_scalar(self, val, name, subset=None, aggregation=None, append=None, **kwargs):
-        self.reporter.report_scalar(val, name, subset=subset, aggregation=aggregation, append=append, **kwargs)
+    def report_scalar(self, name, val, subset=None, aggregation=None, append=None, **kwargs):
+        self.reporter.report_scalar(name, val, subset=subset, aggregation=aggregation, append=append, **kwargs)
 
-    def report_image(self, val_dict, name, subset=None, aggregation=None, append=None, **kwargs):
-        self.reporter.report_image(val_dict, name, subset=subset, aggregation=aggregation, append=append, **kwargs)
+    def report_data(self, name, val, subset=None, data_type=None, **kwargs):
 
-    def report_scalars(self, val, name, subset=None, **kwargs):
-        self.reporter.report_scalars(val, name, subset=subset, **kwargs)
+        if '/' in name:
+            dt, name = name.split('/')
 
-    def report_histogram(self, val, name, subset=None, **kwargs):
-        self.reporter.report_histogram(val, name, subset=subset, **kwargs)
+            if data_type is None:
+                data_type = dt
+            else:
+                data_type = f"{dt}_{data_type}"
 
-    def report_figure(self, val, name, subset=None, **kwargs):
-        self.reporter.report_figure(val, name, subset=subset, **kwargs)
+        self.reporter.report_data(name, val, subset=subset, data_type=data_type, **kwargs)
 
-    def report_video(self, val, name, subset=None, **kwargs):
-        self.reporter.report_video(val, name, subset=subset, **kwargs)
+    def report_image(self, name, val_dict, subset=None, aggregation=None, append=None, **kwargs):
+        self.reporter.report_image(name, val_dict, subset=subset, aggregation=aggregation, append=append, **kwargs)
 
-    def report_audio(self, val, name, subset=None, **kwargs):
-        self.reporter.report_audio(val, name, subset=subset, **kwargs)
+    def report_images(self, name, val_dict, subset=None, aggregation=None, append=None, **kwargs):
+        self.reporter.report_images(name, val_dict, subset=subset, aggregation=aggregation, append=append, **kwargs)
 
-    def report_text(self, val, name, subset=None, **kwargs):
-        self.reporter.report_text(val, name, subset=subset, **kwargs)
+    def report_scalars(self, name, val, subset=None, **kwargs):
+        self.reporter.report_scalars(name, val, subset=subset, **kwargs)
 
-    def report_mesh(self, val, name, subset=None, **kwargs):
-        self.reporter.report_mesh(val, name, subset=subset, **kwargs)
+    def report_histogram(self, name, val, subset=None, **kwargs):
+        self.reporter.report_histogram(name, val, subset=subset, **kwargs)
 
-    def report_pr_curve(self, val, name, subset=None, **kwargs):
-        self.reporter.report_pr_curve(val, name, subset=subset, **kwargs)
+    def report_figure(self, name, val, subset=None, **kwargs):
+        self.reporter.report_figure(name, val, subset=subset, **kwargs)
+
+    def report_video(self, name, val, subset=None, **kwargs):
+        self.reporter.report_video(name, val, subset=subset, **kwargs)
+
+    def report_audio(self, name, val, subset=None, **kwargs):
+        self.reporter.report_audio(name, val, subset=subset, **kwargs)
+
+    def report_embedding(self, name, val, subset=None, **kwargs):
+        self.reporter.report_embedding(name, val, subset=subset, **kwargs)
+
+    def report_text(self, name, val, subset=None, **kwargs):
+        self.reporter.report_text(name, val, subset=subset, **kwargs)
+
+    def report_mesh(self, name, val, subset=None, **kwargs):
+        self.reporter.report_mesh(name, val, subset=subset, **kwargs)
+
+    def report_pr_curve(self, name, val, subset=None, **kwargs):
+        self.reporter.report_pr_curve(name, val, subset=subset, **kwargs)
+
+    def get_scalar(self, name, subset=None, aggregate=False):
+        return self.reporter.get_scalar(name, subset=subset, aggregate=aggregate)
+
+    def get_scalars(self, name, subset=None, aggregate=False):
+        return self.reporter.get_scalars(name, subset=subset, aggregate=aggregate)
+
+    def get_data(self, name, subset=None, data_type=None,  aggregate=False):
+
+        if '/' in name:
+            dt, name = name.split('/')
+
+            if data_type is None:
+                data_type = dt
+            else:
+                data_type = f"{dt}_{data_type}"
+
+        return self.reporter.get_data(name, subset=subset, data_type=data_type, aggregate=aggregate)
+
+    def get_image(self, name, subset=None, aggregate=False):
+        return self.reporter.get_image(name, subset=subset, aggregate=aggregate)
+
+    def get_images(self, name, subset=None, aggregate=False):
+        return self.reporter.get_images(name, subset=subset, aggregate=aggregate)
+
+    def get_histogram(self, name, subset=None, aggregate=False):
+        return self.reporter.get_histogram(name, subset=subset, aggregate=aggregate)
+
+    def get_figure(self, name, subset=None, aggregate=False):
+        return self.reporter.get_figure(name, subset=subset, aggregate=aggregate)
+
+    def get_video(self, name, subset=None, aggregate=False):
+        return self.reporter.get_video(name, subset=subset, aggregate=aggregate)
+
+    def get_audio(self, name, subset=None, aggregate=False):
+        return self.reporter.get_audio(name, subset=subset, aggregate=aggregate)
+
+    def get_embedding(self, name, subset=None, aggregate=False):
+        return self.reporter.get_embedding(name, subset=subset, aggregate=aggregate)
+
+    def get_text(self, name, subset=None, aggregate=False):
+        return self.reporter.get_text(name, subset=subset, aggregate=aggregate)
+
+    def get_mesh(self, name, subset=None, aggregate=False):
+        return self.reporter.get_mesh(name, subset=subset, aggregate=aggregate)
+
+    def get_pr_curve(self, name, subset=None, aggregate=False):
+        return self.reporter.get_pr_curve(name, subset=subset, aggregate=aggregate)
 
     def add_components(self, networks=None, optimizers=None, schedulers=None, processors=None,
                        build_optimizers=True, build_schedulers=True, name='net'):
@@ -502,18 +580,18 @@ class Algorithm(object):
             if len(losses) > 1:
                 for k, l in losses.items():
 
-                    self.report_scalar(l * weights[k], f'{k}_s')
+                    self.report_scalar(f'{k}_s', l * weights[k])
 
                     if weights[k] > 1:
-                        self.report_scalar(weights[k], f'{k}_w')
+                        self.report_scalar(f'{k}_w', weights[k])
                     elif weights[k] == 1:
                         pass
                     elif weights[k] == 0:
-                        self.report_scalar(0, f'{k}_w')
+                        self.report_scalar(f'{k}_w', 0)
                     else:
-                        self.report_scalar(1 / weights[k], f'{k}_f')
+                        self.report_scalar(f'{k}_f', 1 / weights[k])
 
-            self.report_scalar(total_loss, name)
+            self.report_scalar(name, total_loss)
 
         loss = total_loss
         if training:
@@ -898,8 +976,8 @@ class Algorithm(object):
         objective_name = self.get_hparam('objective')
         batch_size = self.batch_size_train if training else self.batch_size_eval
 
-        with (self.reporter.track_epoch(subset, n, batch_size=batch_size, training=training)):
-            if n == self.n_epochs + self.swa_epochs:
+        with (self.reporter.track_epoch(subset, batch_size=batch_size, training=training)):
+            if training and (n == self.n_epochs + self.swa_epochs):
                 logger.warning("This is an extra epoch to calculate BN statistics. "
                                "It is not used for training so we set training=False.")
                 training = False
@@ -921,7 +999,7 @@ class Algorithm(object):
                 with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=self.amp):
                     self.iteration(sample=sample, counter=i, training=training, index=ind, label=label)
 
-                    objective = self.reporter.get_scalar(objective_name, subset=subset, aggreate=False)[-1]
+                    objective = self.reporter.get_scalar(objective_name, subset=subset, aggregate=False, index=-1)
 
                     if training and n < self.n_epochs:
                         self.schedulers_step(objective, step_type='iteration')
@@ -1027,8 +1105,7 @@ class Algorithm(object):
     def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None, eval_mode=True,
                  return_dataset=None, **kwargs):
 
-        reporter = BeamReport(objective=self.get_hparam('objective'))
-        self.set_reporter(reporter)
+        self.set_reporter(BeamReport(objective=self.get_hparam('objective')))
 
         with torch.no_grad():
 
@@ -1058,26 +1135,27 @@ class Algorithm(object):
             if head is not None:
                 max_iterations = math.ceil(head / batch_size)
 
-            self.preprocess_inference(subset=subset, predicting=predicting, dataset=dataset, **kwargs)
-            data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
-            total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
-            for i, (ind, label, sample) in self.reporter.iterate(data_generator, enable=enable_tqdm,
-                                  threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
-                                  notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
-                transform = self.inference(sample=sample, subset=subset, predicting=predicting,
-                                                    label=label, index=ind, **kwargs)
-                transforms.append(transform)
-                index.append(ind)
+            with (self.reporter.track_epoch(subset, batch_size=batch_size, training=not eval_mode)):
+                self.preprocess_inference(subset=subset, predicting=predicting, dataset=dataset, **kwargs)
+                data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
+                total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
+                for i, (ind, label, sample) in self.reporter.iterate(data_generator, enable=enable_tqdm,
+                                      threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
+                                      notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
+                    transform = self.inference(sample=sample, subset=subset, predicting=predicting,
+                                                        label=label, index=ind, **kwargs)
+                    transforms.append(transform)
+                    index.append(ind)
 
-            index = torch.cat(index)
-            transforms = recursive_concatenate(transforms)
+                index = torch.cat(index)
+                transforms = recursive_concatenate(transforms)
 
-            self.postprocess_inference(sample=sample, index=ind, transforms=transforms, label=label,
-                                                 subset=subset, dataset=dataset, predicting=predicting, **kwargs)
+                self.postprocess_inference(sample=sample, index=ind, transforms=transforms, label=label,
+                                                     subset=subset, dataset=dataset, predicting=predicting, **kwargs)
 
             if return_dataset:
                 dataset = UniversalDataset(transforms, index=index)
-                dataset.set_statistics(reporter.data)
+                dataset.set_statistics(self.reporter.data)
             else:
                 dataset = DataBatch(index=index, data=transforms, label=None)
 
@@ -1085,13 +1163,15 @@ class Algorithm(object):
 
     def __iter__(self):
 
+        n_epochs = self.n_epochs + self.swa_epochs + int(self.swa_epochs > 0)
         self.refresh_optimizers_and_schedulers_pointers()
-        self.set_train_reporter()
 
-        n_epochs = self.n_epochs+self.swa_epochs+int(self.swa_epochs > 0)
-        for i,  in range(n_epochs):
+        epoch_start = 0 if self.get_hparam("restart_epochs_count", default=True) else self.epoch
+        self.set_train_reporter(first_epoch=epoch_start, n_epochs=n_epochs)
 
-            self.reporter.reset()
+        for i  in range(epoch_start, n_epochs):
+
+            self.reporter.reset_epoch(i, total_epochs=self.epoch + 1)
 
             self.iterate_epoch(subset='train', training=True, n=i)
             with torch.no_grad():
@@ -1120,7 +1200,7 @@ class Algorithm(object):
                     sch.step()
 
                     lr = sch.optimizer.param_groups[0]['lr']
-                    self.report_scalar(lr, f'swalr_{k}', subset='train')
+                    self.report_scalar(f'swalr_{k}', lr, subset='train')
             else:
                 self.schedulers_step(objective=objective, step_type='epoch')
 
