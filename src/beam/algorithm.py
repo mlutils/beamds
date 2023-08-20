@@ -196,7 +196,7 @@ class Algorithm(object):
         if hparam not in self.hparams_warnings:
             experment_generated_hparams = ['ddp', 'hpo', 'rank', 'world_size', 'reload_path']
             if hparam in experment_generated_hparams:
-                logger.error("Please pass to the algorithm the hparams object from the experiment: Algorithm(hparams=experiment.hparams).")
+                logger.warning("Please pass to the algorithm the hparams object from the experiment: Algorithm(hparams=experiment.hparams).")
                 self.hparams_warnings.extend(experment_generated_hparams)
             else:
                 logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
