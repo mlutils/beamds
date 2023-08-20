@@ -1377,6 +1377,12 @@ class Algorithm(object):
         '''
         return self(*args, predicting=False, **kwargs)
 
+    def score(self, *args, **kwargs):
+        '''
+        For validation and test purposes (when labels are known)
+        '''
+        return self.evaluate(*args, predicting=False, **kwargs)
+
     def predict(self, dataset, *args, lazy=False, kpi=True, **kwargs):
         '''
         For real data purposes (when labels are unknown)
