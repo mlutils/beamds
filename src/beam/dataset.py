@@ -520,7 +520,7 @@ class UniversalBatchSampler(object):
 
                 probs = (probs * len(probs) * grow_factor).round().astype(np.int)
                 m = np.gcd.reduce(probs)
-                reps = probs // m
+                reps = np.clip(np.round(probs / m).astype(np.int), 1, None)
                 indices = pd.DataFrame({'index': self.indices, 'times': reps})
                 self.indices = as_tensor(indices.loc[indices.index.repeat(indices['times'])]['index'].values,
                                          device='cpu', dtype=torch.int64)
