@@ -2,6 +2,7 @@ import inspect
 import importlib
 import ast
 import os
+import sys
 
 from .tabular import DeepTabularAlg
 from .path import beam_path
@@ -12,6 +13,46 @@ import importlib
 from pathlib import Path
 import warnings
 from collections import defaultdict
+import pkgutil
+
+
+def is_std_lib(module_name):
+    # Check if module is part of the standard library
+    if module_name in sys.builtin_module_names:
+        return True
+
+    spec = importlib.util.find_spec(module_name)
+    if spec is None:
+        return False
+
+    if os.name == 'nt':
+        # For windows
+        if spec.origin.startswith(sys.base_prefix):
+            return True
+    else:
+        # For unix-based systems
+        if 'site-packages' not in spec.origin and 'dist-packages' not in spec.origin:
+            return True
+
+    return False
+
+
+def is_installed_package(module_name):
+    spec = importlib.util.find_spec(module_name)
+
+    if spec is None:
+        return False
+
+    if 'site-packages' in spec.origin or 'dist-packages' in spec.origin:
+        return True
+
+    return False
+
+
+def is_package_installed(module_name):
+    # Check if the package is installed (whether std lib or external)
+    return pkgutil.find_loader(module_name) is not None
+
 
 class AutoBeam:
 
@@ -59,7 +100,7 @@ class AutoBeam:
     def recursive_module_dependencies(self, module_name):
 
         module_spec = importlib.util.find_spec(module_name)
-        content = beam_path(inspect.getfile(module_spec.origin)).read()
+        content = beam_path(module_spec.origin).read()
         ast_tree = ast.parse(content)
 
         modules = set()
@@ -67,15 +108,19 @@ class AutoBeam:
             if type(a) is ast.Import:
                 for ai in a.names:
                     root_name = ai.name.split('.')[0]
-                    if root_name != module_name:
+                    if root_name != module_name and not is_std_lib(root_name):
                         modules.add(root_name)
-                        modules.union(self.recursive_module_dependencies(ai.name))
+                    elif not is_installed_package(root_name):
+                        print(ai.name)
+                        # modules.union(self.recursive_module_dependencies(ai.name))
 
             elif type(a) is ast.ImportFrom:
 
                 root_name = a.module.split('.')[0]
-                if root_name != module_name and a.level == 0:
+                if a.level == 0 and not is_std_lib(root_name):
                     modules.add(root_name)
+                elif not is_installed_package(root_name):
+                    print(a)
 
         return modules
 

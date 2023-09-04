@@ -44,8 +44,8 @@ def bundle_example():
     hparams = TabularHparams(hparams)
 
     # exp = Experiment(hparams)
-    dataset = TabularDataset(hparams)
-    net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
+    # dataset = TabularDataset(hparams)
+    net = TabularTransformer(hparams, 10, [4, 4, 4], [0, 0, 1])
     alg = DeepTabularAlg(hparams, networks=net)
 
     from src.beam.auto import AutoBeam

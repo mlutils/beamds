@@ -147,7 +147,7 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     if url.protocol == 's3':
 
         access_key = beam_key('aws_access_key', access_key)
-        secret_key = beam_key('aws_secret_key', secret_key)
+        secret_key = beam_key('aws_private_key', secret_key)
 
         return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
 

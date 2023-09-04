@@ -10,7 +10,8 @@ scikit-hubness
 pyahocorasick
 netcal
 ordered_set
-
+PyPDF2
+ludwig
 
 # skypilot
 # vllm

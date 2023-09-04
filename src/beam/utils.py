@@ -632,7 +632,8 @@ class PureBeamPath:
                 x = pa.orc.read(fo, **kwargs)
 
             else:
-                raise ValueError("Unknown extension type.")
+                with open(fo, 'rb') as fo:
+                    x = fo.read()
 
         return x
 
