@@ -97,10 +97,13 @@ class AutoBeam:
                 self._module_walk = module_walk
         return self._module_walk
 
-    def recursive_module_dependencies(self, module_name):
+    def recursive_module_dependencies(self, module_name=None, module_origin=None):
 
-        module_spec = importlib.util.find_spec(module_name)
-        content = beam_path(module_spec.origin).read()
+        if module_name is not None:
+            module_spec = importlib.util.find_spec(module_name)
+            module_origin = module_spec.origin
+
+        content = beam_path(module_origin).read()
         ast_tree = ast.parse(content)
 
         modules = set()
@@ -111,8 +114,7 @@ class AutoBeam:
                     if root_name != module_name and not is_std_lib(root_name):
                         modules.add(root_name)
                     elif not is_installed_package(root_name):
-                        print(ai.name)
-                        # modules.union(self.recursive_module_dependencies(ai.name))
+                        modules.union(self.recursive_module_dependencies(ai.name))
 
             elif type(a) is ast.ImportFrom:
 
@@ -120,7 +122,10 @@ class AutoBeam:
                 if a.level == 0 and not is_std_lib(root_name):
                     modules.add(root_name)
                 elif not is_installed_package(root_name):
-                    print(a)
+                    if a.level == 0:
+                        modules.union(self.recursive_module_dependencies(a.module))
+                    else:
+                        modules.union(self.recursive_module_dependencies('.'.join(module_name.split('.')[:-a.level])))
 
         return modules
 
