@@ -1,5 +1,4 @@
-from .processor import Processor, Transformer
-from .data import BeamData
+from .processor import Processor
 from .path import beam_key
 import pandas as pd
 
@@ -7,7 +6,7 @@ import json
 import numpy as np
 
 from functools import partial
-from .utils import get_edit_ratio, get_edit_distance, is_notebook, BeamURL, normalize_host
+from .utils import get_edit_ratio, normalize_host, BeamURL
 import openai
 from typing import Any, List, Mapping, Optional, Dict
 
@@ -16,7 +15,6 @@ from langchain.llms.base import LLM
 from pydantic import BaseModel, Field, PrivateAttr
 from transformers.pipelines import Conversation
 import transformers
-from .utils import beam_device, BeamURL
 import requests
 import uuid
 import time
@@ -38,7 +36,7 @@ openai_simulator = Namespace(ChatCompletion=Namespace(create=simulate_openai_cha
 
 
 class LLMResponse:
-    def __init__(self, response, prompt, llm, chat=False):
+    def __init__(self, response, prompt, llm, chat=False, stream=False):
         self.response = response
         self.prompt = prompt
         self.llm = llm
@@ -47,6 +45,14 @@ class LLMResponse:
         self.created = int(time.time())
         self.chat = chat
         self.object = "chat.completion" if chat else "text_completion"
+        self.stream = stream
+
+    def __iter__(self):
+        if not self.stream:
+            yield self
+        else:
+            for r in self.response:
+                yield LLMResponse(r, self.prompt, self.llm, self.chat, self.stream)
 
     @property
     def text(self):
@@ -72,7 +78,7 @@ class BeamLLM(LLM, Processor):
     temperature: float = Field(1.0, ge=0.0, le=1.0)
     top_p: float = Field(1.0, ge=0.0, le=1.0)
     n: int = Field(1, ge=1)
-    stream: bool = Field(False)
+    message_stream: bool = Field(False)
     stop: Optional[str] = Field(None)
     max_tokens: Optional[int] = Field(None)
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
@@ -86,7 +92,7 @@ class BeamLLM(LLM, Processor):
         self.temperature = temperature
         self.top_p = top_p
         self.n = n
-        self.stream = stream
+        self.message_stream = stream
         self.stop = stop
         self.max_tokens = max_tokens
         self.presence_penalty = presence_penalty
@@ -161,11 +167,12 @@ class BeamLLM(LLM, Processor):
     def _chat_completion(self, **kwargs):
         raise NotImplementedError
 
-    def chat_completion(self, **kwargs):
+    def chat_completion(self, stream=False, **kwargs):
 
         response = self._chat_completion(**kwargs)
         self.update_usage(response)
-        response = LLMResponse(response, kwargs, self, chat=True)
+
+        response = LLMResponse(response, kwargs, self, chat=True, stream=stream)
         return response
 
     def completion(self, **kwargs):
@@ -188,7 +195,7 @@ class BeamLLM(LLM, Processor):
         if n is None:
             n = self.n
         if stream is None:
-            stream = self.stream
+            stream = self.message_stream
         if presence_penalty is None:
             presence_penalty = self.presence_penalty
         if frequency_penalty is None:
@@ -635,11 +642,15 @@ class OpenAIBase(BeamLLM):
 
     def extract_text(self, res):
 
+        stream = res.stream
         res = res.response
         if not self.is_chat:
             res = res.choices[0].text
         else:
-            res = res.choices[0].message.content
+            if not stream:
+                res = res.choices[0].message.content
+            else:
+                res = res.choices[0].delta.content
         return res
 
     def openai_format(self, res):

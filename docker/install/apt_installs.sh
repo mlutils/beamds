@@ -33,6 +33,7 @@ apt install -y vim
 apt install -y zip
 apt install -y unixodbc-dev
 apt install -y sqlite3
+apt install -y python3.10-venv
 
 pip install pykerberos
 

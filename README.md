@@ -9,14 +9,28 @@ https://packaging.python.org/tutorials/packaging-projects/
 
 prerequisits:
 
+## Installation
+
+To install the full package from PyPi use:
+```shell
+pip install beam-ds[all]
+```
+If you want to install only the data-science related components use:
+```shell
+pip install beam-ds[ds]
+``` 
+To install only the LLM (Large Language Model) related components use:
+```shell
+pip install beam-ds[llm]
+```
+
+The prerequisite packages will be installed automatically, they can be found in the setup.cfg file.
+
+## Build from source
+
 install the build package:
 ```shell
 python -m pip install --upgrade build
-```
-
-Packages to install:
-```
-tqdm, loguru, tensorboard
 ```
 
 to reinstall the package after updates use:
