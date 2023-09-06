@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field, PrivateAttr
 from transformers.pipelines import Conversation
 import transformers
 from .utils import beam_device, BeamURL
-import torch
 import requests
 import uuid
 import time
@@ -991,6 +990,7 @@ class HuggingFaceLLM(BeamLLM):
                                                         config=self.config, **model_kwargs)
 
         if compile:
+            import torch
             self.net = torch.compile(self.net)
 
         self._text_generation_pipeline = transformers.pipeline('text-generation', model=self.net,

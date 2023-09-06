@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, beam_device, \
     recursive_device, container_len, DataBatch
+from .logger import beam_logger as logger
 import pandas as pd
 import math
 import hashlib
@@ -515,12 +516,16 @@ class UniversalBatchSampler(object):
             self.samples_iterator = self.static_samples_iterator
             if probs is not None:
 
+                logger.info("UniversalBatchSampler: Building expanded indices array based on given probabilities")
                 probs = as_numpy(self.normalize_probabilities(probs))
                 grow_factor = max(expansion_size, len(probs)) / len(probs)
 
                 probs = (probs * len(probs) * grow_factor).round().astype(np.int)
                 m = np.gcd.reduce(probs)
                 reps = np.clip(np.round(probs / m).astype(np.int), 1, None)
+
+                logger.info(f"Expansion size: {expansion_size}, before expansion: {len(probs)}, "
+                            f"after expansion: {np.sum(reps)}")
                 indices = pd.DataFrame({'index': self.indices, 'times': reps})
                 self.indices = as_tensor(indices.loc[indices.index.repeat(indices['times'])]['index'].values,
                                          device='cpu', dtype=torch.int64)

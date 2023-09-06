@@ -21,6 +21,7 @@ from .logger import beam_kpi, BeamResult
 from .data import BeamData
 
 
+
 class Algorithm(object):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
