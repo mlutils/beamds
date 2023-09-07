@@ -97,13 +97,13 @@ class AutoBeam:
                 self._module_walk = module_walk
         return self._module_walk
 
-    def recursive_module_dependencies(self, module_name=None, module_origin=None):
+    def recursive_module_dependencies(self, module_name, module_origin=None):
 
-        if module_name is not None:
+        if module_origin is None:
             module_spec = importlib.util.find_spec(module_name)
-            module_origin = module_spec.origin
+            module_origin = beam_path(module_spec.origin)
 
-        content = beam_path(module_origin).read()
+        content = module_origin.read()
         ast_tree = ast.parse(content)
 
         modules = set()
@@ -111,9 +111,9 @@ class AutoBeam:
             if type(a) is ast.Import:
                 for ai in a.names:
                     root_name = ai.name.split('.')[0]
-                    if root_name != module_name and not is_std_lib(root_name):
+                    if is_installed_package(root_name) and not is_std_lib(root_name):
                         modules.add(root_name)
-                    elif not is_installed_package(root_name):
+                    elif not is_installed_package(root_name) and not is_std_lib(root_name):
                         modules.union(self.recursive_module_dependencies(ai.name))
 
             elif type(a) is ast.ImportFrom:
@@ -121,11 +121,17 @@ class AutoBeam:
                 root_name = a.module.split('.')[0]
                 if a.level == 0 and not is_std_lib(root_name):
                     modules.add(root_name)
-                elif not is_installed_package(root_name):
+                elif not is_installed_package(root_name) and not is_std_lib(root_name):
                     if a.level == 0:
                         modules.union(self.recursive_module_dependencies(a.module))
                     else:
-                        modules.union(self.recursive_module_dependencies('.'.join(module_name.split('.')[:-a.level])))
+
+                        path = module_origin
+                        for i in range(a.level):
+                            path = path.parent
+                        path = path.joinpath(f"{a.module.replace('.', os.sep)}.py")
+
+                        modules.union(self.recursive_module_dependencies(a.module, path))
 
         return modules
 
