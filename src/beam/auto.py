@@ -14,14 +14,20 @@ from pathlib import Path
 import warnings
 from collections import defaultdict
 import pkgutil
+from .logger import beam_logger as logger
 
 
 def is_std_lib(module_name):
-    # Check if module is part of the standard library
-    if module_name in sys.builtin_module_names:
-        return True
 
-    spec = importlib.util.find_spec(module_name)
+    # Check if module is part of the standard library
+    # if module_name in sys.builtin_module_names:
+    #     return True
+
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except:
+        return False
+
     if spec is None:
         return False
 
@@ -38,7 +44,11 @@ def is_std_lib(module_name):
 
 
 def is_installed_package(module_name):
-    spec = importlib.util.find_spec(module_name)
+
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except:
+        return False
 
     if spec is None:
         return False
@@ -61,6 +71,7 @@ class AutoBeam:
         self._module_walk = None
         self._module_spec = None
         self._module_dependencies = None
+        self._requirements = None
         self.obj = obj
 
     @property
@@ -97,13 +108,18 @@ class AutoBeam:
                 self._module_walk = module_walk
         return self._module_walk
 
-    def recursive_module_dependencies(self, module_name, module_origin=None):
+    @staticmethod
+    def recursive_module_dependencies(module_path):
 
-        if module_origin is None:
-            module_spec = importlib.util.find_spec(module_name)
-            module_origin = beam_path(module_spec.origin)
+        module_path = beam_path(module_path)
+        self_path = beam_path(inspect.getfile(AutoBeam))
 
-        content = module_origin.read()
+        try:
+            content = module_path.read()
+        except:
+            logger.warning(f"Could not read module: {module_path}")
+            return set()
+
         ast_tree = ast.parse(content)
 
         modules = set()
@@ -114,24 +130,35 @@ class AutoBeam:
                     if is_installed_package(root_name) and not is_std_lib(root_name):
                         modules.add(root_name)
                     elif not is_installed_package(root_name) and not is_std_lib(root_name):
-                        modules.union(self.recursive_module_dependencies(ai.name))
+                        path = beam_path(importlib.util.find_spec(root_name).origin)
+                        if path in [module_path, self_path]:
+                            continue
+                        modules.union(AutoBeam.recursive_module_dependencies(path))
 
             elif type(a) is ast.ImportFrom:
 
                 root_name = a.module.split('.')[0]
-                if a.level == 0 and not is_std_lib(root_name):
+                if a.level == 0 and (not is_std_lib(root_name)) and is_installed_package(root_name):
                     modules.add(root_name)
                 elif not is_installed_package(root_name) and not is_std_lib(root_name):
                     if a.level == 0:
-                        modules.union(self.recursive_module_dependencies(a.module))
+                        path = beam_path(importlib.util.find_spec(root_name).origin)
+                        if path in [module_path, self_path]:
+                            continue
+                        modules.union(AutoBeam.recursive_module_dependencies(path))
                     else:
 
-                        path = module_origin
+                        path = module_path
                         for i in range(a.level):
                             path = path.parent
-                        path = path.joinpath(f"{a.module.replace('.', os.sep)}.py")
 
-                        modules.union(self.recursive_module_dependencies(a.module, path))
+                        path = path.joinpath(f"{a.module.replace('.', os.sep)}")
+                        if path.is_dir():
+                            path = path.joinpath('__init__.py')
+                        else:
+                            path = path.with_suffix('.py')
+
+                        modules.union(AutoBeam.recursive_module_dependencies(path))
 
         return modules
 
@@ -140,23 +167,8 @@ class AutoBeam:
 
         if self._module_dependencies is None:
 
-            content = beam_path(inspect.getfile(type(self.obj))).read()
-            ast_tree = ast.parse(content)
-            module_name = self.module_spec.name
-
-            modules = []
-            for a in ast_tree.body:
-                if type(a) is ast.Import:
-                    for ai in a.names:
-                        root_name = ai.name.split('.')[0]
-                        if root_name != module_name:
-                            modules.append(root_name)
-
-                elif type(a) is ast.ImportFrom:
-
-                    root_name = a.module.split('.')[0]
-                    if root_name != module_name and a.level == 0:
-                        modules.append(root_name)
+            module_path = beam_path(inspect.getfile(type(self.obj)))
+            modules = AutoBeam.recursive_module_dependencies(module_path)
             self._module_dependencies = list(set(modules))
 
         return self._module_dependencies
@@ -193,7 +205,8 @@ class AutoBeam:
                     module_name = project_name.replace('-', '_')
 
                 if module_name is None:
-                    warnings.warn(f"Could not find top level module for package: {project_name}")
+                    # warnings.warn(f"Could not find top level module for package: {project_name}")
+                    top_levels[module_name] = project_name
                 elif not (module_name):
                     warnings.warn(f"{project_name}: is empty")
                 else:
@@ -216,4 +229,34 @@ class AutoBeam:
         return cls(module)
 
     def get_pip_package(self, module_name):
+
+        if module_name not in self.top_levels:
+            return None
         return self.top_levels[module_name]
+
+    @property
+    def requirements(self):
+        if self._requirements is None:
+            requirements = []
+            for module_name in self.module_dependencies:
+                pip_package = self.get_pip_package(module_name)
+                if pip_package is not None:
+                    requirements.append(f"{pip_package.project_name}>={pip_package.version}")
+                else:
+                    logger.warning(f"Could not find pip package for module: {module_name}")
+            self._requirements = requirements
+
+        return self._requirements
+
+    def write_requirements(self, path):
+        path = beam_path(path)
+        path.write(ext='.txt', content='\n'.join(self.requirements))
+
+    def module_to_tar(self, path):
+        path = str(path)
+        import tarfile
+        with tarfile.open(path, "w:gz") as tar:
+            for root_path, sub_paths in self.module_walk.items():
+                for sub_path, files in sub_paths.items():
+                    for file_name, content in files.items():
+                        tar.add(str(root_path.joinpath(sub_path, file_name)), arcname=file_name)

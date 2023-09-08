@@ -201,10 +201,6 @@ class BeamPath(PureBeamPath):
     def expanduser(self):
         return self.path.expanduser()
 
-    def glob(self, *args, **kwargs):
-        for path in self.path.glob(*args, **kwargs):
-            yield BeamPath(path)
-
     def group(self):
         return self.path.group()
 
@@ -265,18 +261,10 @@ class BeamPath(PureBeamPath):
         path = self.path.replace(str(target))
         return BeamPath(path)
 
-    def absolute(self):
-
-        path = self.path.absolute()
-        return BeamPath(path)
-
     def resolve(self, strict=False):
 
         path = self.path.resolve(strict=strict)
-        return BeamPath(path)
-
-    def rglob(self, pattern):
-        return self.path.rglob(pattern)
+        return self.gen(path)
 
     def rmdir(self):
         self.path.rmdir()
@@ -355,9 +343,6 @@ class SFTPPath(PureBeamPath):
 
     def exists(self):
         return self.client.exists(str(self.path))
-
-    def glob(self, *args, **kwargs):
-        raise NotImplementedError
 
     def rename(self, target):
         self.client.rename(str(self.path), str(target))
@@ -699,9 +684,6 @@ class HDFSPath(PureBeamPath):
         if status is None:
             return False
         return status['type'] == 'DIRECTORY'
-
-    def glob(self, *args, **kwargs):
-        raise NotImplementedError
 
     def read(self, ext=None, **kwargs):
 

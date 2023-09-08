@@ -52,10 +52,12 @@ def bundle_example():
 
     ab = AutoBeam(alg)
 
-    print(ab.module_spec)
-    print(ab.module_walk)
-    print(ab.module_dependencies)
-    print(ab.top_levels)
+    # print(ab.module_spec)
+    # print(ab.module_walk)
+    # print(ab.module_dependencies)
+    # print(ab.requirements)
+    # print(ab.top_levels)
+    print(ab.module_to_tar('/tmp/beam.tar.gz'))
 
 
 

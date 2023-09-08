@@ -373,13 +373,14 @@ class PureBeamPath:
         return self.joinpath(str(other))
 
     def __fspath__(self, mode="rb"):
-        raise TypeError("For BeamPath (named bp), use bp.open(mode) instead of open(bp, mode)")
+        return str(self)
+        # raise TypeError("For BeamPath (named bp), use bp.open(mode) instead of open(bp, mode)")
 
     def __call__(self, mode="rb"):
         self.mode = mode
         return self
 
-    def open(self, mode="rb"):
+    def open(self, mode="rb", buffering=- 1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
         self.mode = mode
         return self
 
@@ -401,6 +402,15 @@ class PureBeamPath:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         raise NotImplementedError
+
+    def __eq__(self, other):
+
+        if type(self) != type(other):
+            return False
+        p = self.resolve()
+        o = other.resolve()
+
+        return p.as_uri() == o.as_uri()
 
     @property
     def hostname(self):
@@ -521,6 +531,18 @@ class PureBeamPath:
     def with_suffix(self, suffix):
         return self.gen(self.path.with_suffix(suffix))
 
+    def glob(self, *args, **kwargs):
+        for path in self.path.glob(*args, **kwargs):
+            yield self.gen(path)
+
+    def rglob(self, *args, **kwargs):
+        for path in self.path.rglob(*args, **kwargs):
+            yield self.gen(path)
+
+    def absolute(self):
+        path = self.path.absolute()
+        return self.gen(path)
+
     def samefile(self, other):
         raise NotImplementedError
 
@@ -539,26 +561,11 @@ class PureBeamPath:
     def exists(self):
         raise NotImplementedError
 
-    def glob(self, *args, **kwargs):
-        raise NotImplementedError
-
     def rename(self, target):
         return NotImplementedError
 
     def replace(self, target):
         return NotImplementedError
-
-    def read_io(self, mode=None, **kwargs):
-
-        if mode is None:
-            mode = self.mode
-
-        if mode == 'rb':
-            return self.file_object.read_bytes()
-        elif mode == 'r':
-            return self.file_object.read_text(**kwargs)
-        else:
-            raise NotImplementedError
 
     def read(self, ext=None, **kwargs):
 
@@ -636,10 +643,15 @@ class PureBeamPath:
                 x = pa.orc.read(fo, **kwargs)
 
             else:
-                with open(fo, 'rb') as fo:
-                    x = fo.read()
+                x = fo.read()
 
         return x
+
+    def read_text(self):
+        return self.read(ext='.txt')
+
+    def read_bytes(self):
+        return self.read(ext='.bin')
 
     @staticmethod
     def mode(op, ext):
@@ -714,7 +726,7 @@ class PureBeamPath:
         return self
 
     def resolve(self, strict=False):
-        return self
+        return self.gen(self.path.resolve(strict=strict))
 
 
 class nested_defaultdict(defaultdict):
