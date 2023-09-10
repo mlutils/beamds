@@ -13,6 +13,10 @@ ordered_set
 PyPDF2
 ludwig
 
+deepspeed
+streamlit
+chainlit
+
 # skypilot
 # vllm
 # fschat
