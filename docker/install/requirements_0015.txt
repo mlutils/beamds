@@ -16,6 +16,9 @@ ludwig
 deepspeed
 streamlit
 chainlit
+pypdf2
+tabula-py
+pdfminer.six
 
 # skypilot
 # vllm
