@@ -103,7 +103,7 @@ class AutoBeam:
                         if p.suffix == '.py':
                             dir_files[f] = p.read()
                     if len(dir_files):
-                        module_walk[str(root_path)][r_relative] = dir_files
+                        module_walk[str(root_path)][str(r_relative)] = dir_files
 
                 self._module_walk = module_walk
         return self._module_walk
@@ -253,10 +253,14 @@ class AutoBeam:
         path.write(ext='.txt', content='\n'.join(self.requirements))
 
     def module_to_tar(self, path):
-        path = str(path)
+        path = beam_path(path)
+        path.mkdir(parents=True, exist_ok=True)
         import tarfile
-        with tarfile.open(path, "w:gz") as tar:
-            for root_path, sub_paths in self.module_walk.items():
+        for i, (root_path, sub_paths) in enumerate(self.module_walk.items()):
+            root_path = beam_path(root_path)
+            with tarfile.open(str(path.joinpath(f"{i}.tar.gz")), "w:gz") as tar:
                 for sub_path, files in sub_paths.items():
-                    for file_name, content in files.items():
-                        tar.add(str(root_path.joinpath(sub_path, file_name)), arcname=file_name)
+                    for file_name, _ in files.items():
+                        local_name = root_path.joinpath(sub_path, file_name)
+                        relative_name = local_name.relative_to(root_path)
+                        tar.add(str(local_name), arcname=str(relative_name))

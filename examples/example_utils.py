@@ -19,6 +19,7 @@ import pandas as pd
 
 from src.beam import beam_arguments, Experiment
 from src.beam import beam_logger as logger
+from src.beam import beam_path
 
 
 def bundle_example():
@@ -57,8 +58,11 @@ def bundle_example():
     # print(ab.module_dependencies)
     # print(ab.requirements)
     # print(ab.top_levels)
-    print(ab.module_to_tar('/tmp/beam.tar.gz'))
+    # print(ab.module_to_tar('/tmp/beam.tar.gz'))
 
+    tar_path = '/tmp/beam.tar.gz'
+    beam_path(tar_path).unlink(missing_ok=True)
+    ab.module_to_tar(tar_path)
 
 
 if __name__ == '__main__':

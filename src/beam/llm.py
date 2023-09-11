@@ -1180,37 +1180,6 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
 import re
 
-def text_splitter(text, separators=["\n\n", ". ", " "], chunk_size=100, length_function=None):
-    if length_function is None:
-        length_function = lambda x: int(1.5 * len(re.findall(r'\w+', x)))
-
-    chunks = [text]
-    split = [True]
-    for s in separators:
-        new_chunks = []
-        for i, c in enumerate(chunks):
-            if split[i]:
-                new_chunks.extend(c.split(s))
-            else:
-                new_chunks.append(c)
-
-        chunks = ['', ]
-        split = []
-        for c in new_chunks:
-            if length_function(c) > chunk_size:
-                chunks.append(c)
-                split.append(True)
-            elif length_function(chunks[-1]) + length_function(c) > chunk_size:
-                chunks.append(c)
-                split.append(False)
-            else:
-                chunks[-1] = f"{chunks[-1]}{s}{c}"
-
-        if len(split) < len(chunks):
-            split.append(False)
-
-    return chunks
-
 
 def text_splitter(text, separators=["\n\n", ". ", " "], chunk_size=100, length_function=None):
     if length_function is None:
