@@ -810,7 +810,10 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
 
             elif os.path.isfile('/workspace/configuration/config.csv'):
                 conf = pd.read_csv('/workspace/configuration/config.csv')
-                base_range = int(conf.set_index('parameters').loc['initials'])
+                try:
+                    base_range = int(conf.set_index('parameters').loc['initials'])
+                except:
+                    base_range = int(np.unique(conf.set_index('parameters').loc['initials'])[0])
 
             if base_range is not None:
                 port_range = range(base_range * 100, (base_range + 1) * 100)

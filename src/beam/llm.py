@@ -1192,11 +1192,13 @@ def text_splitter(text, separators=["\n\n", ". ", " "], chunk_size=100, length_f
 
     for c in open_chunks:
         if length_function(c) > chunk_size:
+            if len(next_chunk) > 0:
+                closed_chunks.append(next_chunk)
             closed_chunks.extend(text_splitter(c, separators[1:], chunk_size, length_function))
             next_chunk = closed_chunks.pop()
         elif length_function(next_chunk) + length_function(c) > chunk_size:
             closed_chunks.append(next_chunk)
-            next_chunk = ''
+            next_chunk = c
         else:
             next_chunk = f"{next_chunk}{s}{c}"
 

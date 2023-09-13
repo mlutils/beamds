@@ -35,6 +35,12 @@ class BeamClient(object):
 
         return response
 
+    def __getattr__(self, item):
+
+        def method(*args, **kwargs):
+            return self.post(f'alg/{item}', *args, **kwargs)
+
+        return method
 
 class BeamServer(object):
 
@@ -89,3 +95,68 @@ class BeamServer(object):
         io_results.seek(0)
 
         return send_file(io_results, mimetype="text/plain")
+
+
+
+
+# fastapi version
+#
+from fastapi import FastAPI, Depends, Request, File, UploadFile
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+import torch
+import io
+
+app = FastAPI()
+
+class AlgModel(BaseModel):
+    path: str
+    override_hparams: dict = None
+    Dataset: str = None
+    alg_args: list = []
+    alg_kwargs: dict = {}
+    dataset_args: list = []
+    dataset_kwargs: dict = {}
+
+class BeamServer:
+
+    def __init__(self, alg):
+        self.alg = alg
+
+    @classmethod
+    def build_algorithm_from_path(cls, alg_model: AlgModel):
+        experiment = Experiment.reload_from_path(alg_model.path, override_hparams=alg_model.override_hparams)
+        alg = experiment.algorithm_generator(Alg, Dataset=alg_model.Dataset,
+                                             alg_args=alg_model.alg_args,
+                                             alg_kwargs=alg_model.alg_kwargs,
+                                             dataset_args=alg_model.dataset_args,
+                                             dataset_kwargs=alg_model.dataset_kwargs)
+        return cls(alg)
+
+    def get_info(self):
+        return self.alg.experiment.vars_args
+
+    async def query_algorithm(self, method: str, args_file: UploadFile = File(...), kwargs_file: UploadFile = File(...)):
+        method = getattr(self.alg, method)
+        args = torch.load(await args_file.read())
+        kwargs = torch.load(await kwargs_file.read())
+
+        results = method(*args, **kwargs)
+
+        io_results = io.BytesIO()
+        torch.save(results, io_results)
+        io_results.seek(0)
+        return StreamingResponse(io_results, media_type="text/plain")
+
+beam_server_instance = BeamServer(alg) # You would initialize this with your actual algorithm
+
+@app.get("/")
+def get_info():
+    return beam_server_instance.get_info()
+
+@app.post("/alg/{method}")
+async def query_algorithm(method: str, args_file: UploadFile = File(...), kwargs_file: UploadFile = File(...)):
+    return await beam_server_instance.query_algorithm(method, args_file, kwargs_file)
+
+# In order to run the FastAPI app, you would typically use:
+# uvicorn your_module:app --host 0.0.0.0 --port 8000 --reload

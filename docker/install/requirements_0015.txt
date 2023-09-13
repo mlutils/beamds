@@ -19,6 +19,7 @@ chainlit
 pypdf2
 tabula-py
 pdfminer.six
+retriv
 
 
 # skypilot

@@ -1,111 +1,153 @@
 import torch
 
 from .processor import  Processor
-from .utils import check_type
+from .utils import check_type, as_tensor, beam_device
 import scipy
+from collections import Counter
+
+
+class TFIDF(Processor):
+
+    def __init__(self, *args, separator=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.state = {'idf': Counter()}
+
+    def add_single(self, x, x_type=None):
+
+        if x_type is None:
+            x_type = check_type(x)
+
+        if x_type.major == 'counter':
+            self.state['idf'].update(x)
+
+    def add(self, x):
+
+        x_type = check_type(x)
+        if x_type.major != 'container':
+            self.add_single(x, x_type)
+
+        elif x_type.major == 'list':
+            self.state['idf'].update()
+
+        self.state['chunks'].append(x)
+
+    def transform(self, x):
+
+        return x * self.idf
 
 
 class SparseSimilarity(Processor):
 
-    def __init__(self, *args, similarity='cosine', format='coo', vec_size=None, device=None, **kwars):
+    def __init__(self, *args, similarity='cosine', layout='coo', vec_size=None, device=None, **kwars):
 
         super().__init__(*args, **kwars)
         # possible similarity metrics: cosine, prod, l2, max
         self.similarity = similarity
-        self.format = format
-        self.device = device
+        self.layout = layout
+        self.device = beam_device(device)
         self.vec_size = vec_size
+        self.state = {'index': None, 'chunks': []}
+
+    def reset(self):
         self.state = {'index': None, 'chunks': []}
 
     def sparse_tensor(self, r, c, v,):
         device = self.device
         size = (r.max(), self.vec_size)
 
-        if self.format == 'coo':
+        r, c, v = as_tensor([r, c, v], device=device)
+
+        if self.layout == 'coo':
             return torch.sparse_coo_tensor(torch.stack([r, c]), v, size=size, device=device)
 
-        if self.format == 'csr':
-            return torch.sparse_csr_tensor(torch.cat(r), torch.cat(c), torch.cat(v), size=size, device=device)
+        if self.layout == 'csr':
+            return torch.sparse_csr_tensor(r, c, v, size=size, device=device)
 
-        raise ValueError(f"Unknown format: {self.format}")
+        raise ValueError(f"Unknown format: {self.layout}")
 
     @property
     def index(self):
 
         if len(self.state['chunks']):
+
             if self.state['index'] is None:
-                self.state['index'] = torch.cat(self.state['chunks'])
+                chunks = self.state['chunks']
             else:
-                self.state['index'] = torch.cat([self.state['index']] + self.state['chunks'])
+                chunks = [self.state['index']] + self.state['chunks']
+
+            self.state['index'] = torch.cat(chunks)
             self.state['chunks'] = []
 
         return self.state['index']
 
     @staticmethod
-    def scipy_csr_to_row_col_val(x):
-        row_indices = []
-        for i in range(x.shape[0]):
-            row_indices.extend([i] * (x.indptr[i + 1] - x.indptr[i]))
-        col_indices = x.indices
+    def scipy_to_row_col_val(x):
 
-        return row_indices, col_indices, x.data
+        r, c = x.nonzero()
+        return r, c, x.data
 
-    @staticmethod
-    def scipy_coo_to_row_col_val(x):
-        return x.row, x.col, x.data
-
-    def add(self, x):
+    def to_sparse(self, x):
 
         x_type = check_type(x)
 
         if x_type.minor == 'scipy_sparse':
-            if type(x) is scipy.sparse.csr_matrix:
-                r, c, v = self.scipy_csr_to_row_col_val(x)
-            else:
-                r, c, v = self.scipy_coo_to_row_col_val(x)
-            t = self.sparse_tensor(r, c, v)
+            r, c, v = self.scipy_to_row_col_val(x)
+            x = self.sparse_tensor(r, c, v)
 
-        elif x_type.minor == 'torch':
-            if self.format == 'coo':
-                t = x.to_sparse_coo()
-            elif self.format == 'csr':
-                t = x.to_sparse_csr()
+        elif x_type.minor in ['tensor', 'numpy']:
+
+            if x_type.minor == 'numpy':
+                x = as_tensor(x)
+
+            if self.layout == 'coo':
+                x = x.to_sparse_coo()
+            elif self.layout == 'csr':
+                x = x.to_sparse_csr()
             else:
-                raise ValueError(f"Unknown format: {self.format}")
+                raise ValueError(f"Unknown format: {self.layout}")
 
         elif x_type.minor == 'dict':
-            t = self.sparse_tensor(x['row'], x['col'], x['val'])
+            x = self.sparse_tensor(x['row'], x['col'], x['val'])
 
         elif x_type.minor == 'tuple':
-            t = self.sparse_tensor(x[0], x[1], x[2])
+            x = self.sparse_tensor(x[0], x[1], x[2])
 
         else:
             raise ValueError(f"Unsupported type: {x_type}")
 
-        self.state['chunks'].append(t)
+        return x
+
+    def add(self, x):
+
+        x = self.to_sparse(x)
+        self.state['chunks'].append(x)
 
     def search(self, x, k=1, **kwargs):
 
+        x = self.to_sparse(x)
+
         if self.similarity in ['cosine', 'l2', 'prod']:
 
-            if self.format == 'csr':
+            if self.layout == 'csr':
                 x = x.to_dense()
 
-            ab = torch.matmul(self.index, x.T)
+            ab = self.index @ x.T
 
             if self.similarity in ['l2', 'cosine']:
 
-                a = torch.norm(self.index, dim=1).unsqueeze(1)
-                b = torch.norm(x, dim=1).unsqueeze(0)
+                a2 = (self.index * self.index).sum(dim=1, keepdim=True)
+                b2 = (x * x).sum(dim=1, keepdim=True)
 
                 if self.similarity == 'cosine':
-                    dist = - ab / (a * b)
+
+                    s = 1 / torch.sqrt(a2 @ b2.T).to_dense()
+                    dist = - ab * s
                 else:
-                    dist = a ** 2 + b ** 2 - 2 * ab
+                    dist = a2 + b2 - 2 * ab
 
             elif self.similarity == 'prod':
                 dist = -ab
 
-        topk = torch.topk(dist.to_dense(), 5, dim=0, largest=False, sorted=True)
+        topk = torch.topk(dist.to_dense(), k, dim=0, largest=False, sorted=True)
 
-        return topk.values, topk.indices
+        return topk.values.T, topk.indices.T
