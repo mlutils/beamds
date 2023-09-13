@@ -10,26 +10,33 @@ class TFIDF(Processor):
 
     def __init__(self, *args, separator=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.state = {'idf': Counter()}
+        self.separator = separator
+        self.state = {'idf_counter': Counter()}
 
     def add_single(self, x, x_type=None):
 
         if x_type is None:
             x_type = check_type(x)
 
-        if x_type.major == 'counter':
-            self.state['idf'].update(x)
+        if x_type.major == 'scalar' and x_type.element == 'str':
+            x = x.split(self.separator)
+        elif x_type.minor == 'dict':
+            x = x.keys()
+
+        self.state['idf_counter'].update(set(x))
 
     def add(self, x):
 
         x_type = check_type(x)
-        if x_type.major != 'container':
+        if not (x_type.major == 'container' and x_type.minor != 'dict'):
             self.add_single(x, x_type)
 
-        elif x_type.major == 'list':
-            self.state['idf'].update()
+        else:
+            for xi in x:
+                self.add_single(xi)
 
-        self.state['chunks'].append(x)
+    def train(self):
+        pass
 
     def transform(self, x):
 
