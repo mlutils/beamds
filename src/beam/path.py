@@ -71,7 +71,7 @@ class BeamKey:
             self.keys[name] = value
             if store:
                 self.store(name, value)
-            return
+            return value
         elif name in self.keys:
             value = self.keys[name]
         elif name in self.hparams and self.hparams[name] is not None:

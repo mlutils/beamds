@@ -507,13 +507,13 @@ class Algorithm(object):
         if self._experiment is None:
             raise ValueError('No experiment is currently linked with the algorithm')
 
-        logger.debug(f"Fetching the experiment which is currently associated with the algorithm")
+        logger._debug_langchain(f"Fetching the experiment which is currently associated with the algorithm")
         return self._experiment
 
     # a setter function
     @experiment.setter
     def experiment(self, experiment):
-        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root}")
+        logger._debug_langchain(f"The algorithm is now linked to an experiment directory: {experiment.root}")
         self.trial = experiment.trial
         self.hparams = experiment.hparams
         self.set_experiment_properties()

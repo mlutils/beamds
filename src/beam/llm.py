@@ -19,6 +19,7 @@ import requests
 import uuid
 import time
 from argparse import Namespace
+from .logger import beam_logger as logger
 
 
 def simulate_openai_chat(model=None, **kwargs):
@@ -46,6 +47,7 @@ class LLMResponse:
         self.chat = chat
         self.object = "chat.completion" if chat else "text_completion"
         self.stream = stream
+        assert self.verify(), "Response is not valid"
 
     def __iter__(self):
         if not self.stream:
@@ -53,6 +55,9 @@ class LLMResponse:
         else:
             for r in self.response:
                 yield LLMResponse(r, self.prompt, self.llm, self.chat, self.stream)
+
+    def verify(self):
+        return self.llm.verify_response(self)
 
     @property
     def text(self):
@@ -75,31 +80,51 @@ class BeamLLM(LLM, Processor):
     instruction_history: Any
     _chat_history: Any = PrivateAttr()
     _url: Any = PrivateAttr()
+    _debug_langchain: Any = PrivateAttr()
     temperature: float = Field(1.0, ge=0.0, le=1.0)
     top_p: float = Field(1.0, ge=0.0, le=1.0)
     n: int = Field(1, ge=1)
     message_stream: bool = Field(False)
     stop: Optional[str] = Field(None)
     max_tokens: Optional[int] = Field(None)
+    max_new_tokens: Optional[int] = Field(None)
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     logit_bias: Optional[Dict[str, float]] = Field(None)
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
-                 frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, **kwargs):
+                 frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None,
+                 debug_langchain=False, **kwargs):
         super().__init__(*args, **kwargs)
 
+        if temperature is not None:
+            temperature = float(temperature)
         self.temperature = temperature
+        if top_p is not None:
+            top_p = float(top_p)
         self.top_p = top_p
+        if n is not None:
+            n = int(n)
         self.n = n
-        self.message_stream = stream
+        self.message_stream = bool(stream)
         self.stop = stop
+        if max_tokens is not None:
+            max_tokens = int(max_tokens)
         self.max_tokens = max_tokens
+        if max_new_tokens is not None:
+            max_new_tokens = int(max_new_tokens)
+        self.max_new_tokens = max_new_tokens
+        if presence_penalty is not None:
+            presence_penalty = float(presence_penalty)
         self.presence_penalty = presence_penalty
+        if frequency_penalty is not None:
+            frequency_penalty = float(frequency_penalty)
         self.frequency_penalty = frequency_penalty
+
         self.logit_bias = logit_bias
         self.scheme = scheme
         self._url = None
+        self._debug_langchain = debug_langchain
         self.instruction_history = []
 
         self.model = model
@@ -147,8 +172,12 @@ class BeamLLM(LLM, Processor):
     def _call(self, prompt: str, stop: Optional[List[str]] = None,
               run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs) -> str:
 
-        res = self.ask(prompt, stop=stop).text
-        return res
+        res = self.ask(prompt, stop=stop)
+        if self._debug_langchain:
+            logger.info(f"Prompt: {prompt}")
+            logger.info(f"Response: {res.text}")
+
+        return res.text
 
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
@@ -185,8 +214,8 @@ class BeamLLM(LLM, Processor):
     def _completion(self, **kwargs):
         raise NotImplementedError
 
-    def get_default_params(self, temperature=None,
-             top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None, logit_bias=None):
+    def get_default_params(self, temperature=None, top_p=None, n=None, stream=None, stop=None, max_tokens=None,
+                           presence_penalty=None, frequency_penalty=None, logit_bias=None, max_new_tokens=None):
 
         if temperature is None:
             temperature = self.temperature
@@ -202,20 +231,30 @@ class BeamLLM(LLM, Processor):
             frequency_penalty = self.frequency_penalty
         if logit_bias is None:
             logit_bias = self.logit_bias
+        if max_new_tokens is None:
+            max_new_tokens = self.max_new_tokens
+        if max_tokens is None:
+            max_tokens = self.max_tokens
 
-        return {'temperature': temperature,
-                'top_p': top_p,
-                'n': n,
-                'stream': stream,
-                'stop': stop,
-                'max_tokens': max_tokens,
-                'presence_penalty': presence_penalty,
-                'frequency_penalty': frequency_penalty,
-                'logit_bias': logit_bias}
+        kwargs = {'temperature': temperature,
+                  'top_p': top_p,
+                  'n': n,
+                  'stream': stream,
+                  'stop': stop,
+                  'max_tokens': max_tokens,
+                  'presence_penalty': presence_penalty,
+                  'frequency_penalty': frequency_penalty}
+
+        if max_new_tokens is not None:
+            kwargs['max_new_tokens'] = max_new_tokens
+        if logit_bias is not None:
+            kwargs['logit_bias'] = logit_bias
+
+        return kwargs
 
     def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
-             logit_bias=None, **kwargs):
+             logit_bias=None, max_new_tokens=None, **kwargs):
 
         '''
 
@@ -240,7 +279,7 @@ class BeamLLM(LLM, Processor):
                                                  stop=stop, max_tokens=max_tokens,
                                                  presence_penalty=presence_penalty,
                                                  frequency_penalty=frequency_penalty,
-                                                 logit_bias=logit_bias)
+                                                 logit_bias=logit_bias, max_new_tokens=max_new_tokens)
 
         if reset_chat:
             self.reset_chat()
@@ -261,15 +300,7 @@ class BeamLLM(LLM, Processor):
 
         messages.append(message)
 
-        kwargs = default_params
-        if logit_bias is not None:
-            kwargs['logit_bias'] = logit_bias
-        if max_tokens is not None:
-            kwargs['max_tokens'] = max_tokens
-        if stop is not None:
-            kwargs['stop'] = stop
-
-        response = self.chat_completion(messages=messages, **kwargs)
+        response = self.chat_completion(messages=messages, **default_params)
         self.add_to_chat(response.text, is_user=False)
 
         return response
@@ -323,7 +354,7 @@ class BeamLLM(LLM, Processor):
 
         return res
 
-    def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None,
+    def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False, **kwargs):
         """
         Ask a question to the model
@@ -346,7 +377,8 @@ class BeamLLM(LLM, Processor):
                                                  stop=stop, max_tokens=max_tokens,
                                                  presence_penalty=presence_penalty,
                                                  frequency_penalty=frequency_penalty,
-                                                 logit_bias=logit_bias)
+                                                 logit_bias=logit_bias,
+                                                 max_new_tokens=max_new_tokens)
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
@@ -377,6 +409,9 @@ class BeamLLM(LLM, Processor):
 
         res = self.ask(prompt, **kwargs).text
         return res
+
+    def verify_response(self, res):
+        return True
 
     def extract_text(self, res):
         raise NotImplementedError
@@ -419,7 +454,6 @@ class BeamLLM(LLM, Processor):
         res = res.split(" ")[0]
 
         i = pd.Series(['no', 'yes']).apply(partial(get_edit_ratio, s2=res)).idxmax()
-        # print(res)
         return bool(i)
 
     def quant_analysis(self, text, source=None, **kwargs):
@@ -628,22 +662,24 @@ class OpenAIBase(BeamLLM):
 
     def _chat_completion(self, **kwargs):
         self.sync_openai()
-        # todo: remove this when logit_bias is supported
-        if 'logit_bias' in kwargs:
-            kwargs.pop('logit_bias')
         return openai.ChatCompletion.create(model=self.model, **kwargs)
 
     def _completion(self, **kwargs):
         self.sync_openai()
-        # todo: remove this when logit_bias is supported
-        if 'logit_bias' in kwargs:
-            kwargs.pop('logit_bias')
         return openai.Completion.create(engine=self.model, **kwargs)
+
+    def verify_response(self, res):
+        res = res.response
+        finish_reason = res.choices[0].finish_reason
+        if finish_reason != 'stop':
+            logger.warning(f"finish_reason is {finish_reason}")
+        return True
 
     def extract_text(self, res):
 
         stream = res.stream
         res = res.response
+
         if not self.is_chat:
             res = res.choices[0].text
         else:
@@ -782,9 +818,9 @@ class TGILLM(FCConversationLLM):
     def is_completions(self):
         return True
 
-    def generate_tgi_kwargs(self, prompt, **kwargs):
+    def process_kwargs(self, prompt, **kwargs):
 
-        generate_kwargs = {}
+        processed_kwargs = {}
 
         max_tokens = kwargs.pop('max_tokens', None)
         max_new_tokens = None
@@ -794,19 +830,19 @@ class TGILLM(FCConversationLLM):
 
         max_new_tokens = kwargs.pop('max_new_tokens', max_new_tokens)
         if max_new_tokens is not None:
-            generate_kwargs['max_new_tokens'] = max_new_tokens
+            processed_kwargs['max_new_tokens'] = max_new_tokens
 
         temperature = kwargs.pop('temperature', None)
         if temperature is not None:
-            generate_kwargs['temperature'] = temperature
+            processed_kwargs['temperature'] = temperature
 
         top_p = kwargs.pop('top_p', None)
         if top_p is not None and 0 < top_p < 1:
-            generate_kwargs['top_p'] = top_p
+            processed_kwargs['top_p'] = top_p
 
         best_of = kwargs.pop('n', None)
         if best_of is not None and best_of > 1:
-            generate_kwargs['best_of'] = best_of
+            processed_kwargs['best_of'] = best_of
 
         stop_sequences = kwargs.pop('stop', None)
         if stop_sequences is None:
@@ -818,29 +854,29 @@ class TGILLM(FCConversationLLM):
             stop_sequences.append(self.stop_sequence)
 
         if len(stop_sequences) > 0:
-            generate_kwargs['stop_sequences'] = stop_sequences
+            processed_kwargs['stop_sequences'] = stop_sequences
 
         if 'top_k' in kwargs:
-            generate_kwargs['top_k'] = kwargs.pop('top_k')
+            processed_kwargs['top_k'] = kwargs.pop('top_k')
 
         if 'truncate' in kwargs:
-            generate_kwargs['truncate'] = kwargs.pop('truncate')
+            processed_kwargs['truncate'] = kwargs.pop('truncate')
 
         if 'typical_p' in kwargs:
-            generate_kwargs['typical_p'] = kwargs.pop('typical_p')
+            processed_kwargs['typical_p'] = kwargs.pop('typical_p')
 
         if 'watermark' in kwargs:
-            generate_kwargs['watermark'] = kwargs.pop('watermark')
+            processed_kwargs['watermark'] = kwargs.pop('watermark')
 
         if 'repetition_penalty' in kwargs:
-            generate_kwargs['repetition_penalty'] = kwargs.pop('repetition_penalty')
+            processed_kwargs['repetition_penalty'] = kwargs.pop('repetition_penalty')
 
         decoder_input_details = kwargs.pop('logprobs', None)
         if decoder_input_details is not None:
-            generate_kwargs['decoder_input_details'] = decoder_input_details
+            processed_kwargs['decoder_input_details'] = decoder_input_details
 
         if 'seed' in kwargs:
-            generate_kwargs['seed'] = kwargs.pop('seed')
+            processed_kwargs['seed'] = kwargs.pop('seed')
 
         do_sample = None
         if temperature is not None and temperature > 0:
@@ -848,20 +884,20 @@ class TGILLM(FCConversationLLM):
         do_sample = kwargs.pop('do_sample', do_sample)
 
         if do_sample is not None:
-            generate_kwargs['do_sample'] = do_sample
+            processed_kwargs['do_sample'] = do_sample
 
-        return generate_kwargs
+        return processed_kwargs
 
     def _completion(self, prompt=None, **kwargs):
 
         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
-        generate_kwargs = self.generate_tgi_kwargs(prompt, **kwargs)
+        generate_kwargs = self.process_kwargs(prompt, **kwargs)
         return self._client.generate(prompt, **generate_kwargs)
 
     def _chat_completion(self, messages=None, **kwargs):
 
         prompt = self.get_prompt(messages)
-        generate_kwargs = self.generate_tgi_kwargs(prompt, **kwargs)
+        generate_kwargs = self.process_kwargs(prompt, **kwargs)
 
         return self._client.generate(prompt, **generate_kwargs)
 
@@ -924,13 +960,33 @@ class FastAPILLM(FCConversationLLM):
     def is_completions(self):
         return True
 
+    def process_kwargs(self, prompt, **kwargs):
+
+        kwargs_processed = {}
+
+        max_tokens = kwargs.pop('max_tokens', None)
+        max_new_tokens = None
+
+        if max_tokens is not None:
+            max_new_tokens = int(max_tokens - len(prompt.split()) * 1.5)
+
+        max_new_tokens = kwargs.pop('max_new_tokens', max_new_tokens)
+        if max_new_tokens is not None:
+            kwargs_processed['max_new_tokens'] = max_new_tokens
+
+        temperature = kwargs.pop('temperature', None)
+        if temperature is not None:
+            kwargs_processed['temp'] = temperature
+
+        return kwargs_processed
+
     def _chat_completion(self, messages=None, **kwargs):
 
         d = {}
         d['model_name'] = self.model
         d['consumer'] = self.consumer
         d['input'] = self.get_prompt(messages)
-        d['hyper_params'] = kwargs
+        d['hyper_params'] = self.process_kwargs(kwargs)
 
         res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
         return res.json()
@@ -941,10 +997,18 @@ class FastAPILLM(FCConversationLLM):
         d['model_name'] = self.model
         d['consumer'] = self.consumer
         d['input'] = self.get_prompt([{'role': 'user', 'content': prompt}])
-        d['hyper_params'] = kwargs
+        d['hyper_params'] = self.process_kwargs(kwargs)
 
         res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
         return res.json()
+
+    def verify_response(self, res):
+        try:
+            r = res.response['res']
+        except Exception as e:
+            logger.error(f"Error in response: {res.response}")
+            raise e
+        return True
 
     def extract_text(self, res):
         return res.response['res']
@@ -1153,7 +1217,7 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
         api_key = kwargs.pop('api_key')
 
     model = url.path
-    model = model.lstrip('/')
+    model = model.strip('/')
     if not model:
         model = None
 
