@@ -143,7 +143,7 @@ def batch_augmentation(augmentations):
 
 def finite_iterations(iterator, n):
     for i, out in enumerate(iterator):
-        yield out
+        yield i, out
         if i + 1 == n:
             break
 

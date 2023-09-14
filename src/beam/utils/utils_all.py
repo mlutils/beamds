@@ -1,3 +1,4 @@
+import itertools
 import os, sys
 from collections import defaultdict
 import numpy as np
@@ -1185,6 +1186,17 @@ def squeeze_scalar(x, x_type=None):
             return str(x)
 
     return x
+
+
+def dictionary_iterator(d):
+
+    d = {k: iter(v) for k, v in d.items()}
+    for _ in itertools.count():
+        try:
+            yield {k: next(v) for k, v in d.items()}
+        except KeyError:
+            return
+
 
 
 def get_item_with_tuple_key(x, key):

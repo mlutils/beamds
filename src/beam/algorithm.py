@@ -9,7 +9,7 @@ import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
     as_numpy, beam_device, retrieve_name, filter_dict, BeamDict, \
-    recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict
+    recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict, dictionary_iterator
 from .config import beam_arguments, get_beam_parser
 from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from .experiment import Experiment
@@ -79,9 +79,9 @@ class Algorithm(object):
         self.optimizers_steps = {}
         self.epoch_length = None
 
-        self.dataset = None
-        self.persistent_dataloaders = {}
-        self.dataloaders = {}
+        self.datasets = {}
+        self.persistent_dataloaders = defaultdict(dict)
+        self.dataloaders = defaultdict(dict)
         self.eval_subset = None
         self.objective = None
         self.best_objective = None
@@ -111,6 +111,14 @@ class Algorithm(object):
             return self.__dict__[item]
         else:
             return self.networks[item]
+
+    @property
+    def dataset(self):
+        if not len(self.datasets):
+            return None
+        if len(self.datasets) == 1:
+            return list(self.datasets.values())[0]
+        return self.datasets
 
     def set_reporter(self, reporter=None):
         self.reporter = reporter
@@ -661,12 +669,15 @@ class Algorithm(object):
             ki = None
         return k, ki
 
-    def load_dataset(self, dataset, batch_size_train=None, batch_size_eval=None,
+    def load_dataset(self, dataset, *args, name=None, **kwargs):
+        if name is None:
+            name = 'dataset'
+        self.load_datasets({name: dataset}, *args, **kwargs)
+
+    def load_datasets(self, datasets, set_epoch_length='first', batch_size_train=None, batch_size_eval=None,
                      oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
                      worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
                      dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
-
-        self.dataset = dataset
 
         batch_size_train = self.get_hparam('batch_size_train') if batch_size_train is None else batch_size_train
         batch_size_eval = self.get_hparam('batch_size_eval') if batch_size_eval is None else batch_size_eval
@@ -679,56 +690,68 @@ class Algorithm(object):
         sample_size = self.get_hparam('sample_size') if sample_size is None else sample_size
         timeout = self.get_hparam('data_fetch_timeout') if timeout is None else timeout
 
-        self.persistent_dataloaders = {}
-        self.dataloaders = {}
-
-        if not isinstance(dataset, dict):
-            subsets = dataset.indices.keys()
-        else:
-            subsets = dataset.keys()
-
-        self.eval_subset = 'validation' if 'validation' in subsets else 'test'
-
-        for s in subsets:
+        for i, (k, dataset) in enumerate(datasets.items()):
 
             if not isinstance(dataset, dict):
-                sampler = dataset.build_sampler(batch_size_eval, subset=s, persistent=False)
-                d = dataset
+                subsets = dataset.indices.keys()
             else:
-                sampler = dataset[s].build_sampler(batch_size_eval, subset=None, persistent=False)
-                d = dataset[s]
+                subsets = dataset.keys()
 
-            self.dataloaders[s] = d.build_dataloader(sampler, num_workers=self.get_hparam('cpu_workers'),
-                                                           pin_memory=self.pin_memory,
-                                                           timeout=timeout, collate_fn=collate_fn,
-                                                           worker_init_fn=worker_init_fn,
-                                                           multiprocessing_context=multiprocessing_context,
-                                                           generator=generator,
-                                                           prefetch_factor=prefetch_factor)
-        for s in ['train', self.eval_subset]:
+            self.eval_subset = 'validation' if 'validation' in subsets else 'test'
 
-            if not isinstance(dataset, dict):
-                sampler = dataset.build_sampler(batch_size_train, subset=s, persistent=True, oversample=oversample,
-                                                weight_factor=weight_factor, expansion_size=expansion_size,
-                                                dynamic=dynamic, buffer_size=buffer_size,
-                                                probs_normalization=probs_normalization,
-                                                sample_size=sample_size)
-                d = dataset
-            else:
-                sampler = dataset[s].build_sampler(batch_size_train, subset=None, persistent=True, oversample=oversample,
-                                                   weight_factor=weight_factor, expansion_size=expansion_size,
-                                                   dynamic=dynamic, buffer_size=buffer_size,
-                                                   probs_normalization=probs_normalization,
-                                                   sample_size=sample_size)
-                d = dataset[s]
+            for s in subsets:
 
-            self.persistent_dataloaders[s] = d.build_dataloader(sampler, num_workers=self.get_hparam('cpu_workers'),
-                                                                      pin_memory=self.pin_memory,
-                                                                      timeout=timeout, collate_fn=collate_fn,
-                                                                      worker_init_fn=worker_init_fn,
-                                                                      multiprocessing_context=multiprocessing_context,
-                                                                      generator=generator,
-                                                                      prefetch_factor=prefetch_factor)
+                if not isinstance(dataset, dict):
+                    sampler = dataset.build_sampler(batch_size_eval, subset=s, persistent=False)
+                    d = dataset
+                else:
+                    sampler = dataset[s].build_sampler(batch_size_eval, subset=None, persistent=False)
+                    d = dataset[s]
+
+                self.dataloaders[k][s] = d.build_dataloader(sampler, num_workers=self.get_hparam('cpu_workers'),
+                                                               pin_memory=self.pin_memory,
+                                                               timeout=timeout, collate_fn=collate_fn,
+                                                               worker_init_fn=worker_init_fn,
+                                                               multiprocessing_context=multiprocessing_context,
+                                                               generator=generator,
+                                                               prefetch_factor=prefetch_factor)
+            for s in ['train', self.eval_subset]:
+
+                if not isinstance(dataset, dict):
+                    sampler = dataset.build_sampler(batch_size_train, subset=s, persistent=True, oversample=oversample,
+                                                    weight_factor=weight_factor, expansion_size=expansion_size,
+                                                    dynamic=dynamic, buffer_size=buffer_size,
+                                                    probs_normalization=probs_normalization,
+                                                    sample_size=sample_size)
+                    d = dataset
+                else:
+                    sampler = dataset[s].build_sampler(batch_size_train, subset=None, persistent=True,
+                                                       oversample=oversample, weight_factor=weight_factor,
+                                                       expansion_size=expansion_size,
+                                                       dynamic=dynamic, buffer_size=buffer_size,
+                                                       probs_normalization=probs_normalization,
+                                                       sample_size=sample_size)
+                    d = dataset[s]
+
+                self.persistent_dataloaders[k][s] = {'dataloader': d.build_dataloader(sampler,
+                                                                  num_workers=self.get_hparam('cpu_workers'),
+                                                                  pin_memory=self.pin_memory,
+                                                                  timeout=timeout, collate_fn=collate_fn,
+                                                                  worker_init_fn=worker_init_fn,
+                                                                  multiprocessing_context=multiprocessing_context,
+                                                                  generator=generator,
+                                                                  prefetch_factor=prefetch_factor),
+                                                  'dataset': d,
+                                                  'sampler': sampler,
+                                                  }
+                self.persistent_dataloaders[k][s]['iterator'] = enumerate(self.persistent_dataloaders[s]['dataloader'])
+
+            if (set_epoch_length == 'first' and i == 0) or k==set_epoch_length:
+                self.set_epoch_length(dataset)
+
+
+
+    def set_epoch_length(self, dataset):
 
         self.epoch_length = {'train': None, self.eval_subset: None}
 
@@ -750,11 +773,11 @@ class Algorithm(object):
             self.epoch_length[self.eval_subset] = self.get_hparam('epoch_length_eval')
 
         if self.epoch_length['train'] is None:
-            dataset = self.persistent_dataloaders['train'].dataset
+            dataset = self.persistent_dataloaders['train']['dataset']
             self.epoch_length['train'] = len(dataset.indices['train'])
 
         if self.epoch_length[self.eval_subset] is None:
-            dataset = self.persistent_dataloaders[self.eval_subset].dataset
+            dataset = self.persistent_dataloaders[self.eval_subset]['dataset']
             self.epoch_length[self.eval_subset] = len(dataset.indices[self.eval_subset])
 
         if self.get_hparam('scale_epoch_by_batch_size'):
@@ -781,6 +804,7 @@ class Algorithm(object):
 
                 scheduler.update_total_steps(epochs=self.n_epochs,
                                              steps_per_epochs=self.epoch_length['train'], initial_state=state)
+
 
     def get_optimizer_name(self, opt):
         i = id(opt)
@@ -867,10 +891,13 @@ class Algorithm(object):
             return True
         return False
 
-    def build_dataloader(self, subset):
+    def build_dataloaders(self, subset):
+        return {k: self.build_dataloader(subset, name=k) for k in self.dataloaders.keys()}
+
+    def build_dataloader(self, subset, name='dataset'):
 
         if type(subset) is str:
-            dataloader = self.dataloaders[subset]
+            dataloader = self.dataloaders[name][subset]
         elif isinstance(subset, torch.utils.data.DataLoader):
             dataloader = subset
         elif isinstance(subset, torch.utils.data.Dataset):
@@ -925,19 +952,32 @@ class Algorithm(object):
                 except:
                     raise Exception(f"Unknown scheduler type: {type(scheduler)}")
 
-    def data_generator(self, subset, max_iterations=None, persistent=False):
+    def data_generator(self, subset, max_iterations=None):
 
-        if persistent:
-            dataloader = self.persistent_dataloaders[subset]
-        else:
-            dataloader = self.build_dataloader(subset)
-        for i, (ind, label, sample) in enumerate(dataloader):
+        dataloader = enumerate(self.build_dataloader(subset))
+        for i, (ind, label, sample) in dataloader:
             if max_iterations is not None and i >= max_iterations:
                 break
             sample = to_device(sample, self.device, half=self.half)
             label = to_device(label, self.device, half=False)
             yield i, DataBatch(index=ind, label=label, data=sample)
 
+    def persistent_data_generator(self, subset):
+
+        dataloaders = {k: self.persistent_dataloaders[k][subset]['iterator']
+                      for k in self.persistent_dataloaders.keys()}
+
+        for i, samples in dictionary_iterator(dataloaders):
+
+            for k, (ind, label, sample) in samples.items():
+
+                sample = to_device(sample, self.device, half=self.half)
+                label = to_device(label, self.device, half=False)
+                samples[k] = DataBatch(index=ind, label=label, data=sample)
+
+            if len(samples) == 1:
+                samples = next(iter(samples.values()))
+            yield i, samples
     def preprocess_epoch(self, epoch=None, subset=None, training=True, **kwargs):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
@@ -991,11 +1031,21 @@ class Algorithm(object):
 
             self.preprocess_epoch(epoch=n, training=training)
 
-            data_generator = self.data_generator(subset, persistent=True)
-            for i, (ind, label, sample) in self.reporter.iterate(finite_iterations(data_generator, self.epoch_length[subset]),
+            data_generator = self.persistent_data_generator(subset)
+            for i, (i_tot, samples) in self.reporter.iterate(finite_iterations(data_generator,
+                                                                                            self.epoch_length[subset]),
                                   enable=self.enable_tqdm, notebook=(not self.ddp and self.is_notebook),
                                   threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                   desc=subset, total=self.epoch_length[subset]):
+
+                if type(samples) is DataBatch:
+                    ind = samples.index
+                    label = samples.label
+                    sample = samples.data
+                else:
+                    sample = samples
+                    ind = None
+                    label = None
 
                 with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=self.amp):
                     self.iteration(sample=sample, counter=i, training=training, index=ind, label=label)
@@ -1103,8 +1153,8 @@ class Algorithm(object):
 
         return False
 
-    def __call__(self, subset, predicting=False, enable_tqdm=None, max_iterations=None, head=None, eval_mode=True,
-                 return_dataset=None, **kwargs):
+    def __call__(self, subset, dataset_name='dataset', predicting=False, enable_tqdm=None, max_iterations=None,
+                 head=None, eval_mode=True, return_dataset=None, **kwargs):
 
         self.set_reporter(BeamReport(objective=self.get_hparam('objective')))
 
@@ -1129,7 +1179,7 @@ class Algorithm(object):
                 else:
                     return_dataset = True
 
-            dataloader = self.build_dataloader(subset)
+            dataloader = self.build_dataloader(subset, name=dataset_name)
             dataset = dataloader.dataset
 
             batch_size = self.batch_size_eval

@@ -347,8 +347,8 @@ class UniversalDataset(torch.utils.data.Dataset):
         else:
             pin_memory = pin_memory and pin_memory_
 
-        persistent_workers = (num_workers > 0 and sampler.once)
-        prefetch_factor = prefetch_factor if num_workers > 0 else None
+        persistent_workers = (num_workers > 0 and not sampler.once)
+
         return torch.utils.data.DataLoader(self, sampler=sampler, batch_size=None,
                                              num_workers=num_workers, pin_memory=pin_memory, timeout=timeout,
                                              worker_init_fn=worker_init_fn, collate_fn=collate_fn,
@@ -643,6 +643,7 @@ class UniversalBatchSampler(object):
                 return
 
     def __iter__(self):
+        print("new iterator")
         return self.samples_iterator()
 
     def __len__(self):
