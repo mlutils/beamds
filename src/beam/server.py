@@ -54,13 +54,12 @@ class BeamServer(object):
         self.app = Flask(__name__)
         self.app.add_url_rule('/', view_func=self.get_info)
 
-        if isinstance(obj, types.FunctionType):
-            self.alg = None
-            self.func = obj
+        self.alg = obj
+        self.func = obj
+
+        if callable(obj):
             self.app.add_url_rule('/call', view_func=self.call_function, methods=['POST'])
-        else:
-            self.alg = obj
-            self.func = None
+        elif isinstance(obj, object):
             self.app.add_url_rule('/alg/<method>', view_func=self.query_algorithm, methods=['POST'])
 
     @staticmethod
