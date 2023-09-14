@@ -49,17 +49,17 @@ class BeamClient(object):
 
 class BeamServer(object):
 
-    def __init__(self, alg_or_func):
+    def __init__(self, obj):
 
         self.app = Flask(__name__)
         self.app.add_url_rule('/', view_func=self.get_info)
 
-        if isinstance(alg_or_func, types.FunctionType):
+        if isinstance(obj, types.FunctionType):
             self.alg = None
-            self.func = alg_or_func
+            self.func = obj
             self.app.add_url_rule('/call', view_func=self.call_function, methods=['POST'])
         else:
-            self.alg = alg_or_func
+            self.alg = obj
             self.func = None
             self.app.add_url_rule('/alg/<method>', view_func=self.query_algorithm, methods=['POST'])
 

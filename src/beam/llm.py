@@ -700,9 +700,12 @@ class FCConversationLLM(BeamLLM):
     _ma: Any = PrivateAttr()
     _conv: Any = PrivateAttr()
 
-    def __init__(self, *args, model=None, **kwargs):
+    def __init__(self, *args, model=None, model_adapter=None, **kwargs):
 
         super().__init__(*args, model=model, **kwargs)
+
+        if model_adapter is not None:
+            model = model_adapter
 
         from fastchat.model.model_adapter import get_model_adapter
         self._ma = get_model_adapter(model)
@@ -986,7 +989,7 @@ class FastAPILLM(FCConversationLLM):
         d['model_name'] = self.model
         d['consumer'] = self.consumer
         d['input'] = self.get_prompt(messages)
-        d['hyper_params'] = self.process_kwargs(kwargs)
+        d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
 
         res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
         return res.json()
@@ -997,7 +1000,7 @@ class FastAPILLM(FCConversationLLM):
         d['model_name'] = self.model
         d['consumer'] = self.consumer
         d['input'] = self.get_prompt([{'role': 'user', 'content': prompt}])
-        d['hyper_params'] = self.process_kwargs(kwargs)
+        d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
 
         res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
         return res.json()
