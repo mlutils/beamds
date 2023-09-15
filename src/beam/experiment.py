@@ -61,22 +61,21 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
     if dataset_kwargs is None:
         dataset_kwargs = dict()
 
-    if inspect.isclass(Dataset):
-        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
-    elif inspect.isfunction(Dataset):
-        dataset = Dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+    if Dataset is not None and not isinstance(Dataset, dict):
+        datasets = {'dataset': Dataset}
     else:
-        dataset = Dataset
+        datasets = Dataset
+
+    if datasets is not None:
+        for k, v in datasets.items():
+            if inspect.isclass(v):
+                datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
+            elif inspect.isfunction(v):
+                datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
 
     if inspect.isclass(Alg):
 
-        ars = inspect.getfullargspec(Alg)
-
-        # don't pass dataset if the algorithm cannot handle it on initialization
-        if 'dataset' in ars.args or ars.varargs is not None:
-            alg = Alg(experiment.hparams, *alg_args, dataset=dataset, experiment=experiment, **alg_kwargs)
-        else:
-            alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
+        alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
@@ -86,8 +85,8 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
 
     alg.experiment = experiment
 
-    if alg.dataset is None and dataset is not None:
-        alg.load_dataset(dataset)
+    if datasets is not None:
+        alg.load_datasets(datasets)
 
     return alg
 
