@@ -51,7 +51,7 @@ def bundle_example():
 
     from src.beam.auto import AutoBeam
 
-    ab = AutoBeam(alg)
+    # ab = AutoBeam(alg)
 
     # print(ab.module_spec)
     # print(ab.module_walk)
@@ -60,9 +60,11 @@ def bundle_example():
     # print(ab.top_levels)
     # print(ab.module_to_tar('/tmp/beam.tar.gz'))
 
-    tar_path = '/tmp/beam.tar.gz'
-    beam_path(tar_path).unlink(missing_ok=True)
-    ab.module_to_tar(tar_path)
+    autobeam_path = '/tmp/autobeam'
+    beam_path(autobeam_path).rmtree()
+
+    # ab.module_to_tar(tar_path)
+    AutoBeam.to_bundle(alg, autobeam_path)
 
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ import pandas as pd
 
 import json
 import numpy as np
+import string
 
 from functools import partial
 from .utils import get_edit_ratio, normalize_host, BeamURL
@@ -34,6 +35,24 @@ def simulate_openai_completion(model=None, **kwargs):
 
 openai_simulator = Namespace(ChatCompletion=Namespace(create=simulate_openai_chat),
                              Completion=Namespace(create=simulate_openai_completion))
+
+
+def estimate_tokens(s):
+    # Pattern to capture:
+    # 1. Any single punctuation or whitespace character.
+    # 2. Sequences of up to 4 alphabetic characters.
+    # 3. Sequences of up to 3 numeric characters.
+    pattern = f"[{re.escape(string.whitespace + string.punctuation)}]|[A-Za-z]{{1,4}}|\d{{1,3}}"
+
+    matches = re.findall(pattern, s)
+    token_count = len(matches)
+
+    # For the remaining unmatched characters in the string (those that aren't part of the recognized patterns),
+    # we count each character as a separate token.
+    unmatched_characters = re.sub(pattern, "", s)
+    token_count += len(unmatched_characters)
+
+    return token_count
 
 
 class LLMResponse:
@@ -91,10 +110,11 @@ class BeamLLM(LLM, Processor):
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     logit_bias: Optional[Dict[str, float]] = Field(None)
+    _len_function: Any = PrivateAttr()
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None,
-                 debug_langchain=False, **kwargs):
+                 debug_langchain=False, len_function=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         if temperature is not None:
@@ -136,6 +156,7 @@ class BeamLLM(LLM, Processor):
                       "total_tokens": 0}
 
         self._chat_history = None
+        self._len_function = len_function
         self.reset_chat()
 
     @property
@@ -813,6 +834,11 @@ class TGILLM(FCConversationLLM):
 
         return res
 
+    def len_function(self, prompt):
+        if self._len_function is None:
+            return estimate_tokens(prompt)
+        return self._len_function(prompt)
+
     @property
     def is_chat(self):
         return False
@@ -829,7 +855,7 @@ class TGILLM(FCConversationLLM):
         max_new_tokens = None
 
         if max_tokens is not None:
-            max_new_tokens = int(max_tokens - len(prompt.split()) * 1.5)
+            max_new_tokens = max_tokens - self.len_function(prompt)
 
         max_new_tokens = kwargs.pop('max_new_tokens', max_new_tokens)
         if max_new_tokens is not None:
@@ -971,7 +997,7 @@ class FastAPILLM(FCConversationLLM):
         max_new_tokens = None
 
         if max_tokens is not None:
-            max_new_tokens = int(max_tokens - len(prompt.split()) * 1.5)
+            max_new_tokens = max_tokens - self.len_function(prompt)
 
         max_new_tokens = kwargs.pop('max_new_tokens', max_new_tokens)
         if max_new_tokens is not None:
@@ -991,7 +1017,7 @@ class FastAPILLM(FCConversationLLM):
         d['input'] = self.get_prompt(messages)
         d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
 
-        res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
+        res = requests.post(f"http://{self.hostname}/predict/once", headers=self.headers, json=d)
         return res.json()
 
     def _completion(self, prompt=None, **kwargs):
@@ -1002,12 +1028,17 @@ class FastAPILLM(FCConversationLLM):
         d['input'] = self.get_prompt([{'role': 'user', 'content': prompt}])
         d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
 
-        res = requests.post(f"http://{self.hostname}/predict/loop", headers=self.headers, json=d)
+        res = requests.post(f"http://{self.hostname}/predict/once", headers=self.headers, json=d)
         return res.json()
 
     def verify_response(self, res):
         try:
-            r = res.response['res']
+
+            if not res.response['is_done']:
+                logger.warning(f"Model {self.model} is_done=False.")
+
+            assert('res' in res.response, f"Response does not contain 'res' key")
+
         except Exception as e:
             logger.error(f"Error in response: {res.response}")
             raise e
@@ -1015,7 +1046,6 @@ class FastAPILLM(FCConversationLLM):
 
     def extract_text(self, res):
         return res.response['res']
-
 
 class HuggingFaceLLM(BeamLLM):
     config: Any

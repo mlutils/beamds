@@ -225,8 +225,17 @@ class AutoBeam:
         return self._top_levels
 
     @classmethod
-    def to_bundle(cls, module):
-        return cls(module)
+    def to_bundle(cls, obj, path=None):
+
+        if path is None:
+            path = '.'
+        path = beam_path(path)
+
+        ab = cls(obj)
+        path.mkdir(parents=True, exist_ok=True)
+        ab.write_requirements(path.joinpath('requirements.txt'))
+        ab.module_to_tar(path.joinpath('modules.tar.gz'))
+        obj.save_state(path.joinpath('state.pt'))
 
     def get_pip_package(self, module_name):
 
@@ -250,7 +259,8 @@ class AutoBeam:
 
     def write_requirements(self, path):
         path = beam_path(path)
-        path.write(ext='.txt', content='\n'.join(self.requirements))
+        content = '\n'.join(self.requirements)
+        path.write(content, ext='.txt')
 
     def module_to_tar(self, path):
         path = beam_path(path)

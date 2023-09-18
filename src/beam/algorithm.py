@@ -1282,35 +1282,45 @@ class Algorithm(object):
                 else:
                     dataset.eval()
 
-    def save_checkpoint(self, path=None, aux=None, pickle_model=False):
+    def save_state(self, path=None):
+        self.save_checkpoint(path=path, networks=True, optimizers=False, schedulers=False,
+                        processors=True, scaler=False, scalers=False, swa_schedulers=False, swa_networks=False,
+                        aux=None, pickle_model=False)
+
+    def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
+                        processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,
+                        aux=None, pickle_model=False):
 
         path = beam_path(path)
         state = {'aux': aux, 'epoch': self.epoch, 'best_objective': self.best_objective, 'best_epoch': self.best_epoch,}
         wrapper = copy.deepcopy if path is None else (lambda x: x)
 
-        for k, net in self.networks.items():
+        for k, net in filter_dict(self.networks, networks).items():
             state[f"{k}_parameters"] = wrapper(net.state_dict())
             if pickle_model:
                 state[f"{k}_model"] = net
 
-        for k, optimizer in self.optimizers.items():
+        for k, optimizer in filter_dict(self.optimizers, optimizers).items():
             state[f"{k}_optimizer"] = wrapper(optimizer.state_dict())
 
-        for k, scheduler in self.schedulers.items():
+        for k, scheduler in filter_dict(self.schedulers, schedulers).items():
             state[f"{k}_scheduler"] = wrapper(scheduler.state_dict())
 
-        for k, processor in self.processors.items():
+        for k, processor in filter_dict(self.processors, processors).items():
             state[f"{k}_processor"] = wrapper(processor.state_dict())
 
-        for k, swa_scheduler in self.swa_schedulers.items():
+        for k, swa_scheduler in filter_dict(self.swa_schedulers, swa_schedulers).items():
             state[f"{k}_swa_scheduler"] = wrapper(swa_scheduler.state_dict())
 
-        for k, swa_network in self.swa_networks.items():
+        for k, swa_network in filter_dict(self.swa_networks, swa_networks).items():
             state[f"{k}_swa_network"] = wrapper(swa_network.state_dict())
 
-        state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
-        state['scalers'] = {k: scaler.state_dict()
-                            if scaler is not None else None for k, scaler in self.scalers.items()}
+        if scaler:
+            state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
+
+        if scalers:
+            state['scalers'] = {k: scaler.state_dict()
+                                if scaler is not None else None for k, scaler in self.scalers.items()}
 
         if path is not None:
             path.write(state, ext='.pt')
@@ -1393,6 +1403,9 @@ class Algorithm(object):
             self.epoch = state['epoch']
 
         return state['aux']
+
+    def set_auxiliary_state(self, aux):
+        pass
 
     def optimize_for_inference(self, networks=True, **kwargs):
 
