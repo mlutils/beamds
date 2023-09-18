@@ -82,8 +82,6 @@ class BeamReport(object):
             total_epochs = epoch + 1
         self.total_epochs = total_epochs
 
-
-
     def reset_time(self, first_epoch=None, n_epochs=None):
         self.t0 = time.time()
         self.n_epochs = n_epochs
@@ -293,7 +291,7 @@ class BeamReport(object):
         for name in self.subsets_keys[subset]['scalar']:
 
             k = f'{subset}/{name}' if subset is not None else name
-            v= self.scalar[k]
+            v = self.scalar[k]
 
             self.scalar[k] = self.stack_scalar(v, batch_size=batch_size)
             if name == self.objective_name and track_objective:

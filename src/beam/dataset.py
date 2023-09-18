@@ -643,7 +643,6 @@ class UniversalBatchSampler(object):
                 return
 
     def __iter__(self):
-        print("new iterator")
         return self.samples_iterator()
 
     def __len__(self):

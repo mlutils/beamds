@@ -141,13 +141,6 @@ def batch_augmentation(augmentations):
     return transforms.Lambda(ba)
 
 
-def finite_iterations(iterator, n):
-    for i, out in enumerate(iterator):
-        yield i, out
-        if i + 1 == n:
-            break
-
-
 def hash_tensor(x, fast=False, coarse=False):
     """
     This  function returns a deterministic hash of the tensor content

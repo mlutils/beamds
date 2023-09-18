@@ -7,7 +7,7 @@ from .utils import tqdm_beam as tqdm
 from .logger import beam_logger as logger
 import numpy as np
 from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
-from .utils import finite_iterations, to_device, check_type, rate_string_format, recursive_concatenate, \
+from .utils import to_device, check_type, rate_string_format, recursive_concatenate, \
     as_numpy, beam_device, retrieve_name, filter_dict, BeamDict, \
     recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict, dictionary_iterator
 from .config import beam_arguments, get_beam_parser
@@ -692,6 +692,7 @@ class Algorithm(object):
 
         for i, (k, dataset) in enumerate(datasets.items()):
 
+            self.datasets[k] = dataset
             if not isinstance(dataset, dict):
                 subsets = dataset.indices.keys()
             else:
@@ -744,7 +745,7 @@ class Algorithm(object):
                                                   'dataset': d,
                                                   'sampler': sampler,
                                                   }
-                self.persistent_dataloaders[k][s]['iterator'] = enumerate(self.persistent_dataloaders[k][s]['dataloader'])
+                self.persistent_dataloaders[k][s]['iterator'] = iter(self.persistent_dataloaders[k][s]['dataloader'])
 
             if (set_epoch_length == 'first' and i == 0) or k==set_epoch_length:
                 self.set_epoch_length(dataset)
@@ -960,12 +961,17 @@ class Algorithm(object):
             label = to_device(label, self.device, half=False)
             yield i, DataBatch(index=ind, label=label, data=sample)
 
-    def persistent_data_generator(self, subset):
+    def finite_iterations(iterator, n):
+        for i, out in enumerate(iterator):
+            yield i, out
+
+
+    def finite_data_generator(self, subset, length):
 
         dataloaders = {k: self.persistent_dataloaders[k][subset]['iterator']
                       for k in self.persistent_dataloaders.keys()}
 
-        for i, samples in dictionary_iterator(dataloaders):
+        for i, samples in enumerate(dictionary_iterator(dataloaders)):
 
             for k, (ind, label, sample) in samples.items():
 
@@ -974,8 +980,11 @@ class Algorithm(object):
                 samples[k] = DataBatch(index=ind, label=label, data=sample)
 
             if len(samples) == 1:
-                samples = next(iter(samples.values()))
+                samples = list(samples.values())[0]
             yield i, samples
+            if i + 1 == length:
+                break
+
     def preprocess_epoch(self, epoch=None, subset=None, training=True, **kwargs):
         '''
         :param aux: auxiliary data dictionary - possibly from previous epochs
@@ -1029,9 +1038,8 @@ class Algorithm(object):
 
             self.preprocess_epoch(epoch=n, training=training)
 
-            data_generator = self.persistent_data_generator(subset)
-            for i, (i_tot, samples) in self.reporter.iterate(finite_iterations(data_generator,
-                                                                                            self.epoch_length[subset]),
+            data_generator = self.finite_data_generator(subset, self.epoch_length[subset])
+            for i, samples in self.reporter.iterate(data_generator,
                                   enable=self.enable_tqdm, notebook=(not self.ddp and self.is_notebook),
                                   threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                   desc=subset, total=self.epoch_length[subset]):

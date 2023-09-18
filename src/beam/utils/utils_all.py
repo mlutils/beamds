@@ -11,6 +11,7 @@ import json
 import __main__
 from datetime import timedelta
 
+
 try:
     import modin.pandas as mpd
 
@@ -746,6 +747,16 @@ class nested_defaultdict(defaultdict):
         elif default_factory is dict:
             default_factory = self.default_factory_dict
         super().__init__(default_factory, **kwargs)
+
+
+def get_public_ip():
+    import requests
+    try:
+        response = requests.get("https://api64.ipify.org?format=json")
+        ip = response.json().get("ip")
+        return ip
+    except requests.RequestException:
+        return None
 
 
 def rate_string_format(n, t):
