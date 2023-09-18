@@ -515,13 +515,13 @@ class Algorithm(object):
         if self._experiment is None:
             raise ValueError('No experiment is currently linked with the algorithm')
 
-        logger._debug_langchain(f"Fetching the experiment which is currently associated with the algorithm")
+        logger.debug(f"Fetching the experiment which is currently associated with the algorithm")
         return self._experiment
 
     # a setter function
     @experiment.setter
     def experiment(self, experiment):
-        logger._debug_langchain(f"The algorithm is now linked to an experiment directory: {experiment.root}")
+        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root}")
         self.trial = experiment.trial
         self.hparams = experiment.hparams
         self.set_experiment_properties()
@@ -744,7 +744,7 @@ class Algorithm(object):
                                                   'dataset': d,
                                                   'sampler': sampler,
                                                   }
-                self.persistent_dataloaders[k][s]['iterator'] = enumerate(self.persistent_dataloaders[s]['dataloader'])
+                self.persistent_dataloaders[k][s]['iterator'] = enumerate(self.persistent_dataloaders[k][s]['dataloader'])
 
             if (set_epoch_length == 'first' and i == 0) or k==set_epoch_length:
                 self.set_epoch_length(dataset)
@@ -773,11 +773,9 @@ class Algorithm(object):
             self.epoch_length[self.eval_subset] = self.get_hparam('epoch_length_eval')
 
         if self.epoch_length['train'] is None:
-            dataset = self.persistent_dataloaders['train']['dataset']
             self.epoch_length['train'] = len(dataset.indices['train'])
 
         if self.epoch_length[self.eval_subset] is None:
-            dataset = self.persistent_dataloaders[self.eval_subset]['dataset']
             self.epoch_length[self.eval_subset] = len(dataset.indices[self.eval_subset])
 
         if self.get_hparam('scale_epoch_by_batch_size'):
@@ -1269,12 +1267,12 @@ class Algorithm(object):
             else:
                 net.eval()
 
-        for dataloader in self.dataloaders.values():
-            if hasattr(dataloader.dataset, 'train'):
+        for dataset in self.datasets.values():
+            if hasattr(dataset, 'train'):
                 if training:
-                    dataloader.dataset.train()
+                    dataset.train()
                 else:
-                    dataloader.dataset.eval()
+                    dataset.eval()
 
     def save_checkpoint(self, path=None, aux=None, pickle_model=False):
 

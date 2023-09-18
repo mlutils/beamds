@@ -758,7 +758,7 @@ def print_beam_hyperparameters(args, debug_only=False):
     from ..logger import beam_logger as logger
 
     if debug_only:
-        log_func = logger._debug_langchain
+        log_func = logger.debug
     else:
         log_func = logger.info
 
@@ -776,7 +776,7 @@ def print_beam_hyperparameters(args, debug_only=False):
         elif k in hparams_list:
             log_func(k + ': ' + str(v))
         else:
-            logger._debug_langchain(k + ': ' + str(v))
+            logger.debug(k + ': ' + str(v))
 
     log_func('----------------------------------------------------------'
              '---------------------------------------------------------------------')
