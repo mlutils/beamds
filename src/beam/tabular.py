@@ -21,45 +21,46 @@ class TabularHparams(BeamHparams):
                             batch_size=512, lr_dense=2e-3, lr_sparse=2e-2,
                             early_stopping_patience=16)
 
-        parser.add_argument('--emb_dim', type=int, default=128, metavar='hparam', help='latent embedding dimension')
-        parser.add_argument('--n_transformer_head', type=int, default=4, metavar='hparam',
+        parser.add_argument('--emb-dim', type=int, default=128, metavar='hparam', help='latent embedding dimension')
+        parser.add_argument('--n-transformer-head', type=int, default=4, metavar='hparam',
                             help='number of transformer heads')
-        parser.add_argument('--n_encoder_layers', type=int, default=4, metavar='hparam', help='number of encoder layers')
-        parser.add_argument('--n_decoder_layers', type=int, default=4, metavar='hparam', help='number of decoder layers')
-        parser.add_argument('--transformer_hidden_dim', type=int, default=256, metavar='hparam',
+        parser.add_argument('--n-encoder-layers', type=int, default=4, metavar='hparam', help='number of encoder layers')
+        parser.add_argument('--n-decoder-layers', type=int, default=4, metavar='hparam', help='number of decoder layers')
+        parser.add_argument('--transformer-hidden-dim', type=int, default=256, metavar='hparam',
                             help='transformer hidden dimension')
-        parser.add_argument('--transformer_dropout', type=float, default=0., metavar='hparam', help='transformer dropout')
-        parser.add_argument('--mask_rate', type=float, default=0.15, metavar='hparam',
+        parser.add_argument('--transformer-dropout', type=float, default=0., metavar='hparam', help='transformer dropout')
+        parser.add_argument('--mask-rate', type=float, default=0.15, metavar='hparam',
                             help='rate of masked features during training')
-        parser.add_argument('--rule_mask_rate', type=float, default=0., metavar='hparam',
+        parser.add_argument('--rule-mask-rate', type=float, default=0., metavar='hparam',
                             help='rate of masked rules during training')
-        parser.add_argument('--maximal_mask_rate', type=float, default=0.2, metavar='hparam',
+        parser.add_argument('--maximal-mask-rate', type=float, default=0.2, metavar='hparam',
                             help='the maximal mask rate with dynamic masking')
-        parser.add_argument('--minimal_mask_rate', type=float, default=0.1, metavar='hparam',
+        parser.add_argument('--minimal-mask-rate', type=float, default=0.1, metavar='hparam',
                             help='the minimal mask rate with dynamic masking')
-        parser.add_argument('--dynamic_delta', type=float, default=0.005, metavar='hparam',
+        parser.add_argument('--dynamic-delta', type=float, default=0.005, metavar='hparam',
                             help='the incremental delta for dynamic masking')
-        parser.add_argument('--n_rules', type=int, default=64, metavar='hparam',
+        parser.add_argument('--n-rules', type=int, default=64, metavar='hparam',
                             help='number of transformers rules in the decoder')
         parser.add_argument('--activation', type=str, default='gelu', metavar='hparam', help='transformer activation')
-        parser.add_argument('--n_quantiles', type=int, default=10, metavar='hparam',
+        parser.add_argument('--n-quantiles', type=int, default=10, metavar='hparam',
                             help='number of quantiles for the quantile embeddings')
         parser.add_argument('--scaler', type=str, default='quantile', metavar='hparam',
                             help='scaler for the preprocessing [robust, quantile]')
-        parser.add_argument('--dataset_name', type=str, default='covtype', metavar='hparam',
+        parser.add_argument('--dataset-name', type=str, default='covtype', metavar='hparam',
                             help='dataset name [year, california_housing, higgs_small, covtype, aloi, adult, epsilon, '
                                  'microsoft, yahoo, helena, jannis]')
-        parser.add_argument('--n_ensembles', type=int, default=32, metavar='hparam',
+        parser.add_argument('--n-ensembles', type=int, default=32, metavar='hparam',
                             help='number of ensembles of the model for prediction in inference mode')
-        parser.add_argument('--label_smoothing', type=float, default=0., metavar='hparam',
+        parser.add_argument('--label-smoothing', type=float, default=0., metavar='hparam',
                             help='label smoothing for the cross entropy loss')
         parser.add_argument('--dropout', type=float, default=.0, metavar='hparam', help='Output layer dropout of the model')
 
-        boolean_feature(parser, "oh_to_cat", False, "Try to convert one-hot encoded categorical features to "
+        boolean_feature(parser, "oh-to-cat", False, "Try to convert one-hot encoded categorical features to "
                                                     "categorical features")
-        boolean_feature(parser, "store_data_on_device", True, "Store the data on the device (GPU/CPU) in advance")
-        boolean_feature(parser, 'dynamic_masking', False, 'Use dynamic masking scheduling')
-
+        boolean_feature(parser, "store-data-on-device", True, "Store the data on the device (GPU/CPU) in advance")
+        boolean_feature(parser, 'dynamic-masking', False, 'Use dynamic masking scheduling')
+        boolean_feature(parser, 'feature-bias', True, 'Add bias to the features')
+        boolean_feature(parser, 'rules-bias', True, 'Add bias to the rules')
         boolean_feature(parser, 'catboost', False, 'Train a catboost model on the data')
         boolean_feature(parser, 'rulenet', True, 'Train our RuleNet model on the data')
 
@@ -257,9 +258,22 @@ class TabularTransformer(torch.nn.Module):
 
         self.register_buffer('tokens_offset', tokens_offset.unsqueeze(0))
         self.register_buffer('cat_mask', cat_mask.unsqueeze(0))
-        self.emb = nn.Embedding(total_tokens, hparams.emb_dim, sparse=True)
+
+        # self.emb = nn.Embedding(total_tokens, hparams.emb_dim, sparse=True)
+        # TODO: figure out should we add another dummy token for the case of categorical feature in the last position
+        self.emb = nn.Embedding(total_tokens + 1, hparams.emb_dim, sparse=True)
 
         self.n_rules = hparams.n_rules
+
+        if hparams.feature_bias:
+            self.feature_bias = nn.Parameter(torch.randn(1, len(n_tokens), hparams.emb_dim))
+        else:
+            self.register_buffer('feature_bias', torch.zeros(1, len(n_tokens), hparams.emb_dim))
+
+        if hparams.rules_bias:
+            self.rule_bias = nn.Parameter(torch.randn(1, 1, hparams.emb_dim))
+        else:
+            self.register_buffer('rule_bias', torch.zeros(1, 1, hparams.emb_dim))
 
         self.rules = nn.Parameter(torch.randn(1, self.n_rules, hparams.emb_dim))
         self.mask = distributions.Bernoulli(1 - hparams.mask_rate)
@@ -294,13 +308,14 @@ class TabularTransformer(torch.nn.Module):
         x1 = self.emb(x1)
         x2 = self.emb(x2)
         x_frac = x_frac.unsqueeze(-1)
-        x = (1 - x_frac) * x1 + x_frac * x2
+        x = (1 - x_frac) * x1 + x_frac * x2 + self.feature_bias
 
         if self.training:
             rules = self.rule_mask.sample(torch.Size((len(x), self.n_rules, 1))).to(x.device) * self.rules
         else:
             rules = torch.repeat_interleave(self.rules, len(x), dim=0)
 
+        rules = rules + self.rule_bias
         x = self.transformer(x, rules)
         x = self.lin(x.max(dim=1).values)
 

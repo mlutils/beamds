@@ -961,11 +961,6 @@ class Algorithm(object):
             label = to_device(label, self.device, half=False)
             yield i, DataBatch(index=ind, label=label, data=sample)
 
-    def finite_iterations(iterator, n):
-        for i, out in enumerate(iterator):
-            yield i, out
-
-
     def finite_data_generator(self, subset, length):
 
         dataloaders = {k: self.persistent_dataloaders[k][subset]['iterator']
