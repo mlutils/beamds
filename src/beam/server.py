@@ -3,10 +3,15 @@ from .experiment import Experiment
 import requests
 import io
 import torch
-from .utils import find_port
+from .utils import find_port, normalize_host
 from gevent.pywsgi import WSGIServer
 from .logger import beam_logger as logger
 import types
+
+
+def beam_remote(obj, host=None, port=None, debug=False):
+    server = BeamServer(obj)
+    server.run(host=host, port=port, debug=debug)
 
 
 class BeamClient(object):

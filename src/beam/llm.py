@@ -206,6 +206,11 @@ class BeamLLM(LLM, Processor):
         return {"is_chat": self.is_chat,
                 'usage': self.usage}
 
+    def len_function(self, prompt):
+        if self._len_function is None:
+            return estimate_tokens(prompt)
+        return self._len_function(prompt)
+
     @property
     def is_chat(self):
         raise NotImplementedError
@@ -325,6 +330,15 @@ class BeamLLM(LLM, Processor):
         self.add_to_chat(response.text, is_user=False)
 
         return response
+
+    def explain_traceback(self, traceback, **kwargs):
+        prompt = f"Task: explain the following traceback\n\n" \
+                    f"========================================================================\n\n" \
+                    f"{traceback}\n\n" \
+                    f"========================================================================\n\n" \
+                    f"Response: \"\"\"\n{{text input here}}\n\"\"\""
+
+        res = self.ask(prompt, **kwargs).text
 
     def docstring(self, text, element_type, name=None, docstring_format=None, parent=None, parent_name=None,
                   parent_type=None, children=None, children_type=None, children_name=None, **kwargs):
@@ -833,11 +847,6 @@ class TGILLM(FCConversationLLM):
                 }
 
         return res
-
-    def len_function(self, prompt):
-        if self._len_function is None:
-            return estimate_tokens(prompt)
-        return self._len_function(prompt)
 
     @property
     def is_chat(self):

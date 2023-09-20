@@ -21,11 +21,12 @@ from .logger import beam_kpi, BeamResult
 from .data import BeamData
 
 
-
-class Algorithm(object):
+class Algorithm(Processor):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
                  name=None, **kwargs):
+
+        super().__init__(hparams, name=name, **kwargs)
 
         self._experiment = None
         self._default_hparams = None
@@ -87,7 +88,6 @@ class Algorithm(object):
         self.best_objective = None
         self.best_epoch = None
         self.best_state = False
-        self._name = name
 
         self.add_components(networks=networks, optimizers=optimizers, schedulers=schedulers, processors=processors)
 
@@ -179,12 +179,6 @@ class Algorithm(object):
             self._default_hparams = beam_arguments(get_beam_parser())
 
         return self._default_hparams
-
-    @property
-    def name(self):
-        if self._name is None:
-            self._name = retrieve_name(self)
-        return self._name
 
     def get_hparam(self, hparam, specific=None, default=None):
 
