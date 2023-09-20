@@ -13,6 +13,7 @@ import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
     pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format, nested_defaultdict, \
     as_tensor, squeeze_scalar
+from .config import get_beam_llm
 
 from .utils import tqdm_beam as tqdm
 
@@ -59,6 +60,32 @@ class BeamReport(object):
         self.subsets_keys = None
         self.batch_size_context = None
         self.total_epochs = None
+        self._llm = None
+        self.stack = []
+        self.stack_size = 4
+
+    def info(self, msg, new=False):
+        logger.info(msg)
+        if new:
+            self.stack.append(msg)
+        else:
+            self.stack[-1] = f"{self.stack[-1]}\n{msg}"
+        self.stack = self.stack[-self.stack_size:]
+
+    def llm_info(self):
+        logs = "\n\n".join(self.stack)
+        prompt = f"You are an ML expert. You need to interpret and analyze logs of deep learning training runs. \n" \
+                 f"The logs contains metrics and reports of the training process. \n" \
+                 f"Please provide an analysis and suggest solutions for any problems you find. For example: \n" \
+                 f"overfitting, underfitting, etc. Be concise and respond in less than 100 words without new lines \n" \
+                 f"========================================================================\n\n" \
+                 f"These are the experiment logs: \n\n" \
+                 f"{logs}\n\n" \
+                 f"Response: \"\"\"\n{{text input here}}\n\"\"\""
+
+        llm_response = self.llm.ask(prompt)
+        if llm_response is not None:
+            self.info(f"LLM message: {llm_response.text}")
 
     def reset_epoch(self, epoch, total_epochs=None):
 
@@ -150,15 +177,23 @@ class BeamReport(object):
         else:
             return v
 
+    @property
+    def llm(self):
+        if self._llm is None:
+            from .config import get_beam_llm
+            self._llm = get_beam_llm()
+        return self._llm
+
+
     def print_stats(self):
 
         for subset, data_keys in self.subsets_keys.items():
 
-            logger.info(f'{subset}:')
+            self.info(f'{subset}:')
 
             if 'stats' in data_keys:
                 stats = data_keys['stats']
-                logger.info('| '.join([f"{k}: {BeamReport.format(self.aux['stats'][f'{subset}/{k}'])} " for k in stats]))
+                self.info('| '.join([f"{k}: {BeamReport.format(self.aux['stats'][f'{subset}/{k}'])} " for k in stats]))
 
             if 'scalar' in data_keys:
                 scalars = data_keys['scalar']
@@ -181,12 +216,14 @@ class BeamReport(object):
                     else:
                         paramp = f'{k}:'
 
-                    logger.info(f'{paramp: <12} | {stat}')
+                    self.info(f'{paramp: <12} | {stat}')
+
+        self.llm_info()
 
     def print_metadata(self):
 
-        logger.info('----------------------------------------------------------'
-                    '---------------------------------------------------------------------')
+        self.info('----------------------------------------------------------'
+                    '---------------------------------------------------------------------', new=not self.best_state)
         objective_str = ''
         if self.best_objective is not None:
             objective_str = f"Current objective: {pretty_format_number(self.objective)} " \
@@ -195,13 +232,13 @@ class BeamReport(object):
 
         if self.epoch is not None:
             done_epochs = self.epoch - self.first_epoch
-            logger.info(f'Finished epoch {done_epochs + 1}/{self.n_epochs} (Total trained epochs {self.total_epochs}). '
+            self.info(f'Finished epoch {done_epochs + 1}/{self.n_epochs} (Total trained epochs {self.total_epochs}). '
                         f'{objective_str}')
 
         if self.total_time is not None:
             total_time = pretty_print_timedelta(self.total_time)
             estimated_time = pretty_print_timedelta(self.estimated_time)
-            logger.info(f'Elapsed time: {total_time}. Estimated remaining time: {estimated_time}.', )
+            self.info(f'Elapsed time: {total_time}. Estimated remaining time: {estimated_time}.', )
 
     def write_to_tensorboard(self, writer, hparams=None):
 
@@ -251,7 +288,7 @@ class BeamReport(object):
         self.objective = objective
 
         if self.best_objective is None or self.objective > self.best_objective:
-            logger.info(f"Epoch {self.epoch}: The new best objective is {pretty_format_number(objective)}")
+            self.info(f"Epoch {self.epoch+1}: The new best objective is {pretty_format_number(objective)}", new=True)
             self.best_objective = objective
             self.best_epoch = self.epoch
             self.best_state = True

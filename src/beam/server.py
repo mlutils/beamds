@@ -7,6 +7,7 @@ from .utils import find_port, normalize_host
 from gevent.pywsgi import WSGIServer
 from .logger import beam_logger as logger
 import types
+from functools import partial
 
 
 def beam_remote(obj, host=None, port=None, debug=False):
@@ -45,11 +46,7 @@ class BeamClient(object):
         return self.post('call', *args, **kwargs)
 
     def __getattr__(self, item):
-
-        def method(*args, **kwargs):
-            return self.post(f'alg/{item}', *args, **kwargs)
-
-        return method
+        return partial(self.post, f'alg/{item}')
 
 
 class BeamServer(object):

@@ -16,7 +16,8 @@ class BeamKey:
         'aws_access_key': 'AWS_ACCESS_KEY_ID',
         'aws_private_key': 'AWS_SECRET_ACCESS_KEY',
         'ssh_secret_key': 'SSH_SECRET_KEY',
-        'openai_api_key': 'OPENAI_API_KEY'
+        'openai_api_key': 'OPENAI_API_KEY',
+        'beam_llm': 'BEAM_LLM',
     }
 
     def __init__(self, config_path=None, **kwargs):
@@ -41,6 +42,8 @@ class BeamKey:
         if self._config_path is None:
             if 'config_file' in self.hparams:
                 self._config_path = Path(self.hparams['config_file'])
+            else:
+                self._config_path = Path.home().joinpath('conf.pkl')
         return self._config_path
 
     @property

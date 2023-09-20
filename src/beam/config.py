@@ -2,7 +2,7 @@ import argparse
 import copy
 import os
 import sys
-from .utils import is_notebook, check_type
+from .utils import is_notebook, check_type, NoneClass
 import re
 import math
 import pandas as pd
@@ -412,3 +412,17 @@ def beam_arguments(*args, **kwargs):
     beam_key.set_hparams(vars(args))
 
     return args
+
+
+def get_beam_llm():
+
+    llm = NoneClass()
+    key = beam_key('beam_llm')
+    if key is not None:
+        try:
+            from .llm import beam_llm
+            llm = beam_llm(key)
+        except ImportError:
+            pass
+
+    return llm

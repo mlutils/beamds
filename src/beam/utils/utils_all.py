@@ -1412,3 +1412,12 @@ def filter_dict(d, keys):
         raise ValueError(f"keys must be a scalar, list or tuple. Got {keys_type}")
 
     return {k: v for k, v in d.items() if k in keys}
+
+
+def none_function(*args, **kwargs):
+    return None
+class NoneClass:
+    def __init__(self, *args, **kwargs):
+        pass
+    def __getattr__(self, item):
+        return none_function

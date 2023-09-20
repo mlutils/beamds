@@ -95,11 +95,15 @@ if __name__ == '__main__':
     #                    rulenet=False)
 
     os.environ['COMET_API_KEY'] = 'jthyXB1jO4czVy63ntyWZSnlf'
+    os.environ['BEAM_LLM'] = 'openai:///gpt-4'
+
+    from src.beam.config import get_beam_llm
+
     kwargs_base = dict(algorithm='debug_reporter',
                        path_to_data=path_to_data,
                        path_to_results=path_to_results,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=100,
-                       stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
+                       stop_at=0.98, parallel=1, device=0, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 

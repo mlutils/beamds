@@ -15,7 +15,6 @@ from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
 from pydantic import BaseModel, Field, PrivateAttr
 from transformers.pipelines import Conversation
-import transformers
 import requests
 import uuid
 import time
@@ -42,7 +41,7 @@ def estimate_tokens(s):
     # 1. Any single punctuation or whitespace character.
     # 2. Sequences of up to 4 alphabetic characters.
     # 3. Sequences of up to 3 numeric characters.
-    pattern = f"[{re.escape(string.whitespace + string.punctuation)}]|[A-Za-z]{{1,4}}|\d{{1,3}}"
+    pattern = f" ?[{re.escape(string.whitespace + string.punctuation)}]| ?[A-Za-z]{{1,4}}| ?\d{{1,3}}"
 
     matches = re.findall(pattern, s)
     token_count = len(matches)
