@@ -64,6 +64,9 @@ class TabularHparams(BeamHparams):
         boolean_feature(parser, 'catboost', False, 'Train a catboost model on the data')
         boolean_feature(parser, 'rulenet', True, 'Train our RuleNet model on the data')
 
+        parser.add_argument('--lin-version', type=int, default=1, metavar='hparam',
+                            help='version of the linear output layer')
+
         return parser
 
 
@@ -287,8 +290,11 @@ class TabularTransformer(torch.nn.Module):
                                           activation=hparams.activation, layer_norm_eps=1e-05,
                                           batch_first=True, norm_first=True)
 
-        self.lin = nn.Sequential(nn.ReLU(), nn.Dropout(hparams.dropout), nn.LayerNorm(hparams.emb_dim),
-            nn.Linear(hparams.emb_dim, n_classes, bias=False))
+        if hparams.lin_version > 0:
+            self.lin = nn.Sequential(nn.ReLU(), nn.Dropout(hparams.dropout), nn.LayerNorm(hparams.emb_dim),
+                nn.Linear(hparams.emb_dim, n_classes, bias=False))
+        else:
+            self.lin = nn.Linear(hparams.emb_dim, n_classes, bias=False)
 
     def forward(self, sample):
 
@@ -362,10 +368,10 @@ class DeepTabularAlg(Algorithm):
             rmse = np.sqrt(self.get_scalar('mse', aggregate=True))
             self.report_scalar('rmse', rmse)
             objective = -rmse
-            self.report_scalar('objective', objective)
         else:
             objective = self.get_scalar('acc', aggregate=True)
 
+        self.report_scalar('objective', objective)
         if self.get_hparam('dynamic_masking'):
             if training:
                 self.train_acc = float(objective)
@@ -388,16 +394,15 @@ class DeepTabularAlg(Algorithm):
         y = label
         net = self.net
 
-        n_ensembles = self.get_hparam('n_ensembles')
-
-        if not training and n_ensembles > 1:
-            net.train()
-            y_hat = []
-            for _ in range(n_ensembles):
-                y_hat.append(net(sample))
-            y_hat = torch.stack(y_hat, dim=0).mean(dim=0)
-        else:
-            y_hat = net(sample)
+        # n_ensembles = self.get_hparam('n_ensembles')
+        # if not training and n_ensembles > 1:
+        #     net.train()
+        #     y_hat = []
+        #     for _ in range(n_ensembles):
+        #         y_hat.append(net(sample))
+        #     y_hat = torch.stack(y_hat, dim=0).mean(dim=0)
+        # else:
+        y_hat = net(sample)
 
         loss = self.loss_function(y_hat, y, **self.loss_kwargs)
 
@@ -440,7 +445,7 @@ class DeepTabularAlg(Algorithm):
             else:
                 self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-            self.report_data('predictions/target', y)
+            self.report_scalar('target', y)
 
             return {'y': y, 'y_hat': y_hat}
 
@@ -458,8 +463,8 @@ class DeepTabularAlg(Algorithm):
 
             else:
 
-                y_pred = as_numpy(torch.argmax(self.get_data('predictions/y_pred'), dim=1))
-                y_true = as_numpy(self.get_data('predictions/target'))
+                y_pred = as_numpy(torch.argmax(self.get_scalar('y_pred'), dim=1))
+                y_true = as_numpy(self.get_scalar('target'))
                 precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
 
                 self.report_data('metrics/precision', precision)

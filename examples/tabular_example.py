@@ -98,12 +98,12 @@ if __name__ == '__main__':
     kwargs_base = dict(algorithm='debug_reporter',
                        path_to_data=path_to_data,
                        path_to_results=path_to_results,
-                       copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=20,
+                       copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=100,
                        stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128)
+    # kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
-    # kwargs_all['covtype'] = dict(batch_size=1024, n_quantiles=10)
+    kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=10)
 
     for k in kwargs_all.keys():
 

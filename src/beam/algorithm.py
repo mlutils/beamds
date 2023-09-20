@@ -321,12 +321,16 @@ class Algorithm(object):
         self.reporter.report_pr_curve(name, val, subset=subset, **kwargs)
 
     def get_scalar(self, name, subset=None, aggregate=False):
-        return self.reporter.get_scalar(name, subset=subset, aggregate=aggregate)
+        v = self.reporter.get_scalar(name, subset=subset, aggregate=aggregate)
+        return self.reporter.stack_scalar(v)
 
     def get_scalars(self, name, subset=None, aggregate=False):
-        return self.reporter.get_scalars(name, subset=subset, aggregate=aggregate)
+        d = self.reporter.get_scalars(name, subset=subset, aggregate=aggregate)
+        for k, v in d.items():
+            d[k] = self.reporter.stack_scalar(v)
+        return d
 
-    def get_data(self, name, subset=None, data_type=None,  aggregate=False):
+    def get_data(self, name, subset=None, data_type=None):
 
         if '/' in name:
             dt, name = name.split('/')
@@ -336,37 +340,37 @@ class Algorithm(object):
             else:
                 data_type = f"{dt}_{data_type}"
 
-        return self.reporter.get_data(name, subset=subset, data_type=data_type, aggregate=aggregate)
+        return self.reporter.get_data(name, subset=subset, data_type=data_type)
 
-    def get_image(self, name, subset=None, aggregate=False):
-        return self.reporter.get_image(name, subset=subset, aggregate=aggregate)
+    def get_image(self, name, subset=None):
+        return self.reporter.get_image(name, subset=subset)
 
-    def get_images(self, name, subset=None, aggregate=False):
-        return self.reporter.get_images(name, subset=subset, aggregate=aggregate)
+    def get_images(self, name, subset=None):
+        return self.reporter.get_images(name, subset=subset)
 
-    def get_histogram(self, name, subset=None, aggregate=False):
-        return self.reporter.get_histogram(name, subset=subset, aggregate=aggregate)
+    def get_histogram(self, name, subset=None):
+        return self.reporter.get_histogram(name, subset=subset)
 
-    def get_figure(self, name, subset=None, aggregate=False):
-        return self.reporter.get_figure(name, subset=subset, aggregate=aggregate)
+    def get_figure(self, name, subset=None):
+        return self.reporter.get_figure(name, subset=subset)
 
-    def get_video(self, name, subset=None, aggregate=False):
-        return self.reporter.get_video(name, subset=subset, aggregate=aggregate)
+    def get_video(self, name, subset=None):
+        return self.reporter.get_video(name, subset=subset)
 
-    def get_audio(self, name, subset=None, aggregate=False):
-        return self.reporter.get_audio(name, subset=subset, aggregate=aggregate)
+    def get_audio(self, name, subset=None):
+        return self.reporter.get_audio(name, subset=subset)
 
-    def get_embedding(self, name, subset=None, aggregate=False):
-        return self.reporter.get_embedding(name, subset=subset, aggregate=aggregate)
+    def get_embedding(self, name, subset=None):
+        return self.reporter.get_embedding(name, subset=subset)
 
-    def get_text(self, name, subset=None, aggregate=False):
-        return self.reporter.get_text(name, subset=subset, aggregate=aggregate)
+    def get_text(self, name, subset=None):
+        return self.reporter.get_text(name, subset=subset)
 
-    def get_mesh(self, name, subset=None, aggregate=False):
-        return self.reporter.get_mesh(name, subset=subset, aggregate=aggregate)
+    def get_mesh(self, name, subset=None):
+        return self.reporter.get_mesh(name, subset=subset)
 
-    def get_pr_curve(self, name, subset=None, aggregate=False):
-        return self.reporter.get_pr_curve(name, subset=subset, aggregate=aggregate)
+    def get_pr_curve(self, name, subset=None):
+        return self.reporter.get_pr_curve(name, subset=subset)
 
     def add_components(self, networks=None, optimizers=None, schedulers=None, processors=None,
                        build_optimizers=True, build_schedulers=True, name='net'):
@@ -1019,7 +1023,7 @@ class Algorithm(object):
         objective_name = self.get_hparam('objective')
         batch_size = self.batch_size_train if training else self.batch_size_eval
 
-        with (self.reporter.track_epoch(subset, batch_size=batch_size, training=training)):
+        with self.reporter.track_epoch(subset, batch_size=batch_size, training=training):
             if training and (n == self.n_epochs + self.swa_epochs):
                 logger.warning("This is an extra epoch to calculate BN statistics. "
                                "It is not used for training so we set training=False.")
@@ -1138,6 +1142,12 @@ class Algorithm(object):
         '''
 
         stop_at = self.get_hparam('stop_at')
+        early_stopping_patience = self.get_hparam('early_stopping_patience')
+        if stop_at is not None or early_stopping_patience is not None:
+            if self.objective is None:
+                logger.warning("Early stopping is enabled but no objective is defined. set objective in the hparams")
+                return False
+
         if stop_at is not None and stop_at > 0:
             if self.best_objective is not None:
                 res = self.best_objective > stop_at
@@ -1145,7 +1155,6 @@ class Algorithm(object):
                     logger.info(f"Stopping training at {self.best_objective} > {stop_at}")
                 return res
 
-        early_stopping_patience = self.get_hparam('early_stopping_patience')
         if early_stopping_patience is not None and early_stopping_patience > 0:
             res = self.epoch - self.best_epoch > early_stopping_patience
             if res:
