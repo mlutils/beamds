@@ -1,6 +1,7 @@
-from .utils import retrieve_name
+from .utils import retrieve_name, normalize_host
 from collections import OrderedDict
 from .path import beam_path
+from .server import BeamClient
 import pickle
 import io
 
@@ -13,7 +14,7 @@ except ImportError:
 
 class Processor(object):
 
-    def __init__(self, *args, name=None, state=None, path=None, **kwargs):
+    def __init__(self, *args, name=None, state=None, path=None, remote=None, **kwargs):
         self._name = name
         self.state = state
         self.path = beam_path(path)
@@ -23,6 +24,22 @@ class Processor(object):
 
         if self.state is None and self.path is not None:
             self.load_state()
+
+        self.remote = remote
+
+    @classmethod
+    def from_remote(cls, hostname, *args, port=None,  **kwargs):
+
+        hostname = normalize_host(hostname, port=port)
+        remote = BeamClient(hostname)
+        self = cls(*args, remote=remote, **kwargs)
+        return self
+
+    def __getattribute__(self, name):
+        remote = super().__getattribute__(self, "remote")
+        if remote is not None:
+            return getattr(remote, name)
+        return super().__getattribute__(self, name)
 
     def save_state(self, path=None):
         if path is None:
