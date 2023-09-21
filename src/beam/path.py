@@ -1,5 +1,4 @@
 from pathlib import PurePath, Path
-import botocore
 import re
 from .utils import PureBeamPath, BeamURL, normalize_host
 from io import StringIO, BytesIO
@@ -444,6 +443,7 @@ class S3Path(PureBeamPath):
 
     @staticmethod
     def _exists(client, bucket_name, key):
+        import botocore
         try:
             # client.Object(bucket_name, key).load()
             client.meta.client.head_object(Bucket=bucket_name, Key=key)

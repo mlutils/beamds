@@ -1,7 +1,6 @@
 from .utils import retrieve_name, normalize_host
 from collections import OrderedDict
 from .path import beam_path
-from .server import BeamClient
 import pickle
 import io
 
@@ -34,6 +33,7 @@ class Processor(object):
     def from_remote(cls, hostname, *args, port=None,  **kwargs):
 
         hostname = normalize_host(hostname, port=port)
+        from .server import BeamClient
         remote = BeamClient(hostname)
         self = cls(*args, remote=remote, **kwargs)
         return self

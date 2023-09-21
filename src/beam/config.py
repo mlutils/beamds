@@ -24,46 +24,9 @@ def boolean_feature(parser, feature, default=False, help='', metavar=None):
     parser.set_defaults(**{featurename: default})
 
 
-# class BeamHparams(Namespace):
-#     def __init__(self, *args, parser=None, **kwargs):
-#         if parser is None:
-#             parser = get_beam_parser()
-#         parser = self._add(parser)
-#         hparams = beam_arguments(parser, *args, **kwargs)
-#         super().__init__(**vars(hparams))
-#
-#     def _add(self, parser):
-#         if hasattr(super(), '_add'):
-#             parser = super().add(parser)
-#         parser = self.add(parser)
-#         return parser
-#
-#     def add(self, parser):
-#         if hasattr(super(), 'add'):
-#             logger.warning('Use the add method to add arguments to the parser')
-#         return parser
-#
-#     def __getitem__(self, item):
-#         return getattr(self, item)
-#
-#     def get(self, hparam, specific=None, default=None):
-#
-#         hparam = hparam.replace('-', '_')
-#         if type(specific) is list:
-#             for s in specific:
-#                 if f"{hparam}_{s}" in self:
-#                     return getattr(self, f"{specific}_{hparam}")
-#         elif specific is not None and f"{specific}_{hparam}" in self:
-#             return getattr(self, f"{specific}_{hparam}")
-#
-#         if hparam in self:
-#             return getattr(self, hparam)
-#
-#         return default
-
-
 from collections import namedtuple
 HParam = namedtuple("HParam", "name type default help")
+
 
 class BeamHparams:
 
@@ -71,34 +34,65 @@ class BeamHparams:
     hyperparameters = []
     defaults = {}
 
+    a = 5
+
     def __init__(self, *args, **kwargs):
 
-        if isinstance(super(), BeamHparams):
-            super().__init__(*args, **kwargs)
-            self.update_parser()
-        else:
-            self.parser = get_beam_parser()
-            self.args = args
-            self.kwargs = kwargs
-            self._hparams = None
+        self.parser = get_beam_parser()
+        self.args = args
+        self.kwargs = kwargs
+        self._hparams = None
 
-    def update_parser(self):
+        defaults = None
+        arguments = None
+        hyperparameters = None
 
-        # set defaults
-        self.parser.set_defaults(**{k.replace('-', '_'): v for k, v in self.defaults.items()})
+        types = list(type(self).__bases__)
+        types.insert(0, type(self))
 
-        for v in self.arguments:
-            if v.type is bool:
-                boolean_feature(self.parser, v.name, v.default, v.help)
+        for ti in types[::-1]:
+
+            if ti.defaults is not defaults:
+                defaults = ti.defaults
+                d = defaults
             else:
-                self.parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type,
-                                         default=v.default, help=v.help)
-        for v in self.hyperparameters:
-            if v.type is bool:
-                boolean_feature(self.parser, v.name, v.default, v.help, metavar='hparam')
+                d = None
+
+            if ti.arguments is not arguments:
+                arguments = ti.arguments
+                a = arguments
             else:
-                self.parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type, default=v.default,
-                                     help=v.help, metavar='hparam')
+                a = None
+
+            if ti.hyperparameters is not hyperparameters:
+                hyperparameters = ti.hyperparameters
+                h = hyperparameters
+            else:
+                h = None
+
+            self.update_parser(defaults=d, arguments=a, hyperparameters=h)
+
+    def update_parser(self, defaults=None, arguments=None, hyperparameters=None):
+
+        if defaults is not None:
+            # set defaults
+            self.parser.set_defaults(**{k.replace('-', '_'): v for k, v in defaults.items()})
+
+        if arguments is not None:
+            for v in arguments:
+                if v.type is bool:
+                    boolean_feature(self.parser, v.name, v.default, v.help)
+                else:
+                    self.parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type,
+                                             default=v.default, help=v.help)
+
+        if hyperparameters is not None:
+            for v in hyperparameters:
+                if v.type is bool:
+                    boolean_feature(self.parser, v.name, v.default, v.help, metavar='hparam')
+                else:
+                    self.parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type, default=v.default,
+                                         help=v.help, metavar='hparam')
 
     @property
     def hparams(self):

@@ -14,62 +14,6 @@ import pandas as pd
 from .logger import beam_logger as logger
 
 
-# class TabularHparams(BeamHparams):
-#     def add(self, parser):
-#
-#         parser.set_defaults(project_name='deep_tabular', algorithm='TabularNet', n_epochs=100, scheduler='one_cycle',
-#                             batch_size=512, lr_dense=2e-3, lr_sparse=2e-2,
-#                             early_stopping_patience=16)
-#
-#         parser.add_argument('--emb-dim', type=int, default=128, metavar='hparam', help='latent embedding dimension')
-#         parser.add_argument('--n-transformer-head', type=int, default=4, metavar='hparam',
-#                             help='number of transformer heads')
-#         parser.add_argument('--n-encoder-layers', type=int, default=4, metavar='hparam', help='number of encoder layers')
-#         parser.add_argument('--n-decoder-layers', type=int, default=4, metavar='hparam', help='number of decoder layers')
-#         parser.add_argument('--transformer-hidden-dim', type=int, default=256, metavar='hparam',
-#                             help='transformer hidden dimension')
-#         parser.add_argument('--transformer-dropout', type=float, default=0., metavar='hparam', help='transformer dropout')
-#         parser.add_argument('--mask-rate', type=float, default=0.15, metavar='hparam',
-#                             help='rate of masked features during training')
-#         parser.add_argument('--rule-mask-rate', type=float, default=0., metavar='hparam',
-#                             help='rate of masked rules during training')
-#         parser.add_argument('--maximal-mask-rate', type=float, default=0.2, metavar='hparam',
-#                             help='the maximal mask rate with dynamic masking')
-#         parser.add_argument('--minimal-mask-rate', type=float, default=0.1, metavar='hparam',
-#                             help='the minimal mask rate with dynamic masking')
-#         parser.add_argument('--dynamic-delta', type=float, default=0.005, metavar='hparam',
-#                             help='the incremental delta for dynamic masking')
-#         parser.add_argument('--n-rules', type=int, default=64, metavar='hparam',
-#                             help='number of transformers rules in the decoder')
-#         parser.add_argument('--activation', type=str, default='gelu', metavar='hparam', help='transformer activation')
-#         parser.add_argument('--n-quantiles', type=int, default=10, metavar='hparam',
-#                             help='number of quantiles for the quantile embeddings')
-#         parser.add_argument('--scaler', type=str, default='quantile', metavar='hparam',
-#                             help='scaler for the preprocessing [robust, quantile]')
-#         parser.add_argument('--dataset-name', type=str, default='covtype', metavar='hparam',
-#                             help='dataset name [year, california_housing, higgs_small, covtype, aloi, adult, epsilon, '
-#                                  'microsoft, yahoo, helena, jannis]')
-#         parser.add_argument('--n-ensembles', type=int, default=32, metavar='hparam',
-#                             help='number of ensembles of the model for prediction in inference mode')
-#         parser.add_argument('--label-smoothing', type=float, default=0., metavar='hparam',
-#                             help='label smoothing for the cross entropy loss')
-#         parser.add_argument('--dropout', type=float, default=.0, metavar='hparam', help='Output layer dropout of the model')
-#
-#         boolean_feature(parser, "oh-to-cat", False, "Try to convert one-hot encoded categorical features to "
-#                                                     "categorical features")
-#         boolean_feature(parser, "store-data-on-device", True, "Store the data on the device (GPU/CPU) in advance")
-#         boolean_feature(parser, 'dynamic-masking', False, 'Use dynamic masking scheduling')
-#         boolean_feature(parser, 'feature-bias', True, 'Add bias to the features')
-#         boolean_feature(parser, 'rules-bias', True, 'Add bias to the rules')
-#         boolean_feature(parser, 'catboost', False, 'Train a catboost model on the data')
-#         boolean_feature(parser, 'rulenet', True, 'Train our RuleNet model on the data')
-#
-#         parser.add_argument('--lin-version', type=int, default=1, metavar='hparam',
-#                             help='version of the linear output layer')
-#
-#         return parser
-
-
 class TabularHparams(BeamHparams):
 
     defaults = dict(project_name='deep_tabular', algorithm='TabularNet', n_epochs=100, scheduler='one_cycle',
@@ -95,11 +39,9 @@ class TabularHparams(BeamHparams):
         HParam('label_smoothing', float, 0., 'label smoothing for the cross entropy loss'),
         HParam('dropout', float, .0, 'Output layer dropout of the model'),
         HParam('oh_to_cat', bool, False, 'Try to convert one-hot encoded categorical features to categorical features'),
-        HParam('store_data_on_device', bool, True, 'Store the data on the device (GPU/CPU) in advance'),
         HParam('dynamic_masking', bool, False, 'Use dynamic masking scheduling'),
         HParam('feature_bias', bool, True, 'Add bias to the features'),
         HParam('rules_bias', bool, True, 'Add bias to the rules'),
-        HParam('rulenet', bool, True, 'Train our RuleNet model on the data'),
         HParam('lin_version', int, 1, 'version of the linear output layer'),
 
     ]
@@ -109,62 +51,10 @@ class TabularHparams(BeamHparams):
                'dataset name [year, california_housing, higgs_small, covtype, aloi, adult, epsilon, '
                'microsoft, yahoo, helena, jannis]'),
         HParam('catboost', bool, False, 'Train a catboost model on the data'),
-
+        HParam('store_data_on_device', bool, True, 'Store the data on the device (GPU/CPU) in advance'),
+        HParam('rulenet', bool, True, 'Train our RuleNet model on the data'),
     ]
 
-    def add(self, parser):
-
-        parser.set_defaults(project_name='deep_tabular', algorithm='TabularNet', n_epochs=100, scheduler='one_cycle',
-                            batch_size=512, lr_dense=2e-3, lr_sparse=2e-2,
-                            early_stopping_patience=16)
-
-        parser.add_argument('--emb-dim', type=int, default=128, metavar='hparam', help='latent embedding dimension')
-        parser.add_argument('--n-transformer-head', type=int, default=4, metavar='hparam',
-                            help='number of transformer heads')
-        parser.add_argument('--n-encoder-layers', type=int, default=4, metavar='hparam', help='number of encoder layers')
-        parser.add_argument('--n-decoder-layers', type=int, default=4, metavar='hparam', help='number of decoder layers')
-        parser.add_argument('--transformer-hidden-dim', type=int, default=256, metavar='hparam',
-                            help='transformer hidden dimension')
-        parser.add_argument('--transformer-dropout', type=float, default=0., metavar='hparam', help='transformer dropout')
-        parser.add_argument('--mask-rate', type=float, default=0.15, metavar='hparam',
-                            help='rate of masked features during training')
-        parser.add_argument('--rule-mask-rate', type=float, default=0., metavar='hparam',
-                            help='rate of masked rules during training')
-        parser.add_argument('--maximal-mask-rate', type=float, default=0.2, metavar='hparam',
-                            help='the maximal mask rate with dynamic masking')
-        parser.add_argument('--minimal-mask-rate', type=float, default=0.1, metavar='hparam',
-                            help='the minimal mask rate with dynamic masking')
-        parser.add_argument('--dynamic-delta', type=float, default=0.005, metavar='hparam',
-                            help='the incremental delta for dynamic masking')
-        parser.add_argument('--n-rules', type=int, default=64, metavar='hparam',
-                            help='number of transformers rules in the decoder')
-        parser.add_argument('--activation', type=str, default='gelu', metavar='hparam', help='transformer activation')
-        parser.add_argument('--n-quantiles', type=int, default=10, metavar='hparam',
-                            help='number of quantiles for the quantile embeddings')
-        parser.add_argument('--scaler', type=str, default='quantile', metavar='hparam',
-                            help='scaler for the preprocessing [robust, quantile]')
-        parser.add_argument('--dataset-name', type=str, default='covtype', metavar='hparam',
-                            help='dataset name [year, california_housing, higgs_small, covtype, aloi, adult, epsilon, '
-                                 'microsoft, yahoo, helena, jannis]')
-        parser.add_argument('--n-ensembles', type=int, default=32, metavar='hparam',
-                            help='number of ensembles of the model for prediction in inference mode')
-        parser.add_argument('--label-smoothing', type=float, default=0., metavar='hparam',
-                            help='label smoothing for the cross entropy loss')
-        parser.add_argument('--dropout', type=float, default=.0, metavar='hparam', help='Output layer dropout of the model')
-
-        boolean_feature(parser, "oh-to-cat", False, "Try to convert one-hot encoded categorical features to "
-                                                    "categorical features")
-        boolean_feature(parser, "store-data-on-device", True, "Store the data on the device (GPU/CPU) in advance")
-        boolean_feature(parser, 'dynamic-masking', False, 'Use dynamic masking scheduling')
-        boolean_feature(parser, 'feature-bias', True, 'Add bias to the features')
-        boolean_feature(parser, 'rules-bias', True, 'Add bias to the rules')
-        boolean_feature(parser, 'catboost', False, 'Train a catboost model on the data')
-        boolean_feature(parser, 'rulenet', True, 'Train our RuleNet model on the data')
-
-        parser.add_argument('--lin-version', type=int, default=1, metavar='hparam',
-                            help='version of the linear output layer')
-
-        return parser
 
 class TabularDataset(UniversalDataset):
 

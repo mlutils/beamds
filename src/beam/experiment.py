@@ -21,7 +21,6 @@ import torch.distributed as dist
 from .utils import tqdm_beam as tqdm
 from functools import partial
 from argparse import Namespace
-from tensorboard.notebook import start as start_tensorboard
 from ._version import __version__
 import inspect
 from .path import beam_path, BeamPath, beam_key
@@ -610,6 +609,7 @@ class Experiment(object):
             command_argument = f"--bind_all --logdir {base_dir} --port {port}"
         else:
             command_argument = f"--bind_all --logdir_spec={log_dirs} --port {port}"
+        from tensorboard.notebook import start as start_tensorboard
         start_tensorboard(command_argument)
 
     def normalize_experiment_path(self, path, level=0):
