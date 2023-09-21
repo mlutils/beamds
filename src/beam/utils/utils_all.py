@@ -1421,3 +1421,30 @@ class NoneClass:
         pass
     def __getattr__(self, item):
         return none_function
+
+
+import traceback
+import linecache
+
+
+def jupyter_like_traceback(exc_type=None, exc_value=None, tb=None, context=3):
+
+    if exc_type is None:
+        exc_type, exc_value, tb = sys.exc_info()
+
+    # Extract regular traceback
+    tb_list = traceback.extract_tb(tb)
+
+    # Generate context for each traceback line
+    extended_tb = []
+    for frame in tb_list:
+        filename, lineno, name, _ = frame
+        start_line = max(1, lineno - context)
+        lines = linecache.getlines(filename)[start_line - 1: lineno + context]
+        for offset, line in enumerate(lines, start_line):
+            marker = '---->' if offset == lineno else ''
+            extended_tb.append(f"{filename}({offset}): {marker} {line.strip()}")
+
+    # Combine the context with the error message
+    traceback_text = '\n'.join(extended_tb)
+    return f"{traceback_text}\n{exc_type.__name__}: {exc_value}"

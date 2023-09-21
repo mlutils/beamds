@@ -330,14 +330,16 @@ class BeamLLM(LLM, Processor):
 
         return response
 
-    def explain_traceback(self, traceback, **kwargs):
-        prompt = f"Task: explain the following traceback\n\n" \
-                    f"========================================================================\n\n" \
-                    f"{traceback}\n\n" \
-                    f"========================================================================\n\n" \
-                    f"Response: \"\"\"\n{{text input here}}\n\"\"\""
+    def explain_traceback(self, traceback, n_words=100, **kwargs):
+        prompt = (f"Task: explain the following traceback and suggest a correction. Be concise don't use more than"
+                  f"{n_words} words and don't use newlines.\n\n"
+                    f"========================================================================\n\n"
+                    f"{traceback}\n\n"
+                    f"========================================================================\n\n"
+                    f"Response: \"\"\"\n{{text input here}}\n\"\"\"")
 
-        res = self.ask(prompt, **kwargs).text
+        res = self.ask(prompt, **kwargs)
+        return res.text
 
     def docstring(self, text, element_type, name=None, docstring_format=None, parent=None, parent_name=None,
                   parent_type=None, children=None, children_type=None, children_name=None, **kwargs):
@@ -1045,7 +1047,7 @@ class FastAPILLM(FCConversationLLM):
             if not res.response['is_done']:
                 logger.warning(f"Model {self.model} is_done=False.")
 
-            assert('res' in res.response, f"Response does not contain 'res' key")
+            assert 'res' in res.response, f"Response does not contain 'res' key"
 
         except Exception as e:
             logger.error(f"Error in response: {res.response}")

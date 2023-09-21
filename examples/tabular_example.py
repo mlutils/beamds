@@ -103,7 +103,7 @@ if __name__ == '__main__':
                        path_to_data=path_to_data,
                        path_to_results=path_to_results,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=100,
-                       stop_at=0.98, parallel=1, device=0, n_quantiles=6, label_smoothing=.2)
+                       stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 

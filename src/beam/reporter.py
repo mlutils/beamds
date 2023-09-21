@@ -22,6 +22,7 @@ from .logger import beam_logger as logger
 from contextlib import contextmanager
 from timeit import default_timer as timer
 from .data import BeamData
+import threading
 
 
 class BeamReport(object):
@@ -77,7 +78,7 @@ class BeamReport(object):
         prompt = f"You are an ML expert. You need to interpret and analyze logs of deep learning training runs. \n" \
                  f"The logs contains metrics and reports of the training process. \n" \
                  f"Please provide an analysis and suggest solutions for any problems you find. For example: \n" \
-                 f"overfitting, underfitting, etc. Be concise and respond in less than 100 words without new lines \n" \
+                 f"overfitting, underfitting, etc. Be concise and respond in less than 100 words \n" \
                  f"========================================================================\n\n" \
                  f"These are the experiment logs: \n\n" \
                  f"{logs}\n\n" \
@@ -85,7 +86,8 @@ class BeamReport(object):
 
         llm_response = self.llm.ask(prompt)
         if llm_response is not None:
-            self.info(f"LLM message: {llm_response.text}")
+            print()
+            logger.info(f"LLM response: {llm_response.text}")
 
     def reset_epoch(self, epoch, total_epochs=None):
 
@@ -184,7 +186,6 @@ class BeamReport(object):
             self._llm = get_beam_llm()
         return self._llm
 
-
     def print_stats(self):
 
         for subset, data_keys in self.subsets_keys.items():
@@ -218,7 +219,7 @@ class BeamReport(object):
 
                     self.info(f'{paramp: <12} | {stat}')
 
-        self.llm_info()
+        threading.Thread(target=self.llm_info).start()
 
     def print_metadata(self):
 

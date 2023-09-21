@@ -24,31 +24,97 @@ def boolean_feature(parser, feature, default=False, help='', metavar=None):
     parser.set_defaults(**{featurename: default})
 
 
-class BeamHparams(Namespace):
-    def __init__(self, *args, parser=None, **kwargs):
-        if parser is None:
-            parser = get_beam_parser()
-        parser = self._add(parser)
-        hparams = beam_arguments(parser, *args, **kwargs)
-        super().__init__(**vars(hparams))
+# class BeamHparams(Namespace):
+#     def __init__(self, *args, parser=None, **kwargs):
+#         if parser is None:
+#             parser = get_beam_parser()
+#         parser = self._add(parser)
+#         hparams = beam_arguments(parser, *args, **kwargs)
+#         super().__init__(**vars(hparams))
+#
+#     def _add(self, parser):
+#         if hasattr(super(), '_add'):
+#             parser = super().add(parser)
+#         parser = self.add(parser)
+#         return parser
+#
+#     def add(self, parser):
+#         if hasattr(super(), 'add'):
+#             logger.warning('Use the add method to add arguments to the parser')
+#         return parser
+#
+#     def __getitem__(self, item):
+#         return getattr(self, item)
+#
+#     def get(self, hparam, specific=None, default=None):
+#
+#         hparam = hparam.replace('-', '_')
+#         if type(specific) is list:
+#             for s in specific:
+#                 if f"{hparam}_{s}" in self:
+#                     return getattr(self, f"{specific}_{hparam}")
+#         elif specific is not None and f"{specific}_{hparam}" in self:
+#             return getattr(self, f"{specific}_{hparam}")
+#
+#         if hparam in self:
+#             return getattr(self, hparam)
+#
+#         return default
 
-    def _add(self, parser):
-        if hasattr(super(), '_add'):
-            parser = super().add(parser)
-        parser = self.add(parser)
-        return parser
 
-    def add(self, parser):
-        if hasattr(super(), 'add'):
-            logger.warning('Use the add method to add arguments to the parser')
-        return parser
+from collections import namedtuple
+HParam = namedtuple("HParam", "name type default help")
+
+class BeamHparams:
+
+    arguments = []
+    hyperparameters = []
+    defaults = {}
+
+    def __init__(self, *args, **kwargs):
+
+        if isinstance(super(), BeamHparams):
+            super().__init__(*args, **kwargs)
+            self.update_parser()
+        else:
+            self.parser = get_beam_parser()
+            self.args = args
+            self.kwargs = kwargs
+            self._hparams = None
+
+    def update_parser(self):
+
+        # set defaults
+        self.parser.set_defaults(**{k.replace('-', '_'): v for k, v in self.defaults.items()})
+
+        for v in self.arguments:
+            if v.type is bool:
+                boolean_feature(self.parser, v.name, v.default, v.help)
+            else:
+                self.parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type,
+                                         default=v.default, help=v.help)
+        for v in self.hyperparameters:
+            if v.type is bool:
+                boolean_feature(self.parser, v.name, v.default, v.help, metavar='hparam')
+            else:
+                self.parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type, default=v.default,
+                                     help=v.help, metavar='hparam')
+
+    @property
+    def hparams(self):
+        if self._hparams is None:
+            self._hparams = beam_arguments(self.parser, *self.args, **self.kwargs)
+        return self._hparams
 
     def __getitem__(self, item):
-        return getattr(self, item)
+        item = item.replace('-', '_')
+        return getattr(self.hparams, item)
+
+    def __getattr__(self, item):
+        return getattr(self.hparams, item)
 
     def get(self, hparam, specific=None, default=None):
 
-        hparam = hparam.replace('-', '_')
         if type(specific) is list:
             for s in specific:
                 if f"{hparam}_{s}" in self:
@@ -90,6 +156,7 @@ def get_beam_parser():
     parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
 
     parser.add_argument('--mp-port', type=str, default='random', help='Port to be used for multiprocessing')
+    parser.add_argument('--beam-llm', type=str, default='openai:///gpt-4', help='URI of the LLM service')
 
     parser.add_argument('--root-dir', type=str,
                         default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'results'),

@@ -16,7 +16,7 @@ import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
     pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format, nested_defaultdict, \
-    as_tensor
+    as_tensor, jupyter_like_traceback
 import torch.distributed as dist
 from .utils import tqdm_beam as tqdm
 from functools import partial
@@ -31,6 +31,7 @@ import traceback
 from contextlib import contextmanager
 from timeit import default_timer as timer
 from .data import BeamData
+from .config import get_beam_llm
 
 
 done = mp.Event()
@@ -125,10 +126,17 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     except Exception as e:
 
+        tb = traceback.format_exc()
+
+        llm = get_beam_llm()
+
+        explain = llm.explain_traceback(tb)
+        if explain is not None:
+            logger.error(f"LLM Message: {explain}")
+
         if not is_notebook():
             raise e
 
-        tb = traceback.format_exc()
         logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
         logger.error(f"Exception: {e}")
         logger.error(f"Exception: {tb}")
