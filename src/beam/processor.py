@@ -36,14 +36,15 @@ class Processor(object):
         self = cls(*args, remote=remote, **kwargs)
         return self
 
-    # def __getattribute__(self, name):
-    #     try:
-    #         remote = super(Processor, self).__getattribute__("remote")
-    #         if remote is not None:
-    #             return getattr(remote, name)
-    #     except:
-    #         return super(Processor, self).__getattribute__(name)
-
+    def __getattribute__(self, name):
+        try:
+            remote = super(Processor, self).__getattribute__("remote")
+            if remote is not None:
+                return getattr(remote, name)
+            return super(Processor, self).__getattribute__(name)
+        except:
+            return super(Processor, self).__getattribute__(name)
+        
     def save_state(self, path=None):
         if path is None:
             path = self.path
