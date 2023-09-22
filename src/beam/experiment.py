@@ -11,7 +11,7 @@ from shutil import copytree
 import torch
 import copy
 from collections import defaultdict
-from .utils import include_patterns, check_type, beam_device, check_element_type, print_beam_hyperparameters, rmtree
+from .utils import include_patterns, check_type, beam_device, check_element_type, rmtree
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
@@ -21,7 +21,6 @@ import torch.distributed as dist
 from .utils import tqdm_beam as tqdm
 from functools import partial
 from argparse import Namespace
-from ._version import __version__
 import inspect
 from .path import beam_path, BeamPath, beam_key
 from .logger import beam_logger as logger
@@ -30,7 +29,7 @@ import traceback
 from contextlib import contextmanager
 from timeit import default_timer as timer
 from .data import BeamData
-from .config import get_beam_llm
+from .config import get_beam_llm, print_beam_hyperparameters
 
 
 done = mp.Event()
@@ -294,7 +293,7 @@ class Experiment(object):
         if self.load_model:
             logger.cleanup()
             logger.add_file_handlers(self.root.joinpath('experiment.log'))
-            logger.info(f"Resuming existing experiment (Beam version: {__version__})")
+            logger.info(f"Resuming existing experiment")
 
         self.writer = None
 
@@ -595,7 +594,6 @@ class Experiment(object):
                     except:
                         pass
 
-
     @staticmethod
     def _tensorboard(port=None, get_port_from_beam_port_range=True, base_dir=None, log_dirs=None, hparams=False):
 
@@ -784,7 +782,7 @@ class Experiment(object):
         self.root.joinpath('hparams.pkl').write(self.tensorboard_hparams)
 
         if not self.hparams.override:
-            logger.info(f"Creating new experiment (Beam version: {__version__})")
+            logger.info(f"Creating new experiment")
 
         else:
             logger.warning("Deleting old experiment")

@@ -112,7 +112,11 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
         return path
 
     if ':' not in path:
-        return BeamPath(path)
+        return BeamPath(path, scheme='file')
+    elif path[1] == ':':  # windows path
+        path = path.replace('\\', '/')
+        path = path.lstrip('/')
+        return BeamPath(path, scheme='windows')
 
     url = BeamURL.from_string(path)
 
@@ -166,6 +170,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
         raise NotImplementedError
     elif url.protocol == 'ftps':
         raise NotImplementedError
+    elif url.protocol == 'windows':
+        path = path.replace('\\', '/')
+        return BeamPath(path)
     elif url.protocol == 'sftp':
 
         private_key = beam_key('ssh_private_key', private_key)
@@ -177,7 +184,11 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 class BeamPath(PureBeamPath):
 
     def __init__(self, *pathsegments, **kwargs):
-        PureBeamPath.__init__(self, *pathsegments, scheme='file', **kwargs)
+        scheme = 'file'
+        if 'scheme' in kwargs and kwargs['scheme'] is not None:
+            scheme = kwargs.pop('scheme')
+
+        PureBeamPath.__init__(self, *pathsegments, scheme=scheme, **kwargs)
         self.path = Path(self.path)
 
     @classmethod

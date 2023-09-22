@@ -7,7 +7,7 @@ import os
 import torch
 import copy
 from collections import defaultdict
-from .utils import include_patterns, check_type, beam_device, check_element_type, print_beam_hyperparameters, rmtree
+from .utils import include_patterns, check_type, beam_device, check_element_type, rmtree
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
@@ -354,7 +354,7 @@ class BeamReport(object):
             yield i, batch
 
     @staticmethod
-    def normalize_scalar(val):
+    def detach_scalar(val):
         val_type = check_type(val)
         if val_type.major == 'scalar':
             if val_type.element == 'float':
@@ -521,7 +521,7 @@ class BeamReport(object):
         if append is None:
             append = self.state == 'in_epoch'
 
-        val = self.normalize_scalar(val)
+        val = self.detach_scalar(val)
 
         if append:
             self.scalar[key].append(val)
@@ -549,7 +549,7 @@ class BeamReport(object):
 
         for k, val in val_dict.items():
 
-            val = self.normalize_scalar(val)
+            val = self.detach_scalar(val)
             if append:
                 self.scalars[key][k].append(val)
             else:

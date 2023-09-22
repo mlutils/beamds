@@ -184,7 +184,7 @@ def cleanup(rank, world_size):
 
 def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
     '''
-    :param seed: set -1 to avoid change, set 0 to randomly select seed, set [1, 2**32) to get new seed
+    :param seed: set -1 to avoid change, set 0 to randomly select seed, set [1, 2**31) to get new seed
     :param constant: a constant to be added to the seed
     :param increment: whether to generate incremental seeds
     :param deterministic: whether to set torch to be deterministic
@@ -199,7 +199,9 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
         constant += set_seed.cnt
 
     if seed == 0:
-        seed = np.random.randint(1, 2 ** 32 - constant) + constant
+        seed = np.random.randint(1, 2 ** 31 - constant) + constant
+    else:
+        seed += constant
 
     if seed > 0:
         random.seed(seed)

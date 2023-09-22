@@ -42,7 +42,7 @@ from timeit import default_timer as timer
 from pathlib import Path
 from collections import Counter
 import inspect
-from pathlib import PurePath
+from pathlib import PurePosixPath, PureWindowsPath
 from argparse import Namespace
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 
@@ -223,7 +223,7 @@ class BeamURL:
 
     @staticmethod
     def to_path(path):
-        return PurePath(path).as_posix()
+        return PurePosixPath(path).as_posix()
 
     @staticmethod
     def query_to_dict(query):
@@ -259,7 +259,10 @@ class PureBeamPath:
         if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
             pathsegments = pathsegments[0].parts
 
-        self.path = PurePath(*pathsegments)
+        if scheme == 'windows':
+            self.path = PureWindowsPath(*pathsegments)
+        else:
+            self.path = PurePosixPath(*pathsegments)
 
         if url is not None:
             scheme = url.scheme
@@ -763,34 +766,6 @@ def rate_string_format(n, t):
     if n / t > 1:
         return f"{n / t: .4} [iter/sec]"
     return f"{t / n: .4} [sec/iter]"
-
-
-def print_beam_hyperparameters(args, debug_only=False):
-    from ..logger import beam_logger as logger
-
-    if debug_only:
-        log_func = logger.debug
-    else:
-        log_func = logger.info
-
-    log_func(f"beam project: {args.project_name}")
-    log_func('Experiment Hyperparameters')
-    log_func('----------------------------------------------------------'
-             '---------------------------------------------------------------------')
-
-    hparams_list = args.hparams
-    var_args_sorted = dict(sorted(vars(args).items()))
-
-    for k, v in var_args_sorted.items():
-        if k == 'hparams':
-            continue
-        elif k in hparams_list:
-            log_func(k + ': ' + str(v))
-        else:
-            logger.debug(k + ': ' + str(v))
-
-    log_func('----------------------------------------------------------'
-             '---------------------------------------------------------------------')
 
 
 def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):

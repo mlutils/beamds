@@ -20,9 +20,6 @@ from src.beam import DataTensor, PackedFolds, as_numpy
 from src.beam.data import BeamData, DataBatch
 
 
-# In[2]:
-
-
 class MNISTDataset(UniversalDataset):
 
     def __init__(self, hparams):
@@ -82,48 +79,26 @@ class MNISTAlgorithm(Algorithm):
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizers['net'].dense, gamma=0.99)
         self.stop_at = hparams.stop_at
 
-    def early_stopping(self, results=None, epoch=None, **kwargs):
-
-        if 'validation' in results:
-            acc = torch.mean(results['validation']['scalar']['acc'])
-        else:
-            acc = torch.mean(results['test']['scalar']['acc'])
-
-        return acc > self.stop_at
-
-    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
+    def postprocess_epoch(self, sample=None, epoch=None, subset=None, training=True, **kwargs):
         x, y = sample['x'], sample['y']
+        self.report_images('sample', x[:16].view(16, 1, 28, 28).data.cpu())
 
-        results['images']['sample'] = x[:16].view(16, 1, 28, 28).data.cpu()
-
-        if training:
-            self.scheduler.step()
-            results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
-
-        return results
-
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def iteration(self, sample=None, subset=None, counter=None, training=True, **kwargs):
 
         x, y = sample['x'], sample['y']
 
         x = x.view(len(x), -1)
         net = self.networks['net']
-        opt = self.optimizers['net']
 
         y_hat = net(x)
         loss = F.cross_entropy(y_hat, y, reduction='mean')
-
-        if training:
-            opt.apply(loss)
+        self.apply(loss)
 
         # add scalar measurements
-        results['scalar']['loss'].append(as_numpy(loss))
-        results['scalar']['ones'].append(as_numpy(x.sum(dim=-1)))
-        results['scalar']['acc'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
+        self.report_scalar('ones', x.sum(dim=-1))
+        self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-        return results
-
-    def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
+    def inference(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
@@ -135,74 +110,42 @@ class MNISTAlgorithm(Algorithm):
 
         y_hat = net(x)
 
-        # add scalar measurements
-        results['predictions']['y_pred'].append(y_hat.detach())
+        # add scalar metrics
+        self.report_scalar('y_pred', y_hat)
 
         if not predicting:
-            results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
-            results['predictions']['target'].append(y)
-            return {'y': y, 'y_hat': y_hat}, results
+            self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
+            self.report_scalar('target', y)
+            return {'y': y, 'y_hat': y_hat}
 
-        return y_hat, results
+        return y_hat
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
-
-        y_pred = as_numpy(torch.argmax(results['predictions']['y_pred'], dim=1))
+    def postprocess_inference(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if not predicting:
-            y_true = as_numpy(results['predictions']['target'])
+
+            y_pred = as_numpy(torch.argmax(self.get_scalar('y_pred'), dim=1))
+            y_true = as_numpy(self.get_scalar('target'))
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
-            results['metrics']['precision'] = precision
-            results['metrics']['recall'] = recall
-            results['metrics']['fscore'] = fscore
-            results['metrics']['support'] = support
 
-        return results
+            self.report_data('metrics/precision', precision)
+            self.report_data('metrics/recall', recall)
+            self.report_data('metrics/fscore', fscore)
+            self.report_data('metrics/support', support)
 
-
-def run_mnist(rank, world_size, experiment):
-
-    dataset = MNISTDataset(experiment.hparams)
-
-    alg = MNISTAlgorithm(experiment.hparams)
-    alg.load_dataset(dataset)
-    alg.experiment = experiment
-
-    # simulate input to the network
-    x = next(alg.data_generator('validation'))[1]['x']
-    x = x.view(len(x), -1)
-
-    experiment.writer_control(enable=not (bool(rank)), networks=alg.get_networks(), inputs={'net': x})
-
-    for i, results in enumerate(iter(alg)):
-        experiment.save_model_results(results, alg, i,
-                                      print_results=True, visualize_results='yes',
-                                      store_results='logscale', store_networks='logscale',
-                                      visualize_weights=True,
-                                      argv={'images': {'sample': {'dataformats': 'NCHW'}}})
-
-    if world_size > 1:
-        return results
-    else:
-        return alg, results
+            self.report_scalar('objective', self.get_scalar('acc', aggregate=True))
 
 
 # ## Training
 
 if __name__ == '__main__':
 
-    # here you put all actions which are performed only once before initializing the workers
-    # for example, setting running arguments and experiment:
-
-    # path_to_data = '/home/shared/data//dataset/mnist'
-    # root_dir = '/home/shared/data/results'
-
-    path_to_data = '/tmp/shared/data//dataset/mnist'
-    root_dir = '/tmp/shared/data/results'
+     # in this example we do not set the root-dir and the path-to-data, so the defaults will be used
 
     args = beam_arguments(
-        f"--project-name=mnist --root-dir={root_dir} --algorithm=MNISTAlgorithm --amp  --device=cuda   ",
-        " --n-epochs=10 --clip=0 --parallel=1 --amp-dtype=bfloat16", path_to_data=path_to_data, stop_at=.97)
+        f"--project-name=mnist --algorithm=MNISTAlgorithm --amp  --device=cpu   ",
+        " --n-epochs=10 --objective=acc --amp-dtype=bfloat16", stop_at=.97,
+        scheduler='exponential', gamma=.999)
 
     experiment = Experiment(args)
 

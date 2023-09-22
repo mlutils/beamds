@@ -10,6 +10,7 @@ from .path import beam_path, beam_key
 from argparse import Namespace
 from .logger import beam_logger as logger
 from pathlib import Path
+from ._version import __version__
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
@@ -28,20 +29,15 @@ from collections import namedtuple
 HParam = namedtuple("HParam", "name type default help")
 
 
-class BeamHparams:
+class BeamHparams(Namespace):
 
     arguments = []
     hyperparameters = []
     defaults = {}
 
-    a = 5
-
     def __init__(self, *args, **kwargs):
 
-        self.parser = get_beam_parser()
-        self.args = args
-        self.kwargs = kwargs
-        self._hparams = None
+        parser = get_beam_parser()
 
         defaults = None
         arguments = None
@@ -70,42 +66,43 @@ class BeamHparams:
             else:
                 h = None
 
-            self.update_parser(defaults=d, arguments=a, hyperparameters=h)
+            self.update_parser(parser, defaults=d, arguments=a, hyperparameters=h)
 
-    def update_parser(self, defaults=None, arguments=None, hyperparameters=None):
+        hparams = beam_arguments(parser, *args, **kwargs)
+        super().__init__(**hparams.__dict__)
+
+    @staticmethod
+    def update_parser(parser, defaults=None, arguments=None, hyperparameters=None):
 
         if defaults is not None:
             # set defaults
-            self.parser.set_defaults(**{k.replace('-', '_'): v for k, v in defaults.items()})
+            parser.set_defaults(**{k.replace('-', '_'): v for k, v in defaults.items()})
 
         if arguments is not None:
             for v in arguments:
                 if v.type is bool:
-                    boolean_feature(self.parser, v.name, v.default, v.help)
+                    boolean_feature(parser, v.name, v.default, v.help)
                 else:
-                    self.parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type,
+                    parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type,
                                              default=v.default, help=v.help)
 
         if hyperparameters is not None:
             for v in hyperparameters:
                 if v.type is bool:
-                    boolean_feature(self.parser, v.name, v.default, v.help, metavar='hparam')
+                    boolean_feature(parser, v.name, v.default, v.help, metavar='hparam')
                 else:
-                    self.parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type, default=v.default,
+                    parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type, default=v.default,
                                          help=v.help, metavar='hparam')
 
-    @property
-    def hparams(self):
-        if self._hparams is None:
-            self._hparams = beam_arguments(self.parser, *self.args, **self.kwargs)
-        return self._hparams
+    def is_hparam(self, key):
+        key = key.replace('-', '_')
+        if key in self.hparams:
+            return True
+        return False
 
     def __getitem__(self, item):
         item = item.replace('-', '_')
-        return getattr(self.hparams, item)
-
-    def __getattr__(self, item):
-        return getattr(self.hparams, item)
+        return getattr(self, item)
 
     def get(self, hparam, specific=None, default=None):
 
@@ -155,12 +152,15 @@ def get_beam_parser():
     parser.add_argument('--root-dir', type=str,
                         default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'results'),
                         help='Root directory for Logs and results')
+
     parser.add_argument('--hpo-dir', type=str,
                         default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'hpo_results'),
                         help='Root directory for Logs and results of Hyperparameter optimization. '
                              'Must be a file system path')
 
-    parser.add_argument('--path-to-data', type=str, default=None, help='Where the dataset is located')
+    parser.add_argument('--path-to-data', type=str,
+                        default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'data'),
+                        help='Where the dataset is located')
 
     boolean_feature(parser, "reload", False, "Load saved model")
     parser.add_argument('--resume', type=int, default=-1,
@@ -273,7 +273,7 @@ def get_beam_parser():
                         help=' Number of iterations for the first restart in CosineAnnealingWarmRestarts scheduler')
     parser.add_argument('--cawr-tmult', type=int, default=1, metavar='hparam',
                         help=' A factor increases Ti after a restart in CosineAnnealingWarmRestarts scheduler')
-    parser.add_argument('--scheduler-factor', type=float, default=math.sqrt(.1), metavar='hparam',
+    parser.add_argument('--scheduler-factor', '--scheduler-gamma', type=float, default=math.sqrt(.1), metavar='hparam',
                         help='The factor to reduce lr in schedulers such as ReduceOnPlateau')
     parser.add_argument('--scheduler-patience', type=int, default=None, metavar='hparam',
                         help='Patience for the ReduceOnPlateau scheduler')
@@ -487,3 +487,36 @@ def get_beam_llm():
             pass
 
     return llm
+
+
+def print_beam_hyperparameters(args, debug_only=False):
+
+    if debug_only:
+        log_func = logger.debug
+    else:
+        log_func = logger.info
+
+    log_func(f"Beam experiment (Beam version: {__version__})")
+    log_func(f"project: {args.project_name}, algorithm: {args.algorithm}, identifier: {args.identifier}")
+    log_func(f"Global paths:")
+    log_func(f"path-to-data (where the dataset should be): {args.path_to_data}")
+    log_func(f"root-dir (where results are written to): {args.root_dir}")
+    log_func('Experiment Hyperparameters (only non default values are listed):')
+    log_func('----------------------------------------------------------'
+             '---------------------------------------------------------------------')
+
+    hparams_list = args.hparams
+    var_args_sorted = dict(sorted(vars(args).items()))
+
+    default_params = get_beam_parser()
+
+    for k, v in var_args_sorted.items():
+        if k == 'hparams':
+            continue
+        elif k in hparams_list and (v is not None and v != default_params.get_default(k)):
+            log_func(k + ': ' + str(v))
+        else:
+            logger.debug(k + ': ' + str(v))
+
+    log_func('----------------------------------------------------------'
+             '---------------------------------------------------------------------')

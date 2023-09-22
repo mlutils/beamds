@@ -100,9 +100,14 @@ class BeamScheduler(object):
                     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, self.total_steps, eta_min=eta_min)
 
             elif method == 'cawr':
-
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=T_0, T_mult=T_mult,
                                                                                  eta_min=eta_min)
+
+            elif method == 'exponential':
+                scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=factor)
+
+            elif method == 'step':
+                scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=patience, gamma=factor)
 
             else:
                 scheduler = None

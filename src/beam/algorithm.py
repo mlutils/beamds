@@ -105,6 +105,7 @@ class Algorithm(Processor):
         self._train_reporter = BeamReport(objective=self.get_hparam('objective'))
         self._predict_reporter = None
         self.reporter = None
+        self.training = False
 
     def __getattr__(self, item):
         if item in self.__dict__:
@@ -281,11 +282,11 @@ class Algorithm(Processor):
 
         self.reporter.report_data(name, val, subset=subset, data_type=data_type, **kwargs)
 
-    def report_image(self, name, val_dict, subset=None, aggregation=None, append=None, **kwargs):
-        self.reporter.report_image(name, val_dict, subset=subset, aggregation=aggregation, append=append, **kwargs)
+    def report_image(self, name, val, subset=None, **kwargs):
+        self.reporter.report_image(name, val, subset=subset, **kwargs)
 
-    def report_images(self, name, val_dict, subset=None, aggregation=None, append=None, **kwargs):
-        self.reporter.report_images(name, val_dict, subset=subset, aggregation=aggregation, append=append, **kwargs)
+    def report_images(self, name, val, subset=None, **kwargs):
+        self.reporter.report_images(name, val, subset=subset, **kwargs)
 
     def report_scalars(self, name, val, subset=None, **kwargs):
         self.reporter.report_scalars(name, val, subset=subset, **kwargs)
@@ -531,9 +532,12 @@ class Algorithm(Processor):
 
         self._experiment = experiment
 
-    def apply(self, *losses, weights=None, training=True, optimizers=None, set_to_none=True, gradient=None,
+    def apply(self, *losses, weights=None, training=None, optimizers=None, set_to_none=True, gradient=None,
               retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None, name=None,
               report=True):
+
+        if training is None:
+            training = self.training
 
         if name is None:
             name = 'loss'
@@ -1190,7 +1194,7 @@ class Algorithm(Processor):
             if head is not None:
                 max_iterations = math.ceil(head / batch_size)
 
-            with (self.reporter.track_epoch(subset, batch_size=batch_size, training=not eval_mode)):
+            with (self.reporter.track_epoch(desc, batch_size=batch_size, training=not eval_mode)):
                 self.preprocess_inference(subset=subset, predicting=predicting, dataset=dataset, **kwargs)
                 data_generator = self.data_generator(dataloader, max_iterations=max_iterations)
                 total_iterations = len(dataloader) if max_iterations is None else min(len(dataloader), max_iterations)
@@ -1224,7 +1228,7 @@ class Algorithm(Processor):
         epoch_start = 0 if self.get_hparam("restart_epochs_count", default=True) else self.epoch
         self.set_train_reporter(first_epoch=epoch_start, n_epochs=n_epochs)
 
-        for i  in range(epoch_start, n_epochs):
+        for i in range(epoch_start, n_epochs):
 
             self.reporter.reset_epoch(i, total_epochs=self.epoch + 1)
 
@@ -1279,6 +1283,8 @@ class Algorithm(Processor):
                     dataset.train()
                 else:
                     dataset.eval()
+
+        self.training = training
 
     def save_state(self, path=None):
         self.save_checkpoint(path=path, networks=True, optimizers=False, schedulers=False,
