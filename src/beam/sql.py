@@ -149,7 +149,7 @@ class BeamAthena(BeamSQL):
     def __init__(self, s3_staging_dir, role_session_name=None, region_name=None, access_key=None, secret_key=None,
                  *args, **kwargs):
 
-        self.access_key = beam_key('aws_access_key', access_key)
+        self.access_key = beam_key('AWS_ACCESS_KEY_ID', access_key)
         self.secret_key = beam_key('aws_secret_key', secret_key)
         self.s3_staging_dir = s3_staging_dir
 

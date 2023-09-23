@@ -10,15 +10,6 @@ import pandas as pd
 
 class BeamKey:
 
-    key_names_map = {
-        'comet_api_key': 'COMET_API_KEY',
-        'aws_access_key': 'AWS_ACCESS_KEY_ID',
-        'aws_private_key': 'AWS_SECRET_ACCESS_KEY',
-        'ssh_secret_key': 'SSH_SECRET_KEY',
-        'openai_api_key': 'OPENAI_API_KEY',
-        'beam_llm': 'BEAM_LLM',
-    }
-
     def __init__(self, config_path=None, **kwargs):
         self.keys = {}
 
@@ -79,8 +70,8 @@ class BeamKey:
         elif name in self.hparams and self.hparams[name] is not None:
             value = self.hparams[name]
             self.keys[name] = value
-        elif name in BeamKey.key_names_map and BeamKey.key_names_map[name] in os.environ:
-            value = os.environ[BeamKey.key_names_map[name]]
+        elif name in os.environ:
+            value = os.environ[name]
             self.keys[name] = value
         elif self.config_file is not None and name in self.config_file:
             value = self.config_file[name]
@@ -152,8 +143,8 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
     if url.protocol == 's3':
 
-        access_key = beam_key('aws_access_key', access_key)
-        secret_key = beam_key('aws_private_key', secret_key)
+        access_key = beam_key('AWS_ACCESS_KEY_ID', access_key)
+        secret_key = beam_key('AWS_SECRET_ACCESS_KEY', secret_key)
 
         return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
 
@@ -175,7 +166,7 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
         return BeamPath(path)
     elif url.protocol == 'sftp':
 
-        private_key = beam_key('ssh_private_key', private_key)
+        private_key = beam_key('SSH_PRIVATE_KEY', private_key)
         return SFTPPath(path, hostname=hostname, username=username, port=port, private_key=private_key, **kwargs)
     else:
         raise NotImplementedError

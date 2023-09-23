@@ -147,7 +147,7 @@ def get_beam_parser():
     parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
 
     parser.add_argument('--mp-port', type=str, default='random', help='Port to be used for multiprocessing')
-    parser.add_argument('--beam-llm', type=str, default='openai:///gpt-4', help='URI of the LLM service')
+    parser.add_argument('--BEAM-LLM', type=str, default=None, help='URI of the LLM service')
 
     parser.add_argument('--root-dir', type=str,
                         default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'results'),
@@ -179,11 +179,12 @@ def get_beam_parser():
 
     parser.add_argument('--parallel', type=int, default=1, metavar='hparam',
                         help='Number of parallel gpu workers. Set <=1 for single process')
-    parser.add_argument('--schedulers-steps', type=str, default='epoch',
+    parser.add_argument('--schedulers-steps', type=str, default='epoch', metavar='hparam',
                         help='When to apply schedulers steps [epoch|iteration|none]: each epoch or each iteration '
                              'Use none to avoid scheduler steps or to use your own custom steps policy')
-    parser.add_argument('--scheduler', type=str, default=None, help='Build BeamScheduler. Supported schedulers: '
-                                                                    '[one_cycle,reduce_on_plateau,cosine_annealing]')
+    parser.add_argument('--scheduler', type=str, default=None, metavar='hparam',
+                        help='Build BeamScheduler. Supported schedulers: '
+                             '[one_cycle,reduce_on_plateau,cosine_annealing]')
     parser.add_argument('--objective', type=str, default='objective',
                         help='A single objective to apply hyperparameter optimization or ReduceLROnPlateau scheduling. '
                              'By default we consider maximization of the objective (e.g. accuracy) '
@@ -421,6 +422,13 @@ def beam_arguments(*args, **kwargs):
     kwargs is a dictionary of both defined and undefined arguments
     '''
 
+    def update_parser(p, d):
+        for pi in p._actions:
+            for o in pi.option_strings:
+                o = o.replace('--', '').replace('-', '_')
+                if o in d:
+                    p.set_defaults(**{pi.dest: d[o]})
+
     if is_notebook():
         sys.argv = sys.argv[:1]
 
@@ -447,24 +455,28 @@ def beam_arguments(*args, **kwargs):
         else:
             raise ValueError
 
+    for ar in args_dict:
+        kwargs = {**kwargs, **ar}
+
     args_str = re.split(r"\s+", ' '.join([ar.strip() for ar in args_str]))
 
     sys.argv = [file_name] + args_str + sys_args
     sys.argv = list(filter(lambda x: bool(x), sys.argv))
 
+    update_parser(pr, kwargs)
+    # set defaults from environment variables
+    update_parser(pr, os.environ)
+
     args, unknown = pr.parse_known_args()
     args = add_unknown_arguments(args, unknown)
+
+    for k, v in kwargs.items():
+        if k not in args:
+            setattr(args, k, v)
 
     if args.experiment_configuration is not None:
         cf = beam_path(args.experiment_configuration).read()
         for k, v in cf.items():
-            setattr(args, k, v)
-
-    for k, v in kwargs.items():
-        setattr(args, k, v)
-
-    for ar in args_dict:
-        for k, v in ar.items():
             setattr(args, k, v)
 
     hparams = [pai.dest for pai in pr._actions if pai.metavar == 'hparam']
@@ -478,7 +490,7 @@ def beam_arguments(*args, **kwargs):
 def get_beam_llm():
 
     llm = NoneClass()
-    key = beam_key('beam_llm')
+    key = beam_key('BEAM_LLM', store=False)
     if key is not None:
         try:
             from .llm import beam_llm
@@ -501,6 +513,7 @@ def print_beam_hyperparameters(args, debug_only=False):
     log_func(f"Global paths:")
     log_func(f"path-to-data (where the dataset should be): {args.path_to_data}")
     log_func(f"root-dir (where results are written to): {args.root_dir}")
+    log_func(f'Experiment objective: {args.objective} (set for schedulers, early stopping and best checkpoint store)')
     log_func('Experiment Hyperparameters (only non default values are listed):')
     log_func('----------------------------------------------------------'
              '---------------------------------------------------------------------')

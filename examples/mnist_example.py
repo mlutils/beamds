@@ -2,6 +2,7 @@
 # coding: utf-8
 
 # In[1]:
+
 from examples.example_utils import add_beam_to_path
 add_beam_to_path()
 
@@ -143,9 +144,9 @@ if __name__ == '__main__':
      # in this example we do not set the root-dir and the path-to-data, so the defaults will be used
 
     args = beam_arguments(
-        f"--project-name=mnist --algorithm=MNISTAlgorithm --amp  --device=cpu   ",
-        " --n-epochs=10 --objective=acc --amp-dtype=bfloat16", stop_at=.97,
-        scheduler='exponential', gamma=.999)
+        f"--project-name=mnist --algorithm=MNISTAlgorithm --amp  --device=0   ",
+        " --n-epochs=10 --epoch-length=1000 --objective=acc --amp-dtype=float16", stop_at=.99,
+        scheduler='exponential', gamma=.999, scale_epoch_by_batch_size=False)
 
     experiment = Experiment(args)
 

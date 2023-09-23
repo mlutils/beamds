@@ -1169,7 +1169,7 @@ class OpenAI(OpenAIBase):
 
     def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
 
-        api_key = beam_key('openai_api_key', api_key)
+        api_key = beam_key('OPENAI_API_KEY', api_key)
 
         kwargs['scheme'] = 'openai'
         super().__init__(api_key=api_key, api_base='https://api.openai.com/v1',
@@ -1266,7 +1266,7 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
     if url.protocol == 'openai':
 
-        api_key = beam_key('openai_api_key', api_key)
+        api_key = beam_key('OPENAI_API_KEY', api_key)
         return OpenAI(model=model, api_key=api_key, **kwargs)
 
     elif url.protocol == 'fastchat':

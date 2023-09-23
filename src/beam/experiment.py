@@ -453,10 +453,10 @@ class Experiment(object):
             import comet_ml
             # from comet_ml.integration.pytorch import log_model
 
-            api_key = self.hparams.comet_api_key
+            api_key = self.hparams.COMET_API_KEY
             if api_key is None:
                 # api_key = os.environ.get('COMET_API_KEY', None)
-                api_key = beam_key('comet_api_key')
+                api_key = beam_key('COMET_API_KEY')
             git_directory = self.hparams.git_directory
             if git_directory is None and isinstance(self.code_dir, BeamPath):
                 git_directory = str(self.code_dir)

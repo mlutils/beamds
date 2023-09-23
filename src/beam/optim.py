@@ -109,8 +109,10 @@ class BeamScheduler(object):
             elif method == 'step':
                 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=patience, gamma=factor)
 
-            else:
+            elif method is None:
                 scheduler = None
+            else:
+                logger.warning(f"Unsupported scheduler method: {method}, using None instead")
 
         self.scheduler = scheduler
 

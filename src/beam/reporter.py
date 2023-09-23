@@ -361,7 +361,7 @@ class BeamReport(object):
                 val = float(val)
             elif val_type.element == 'int':
                 val = int(val)
-        elif val_type.minor == 'torch':
+        elif val_type.minor == 'tensor':
             val = val.detach().cpu()
         elif val_type.major == 'container':
             val = as_tensor(val, device='cpu')
