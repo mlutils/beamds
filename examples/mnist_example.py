@@ -82,7 +82,7 @@ class MNISTAlgorithm(Algorithm):
 
     def postprocess_epoch(self, sample=None, epoch=None, subset=None, training=True, **kwargs):
         x, y = sample['x'], sample['y']
-        self.report_images('sample', x[:16].view(16, 1, 28, 28).data.cpu())
+        self.report_images('sample', x[:16].view(16, 1, 28, 28))
 
     def iteration(self, sample=None, subset=None, counter=None, training=True, **kwargs):
 
