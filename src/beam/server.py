@@ -2,7 +2,13 @@ from flask import Flask, jsonify, request, send_file
 from .experiment import Experiment
 import requests
 import io
-import torch
+try:
+    import torch
+    has_torch = True
+except ImportError:
+    has_torch = False
+
+import pickle
 from .utils import find_port, normalize_host
 from gevent.pywsgi import WSGIServer
 from .logger import beam_logger as logger
@@ -19,6 +25,38 @@ class BeamClient(object):
 
     def __init__(self, host):
         self.host = host
+        self._info = None
+        self._serialization = None
+
+    @property
+    def load_function(self):
+        if self.serialization == 'torch':
+            if not has_torch:
+                raise ImportError('Cannot use torch serialization without torch installed')
+            return torch.load
+        else:
+            return pickle.load
+
+    @property
+    def dump_function(self):
+        if self.serialization == 'torch':
+            if not has_torch:
+                raise ImportError('Cannot use torch serialization without torch installed')
+            return torch.save
+        else:
+            return pickle.dump
+
+    @property
+    def serialization(self):
+        if self._serialization is None:
+            self._serialization = self.info['serialization']
+        return self._serialization
+
+    @property
+    def info(self):
+        if self._info is None:
+            self._info = requests.get(f'http://{self.host}/').json()
+        return self._info
 
     def get(self, path):
 
@@ -28,17 +66,17 @@ class BeamClient(object):
     def post(self, path, *args, **kwargs):
 
         io_args = io.BytesIO()
-        torch.save(args, io_args)
+        self.dump_function(args, io_args)
         io_args.seek(0)
 
         io_kwargs = io.BytesIO()
-        torch.save(kwargs, io_kwargs)
+        self.dump_function(kwargs, io_kwargs)
         io_kwargs.seek(0)
 
         response = requests.post(f'http://{self.host}/{path}', files={'args': io_args, 'kwargs': io_kwargs}, stream=True)
 
         if response.status_code == 200:
-            response = torch.load(io.BytesIO(response.raw.data))
+            response = self.load_function(io.BytesIO(response.raw.data))
 
         return response
 
@@ -51,13 +89,22 @@ class BeamClient(object):
 
 class BeamServer(object):
 
-    def __init__(self, obj):
+    def __init__(self, obj, torch=True):
 
         self.app = Flask(__name__)
         self.app.add_url_rule('/', view_func=self.get_info)
 
         self.alg = obj
         self.func = obj
+
+        if torch and has_torch:
+            self.load_function = torch.load
+            self.dump_function = torch.save
+            self.serialization_method = 'torch'
+        else:
+            self.load_function = pickle.load
+            self.dump_function = pickle.dump
+            self.serialization_method = 'pickle'
 
         if callable(obj):
             self.app.add_url_rule('/call', view_func=self.call_function, methods=['POST'])
@@ -90,23 +137,28 @@ class BeamServer(object):
 
     def get_info(self):
 
+        d = {'serialization': self.serialization_method}
         if self.alg is None:
-            return jsonify(self.func.__code__.co_varnames)
+            d['vars_args'] = self.func.__code__.co_varnames
+            d['types'] = 'function'
         else:
-            return jsonify(self.alg.experiment.vars_args)
+            d['vars_args'] = self.alg.experiment.vars_args
+            d['types'] = 'algorithm'
+
+        return jsonify(d)
 
     def call_function(self):
 
             args = request.files['args']
             kwargs = request.files['kwargs']
 
-            args = torch.load(args)
-            kwargs = torch.load(kwargs)
+            args = self.load_function(args)
+            kwargs = self.load_function(kwargs)
 
             results = self.func(*args, **kwargs)
 
             io_results = io.BytesIO()
-            torch.save(results, io_results)
+            self.dump_function(results, io_results)
             io_results.seek(0)
 
             return send_file(io_results, mimetype="text/plain")
@@ -118,13 +170,13 @@ class BeamServer(object):
         args = request.files['args']
         kwargs = request.files['kwargs']
 
-        args = torch.load(args)
-        kwargs = torch.load(kwargs)
+        args = self.load_function(args)
+        kwargs = self.load_function(kwargs)
 
         results = method(*args, **kwargs)
 
         io_results = io.BytesIO()
-        torch.save(results, io_results)
+        self.dump_function(results, io_results)
         io_results.seek(0)
 
         return send_file(io_results, mimetype="text/plain")
