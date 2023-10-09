@@ -111,8 +111,8 @@ class AutoBeam:
     @staticmethod
     def recursive_module_dependencies(module_path):
 
-        module_path = beam_path(module_path)
-        self_path = beam_path(inspect.getfile(AutoBeam))
+        module_path = beam_path(module_path).resolve()
+        self_path = beam_path(inspect.getfile(AutoBeam)).resolve()
 
         try:
             content = module_path.read()
@@ -130,8 +130,14 @@ class AutoBeam:
                     if is_installed_package(root_name) and not is_std_lib(root_name):
                         modules.add(root_name)
                     elif not is_installed_package(root_name) and not is_std_lib(root_name):
-                        path = beam_path(importlib.util.find_spec(root_name).origin)
-                        if path in [module_path, self_path]:
+                        if root_name in ['__main__']:
+                            continue
+                        try:
+                            path = beam_path(importlib.util.find_spec(root_name).origin).resolve()
+                            if path in [module_path, self_path]:
+                                continue
+                        except ValueError:
+                            logger.warning(f"Could not find module: {root_name}")
                             continue
                         modules.union(AutoBeam.recursive_module_dependencies(path))
 
@@ -142,7 +148,7 @@ class AutoBeam:
                     modules.add(root_name)
                 elif not is_installed_package(root_name) and not is_std_lib(root_name):
                     if a.level == 0:
-                        path = beam_path(importlib.util.find_spec(root_name).origin)
+                        path = beam_path(importlib.util.find_spec(root_name).origin).resolve()
                         if path in [module_path, self_path]:
                             continue
                         modules.union(AutoBeam.recursive_module_dependencies(path))
@@ -167,7 +173,7 @@ class AutoBeam:
 
         if self._module_dependencies is None:
 
-            module_path = beam_path(inspect.getfile(type(self.obj)))
+            module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
             modules = AutoBeam.recursive_module_dependencies(module_path)
             self._module_dependencies = list(set(modules))
 
@@ -179,7 +185,7 @@ class AutoBeam:
         if self._top_levels is None:
             top_levels = {}
             for i, dist in enumerate(pkg_resources.working_set):
-                egg_info = beam_path(dist.egg_info)
+                egg_info = beam_path(dist.egg_info).resolve()
                 tp_file = egg_info.joinpath('top_level.txt')
                 module_name = None
                 project_name = dist.project_name
@@ -224,18 +230,75 @@ class AutoBeam:
 
         return self._top_levels
 
-    @classmethod
-    def to_bundle(cls, obj, path=None):
+    @property
+    def metadata(self):
+        return {'name': self.obj.name, 'type': type(self.obj)}
+
+    @staticmethod
+    def to_bundle(obj, path=None):
 
         if path is None:
-            path = '.'
-        path = beam_path(path)
+            path = beam_path('.')
+            if hasattr(obj, 'name'):
+                path = path.joinpath(obj.name)
+        else:
+            path = beam_path(path)
 
-        ab = cls(obj)
+        path = path.resolve()
+
+        ab = AutoBeam(obj)
         path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving object's files to path {path}: [requirements.txt, modules.tar.gz, state.pt]")
         ab.write_requirements(path.joinpath('requirements.txt'))
-        ab.module_to_tar(path.joinpath('modules.tar.gz'))
+        ab.module_to_tar(path.joinpath('modules'))
+        path.joinpath('metadata.pkl').write(ab.metadata)
         obj.save_state(path.joinpath('state.pt'))
+
+    @classmethod
+    def from_path(cls, path):
+
+        import tarfile
+
+        path = beam_path(path).resolve()
+
+        # 1. Check necessary files
+        req_file = path.joinpath('requirements.txt')
+        modules_tar = path.joinpath('modules')
+        state_file = path.joinpath('state.pt')
+        metadata_file = path.joinpath('metadata.pkl')
+
+        if not all([file.exists() for file in [req_file, modules_tar, state_file, metadata_file]]):
+            raise ValueError(f"Path {path} does not contain all necessary files for reconstruction.")
+
+        # 2. Install necessary packages
+        os.system(f"pip install -r {req_file}")
+
+        # 3. Extract the Python modules
+        extracted_path = path.joinpath('extracted_modules')
+        for m in modules_tar:
+            mr_extracted = extracted_path.joinpath(m.name.split('.')[0])
+            mr_extracted.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(m, "r:gz") as tar:
+                tar.extractall(extracted_path)
+
+        # 4. Add the directory containing the extracted Python modules to sys.path
+        sys.path.append(str(extracted_path))
+
+        # 5. Load metadata and import necessary modules
+        metadata = metadata_file.read()
+
+        module_name = metadata.get('type').__module__
+        class_name = metadata.get('type').__name__
+        imported_module = importlib.import_module(module_name)
+        imported_class = getattr(imported_module, class_name)
+
+        # 6. Load the state of the object using the imported class type
+        obj_state = state_file.read()
+
+        # 7. Construct the object from its state using a hypothetical from_state method
+        obj = imported_class.from_state(obj_state)
+
+        return obj
 
     def get_pip_package(self, module_name):
 

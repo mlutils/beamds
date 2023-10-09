@@ -468,7 +468,6 @@ class Experiment(object):
 
             logger.info("Logging this experiment to comet.ml")
 
-
             from tensorboardX import SummaryWriter
             self.comet_writer = SummaryWriter(comet_config={'api_key': api_key,
                                                             'project_name': self.hparams.project_name,
@@ -482,8 +481,6 @@ class Experiment(object):
             self.comet_exp.add_tag(self.hparams.identifier)
             self.comet_exp.set_name(self.exp_name)
 
-
-
         if self.hparams.mlflow:
 
             from beam_mlflow import MLflowSummaryWriter
@@ -495,6 +492,18 @@ class Experiment(object):
                     self.writer.add_graph(net, inputs[k])
             if self.comet_exp is not None:
                 self.comet_exp.set_model_graph(str(networks))
+
+    def upload(self, path, name=None, overwrite=False):
+        pass
+        # if name is None:
+        #     name = path.name
+        #
+        # if self.hparams.upload == 'comet':
+        #     self.comet_exp.log_asset(path, overwrite=overwrite)
+        # elif self.hparams.upload == 'mlflow':
+        #     self.mlflow_writer.log_artifact(path, name)
+        # else:
+        #     raise ValueError(f"Unknown upload method: {self.hparams.upload}")
 
     def save_model_results(self, reporter, algorithm, iteration, visualize_results='yes',
                            store_results='logscale', store_networks='logscale', print_results=True,

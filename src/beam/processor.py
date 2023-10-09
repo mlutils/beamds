@@ -95,6 +95,12 @@ class Processor(object):
         else:
             raise NotImplementedError
 
+    @classmethod
+    def from_path(cls, path):
+        path = beam_path(path)
+        state = path.read()
+        return cls(state=state, path=path)
+
     @property
     def name(self):
         if self._name is None:

@@ -17,12 +17,13 @@ from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 import pandas as pd
 
-from src.beam import beam_arguments, Experiment
-from src.beam import beam_logger as logger
-from src.beam import beam_path
 
+def write_bundle(path):
 
-def bundle_example():
+    from src.beam import beam_arguments, Experiment
+    from src.beam import beam_logger as logger
+    from src.beam import beam_path
+
     from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
 
     kwargs_base = dict(algorithm='debug_reporter',
@@ -58,7 +59,7 @@ def bundle_example():
     # print(ab.module_dependencies)
     # print(ab.requirements)
     # print(ab.top_levels)
-    # print(ab.module_to_tar('/tmp/beam.tar.gz'))
+    # print(ab.module_to_tar(path))
 
     autobeam_path = '/tmp/autobeam'
     beam_path(autobeam_path).rmtree()
@@ -67,6 +68,14 @@ def bundle_example():
     AutoBeam.to_bundle(alg, autobeam_path)
 
 
+def load_bundle(path):
+    pass
+
+
 if __name__ == '__main__':
 
-    bundle_example()
+    path = '/tmp/beam.tar.gz'
+
+    write_bundle(path)
+
+    # alg = load_bundle(path)
