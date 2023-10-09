@@ -623,6 +623,11 @@ class PureBeamPath:
                     import fastavro
                     for record in fastavro.reader(fo):
                         x.append(record)
+            elif ext in ['.adjlist', '.gexf', '.gml', '.pajek', '.graphml']:
+                import networkx as nx
+                read = getattr(nx, f'read_{ext[1:]}')
+                x = read(fo, **kwargs)
+
             elif ext in ['.json', '.ndjson']:
 
                 # TODO: add json read with fastavro and shcema
@@ -715,6 +720,10 @@ class PureBeamPath:
                 fo.write(str(x))
             elif ext == '.npz':
                 np.savez(fo, x, **kwargs)
+            elif ext in ['.adjlist', '.gexf', '.gml', '.pajek', '.graphml']:
+                import networkx as nx
+                write = getattr(nx, f'write_{ext[1:]}')
+                write(x, fo, **kwargs)
             elif ext == '.scipy_npz':
                 import scipy
                 scipy.sparse.save_npz(fo, x, **kwargs)

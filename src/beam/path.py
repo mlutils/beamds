@@ -6,6 +6,21 @@ import os
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
+from contextlib import contextmanager
+from uuid import uuid4 as uuid
+
+
+@contextmanager
+def local_copy(path, tmp_path='/tmp', as_beam_path=True):
+    path = beam_path(path)
+    tmp_path = beam_path(tmp_path)
+    tmp_path.mkdir(exist_ok=True, parents=True)
+    tmp_path = tmp_path.joinpath(f"{uuid()}{path.suffix}")
+    path.copy(tmp_path)
+    try:
+        yield tmp_path if as_beam_path else str(tmp_path)
+    finally:
+        tmp_path.unlink()
 
 
 class BeamKey:
