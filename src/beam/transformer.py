@@ -14,7 +14,7 @@ from .processor import Processor
 class Transformer(Processor):
 
     def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
-                 chunksize=None, multiprocess_method='joblib', squeeze=True, reduce=True, reduce_dim=0,
+                 chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0,
                  transform_strategy=None, split_by='keys', **kwargs):
         """
 
@@ -24,7 +24,7 @@ class Transformer(Processor):
         @param name:
         @param store_path:
         @param chunksize:
-        @param multiprocess_method:
+        @param mp_method:
         @param squeeze:
         @param reduce_dim:
         @param transform_strategy: Determines the strategy of cache/store operations during transformation:
@@ -75,7 +75,7 @@ class Transformer(Processor):
 
         self.store_path = store_path
         self.partition = partition
-        self.multiprocess_method = multiprocess_method
+        self.mp_method = mp_method
         self.reduce_dim = reduce_dim
         self.to_reduce = reduce
         self._exceptions = None
@@ -119,7 +119,7 @@ class Transformer(Processor):
             store_path = beam_path(store_path)
             if not isinstance(x, BeamData):
                 x = BeamData(x)
-            x.store(path=store_path,)
+            x.store(path=store_path, )
             x = BeamData.from_path(path=store_path)
 
         return key, x
@@ -140,7 +140,7 @@ class Transformer(Processor):
         # self.fit(x, **kwargs)
         # return self.transform(x, **kwargs)
 
-    def reduce(self, x, reduce_dim=None, split_by=None , **kwargs):
+    def reduce(self, x, reduce_dim=None, split_by=None, **kwargs):
 
         if isinstance(next(iter_container(x))[1], BeamData):
             x = BeamData.collate(x, split_by=split_by, **kwargs)
@@ -153,7 +153,7 @@ class Transformer(Processor):
 
         return x
 
-    def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, multiprocess_method=None,
+    def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, mp_method=None,
                   fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=False,
                   reduce=True, **kwargs):
         """
@@ -163,7 +163,7 @@ class Transformer(Processor):
         @param n_chunks:
         @param n_workers:
         @param squeeze:
-        @param multiprocess_method:
+        @param mp_method:
         @param fit:
         @param path:
         @param split_by:
@@ -180,8 +180,8 @@ class Transformer(Processor):
         if partition is None:
             partition = self.partition
 
-        if multiprocess_method is None:
-            multiprocess_method = self.multiprocess_method
+        if mp_method is None:
+            mp_method = self.mp_method
 
         if n_workers is None:
             n_workers = self.n_workers
@@ -258,13 +258,13 @@ class Transformer(Processor):
         elif store_chunk:
             logger.info(f"Storing transformed chunks of data in: {path}")
 
-        queue = BeamParallel(n_workers=n_workers, func=None, method=multiprocess_method, name=self.name,
-                                  progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
+        queue = BeamParallel(n_workers=n_workers, func=None, method=mp_method, name=self.name,
+                             progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
 
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")
             for k, c in tqdm(self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
-                                    squeeze=squeeze, split_by=split_by, partition=partition)):
+                                         squeeze=squeeze, split_by=split_by, partition=partition)):
 
                 chunk_path = None
                 if store_chunk:
@@ -280,16 +280,16 @@ class Transformer(Processor):
                     # chunk_path = chunk_path.as_uri()
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,
-                                        cache=cache, store=store_chunk, name=f"{self.name}/{k}", **kwargs))
+                                   cache=cache, store=store_chunk, name=f"{self.name}/{k}", **kwargs))
 
         else:
             queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, fit=fit, cache=cache,
-                                    store=store_chunk,  name=f"{self.name}", **kwargs))
+                               store=store_chunk, name=f"{self.name}", **kwargs))
 
         logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "
                     f"Number of queued tasks is {len(queue)}.")
 
-        x_with_keys = queue.run(n_workers=n_workers, method=multiprocess_method)
+        x_with_keys = queue.run(n_workers=n_workers, method=mp_method)
 
         exceptions = [{'exception': xi, 'task': queue.queue[i]} for i, xi in enumerate(x_with_keys)
                       if isinstance(xi, Exception)]
@@ -304,7 +304,7 @@ class Transformer(Processor):
         if is_chunk:
             values = [xi[1] for xi in x_with_keys]
             keys = [xi[0] for xi in x_with_keys]
-            keys = [ki if type(ki) is tuple else (ki, ) for ki in keys]
+            keys = [ki if type(ki) is tuple else (ki,) for ki in keys]
 
             if len(exceptions) == 0:
                 x = build_container_from_tupled_keys(keys, values)
@@ -314,7 +314,7 @@ class Transformer(Processor):
                 if reduce:
                     x = self.reduce(x, split_by=split_by, **kwargs)
             else:
-                x = {k: v for k, v in zip(keys, values)}
+                x = {k[0] if type(k) is tuple and len(k) == 1 else k: v for k, v in zip(keys, values)}
                 if store:
                     logger.warning("Due to exceptions, the data will not be stored, "
                                    "the data is returned as a dictionary of all the successful tasks.")

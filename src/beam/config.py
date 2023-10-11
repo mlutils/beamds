@@ -347,6 +347,21 @@ def get_beam_parser():
     parser.add_argument('--cb-n-estimators', type=int, default=1000, metavar='hparam',
                         help='The number of trees in the catboost model')
 
+    # transformer arguments
+    parser.add_argument('--mp-method', type=str, default='joblib', help='The multiprocessing method to use')
+    parser.add_argument('--n-chunks', type=int, default=None, metavar='hparam',
+                        help='The number of chunks to split the dataset')
+    parser.add_argument('--name', type=str, default=None, metavar='hparam',
+                        help='The name of the dataset')
+    parser.add_argument('--store-path', type=str, default=None, help='The path to store the results')
+    parser.add_argument('--partition', type=str, default=None, help='The partition to use for splitting the dataset')
+    parser.add_argument('--chunksize', type=int, default=None, help='The chunksize to use for splitting the dataset')
+    parser.add_argument('--squeeze', type=bool, default=True, help='Whether to squeeze the results')
+    parser.add_argument('--reduce', type=bool, default=True, help='Whether to reduce and collate the results')
+    parser.add_argument('--reduce-dim', type=int, default=0, help='The dimension to reduce the results')
+    parser.add_argument('--transform-strategy', type=str, default=None, help='The transform strategy to use can be [CC|CS|SC|SS]')
+    parser.add_argument('--split-by', type=str, default='keys', help='The split strategy to use can be [keys|index|columns]')
+
     return parser
 
 

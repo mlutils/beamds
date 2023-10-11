@@ -242,12 +242,11 @@ def beam_device(device):
     return torch.device(int(device) if device.isnumeric() else device)
 
 
-
 def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = check_type(x, check_element=False)
 
-    assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
+    # assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
 
     if n_chunks is not None and hasattr(x, '__len__'):
         n_chunks = min(len(x), n_chunks)
@@ -275,11 +274,31 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             for k, g in grouped:
                 yield k, g
 
-        elif x_type.minor in ['numpy', 'pandas']:
+        elif x_type.minor == 'numpy':
 
             for i, c in enumerate(np.array_split(x, n_chunks, axis=dim)):
                 if squeeze and len(c) == 1:
                     c = c.squeeze()
+                yield i, c
+
+        elif x_type.minor == 'pandas':
+
+            index_name = x.index.name
+            x = x.reset_index()
+            columns = x.columns
+
+            for i, c in enumerate(np.array_split(x, n_chunks, axis=dim)):
+
+                if squeeze and len(c) == 1:
+                    c = c.squeeze()
+                    c = pd.Series(c, index=columns)
+                    c.name = c[index_name]
+                    c = c.drop(index_name)
+
+                else:
+                    c = pd.DataFrame(data=c, columns=columns)
+                    c = c.set_index(index_name)
+
                 yield i, c
 
         else:
@@ -289,6 +308,17 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
                 if squeeze and len(v) == 1:
                     v = v[0]
                 yield j, v
+
+    elif x_type.major == 'container' and x_type.minor =='dict':
+
+            if chunksize == 1:
+                for k, v in x.items():
+                    yield k, v
+            else:
+                items = list(x.items())
+                chunks = [items[i:i + chunksize] for i in range(0, len(items), chunksize)]
+                for i, c in enumerate(chunks):
+                    yield i, dict(c)
 
     else:
 
@@ -350,13 +380,19 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
             gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks,
                                        partition=partition, squeeze=squeeze, dim=dim) for k, v in x.items()}
 
-            for i in itertools.count():
-                d = {}
-                for k, v in gen.items():
-                    i, v = next(v)
-                    d[k] = v
+            if dim is None:
+                for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
+                                          squeeze=squeeze, dim=dim):
+                    yield k, c
 
-                yield i, d
+            else:
+                for i in itertools.count():
+                    d = {}
+                    for k, v in gen.items():
+                        i, v = next(v)
+                        d[k] = v
+
+                    yield i, d
 
         elif x_type.major == 'container':
 
