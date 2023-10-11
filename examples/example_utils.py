@@ -52,7 +52,7 @@ def write_bundle(path):
 
     from src.beam.auto import AutoBeam
 
-    # ab = AutoBeam(alg)
+    ab = AutoBeam(alg)
 
     # print(ab.module_spec)
     # print(ab.module_walk)
@@ -60,12 +60,13 @@ def write_bundle(path):
     # print(ab.requirements)
     # print(ab.top_levels)
     # print(ab.module_to_tar(path))
+    print(ab.private_modules)
 
-    autobeam_path = '/tmp/autobeam'
-    beam_path(autobeam_path).rmtree()
+    # autobeam_path = '/tmp/autobeam'
+    # beam_path(autobeam_path).rmtree()
 
     # ab.module_to_tar(tar_path)
-    AutoBeam.to_bundle(alg, autobeam_path)
+    # AutoBeam.to_bundle(alg, autobeam_path)
 
 
 def load_bundle(path):
