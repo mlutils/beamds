@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..'))
 from src.beam.llm import beam_llm
 
-st.title('Beam Example')
+st.title('Beam Example 🎆')
 st.write('This is a simple example of using Beam with Streamlit.')
 
 # App title
