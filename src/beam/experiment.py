@@ -417,7 +417,7 @@ class Experiment(object):
         logger.info(f"Reload experiment from checkpoint: {path}")
 
         if alg is not None:
-            alg.load_checkpoint(path)
+            alg.load_checkpoint(path, hparams=False)
 
         else:
             return path
