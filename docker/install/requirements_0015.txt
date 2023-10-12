@@ -21,7 +21,7 @@ tabula-py
 pdfminer.six
 retriv
 pdfplumber
-
+st-aggrid
 
 # skypilot
 # vllm
