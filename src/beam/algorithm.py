@@ -92,7 +92,7 @@ class Algorithm(Processor):
         self.add_components(networks=networks, optimizers=optimizers, schedulers=schedulers, processors=processors)
 
         if self.get_hparam('reload_path') is not None:
-            self.load_checkpoint(hparams.reload_path)
+            self.load_checkpoint(hparams.reload_path, hparams=False)
 
         if hparams.store_initial_weights:
             self.initial_weights = self.save_checkpoint()
@@ -102,10 +102,16 @@ class Algorithm(Processor):
 
         self.cb_model = None
         self._is_notebook = None
-        self._train_reporter = BeamReport(objective=self.get_hparam('objective'))
         self._predict_reporter = None
+        self._train_reporter = None
         self.reporter = None
         self.training = False
+
+    @property
+    def train_reporter(self):
+        if self._train_reporter is None:
+            self._train_reporter = BeamReport(objective=self.get_hparam('objective'))
+        return self._train_reporter
 
     def __getattr__(self, item):
         if item in self.__dict__:
@@ -131,7 +137,7 @@ class Algorithm(Processor):
         if n_epochs is None:
             n_epochs = self.n_epochs
 
-        self.reporter = self._train_reporter
+        self.reporter = self.train_reporter
         self.reporter.reset_time(first_epoch=first_epoch, n_epochs=n_epochs)
 
     def set_experiment_properties(self):
@@ -241,6 +247,14 @@ class Algorithm(Processor):
             experiment = Experiment(hparams)
 
         alg.experiment = experiment
+        return alg
+
+    @classmethod
+    def from_path(cls, path):
+        path = beam_path(path)
+        state = path.read()
+        alg = cls(state['hparams'])
+        alg.load_state(state, hparams=False)
         return alg
 
     def add_networks(self, networks):
@@ -1289,15 +1303,22 @@ class Algorithm(Processor):
     def save_state(self, path=None):
         self.save_checkpoint(path=path, networks=True, optimizers=False, schedulers=False,
                         processors=True, scaler=False, scalers=False, swa_schedulers=False, swa_networks=False,
-                        aux=None, pickle_model=False)
+                        aux=None, pickle_model=False, hparams=True)
+
+    def load_state(self, path):
+        self.load_checkpoint(path, networks=True, optimizers=False, schedulers=False, processors=True,
+                        scaler=False, scalers=False, swa_schedulers=False, swa_networks=False, hparams=True)
 
     def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
                         processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,
-                        aux=None, pickle_model=False):
+                        hparams=True, aux=None, pickle_model=False):
 
         path = beam_path(path)
         state = {'aux': aux, 'epoch': self.epoch, 'best_objective': self.best_objective, 'best_epoch': self.best_epoch,}
         wrapper = copy.deepcopy if path is None else (lambda x: x)
+
+        if hparams:
+            state['hparams'] = self.hparams
 
         for k, net in filter_dict(self.networks, networks).items():
             state[f"{k}_parameters"] = wrapper(net.state_dict())
@@ -1331,7 +1352,7 @@ class Algorithm(Processor):
         else:
             return state
 
-    def load_checkpoint(self, path_or_state, strict=True, networks=True, optimizers=True, schedulers=True,
+    def load_checkpoint(self, path_or_state, strict=True, networks=True, optimizers=True, schedulers=True, hparams=True,
                         processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True, load_epoch=True):
 
         path_or_state = beam_path(path_or_state)
@@ -1405,6 +1426,9 @@ class Algorithm(Processor):
 
         if load_epoch and 'epoch' in state.keys():
             self.epoch = state['epoch']
+
+        if hparams and 'hparams' in state.keys():
+            self.hparams = state['hparams']
 
         return state['aux']
 

@@ -72,7 +72,26 @@ class AutoBeam:
         self._module_spec = None
         self._module_dependencies = None
         self._requirements = None
+        self._private_modules = None
         self.obj = obj
+
+    @property
+    def private_modules(self):
+        if self._private_modules is None:
+            self._private_modules = []
+            _ = self.module_dependencies
+        return self._private_modules
+
+    def add_private_module(self, module_path):
+        if self._private_modules is None:
+            self._private_modules = []
+
+        module_spec = importlib.util.find_spec(module_path)
+        if module_spec is None:
+            return
+        root_module = module_spec.name.split('.')[0]
+        module_spec = importlib.util.find_spec(root_module)
+        self._private_modules.append(module_spec)
 
     @property
     def module_spec(self):
@@ -108,8 +127,7 @@ class AutoBeam:
                 self._module_walk = module_walk
         return self._module_walk
 
-    @staticmethod
-    def recursive_module_dependencies(module_path):
+    def recursive_module_dependencies(self, module_path):
 
         module_path = beam_path(module_path).resolve()
         self_path = beam_path(inspect.getfile(AutoBeam)).resolve()
@@ -134,12 +152,13 @@ class AutoBeam:
                             continue
                         try:
                             path = beam_path(importlib.util.find_spec(root_name).origin).resolve()
+                            self.add_private_module(root_name)
                             if path in [module_path, self_path]:
                                 continue
                         except ValueError:
                             logger.warning(f"Could not find module: {root_name}")
                             continue
-                        modules.union(AutoBeam.recursive_module_dependencies(path))
+                        modules.union(self.recursive_module_dependencies(path))
 
             elif type(a) is ast.ImportFrom:
 
@@ -147,11 +166,13 @@ class AutoBeam:
                 if a.level == 0 and (not is_std_lib(root_name)) and is_installed_package(root_name):
                     modules.add(root_name)
                 elif not is_installed_package(root_name) and not is_std_lib(root_name):
+                    self.add_private_module(root_name)
                     if a.level == 0:
                         path = beam_path(importlib.util.find_spec(root_name).origin).resolve()
+
                         if path in [module_path, self_path]:
                             continue
-                        modules.union(AutoBeam.recursive_module_dependencies(path))
+                        modules.union(self.recursive_module_dependencies(path))
                     else:
 
                         path = module_path
@@ -164,7 +185,7 @@ class AutoBeam:
                         else:
                             path = path.with_suffix('.py')
 
-                        modules.union(AutoBeam.recursive_module_dependencies(path))
+                        modules.union(self.recursive_module_dependencies(path))
 
         return modules
 
@@ -174,7 +195,7 @@ class AutoBeam:
         if self._module_dependencies is None:
 
             module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
-            modules = AutoBeam.recursive_module_dependencies(module_path)
+            modules = self.recursive_module_dependencies(module_path)
             self._module_dependencies = list(set(modules))
 
         return self._module_dependencies
