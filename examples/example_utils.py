@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 
-def write_bundle(path):
+def write_bundle_tabular(path):
 
     from src.beam import beam_arguments, Experiment
     from src.beam import beam_logger as logger
@@ -69,14 +69,39 @@ def write_bundle(path):
     # AutoBeam.to_bundle(alg, autobeam_path)
 
 
+def write_bundle_cifar(path):
+
+    from src.beam import beam_arguments, beam_path
+    from cifar10_example import CIFAR10Algorithm
+    from src.beam.auto import AutoBeam
+
+    args = beam_arguments(
+        f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
+        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --no-deterministic",
+        "--weight-decay=.00256 --momentum=0.9 --beta2=0.999 --temperature=1 --objective=acc --scheduler=one_cycle",
+        dropout=.0, activation='gelu', channels=512, label_smoothing=.2, padding=4, scale_down=.7,
+        scale_up=1.4, ratio_down=.7, ratio_up=1.4)
+
+    alg = CIFAR10Algorithm(args)
+    ab = AutoBeam(alg)
+
+    # print(ab.requirements)
+    print(ab.private_modules)
+
+    ab.modules_to_tar(path.joinpath('modules.tar.gz'))
+
 def load_bundle(path):
     pass
 
 
 if __name__ == '__main__':
 
-    path = '/tmp/beam.tar.gz'
+    from src.beam import beam_arguments, beam_path
 
-    write_bundle(path)
+    path = '/tmp/cifar10_bundle'
+    path = beam_path(path)
+    path.rmtree()
+
+    write_bundle_cifar(path)
 
     # alg = load_bundle(path)

@@ -17,58 +17,86 @@ import pkgutil
 from .logger import beam_logger as logger
 
 
-def is_std_lib(module_name):
-
-    # Check if module is part of the standard library
-    # if module_name in sys.builtin_module_names:
-    #     return True
+def get_origin(module_name):
 
     try:
         spec = importlib.util.find_spec(module_name)
     except:
-        return False
+        return None
 
     if spec is None:
-        return False
+        return None
 
-    if os.name == 'nt':
-        # For windows
-        if spec.origin.startswith(sys.base_prefix):
-            return True
+    if hasattr(spec, 'origin') and spec.origin is not None:
+        origin = str(beam_path(spec.origin).resolve())
     else:
-        # For unix-based systems
-        if 'site-packages' not in spec.origin and 'dist-packages' not in spec.origin:
-            return True
+        origin = str(beam_path(spec.submodule_search_locations[0]).resolve())
 
-    return False
+    return origin
+
+
+def get_module_paths(module_name):
+
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except:
+        return None
+
+    if spec is None:
+        return None
+
+    paths = []
+
+    if hasattr(spec, 'origin') and spec.origin is not None:
+        origin = beam_path(spec.origin).resolve()
+        if origin.is_file():
+            origin = origin.parent
+
+        paths.append(str(origin))
+
+    if hasattr(spec, 'submodule_search_locations') and spec.submodule_search_locations is not None:
+        for path in spec.submodule_search_locations:
+            path = beam_path(path).resolve()
+            if path.is_file():
+                path = path.parent
+            paths.append(str(path))
+
+    return list(set(paths))
+def classify_module(module_name):
+
+    origin = get_origin(module_name)
+    if origin is None:
+        return None
+
+    # Get the standard library path using base_exec_prefix
+    std_lib_path = beam_path(sys.base_exec_prefix).joinpath('lib')
+
+    # Check for standard library
+    if beam_path(origin).parts[:len(std_lib_path.parts)] == std_lib_path.parts:
+        return "stdlib"
+
+    # Check for installed packages in site-packages or dist-packages
+    elif "site-packages" in origin or "dist-packages" in origin:
+        return "installed"
+
+    # Otherwise, it's a custom module
+    else:
+        return "custom"
+
+
+def is_std_lib(module_name):
+    return classify_module(module_name) == 'stdlib'
 
 
 def is_installed_package(module_name):
-
-    try:
-        spec = importlib.util.find_spec(module_name)
-    except:
-        return False
-
-    if spec is None:
-        return False
-
-    if 'site-packages' in spec.origin or 'dist-packages' in spec.origin:
-        return True
-
-    return False
-
-
-def is_package_installed(module_name):
-    # Check if the package is installed (whether std lib or external)
-    return pkgutil.find_loader(module_name) is not None
+    return classify_module(module_name) == 'installed'
 
 
 class AutoBeam:
 
     def __init__(self, obj):
         self._top_levels = None
-        self._module_walk = None
+        self._private_modules_walk = None
         self._module_spec = None
         self._module_dependencies = None
         self._requirements = None
@@ -78,19 +106,17 @@ class AutoBeam:
     @property
     def private_modules(self):
         if self._private_modules is None:
-            self._private_modules = []
+            self._private_modules = [self.module_spec]
             _ = self.module_dependencies
         return self._private_modules
 
-    def add_private_module(self, module_path):
+    def add_private_module_spec(self, module_name):
         if self._private_modules is None:
-            self._private_modules = []
+            self._private_modules = [self.module_spec]
 
-        module_spec = importlib.util.find_spec(module_path)
+        module_spec = importlib.util.find_spec(module_name)
         if module_spec is None:
             return
-        root_module = module_spec.name.split('.')[0]
-        module_spec = importlib.util.find_spec(root_module)
         self._private_modules.append(module_spec)
 
     @property
@@ -102,30 +128,37 @@ class AutoBeam:
 
         return self._module_spec
 
+    @staticmethod
+    def module_walk(root_path):
+
+            root_path = beam_path(root_path).resolve()
+            module_walk = {}
+
+            for r, dirs, files in root_path.walk():
+
+                r_relative = r.relative_to(root_path)
+                dir_files = {}
+                for f in files:
+                    p = r.joinpath(f)
+                    if p.suffix == '.py':
+                        dir_files[f] = p.read()
+                if len(dir_files):
+                    module_walk[str(r_relative)] = dir_files
+
+            return module_walk
+
     @property
-    def module_walk(self):
-        if self._module_walk is None:
-            module_walk = defaultdict(dict)
+    def private_modules_walk(self):
+        if self._private_modules_walk is None:
+            private_modules_walk = {}
 
-            for root_path in self.module_spec.submodule_search_locations:
+            root_paths = set(sum([get_module_paths(m) for m in self.private_modules if m is not None], []))
 
-                root_path = beam_path(root_path).resolve()
-                if str(root_path) in module_walk:
-                    continue
+            for root_path in root_paths:
+                private_modules_walk[root_path] = self.module_walk(root_path)
 
-                for r, dirs, files in root_path.walk():
-
-                    r_relative = r.relative_to(root_path)
-                    dir_files = {}
-                    for f in files:
-                        p = r.joinpath(f)
-                        if p.suffix == '.py':
-                            dir_files[f] = p.read()
-                    if len(dir_files):
-                        module_walk[str(root_path)][str(r_relative)] = dir_files
-
-                self._module_walk = module_walk
-        return self._module_walk
+            self._private_modules_walk = private_modules_walk
+        return self._private_modules_walk
 
     def recursive_module_dependencies(self, module_path):
 
@@ -145,14 +178,15 @@ class AutoBeam:
             if type(a) is ast.Import:
                 for ai in a.names:
                     root_name = ai.name.split('.')[0]
+
                     if is_installed_package(root_name) and not is_std_lib(root_name):
                         modules.add(root_name)
                     elif not is_installed_package(root_name) and not is_std_lib(root_name):
                         if root_name in ['__main__']:
                             continue
                         try:
-                            path = beam_path(importlib.util.find_spec(root_name).origin).resolve()
-                            self.add_private_module(root_name)
+                            path = beam_path(get_origin(root_name))
+                            self.add_private_module_spec(root_name)
                             if path in [module_path, self_path]:
                                 continue
                         except ValueError:
@@ -163,12 +197,14 @@ class AutoBeam:
             elif type(a) is ast.ImportFrom:
 
                 root_name = a.module.split('.')[0]
+
                 if a.level == 0 and (not is_std_lib(root_name)) and is_installed_package(root_name):
                     modules.add(root_name)
                 elif not is_installed_package(root_name) and not is_std_lib(root_name):
-                    self.add_private_module(root_name)
                     if a.level == 0:
-                        path = beam_path(importlib.util.find_spec(root_name).origin).resolve()
+
+                        self.add_private_module_spec(root_name)
+                        path = beam_path(get_origin(root_name))
 
                         if path in [module_path, self_path]:
                             continue
@@ -271,7 +307,7 @@ class AutoBeam:
         path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Saving object's files to path {path}: [requirements.txt, modules.tar.gz, state.pt]")
         ab.write_requirements(path.joinpath('requirements.txt'))
-        ab.module_to_tar(path.joinpath('modules'))
+        ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.pkl').write(ab.metadata)
         obj.save_state(path.joinpath('state.pt'))
 
@@ -346,13 +382,13 @@ class AutoBeam:
         content = '\n'.join(self.requirements)
         path.write(content, ext='.txt')
 
-    def module_to_tar(self, path):
+    def modules_to_tar(self, path):
         path = beam_path(path)
-        path.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
         import tarfile
-        for i, (root_path, sub_paths) in enumerate(self.module_walk.items()):
-            root_path = beam_path(root_path)
-            with tarfile.open(str(path.joinpath(f"{i}.tar.gz")), "w:gz") as tar:
+        with tarfile.open(str(path), "w:gz") as tar:
+            for i, (root_path, sub_paths) in enumerate(self.private_modules_walk.items()):
+                root_path = beam_path(root_path)
                 for sub_path, files in sub_paths.items():
                     for file_name, _ in files.items():
                         local_name = root_path.joinpath(sub_path, file_name)
