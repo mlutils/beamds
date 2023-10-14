@@ -16,7 +16,7 @@ import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
     pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format, nested_defaultdict, \
-    as_tensor, jupyter_like_traceback
+    as_tensor, jupyter_like_traceback, lazy_property
 import torch.distributed as dist
 from .utils import tqdm_beam as tqdm
 from functools import partial
@@ -126,7 +126,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
         tb = traceback.format_exc()
 
-        llm = get_beam_llm()
+        llm = get_beam_llm() if experiment.llm is None else experiment.llm
 
         explain = llm.explain_traceback(tb)
         if explain is not None:
@@ -342,6 +342,13 @@ class Experiment(object):
         self.comet_writer = None
         self.mlflow_writer = None
         self.root_dir_is_built = False
+
+    @lazy_property
+    def llm(self):
+        if self.hparams.llm is not None:
+            from .llm import beam_llm
+            return beam_llm(self.hparams.llm)
+        return None
 
     def __del__(self):
         self.cleanup()

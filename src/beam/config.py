@@ -102,7 +102,10 @@ class BeamHparams(Namespace):
 
     def __getitem__(self, item):
         item = item.replace('-', '_')
-        return getattr(self, item)
+        r = getattr(self, item)
+        if r is None and item in os.environ:
+            r = os.environ[item]
+        return r
 
     def get(self, hparam, specific=None, default=None):
 
@@ -361,6 +364,9 @@ def get_beam_parser():
     parser.add_argument('--reduce-dim', type=int, default=0, help='The dimension to reduce the results')
     parser.add_argument('--transform-strategy', type=str, default=None, help='The transform strategy to use can be [CC|CS|SC|SS]')
     parser.add_argument('--split-by', type=str, default='keys', help='The split strategy to use can be [keys|index|columns]')
+
+    parser.add_argument('--llm', type=str, default=None,
+                        help='URI of a Large Language Model to be used in the experiment.')
 
     return parser
 
