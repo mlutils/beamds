@@ -3,6 +3,7 @@ from .path import beam_path
 from .llm import beam_llm
 import json
 from .logger import beam_logger as logger
+from .utils import lazy_property
 
 
 class HexBeam(Processor):
@@ -12,7 +13,6 @@ class HexBeam(Processor):
         super().__init__(**kwargs)
         self.analysis = analysis
         self.llm = beam_llm(llm)
-        self._functions_map = None
         self.description = description
 
     @classmethod
@@ -20,11 +20,9 @@ class HexBeam(Processor):
         analysis = beam_path(path).read()
         return cls(analysis, llm, **kwargs)
 
-    @property
+    @lazy_property
     def functions_map(self):
-        if self._functions_map is None:
-            self._functions_map = {v['name']: k for k, v in enumerate(self.analysis['functions'])}
-        return self._functions_map
+        return {v['name']: k for k, v in enumerate(self.analysis['functions'])}
 
     @property
     def system_messages(self):

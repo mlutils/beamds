@@ -761,6 +761,20 @@ class nested_defaultdict(defaultdict):
         super().__init__(default_factory, **kwargs)
 
 
+def lazy_property(fn):
+    attr_name = f'_internal_{fn.__name__}'
+
+    @property
+    def _lazy_property(self):
+        try:
+            return getattr(self, attr_name)
+        except AttributeError:
+            setattr(self, attr_name, fn(self))
+            return getattr(self, attr_name)
+
+    return _lazy_property
+
+
 def get_public_ip():
     import requests
     try:
