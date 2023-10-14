@@ -65,6 +65,33 @@ class HexBeam(Processor):
 
         return name1 if alpha_1 > alpha_2 else name2
 
+    def assess_vulnerabilities(self, function_name, save=True):
+
+        i = self.functions_map[function_name]
+
+        if 'analysis' not in self.analysis['functions'][i]:
+            logger.info(f"Analyzing function: {function_name}")
+            self.analyze_function(function_name, save=True)
+            logger.info(f"The function docstring: {self.analysis['functions'][i]['analysis']['metadata']['doc']}")
+
+        message = (f"{self.system_messages}\n\n"
+                   f"You are given the following {self.analysis['metadata']['architecture']} function:\n"
+                   f"Function name: {function_name}\n"
+                   f"Docstring: {self.analysis['functions'][i]['analysis']['metadata']['doc']}\n"
+                   f"========================================================================\n\n"
+                   f"{self.analysis['functions'][i]['analysis']['assembly']} \n"
+                   f"========================================================================\n\n"
+                   f"Your task is to assess possible vulnerabilities in the function that can be exploited\n"
+                   f"by an attacker. You can assume that the attacker has full access to the function's input\n"
+                   f"You need to classify the risk of each vulnerability as [very-low, low, medium, high, very-high]\n"
+                   f"========================================================================\n\n"
+                   f"Your response should be a valid JSON object with the list of detected vulnerabilities,\n"
+                   f"where each vulnerability is a dictionary with the following keys: [name, risk, explanation]\n")
+
+        res = self.llm.ask(message).text
+        res = json.loads(res)
+        return res
+
     def decompile_function(self, analysis):
         message = (f"{self.system_messages}\n\n"
                    f"Decompile the following {self.analysis['metadata']['architecture']} function: \n\n"
@@ -75,6 +102,7 @@ class HexBeam(Processor):
                    f"========================================================================\n\n"
                    f"Return decompiled version of the function into C++ language, containing the input and output variable names\n"
                    f"Your answer should contain only valid C++ code. Explanations as comments are allowed\n")
+
 
         return self.llm.ask(message,).text
 
