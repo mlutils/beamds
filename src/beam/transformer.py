@@ -16,7 +16,7 @@ class Transformer(Processor):
 
     def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
                  chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0,
-                 transform_strategy=None, split_by='keys', **kwargs):
+                 transform_strategy=None, split_by='keys', store_suffix=None, **kwargs):
         """
 
         @param args:
@@ -71,6 +71,7 @@ class Transformer(Processor):
         self.n_workers = self.hparams.get('n_workers', n_workers)
         self.squeeze = self.hparams.get('squeeze', squeeze)
         self.split_by = self.hparams.get('split_by', split_by)
+        self.store_suffix = self.hparams.get('store_suffix', store_suffix)
         self.transform_strategy = self.hparams.get('transform_strategy', transform_strategy)
         self.kwargs = kwargs
         if self.transform_strategy in ['SC', 'SS'] and self.split_by != 'keys':
@@ -128,10 +129,13 @@ class Transformer(Processor):
 
         if store_path is not None:
             store_path = beam_path(store_path)
-            if not isinstance(x, BeamData):
-                x = BeamData(x)
-            x.store(path=store_path, )
-            x = BeamData.from_path(path=store_path)
+            if store_path.suffix:
+                store_path.write(x)
+            else:
+                if not isinstance(x, BeamData):
+                    x = BeamData(x)
+                x.store(path=store_path, )
+                x = BeamData.from_path(path=store_path)
 
         return key, x
 
@@ -166,7 +170,7 @@ class Transformer(Processor):
 
     def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, mp_method=None,
                   fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=False,
-                  reduce=True, **kwargs):
+                  reduce=True, store_suffix=None, **kwargs):
         """
 
         @param x:
@@ -196,6 +200,9 @@ class Transformer(Processor):
 
         if n_workers is None:
             n_workers = self.n_workers
+
+        if store_suffix is None:
+            store_suffix = self.store_suffix
 
         if transform_strategy is None:
             transform_strategy = self.transform_strategy
@@ -288,6 +295,8 @@ class Transformer(Processor):
                         part_name = ''
 
                     chunk_path = path.joinpath(f"{BeamData.normalize_key(k)}{part_name}")
+                    if store_suffix is not None:
+                        chunk_path = f"{chunk_path}{store_suffix}"
                     # chunk_path = chunk_path.as_uri()
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,

@@ -361,6 +361,7 @@ def get_beam_parser():
     parser.add_argument('--reduce-dim', type=int, default=0, help='The dimension to reduce the results')
     parser.add_argument('--transform-strategy', type=str, default=None, help='The transform strategy to use can be [CC|CS|SC|SS]')
     parser.add_argument('--split-by', type=str, default='keys', help='The split strategy to use can be [keys|index|columns]')
+    parser.add_argument('--store-suffix', type=str, default=None, help='The suffix to add to the stored file')
 
     return parser
 

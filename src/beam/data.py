@@ -701,7 +701,9 @@ class BeamData(object):
             if self.orientation == 'columns':
                 self._len = container_len(self.data)
             else:
-                self._len = sum(recursive_len(self.flatten_data))
+                self._len = recursive_len(self.flatten_data)
+                if type(self._len) is list:
+                    self._len = sum(self._len)
             return self._len
 
         self._len = None
