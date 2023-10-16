@@ -254,7 +254,7 @@ class Algorithm(Processor):
         path = beam_path(path)
         state = path.read()
         alg = cls(state['hparams'])
-        alg.load_state(state, hparams=False)
+        alg.load_state(state)
         return alg
 
     def add_networks(self, networks):
@@ -1307,7 +1307,7 @@ class Algorithm(Processor):
 
     def load_state(self, path):
         self.load_checkpoint(path, networks=True, optimizers=False, schedulers=False, processors=True,
-                        scaler=False, scalers=False, swa_schedulers=False, swa_networks=False, hparams=True)
+                        scaler=False, scalers=False, swa_schedulers=False, swa_networks=False, hparams=False)
 
     def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
                         processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,

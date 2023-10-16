@@ -75,6 +75,8 @@ def write_bundle_cifar(path):
     from cifar10_example import CIFAR10Algorithm
     from src.beam.auto import AutoBeam
 
+    path.rmtree()
+
     args = beam_arguments(
         f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
         "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --no-deterministic",
@@ -83,25 +85,35 @@ def write_bundle_cifar(path):
         scale_up=1.4, ratio_down=.7, ratio_up=1.4)
 
     alg = CIFAR10Algorithm(args)
-    ab = AutoBeam(alg)
+    # ab = AutoBeam(alg)
 
     # print(ab.requirements)
-    print(ab.private_modules)
+    # print(ab.private_modules)
+    # print(ab.import_statement)
+    #
+    # ab.modules_to_tar(path.joinpath('modules.tar.gz'))
+    AutoBeam.to_bundle(alg, path)
+    print('done writing bundle')
 
-    ab.modules_to_tar(path.joinpath('modules.tar.gz'))
 
 def load_bundle(path):
-    pass
+    from src.beam.auto import AutoBeam
+    alg = AutoBeam.from_path(path)
+    print(alg)
+    print(alg.hparams)
+    print('done loading bundle')
+    return alg
 
 
 if __name__ == '__main__':
 
     from src.beam import beam_arguments, beam_path
 
-    path = '/tmp/cifar10_bundle'
+    path = '/home/dsi/elads/sandbox/cifar10_bundle'
     path = beam_path(path)
-    path.rmtree()
 
-    write_bundle_cifar(path)
+    # write_bundle_cifar(path)
 
-    # alg = load_bundle(path)
+    alg = load_bundle(path)
+
+    print('done')

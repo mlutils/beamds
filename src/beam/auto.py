@@ -17,17 +17,25 @@ import pkgutil
 from .logger import beam_logger as logger
 
 
-def get_origin(module_name):
+def get_origin(module_name_or_spec):
 
-    try:
-        spec = importlib.util.find_spec(module_name)
-    except:
-        return None
+    if type(module_name_or_spec) is str:
+        module_name = module_name_or_spec
 
-    if spec is None:
-        return None
+        try:
+            spec = importlib.util.find_spec(module_name)
+        except:
+            return None
+
+        if spec is None:
+            return None
+
+    else:
+        spec = module_name_or_spec
 
     if hasattr(spec, 'origin') and spec.origin is not None:
+        if spec.origin == 'built-in':
+            return spec.origin
         origin = str(beam_path(spec.origin).resolve())
     else:
         origin = str(beam_path(spec.submodule_search_locations[0]).resolve())
@@ -35,21 +43,16 @@ def get_origin(module_name):
     return origin
 
 
-def get_module_paths(module_name):
-
-    try:
-        spec = importlib.util.find_spec(module_name)
-    except:
-        return None
+def get_module_paths(spec):
 
     if spec is None:
-        return None
+        return []
 
     paths = []
 
     if hasattr(spec, 'origin') and spec.origin is not None:
         origin = beam_path(spec.origin).resolve()
-        if origin.is_file():
+        if origin.is_file() and origin.parent.joinpath('__init__.py').is_file():
             origin = origin.parent
 
         paths.append(str(origin))
@@ -62,9 +65,15 @@ def get_module_paths(module_name):
             paths.append(str(path))
 
     return list(set(paths))
+
+
 def classify_module(module_name):
 
     origin = get_origin(module_name)
+
+    if origin == 'built-in':
+        return "stdlib"
+
     if origin is None:
         return None
 
@@ -131,21 +140,24 @@ class AutoBeam:
     @staticmethod
     def module_walk(root_path):
 
-            root_path = beam_path(root_path).resolve()
-            module_walk = {}
+        root_path = beam_path(root_path).resolve()
+        module_walk = {}
+        # if root_path.is_file():
+        #     module_walk = {'..': {root_path.name: root_path.read()}}
+        #     return module_walk
 
-            for r, dirs, files in root_path.walk():
+        for r, dirs, files in root_path.walk():
 
-                r_relative = r.relative_to(root_path)
-                dir_files = {}
-                for f in files:
-                    p = r.joinpath(f)
-                    if p.suffix == '.py':
-                        dir_files[f] = p.read()
-                if len(dir_files):
-                    module_walk[str(r_relative)] = dir_files
+            r_relative = r.relative_to(root_path)
+            dir_files = {}
+            for f in files:
+                p = r.joinpath(f)
+                if p.suffix == '.py':
+                    dir_files[f] = p.read()
+            if len(dir_files):
+                module_walk[str(r_relative)] = dir_files
 
-            return module_walk
+        return module_walk
 
     @property
     def private_modules_walk(self):
@@ -288,8 +300,17 @@ class AutoBeam:
         return self._top_levels
 
     @property
+    def import_statement(self):
+        module_name = type(self.obj).__module__
+        origin = beam_path(get_origin(module_name))
+        if origin.parent.joinpath('__init__.py').is_file():
+            module_name = f"{origin.parent.name}.{module_name}"
+        class_name = type(self.obj).__name__
+        return f"from {module_name} import {class_name}"
+
+    @property
     def metadata(self):
-        return {'name': self.obj.name, 'type': type(self.obj)}
+        return {'name': self.obj.name, 'type': type(self.obj).__name__, 'import_statement': self.import_statement}
 
     @staticmethod
     def to_bundle(obj, path=None):
@@ -308,7 +329,7 @@ class AutoBeam:
         logger.info(f"Saving object's files to path {path}: [requirements.txt, modules.tar.gz, state.pt]")
         ab.write_requirements(path.joinpath('requirements.txt'))
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
-        path.joinpath('metadata.pkl').write(ab.metadata)
+        path.joinpath('metadata.json').write(ab.metadata)
         obj.save_state(path.joinpath('state.pt'))
 
     @classmethod
@@ -320,9 +341,9 @@ class AutoBeam:
 
         # 1. Check necessary files
         req_file = path.joinpath('requirements.txt')
-        modules_tar = path.joinpath('modules')
+        modules_tar = path.joinpath('modules.tar.gz')
         state_file = path.joinpath('state.pt')
-        metadata_file = path.joinpath('metadata.pkl')
+        metadata_file = path.joinpath('metadata.json')
 
         if not all([file.exists() for file in [req_file, modules_tar, state_file, metadata_file]]):
             raise ValueError(f"Path {path} does not contain all necessary files for reconstruction.")
@@ -331,29 +352,27 @@ class AutoBeam:
         os.system(f"pip install -r {req_file}")
 
         # 3. Extract the Python modules
-        extracted_path = path.joinpath('extracted_modules')
-        for m in modules_tar:
-            mr_extracted = extracted_path.joinpath(m.name.split('.')[0])
-            mr_extracted.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(m, "r:gz") as tar:
-                tar.extractall(extracted_path)
+        extracted_path = path.joinpath('modules')
+        extracted_path.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(modules_tar, "r:gz") as tar:
+            tar.extractall(str(extracted_path))
 
         # 4. Add the directory containing the extracted Python modules to sys.path
-        sys.path.append(str(extracted_path))
+        sys.path.insert(0, str(extracted_path))
 
         # 5. Load metadata and import necessary modules
         metadata = metadata_file.read()
 
-        module_name = metadata.get('type').__module__
-        class_name = metadata.get('type').__name__
-        imported_module = importlib.import_module(module_name)
-        imported_class = getattr(imported_module, class_name)
+        import_statement = metadata['import_statement']
+        imported_class = metadata['type']
+
+        exec(import_statement)
 
         # 6. Load the state of the object using the imported class type
-        obj_state = state_file.read()
+        cls_obj = locals()[imported_class]
 
         # 7. Construct the object from its state using a hypothetical from_state method
-        obj = imported_class.from_state(obj_state)
+        obj = cls_obj.from_path(state_file)
 
         return obj
 
@@ -392,5 +411,5 @@ class AutoBeam:
                 for sub_path, files in sub_paths.items():
                     for file_name, _ in files.items():
                         local_name = root_path.joinpath(sub_path, file_name)
-                        relative_name = local_name.relative_to(root_path)
+                        relative_name = local_name.relative_to(root_path.parent)
                         tar.add(str(local_name), arcname=str(relative_name))
