@@ -328,6 +328,35 @@ class BeamParallel(object):
 
         return results
 
+    def _run_threading(self, n_workers=None):
+
+        if n_workers is None:
+            n_workers = self.n_workers
+
+        import threading
+        from queue import Queue
+
+        def worker(task, semaphore, results_queue):
+            with semaphore:
+                res = task.run()
+                results_queue.put(res)
+
+        results_queue = Queue()
+        semaphore = threading.Semaphore(n_workers)
+        threads = []
+
+        for task in self.queue:
+            thread = threading.Thread(target=worker, args=(task, semaphore, results_queue))
+            thread.start()
+            threads.append(thread)
+
+        # Optionally, you can wait for all threads to complete
+        for thread in threads:
+            thread.join()
+
+        results = [results_queue.get() for _ in range(len(self.queue))]
+        return results
+
     def _run_starmap(self, n_workers=None):
 
         if n_workers is None:
@@ -484,6 +513,8 @@ class BeamParallel(object):
             results = self._run_starmap(n_workers=n_workers)
         elif method == 'ray':
             results = self._run_ray(n_workers=n_workers)
+        elif method == 'threading':
+            results = self._run_threading(n_workers=n_workers)
         elif method == 'dask':
             results = self._run_dask(n_workers=n_workers)
 

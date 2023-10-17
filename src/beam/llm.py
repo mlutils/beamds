@@ -426,6 +426,16 @@ class BeamLLM(LLM, Processor):
 
         return response
 
+    def ask_with_retrials(self, question, retrials=1, sleep=1, **kwargs):
+        if retrials > 1:
+            try:
+                return self.ask(question, **kwargs)
+            except:
+                time.sleep(sleep * (1 + np.random.rand()))
+                return self.ask_with_retrials(question, retrials=retrials - 1, sleep=sleep, **kwargs)
+        else:
+            return self.ask(question, **kwargs)
+
     def reset_instruction_history(self):
         self.instruction_history = []
 

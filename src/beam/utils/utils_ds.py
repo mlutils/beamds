@@ -324,7 +324,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
         c = []
         i = 0
-        for i, xi in enumerate(iter(x)):
+        for xi in iter(x):
 
             c.append(xi)
             if len(c) == chunksize:
@@ -334,10 +334,10 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
                 yield i, c
 
                 c = []
+                i += 1
 
-        i = i + 1 if i > 0 else i
-        yield i, c
-
+        if len(c):
+            yield i, c
 
 def stack_batched_results(results, batch_size=None):
     # this step is done in order to be able to pickle the results
@@ -370,29 +370,27 @@ def stack_batched_results(results, batch_size=None):
     return stacked_results
 
 
-
-
 def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
     x_type = check_type(x)
 
     try:
-        if (x_type.major == 'container') and (x_type.minor == 'dict'):
+
+        if dim is None:
+            for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
+                                      squeeze=squeeze, dim=0):
+                yield k, c
+
+        elif (x_type.major == 'container') and (x_type.minor == 'dict'):
             gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks,
                                        partition=partition, squeeze=squeeze, dim=dim) for k, v in x.items()}
 
-            if dim is None:
-                for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
-                                          squeeze=squeeze, dim=dim):
-                    yield k, c
+            for i in itertools.count():
+                d = {}
+                for k, v in gen.items():
+                    i, v = next(v)
+                    d[k] = v
 
-            else:
-                for i in itertools.count():
-                    d = {}
-                    for k, v in gen.items():
-                        i, v = next(v)
-                        d[k] = v
-
-                    yield i, d
+                yield i, d
 
         elif x_type.major == 'container':
 
@@ -417,8 +415,6 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
 
     except StopIteration:
         return
-
-
 
 
 def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
