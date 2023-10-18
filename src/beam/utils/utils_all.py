@@ -5,6 +5,8 @@ import numpy as np
 from fnmatch import filter
 from tqdm.notebook import tqdm as tqdm_notebook
 from tqdm import tqdm
+from pydantic import BaseModel, Field, PrivateAttr
+from typing import Any, List, Mapping, Optional, Dict
 
 import pandas as pd
 import json
@@ -48,6 +50,10 @@ from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
+
+
+class Beamdantic(BaseModel):
+    _lazy_cache: Any = PrivateAttr()
 
 
 class BeamDict(dict, Namespace):
@@ -762,15 +768,20 @@ class nested_defaultdict(defaultdict):
 
 
 def lazy_property(fn):
-    attr_name = f'_internal_{fn.__name__}'
 
     @property
     def _lazy_property(self):
         try:
-            return getattr(self, attr_name)
+            cache = getattr(self, '_lazy_cache')
+            return cache['fn.__name__']
+        except KeyError:
+            v = fn(self)
+            cache['fn.__name__'] = v
+            return v
         except AttributeError:
-            setattr(self, attr_name, fn(self))
-            return getattr(self, attr_name)
+            v = fn(self)
+            setattr(self, '_lazy_cache', {'fn.__name__': v})
+            return v
 
     return _lazy_property
 

@@ -7,7 +7,7 @@ import numpy as np
 import string
 
 from functools import partial
-from .utils import get_edit_ratio, normalize_host, BeamURL
+from .utils import get_edit_ratio, normalize_host, BeamURL, Beamdantic
 import openai
 from typing import Any, List, Mapping, Optional, Dict
 
@@ -90,7 +90,7 @@ class LLMResponse:
     #     return self.llm.extract_choices(self.response)
 
 
-class BeamLLM(LLM, Processor):
+class BeamLLM(LLM, Processor, Beamdantic):
 
     model: Optional[str] = Field(None)
     scheme: Optional[str] = Field(None)

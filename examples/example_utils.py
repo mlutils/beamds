@@ -109,11 +109,19 @@ if __name__ == '__main__':
 
     from src.beam import beam_arguments, beam_path
 
-    path = '/home/dsi/elads/sandbox/cifar10_bundle'
-    path = beam_path(path)
+    # path = '/home/dsi/elads/sandbox/cifar10_bundle'
+    # path = beam_path(path)
+    #
+    # # write_bundle_cifar(path)
+    #
+    # alg = load_bundle(path)
 
-    # write_bundle_cifar(path)
+    from src.beam.config import BeamHparams
+    from src.beam.tabular import TabularHparams
 
-    alg = load_bundle(path)
+    hparams = BeamHparams(identifier='test', project_name='test', algorithm='test', device=1)
 
+    # hparams = TabularHparams(identifier='test', project_name='test', algorithm='test', device=1)
+    hparams = TabularHparams(hparams)
+    print(hparams)
     print('done')
