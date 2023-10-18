@@ -53,6 +53,7 @@ DataBatch = namedtuple("DataBatch", "index label data")
 
 
 class Beamdantic(BaseModel):
+    # To be used with pydantic classes and lazy_property
     _lazy_cache: Any = PrivateAttr()
 
 
@@ -658,6 +659,48 @@ class PureBeamPath:
                 import pyarrow as pa
                 x = pa.orc.read(fo, **kwargs)
 
+            # HDF5 (.h5, .hdf5)
+            elif ext in ['.h5', '.hdf5']:
+                import h5py
+                with h5py.File(fo, 'r') as f:
+                    x = {key: f[key][...] for key in f.keys()}
+
+            # YAML (.yaml, .yml)
+            elif ext in ['.yaml', '.yml']:
+                import yaml
+                x = yaml.safe_load(fo)
+
+            # XML (.xml)
+            elif ext == '.xml':
+                import xml.etree.ElementTree as ET
+                x = ET.parse(fo).getroot()
+
+            # MAT (.mat)
+            elif ext == '.mat':
+                from scipy.io import loadmat
+                x = loadmat(fo)
+
+            # ZIP (.zip)
+            elif ext == '.zip':
+                import zipfile
+                with zipfile.ZipFile(fo, 'r') as zip_ref:
+                    x = {name: zip_ref.read(name) for name in zip_ref.namelist()}
+
+            # MessagePack (.msgpack)
+            elif ext == '.msgpack':
+                import msgpack
+                x = msgpack.unpackb(fo.read(), raw=False)
+
+            # GeoJSON (.geojson)
+            elif ext == '.geojson':
+                import geopandas as gpd
+                x = gpd.read_file(fo)
+
+            # WAV (.wav)
+            elif ext == '.wav':
+                from scipy.io.wavfile import read as wav_read
+                x = wav_read(fo)
+
             else:
                 x = fo.read()
 
@@ -740,6 +783,54 @@ class PureBeamPath:
             elif ext == '.pt':
                 import torch
                 torch.save(x, fo, **kwargs)
+
+            # HDF5 (.h5, .hdf5)
+            elif ext in ['.h5', '.hdf5']:
+                import h5py
+                with h5py.File(fo, 'w') as f:
+                    for key, value in x.items():
+                        f.create_dataset(key, data=value)
+
+            # YAML (.yaml, .yml)
+            elif ext in ['.yaml', '.yml']:
+                import yaml
+                yaml.safe_dump(x, fo)
+
+            # XML (.xml)
+            elif ext == '.xml':
+                import xml.etree.ElementTree as ET
+
+                tree = ET.ElementTree(x)
+                tree.write(fo)
+
+            # MAT (.mat)
+            elif ext == '.mat':
+                from scipy.io import savemat
+                savemat(fo, x)
+
+            # ZIP (.zip)
+            elif ext == '.zip':
+                import zipfile
+
+                with zipfile.ZipFile(fo, 'w') as zip_ref:
+                    for name, content in x.items():
+                        zip_ref.writestr(name, content)
+
+            # MessagePack (.msgpack)
+            elif ext == '.msgpack':
+                import msgpack
+                fo.write(msgpack.packb(x, use_bin_type=True))
+
+            # GeoJSON (.geojson)
+            elif ext == '.geojson':
+                import geopandas as gpd
+                gpd.GeoDataFrame(x).to_file(fo, driver='GeoJSON')
+
+            # WAVt (.wav)
+            elif ext == '.wav':
+                from scipy.io.wavfile import write as wav_write
+                wav_write(fo, *x)
+
             else:
                 raise ValueError(f"Unsupported extension type: {ext} for file {x}.")
 
