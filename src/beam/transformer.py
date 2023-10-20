@@ -10,6 +10,16 @@ from .utils import tqdm_beam as tqdm
 from .logger import beam_logger as logger
 from .processor import Processor
 from .config import BeamHparams
+from enum import Enum
+
+
+class TransformStrategy(Enum):
+    CC = "CC"
+    CS = "CS"
+    SC = "SC"
+    SS = "SS"
+    C = "C"
+    S = "S"
 
 
 class Transformer(Processor):
@@ -74,7 +84,7 @@ class Transformer(Processor):
         self.store_suffix = self.hparams.get('store_suffix', store_suffix)
         self.transform_strategy = self.hparams.get('transform_strategy', transform_strategy)
         self.kwargs = kwargs
-        if self.transform_strategy in ['SC', 'SS'] and self.split_by != 'keys':
+        if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
                            f'The split_by is set to "keys".')
             self.split_by = 'keys'
@@ -212,7 +222,7 @@ class Transformer(Processor):
 
         reduce_dim = self.reduce_dim
 
-        if transform_strategy in ['SC', 'SS'] and split_by != 'keys':
+        if transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and split_by != 'keys':
             logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
                            f'The split_by is set to "key".')
             split_by = 'keys'
@@ -233,33 +243,35 @@ class Transformer(Processor):
 
         is_chunk = (n_chunks != 1) or (not squeeze) or (split_by == 'keys' and isinstance(x, BeamData) and x.is_stored)
 
-        if ((transform_strategy is None) or (transform_strategy == 'C')) and type(x) == BeamData:
+        if ((transform_strategy is None) or (transform_strategy == TransformStrategy.C)) and type(x) == BeamData:
             if x.is_cached:
-                transform_strategy = 'CC'
+                transform_strategy = TransformStrategy.CC
             elif x.is_stored:
-                transform_strategy = 'SC'
+                transform_strategy = TransformStrategy.SC
             else:
                 raise ValueError(f"BeamData is not cached or stored, check your configuration")
 
-        if transform_strategy == 'S' and type(x) == BeamData:
+        if transform_strategy == TransformStrategy.S and type(x) == BeamData:
             if x.is_cached:
-                transform_strategy = 'CS'
+                transform_strategy = TransformStrategy.CS
             elif x.is_stored:
-                transform_strategy = 'SS'
+                transform_strategy = TransformStrategy.SS
             else:
                 raise ValueError(f"BeamData is not cached or stored, check your configuration")
 
-        if transform_strategy in ['CC', 'CS'] and type(x) == BeamData and not x.is_cached:
+        if (transform_strategy in [TransformStrategy.CC, TransformStrategy.CS] and
+                type(x) == BeamData and not x.is_cached):
             logger.warning(f"Data is not cached but the transformation strategy is {transform_strategy}, "
                            f"caching data for transformer: {self.name} before the split to chunks.")
             x.cache()
 
-        if transform_strategy in ['SC', 'SS'] and type(x) == BeamData and not x.is_stored:
+        if (transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and
+                type(x) == BeamData and not x.is_stored):
             logger.warning(f"Data is not stored but the transformation strategy is {transform_strategy}, "
                            f"storing data for transformer: {self.name} before the split to chunks.")
             x.store()
 
-        store_chunk = transform_strategy in ['CS', 'SS']
+        store_chunk = transform_strategy in [TransformStrategy.CS, TransformStrategy.SS]
 
         if path is None and store_chunk:
 

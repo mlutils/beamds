@@ -46,7 +46,7 @@ class BeamHparams(Namespace):
         types = list(type(self).__bases__)
         types.insert(0, type(self))
 
-        for ti in types[::-1]:
+        for ti in types[len(types)-2::-1]:
 
             if ti.defaults is not defaults:
                 defaults = ti.defaults
@@ -470,7 +470,9 @@ def beam_arguments(*args, **kwargs):
 
         ar_type = check_type(ar)
 
-        if ar_type.minor == 'dict':
+        if isinstance(ar, Namespace):
+            args_dict.append(vars(ar))
+        elif ar_type.minor == 'dict':
             args_dict.append(ar)
         elif ar_type.major == 'scalar' and ar_type.element == 'str':
             args_str.append(ar)
