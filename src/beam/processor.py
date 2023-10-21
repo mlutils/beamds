@@ -34,16 +34,22 @@ class Processor(object):
         from .server import BeamClient
         remote = BeamClient(hostname)
         self = cls(*args, remote=remote, **kwargs)
+
+        def detour(self, attr):
+            return getattr(self.remote, attr)
+
+        setattr(self, '__getattribute__', detour)
+
         return self
 
-    def __getattribute__(self, name):
-        try:
-            remote = super(Processor, self).__getattribute__("remote")
-            if remote is not None:
-                return getattr(remote, name)
-            return super(Processor, self).__getattribute__(name)
-        except:
-            return super(Processor, self).__getattribute__(name)
+    # def __getattribute__(self, name):
+    #     try:
+    #         remote = super(Processor, self).__getattribute__("remote")
+    #         if remote is not None:
+    #             return getattr(remote, name)
+    #         return super(Processor, self).__getattribute__(name)
+    #     except:
+    #         return super(Processor, self).__getattribute__(name)
         
     def save_state(self, path=None):
         if path is None:

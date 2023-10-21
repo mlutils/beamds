@@ -171,26 +171,18 @@ class BeamURL:
 
     @property
     def username(self):
-        if self.parsed_url.netloc is None:
-            return None
         return self.parsed_url.username
 
     @property
     def hostname(self):
-        if self.parsed_url.netloc is None:
-            return None
         return self.parsed_url.hostname
 
     @property
     def password(self):
-        if self.parsed_url.netloc is None:
-            return None
         return self.parsed_url.password
 
     @property
     def port(self):
-        if self.parsed_url.netloc is None:
-            return None
         return self.parsed_url.port
 
     @property
