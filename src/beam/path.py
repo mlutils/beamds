@@ -8,6 +8,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 from contextlib import contextmanager
 from uuid import uuid4 as uuid
+from .utils import lazy_property
 
 
 @contextmanager
@@ -319,6 +320,26 @@ class BeamPath(PureBeamPath):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.file_object.close()
 
+    def write(self, x, ext=None, **kwargs):
+
+        if ext is None:
+            ext = self.suffix
+
+        if ext == '.parquet' and kwargs.get('partition_cols', None) is not None:
+            x.to_parquet(str(self), **kwargs)
+
+        return super().write(x, ext=ext, **kwargs)
+
+    def read(self, ext=None, **kwargs):
+
+        if ext is None:
+            ext = self.suffix
+
+        if ext == '.parquet' and self.is_dir():
+            return pd.read_parquet(str(self), **kwargs)
+
+        return super().read(ext=ext, **kwargs)
+
 
 class SFTPPath(PureBeamPath):
 
@@ -520,7 +541,7 @@ class S3Path(PureBeamPath):
             obj = self.client.Object(self.bucket_name, f"{self.key}/")
             obj.delete()
 
-    def mkdir(self, parents=True, exist_ok=False):
+    def mkdir(self, parents=True, exist_ok=True):
 
         if not parents:
             raise NotImplementedError("parents=False is not supported")
@@ -633,6 +654,131 @@ class S3Path(PureBeamPath):
             self.file_object.close()
 
 
+class HDFSPAPath(PureBeamPath):
+
+    # a pyarrow implementation of HDFSPath
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None,  username=None, buffer_size=0,
+                 replication=3, kerb_ticket=None, extra_conf=None, tls=True, default_block_size=None, **kwargs):
+
+        super().__init__(*pathsegments, scheme='hdfs-pa', hostname=hostname, port=port,
+                         username=username, **kwargs)
+
+        if client is None:
+            from pyarrow import fs
+
+            if type(tls) is str:
+                tls = tls.lower() == 'true'
+
+            protocol = 'https' if tls else 'http'
+            hostname = f'{protocol}://{normalize_host(hostname, port)}'
+
+            client = fs.HadoopFileSystem(hostname, port=int(port), user=username, replication=replication,
+                                         buffer_size=buffer_size, default_block_size=default_block_size,
+                                         kerb_ticket=kerb_ticket, extra_conf=extra_conf)
+
+        self.client = client
+
+    @property
+    def file_info(self):
+        return self.client.get_file_info([str(self)])[0]
+
+    def _exists(self, dir=False, file=False):
+        from pyarrow.lib import ArrowIOError
+        from pyarrow import fs
+        try:
+            fi = self.file_info
+            if dir:
+                return fi.type == fs.FileType.Directory
+            if file:
+                return fi.type == fs.FileType.File
+            return True
+        except ArrowIOError:
+            return False
+
+    def is_file(self):
+        return self._exists(file=True)
+
+    def is_dir(self):
+        return self._exists(dir=True)
+
+    def exists(self):
+        return self._exists()
+
+    def rename(self, target):
+        self.client.move(str(self), str(target))
+
+    def replace(self, target):
+        self.rename(target)
+
+    def unlink(self, **kwargs):
+        self.client.delete_file(str(self))
+
+    def mkdir(self, parents=True, exist_ok=True):
+        if parents:
+            self.client.create_dir(str(self), recursive=True)
+        else:
+            self.client.create_dir(str(self), recursive=False)
+
+    def rmdir(self):
+        self.client.delete_dir(str(self))
+
+    def iterdir(self):
+        return self.client.ls(str(self), detail=False)
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            with self.client.open_input_file(str(self)) as f:
+                content = f.read()
+            # io_obj = StringIO if 'r' else BytesIO
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+        elif self.mode in ['wb', 'w']:
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+        else:
+            raise ValueError("Invalid mode")
+
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.mode in ["rb", "r"]:
+            self.file_object.close()
+        else:
+            self.file_object.seek(0)
+            content = self.file_object.getvalue()
+            with self.client.open_output_stream(str(self)) as f:
+                f.write(content if 'b' in self.mode else content.encode())
+            self.file_object.close()
+
+    def write(self, x, ext=None, **kwargs):
+
+        if ext is None:
+            ext = self.suffix
+
+        if ext == '.parquet':
+            import pyarrow.parquet as pq
+            pq.write_table(x, str(self), filesystem=self.client)
+
+        elif ext == '.orc':
+            import pyarrow.orc as orc
+            orc.write_table(x, str(self), filesystem=self.client)
+
+        return super().write(x, ext=ext, **kwargs)
+
+    def read(self, ext=None, **kwargs):
+
+        if ext is None:
+            ext = self.suffix
+
+        if ext == '.parquet':
+            import pyarrow.parquet as pq
+            return pq.read_table(str(self), filesystem=self.client)
+
+        if ext == '.orc':
+            import pyarrow.orc as orc
+            return orc.read_table(str(self), filesystem=self.client)
+
+        return super().read(ext=ext, **kwargs)
+
+
 class HDFSPath(PureBeamPath):
 
     # TODO: use HadoopFileSystem
@@ -707,54 +853,53 @@ class HDFSPath(PureBeamPath):
 
     def read(self, ext=None, **kwargs):
 
-        from hdfs.ext.avro import AvroReader
-        from hdfs.ext.dataframe import read_dataframe
-
         if ext is None:
             ext = self.suffix
 
         if ext == '.avro':
-            path = str(self)
+            from hdfs.ext.avro import AvroReader
             x = []
-            with AvroReader(self.client, path, **kwargs) as reader:
+            with AvroReader(self.client, str(self), **kwargs) as reader:
                 # reader.writer_schema  # The remote file's Avro schema.
                 # reader.content  # Content metadata (e.g. size).
                 for record in reader:
                     x.append(record)
             return x
+
         elif ext == '.pd':
+            from hdfs.ext.dataframe import read_dataframe
             return read_dataframe(self.client, str(self))
 
         return super().read(ext=ext, **kwargs)
 
-    def write(self, x, **kwargs):
+    def write(self, x, ext=None,  **kwargs):
 
-        from hdfs.ext.avro import AvroWriter
-        from hdfs.ext.dataframe import write_dataframe
-
-        ext = self.suffix
-        path = str(self)
+        if ext is None:
+            ext = self.suffix
 
         if ext == '.avro':
-
-            with AvroWriter(self.client, path) as writer:
+            from hdfs.ext.avro import AvroWriter
+            with AvroWriter(self.client, str(self)) as writer:
                 for record in x:
                     writer.write(record)
 
         elif ext == '.pd':
-            write_dataframe(self.client, path, x, **kwargs)
+            from hdfs.ext.dataframe import write_dataframe
+            write_dataframe(self.client, str(self), x, **kwargs)
+
         else:
-            super().write(x, **kwargs)
+            super().write(x, ext=ext, **kwargs)
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
 
             chunk_size = self.query['chunk_size']
             chunk_size = int(chunk_size) if chunk_size is not None else None
-            self.file_object = self.client.read(str(self), chunk_size=chunk_size)
+            content = self.client.read(str(self), chunk_size=chunk_size)
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
 
         elif self.mode in ['wb', 'w']:
-            self.file_object = self.client.write(str(self), overwrite=True, )
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
         else:
             raise ValueError
 
@@ -765,4 +910,8 @@ class HDFSPath(PureBeamPath):
         if self.mode in ["rb", "r"]:
             self.file_object.close()
         else:
+            self.file_object.seek(0)
+            content = self.file_object.getvalue()
+            with self.client.write(str(self)) as writer:
+                writer.write(content if 'b' in self.mode else content.encode())
             self.file_object.close()

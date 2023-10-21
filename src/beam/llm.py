@@ -1087,6 +1087,7 @@ class HuggingFaceLLM(BeamLLM):
         super().__init__(*args, **kwargs)
 
         from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
+        import transformers
 
         transformers.logging.set_verbosity_error()
 

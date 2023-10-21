@@ -23,6 +23,13 @@ retriv
 pdfplumber
 st-aggrid
 
+leidenalg
+bayanpy
+pyclustering
+ASLPAw
+infomap
+s3fs
+
 # skypilot
 # vllm
 # fschat
