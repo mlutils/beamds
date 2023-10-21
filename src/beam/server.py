@@ -14,6 +14,12 @@ from gevent.pywsgi import WSGIServer
 from .logger import beam_logger as logger
 import types
 from functools import partial
+from queue import Queue
+from threading import Thread
+from uuid import uuid4 as uuid
+from collections import defaultdict
+import time
+import atexit
 
 
 def beam_remote(obj, host=None, port=None, debug=False):
@@ -89,7 +95,7 @@ class BeamClient(object):
 
 class BeamServer(object):
 
-    def __init__(self, obj, use_torch=True):
+    def __init__(self, obj, use_torch=True, batch=False, max_wait_time=1.0, max_batch_size=10):
 
         self.app = Flask(__name__)
         self.app.add_url_rule('/', view_func=self.get_info)
@@ -105,12 +111,44 @@ class BeamServer(object):
             self.dump_function = pickle.dump
             self.serialization_method = 'pickle'
 
+        self.batch = batch
+        self.max_wait_time = max_wait_time
+        self.max_batch_size = max_batch_size
+        self._request_queue = None
+        self._response_queue = None
+
+        if batch:
+            # Initialize and start batch inference thread
+            self.centralized_thread = Thread(target=self._centralized_batch_executor)
+            self.centralized_thread.daemon = True
+            self.centralized_thread.start()
+        else:
+            self.centralized_thread = None
+
+        atexit.register(self._cleanup)
+
         if callable(obj):
             self.type = 'function'
             self.app.add_url_rule('/call', view_func=self.call_function, methods=['POST'])
         elif isinstance(obj, object):
             self.type = 'class'
             self.app.add_url_rule('/alg/<method>', view_func=self.query_algorithm, methods=['POST'])
+
+    def _cleanup(self):
+        if self.centralized_thread is not None:
+            self.centralized_thread.join()
+
+    @property
+    def request_queue(self):
+        if self._request_queue is None:
+            self._request_queue = Queue()
+        return self._request_queue
+
+    @property
+    def response_queue(self):
+        if self._response_queue is None:
+            self._response_queue = defaultdict(Queue)
+        return self._response_queue
 
     @staticmethod
     def build_algorithm_from_path(path, Alg, override_hparams=None, Dataset=None, alg_args=None, alg_kwargs=None,
@@ -121,20 +159,60 @@ class BeamServer(object):
                                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         return BeamServer(alg)
 
-    def run(self, host="0.0.0.0", port=None, debug=False):
+    def run(self, host="0.0.0.0", port=None, debug=False, use_reloader=True):
         port = find_port(port=port, get_port_from_beam_port_range=True, application='flask')
         logger.info(f"Opening a flask inference server on port: {port}")
 
         # when debugging with pycharm set debug=False
         # if needed set use_reloader=False
         # see https://stackoverflow.com/questions/25504149/why-does-running-the-flask-dev-server-run-itself-twice
-        # self.app.run(host=host, port=port, debug=debug)
 
         if port is not None:
             port = int(port)
 
-        http_server = WSGIServer((host, port), self.app)
-        http_server.serve_forever()
+        if debug:
+            self.app.run(host=host, port=port, debug=True, use_reloader=use_reloader)
+        else:
+            http_server = WSGIServer((host, port), self.app)
+            http_server.serve_forever()
+
+    def _centralized_batch_executor(self):
+        while True:
+            batch = []
+            start_time = time.time()
+
+            while len(batch) < self.max_batch_size:
+                elapsed_time = time.time() - start_time
+                if elapsed_time > self.max_wait_time:
+                    break
+
+                try:
+                    task = self.request_queue.get(timeout=self.max_wait_time - elapsed_time)
+                    batch.append(task)
+                except Queue.Empty:
+                    break
+
+            if len(batch) > 0:
+
+                methods = defaultdict(list)
+                for task in batch:
+                    methods[task['method']].append(task)
+
+                for method, tasks in methods.items():
+
+                    func = getattr(self.obj, method)
+
+                    # currently we support only batching with a single argument
+                    data = {task['req_id']: task['args'][0] for task in tasks}
+                    from .data import BeamData
+
+                    bd = BeamData.simple(data)
+                    bd.apply(func)
+
+                    results = {task['req_id']: bd.data[task['req_id']] for task in tasks}
+
+                    for req_id, result in results.items():
+                        self.response_queue[req_id].put(result)
 
     def get_info(self):
 
@@ -149,6 +227,18 @@ class BeamServer(object):
 
         return jsonify(d)
 
+    def batched_query_algorithm(self, method, args, kwargs):
+
+        # Generate a unique request ID
+        req_id = str(uuid())
+        response_queue = self.response_queue[req_id]
+        self.request_queue.put({'req_id': req_id, 'method': method, 'args': args, 'kwargs': kwargs})
+
+        # Wait for the result
+        result = response_queue.get()
+        del self.response_queue[req_id]
+        return result
+
     def call_function(self):
 
             args = request.files['args']
@@ -157,7 +247,10 @@ class BeamServer(object):
             args = self.load_function(args)
             kwargs = self.load_function(kwargs)
 
-            results = self.obj(*args, **kwargs)
+            if self.batch:
+                results = self.batched_query_algorithm('__call__', args, kwargs)
+            else:
+                results = self.obj(*args, **kwargs)
 
             io_results = io.BytesIO()
             self.dump_function(results, io_results)
@@ -175,7 +268,10 @@ class BeamServer(object):
         args = self.load_function(args)
         kwargs = self.load_function(kwargs)
 
-        results = method(*args, **kwargs)
+        if self.batch:
+            results = self.batched_query_algorithm(method, args, kwargs)
+        else:
+            results = method(*args, **kwargs)
 
         io_results = io.BytesIO()
         self.dump_function(results, io_results)

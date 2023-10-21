@@ -30,6 +30,8 @@ from .logger import beam_logger, beam_kpi, Timer
 from .path import beam_path, beam_key
 from ._version import __version__
 
+from .resource import resource
+
 # from .llm import beam_llm
 # from .ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
 # from .server import BeamServer, BeamClient
