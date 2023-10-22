@@ -12,7 +12,7 @@ import pandas as pd
 import json
 import __main__
 from datetime import timedelta
-
+import time
 
 try:
     import modin.pandas as mpd
@@ -47,6 +47,9 @@ import inspect
 from pathlib import PurePosixPath, PureWindowsPath
 from argparse import Namespace
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
+from functools import wraps, partial
+import traceback
+
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
@@ -1540,3 +1543,55 @@ def jupyter_like_traceback(exc_type=None, exc_value=None, tb=None, context=3):
     # Combine the context with the error message
     traceback_text = '\n'.join(extended_tb)
     return f"{traceback_text}\n{exc_type.__name__}: {exc_value}"
+
+
+# def retry(func, *args, retrials=3, sleep=1, **kwargs):
+#     if retrials > 1:
+#         try:
+#             return func(*args, **kwargs)
+#         except:
+#             time.sleep(sleep * (1 + np.random.rand()))
+#             return retry(func, *args, retrials=retrials - 1, sleep=sleep, **kwargs)
+#     else:
+#         return func(*args, **kwargs)
+
+
+def retry(func=None, retrials=3, sleep=1):
+    if func is None:
+        return partial(retry, retrials=retrials, sleep=sleep)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        local_retrials = retrials
+        last_exception = None
+        while local_retrials > 0:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                local_retrials -= 1
+                if local_retrials > 0:
+                    time.sleep(sleep * (1 + np.random.rand()))
+        if last_exception:
+            raise last_exception
+
+    return wrapper
+
+
+def run_forever(func, *args, sleep=1, **kwargs):
+
+    if func is None:
+        return partial(run_forever, sleep=sleep, *args, **kwargs)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        while True:
+            try:
+                func(*args, **kwargs)
+            except KeyboardInterrupt:
+                return
+            except:
+                print(traceback.format_exc())
+                time.sleep(sleep * (1 + np.random.rand()))
+
+    return wrapper
