@@ -9,6 +9,7 @@ import pandas as pd
 from contextlib import contextmanager
 from uuid import uuid4 as uuid
 from .utils import lazy_property
+from .logger import beam_logger as logger
 
 
 @contextmanager
@@ -157,15 +158,21 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     if path == '':
         path = '/'
 
-    if url.protocol == 's3':
+    if 's3' in url.protocol:
 
         access_key = beam_key('AWS_ACCESS_KEY_ID', access_key)
         secret_key = beam_key('AWS_SECRET_ACCESS_KEY', secret_key)
 
-        return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
+        if url.protocol == 's3-pa':
+            return S3PAPath(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key, **kwargs)
+        else:
+            return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
 
     elif url.protocol == 'hdfs':
         return HDFSPath(path, hostname=hostname, port=port, username=username, **kwargs)
+
+    elif url.protocol == 'hdfs-pa':
+        return HDFSPAPath(path, hostname=hostname, port=port, username=username, **kwargs)
 
     elif url.protocol == 'gs':
         raise NotImplementedError
@@ -425,11 +432,6 @@ class S3Path(PureBeamPath):
         super().__init__(*pathsegments, scheme='s3', client=client, hostname=hostname, port=port,
                          access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
 
-        if type(tls) is str:
-            tls = tls.lower() == 'true'
-
-        import boto3
-
         if not self.is_absolute():
             self.path = PurePath('/').joinpath(self.path)
 
@@ -443,11 +445,21 @@ class S3Path(PureBeamPath):
         else:
             self.key = None
 
-        protocol = 'https' if tls else 'http'
         if client is None:
+
+            import boto3
+
+            if type(tls) is str:
+                tls = tls.lower() == 'true'
+
+            protocol = 'https' if tls else 'http'
             kwargs = {}
             if hostname is not None:
                 kwargs['endpoint_url'] = f'{protocol}://{normalize_host(hostname, port)}'
+
+            if hostname is None and 'region_name' not in kwargs:
+                logger.warning("When working with AWS, please define region_name in kwargs to avoid extra cost")
+
             client = boto3.resource(config=boto3.session.Config(signature_version='s3v4'),
                                     verify=False, service_name='s3', aws_access_key_id=access_key,
                                     aws_secret_access_key=secret_key, **kwargs)
@@ -654,29 +666,7 @@ class S3Path(PureBeamPath):
             self.file_object.close()
 
 
-class HDFSPAPath(PureBeamPath):
-
-    # a pyarrow implementation of HDFSPath
-    def __init__(self, *pathsegments, client=None, hostname=None, port=None,  username=None, buffer_size=0,
-                 replication=3, kerb_ticket=None, extra_conf=None, tls=True, default_block_size=None, **kwargs):
-
-        super().__init__(*pathsegments, scheme='hdfs-pa', hostname=hostname, port=port,
-                         username=username, **kwargs)
-
-        if client is None:
-            from pyarrow import fs
-
-            if type(tls) is str:
-                tls = tls.lower() == 'true'
-
-            protocol = 'https' if tls else 'http'
-            hostname = f'{protocol}://{normalize_host(hostname, port)}'
-
-            client = fs.HadoopFileSystem(hostname, port=int(port), user=username, replication=replication,
-                                         buffer_size=buffer_size, default_block_size=default_block_size,
-                                         kerb_ticket=kerb_ticket, extra_conf=extra_conf)
-
-        self.client = client
+class PyArrowPath(PureBeamPath):
 
     @property
     def file_info(self):
@@ -915,3 +905,56 @@ class HDFSPath(PureBeamPath):
             with self.client.write(str(self)) as writer:
                 writer.write(content if 'b' in self.mode else content.encode())
             self.file_object.close()
+
+
+class S3PAPath(PyArrowPath):
+    # a pyarrow implementation of S3Path
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
+                 secret_key=None, tls=True, **kwargs):
+        super().__init__(*pathsegments, scheme='s3-pa', client=client, hostname=hostname, port=port,
+                         access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+
+        if client is None:
+
+            from pyarrow import fs
+
+            if hostname is not None:
+                kwargs['endpoint_override'] = normalize_host(hostname, port)
+
+            if hostname is None and 'region_name' not in kwargs:
+                logger.warning("When working with AWS, please define region_name in kwargs to avoid extra cost")
+
+            if type(tls) is str:
+                tls = tls.lower() == 'true'
+
+            kwargs['scheme'] = 'https' if tls else 'http'
+            kwargs['use_virtual_addressing'] = False
+
+            client = fs.S3FileSystem(access_key=access_key, secret_key=secret_key, **kwargs)
+
+        self.client = client
+
+
+class HDFSPAPath(PyArrowPath):
+
+    # a pyarrow implementation of HDFSPath
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None,  username=None, buffer_size=0,
+                 replication=3, kerb_ticket=None, extra_conf=None, tls=True, default_block_size=None, **kwargs):
+
+        super(HDFSPAPath).__init__(*pathsegments, scheme='hdfs-pa', hostname=hostname, port=port,
+                         username=username, **kwargs)
+
+        if client is None:
+            from pyarrow import fs
+
+            if type(tls) is str:
+                tls = tls.lower() == 'true'
+
+            protocol = 'https' if tls else 'http'
+            hostname = f'{protocol}://{normalize_host(hostname, port)}'
+
+            client = fs.HadoopFileSystem(hostname, port=int(port), user=username, replication=replication,
+                                         buffer_size=buffer_size, default_block_size=default_block_size,
+                                         kerb_ticket=kerb_ticket, extra_conf=extra_conf)
+
+        self.client = client
