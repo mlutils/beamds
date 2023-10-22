@@ -30,6 +30,8 @@ ASLPAw
 infomap
 s3fs
 
+ibis-framework[pandas,duckdb,mysql,sqlite]
+
 # skypilot
 # vllm
 # fschat

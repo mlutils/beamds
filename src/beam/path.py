@@ -9,8 +9,7 @@ import pandas as pd
 from contextlib import contextmanager
 from uuid import uuid4 as uuid
 from .utils import lazy_property
-from .logger import beam_logger as logger
-
+import warnings
 
 @contextmanager
 def local_copy(path, tmp_path='/tmp', as_beam_path=True):
@@ -458,7 +457,7 @@ class S3Path(PureBeamPath):
                 kwargs['endpoint_url'] = f'{protocol}://{normalize_host(hostname, port)}'
 
             if hostname is None and 'region_name' not in kwargs:
-                logger.warning("When working with AWS, please define region_name in kwargs to avoid extra cost")
+                warnings.warn("When working with AWS, please define region_name in kwargs to avoid extra cost")
 
             client = boto3.resource(config=boto3.session.Config(signature_version='s3v4'),
                                     verify=False, service_name='s3', aws_access_key_id=access_key,
@@ -922,7 +921,7 @@ class S3PAPath(PyArrowPath):
                 kwargs['endpoint_override'] = normalize_host(hostname, port)
 
             if hostname is None and 'region_name' not in kwargs:
-                logger.warning("When working with AWS, please define region_name in kwargs to avoid extra cost")
+                warnings.warn("When working with AWS, please define region_name in kwargs to avoid extra cost")
 
             if type(tls) is str:
                 tls = tls.lower() == 'true'
