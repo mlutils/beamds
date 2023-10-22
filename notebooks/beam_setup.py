@@ -61,10 +61,13 @@ class BeamImporter:
 
         try:
             imported_object = importlib.import_module(actual_name)
-        except:
-            module_name, object_name = actual_name.rsplit('.', 1)
-            module = importlib.import_module(module_name)
-            imported_object = getattr(module, object_name)
+        except Exception as e:
+            try:
+                module_name, object_name = actual_name.rsplit('.', 1)
+                module = importlib.import_module(module_name)
+                imported_object = getattr(module, object_name)
+            except:
+                raise e
 
         return imported_object
 

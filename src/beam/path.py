@@ -667,9 +667,19 @@ class S3Path(PureBeamPath):
 
 class PyArrowPath(PureBeamPath):
 
+    def __init__(self, *args, strip_path=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.strip_path = strip_path
+
+    @property
+    def str_path(self):
+        if self.strip_path:
+            return str(self).lstrip('/')
+        return str(self)
+
     @property
     def file_info(self):
-        return self.client.get_file_info([str(self)])[0]
+        return self.client.get_file_info([self.str_path])[0]
 
     def _exists(self, dir=False, file=False):
         from pyarrow.lib import ArrowIOError
@@ -694,29 +704,39 @@ class PyArrowPath(PureBeamPath):
         return self._exists()
 
     def rename(self, target):
-        self.client.move(str(self), str(target))
+        self.client.move(self.str_path, str(target))
 
     def replace(self, target):
         self.rename(target)
 
     def unlink(self, **kwargs):
-        self.client.delete_file(str(self))
+        self.client.delete_file(self.str_path)
+
+    def rmtree(self):
+        if self.is_file():
+            self.unlink()
+        else:
+            self.client.delete_dir_contents(self.str_path)
 
     def mkdir(self, parents=True, exist_ok=True):
         if parents:
-            self.client.create_dir(str(self), recursive=True)
+            self.client.create_dir(self.str_path, recursive=True)
         else:
-            self.client.create_dir(str(self), recursive=False)
+            self.client.create_dir(self.str_path, recursive=False)
 
     def rmdir(self):
-        self.client.delete_dir(str(self))
+        self.client.delete_dir(self.str_path)
 
     def iterdir(self):
-        return self.client.ls(str(self), detail=False)
+
+        from pyarrow import fs
+        fi = self.client.get_file_info(fs.FileSelector(self.str_path, recursive=False))
+        for f in fi:
+            yield self.gen(f.path)
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
-            with self.client.open_input_file(str(self)) as f:
+            with self.client.open_input_file(self.str_path) as f:
                 content = f.read()
             # io_obj = StringIO if 'r' else BytesIO
             self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
@@ -733,7 +753,7 @@ class PyArrowPath(PureBeamPath):
         else:
             self.file_object.seek(0)
             content = self.file_object.getvalue()
-            with self.client.open_output_stream(str(self)) as f:
+            with self.client.open_output_stream(self.str_path) as f:
                 f.write(content if 'b' in self.mode else content.encode())
             self.file_object.close()
 
@@ -744,11 +764,11 @@ class PyArrowPath(PureBeamPath):
 
         if ext == '.parquet':
             import pyarrow.parquet as pq
-            pq.write_table(x, str(self), filesystem=self.client)
+            pq.write_table(x, self.str_path, filesystem=self.client)
 
         elif ext == '.orc':
             import pyarrow.orc as orc
-            orc.write_table(x, str(self), filesystem=self.client)
+            orc.write_table(x, self.str_path, filesystem=self.client)
 
         return super().write(x, ext=ext, **kwargs)
 
@@ -759,11 +779,11 @@ class PyArrowPath(PureBeamPath):
 
         if ext == '.parquet':
             import pyarrow.parquet as pq
-            return pq.read_table(str(self), filesystem=self.client)
+            return pq.read_table(self.str_path, filesystem=self.client)
 
         if ext == '.orc':
             import pyarrow.orc as orc
-            return orc.read_table(str(self), filesystem=self.client)
+            return orc.read_table(self.str_path, filesystem=self.client)
 
         return super().read(ext=ext, **kwargs)
 
@@ -882,9 +902,16 @@ class HDFSPath(PureBeamPath):
     def __enter__(self):
         if self.mode in ["rb", "r"]:
 
-            chunk_size = self.query['chunk_size']
-            chunk_size = int(chunk_size) if chunk_size is not None else None
-            content = self.client.read(str(self), chunk_size=chunk_size)
+            # chunk_size = self.query['chunk_size']
+            # chunk_size = int(chunk_size) if chunk_size is not None else None
+            # content = self.client.read(str(self), chunk_size=chunk_size)
+
+            chunk_size = self.query.get('chunk_size', None)
+            chunk_size = int(chunk_size) if chunk_size is not None else 0
+
+            with self.client.read(str(self), chunk_size=chunk_size) as reader:
+                content = reader.read()
+
             self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
 
         elif self.mode in ['wb', 'w']:
@@ -911,7 +938,7 @@ class S3PAPath(PyArrowPath):
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
                  secret_key=None, tls=True, **kwargs):
         super().__init__(*pathsegments, scheme='s3-pa', client=client, hostname=hostname, port=port,
-                         access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+                         access_key=access_key, secret_key=secret_key, tls=tls, strip_path=True, **kwargs)
 
         if client is None:
 
@@ -920,14 +947,19 @@ class S3PAPath(PyArrowPath):
             if hostname is not None:
                 kwargs['endpoint_override'] = normalize_host(hostname, port)
 
-            if hostname is None and 'region_name' not in kwargs:
+            if hostname is None and 'region' not in kwargs:
                 warnings.warn("When working with AWS, please define region_name in kwargs to avoid extra cost")
 
             if type(tls) is str:
                 tls = tls.lower() == 'true'
 
             kwargs['scheme'] = 'https' if tls else 'http'
-            kwargs['use_virtual_addressing'] = False
+
+            if 'allow_bucket_creation' not in kwargs:
+                kwargs['allow_bucket_creation'] = True
+            if 'allow_bucket_deletion' not in kwargs:
+                kwargs['allow_bucket_deletion'] = True
+            # kwargs['use_virtual_addressing'] = False
 
             client = fs.S3FileSystem(access_key=access_key, secret_key=secret_key, **kwargs)
 
@@ -938,20 +970,13 @@ class HDFSPAPath(PyArrowPath):
 
     # a pyarrow implementation of HDFSPath
     def __init__(self, *pathsegments, client=None, hostname=None, port=None,  username=None, buffer_size=0,
-                 replication=3, kerb_ticket=None, extra_conf=None, tls=True, default_block_size=None, **kwargs):
+                 replication=3, kerb_ticket=None, extra_conf=None, default_block_size=None, **kwargs):
 
         super(HDFSPAPath).__init__(*pathsegments, scheme='hdfs-pa', hostname=hostname, port=port,
                          username=username, **kwargs)
 
         if client is None:
             from pyarrow import fs
-
-            if type(tls) is str:
-                tls = tls.lower() == 'true'
-
-            protocol = 'https' if tls else 'http'
-            hostname = f'{protocol}://{normalize_host(hostname, port)}'
-
             client = fs.HadoopFileSystem(hostname, port=int(port), user=username, replication=replication,
                                          buffer_size=buffer_size, default_block_size=default_block_size,
                                          kerb_ticket=kerb_ticket, extra_conf=extra_conf)
