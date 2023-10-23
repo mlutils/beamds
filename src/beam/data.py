@@ -11,7 +11,7 @@ from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_contain
     recursive_size_summary, container_len, is_arange, is_chunk, is_container, \
     recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
     recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key, \
-    get_closest_item_with_tuple_key, DataBatch, beam_hash
+    get_closest_item_with_tuple_key, DataBatch, beam_hash, Slicer, lazy_property
 from .logger import beam_logger as logger
 from .path import BeamPath, beam_path
 from functools import partial
@@ -247,6 +247,18 @@ class BeamData(object):
             self.is_stored = True
             if not lazy:
                 self.cache()
+
+    @lazy_property
+    def data_slicer(self):
+        return Slicer(self.data)
+
+    @lazy_property
+    def index_slicer(self):
+        return Slicer(self.index)
+
+    @lazy_property
+    def label_slicer(self):
+        return Slicer(self.label)
 
     @property
     def metadata_paths(self):
@@ -1540,8 +1552,8 @@ class BeamData(object):
         return None
 
     @classmethod
-    def simple(cls, *args, **kwargs):
-        bd = cls(*args, **kwargs)
+    def simple(cls, *args, preferred_orientation='index', **kwargs):
+        bd = cls(*args, preferred_orientation=preferred_orientation, **kwargs)
         return bd.simplified
 
     @property
@@ -1651,12 +1663,11 @@ class BeamData(object):
 
                 if xi is None:
                     return None, None, None, flat_key + 1
-                elif x_type.minor == 'pandas':
-                    return index, xi.iloc[in_fold_index.values], label, flat_key + 1
                 elif x_type.minor == 'native':
                     return index, [xi], label, flat_key + 1
                 else:
-                    return index, xi[in_fold_index.values], label, flat_key + 1
+                    xi_slicer = Slicer(xi, x_type=x_type)
+                    return index, xi_slicer[in_fold_index.values], label, flat_key + 1
 
         i, d, l, _ = _recursive_filter(x)
 
@@ -1683,10 +1694,12 @@ class BeamData(object):
                 label = None
 
             if self.orientation in ['simple', 'simplified_index']:
-                if hasattr(self.data, 'loc'):
-                    data = self.data.loc[index]
-                else:
-                    data = self.data[index]
+                data = self.data_slicer[index]
+
+                # if hasattr(self.data, 'loc'):
+                #     data = self.data.loc[index]
+                # else:
+                #     data = self.data[index]
 
             else:
 
@@ -1715,12 +1728,7 @@ class BeamData(object):
                 index_map = pd.Series(np.arange(len(index)), index=index)
                 index_map = index_map.loc[batch_info.index].values
 
-                data_type = check_type(data)
-
-                if data_type.minor == 'pandas':
-                    data = data.iloc[index_map]
-                else:
-                    data = data[index_map]
+                data = Slicer(data)[index_map]
 
                 if label is not None:
                     label = label.values[index_map]
@@ -1815,22 +1823,13 @@ class BeamData(object):
 
     def get_simplified_data_by_key(self, key):
         ind = self.info['map'].loc[self.info['fold'] == self.key_map[key]].values
-        if hasattr(self.data, 'iloc'):
-            data = self.data.iloc[ind]
-        else:
-            data = self.data[ind]
+        data = self.data_slicer[ind]
         label = None
         index = None
         if self.label is not None:
-            if hasattr(self.label, 'iloc'):
-                label = self.label.iloc[ind]
-            else:
-                label = self.label[ind]
+            label = self.label_slicer[ind]
         if self.index is not None:
-            if hasattr(self.index, 'iloc'):
-                index = self.index.iloc[ind]
-            else:
-                index = self.index[ind]
+            index = self.index_slicer[ind]
 
         return DataBatch(data=data, index=index, label=label)
 
@@ -1896,7 +1895,8 @@ class BeamData(object):
                                                label=data_batch.label, orientation=self.orientation)
 
                 return self.clone(data=data_batch.data, path=root_path, all_paths=all_paths, columns=self.columns,
-                                  index=data_batch.index, label=data_batch.label, schema=schema)
+                                  index=data_batch.index, label=data_batch.label, schema=schema,
+                                  key_map=self.key_map)
             else:
                 data = BeamData.slice_scalar_or_list(self.data, keys, keys_type=keys_type, data_type=self.data_type)
 
@@ -2086,8 +2086,7 @@ class BeamData(object):
 
     def apply(self, func, *args, **kwargs):
         data = recursive(func)(self.data,  *args, **kwargs)
-
-        return self.clone(data, index=self.index, label=self.label)
+        return self.clone(data, index=self.index, label=self.label, info=self.info, key_map=self.key_map)
 
     def reset_index(self):
         return self.clone(self.data, index=None, label=self.label, schema=self.schema)

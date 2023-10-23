@@ -9,12 +9,12 @@ except ImportError:
     has_torch = False
 
 import pickle
-from .utils import find_port, normalize_host
+from .utils import find_port, normalize_host, check_type
 from gevent.pywsgi import WSGIServer
 from .logger import beam_logger as logger
 import types
 from functools import partial
-from queue import Queue
+from queue import Queue, Full, Empty
 from threading import Thread
 from uuid import uuid4 as uuid
 from collections import defaultdict
@@ -95,7 +95,7 @@ class BeamClient(object):
 
 class BeamServer(object):
 
-    def __init__(self, obj, use_torch=True, batch=False, max_wait_time=1.0, max_batch_size=10):
+    def __init__(self, obj, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10):
 
         self.app = Flask(__name__)
         self.app.add_url_rule('/', view_func=self.get_info)
@@ -111,13 +111,22 @@ class BeamServer(object):
             self.dump_function = pickle.dump
             self.serialization_method = 'pickle'
 
-        self.batch = batch
         self.max_wait_time = max_wait_time
         self.max_batch_size = max_batch_size
         self._request_queue = None
         self._response_queue = None
 
         if batch:
+
+            if type(batch) is bool:
+                self.batch = ['predict', '__call__']
+            elif type(batch) is str:
+                self.batch = [batch]
+            elif type(batch) is list:
+                self.batch = batch
+            else:
+                raise ValueError(f"Unknown batch type: {batch}")
+
             # Initialize and start batch inference thread
             self.centralized_thread = Thread(target=self._centralized_batch_executor)
             self.centralized_thread.daemon = True
@@ -189,7 +198,7 @@ class BeamServer(object):
                 try:
                     task = self.request_queue.get(timeout=self.max_wait_time - elapsed_time)
                     batch.append(task)
-                except Queue.Empty:
+                except Empty:
                     break
 
             if len(batch) > 0:
@@ -207,7 +216,11 @@ class BeamServer(object):
                     from .data import BeamData
 
                     bd = BeamData.simple(data)
-                    bd.apply(func)
+                    bd = bd.apply(func)
+
+                    print(bd)
+                    print(bd.values)
+                    print(tasks)
 
                     results = {task['req_id']: bd.data[task['req_id']] for task in tasks}
 
@@ -220,7 +233,11 @@ class BeamServer(object):
         if self.type == 'function':
             d['vars_args'] = self.obj.__code__.co_varnames
         else:
-            d['vars_args'] = self.obj.experiment.vars_args
+            d['vars_args'] = self.obj.__init__.__code__.co_varnames
+            if hasattr(self.obj, 'hparams'):
+                d['hparams'] = vars(self.obj.hparams)
+            else:
+                d['hparams'] = None
 
         if hasattr(self.obj, 'name'):
             d['name'] = self.obj.name
@@ -247,7 +264,7 @@ class BeamServer(object):
             args = self.load_function(args)
             kwargs = self.load_function(kwargs)
 
-            if self.batch:
+            if '__call__' in self.batch:
                 results = self.batched_query_algorithm('__call__', args, kwargs)
             else:
                 results = self.obj(*args, **kwargs)
@@ -260,17 +277,16 @@ class BeamServer(object):
 
     def query_algorithm(self, method):
 
-        method = getattr(self.obj, method)
-
         args = request.files['args']
         kwargs = request.files['kwargs']
 
         args = self.load_function(args)
         kwargs = self.load_function(kwargs)
 
-        if self.batch:
+        if method in self.batch:
             results = self.batched_query_algorithm(method, args, kwargs)
         else:
+            method = getattr(self.obj, method)
             results = method(*args, **kwargs)
 
         io_results = io.BytesIO()

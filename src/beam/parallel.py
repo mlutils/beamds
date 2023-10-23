@@ -1,10 +1,11 @@
 from .utils import tqdm_beam
 from tqdm import tqdm
-from .utils import divide_chunks, collate_chunks, retrieve_name
+from .utils import divide_chunks, collate_chunks, retrieve_name, jupyter_like_traceback
 import inspect
 from .logger import Timer
 from .logger import beam_logger as logger
 from .path import beam_path
+import random
 
 def parallel_copy_path(src, dst, chunklen=10, **kwargs):
 
@@ -184,7 +185,7 @@ class BeamTask(object):
         except Exception as e:
             self.exception = e
             logger.error(f"Task {self.name} failed with exception: {e}")
-            res = e
+            res = jupyter_like_traceback()
         finally:
             self.is_pending = False
 
@@ -194,13 +195,14 @@ class BeamTask(object):
 class BeamParallel(object):
 
     def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam',
-                 reduce=False, reduce_dim=0, name=None,
+                 reduce=False, reduce_dim=0, name=None, shuffle=False,
                  **kwargs):
 
         self.func = func
         self.n_workers = n_workers
         self.method = method
         self.reduce = reduce
+        self.shuffle = shuffle
         self.reduce_dim = reduce_dim
         self.queue = []
         self.kwargs = kwargs
@@ -484,10 +486,14 @@ class BeamParallel(object):
 
         return results[0]
 
-    def run(self, n_workers=None, method=None):
+    def run(self, n_workers=None, method=None, shuffle=None):
+
+        if shuffle is None:
+            shuffle = self.shuffle
 
         if n_workers is None:
             n_workers = self.n_workers
+
         n_workers = min(n_workers, len(self.queue))
         if method is None:
             method = self.method
@@ -498,6 +504,9 @@ class BeamParallel(object):
 
         logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {n_workers} workers,"
                     f" method: {method}")
+
+        if shuffle:
+            random.shuffle(self.queue)
 
         if n_workers <= 1 or len(self.queue) == 1:
             results = [t.run() for t in self.progressbar(self.queue)]

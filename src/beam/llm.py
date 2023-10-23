@@ -7,7 +7,7 @@ import numpy as np
 import string
 
 from functools import partial
-from .utils import get_edit_ratio, normalize_host, BeamURL, Beamdantic
+from .utils import get_edit_ratio, normalize_host, BeamURL, retry, parse_text_to_protocol
 import openai
 from typing import Any, List, Mapping, Optional, Dict
 
@@ -85,12 +85,53 @@ class LLMResponse:
     def openai_format(self):
         return self.llm.openai_format(self)
 
-    # @property
-    # def choices(self):
-    #     return self.llm.extract_choices(self.response)
+    def _protocol(self, text, protocol='json'):
+        try:
+            return parse_text_to_protocol(text, protocol=protocol)
+        except:
+            retry_protocol = (retry(retrials=3, sleep=1, logger=logger, name=f"fix-{protocol} with {self.model}")
+                              (self.llm.fix_protocol))
+            return retry_protocol(text, protocol=protocol)
+
+    @property
+    def json(self):
+        json_text = self.llm.extract_text(self)
+        json_text = json_text.replace('False', 'false')
+        json_text = json_text.replace('True', 'true')
+        return self._protocol(json_text, protocol='json')
+
+    @property
+    def html(self):
+        text = self.llm.extract_text(self)
+        return self._protocol(text, protocol='html')
+
+    @property
+    def xml(self):
+        text = self.llm.extract_text(self)
+        return self._protocol(text, protocol='xml')
+
+    @property
+    def csv(self):
+        text = self.llm.extract_text(self)
+        return self._protocol(text, protocol='csv')
+
+    @property
+    def yaml(self):
+        text = self.llm.extract_text(self)
+        # text = re.search('yaml\n([\s\S]*?)\n', text).group(1)
+        return self._protocol(text, protocol='yaml')
+
+    @property
+    def toml(self):
+        text = self.llm.extract_text(self)
+        return self._protocol(text, protocol='toml')
+
+    @property
+    def choices(self):
+        return self.llm.extract_choices(self.response)
 
 
-class BeamLLM(LLM, Processor, Beamdantic):
+class BeamLLM(LLM, Processor):
 
     model: Optional[str] = Field(None)
     scheme: Optional[str] = Field(None)
@@ -110,6 +151,9 @@ class BeamLLM(LLM, Processor, Beamdantic):
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     logit_bias: Optional[Dict[str, float]] = Field(None)
     _len_function: Any = PrivateAttr()
+
+    # To be used with pydantic classes and lazy_property
+    _lazy_cache: Any = PrivateAttr()
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None,
@@ -157,6 +201,7 @@ class BeamLLM(LLM, Processor, Beamdantic):
         self._chat_history = None
         self._len_function = len_function
         self.reset_chat()
+        self._lazy_cache = {}
 
     @property
     def url(self):
@@ -169,6 +214,9 @@ class BeamLLM(LLM, Processor, Beamdantic):
     @property
     def conversation(self):
         return self._chat_history
+
+    def extract_choices(self, response):
+        raise NotImplementedError
 
     def reset_chat(self):
         self._chat_history = Conversation()
@@ -340,6 +388,22 @@ class BeamLLM(LLM, Processor, Beamdantic):
 
         res = self.ask(prompt, **kwargs)
         return res.text
+
+    def fix_protocol(self, text, protocol='json', **kwargs):
+
+        protocols_text = {'json': 'JSON', 'html': 'HTML', 'xml': 'XML', 'csv': 'CSV', 'yaml': 'YAML', 'toml': 'TOML'}
+
+        prompt = (f"Task: fix the following {protocols_text[protocol]} object. "
+                  f"Return a valid {protocols_text[protocol]} object without anything else\n\n"
+                    f"========================================================================\n\n"
+                    f"{text}\n\n"
+                    f"========================================================================\n\n"
+                    f"Response: \"\"\"\n{{text input here}}\n\"\"\"")
+        res = self.ask(prompt).text
+
+        res = parse_text_to_protocol(res, protocol=protocol)
+
+        return res
 
     def docstring(self, text, element_type, name=None, docstring_format=None, parent=None, parent_name=None,
                   parent_type=None, children=None, children_type=None, children_name=None, **kwargs):
@@ -982,9 +1046,10 @@ class FastAPILLM(FCConversationLLM):
     hostname: Optional[str] = Field(None)
     headers: Optional[dict] = Field(None)
     consumer: Optional[str] = Field(None)
+    protocol: Optional[str] = Field(None)
     _models: Any = PrivateAttr()
 
-    def __init__(self, *args, model=None, hostname=None, port=None, username=None, **kwargs):
+    def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
 
         kwargs['scheme'] = 'fastapi'
         super().__init__(*args, model=model, **kwargs)
@@ -993,11 +1058,16 @@ class FastAPILLM(FCConversationLLM):
         self.hostname = normalize_host(hostname, port)
         self._models = None
         self.headers = {'Content-Type': 'application/json'}
+        self.protocol = protocol
+
+        from requests.packages.urllib3.exceptions import InsecureRequestWarning
+        # Suppress only the single InsecureRequestWarning from urllib3
+        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
     @property
     def models(self):
         if self._models is None:
-            res = requests.get(f"http://{self.hostname}/models", headers=self.headers)
+            res = requests.get(f"{self.protocol}://{self.hostname}/models", headers=self.headers)
             self._models = res.json()
         return self._models
 
@@ -1037,7 +1107,7 @@ class FastAPILLM(FCConversationLLM):
         d['input'] = self.get_prompt(messages)
         d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
 
-        res = requests.post(f"http://{self.hostname}/predict/once", headers=self.headers, json=d)
+        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d)
         return res.json()
 
     def _completion(self, prompt=None, **kwargs):
@@ -1048,7 +1118,7 @@ class FastAPILLM(FCConversationLLM):
         d['input'] = self.get_prompt([{'role': 'user', 'content': prompt}])
         d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
 
-        res = requests.post(f"http://{self.hostname}/predict/once", headers=self.headers, json=d)
+        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d)
         return res.json()
 
     def verify_response(self, res):

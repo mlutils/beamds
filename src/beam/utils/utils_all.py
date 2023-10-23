@@ -55,9 +55,9 @@ TypeTuple = namedtuple('TypeTuple', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
 
 
-class Beamdantic(BaseModel):
-    # To be used with pydantic classes and lazy_property
-    _lazy_cache: Any = PrivateAttr()
+# class Beamdantic(BaseModel):
+#     # To be used with pydantic classes and lazy_property
+#     _lazy_cache: Any = PrivateAttr()
 
 
 class BeamDict(dict, Namespace):
@@ -1545,21 +1545,11 @@ def jupyter_like_traceback(exc_type=None, exc_value=None, tb=None, context=3):
     return f"{traceback_text}\n{exc_type.__name__}: {exc_value}"
 
 
-# def retry(func, *args, retrials=3, sleep=1, **kwargs):
-#     if retrials > 1:
-#         try:
-#             return func(*args, **kwargs)
-#         except:
-#             time.sleep(sleep * (1 + np.random.rand()))
-#             return retry(func, *args, retrials=retrials - 1, sleep=sleep, **kwargs)
-#     else:
-#         return func(*args, **kwargs)
-
-
-def retry(func=None, retrials=3, sleep=1):
+def retry(func=None, retrials=3, logger=None, name=None, verbose=False, sleep=1):
     if func is None:
         return partial(retry, retrials=retrials, sleep=sleep)
 
+    name = name if name is not None else func.__name__
     @wraps(func)
     def wrapper(*args, **kwargs):
         local_retrials = retrials
@@ -1567,9 +1557,23 @@ def retry(func=None, retrials=3, sleep=1):
         while local_retrials > 0:
             try:
                 return func(*args, **kwargs)
+            except KeyboardInterrupt as e:
+                raise e
             except Exception as e:
                 last_exception = e
                 local_retrials -= 1
+                if logger is not None:
+
+                    if local_retrials == np.inf:
+                        retry_message = f"Retrying {name}..."
+                    else:
+                        retry_message = f"Retries {local_retrials}/{retrials} left."
+
+                    logger.warning(f"Exception occurred in {name}. {retry_message}")
+
+                    if verbose:
+                        logger.warning(jupyter_like_traceback())
+
                 if local_retrials > 0:
                     time.sleep(sleep * (1 + np.random.rand()))
         if last_exception:
@@ -1578,20 +1582,68 @@ def retry(func=None, retrials=3, sleep=1):
     return wrapper
 
 
-def run_forever(func, *args, sleep=1, **kwargs):
+def run_forever(func=None, *args, sleep=1, name=None, logger=None, **kwargs):
+    return retry(func=func, *args, retrials=np.inf, logger=logger, name=name, sleep=sleep, **kwargs)
 
-    if func is None:
-        return partial(run_forever, sleep=sleep, *args, **kwargs)
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        while True:
-            try:
-                func(*args, **kwargs)
-            except KeyboardInterrupt:
-                return
-            except:
-                print(traceback.format_exc())
-                time.sleep(sleep * (1 + np.random.rand()))
+def parse_text_to_protocol(text, protocol='json'):
 
-    return wrapper
+    if protocol == 'json':
+        import json
+        res = json.loads(text)
+    elif protocol == 'html':
+        from bs4 import BeautifulSoup
+
+        res = BeautifulSoup(text, 'html.parser')
+    elif protocol == 'xml':
+        from lxml import etree
+
+        res = etree.fromstring(text)
+    elif protocol == 'csv':
+        import pandas as pd
+        from io import StringIO
+
+        res = pd.read_csv(StringIO(text))
+    elif protocol == 'yaml':
+        import yaml
+        res = yaml.load(text, Loader=yaml.FullLoader)
+
+    elif protocol == 'toml':
+        import toml
+        res = toml.loads(text)
+
+    else:
+        raise ValueError(f"Unknown protocol: {protocol}")
+
+    return res
+
+
+class Slicer:
+    def __init__(self, x, x_type=None):
+        self.x = x
+        if x_type is None:
+            x_type = check_type(x)
+        self.x_type = x_type
+
+    def __getitem__(self, item):
+        return slice_array(self.x, item, x_type=self.x_type)
+
+
+def slice_array(x, indices, x_type=None, indices_type=None):
+
+    if x_type is None:
+        x_type = check_type(x)
+    # if indices_type is None:
+    #     indices_type = check_type(indices)
+    if x_type.minor == 'numpy':
+        return x[indices]
+    elif x_type.minor == 'pandas':
+        return x.iloc[indices]
+    elif x_type.minor == 'tensor':
+        if x.is_sparse:
+            x = x.to_dense()
+        return x[indices]
+    elif x_type.minor == 'list':
+        return [x[i] for i in indices]
+    else:
+        raise TypeError(f"Cannot slice object of type {x_type.minor}")

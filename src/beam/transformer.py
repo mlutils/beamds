@@ -1,5 +1,5 @@
-from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, \
-    recursive_size_summary, container_len, retrieve_name, build_container_from_tupled_keys, is_empty
+from .utils import (divide_chunks, collate_chunks, recursive_chunks, iter_container,
+                    recursive_size_summary, container_len, retrieve_name, build_container_from_tupled_keys, is_empty,)
 from .parallel import parallel, BeamParallel, BeamTask
 from collections import OrderedDict
 from .data import BeamData
@@ -26,7 +26,7 @@ class Transformer(Processor):
 
     def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
                  chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0,
-                 transform_strategy=None, split_by='keys', store_suffix=None, **kwargs):
+                 transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, **kwargs):
         """
 
         @param args:
@@ -59,6 +59,8 @@ class Transformer(Processor):
         'keys' - the data is split by the key,
         'index' - the data is split by the index (i.e. dim=0).
         'columns' - the data is split by the columns (i.e. dim=1).
+        @param store_suffix: The suffix of the stored file.
+        @param shuffle Shuffling the tasks before running them.
         @param kwargs:
         """
         super(Transformer, self).__init__(*args, name=name, **kwargs)
@@ -72,7 +74,7 @@ class Transformer(Processor):
             self.hparams = args[0]
         else:
             self.hparams = BeamHparams(chunksizes=chunksize, n_chunks=n_chunks, n_workers=n_workers, squeeze=squeeze,
-                                       split_by=split_by, partition=partition, mp_method=mp_method,
+                                       split_by=split_by, partition=partition, mp_method=mp_method, shuffle=shuffle,
                                        reduce_dim=reduce_dim, transform_strategy=transform_strategy,
                                        reduce=reduce, **kwargs)
 
@@ -83,6 +85,7 @@ class Transformer(Processor):
         self.split_by = self.hparams.get('split_by', split_by)
         self.store_suffix = self.hparams.get('store_suffix', store_suffix)
         self.transform_strategy = self.hparams.get('transform_strategy', transform_strategy)
+        self.shuffle = self.hparams.get('shuffle', shuffle)
         self.kwargs = kwargs
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
@@ -180,7 +183,7 @@ class Transformer(Processor):
 
     def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, mp_method=None,
                   fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=False,
-                  reduce=True, store_suffix=None, **kwargs):
+                  reduce=True, store_suffix=None, shuffle=False, **kwargs):
         """
 
         @param x:
@@ -207,6 +210,9 @@ class Transformer(Processor):
 
         if mp_method is None:
             mp_method = self.mp_method
+
+        if shuffle is None:
+            shuffle = self.shuffle
 
         if n_workers is None:
             n_workers = self.n_workers
@@ -321,7 +327,7 @@ class Transformer(Processor):
         logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "
                     f"Number of queued tasks is {len(queue)}.")
 
-        x_with_keys = queue.run(n_workers=n_workers, method=mp_method)
+        x_with_keys = queue.run(n_workers=n_workers, method=mp_method, shuffle=shuffle)
 
         exceptions = [{'exception': xi, 'task': queue.queue[i]} for i, xi in enumerate(x_with_keys)
                       if isinstance(xi, Exception)]

@@ -45,7 +45,7 @@ class TFIDF(Processor):
 
 class SparseSimilarity(Processor):
 
-    def __init__(self, *args, similarity='cosine', layout='coo', vec_size=None, device=None, **kwars):
+    def __init__(self, *args, similarity='cosine', layout='coo', vec_size=None, device=None, k=1, **kwars):
 
         super().__init__(*args, **kwars)
         # possible similarity metrics: cosine, prod, l2, max
@@ -54,6 +54,7 @@ class SparseSimilarity(Processor):
         self.device = beam_device(device)
         self.vec_size = vec_size
         self.state = {'index': None, 'chunks': []}
+        self.k = k
 
     def reset(self):
         self.state = {'index': None, 'chunks': []}
@@ -129,7 +130,10 @@ class SparseSimilarity(Processor):
         x = self.to_sparse(x)
         self.state['chunks'].append(x)
 
-    def search(self, x, k=1, **kwargs):
+    def search(self, x, k=None, **kwargs):
+
+        if k is None:
+            k = self.k
 
         x = self.to_sparse(x)
 
