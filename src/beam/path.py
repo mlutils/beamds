@@ -790,8 +790,6 @@ class PyArrowPath(PureBeamPath):
 
 class HDFSPath(PureBeamPath):
 
-    # TODO: use HadoopFileSystem
-
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, timeout=None,
                  username=None, skip_trash=False, n_threads=0,  temp_dir=None, chunk_size=65536,
                  progress=None, cleanup=True, tls=True, **kwargs):

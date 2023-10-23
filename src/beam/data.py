@@ -133,14 +133,14 @@ class BeamData(object):
         same data so each data element has the same length and each row in each data element corresponds to the same object.
 
         3. index:  in this orientation the rows are spread over different data elements so the data elements may have
-         different length but their shape[1:] is identical so we can collect batch of elements and concat them together.
+         different length but their shape[1:] is identical, so we can collect batch of elements and concat them together.
 
          4. packed: each data element represents different set of data points but each data point may have different nature.
          this could model for example node properties in Knowledge graph where there are many types of nodes with different
          features. In case there is a common index, it can be used to slice and collect the data like the original
          PackedFold object.
 
-         If data is both cached in self.data and stored in self.all_paths, the cached version is always preferred.
+         If data is both cached in `self.data` and stored in self.all_paths, the cached version is always preferred.
 
         The orientation is inferred from the data. If all objects have same length they are assumed to represent columns
         orientation. If all objects have same shape[1:] they are assumed to represent index orientation. If one wish to pass
@@ -340,7 +340,6 @@ class BeamData(object):
             if self.orientation in ['columns', 'simple']:
                 self._index = info.index.values
             elif self.orientation == 'index':
-                # TODO: support index for packed and index case
                 @recursive
                 def replace_key_map_with_index(ind):
                     return self.info[self.info.fold == ind].index.values
@@ -586,7 +585,7 @@ class BeamData(object):
                 fold = np.concatenate([np.full(len(d), k) if hasattr(d, '__len__')
                                        else np.array([k]) for k, d in enumerate(filtered_data)])
 
-                # still not sure if i really need this column. if so, it should be fixed
+                # still not sure if we really need this column. if so, it should be fixed
                 # fold_key = np.concatenate([np.full(len(d), k) for k, d in self.flatten_items.items()])
                 lengths = np.array([len(d) if hasattr(d, '__len__') else 1
                                     for d in self.flatten_data])
@@ -1902,7 +1901,7 @@ class BeamData(object):
         if self.quick_getitem and data is not None:
             return BeamData.data_batch(data, index=index, label=label, orientation=self.orientation)
 
-        # determining orientation and info can be ambiguous so we let BeamData to calculate it
+        # determining orientation and info can be ambiguous, so we let BeamData to calculate it
         # from the index and label arguments
 
         # if self.orientation != 'columns' and info is not None:
@@ -2100,7 +2099,7 @@ class BeamData(object):
                 if not self.lazy:
                     self.cache()
                 else:
-                    raise ValueError(f"split_by={split_by} is not supported for not-cached and lazay data.")
+                    raise ValueError(f"split_by={split_by} is not supported for not-cached and lazy data.")
 
             if split_by == 'keys':
 
