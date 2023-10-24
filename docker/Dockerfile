@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:23.08-py3
+FROM nvcr.io/nvidia/pytorch:23.09-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -61,7 +61,7 @@ RUN pip install -U -r /workspace/install/requirements_0012.txt
 RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0014.txt
 RUN pip list
-# RUN pip install -U -r /workspace/install/requirements_0015.txt
+RUN pip install -U -r /workspace/install/requirements_0015.txt
 # RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 RUN pip list
@@ -126,6 +126,15 @@ ENV PATH "$PATH:/workspace/beamds/notebooks/"
 # install odbc driver
 # https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server?view=sql-server-ver16&tabs=ubuntu18-install%2Calpine17-install%2Cdebian8-install%2Credhat7-13-install%2Crhel7-offline
 RUN bash /workspace/install/install_odbc.sh
+
+# install hadoop
+RUN bash /workspace/install/install_hadoop.sh
+# Set Hadoop environment variables
+ENV HADOOP_HOME=/usr/local/hadoop
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HADOOP_HOME/lib/native
+ENV PATH=$PATH:$HADOOP_HOME/bin
+# Set Hadoop CLASSPATH
+ENV CLASSPATH=$(/usr/local/hadoop/bin/hadoop classpath --glob)
 
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh
