@@ -105,6 +105,37 @@ def load_bundle(path):
     return alg
 
 
+def test_data_apply():
+
+
+
+    M = 40000
+
+    nel = 100
+    k1 = 20000
+    k2 = 20
+
+    def gen_coo_vectors(k):
+        r = []
+        c = []
+        v = []
+
+        for i in range(k):
+            r.append(i * torch.ones(nel, dtype=torch.int64))
+            c.append(torch.randint(M, size=(nel,)))
+            v.append(torch.randn(nel))
+
+        return torch.sparse_coo_tensor(torch.stack([torch.cat(r), torch.cat(c)]), torch.cat(v), size=(k, M))
+
+    s1 = gen_coo_vectors(k1)
+    s2 = gen_coo_vectors(k2)
+    s3 = gen_coo_vectors(k2)
+
+    from src.beam.similarity import SparseSimilarity
+    sparse_sim = SparseSimilarity(similarity='cosine', format='coo', vec_size=10000, device='cuda', k=10)
+
+
+
 if __name__ == '__main__':
 
     from src.beam import beam_arguments, beam_path
