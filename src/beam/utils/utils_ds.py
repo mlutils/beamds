@@ -14,7 +14,7 @@ from functools import partial
 import itertools
 import scipy
 import re
-from .utils_all import check_type, check_minor_type
+from .utils_all import check_type, check_minor_type, slice_array
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -675,13 +675,18 @@ def is_container(x):
 
 @recursive
 def recursive_batch(x, index):
-    if x is None:
-        return None
-    elif hasattr(x, 'iloc'):
-        return x.iloc[index]
-    else:
-        return x[index]
+    return slice_array(x, index, x_type=None, indices_type=None)
 
+    # # TODO: use slice_array
+    # if hasattr(index, 'values'):
+    #     index = index.values
+    #
+    # if x is None:
+    #     return None
+    # elif hasattr(x, 'iloc'):
+    #     return x.iloc[index]
+    # else:
+    #     return x[index]
 
 @recursive
 def recursive_len(x):

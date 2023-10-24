@@ -704,7 +704,7 @@ class PyArrowPath(PureBeamPath):
         return self._exists()
 
     def rename(self, target):
-        self.client.move(self.str_path, str(target))
+        self.client.move(self.str_path, self.str_path)
 
     def replace(self, target):
         self.rename(target)

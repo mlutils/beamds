@@ -1824,7 +1824,7 @@ class BeamData(object):
         if keys_type is None:
             keys_type = check_type(keys)
 
-        if keys_type.major == 'native':
+        if keys_type.major == 'scalar':
             keys = [keys]
 
         ind = [self.info['map'].loc[self.info['fold'] == self.key_fold_map[k]].values for k in keys]
@@ -1917,27 +1917,27 @@ class BeamData(object):
               columns=None, schema=None, orientation=None,info=None, constructor=None,
               key_fold_map=None, **kwargs):
 
-        name = kwargs.get('name', self.name)
-        lazy = kwargs.get('lazy', self.lazy)
-        device = kwargs.get('device', self.device)
-        target_device = kwargs.get('target_device', self.target_device)
-        override = kwargs.get('override', self.override)
-        compress = kwargs.get('compress', self.compress)
-        split_by = kwargs.get('split_by', self.split_by)
-        chunksize = kwargs.get('chunksize', self.chunksize)
-        chunklen = kwargs.get('chunklen', self.chunklen)
-        n_chunks = kwargs.get('n_chunks', self.n_chunks)
-        partition = kwargs.get('partition', self.partition)
-        archive_size = kwargs.get('archive_size', self.archive_size)
-        preferred_orientation = kwargs.get('preferred_orientation', self.preferred_orientation)
-        read_kwargs = kwargs.get('read_kwargs', self.read_kwargs)
-        write_kwargs = kwargs.get('write_kwargs', self.write_kwargs)
-        quick_getitem = kwargs.get('quick_getitem', self.quick_getitem)
-        glob_filter = kwargs.get('glob_filter', self.glob_filter)
-        write_metadata = kwargs.get('write_metadata', self.write_metadata)
-        read_metadata = kwargs.get('read_metadata', self.read_metadata)
-        metadata_path_prefix = kwargs.get('metadata_path_prefix', self.metadata_path_prefix)
-        # key_fold_map = kwargs.get('key_fold_map', self.key_fold_map)
+        name = kwargs.pop('name', self.name)
+        lazy = kwargs.pop('lazy', self.lazy)
+        device = kwargs.pop('device', self.device)
+        target_device = kwargs.pop('target_device', self.target_device)
+        override = kwargs.pop('override', self.override)
+        compress = kwargs.pop('compress', self.compress)
+        split_by = kwargs.pop('split_by', self.split_by)
+        chunksize = kwargs.pop('chunksize', self.chunksize)
+        chunklen = kwargs.pop('chunklen', self.chunklen)
+        n_chunks = kwargs.pop('n_chunks', self.n_chunks)
+        partition = kwargs.pop('partition', self.partition)
+        archive_size = kwargs.pop('archive_size', self.archive_size)
+        preferred_orientation = kwargs.pop('preferred_orientation', self.preferred_orientation)
+        read_kwargs = kwargs.pop('read_kwargs', self.read_kwargs)
+        write_kwargs = kwargs.pop('write_kwargs', self.write_kwargs)
+        quick_getitem = kwargs.pop('quick_getitem', self.quick_getitem)
+        glob_filter = kwargs.pop('glob_filter', self.glob_filter)
+        write_metadata = kwargs.pop('write_metadata', self.write_metadata)
+        read_metadata = kwargs.pop('read_metadata', self.read_metadata)
+        metadata_path_prefix = kwargs.pop('metadata_path_prefix', self.metadata_path_prefix)
+        # key_fold_map = kwargs.pop('key_fold_map', self.key_fold_map)
 
         if constructor is None:
             constructor = BeamData
@@ -2060,9 +2060,10 @@ class BeamData(object):
             self._label = None
             self.reset_metadata('all_paths')
 
-    def apply(self, func, *args, **kwargs):
+    def apply(self, func, *args, preferred_orientation='columns', **kwargs):
         data = recursive(func)(self.data,  *args, **kwargs)
-        return self.clone(data, index=self.index, label=self.label, info=self.info)
+        return self.clone(data, index=self.index, label=self.label, info=self.info, key_fold_map=self.key_fold_map,
+                          preferred_orientation=preferred_orientation)
 
     def reset_index(self):
         return self.clone(self.data, index=None, label=self.label, schema=self.schema)
@@ -2089,11 +2090,11 @@ class BeamData(object):
 
     def divide_chunks(self, **kwargs):
 
-            split_by = kwargs.get('split_by', self.split_by)
-            chunksize = kwargs.get('chunksize', self.chunksize)
-            chunklen = kwargs.get('chunklen', self.chunklen)
-            n_chunks = kwargs.get('n_chunks', self.n_chunks)
-            partition = kwargs.get('partition', self.partition)
+            split_by = kwargs.pop('split_by', self.split_by)
+            chunksize = kwargs.pop('chunksize', self.chunksize)
+            chunklen = kwargs.pop('chunklen', self.chunklen)
+            n_chunks = kwargs.pop('n_chunks', self.n_chunks)
+            partition = kwargs.pop('partition', self.partition)
 
             if not self.is_cached and split_by != 'keys':
 
@@ -2200,10 +2201,12 @@ class BeamData(object):
 
         '''
 
-        if self.orientation == 'simple':
+        if self.orientation == 'simple' and self.key_fold_map is None:
             axes = ['index', 'columns', 'else']
+            short_list = True
         else:
             axes = ['keys', 'index', 'columns', 'else']
+            short_list = False
 
         obj = self
         if type(item) is not tuple:
@@ -2223,7 +2226,7 @@ class BeamData(object):
             if axes[0] == 'keys' and (i_type.minor == 'list' and i_type.element == 'int'):
                 axes.pop(0)
             # for orientation == 'simple' we skip the first axis if we slice over columns
-            if self.orientation == 'simple' and axes[0] == 'index' and i_type.element == 'str':
+            if short_list and axes[0] == 'index' and i_type.element == 'str':
                 axes.pop(0)
 
             a = axes.pop(0)
