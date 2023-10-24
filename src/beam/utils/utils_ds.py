@@ -629,8 +629,6 @@ def recursive(func):
     return apply_recursively
 
 
-
-
 def beam_hash(x, bytes_threshold=int(1e6), fast=True):
     h = hashlib.sha1()
     _beam_hash(x, h, bytes_threshold=bytes_threshold, fast=fast)

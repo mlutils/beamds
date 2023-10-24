@@ -32,6 +32,7 @@ s3fs
 
 ibis-framework[pandas,duckdb,mysql,sqlite]
 sentence-transformers
+uwsgi
 
 # skypilot
 # vllm

@@ -10,7 +10,7 @@ except ImportError:
 
 import pickle
 from .utils import find_port, normalize_host, check_type
-from gevent.pywsgi import WSGIServer
+
 from .logger import beam_logger as logger
 import types
 from functools import partial
@@ -95,7 +95,8 @@ class BeamClient(object):
 
 class BeamServer(object):
 
-    def __init__(self, obj, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10):
+    def __init__(self, obj, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10, tls=False,
+                 n_threads=4, **kwargs):
 
         self.app = Flask(__name__)
         self.app.add_url_rule('/', view_func=self.get_info)
@@ -113,6 +114,9 @@ class BeamServer(object):
 
         self.max_wait_time = max_wait_time
         self.max_batch_size = max_batch_size
+        self.tls = tls
+        self.n_threads = n_threads
+
         self._request_queue = None
         self._response_queue = None
 
@@ -168,7 +172,7 @@ class BeamServer(object):
                                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         return BeamServer(alg)
 
-    def run(self, host="0.0.0.0", port=None, debug=False, use_reloader=True):
+    def run(self, host="0.0.0.0", port=None, server='wsgi', use_reloader=True):
         port = find_port(port=port, get_port_from_beam_port_range=True, application='flask')
         logger.info(f"Opening a flask inference server on port: {port}")
 
@@ -179,11 +183,106 @@ class BeamServer(object):
         if port is not None:
             port = int(port)
 
-        if debug:
+        if server == 'debug':
             self.app.run(host=host, port=port, debug=True, use_reloader=use_reloader, threaded=True)
+        elif server == 'wsgi':
+            self.run_wsgi(host, port)
+        elif server == 'uwsgi':
+            self.run_uwsgi(host, port)
+        elif server == 'waitress':
+            self.run_waitress(host, port)
+        elif server == 'cherrypy':
+            self.run_cherrypy(host, port)
+        elif server == 'gunicorn':
+            self.run_gunicorn(host, port)
         else:
-            http_server = WSGIServer((host, port), self.app)
-            http_server.serve_forever()
+            raise ValueError(f"Unknown server type: {server}")
+
+    def run_uwsgi(self, host, port):
+
+        from uwsgi import run
+
+        uwsgi_opts = {
+            'http': f'{host}:{port}',
+            'wsgi-file': 'your_wsgi_file.py',  # Replace with your WSGI file
+            'callable': 'app',  # Replace with your WSGI application callable
+            'processes': self.n_threads,
+        }
+
+        if self.tls:
+            uwsgi_opts['https-socket'] = f'{host}:{port}'
+            uwsgi_opts['https-keyfile'] = 'path/to/keyfile.pem'
+            uwsgi_opts['https-certfile'] = 'path/to/certfile.pem'
+
+        run([], **uwsgi_opts)
+
+    def run_waitress(self, host, port):
+
+        from waitress import serve
+        serve(self.app, host=host, port=port, threads=self.n_threads)
+
+    def run_cherrypy(self, host, port):
+
+        import cherrypy
+
+        cherrypy.tree.graft(self.app, '/')
+        config = {
+            'server.socket_host': host,
+            'server.socket_port': port,
+            'engine.autoreload.on': False,
+            'server.thread_pool': self.n_threads
+        }
+        if self.tls:
+            config.update({
+                'server.ssl_module': 'builtin',
+                'server.ssl_certificate': 'path/to/certfile.pem',
+                'server.ssl_private_key': 'path/to/keyfile.pem'
+            })
+        cherrypy.config.update(config)
+
+        cherrypy.engine.start()
+        cherrypy.engine.block()
+
+    def run_gunicorn(self, host, port):
+
+        from gunicorn.app.wsgiapp import WSGIApplication
+        options = {
+            'bind': f'{host}:{port}',
+            'workers': 1,  # Gunicorn forks multiple processes and is generally not thread-safe
+            'threads': self.n_threads,
+            'accesslog': '-',
+        }
+
+        if self.tls:
+            options['keyfile'] = 'path/to/keyfile.pem'
+            options['certfile'] = 'path/to/certfile.pem'
+
+        app = WSGIApplication()
+        app.load_wsgiapp = lambda: self.app
+        app.cfg.set(options)
+        app.run()
+
+    def run_wsgi(self, host, port):
+
+        from gevent.pywsgi import WSGIServer
+
+        if self.n_threads > 1:
+            logger.warning("WSGI server does not support multithreading, setting n_threads to 1")
+
+        if self.tls:
+            from gevent.pywsgi import WSGIServer
+            from gevent.ssl import SSLContext
+            from os.path import join, dirname, realpath
+
+            cert = join(dirname(realpath(__file__)), 'cert.pem')
+            key = join(dirname(realpath(__file__)), 'key.pem')
+            context = SSLContext()
+            context.load_cert_chain(cert, key)
+        else:
+            context = None
+
+        http_server = WSGIServer((host, port), self.app, ssl_context=context)
+        http_server.serve_forever()
 
     def _centralized_batch_executor(self):
 
@@ -191,19 +290,30 @@ class BeamServer(object):
         while True:
             logger.info(f"Starting a new batch inference")
             batch = []
-            start_time = time.time()
 
             while len(batch) < self.max_batch_size:
 
-                if (time.time() - start_time) > self.max_wait_time:
-                    logger.info(f"Max wait time reached, moving to execution")
-                    break
+                if len(batch) == 1:
+                    start_time = time.time()
+                    elapsed_time = 0
+                elif len(batch) > 1:
+                    elapsed_time = time.time() - start_time
+                    if elapsed_time > self.max_wait_time:
+                        logger.info(f"Max wait time reached, moving to execution")
+                        break
 
                 try:
-                    task = self.request_queue.get_nowait()
+                    if len(batch) > 0:
+                        logger.info(f"Waiting for task, for {self.max_wait_time-elapsed_time} seconds")
+                        task = self.request_queue.get(timeout=self.max_wait_time-elapsed_time)
+                    else:
+                        logger.info(f"Waiting for task")
+                        task = self.request_queue.get()
                     batch.append(task)
+                    logger.info(f"Got task with req_id: {task['req_id']}")
                 except Empty:
-                    time.sleep(.01)
+                    logger.info(f"Empty queue, moving to execution")
+                    break
 
             if len(batch) > 0:
                 logger.info(f"Executing batch of size: {len(batch)}")
@@ -215,7 +325,6 @@ class BeamServer(object):
                 for method, tasks in methods.items():
 
                     logger.info(f"Executing method: {method} with {len(tasks)} tasks")
-
                     func = getattr(self.obj, method)
 
                     # currently we support only batching with a single argument
