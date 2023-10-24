@@ -133,8 +133,6 @@ RUN bash /workspace/install/install_hadoop.sh
 ENV HADOOP_HOME=/usr/local/hadoop
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HADOOP_HOME/lib/native
 ENV PATH=$PATH:$HADOOP_HOME/bin
-# Set Hadoop CLASSPATH
-ENV CLASSPATH=$(/usr/local/hadoop/bin/hadoop classpath --glob)
 
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh

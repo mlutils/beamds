@@ -20,6 +20,9 @@ echo "root:$ROOT_PASSWORD" | chpasswd
 mlflow server --host 0.0.0.0 --port "$MLFLOW_PORT" --backend-store-uri /workspace/mlruns --default-artifact-root /workspace/mlruns --workers 1 &
 export MLFLOW_TRACKING_URI=http://localhost:$MLFLOW_PORT
 
+# Set Hadoop CLASSPATH
+CLASSPATH=$(/usr/local/hadoop/bin/hadoop classpath --glob)
+
 # write the beam configuration to a file
 
 mkdir /workspace/configuration
