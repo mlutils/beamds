@@ -1629,21 +1629,30 @@ class Slicer:
         return slice_array(self.x, item, x_type=self.x_type)
 
 
-def slice_array(x, indices, x_type=None, indices_type=None):
+def slice_array(x, index, x_type=None, indices_type=None):
 
     if x_type is None:
-        x_type = check_type(x)
-    # if indices_type is None:
-    #     indices_type = check_type(indices)
-    if x_type.minor == 'numpy':
-        return x[indices]
-    elif x_type.minor == 'pandas':
-        return x.iloc[indices]
-    elif x_type.minor == 'tensor':
+        x_type = check_minor_type(x)
+    else:
+        x_type = x_type.minor
+
+    if indices_type is None:
+        indices_type = check_minor_type(index)
+    else:
+        indices_type = indices_type.minor
+
+    if indices_type == 'pandas':
+        index = index.values
+
+    if x_type == 'numpy':
+        return x[index]
+    elif x_type == 'pandas':
+        return x.iloc[index]
+    elif x_type == 'tensor':
         if x.is_sparse:
             x = x.to_dense()
-        return x[indices]
-    elif x_type.minor == 'list':
-        return [x[i] for i in indices]
+        return x[index]
+    elif x_type == 'list':
+        return [x[i] for i in index]
     else:
-        raise TypeError(f"Cannot slice object of type {x_type.minor}")
+        raise TypeError(f"Cannot slice object of type {x_type}")

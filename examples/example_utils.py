@@ -105,6 +105,48 @@ def load_bundle(path):
     return alg
 
 
+def test_data_apply():
+
+    M = 40000
+
+    nel = 100
+    k1 = 20000
+    k2 = 20
+
+    def gen_coo_vectors(k):
+        r = []
+        c = []
+        v = []
+
+        for i in range(k):
+            r.append(i * torch.ones(nel, dtype=torch.int64))
+            c.append(torch.randint(M, size=(nel,)))
+            v.append(torch.randn(nel))
+
+        return torch.sparse_coo_tensor(torch.stack([torch.cat(r), torch.cat(c)]), torch.cat(v), size=(k, M))
+
+    s1 = gen_coo_vectors(k1)
+    s2 = gen_coo_vectors(k2)
+    s3 = gen_coo_vectors(k2)
+
+    from src.beam.similarity import SparseSimilarity
+    from src.beam import BeamData
+    from uuid import uuid4 as uuid
+
+    sparse_sim = SparseSimilarity(similarity='cosine', format='coo', vec_size=10000, device='cuda', k=10)
+
+    sparse_sim.add(s1)
+    tasks = [{'req_id': str(uuid()), 'arg': s2}, {'req_id': str(uuid()), 'arg': s3}]
+    bd = BeamData.simple({t['req_id']: t['arg'] for t in tasks})
+    bd2 = bd.apply(sparse_sim.search)
+    print(bd)
+    print(bd.values)
+    print(tasks)
+
+    results = {task['req_id']: bd2[task['req_id']] for task in tasks}
+    print(results)
+
+
 if __name__ == '__main__':
 
     from src.beam import beam_arguments, beam_path
@@ -116,12 +158,17 @@ if __name__ == '__main__':
     #
     # alg = load_bundle(path)
 
-    from src.beam.config import BeamHparams
-    from src.beam.tabular import TabularHparams
 
-    hparams = BeamHparams(identifier='test', project_name='test', algorithm='test', device=1)
+    # from src.beam.config import BeamHparams
+    # from src.beam.tabular import TabularHparams
+    #
+    # hparams = BeamHparams(identifier='test', project_name='test', algorithm='test', device=1)
+    #
+    # # hparams = TabularHparams(identifier='test', project_name='test', algorithm='test', device=1)
+    # hparams = TabularHparams(hparams)
+    # print(hparams)
 
-    # hparams = TabularHparams(identifier='test', project_name='test', algorithm='test', device=1)
-    hparams = TabularHparams(hparams)
-    print(hparams)
+
+    test_data_apply()
+
     print('done')

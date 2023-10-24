@@ -180,28 +180,33 @@ class BeamServer(object):
             port = int(port)
 
         if debug:
-            self.app.run(host=host, port=port, debug=True, use_reloader=use_reloader)
+            self.app.run(host=host, port=port, debug=True, use_reloader=use_reloader, threaded=True)
         else:
             http_server = WSGIServer((host, port), self.app)
             http_server.serve_forever()
 
     def _centralized_batch_executor(self):
+
+        from .data import BeamData
         while True:
+            logger.info(f"Starting a new batch inference")
             batch = []
             start_time = time.time()
 
             while len(batch) < self.max_batch_size:
-                elapsed_time = time.time() - start_time
-                if elapsed_time > self.max_wait_time:
+
+                if (time.time() - start_time) > self.max_wait_time:
+                    logger.info(f"Max wait time reached, moving to execution")
                     break
 
                 try:
-                    task = self.request_queue.get(timeout=self.max_wait_time - elapsed_time)
+                    task = self.request_queue.get_nowait()
                     batch.append(task)
                 except Empty:
-                    break
+                    time.sleep(.01)
 
             if len(batch) > 0:
+                logger.info(f"Executing batch of size: {len(batch)}")
 
                 methods = defaultdict(list)
                 for task in batch:
@@ -209,22 +214,26 @@ class BeamServer(object):
 
                 for method, tasks in methods.items():
 
+                    logger.info(f"Executing method: {method} with {len(tasks)} tasks")
+
                     func = getattr(self.obj, method)
 
                     # currently we support only batching with a single argument
                     data = {task['req_id']: task['args'][0] for task in tasks}
-                    from .data import BeamData
+
+                    is_beam_data = type(data) is BeamData
 
                     bd = BeamData.simple(data)
                     bd = bd.apply(func)
 
-                    print(bd)
-                    print(bd.values)
-                    print(tasks)
-
-                    results = {task['req_id']: bd.data[task['req_id']] for task in tasks}
+                    if is_beam_data:
+                        results = {task['req_id']: bd[task['req_id']] for task in tasks}
+                    else:
+                        results = {task['req_id']: bd[task['req_id']].values for task in tasks}
 
                     for req_id, result in results.items():
+
+                        logger.info(f"Putting result for task: {req_id}")
                         self.response_queue[req_id].put(result)
 
     def get_info(self):
@@ -249,10 +258,14 @@ class BeamServer(object):
         # Generate a unique request ID
         req_id = str(uuid())
         response_queue = self.response_queue[req_id]
+
+        logger.info(f"Putting task with req_id: {req_id}")
         self.request_queue.put({'req_id': req_id, 'method': method, 'args': args, 'kwargs': kwargs})
 
         # Wait for the result
         result = response_queue.get()
+
+        logger.info(f"Got result for task with req_id: {req_id}")
         del self.response_queue[req_id]
         return result
 
