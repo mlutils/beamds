@@ -134,6 +134,9 @@ ENV HADOOP_HOME=/usr/local/hadoop
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HADOOP_HOME/lib/native
 ENV PATH=$PATH:$HADOOP_HOME/bin
 
+# set default java version
+ENV JAVA_HOME /usr/lib/jvm/default-java
+
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh
 # RUN bash /workspace/install/language_servers.sh

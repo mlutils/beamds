@@ -61,7 +61,7 @@ class SparseSimilarity(Processor):
 
     def sparse_tensor(self, r, c, v,):
         device = self.device
-        size = (r.max(), self.vec_size)
+        size = (r.max() + 1, self.vec_size)
 
         r, c, v = as_tensor([r, c, v], device=device)
 

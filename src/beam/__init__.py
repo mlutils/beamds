@@ -18,7 +18,7 @@ if has_torch:
     from .optim import BeamOptimizer, BeamScheduler
     from .data import BeamData
     from .packed_folds import PackedFolds
-    from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch
+    from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch, beam_hash
 
 
 from .config import get_beam_parser, beam_arguments, BeamHparams
