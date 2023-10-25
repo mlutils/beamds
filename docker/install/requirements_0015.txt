@@ -1,38 +1,30 @@
-pandas-profiling
+pip-tools
 pulearn
-rouge-score
-sentence-transformers
 text-generation
-rank_bm25
-
+streamlit
+waitress
+cherrypy
+uwsgi
 chainlit
-scikit-hubness
-pyahocorasick
+s3fs
+rank_bm25
 netcal
+ibis-framework[pandas,duckdb,mysql,sqlite]
 ordered_set
 PyPDF2
-ludwig
-
-deepspeed
-streamlit
-chainlit
-pypdf2
-tabula-py
-pdfminer.six
-retriv
+streamlit-aggrid
+pyahocorasick
 pdfplumber
-st-aggrid
-
-leidenalg
-bayanpy
-pyclustering
-ASLPAw
-infomap
-s3fs
-
-ibis-framework[pandas,duckdb,mysql,sqlite]
+pdfminer.six
+tabula-py
 sentence-transformers
-uwsgi
+rouge-score
+
+
+# pandas-profiling
+# scikit-hubness
+
+
 
 # skypilot
 # vllm
