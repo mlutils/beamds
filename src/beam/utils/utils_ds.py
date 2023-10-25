@@ -14,7 +14,7 @@ from functools import partial
 import itertools
 import scipy
 import re
-from .utils_all import check_type, check_minor_type, slice_array
+from .utils_all import check_type, check_minor_type, slice_array, is_arange
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -521,45 +521,6 @@ def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
         values = [values[i] for i in argsort]
 
     return values
-
-
-
-def is_arange(x):
-    x_type = check_type(x)
-
-    if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
-        return False
-
-    if x_type.element == 'str':
-        pattern = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)(?P<suffix>.*?)$')
-        df = []
-        for xi in x:
-            match = pattern.match(xi)
-            if match:
-                df.append(match.groupdict())
-            else:
-                return None, False
-        df = pd.DataFrame(df)
-        if not df['prefix'].nunique() == 1 or not df['suffix'].nunique() == 1:
-            return None, False
-
-        arr_x = df['number'].astype(int).values
-    else:
-        arr_x = np.array(x)
-
-    try:
-        arr_x = arr_x.astype(int)
-        argsort = np.argsort(arr_x)
-        arr_x = arr_x[argsort]
-    except (ValueError, TypeError):
-        return None, False
-
-    isa = np.issubdtype(arr_x.dtype, np.number) and (np.abs(np.arange(len(x)) - arr_x).sum() == 0)
-
-    if not isa:
-        argsort = None
-
-    return argsort, isa
 
 
 def recursive_size(x):

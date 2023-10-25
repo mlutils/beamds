@@ -1,11 +1,12 @@
 from .utils import tqdm_beam
 from tqdm import tqdm
-from .utils import divide_chunks, collate_chunks, retrieve_name, jupyter_like_traceback
+from .utils import divide_chunks, collate_chunks, retrieve_name, jupyter_like_traceback, lazy_property, dict_to_list
 import inspect
 from .logger import Timer
 from .logger import beam_logger as logger
 from .path import beam_path
 import random
+
 
 def parallel_copy_path(src, dst, chunklen=10, **kwargs):
 
@@ -189,7 +190,34 @@ class BeamTask(object):
         finally:
             self.is_pending = False
 
-        return res
+        return {'name': self.name, 'result': res, 'exception': self.exception}
+
+
+class SyncedResults:
+
+    def __init__(self, results):
+
+        # results is a list of dicts with keys: name, result, exception
+        self.results = results
+
+    @lazy_property
+    def results_map(self):
+        return {r['name']: r for r in self.results}
+
+    @lazy_property
+    def failed(self):
+        failed = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
+        return dict_to_list(failed, convert_str=False)
+
+    @lazy_property
+    def succeeded(self):
+        succeeded = {r['name']: r['result'] for r in self.results if r['exception'] is None}
+        return dict_to_list(succeeded, convert_str=False)
+
+    @lazy_property
+    def values(self):
+        vals = {r['name']: r['result'] if r['exception'] is None else r['exception'] for r in self.results}
+        return dict_to_list(vals, convert_str=False)
 
 
 class BeamParallel(object):
@@ -531,7 +559,7 @@ class BeamParallel(object):
             raise ValueError(f"Unknown method: {method}")
 
         logger.info(f"Finish running queue: {self.name}.")
-        return results
+        return SyncedResults(results)
 
     def __call__(self, tasks=None, func=None, args_list=None, n_workers=None, method=None,
                  kwargs_list=None, name_list=None):

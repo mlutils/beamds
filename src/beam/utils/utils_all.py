@@ -5,14 +5,13 @@ import numpy as np
 from fnmatch import filter
 from tqdm.notebook import tqdm as tqdm_notebook
 from tqdm import tqdm
-from pydantic import BaseModel, Field, PrivateAttr
-from typing import Any, List, Mapping, Optional, Dict
 
 import pandas as pd
 import json
 import __main__
 from datetime import timedelta
 import time
+import re
 
 try:
     import modin.pandas as mpd
@@ -1656,3 +1655,57 @@ def slice_array(x, index, x_type=None, indices_type=None):
         return [x[i] for i in index]
     else:
         raise TypeError(f"Cannot slice object of type {x_type}")
+
+
+def is_arange(x, convert_str=True):
+    x_type = check_type(x)
+
+    if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
+        return False
+
+    if convert_str and x_type.element == 'str':
+        pattern = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)(?P<suffix>.*?)$')
+        df = []
+        for xi in x:
+            match = pattern.match(xi)
+            if match:
+                df.append(match.groupdict())
+            else:
+                return None, False
+        df = pd.DataFrame(df)
+        if not df['prefix'].nunique() == 1 or not df['suffix'].nunique() == 1:
+            return None, False
+
+        arr_x = df['number'].astype(int).values
+    else:
+        arr_x = np.array(x)
+
+    try:
+        arr_x = arr_x.astype(int)
+        argsort = np.argsort(arr_x)
+        arr_x = arr_x[argsort]
+    except (ValueError, TypeError):
+        return None, False
+
+    isa = np.issubdtype(arr_x.dtype, np.number) and (np.abs(np.arange(len(x)) - arr_x).sum() == 0)
+
+    if not isa:
+        argsort = None
+
+    return argsort, isa
+
+
+# convert a dict to list if is_arange is True
+def dict_to_list(x, convert_str=True):
+    x_type = check_type(x)
+
+    if x_type.minor != 'dict':
+        return x
+
+    keys = list(x.keys())
+    argsort, isa = is_arange(keys, convert_str=convert_str)
+
+    if isa:
+        return [x[k] for k in keys[argsort]]
+    else:
+        return x

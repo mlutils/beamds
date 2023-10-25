@@ -329,6 +329,9 @@ class Transformer(Processor):
 
         x_with_keys = queue.run(n_workers=n_workers, method=mp_method, shuffle=shuffle)
 
+        #TODO: refactor from this part and on to match the new SyncedResults object
+        x_with_keys = x_with_keys.values
+
         exceptions = [{'exception': xi, 'task': queue.queue[i]} for i, xi in enumerate(x_with_keys)
                       if isinstance(xi, Exception)]
 
