@@ -4,11 +4,6 @@
 <img src="https://user-images.githubusercontent.com/32983309/175893461-19eeaacb-ddf0-43fd-b43c-20a9144ac65d.png" width="200">
 </p>
 
-This BeamDS implementation follows the guide at 
-https://packaging.python.org/tutorials/packaging-projects/
-
-prerequisits:
-
 ## What is Beam for?
 
 Beam was created by data-science practitioners for data-science practitioners. It is designed as an ecosystem for developing and deploying data-driven algorithms in Python. It aims to increase productivity, efficiency, and performance in the research phase and to provide production-grade tools in the deployment part.
@@ -52,6 +47,9 @@ pip install beam-ds[llm]
 The prerequisite packages will be installed automatically, they can be found in the setup.cfg file.
 
 ## Build from source
+
+This BeamDS implementation follows the guide at 
+https://packaging.python.org/tutorials/packaging-projects/
 
 install the build package:
 ```shell
