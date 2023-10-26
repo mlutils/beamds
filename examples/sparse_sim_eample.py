@@ -29,7 +29,7 @@ if __name__ == '__main__':
     s1 = gen_coo_vectors(k1)
     s2 = gen_coo_vectors(k2)
 
-    sparse_sim = SparseSimilarity(similarity='cosine', format='coo', vec_size=M, device='cuda')
+    sparse_sim = SparseSimilarity(metric='cosine', format='coo', vec_size=M, device='cuda')
     sparse_sim.add(s1)
 
     import time
