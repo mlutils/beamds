@@ -9,8 +9,11 @@ print(torch.randn(100).to(0))
 
 # test ray
 from beam.utils import find_port
+from beam import beam_path
 import ray
-runtime_env = {"working_dir": ".." }
+
+beam_path('/tmp/wd').mkdir()
+runtime_env = {"working_dir": "/tmp/wd"}
 ray.init(runtime_env=runtime_env, dashboard_port=int(find_port(application='ray')), include_dashboard=True)
 
 # test torch_geometric

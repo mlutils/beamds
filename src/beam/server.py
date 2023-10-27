@@ -9,7 +9,7 @@ except ImportError:
     has_torch = False
 
 import pickle
-from .utils import find_port, normalize_host, check_type
+from .utils import find_port, normalize_host, check_type, lazy_property
 
 from .logger import beam_logger as logger
 import types
@@ -20,7 +20,7 @@ from uuid import uuid4 as uuid
 from collections import defaultdict
 import time
 import atexit
-
+import inspect
 
 def beam_remote(obj, host=None, port=None, debug=False):
     server = BeamServer(obj)
@@ -32,7 +32,6 @@ class BeamClient(object):
     def __init__(self, host):
         self.host = host
         self._info = None
-        self._serialization = None
 
     @property
     def load_function(self):
@@ -54,9 +53,7 @@ class BeamClient(object):
 
     @property
     def serialization(self):
-        if self._serialization is None:
-            self._serialization = self.info['serialization']
-        return self._serialization
+        return self.info['serialization']
 
     @property
     def info(self):
@@ -64,9 +61,16 @@ class BeamClient(object):
             self._info = requests.get(f'http://{self.host}/').json()
         return self._info
 
+    @property
+    def attributes(self):
+        return self.info['attributes']
+
     def get(self, path):
 
         response = requests.get(f'http://{self.host}/{path}')
+        if response.status_code == 200:
+            response = self.load_function(io.BytesIO(response.raw.data))
+
         return response
 
     def post(self, path, *args, **kwargs):
@@ -82,7 +86,7 @@ class BeamClient(object):
         response = requests.post(f'http://{self.host}/{path}', files={'args': io_args, 'kwargs': io_kwargs}, stream=True)
 
         if response.status_code == 200:
-            response = self.load_function(io.BytesIO(response.raw.data))
+            response = self.load_function(io.BytesIO(response.content))
 
         return response
 
@@ -90,7 +94,25 @@ class BeamClient(object):
         return self.post('call', *args, **kwargs)
 
     def __getattr__(self, item):
-        return partial(self.post, f'alg/{item}')
+
+        if item in ['_lazy_cache']:
+            return super(BeamClient, self).__getattr__(item)
+
+        if item not in self.attributes:
+            self._info = None
+
+        attribute_type = self.attributes[item]
+        if attribute_type == 'variable':
+            return self.get(f'getvar/{item}')
+        elif attribute_type == 'method':
+            return partial(self.post, f'alg/{item}')
+        raise ValueError(f"Unknown attribute type: {attribute_type}")
+
+    def __setattr__(self, key, value):
+        if key in ['host', '_info', '_lazy_cache']:
+            super(BeamClient, self).__setattr__(key, value)
+        else:
+            self.post(f'setvar/{key}', value)
 
 
 class BeamServer(object):
@@ -140,12 +162,35 @@ class BeamServer(object):
 
         atexit.register(self._cleanup)
 
-        if callable(obj):
+        if inspect.isfunction(obj):
             self.type = 'function'
             self.app.add_url_rule('/call', view_func=self.call_function, methods=['POST'])
-        elif isinstance(obj, object):
+        else:
             self.type = 'class'
             self.app.add_url_rule('/alg/<method>', view_func=self.query_algorithm, methods=['POST'])
+            self.app.add_url_rule('/setvar/<name>', view_func=self.set_variable, methods=['POST'])
+            self.app.add_url_rule('/getvar/<name>', view_func=self.get_variable)
+
+    def set_variable(self, name):
+
+        value = request.files['value']
+        value = self.load_function(value)
+
+        setattr(self.obj, name, value)
+
+        return jsonify({'success': True})
+
+    def get_variable(self, name):
+
+        logger.info(f"Getting variable: {name}")
+        value = getattr(self.obj, name)
+        logger.info(f"value: {value}")
+
+        io_results = io.BytesIO()
+        self.dump_function(value, io_results)
+        io_results.seek(0)
+
+        return send_file(io_results, mimetype="text/plain")
 
     def _cleanup(self):
         if self.centralized_thread is not None:
@@ -197,6 +242,148 @@ class BeamServer(object):
             self.run_gunicorn(host, port)
         else:
             raise ValueError(f"Unknown server type: {server}")
+
+    def _centralized_batch_executor(self):
+
+        from .data import BeamData
+        while True:
+            logger.info(f"Starting a new batch inference")
+            batch = []
+
+            while len(batch) < self.max_batch_size:
+
+                if len(batch) == 1:
+                    start_time = time.time()
+                    elapsed_time = 0
+                elif len(batch) > 1:
+                    elapsed_time = time.time() - start_time
+                    if elapsed_time > self.max_wait_time:
+                        logger.info(f"Max wait time reached, moving to execution")
+                        break
+
+                try:
+                    if len(batch) > 0:
+                        logger.info(f"Waiting for task, for {self.max_wait_time-elapsed_time} seconds")
+                        task = self.request_queue.get(timeout=self.max_wait_time-elapsed_time)
+                    else:
+                        logger.info(f"Waiting for task")
+                        task = self.request_queue.get()
+                    batch.append(task)
+                    logger.info(f"Got task with req_id: {task['req_id']}")
+                except Empty:
+                    logger.info(f"Empty queue, moving to execution")
+                    break
+
+            if len(batch) > 0:
+                logger.info(f"Executing batch of size: {len(batch)}")
+
+                methods = defaultdict(list)
+                for task in batch:
+                    methods[task['method']].append(task)
+
+                for method, tasks in methods.items():
+
+                    logger.info(f"Executing method: {method} with {len(tasks)} tasks")
+                    func = getattr(self.obj, method)
+
+                    # currently we support only batching with a single argument
+                    data = {task['req_id']: task['args'][0] for task in tasks}
+
+                    is_beam_data = type(data) is BeamData
+
+                    bd = BeamData.simple(data)
+                    bd = bd.apply(func)
+
+                    if is_beam_data:
+                        results = {task['req_id']: bd[task['req_id']] for task in tasks}
+                    else:
+                        results = {task['req_id']: bd[task['req_id']].values for task in tasks}
+
+                    for req_id, result in results.items():
+
+                        logger.info(f"Putting result for task: {req_id}")
+                        self.response_queue[req_id].put(result)
+
+    def get_info(self):
+
+        d = {'serialization': self.serialization_method, 'obj': self.type, 'name': None}
+        if self.type == 'function':
+            d['vars_args'] = self.obj.__code__.co_varnames
+        else:
+            d['vars_args'] = self.obj.__init__.__code__.co_varnames
+            if hasattr(self.obj, 'hparams'):
+                d['hparams'] = vars(self.obj.hparams)
+            else:
+                d['hparams'] = None
+
+            attributes = {}
+            for name, attr in inspect.getmembers(self.obj):
+                if inspect.ismethod(attr) or inspect.isfunction(attr):
+                    attributes[name] = 'method'
+                elif not name.startswith('__') and not inspect.isbuiltin(attr):
+                    attributes[name] = 'variable'
+
+            d['attributes'] = attributes
+
+        if hasattr(self.obj, 'name'):
+            d['name'] = self.obj.name
+
+        return jsonify(d)
+
+    def batched_query_algorithm(self, method, args, kwargs):
+
+        # Generate a unique request ID
+        req_id = str(uuid())
+        response_queue = self.response_queue[req_id]
+
+        logger.info(f"Putting task with req_id: {req_id}")
+        self.request_queue.put({'req_id': req_id, 'method': method, 'args': args, 'kwargs': kwargs})
+
+        # Wait for the result
+        result = response_queue.get()
+
+        logger.info(f"Got result for task with req_id: {req_id}")
+        del self.response_queue[req_id]
+        return result
+
+    def call_function(self):
+
+            args = request.files['args']
+            kwargs = request.files['kwargs']
+
+            args = self.load_function(args)
+            kwargs = self.load_function(kwargs)
+
+            if '__call__' in self.batch:
+                results = self.batched_query_algorithm('__call__', args, kwargs)
+            else:
+                results = self.obj(*args, **kwargs)
+
+            io_results = io.BytesIO()
+            self.dump_function(results, io_results)
+            io_results.seek(0)
+
+            return send_file(io_results, mimetype="text/plain")
+
+    def query_algorithm(self, method):
+
+        args = request.files['args']
+        kwargs = request.files['kwargs']
+
+        args = self.load_function(args)
+        kwargs = self.load_function(kwargs)
+
+        if method in self.batch:
+            results = self.batched_query_algorithm(method, args, kwargs)
+        else:
+            method = getattr(self.obj, method)
+            results = method(*args, **kwargs)
+
+        io_results = io.BytesIO()
+        self.dump_function(results, io_results)
+        io_results.seek(0)
+
+        return send_file(io_results, mimetype="text/plain")
 
     def run_uwsgi(self, host, port):
 
@@ -284,135 +471,3 @@ class BeamServer(object):
         http_server = WSGIServer((host, port), self.app, ssl_context=context)
         http_server.serve_forever()
 
-    def _centralized_batch_executor(self):
-
-        from .data import BeamData
-        while True:
-            logger.info(f"Starting a new batch inference")
-            batch = []
-
-            while len(batch) < self.max_batch_size:
-
-                if len(batch) == 1:
-                    start_time = time.time()
-                    elapsed_time = 0
-                elif len(batch) > 1:
-                    elapsed_time = time.time() - start_time
-                    if elapsed_time > self.max_wait_time:
-                        logger.info(f"Max wait time reached, moving to execution")
-                        break
-
-                try:
-                    if len(batch) > 0:
-                        logger.info(f"Waiting for task, for {self.max_wait_time-elapsed_time} seconds")
-                        task = self.request_queue.get(timeout=self.max_wait_time-elapsed_time)
-                    else:
-                        logger.info(f"Waiting for task")
-                        task = self.request_queue.get()
-                    batch.append(task)
-                    logger.info(f"Got task with req_id: {task['req_id']}")
-                except Empty:
-                    logger.info(f"Empty queue, moving to execution")
-                    break
-
-            if len(batch) > 0:
-                logger.info(f"Executing batch of size: {len(batch)}")
-
-                methods = defaultdict(list)
-                for task in batch:
-                    methods[task['method']].append(task)
-
-                for method, tasks in methods.items():
-
-                    logger.info(f"Executing method: {method} with {len(tasks)} tasks")
-                    func = getattr(self.obj, method)
-
-                    # currently we support only batching with a single argument
-                    data = {task['req_id']: task['args'][0] for task in tasks}
-
-                    is_beam_data = type(data) is BeamData
-
-                    bd = BeamData.simple(data)
-                    bd = bd.apply(func)
-
-                    if is_beam_data:
-                        results = {task['req_id']: bd[task['req_id']] for task in tasks}
-                    else:
-                        results = {task['req_id']: bd[task['req_id']].values for task in tasks}
-
-                    for req_id, result in results.items():
-
-                        logger.info(f"Putting result for task: {req_id}")
-                        self.response_queue[req_id].put(result)
-
-    def get_info(self):
-
-        d = {'serialization': self.serialization_method, 'obj': self.type, 'name': None}
-        if self.type == 'function':
-            d['vars_args'] = self.obj.__code__.co_varnames
-        else:
-            d['vars_args'] = self.obj.__init__.__code__.co_varnames
-            if hasattr(self.obj, 'hparams'):
-                d['hparams'] = vars(self.obj.hparams)
-            else:
-                d['hparams'] = None
-
-        if hasattr(self.obj, 'name'):
-            d['name'] = self.obj.name
-
-        return jsonify(d)
-
-    def batched_query_algorithm(self, method, args, kwargs):
-
-        # Generate a unique request ID
-        req_id = str(uuid())
-        response_queue = self.response_queue[req_id]
-
-        logger.info(f"Putting task with req_id: {req_id}")
-        self.request_queue.put({'req_id': req_id, 'method': method, 'args': args, 'kwargs': kwargs})
-
-        # Wait for the result
-        result = response_queue.get()
-
-        logger.info(f"Got result for task with req_id: {req_id}")
-        del self.response_queue[req_id]
-        return result
-
-    def call_function(self):
-
-            args = request.files['args']
-            kwargs = request.files['kwargs']
-
-            args = self.load_function(args)
-            kwargs = self.load_function(kwargs)
-
-            if '__call__' in self.batch:
-                results = self.batched_query_algorithm('__call__', args, kwargs)
-            else:
-                results = self.obj(*args, **kwargs)
-
-            io_results = io.BytesIO()
-            self.dump_function(results, io_results)
-            io_results.seek(0)
-
-            return send_file(io_results, mimetype="text/plain")
-
-    def query_algorithm(self, method):
-
-        args = request.files['args']
-        kwargs = request.files['kwargs']
-
-        args = self.load_function(args)
-        kwargs = self.load_function(kwargs)
-
-        if method in self.batch:
-            results = self.batched_query_algorithm(method, args, kwargs)
-        else:
-            method = getattr(self.obj, method)
-            results = method(*args, **kwargs)
-
-        io_results = io.BytesIO()
-        self.dump_function(results, io_results)
-        io_results.seek(0)
-
-        return send_file(io_results, mimetype="text/plain")

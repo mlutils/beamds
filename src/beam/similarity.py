@@ -45,16 +45,17 @@ class TFIDF(Processor):
 
 class SparseSimilarity(Processor):
 
-    def __init__(self, *args, similarity='cosine', layout='coo', vec_size=None, device=None, k=1, **kwars):
+    def __init__(self, *args, metric='cosine', layout='coo', vec_size=None, device=None, k=1, q=.9, **kwargs):
 
-        super().__init__(*args, **kwars)
+        super().__init__(*args, **kwargs)
         # possible similarity metrics: cosine, prod, l2, max
-        self.similarity = similarity
+        self.metric = metric
         self.layout = layout
         self.device = beam_device(device)
         self.vec_size = vec_size
         self.state = {'index': None, 'chunks': []}
         self.k = k
+        self.q = q
 
     def reset(self):
         self.state = {'index': None, 'chunks': []}
@@ -137,28 +138,51 @@ class SparseSimilarity(Processor):
 
         x = self.to_sparse(x)
 
-        if self.similarity in ['cosine', 'l2', 'prod']:
+        if self.metric in ['cosine', 'l2', 'prod']:
 
             if self.layout == 'csr':
                 x = x.to_dense()
 
             ab = self.index @ x.T
 
-            if self.similarity in ['l2', 'cosine']:
+            if self.metric in ['l2', 'cosine']:
 
                 a2 = (self.index * self.index).sum(dim=1, keepdim=True)
                 b2 = (x * x).sum(dim=1, keepdim=True)
 
-                if self.similarity == 'cosine':
+                if self.metric == 'cosine':
 
                     s = 1 / torch.sqrt(a2 @ b2.T).to_dense()
                     dist = - ab * s
                 else:
                     dist = a2 + b2 - 2 * ab
 
-            elif self.similarity == 'prod':
+            elif self.metric == 'prod':
                 dist = -ab
 
-        topk = torch.topk(dist.to_dense(), k, dim=0, largest=False, sorted=True)
+            dist = dist.to_dense()
+
+        elif self.metric in ['max', 'quantile']:
+            x = x.to_dense()
+
+            def metric(x):
+                if self.metric == 'max':
+                    return x.max()
+                elif self.metric == 'quantile':
+                    return x.quantile(self.q)
+                else:
+                    raise ValueError(f"Unknown metric: {self.metric}")
+
+            dist = []
+            for xi in x:
+                d = self.index * xi.unsqueeze(0)
+                i = d._indices()
+                v = d._values()
+
+                dist.append(as_tensor([metric(v[i[0] == j]) for j in range(len(self.index))]))
+
+            dist = -torch.stack(dist, dim=1)
+
+        topk = torch.topk(dist, k, dim=0, largest=False, sorted=True)
 
         return topk.values.T, topk.indices.T

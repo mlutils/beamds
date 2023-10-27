@@ -132,10 +132,14 @@ def test_data_apply():
     from src.beam.similarity import SparseSimilarity
     from src.beam import BeamData
     from uuid import uuid4 as uuid
+    from src.beam.server import BeamClient
 
-    sparse_sim = SparseSimilarity(similarity='cosine', format='coo', vec_size=10000, device='cuda', k=10)
+    # sparse_sim = SparseSimilarity(metric='cosine', format='coo', vec_size=10000, device='cuda', k=10)
+    sparse_sim = BeamClient('localhost:27451')
 
     sparse_sim.add(s1)
+    print(sparse_sim.k)
+
     tasks = [{'req_id': str(uuid()), 'arg': s2}, {'req_id': str(uuid()), 'arg': s3}]
     bd = BeamData.simple({t['req_id']: t['arg'] for t in tasks})
     bd2 = bd.apply(sparse_sim.search)
@@ -167,7 +171,6 @@ if __name__ == '__main__':
     # # hparams = TabularHparams(identifier='test', project_name='test', algorithm='test', device=1)
     # hparams = TabularHparams(hparams)
     # print(hparams)
-
 
     test_data_apply()
 
