@@ -1067,7 +1067,7 @@ class FastAPILLM(FCConversationLLM):
     @property
     def models(self):
         if self._models is None:
-            res = requests.get(f"{self.protocol}://{self.hostname}/models", headers=self.headers)
+            res = requests.get(f"{self.protocol}://{self.hostname}/models", headers=self.headers, verify=False)
             self._models = res.json()
         return self._models
 
@@ -1107,7 +1107,8 @@ class FastAPILLM(FCConversationLLM):
         d['input'] = self.get_prompt(messages)
         d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
 
-        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d)
+        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
+                            verify=False)
         return res.json()
 
     def _completion(self, prompt=None, **kwargs):
@@ -1118,7 +1119,8 @@ class FastAPILLM(FCConversationLLM):
         d['input'] = self.get_prompt([{'role': 'user', 'content': prompt}])
         d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
 
-        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d)
+        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
+                            verify=False)
         return res.json()
 
     def verify_response(self, res):
