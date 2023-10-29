@@ -858,14 +858,14 @@ def lazy_property(fn):
     def _lazy_property(self):
         try:
             cache = getattr(self, '_lazy_cache')
-            return cache['fn.__name__']
+            return cache[fn.__name__]
         except KeyError:
             v = fn(self)
-            cache['fn.__name__'] = v
+            cache[fn.__name__] = v
             return v
         except AttributeError:
             v = fn(self)
-            setattr(self, '_lazy_cache', {'fn.__name__': v})
+            setattr(self, '_lazy_cache', {fn.__name__: v})
             return v
 
     return _lazy_property
