@@ -157,7 +157,7 @@ class BeamLLM(LLM, Processor):
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None,
-                 debug_langchain=False, len_function=None, **kwargs):
+                 debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         if temperature is not None:
@@ -199,6 +199,14 @@ class BeamLLM(LLM, Processor):
                       "total_tokens": 0}
 
         self._chat_history = None
+
+        self._tokenizer = None
+        if path_to_tokenizer is not None:
+            from tokenizers import PreTrainedTokenizerFast
+            tokenizer = PreTrainedTokenizerFast(tokenizer_file=path_to_tokenizer)
+        if tokenizer is not None:
+            self._tokenizer = tokenizer
+
         self._len_function = len_function
         self.reset_chat()
         self._lazy_cache = {}
@@ -254,8 +262,13 @@ class BeamLLM(LLM, Processor):
                 'usage': self.usage}
 
     def len_function(self, prompt):
+
+        if self._tokenizer is not None:
+            return len(self._tokenizer(prompt)['input_ids'])
+
         if self._len_function is None:
             return estimate_tokens(prompt)
+
         return self._len_function(prompt)
 
     @property
