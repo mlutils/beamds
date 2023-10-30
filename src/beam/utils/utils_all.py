@@ -251,7 +251,7 @@ class PureBeamPath:
     feather_index_mark = "feather_index:"
 
     text_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css', '.html']
-    textual_extensions = text_extensions + ['.avro', '.json', '.orc', '.ndjson']
+    textual_extensions = text_extensions + ['.json', '.orc', '.ndjson']
 
     def __init__(self, *pathsegments, url=None, scheme=None, hostname=None, port=None, username=None, password=None,
                  fragment=None, params=None, client=None, **kwargs):
@@ -620,10 +620,9 @@ class PureBeamPath:
                 x = pd.read_excel(fo, **kwargs)
             elif ext == '.avro':
                 x = []
-                with open(fo, 'rb') as fo:
-                    import fastavro
-                    for record in fastavro.reader(fo):
-                        x.append(record)
+                import fastavro
+                for record in fastavro.reader(fo):
+                    x.append(record)
             elif ext in ['.adjlist', '.gexf', '.gml', '.pajek', '.graphml']:
                 import networkx as nx
                 read = getattr(nx, f'read_{ext[1:]}')
