@@ -158,6 +158,10 @@ class BeamLLM(LLM, Processor):
 
     # To be used with pydantic classes and lazy_property
     _lazy_cache: Any = PrivateAttr()
+    _tokenizer: Any = PrivateAttr()
+
+    _assistant_budget: Any = PrivateAttr()
+    _assistant_docstrings: Any = PrivateAttr()
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None,
@@ -194,6 +198,8 @@ class BeamLLM(LLM, Processor):
         self.logit_bias = logit_bias
         self.scheme = scheme
         self._url = None
+        self._assistant_budget = None
+        self._assistant_docstrings = None
         self._debug_langchain = debug_langchain
         self.instruction_history = []
 
@@ -289,19 +295,19 @@ class BeamLLM(LLM, Processor):
     def _chat_completion(self, **kwargs):
         raise NotImplementedError
 
-    def chat_completion(self, stream=False, **kwargs):
+    def chat_completion(self, stream=False, retrials=3, sleep=1, **kwargs):
 
         response = self._chat_completion(**kwargs)
         self.update_usage(response)
 
-        response = LLMResponse(response, kwargs, self, chat=True, stream=stream)
+        response = LLMResponse(response, kwargs, self, chat=True, stream=stream, retrials=retrials, sleep=sleep)
         return response
 
-    def completion(self, **kwargs):
+    def completion(self, retrials=3, sleep=1, **kwargs):
 
         response = self._completion(**kwargs)
         self.update_usage(response)
-        response = LLMResponse(response, kwargs, self, chat=False)
+        response = LLMResponse(response, kwargs, self, chat=False, retrials=retrials, sleep=sleep)
         return response
 
     def _completion(self, **kwargs):
@@ -342,7 +348,9 @@ class BeamLLM(LLM, Processor):
                   'stop': stop,
                   'max_tokens': max_tokens,
                   'presence_penalty': presence_penalty,
-                  'frequency_penalty': frequency_penalty}
+                  'frequency_penalty': frequency_penalty,
+                  'retrials': retrials,
+                  'sleep': sleep}
 
         if max_new_tokens is not None:
             kwargs['max_new_tokens'] = max_new_tokens
@@ -371,6 +379,9 @@ class BeamLLM(LLM, Processor):
         :param frequency_penalty:
         :param logit_bias:
         :return:
+
+        Args:
+            message:
         '''
 
         default_params = self.get_default_params(temperature=temperature,
@@ -386,7 +397,7 @@ class BeamLLM(LLM, Processor):
 
         messages = []
         if system is not None:
-            system = {'system': system}
+            system = {'role': 'system', 'content': system}
             if system_name is not None:
                 system['system_name'] = system_name
             messages.append(system)
@@ -400,12 +411,20 @@ class BeamLLM(LLM, Processor):
 
         messages.append(message)
 
-        response = self.chat_completion(messages=messages, retrials=retrials, sleep=sleep, **default_params)
+        response = self.chat_completion(messages=messages, **default_params)
         self.add_to_chat(response.text, is_user=False)
 
         return response
 
-    def chat_to_select_action(self, docstrings, initial_message=None, budget=3, **kwargs):
+    def chat_with_assistant(self, message=None, docstrings=None, budget=3, **kwargs):
+
+        if docstrings is not None:
+            self._assistant_budget = budget
+            self._assistant_docstrings = docstrings
+            self.reset_chat()
+        else:
+            budget = self._assistant_budget
+            docstrings = self._assistant_docstrings
 
         docs = ""
         for i, (k, v) in enumerate(docstrings.items()):
@@ -425,35 +444,33 @@ class BeamLLM(LLM, Processor):
                   f"========================================================================\n\n"
                   f"{docs}\n")
 
-        instruction = (f"You are given a list of docstrings of several functions. Each docstring details the function name, "
-                       f"its purpose, its arguments and its keyworded arguments.\n"
-                       f"In addition, you are given a chat session between a user and a chatbot assistant. The user asks the chatbot "
-                       f"apply some functionality or execute some action. You need to chose the function you see fit out"
-                       f" of the list of available functions and to fill its arguments and as much as possible "
-                       f"keyworded arguments according to the user request. You are required to respond in a single "
-                       f"valid JSON object of the form {{\"function\": <function name>, \"args\": [list of arguments], "
-                       f"\"kwargs\": {{<dictionary of kwargs>}} }}\n\n"
-                       f"========================================================================\n\n"
-                       f"Docstrings:\n\n"
-                       f"{docs}\n"
-                       f"Chat session:\n\n"
-                       f"{{session}}"
-                       f"========================================================================\n\n"
-                       f"Response: \"\"\"\n{{text input here}}\n\"\"\"")
+        if message is None:
+            message = "Hello, how can you help me?"
 
-        if initial_message is None:
-            initial_message = "Hello, how can I you help me?"
+        if len(self.chat_history) < 2 * budget - 2:
+            res = self.chat(message, system=system, **kwargs)
+        else:
 
-        for i in range(budget):
-            res = self.chat(initial_message, system=system, system_name='system', **kwargs)
-            try:
-                res = res.json
-                return res
-            except:
-                pass
+            self.add_to_chat(message, is_user=True)
 
-        res = self.chat(initial_message, system=system, system_name='system', **kwargs)
-        # todo: continue the generator here
+            instruction = (
+                f"You are given a list of docstrings of several functions. Each docstring details the function name, "
+                f"its purpose, its arguments and its keyworded arguments.\n"
+                f"In addition, you are given a chat session between a user and a chatbot assistant. The user asks the chatbot "
+                f"apply some functionality or execute some action. You need to chose the function you see fit out"
+                f" of the list of available functions and to fill its arguments and as much as possible "
+                f"keyworded arguments according to the user request. You are required to respond in a single "
+                f"valid JSON object of the form {{\"function\": <function name>, \"args\": [list of arguments], "
+                f"\"kwargs\": {{<dictionary of kwargs>}} }}\n\n"
+                f"========================================================================\n\n"
+                f"Docstrings:\n\n"
+                f"{docs}\n"
+                f"Chat session:\n\n"
+                f"{self.chat_history}"
+                f"========================================================================\n\n"
+                f"Response: \"\"\"\n{{text input here}}\n\"\"\"")
+
+            res = self.ask(instruction, system=system, **kwargs)
 
         return res
 
