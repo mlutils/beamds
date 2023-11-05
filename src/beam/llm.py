@@ -55,9 +55,11 @@ def estimate_tokens(s):
 
 
 class LLMResponse:
-    def __init__(self, response, prompt, llm, chat=False, stream=False):
+    def __init__(self, response, prompt, llm, chat=False, stream=False, retrials=3, sleep=1, **kwargs):
         self.response = response
         self.prompt = prompt
+        self.retrials = retrials
+        self.sleep = sleep
         self.llm = llm
         self.id = f'beamllm-{uuid.uuid4()}'
         self.model = llm.model
@@ -89,7 +91,7 @@ class LLMResponse:
         try:
             return parse_text_to_protocol(text, protocol=protocol)
         except:
-            retry_protocol = (retry(retrials=3, sleep=1, logger=logger, name=f"fix-{protocol} with {self.model}")
+            retry_protocol = (retry(retrials=self.retrials, sleep=self.sleep,  logger=logger, name=f"fix-{protocol} with {self.model}")
                               (self.llm.fix_protocol))
             return retry_protocol(text, protocol=protocol)
 
@@ -150,6 +152,8 @@ class BeamLLM(LLM, Processor):
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     logit_bias: Optional[Dict[str, float]] = Field(None)
+    retrials: int = Field(3, ge=0)
+    sleep: float = Field(1.0, ge=0.0)
     _len_function: Any = PrivateAttr()
 
     # To be used with pydantic classes and lazy_property
@@ -157,7 +161,8 @@ class BeamLLM(LLM, Processor):
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None,
-                 debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, **kwargs):
+                 debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, retrials=3, sleep=1,
+                 **kwargs):
         super().__init__(*args, **kwargs)
 
         if temperature is not None:
@@ -184,6 +189,8 @@ class BeamLLM(LLM, Processor):
             frequency_penalty = float(frequency_penalty)
         self.frequency_penalty = frequency_penalty
 
+        self.retrials = int(retrials)
+        self.sleep = float(sleep)
         self.logit_bias = logit_bias
         self.scheme = scheme
         self._url = None
@@ -301,7 +308,8 @@ class BeamLLM(LLM, Processor):
         raise NotImplementedError
 
     def get_default_params(self, temperature=None, top_p=None, n=None, stream=None, stop=None, max_tokens=None,
-                           presence_penalty=None, frequency_penalty=None, logit_bias=None, max_new_tokens=None):
+                           presence_penalty=None, frequency_penalty=None, logit_bias=None, max_new_tokens=None,
+                           retrials=None, sleep=None):
 
         if temperature is None:
             temperature = self.temperature
@@ -322,6 +330,11 @@ class BeamLLM(LLM, Processor):
         if max_tokens is None:
             max_tokens = self.max_tokens
 
+        if retrials is None:
+            retrials = self.retrials
+        if sleep is None:
+            sleep = self.sleep
+
         kwargs = {'temperature': temperature,
                   'top_p': top_p,
                   'n': n,
@@ -340,7 +353,7 @@ class BeamLLM(LLM, Processor):
 
     def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
-             logit_bias=None, max_new_tokens=None, **kwargs):
+             logit_bias=None, max_new_tokens=None, retrials=None, sleep=None, **kwargs):
 
         '''
 
@@ -365,7 +378,8 @@ class BeamLLM(LLM, Processor):
                                                  stop=stop, max_tokens=max_tokens,
                                                  presence_penalty=presence_penalty,
                                                  frequency_penalty=frequency_penalty,
-                                                 logit_bias=logit_bias, max_new_tokens=max_new_tokens)
+                                                 logit_bias=logit_bias, max_new_tokens=max_new_tokens,
+                                                 retrials=retrials, sleep=sleep)
 
         if reset_chat:
             self.reset_chat()
@@ -386,10 +400,39 @@ class BeamLLM(LLM, Processor):
 
         messages.append(message)
 
-        response = self.chat_completion(messages=messages, **default_params)
+        response = self.chat_completion(messages=messages, retrials=retrials, sleep=sleep, **default_params)
         self.add_to_chat(response.text, is_user=False)
 
         return response
+
+    def chat_to_select_action(self, docstrings, initial_message=None, **kwargs):
+
+        docs = ""
+        for i, (k, v) in enumerate(docstrings.items()):
+            docs += (f"{i}. Function: {k}\n\n{json.dumps(v, indent=4)}\n\n"
+                     f"========================================================================\n")
+
+        system = (f"You are given a list of docstrings of several functions. Each docstring details the function name, "
+                  f"its purpose, its arguments and its keyworded arguments.\n"
+                  f"Your task is to handle a chat session with a user. The user will ask you to apply some functionality "
+                  f"or execute some action. You need to chose the function you see fit out of the list of available functions "
+                  f"and you need to fill its arguments according to the user request. If the request of the user is unclear and "
+                  f"you are not able to assign a proper function, you can ask for clarification. If some of the arguments which "
+                  f"are required in the function are missing from the user request, you should ask he or she to provide them. "
+                  f"If you are confident that you can assign a function to the user request and fill all the required arguments, "
+                  f"and fill as much as possible keyworded arguments, you need to respond in a single valid JSON object "
+                  f"of the form {{\"function\": <function name>, \"args\": [list of arguments], \"kwargs\": {{<dictionary of kwargs>}} }}\n\n"
+                  f"========================================================================\n\n"
+                  f"{docs}\n")
+
+        if initial_message is None:
+            initial_message = "Hello, how can I you help me?"
+
+        res = self.chat(initial_message, system=system, system_name='system', **kwargs)
+        # todo: continue the generator here
+
+        return res
+
 
     def explain_traceback(self, traceback, n_words=100, **kwargs):
         prompt = (f"Task: explain the following traceback and suggest a correction. Be concise don't use more than"
@@ -468,7 +511,8 @@ class BeamLLM(LLM, Processor):
         return res
 
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
-            presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False, **kwargs):
+            presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
+            retrials=None, sleep=None, **kwargs):
         """
         Ask a question to the model
         :param n:
@@ -491,7 +535,8 @@ class BeamLLM(LLM, Processor):
                                                  presence_penalty=presence_penalty,
                                                  frequency_penalty=frequency_penalty,
                                                  logit_bias=logit_bias,
-                                                 max_new_tokens=max_new_tokens)
+                                                 max_new_tokens=max_new_tokens,
+                                                 retrials=retrials, sleep=sleep)
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}

@@ -23,6 +23,8 @@ class Processor(object):
 
         if len(args) > 0:
             self.hparams = args[0]
+        else:
+            self.hparams = None
 
         if self.state is None and self.path is not None:
             self.load_state()
