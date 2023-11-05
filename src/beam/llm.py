@@ -405,7 +405,7 @@ class BeamLLM(LLM, Processor):
 
         return response
 
-    def chat_to_select_action(self, docstrings, initial_message=None, **kwargs):
+    def chat_to_select_action(self, docstrings, initial_message=None, budget=3, **kwargs):
 
         docs = ""
         for i, (k, v) in enumerate(docstrings.items()):
@@ -425,8 +425,32 @@ class BeamLLM(LLM, Processor):
                   f"========================================================================\n\n"
                   f"{docs}\n")
 
+        instruction = (f"You are given a list of docstrings of several functions. Each docstring details the function name, "
+                       f"its purpose, its arguments and its keyworded arguments.\n"
+                       f"In addition, you are given a chat session between a user and a chatbot assistant. The user asks the chatbot "
+                       f"apply some functionality or execute some action. You need to chose the function you see fit out"
+                       f" of the list of available functions and to fill its arguments and as much as possible "
+                       f"keyworded arguments according to the user request. You are required to respond in a single "
+                       f"valid JSON object of the form {{\"function\": <function name>, \"args\": [list of arguments], "
+                       f"\"kwargs\": {{<dictionary of kwargs>}} }}\n\n"
+                       f"========================================================================\n\n"
+                       f"Docstrings:\n\n"
+                       f"{docs}\n"
+                       f"Chat session:\n\n"
+                       f"{{session}}"
+                       f"========================================================================\n\n"
+                       f"Response: \"\"\"\n{{text input here}}\n\"\"\"")
+
         if initial_message is None:
             initial_message = "Hello, how can I you help me?"
+
+        for i in range(budget):
+            res = self.chat(initial_message, system=system, system_name='system', **kwargs)
+            try:
+                res = res.json
+                return res
+            except:
+                pass
 
         res = self.chat(initial_message, system=system, system_name='system', **kwargs)
         # todo: continue the generator here
