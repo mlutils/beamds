@@ -44,10 +44,12 @@ class BeamHparams(Namespace):
             arguments = None
             hyperparameters = None
 
-            types = list(type(self).__bases__)
-            types.insert(0, type(self))
+            types = type(self).__mro__
 
-            for ti in types[len(types)-2::-1]:
+            for ti in types:
+
+                if ti is argparse.Namespace:
+                    break
 
                 if ti.defaults is not defaults:
                     defaults = ti.defaults
