@@ -1,9 +1,16 @@
 import json
 from typing import Optional, Any
+import openai
+import requests
+import pandas as pd
+import numpy as np
+from transformers.pipelines import Conversation
 
-from beam import beam_logger as logger
-from beam.llm.beam_llm import BeamLLM
-from beam.utils import normalize_host
+from ..logger import beam_logger as logger
+from .llm import BeamLLM
+from ..utils import normalize_host
+from pydantic import BaseModel, Field, PrivateAttr
+from ..path import beam_key
 
 
 class OpenAIBase(BeamLLM):
@@ -68,6 +75,79 @@ class OpenAIBase(BeamLLM):
         return res
 
 
+class OpenAI(OpenAIBase):
+
+    _models: Any = PrivateAttr()
+
+    def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
+
+        api_key = beam_key('OPENAI_API_KEY', api_key)
+
+        kwargs['scheme'] = 'openai'
+        super().__init__(api_key=api_key, api_base='https://api.openai.com/v1',
+                         organization=organization, *args, **kwargs)
+
+        self.model = model
+        self._models = None
+
+    @property
+    def is_chat(self):
+        chat_models = ['gpt-4', 'gpt-4-0314', 'gpt-4-32k', 'gpt-4-32k-0314', 'gpt-3.5-turbo', 'gpt-3.5-turbo-0301']
+        if any([m in self.model for m in chat_models]):
+            return True
+        return False
+
+    def file_list(self):
+        return openai.File.list()
+
+    def build_dataset(self, data=None, question=None, answer=None, path=None) -> object:
+        """
+        Build a dataset for training a model
+        :param data: dataframe with prompt and completion columns
+        :param question: list of questions
+        :param answer: list of answers
+        :param path: path to save the dataset
+        :return: path to the dataset
+        """
+        if data is None:
+            data = pd.DataFrame(data={'prompt': question, 'completion': answer})
+
+        records = data.to_dict(orient='records')
+
+        if path is None:
+            print('No path provided, using default path: dataset.jsonl')
+            path = 'dataset.jsonl'
+
+        # Open a file for writing
+        with open(path, 'w') as outfile:
+            # Write each data item to the file as a separate line
+            for item in records:
+                json.dump(item, outfile)
+                outfile.write('\n')
+
+        return path
+
+    def retrieve(self, model=None):
+        if model is None:
+            model = self.model
+        return openai.Engine.retrieve(id=model)
+
+    @property
+    def models(self):
+        if self._models is None:
+            models = openai.Model.list()
+            models = {m.id: m for m in models.data}
+            self._models = models
+        return self._models
+
+    def embedding(self, text, model=None):
+        if model is None:
+            model = self.model
+        response = openai.Engine(model).embedding(input=text, model=model)
+        embedding = np.array(response.data[1]['embedding'])
+        return embedding
+
+
 class FCConversationLLM(BeamLLM):
 
     _ma: Any = PrivateAttr()
@@ -94,10 +174,10 @@ class FCConversationLLM(BeamLLM):
 
         for m in messages:
 
-            if 'system' in m:
+            if m['role'] == 'system':
 
                 role = m['system_name'] if 'system_name' in m else 'system'
-                content = m['system']
+                content = m['content']
 
             else:
 

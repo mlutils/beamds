@@ -2,9 +2,9 @@ import itertools
 import numpy as np
 import torch
 
-from beam.dataset.universal_dataset import UniversalDataset
-from beam.utils import check_type, as_tensor, as_numpy
-from beam.logger import beam_logger as logger
+from .universal_dataset import UniversalDataset
+from ..utils import check_type, as_tensor, as_numpy
+from ..logger import beam_logger as logger
 import pandas as pd
 import math
 import hashlib

@@ -1,5 +1,7 @@
-from beam import check_type
-from beam.dataset.universal_dataset import UniversalDataset
+import torch
+
+from ..utils import check_type
+from .universal_dataset import UniversalDataset
 
 
 class TransformedDataset(torch.utils.data.Dataset):

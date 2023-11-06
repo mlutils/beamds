@@ -1,11 +1,4 @@
-from beam.server.beam_server import BeamServer
-
-try:
-    import torch
-
-    has_torch = True
-except ImportError:
-    has_torch = False
+from .beam_server import BeamServer
 
 
 def beam_remote(obj, host=None, port=None, debug=False):

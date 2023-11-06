@@ -2,11 +2,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from beam.model import soft_target_update, reset_network, copy_network, BeamEnsemble
-from beam.model import beam_weights_initializer, freeze_network_params, free_network_params
-from beam.ssl.beam_ssl import BeamSSL
-from beam.utils import as_numpy
-from beam.optim import BeamOptimizer
+from ..model import soft_target_update, reset_network, copy_network, BeamEnsemble
+from ..model import beam_weights_initializer, freeze_network_params, free_network_params
+from ..ssl.beam_ssl import BeamSSL
+from ..utils import as_numpy
+from ..optim import BeamOptimizer
 
 from torch.nn.utils import spectral_norm
 

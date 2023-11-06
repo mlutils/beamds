@@ -1,8 +1,8 @@
 import time
 import uuid
 
-from beam import beam_logger as logger
-from beam.utils import parse_text_to_protocol, retry
+from ..logger import beam_logger as logger
+from ..utils import parse_text_to_protocol, retry
 
 
 class LLMResponse:
@@ -39,6 +39,9 @@ class LLMResponse:
         return self.llm.openai_format(self)
 
     def _protocol(self, text, protocol='json'):
+
+        if self.retrials == 0:
+            return parse_text_to_protocol(text, protocol=protocol)
         try:
             return parse_text_to_protocol(text, protocol=protocol)
         except:
@@ -49,6 +52,7 @@ class LLMResponse:
     @property
     def json(self):
         json_text = self.llm.extract_text(self)
+        json_text = json_text.replace(r'/_', '_')
         json_text = json_text.replace('False', 'false')
         json_text = json_text.replace('True', 'true')
         return self._protocol(json_text, protocol='json')

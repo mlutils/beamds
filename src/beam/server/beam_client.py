@@ -1,8 +1,7 @@
 import io
 import pickle
 from functools import partial
-
-from beam.server.beam_remote import has_torch
+from .beam_server import has_torch
 
 
 class BeamClient(object):

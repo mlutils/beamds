@@ -1,6 +1,6 @@
 import mlflow.pyfunc
-from beam.core.algorithm import Algorithm
-from path import beam_path
+from .core import Algorithm
+from .path import beam_path
 import mlflow
 from mlflow import log_params, log_metric
 import os

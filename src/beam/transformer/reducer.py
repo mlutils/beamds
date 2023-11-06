@@ -1,5 +1,5 @@
-from beam.processor import Processor
-from beam.utils import collate_chunks
+from ..processor import Processor
+from ..utils import collate_chunks
 
 
 class Reducer(Processor):

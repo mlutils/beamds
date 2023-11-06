@@ -5,15 +5,19 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
+import torch
 
-from beam import beam_device, beam_path, beam_logger as logger, as_numpy, check_type, as_tensor, slice_to_index, \
-    DataBatch, beam_hash
-from beam.data.elements import Groups, Iloc, Loc, Key, return_none
-from beam.utils import is_container, lazy_property, Slicer, recursive, iter_container, recursive_collate_chunks, \
-    collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device, container_len, \
-    recursive_len, is_arange, recursive_size, divide_chunks, recursive_keys, recursive_types, recursive_shape, \
-    recursive_slice, recursive_slice_columns, recursive_batch, get_closest_item_with_tuple_key, get_item_with_tuple_key, \
-    set_item_with_tuple_key, recursive_chunks
+from ..logger import beam_logger as logger
+from ..path import beam_path
+
+from .elements import Groups, Iloc, Loc, Key, return_none
+from ..utils import (is_container, lazy_property, Slicer, recursive, iter_container, recursive_collate_chunks,
+                     collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device,
+                     container_len, recursive_len, is_arange, recursive_size, divide_chunks, recursive_keys,
+                     recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
+                     get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
+                     recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
+                     DataBatch)
 
 
 class BeamData(object):

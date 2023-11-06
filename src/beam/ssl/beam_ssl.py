@@ -1,7 +1,9 @@
 import numpy as np
 
-from beam import Algorithm, beam_logger as logger, as_numpy
-from beam.ssl.beam_similarity import BeamSimilarity
+from ..core import Algorithm
+from ..logger import beam_logger as logger
+from ..utils import as_numpy
+from .beam_similarity import BeamSimilarity
 
 
 class BeamSSL(Algorithm):

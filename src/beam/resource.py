@@ -12,7 +12,7 @@ def resource(uri, **kwargs):
         from .path import beam_path
         return beam_path(uri, **kwargs)
     elif scheme == 'beam-server':
-        from beam.server.beam_client import BeamClient
+        from .server.beam_client import BeamClient
         return BeamClient(uri, **kwargs)
     elif scheme in ['openai', 'tgi', 'fastchat', 'huggingface', 'fastapi']:
         from .llm import beam_llm

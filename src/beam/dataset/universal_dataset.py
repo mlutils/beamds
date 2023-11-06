@@ -3,10 +3,11 @@ import warnings
 
 import numpy as np
 import pandas as pd
+import torch
 
-from beam import beam_device, as_tensor, check_type, as_numpy, slice_to_index, DataBatch
-from beam.dataset.models import UniversalBatchSampler
-from beam.utils import recursive_batch, to_device, recursive_device, container_len
+from .models import UniversalBatchSampler
+from ..utils import (recursive_batch, to_device, recursive_device, container_len, beam_device, as_tensor, check_type,
+                     as_numpy, slice_to_index, DataBatch)
 
 
 class UniversalDataset(torch.utils.data.Dataset):

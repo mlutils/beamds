@@ -12,7 +12,7 @@ except ImportError:
 if has_torch:
     from .dataset import UniversalBatchSampler, UniversalDataset
     from .experiment import Experiment, beam_algorithm_generator
-    from beam.core.algorithm import Algorithm
+    from .core import Algorithm
     from .model import LinearNet, PackedSet, copy_network, reset_network
     from .tensor import DataTensor
     from .optim import BeamOptimizer, BeamScheduler

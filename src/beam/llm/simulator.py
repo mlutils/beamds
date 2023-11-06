@@ -1,6 +1,6 @@
 from argparse import Namespace
 
-from beam.llm.llm import beam_llm
+from .resource import beam_llm
 
 
 def simulate_openai_chat(model=None, **kwargs):

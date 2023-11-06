@@ -1,5 +1,5 @@
 import torch
-from beam.core.algorithm import Algorithm
+from .core.algorithm import Algorithm
 from .utils import as_numpy, as_tensor
 from .data import BeamData
 from .config import BeamHparams, HParam

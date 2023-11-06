@@ -1,14 +1,12 @@
 import math
-
+from collections import namedtuple
 import numpy as np
 
-from beam import beam_logger as logger
-from collections import namedtuple
+from ..logger import beam_logger as logger
+from ..utils import pretty_format_number
 
 # working with faiss and torch
-
 Similarities = namedtuple("Similarities", "index distance")
-from beam.utils import pretty_format_number
 
 
 class BeamSimilarity(object):

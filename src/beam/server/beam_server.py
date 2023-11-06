@@ -8,10 +8,15 @@ from queue import Queue, Empty
 from threading import Thread
 from uuid import uuid4 as uuid
 
-from beam import beam_logger as logger, Experiment
-from beam.server.beam_remote import has_torch
-from beam.utils import find_port
+from ..logger import beam_logger as logger
+from ..experiment import Experiment
+from ..utils import find_port
 
+try:
+    import torch
+    has_torch = True
+except ImportError:
+    has_torch = False
 
 class BeamServer(object):
 
