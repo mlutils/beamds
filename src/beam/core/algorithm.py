@@ -3,22 +3,22 @@ from collections import defaultdict
 from torch import nn
 import torch
 import copy
-from .utils import tqdm_beam as tqdm
-from .logger import beam_logger as logger
+from beam.utils import tqdm_beam as tqdm
+from beam.logger import beam_logger as logger
 import numpy as np
-from .optim import BeamOptimizer, BeamScheduler, MultipleScheduler
-from .utils import to_device, check_type, rate_string_format, recursive_concatenate, \
+from beam.optim import BeamOptimizer, BeamScheduler, MultipleScheduler
+from beam.utils import to_device, check_type, rate_string_format, recursive_concatenate, \
     as_numpy, beam_device, retrieve_name, filter_dict, BeamDict, \
     recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict, dictionary_iterator
-from .config import beam_arguments, get_beam_parser
-from .dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
-from .experiment import Experiment
-from .reporter import BeamReport
+from beam.config import beam_arguments, get_beam_parser
+from beam.dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
+from beam.experiment import Experiment
+from beam.reporter import BeamReport
 from timeit import default_timer as timer
-from .path import beam_path, PureBeamPath
-from .processor import Processor
-from .logger import beam_kpi, BeamResult
-from .data import BeamData
+from beam.path import beam_path, PureBeamPath
+from beam.processor import Processor
+from beam.logger import beam_kpi, BeamResult
+from beam.data import BeamData
 
 
 class Algorithm(Processor):
