@@ -930,10 +930,10 @@ class FCConversationLLM(BeamLLM):
 
         for m in messages:
 
-            if 'system' in m:
+            if m['role'] == 'system':
 
                 role = m['system_name'] if 'system_name' in m else 'system'
-                content = m['system']
+                content = m['content']
 
             else:
 
