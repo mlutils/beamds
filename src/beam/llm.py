@@ -1238,6 +1238,7 @@ class FastAPILLM(FCConversationLLM):
     def extract_text(self, res):
         return res.response['res']
 
+
 class HuggingFaceLLM(BeamLLM):
     config: Any
     tokenizer: Any

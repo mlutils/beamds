@@ -78,11 +78,11 @@ class Algorithm(Processor):
         self.schedulers_flat = {}
         self.optimizers_flat = {}
         self.optimizers_steps = {}
-        self.epoch_length = None
-
         self.datasets = {}
         self.persistent_dataloaders = defaultdict(dict)
         self.dataloaders = defaultdict(dict)
+
+        self.epoch_length = None
         self.eval_subset = None
         self.objective = None
         self.best_objective = None
@@ -106,6 +106,12 @@ class Algorithm(Processor):
         self._train_reporter = None
         self.reporter = None
         self.training = False
+
+    @property
+    def state_attributes(self):
+        return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler', 'inference_networks',
+                'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
+                'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']
 
     @property
     def train_reporter(self):

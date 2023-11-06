@@ -1,2 +1,4 @@
 peacanpy
 rocketchat-API
+safetensors
+bitsandbytes

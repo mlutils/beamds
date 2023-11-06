@@ -1,6 +1,7 @@
-from .utils import retrieve_name, normalize_host
+from .utils import retrieve_name, normalize_host, lazy_property, check_type
 from collections import OrderedDict
 from .path import beam_path
+from .config import BeamHparams
 import pickle
 import io
 
@@ -11,23 +12,73 @@ except ImportError:
     has_beam_ds = False
 
 
-class Processor(object):
+class Processor:
 
-    def __init__(self, *args, name=None, state=None, path=None, remote=None, **kwargs):
-
-        self.remote = remote
+    def __init__(self, *args, name=None, state=None, path=None, hparams=None, override=True, **kwargs):
 
         self._name = name
-        self.state = state
-        self.path = beam_path(path)
+        self._state = state
+        self._path = path
 
         if len(args) > 0:
             self.hparams = args[0]
+        elif 'hparams' in kwargs:
+            self.hparams = kwargs['hparams']
         else:
-            self.hparams = None
+            if hparams is not None:
+                self.hparams = BeamHparams(hparams={})
 
-        if self.state is None and self.path is not None:
-            self.load_state()
+        for k, v in kwargs.items():
+            v_type = check_type(v)
+            if v_type.major in ['scalar', 'none']:
+                if k not in self.hparams or override:
+                    self.hparams[k] = v
+
+    @lazy_property
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
+
+    @property
+    def state_attributes(self):
+        '''
+        return of list of class attributes that are used to save the state and the are not part of the
+        skeleton of the instance. override this function to add more attributes to the state and avoid pickling a large
+        skeleton.
+        @return:
+        '''
+
+        return []
+
+    @property
+    def state(self):
+        '''
+        return the state of the processor. override this function to add more attributes to the state.
+        @return:
+        '''
+        return self._state
+
+    @state.setter
+    def state(self, value):
+        self._state = value
+
+    @property
+    def path(self):
+        return beam_path(self._path)
+
+    @path.setter
+    def path(self, value):
+        self._path = beam_path(value)
+
+    def __getstate__(self):
+        # Create a new state dictionary with only the skeleton attributes without the state attributes
+        state = {k: v for k, v in self.__dict__.items() if k not in self.state_attributes}
+        return state
+
+    def __setstate__(self, state):
+        # Restore the skeleton attributes
+        self.__dict__.update(state)
 
     @classmethod
     def from_remote(cls, hostname, *args, port=None,  **kwargs):
@@ -44,36 +95,29 @@ class Processor(object):
 
         return self
 
-    # def __getattribute__(self, name):
-    #     try:
-    #         remote = super(Processor, self).__getattribute__("remote")
-    #         if remote is not None:
-    #             return getattr(remote, name)
-    #         return super(Processor, self).__getattribute__(name)
-    #     except:
-    #         return super(Processor, self).__getattribute__(name)
-        
     def save_state(self, path=None):
         if path is None:
             path = self.path
-        if path is not None:
-            path = beam_path(path)
+        path = beam_path(path)
 
-        if has_beam_ds and isinstance(self.state, BeamData):
-            self.state.store(path=path)
+        state = self.state
+        if has_beam_ds and isinstance(state, BeamData):
+            state.store(path=path)
         else:
             path = beam_path(path)
-            path.write(self.state)
+            path.write(state)
 
     def state_dict(self):
+
+        state = self.state
         if has_beam_ds and isinstance(self.state, BeamData):
-            if not self.state.is_cached:
-                self.state.cache()
-            return self.state.state_dict()
+            if not state.is_cached:
+                state.cache()
+            return state.state_dict()
         else:
 
             mem_file = io.BytesIO()
-            pickle.dump(self.state, mem_file)
+            pickle.dump(state, mem_file)
 
             return {'pickle': mem_file}
 
@@ -109,11 +153,8 @@ class Processor(object):
         state = path.read()
         return cls(state=state, path=path)
 
-    @property
-    def name(self):
-        if self._name is None:
-            self._name = retrieve_name(self)
-        return self._name
+    def get_hparam(self, hparam, specific=None, default=None):
+        return self.hparams.get(hparam, specific=specific, default=default)
 
 
 class Pipeline(Processor):

@@ -331,6 +331,7 @@ class AutoBeam:
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
         obj.save_state(path.joinpath('state.pt'))
+        path.joinpath('skeleton.pkl').write(obj)
 
     @classmethod
     def from_path(cls, path):
@@ -343,6 +344,7 @@ class AutoBeam:
         req_file = path.joinpath('requirements.txt')
         modules_tar = path.joinpath('modules.tar.gz')
         state_file = path.joinpath('state.pt')
+        skeleton_file = path.joinpath('skeleton.pkl')
         metadata_file = path.joinpath('metadata.json')
 
         if not all([file.exists() for file in [req_file, modules_tar, state_file, metadata_file]]):
@@ -372,7 +374,9 @@ class AutoBeam:
         cls_obj = locals()[imported_class]
 
         # 7. Construct the object from its state using a hypothetical from_state method
-        obj = cls_obj.from_path(state_file)
+        # obj = cls_obj.from_path(state_file)
+        obj = skeleton_file.read()
+        obj.load_state(state_file)
 
         return obj
 

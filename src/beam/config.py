@@ -35,40 +35,41 @@ class BeamHparams(Namespace):
     hyperparameters = []
     defaults = {}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, hparams=None, **kwargs):
 
-        parser = get_beam_parser()
+        if hparams is None:
+            parser = get_beam_parser()
 
-        defaults = None
-        arguments = None
-        hyperparameters = None
+            defaults = None
+            arguments = None
+            hyperparameters = None
 
-        types = list(type(self).__bases__)
-        types.insert(0, type(self))
+            types = list(type(self).__bases__)
+            types.insert(0, type(self))
 
-        for ti in types[len(types)-2::-1]:
+            for ti in types[len(types)-2::-1]:
 
-            if ti.defaults is not defaults:
-                defaults = ti.defaults
-                d = defaults
-            else:
-                d = None
+                if ti.defaults is not defaults:
+                    defaults = ti.defaults
+                    d = defaults
+                else:
+                    d = None
 
-            if ti.arguments is not arguments:
-                arguments = ti.arguments
-                a = arguments
-            else:
-                a = None
+                if ti.arguments is not arguments:
+                    arguments = ti.arguments
+                    a = arguments
+                else:
+                    a = None
 
-            if ti.hyperparameters is not hyperparameters:
-                hyperparameters = ti.hyperparameters
-                h = hyperparameters
-            else:
-                h = None
+                if ti.hyperparameters is not hyperparameters:
+                    hyperparameters = ti.hyperparameters
+                    h = hyperparameters
+                else:
+                    h = None
 
-            self.update_parser(parser, defaults=d, arguments=a, hyperparameters=h)
+                self.update_parser(parser, defaults=d, arguments=a, hyperparameters=h)
 
-        hparams = beam_arguments(parser, *args, **kwargs)
+            hparams = beam_arguments(parser, *args, **kwargs)
         super().__init__(**hparams.__dict__)
 
     @staticmethod
@@ -106,6 +107,10 @@ class BeamHparams(Namespace):
         if r is None and item in os.environ:
             r = os.environ[item]
         return r
+
+    def __setitem__(self, key, value):
+        key = key.replace('-', '_')
+        setattr(self, key, value)
 
     def get(self, hparam, specific=None, default=None):
 
