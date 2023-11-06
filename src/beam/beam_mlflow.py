@@ -1,8 +1,8 @@
 import mlflow.pyfunc
-from algorithm import Algorithm
+from beam.core.algorithm import Algorithm
 from path import beam_path
 import mlflow
-from mlflow import log_params, log_metric, log_artifacts
+from mlflow import log_params, log_metric
 import os
 
 class MLflowSummaryWriter:

@@ -1,96 +1,19 @@
-import copy
-import itertools
-import numpy as np
-import torch
-from .utils import check_type, slice_to_index, as_tensor, to_device, recursive_batch, as_numpy, beam_device, \
-    recursive_device, container_len, recursive, recursive_len, recursive_shape, recursive_types, retrieve_name
-import pandas as pd
-import math
-from collections import namedtuple
-from .utils import divide_chunks, collate_chunks, recursive_chunks, iter_container, \
-    recursive_size_summary, container_len, is_arange, is_chunk, is_container, \
-    recursive_size, recursive_flatten, recursive_collate_chunks, recursive_keys, recursive_slice_columns, \
-    recursive_slice, recursive_flatten_with_keys, get_item_with_tuple_key, PureBeamPath, set_item_with_tuple_key, \
-    get_closest_item_with_tuple_key, DataBatch, beam_hash, Slicer, lazy_property
-from .logger import beam_logger as logger
-from .path import BeamPath, beam_path
-from functools import partial
-from collections import defaultdict
 import time
+from collections import defaultdict
 from copy import deepcopy
+from functools import partial
 
+import numpy as np
+import pandas as pd
 
-class Groups(object):
-
-    def __init__(self, groupby_pointer):
-        self.groupby_pointer = groupby_pointer
-        self.groups = {}
-
-    def __getitem__(self, ind):
-
-        if ind not in self.groups:
-            self.groups[ind] = self.groupby_pointer().get_group(ind)
-
-        return self.groups[ind]
-
-
-class Iloc(object):
-
-    def __init__(self, pointer):
-        self.pointer = pointer
-
-    def __getitem__(self, ind):
-        return self.pointer._iloc(ind)
-
-
-class Loc(object):
-
-    def __init__(self, pointer):
-        self.pointer = pointer
-
-    def __getitem__(self, ind):
-        return self.pointer._loc(ind)
-
-
-class Key(object):
-
-    def __init__(self, pointer):
-        self.pointer = pointer
-
-    def __getitem__(self, ind):
-        return self.pointer._key(ind)
-
-
-def return_none(*args, **kwargs):
-    return None
-
-
-class BeamSchema(object):
-
-    def __init__(self, read_schema=None, write_schema=None,  **kwargs):
-        self._schema = {}
-        self._schema.update(kwargs)
-        self._read_schema = read_schema or {}
-        self._write_schema = write_schema or {}
-
-    def __getitem__(self, item):
-
-        if item in self._schema.keys():
-            return self._schema[item]
-        elif item in self._read_schema.keys():
-            return self._read_schema[item]
-        elif item in self._write_schema.keys():
-            return self._write_schema[item]
-        else:
-            raise KeyError(f'No schema for {item}')
-
-    @property
-    def read_schema(self):
-        return {**self._schema, **self._read_schema}
-
-    @property
-    def write_schema(self):
-        return {**self._schema, **self._write_schema}
+from beam import beam_device, beam_path, beam_logger as logger, as_numpy, check_type, as_tensor, slice_to_index, \
+    DataBatch, beam_hash
+from beam.data.elements import Groups, Iloc, Loc, Key, return_none
+from beam.utils import is_container, lazy_property, Slicer, recursive, iter_container, recursive_collate_chunks, \
+    collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device, container_len, \
+    recursive_len, is_arange, recursive_size, divide_chunks, recursive_keys, recursive_types, recursive_shape, \
+    recursive_slice, recursive_slice_columns, recursive_batch, get_closest_item_with_tuple_key, get_item_with_tuple_key, \
+    set_item_with_tuple_key, recursive_chunks
 
 
 class BeamData(object):
@@ -100,7 +23,7 @@ class BeamData(object):
                       'info': '.info.fea', 'label': '.label', 'aux': '.aux.pkl',
                       'index': '.index', 'all_paths': '.all_paths.pkl'}
 
-    default_data_file_name = 'data'
+    default_data_file_name = ''
     index_chunk_file_extension = '.index_chunk'
     columns_chunk_file_extension = '.columns_chunk'
     index_partition_directory_name = '.index_part'

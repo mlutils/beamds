@@ -1,9 +1,8 @@
 import torch
-from .algorithm import Algorithm
-from .experiment import Experiment
+from beam.core.algorithm import Algorithm
 from .utils import as_numpy, as_tensor
 from .data import BeamData
-from .config import BeamHparams, boolean_feature, HParam
+from .config import BeamHparams, HParam
 import torch.nn.functional as F
 from torch import nn
 from torch import distributions
