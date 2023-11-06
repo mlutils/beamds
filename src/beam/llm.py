@@ -428,7 +428,7 @@ class BeamLLM(LLM, Processor):
 
         docs = ""
         for i, (k, v) in enumerate(docstrings.items()):
-            docs += (f"{i}. Function: {k}\n\n{json.dumps(v, indent=4)}\n\n"
+            docs += (f"{i}. Function: {k}\n\n{v}\n\n"
                      f"========================================================================\n")
 
         system = (f"You are given a list of docstrings of several functions. Each docstring details the function name, "
