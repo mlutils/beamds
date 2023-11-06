@@ -1,15 +1,12 @@
-from .utils import (divide_chunks, collate_chunks, recursive_chunks, iter_container,
-                    recursive_size_summary, container_len, retrieve_name, build_container_from_tupled_keys, is_empty,)
-from .parallel import parallel, BeamParallel, BeamTask
-from collections import OrderedDict
-from .data import BeamData
-from .path import beam_path
-import pickle
-import io
-from .utils import tqdm_beam as tqdm
-from .logger import beam_logger as logger
-from .processor import Processor
-from .config import BeamHparams
+from beam.utils import (collate_chunks, recursive_chunks, iter_container,
+                        build_container_from_tupled_keys, is_empty, )
+from beam.parallel import BeamParallel, BeamTask
+from beam.data import BeamData
+from beam.path import beam_path
+from beam.utils import tqdm_beam as tqdm
+from beam.logger import beam_logger as logger
+from beam.processor import Processor
+from beam.config import BeamHparams
 from enum import Enum
 
 
@@ -379,11 +376,3 @@ class Transformer(Processor):
         return x
 
 
-class Reducer(Processor):
-
-    def __init__(self, hparams, *args, dim=1, **kwargs):
-        super().__init__(hparams, *args, **kwargs)
-        self.dim = dim
-
-    def reduce(self, *xs, **kwargs):
-        return collate_chunks(*xs, dim=self.dim, **kwargs)
