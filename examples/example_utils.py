@@ -9,22 +9,13 @@ def add_beam_to_path():
 add_beam_to_path()
 
 import torch
-from torch import distributions
-import torchvision
-import torch.nn.functional as F
-from torch import nn
-from sklearn.metrics import precision_recall_fscore_support
-import numpy as np
-import pandas as pd
 
 
 def write_bundle_tabular(path):
 
-    from src.beam import beam_arguments, Experiment
     from src.beam import beam_logger as logger
-    from src.beam import beam_path
 
-    from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
+    from src.beam.tabular import TabularTransformer, TabularHparams, DeepTabularAlg
 
     kwargs_base = dict(algorithm='debug_reporter',
                        # path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
@@ -71,7 +62,7 @@ def write_bundle_tabular(path):
 
 def write_bundle_cifar(path):
 
-    from src.beam import beam_arguments, beam_path
+    from src.beam import beam_arguments
     from cifar10_example import CIFAR10Algorithm
     from src.beam.auto import AutoBeam
 
@@ -129,10 +120,9 @@ def test_data_apply():
     s2 = gen_coo_vectors(k2)
     s3 = gen_coo_vectors(k2)
 
-    from src.beam.similarity import SparseSimilarity
     from src.beam import BeamData
     from uuid import uuid4 as uuid
-    from src.beam.server import BeamClient
+    from beam.server.beam_client import BeamClient
 
     # sparse_sim = SparseSimilarity(metric='cosine', format='coo', vec_size=10000, device='cuda', k=10)
     sparse_sim = BeamClient('localhost:27451')
@@ -152,8 +142,6 @@ def test_data_apply():
 
 
 if __name__ == '__main__':
-
-    from src.beam import beam_arguments, beam_path
 
     # path = '/home/dsi/elads/sandbox/cifar10_bundle'
     # path = beam_path(path)
