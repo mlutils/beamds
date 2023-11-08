@@ -118,7 +118,6 @@ class BeamData(object):
         self._info_groups = None
         self._all_paths = None
         self._root_path = None
-        self._keys = None
         self._metadata_paths = None
         self._metadata_path_exists = {}
         self.groups = Groups(self.get_info_groups)
@@ -394,6 +393,9 @@ class BeamData(object):
 
     @classmethod
     def from_path(cls, path, *args, **kwargs):
+        path = beam_path(path)
+        if not path.exists():
+            path.mkdir()
         return cls(path=path, *args, **kwargs)
 
     @classmethod
@@ -552,7 +554,7 @@ class BeamData(object):
 
     @property
     def path(self):
-        if 'data' in self.all_paths and len(self.all_paths) == 1:
+        if self.all_paths is not None and 'data' in self.all_paths and len(self.all_paths) == 1:
             return self.root_path.joinpath(self.all_paths['data'])
         return self.root_path
 
@@ -657,6 +659,9 @@ class BeamData(object):
             return self._orientation
 
         if self.is_cached:
+
+            if self.data is None:
+                return None
 
             if not is_container(self.data):
                 self._orientation = 'simple'
@@ -1115,18 +1120,32 @@ class BeamData(object):
         self._columns_map = None
         return self._columns_map
 
-    def keys(self):
-        if self._keys is None:
-            if self.orientation == 'simple':
-                self._keys = self.columns
+    def keys(self, recursive=False):
+        if self.orientation == 'simple':
+            keys = self.columns
+        else:
             if self.is_cached:
-                self._keys = recursive_keys(self.data)
+                if recursive:
+                    keys = recursive_keys(self.data)
+                else:
+                    if hasattr(self.data, 'keys'):
+                        keys = self.data.keys()
+                    elif self.data is None:
+                        return []
+                    else:
+                        keys = range(len(self.data))
             else:
-                self._keys = recursive_keys(self.all_paths)
-        return self._keys
+                if recursive:
+                    keys = recursive_keys(self.all_paths)
+                else:
+                    if hasattr(self.all_paths, 'keys'):
+                        keys = self.all_paths.keys()
+                    else:
+                        keys = range(len(self.all_paths))
+        return keys
 
-    def items(self):
-        for k in self.keys():
+    def items(self, recursive=False):
+        for k in self.keys(recursive=recursive):
             yield k, self[k]
 
     @property
@@ -1984,6 +2003,10 @@ class BeamData(object):
                     logger.warning("Previous label value conflicts with new item. Setting index to None.")
 
             self._label = None
+            self.reset_metadata('all_paths')
+
+        if not self.is_stored and self.data is None:
+            self.data = {key: value}
             self.reset_metadata('all_paths')
 
     def apply(self, func, *args, preferred_orientation='columns', **kwargs):

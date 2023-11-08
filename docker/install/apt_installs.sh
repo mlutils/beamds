@@ -49,7 +49,7 @@ pip install pykerberos
 
 # applications
 
-# ssh server
+# ssh serve
 echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 # ssh connection immediately disconnects after session start with exit code 254:

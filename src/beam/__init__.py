@@ -34,4 +34,4 @@ from .resource import resource
 
 # from .llm import beam_llm
 # from .ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
-# from .server import BeamServer, BeamClient
+# from .serve import BeamServer, BeamClient

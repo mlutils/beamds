@@ -1,70 +1,13 @@
-import itertools
 import numpy as np
 import torch
-
-from .universal_dataset import UniversalDataset
-from ..utils import check_type, as_tensor, as_numpy
-from ..logger import beam_logger as logger
+import sys
+import itertools
 import pandas as pd
 import math
 import hashlib
-import sys
-import warnings
 
-
-class LazyReplayBuffer(UniversalDataset):
-
-    def __init__(self, size, device='cpu'):
-        self.max_size = size
-        self.size = 0
-        self.ptr = 0
-        self.target_device = device
-        super().__init__(device=device)
-
-    def build_buffer(self, x):
-        return torch.zeros(self.size, *x.shape, device=self.target_device, dtype=x.dtype)
-
-    def store(self, *args, **kwargs):
-
-        if len(args) == 1:
-            d = args[0]
-        elif len(args):
-            d = args
-        else:
-            d = kwargs
-
-        if self.data is None:
-            if isinstance(d, dict):
-                self.data = {k: self.build_buffer(v) for k, v in d.items()}
-                self.data_type = 'dict'
-            elif isinstance(d, list) or isinstance(d, tuple):
-                self.data = [self.build_buffer(v) for v in d]
-                self.data_type = 'list'
-            else:
-                self.data = self.build_buffer(d)
-                self.data_type = 'simple'
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            if self.data_type == 'dict':
-                for k, v in d.items():
-                    self.data[k][self.ptr] = as_tensor(v, device=self.target_device)
-            elif self.data_type == 'list':
-                for i, v in enumerate(self.data):
-                    self.data[i][self.ptr] = as_tensor(v, device=self.target_device)
-            else:
-                self.data[self.ptr] = as_tensor(d, device=self.target_device)
-
-        self.ptr = (self.ptr + 1) % self.max_size
-        self.size = min(self.size + 1, self.max_size)
-
-    def reset(self):
-        self.ptr = 0
-        self.data = None
-        self.size = 0
-
-    def __len__(self):
-        return self.size
+from ..logger import beam_logger as logger
+from ..utils import as_tensor, check_type, as_numpy
 
 
 class UniversalBatchSampler(object):

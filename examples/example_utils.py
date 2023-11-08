@@ -1,5 +1,7 @@
 import os
 import sys
+import torch
+
 
 def add_beam_to_path():
     beam_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
@@ -8,7 +10,12 @@ def add_beam_to_path():
 
 add_beam_to_path()
 
-import torch
+def text_beam_data():
+
+    from src.beam import BeamData
+
+    bd = BeamData.from_path('/tmp/example')
+    print(bd)
 
 
 def write_bundle_tabular(path):
@@ -160,6 +167,8 @@ if __name__ == '__main__':
     # hparams = TabularHparams(hparams)
     # print(hparams)
 
-    test_data_apply()
+    # test_data_apply()
+
+    text_beam_data()
 
     print('done')

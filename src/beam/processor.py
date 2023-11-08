@@ -84,7 +84,7 @@ class Processor:
     def from_remote(cls, hostname, *args, port=None,  **kwargs):
 
         hostname = normalize_host(hostname, port=port)
-        from .server.beam_client import BeamClient
+        from .serve.beam_client import BeamClient
         remote = BeamClient(hostname)
         self = cls(*args, remote=remote, **kwargs)
 

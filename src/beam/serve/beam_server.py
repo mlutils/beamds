@@ -122,7 +122,7 @@ class BeamServer(object):
 
     def run(self, host="0.0.0.0", port=None, server='wsgi', use_reloader=True):
         port = find_port(port=port, get_port_from_beam_port_range=True, application='flask')
-        logger.info(f"Opening a flask inference server on port: {port}")
+        logger.info(f"Opening a flask inference serve on port: {port}")
 
         # when debugging with pycharm set debug=False
         # if needed set use_reloader=False
@@ -144,7 +144,7 @@ class BeamServer(object):
         elif server == 'gunicorn':
             self.run_gunicorn(host, port)
         else:
-            raise ValueError(f"Unknown server type: {server}")
+            raise ValueError(f"Unknown serve type: {server}")
 
     def _centralized_batch_executor(self):
 
@@ -317,16 +317,16 @@ class BeamServer(object):
 
         cherrypy.tree.graft(self.app, '/')
         config = {
-            'server.socket_host': host,
-            'server.socket_port': port,
+            'serve.socket_host': host,
+            'serve.socket_port': port,
             'engine.autoreload.on': False,
-            'server.thread_pool': self.n_threads
+            'serve.thread_pool': self.n_threads
         }
         if self.tls:
             config.update({
-                'server.ssl_module': 'builtin',
-                'server.ssl_certificate': 'path/to/certfile.pem',
-                'server.ssl_private_key': 'path/to/keyfile.pem'
+                'serve.ssl_module': 'builtin',
+                'serve.ssl_certificate': 'path/to/certfile.pem',
+                'serve.ssl_private_key': 'path/to/keyfile.pem'
             })
         cherrypy.config.update(config)
 
@@ -357,7 +357,7 @@ class BeamServer(object):
         from gevent.pywsgi import WSGIServer
 
         if self.n_threads > 1:
-            logger.warning("WSGI server does not support multithreading, setting n_threads to 1")
+            logger.warning("WSGI serve does not support multithreading, setting n_threads to 1")
 
         if self.tls:
             from gevent.pywsgi import WSGIServer

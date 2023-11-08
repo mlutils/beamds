@@ -203,7 +203,7 @@ def get_beam_parser():
     # booleans
 
     boolean_feature(parser, "tensorboard", True, "Log results to tensorboard")
-    boolean_feature(parser, "mlflow", False, "Log results to MLFLOW server")
+    boolean_feature(parser, "mlflow", False, "Log results to MLFLOW serve")
 
     boolean_feature(parser, "lognet", True, 'Log  networks parameters')
     boolean_feature(parser, "deterministic", False, 'Use deterministic pytorch optimization for reproducability'
@@ -342,7 +342,7 @@ def get_beam_parser():
     parser.add_argument('--config-file', type=str, default=str(Path.home().joinpath('conf.pkl')),
                         help='The beam config file to use with secret keys')
 
-    parser.add_argument('--mlflow-url', type=str, default=None, help='The url of the mlflow server to use for logging. '
+    parser.add_argument('--mlflow-url', type=str, default=None, help='The url of the mlflow serve to use for logging. '
                                                                      'If None, mlflow will log to $MLFLOW_TRACKING_URI')
     # keys
     parser.add_argument('--comet-api-key', type=str, default=None, help='The comet.ml api key to use for logging')
