@@ -27,7 +27,7 @@ class BeamData(object):
                       'info': '.info.fea', 'label': '.label', 'aux': '.aux.pkl',
                       'index': '.index', 'all_paths': '.all_paths.pkl'}
 
-    default_data_file_name = ''
+    default_data_file_name = 'data_container'
     index_chunk_file_extension = '.index_chunk'
     columns_chunk_file_extension = '.columns_chunk'
     index_partition_directory_name = '.index_part'
@@ -167,7 +167,8 @@ class BeamData(object):
             self._root_path, self._all_paths, self._metadata_paths = self.single_file_case(path, all_paths,
                                                                                                self._metadata_paths)
 
-        if ((self._all_paths is not None) or (self._root_path is not None and self._root_path.not_empty())) and \
+        if ((self._all_paths is not None) or (self._root_path is not None and
+                                              self._root_path.not_empty(filter_pattern=r'^\.'))) and \
                 not self.is_cached:
             self.is_stored = True
             if not lazy:
@@ -263,7 +264,9 @@ class BeamData(object):
                         return self._index
         if self.is_cached:
             info = self.info
-            if self.orientation in ['columns', 'simple']:
+            if self.orientation is None:
+                self._index = None
+            elif self.orientation in ['columns', 'simple']:
                 self._index = info.index.values
             elif self.orientation == 'index':
                 @recursive
@@ -319,7 +322,7 @@ class BeamData(object):
 
             meta_path = meta_root_path.joinpath(f'.{root_path.name}')
             metadata_paths = {k: meta_path.joinpath(v) for k, v in BeamData.metadata_files.items()}
-            all_paths = {'data': root_path.name}
+            all_paths = {BeamData.default_data_file_name: root_path.name}
             root_path = root_path.parent
 
         return root_path, all_paths, metadata_paths
@@ -554,8 +557,8 @@ class BeamData(object):
 
     @property
     def path(self):
-        if self.all_paths is not None and 'data' in self.all_paths and len(self.all_paths) == 1:
-            return self.root_path.joinpath(self.all_paths['data'])
+        if self.all_paths is not None and BeamData.default_data_file_name in self.all_paths and len(self.all_paths) == 1:
+            return self.root_path.joinpath(self.all_paths[BeamData.default_data_file_name])
         return self.root_path
 
     @schema.setter
@@ -704,6 +707,8 @@ class BeamData(object):
             self._orientation = self.conf['orientation']
 
         else:
+            if self.data is None:
+                return None
             self._orientation = 'packed'
 
         return self._orientation
@@ -776,8 +781,15 @@ class BeamData(object):
         else:
             values = [values[i] for i in argsort]
 
-        if type(values) is dict and 'data' in values and len(values) == 1:
-            values = values['data']
+        if type(values) is dict and BeamData.default_data_file_name in values:
+            if len(values) == 1:
+                values = values[BeamData.default_data_file_name]
+            else:
+                d = values.pop(BeamData.default_data_file_name)
+                if type(d) is dict:
+                    values = {**values, **d}
+                else:
+                    values[BeamData.default_data_file_name] = d
 
         return values
 
@@ -853,8 +865,8 @@ class BeamData(object):
             else:
                 values = [values[i] for i in argsort]
 
-            if type(values) is dict and 'data' in values and len(values) == 1:
-                values = values['data']
+            if type(values) is dict and BeamData.default_data_file_name in values and len(values) == 1:
+                values = values[BeamData.default_data_file_name]
 
             return values
 
@@ -903,9 +915,11 @@ class BeamData(object):
     def values(self):
 
         if not self.is_cached:
-            self.cache()
+            bd = self.cache(in_place=False)
+        else:
+            bd = self
 
-        return self.data
+        return bd.data
 
     @staticmethod
     def read(paths, schema=None, **kwargs):
@@ -1028,8 +1042,12 @@ class BeamData(object):
             data_type = check_type(data)
             if partition is not None and data_type.minor == 'pandas':
                 priority = ['.parquet', '.fea', '.pkl']
-            elif data_type.minor in ['pandas', 'numpy']:
+            elif data_type.minor == 'pandas':
                 priority = ['.fea', '.parquet', '.pkl']
+            elif data_type.minor == 'numpy' and len(data.shape) > 1:
+                priority = ['.fea', '.parquet', '.pkl']
+            elif data_type.minor == 'numpy' and len(data.shape) <= 1:
+                priority = ['.npy', '.pkl']
             elif data_type.minor == 'scipy_sparse':
                 priority = ['scipy_npz', 'npy', '.pkl']
             elif data_type.minor == 'tensor':
@@ -1121,7 +1139,9 @@ class BeamData(object):
         return self._columns_map
 
     def keys(self, recursive=False):
-        if self.orientation == 'simple':
+        if self.orientation is None:
+            keys = []
+        elif self.orientation == 'simple':
             keys = self.columns
         else:
             if self.is_cached:
@@ -1166,13 +1186,14 @@ class BeamData(object):
         return self._size
 
     @staticmethod
-    def _concatenate(data, orientation=None, objects_type=None):
+    def _concatenate_values(data, orientation=None, objects_type=None):
 
         data = recursive_flatten(data)
+        _, v = next(iter_container(data))
+
         if orientation is None:
             orientation = 'index'
         if objects_type is None:
-            _, v = next(iter_container(data))
             objects_type = check_type(v).minor
 
         if orientation == 'columns':
@@ -1183,14 +1204,14 @@ class BeamData(object):
             return data
 
         if objects_type == 'tensor':
-            func = torch.cat
+            func = torch.stack if dim==1 and dim >= len(v.shape) else torch.cat
             kwargs = {'dim': dim}
         elif objects_type == 'pandas':
-            func = pd.concat
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
+            func = pd.concat
             kwargs = {'axis': dim}
         elif objects_type == 'numpy':
-            func = np.concatenate
+            func = np.stack if dim==1 and dim >= len(v.shape) else np.concatenate
             kwargs = {'axis': dim}
         else:
             logger.warning(f"Concatenation not implemented for {objects_type}, returning the original data")
@@ -1198,14 +1219,14 @@ class BeamData(object):
 
         return func(data, **kwargs)
 
-    def concatenate(self, data=None, orientation=None, objects_type=None):
+    def concatenate_values(self, data=None, orientation=None, objects_type=None):
 
         if data is None:
             data = self.flatten_data
             orientation = self.orientation
             objects_type = self.objects_type
 
-        return BeamData._concatenate(data, orientation=orientation, objects_type=objects_type)
+        return BeamData._concatenate_values(data, orientation=orientation, objects_type=objects_type)
 
     def get_default_params(self, *args, **kwargs):
         """
@@ -1313,7 +1334,7 @@ class BeamData(object):
         self.cache(*args, **kwargs)
         return self
 
-    def cache(self, path=None, all_paths=None, schema=None, update=False, **kwargs):
+    def cache(self, path=None, all_paths=None, schema=None, update=False, in_place=True, **kwargs):
 
         if self.is_cached:
             if update:
@@ -1341,16 +1362,16 @@ class BeamData(object):
 
         data = BeamData.read(self.abs_all_paths(all_paths), schema=schema, **kwargs)
 
-        # if type(data) is dict and 'data' in data and len(data) == 1:
-        #     data = data['data']
-
-        self._root_path = path
-        # self.all_paths = BeamData.recursive_map_path(root_path, glob_filter=self.glob_filter)
-        self._all_paths = all_paths
-        self.data = data
-        self.is_stored = True
-        self.is_cached = True
-        self.reset_metadata()
+        if in_place:
+            self._root_path = path
+            # self.all_paths = BeamData.recursive_map_path(root_path, glob_filter=self.glob_filter)
+            self._all_paths = all_paths
+            self.data = data
+            self.is_stored = True
+            self.is_cached = True
+            self.reset_metadata()
+        else:
+            return BeamData(data=data, index=self.index, label=self.label)
 
     def reset_metadata(self, *args, avoid_reset=None):
 
@@ -1475,14 +1496,16 @@ class BeamData(object):
     def stacked_values(self):
 
         if not self.is_cached:
-            self.cache()
+            bd = self.cache(in_place=False)
+        else:
+            bd = self
 
-        if self.orientation == 'packed':
+        if bd.orientation == 'packed':
             raise ValueError("Cannot stack packed data")
-        elif self.orientation == 'simple':
-            return self.data
+        elif bd.orientation == 'simple':
+            return bd.data
 
-        data = self.concatenate()
+        data = bd.concatenate_values()
         return data
 
     @property
@@ -1540,16 +1563,16 @@ class BeamData(object):
         if self.orientation == 'packed':
             raise LookupError(f"Cannot stack for packed orientation")
 
-        data = self.concatenate()
+        data = self.concatenate_values()
 
         index = self.index
         label = self.label
         if self.orientation == 'index':
 
             if index is not None:
-                index = self.concatenate(recursive_flatten(index), orientation=self.orientation)
+                index = self.concatenate_values(recursive_flatten(index), orientation=self.orientation)
             if label is not None:
-                label = self.concatenate(recursive_flatten(label), orientation=self.orientation)
+                label = self.concatenate_values(recursive_flatten(label), orientation=self.orientation)
 
         if self.quick_getitem:
             return BeamData.data_batch(data=data, index=index, label=label)
@@ -1708,17 +1731,17 @@ class BeamData(object):
                     label = label.values
 
         elif ic:
-            data = BeamData._concatenate(data=data, orientation=orientation)
+            data = BeamData._concatenate_values(data=data, orientation=orientation)
 
             if index is not None:
-                index = BeamData._concatenate(data=index, orientation=orientation)
+                index = BeamData._concatenate_values(data=index, orientation=orientation)
 
                 if info is not None:
                     flat_index = pd.Series(np.arange(len(info)), index=index)
                     inverse_map = flat_index.loc[info.index].values
 
             if label is not None:
-                label = BeamData._concatenate(data=label, orientation=orientation)
+                label = BeamData._concatenate_values(data=label, orientation=orientation)
 
             if index is not None and info is not None:
 
@@ -1961,6 +1984,8 @@ class BeamData(object):
 
             path = self.root_path
             all_paths = self.all_paths
+            if type(all_paths) is str:
+                all_paths = {BeamData.default_data_file_name: all_paths}
 
             if key_type.major != 'scalar':
 
@@ -1985,6 +2010,7 @@ class BeamData(object):
             path = path.joinpath(key)
             path = BeamData.write_object(value, path, **kwargs)
             all_paths[key] = str(path.relative_to(self.root_path))
+            self._all_paths = all_paths
             self.update_all_paths_file()
 
         if self.is_cached:
@@ -2003,11 +2029,12 @@ class BeamData(object):
                     logger.warning("Previous label value conflicts with new item. Setting index to None.")
 
             self._label = None
-            self.reset_metadata('all_paths')
+            self.reset_metadata('_all_paths')
 
         if not self.is_stored and self.data is None:
             self.data = {key: value}
-            self.reset_metadata('all_paths')
+            self.reset_metadata('_all_paths')
+            self.is_cached = True
 
     def apply(self, func, *args, preferred_orientation='columns', **kwargs):
         data = recursive(func)(self.data,  *args, **kwargs)
@@ -2039,75 +2066,75 @@ class BeamData(object):
 
     def divide_chunks(self, **kwargs):
 
-            split_by = kwargs.pop('split_by', self.split_by)
-            chunksize = kwargs.pop('chunksize', self.chunksize)
-            chunklen = kwargs.pop('chunklen', self.chunklen)
-            n_chunks = kwargs.pop('n_chunks', self.n_chunks)
-            partition = kwargs.pop('partition', self.partition)
+        split_by = kwargs.pop('split_by', self.split_by)
+        chunksize = kwargs.pop('chunksize', self.chunksize)
+        chunklen = kwargs.pop('chunklen', self.chunklen)
+        n_chunks = kwargs.pop('n_chunks', self.n_chunks)
+        partition = kwargs.pop('partition', self.partition)
 
-            if not self.is_cached and split_by != 'keys':
+        if not self.is_cached and split_by != 'keys':
 
-                if not self.lazy:
-                    self.cache()
-                else:
-                    raise ValueError(f"split_by={split_by} is not supported for not-cached and lazy data.")
+            if not self.lazy:
+                self.cache()
+            else:
+                raise ValueError(f"split_by={split_by} is not supported for not-cached and lazy data.")
 
-            if split_by == 'keys':
+        if split_by == 'keys':
 
-                if self.is_cached:
+            if self.is_cached:
 
-                    for i, (k, d) in enumerate(self.flatten_items.items()):
+                for i, (k, d) in enumerate(self.flatten_items.items()):
 
-                        s = BeamData.get_schema_from_tupled_key(self.schema, k)
-                        index = None
-                        if self.index is not None:
-                            index = get_item_with_tuple_key(self.index, k)
-                        label = None
-                        if self.label is not None:
-                            label = get_item_with_tuple_key(self.label, k)
+                    s = BeamData.get_schema_from_tupled_key(self.schema, k)
+                    index = None
+                    if self.index is not None:
+                        index = get_item_with_tuple_key(self.index, k)
+                    label = None
+                    if self.label is not None:
+                        label = get_item_with_tuple_key(self.label, k)
 
-                        info = None
-                        if self.info is not None:
-                            info = self.info[self.info['fold_index'] == i]
-                        yield k, self.clone(d, index=index, label=label, schema=s, info=info)
-
-                else:
-
-                    for i, (k, p) in enumerate(recursive_flatten_with_keys(self.all_paths).items()):
-                        s = get_item_with_tuple_key(self.schema, k)
-
-                        info = None
-                        if self.info is not None:
-                            info = self.info[self.info['fold_index'] == i]
-
-                        yield k, self.clone(path=self.root_path, all_paths={'data': p}, schema=s, info=info)
+                    info = None
+                    if self.info is not None:
+                        info = self.info[self.info['fold_index'] == i]
+                    yield k, self.clone(d, index=index, label=label, schema=s, info=info)
 
             else:
 
-                n_chunks = BeamData.get_n_chunks(self.data, n_chunks=n_chunks, chunklen=chunklen, chunksize=chunksize,
-                                                 size=self.total_size)
+                for i, (k, p) in enumerate(recursive_flatten_with_keys(self.all_paths).items()):
+                    s = get_item_with_tuple_key(self.schema, k)
 
-                if split_by == 'column':
-                    dim = 1
-                    for k, data_i in recursive_chunks(self.data, n_chunks, dim=dim):
-                        if self.quick_getitem:
-                            yield k, BeamData.data_batch(data_i, index=self.index, label=self.label)
-                        else:
-                            yield k, self.clone(data_i, index=self.index, label=self.label)
+                    info = None
+                    if self.info is not None:
+                        info = self.info[self.info['fold_index'] == i]
 
-                elif split_by == 'index':
-                    dim = 0
-                    for k, data in recursive_chunks((self.index, self.data, self.label), n_chunks=n_chunks,
-                                                    dim=dim, partition=partition):
-                        index_i, data_i, label_i = data
+                    yield k, self.clone(path=self.root_path, all_paths={BeamData.default_data_file_name: p}, schema=s, info=info)
 
-                        if self.quick_getitem:
-                            yield k, BeamData.data_batch(data_i, index=index_i, label=label_i)
-                        else:
-                            yield k, self.clone(data_i, index=index_i, label=label_i)
+        else:
 
-                else:
-                    raise ValueError(f"split_by={split_by} is not supported.")
+            n_chunks = BeamData.get_n_chunks(self.data, n_chunks=n_chunks, chunklen=chunklen, chunksize=chunksize,
+                                             size=self.total_size)
+
+            if split_by == 'column':
+                dim = 1
+                for k, data_i in recursive_chunks(self.data, n_chunks, dim=dim):
+                    if self.quick_getitem:
+                        yield k, BeamData.data_batch(data_i, index=self.index, label=self.label)
+                    else:
+                        yield k, self.clone(data_i, index=self.index, label=self.label)
+
+            elif split_by == 'index':
+                dim = 0
+                for k, data in recursive_chunks((self.index, self.data, self.label), n_chunks=n_chunks,
+                                                dim=dim, partition=partition):
+                    index_i, data_i, label_i = data
+
+                    if self.quick_getitem:
+                        yield k, BeamData.data_batch(data_i, index=index_i, label=label_i)
+                    else:
+                        yield k, self.clone(data_i, index=index_i, label=label_i)
+
+            else:
+                raise ValueError(f"split_by={split_by} is not supported.")
 
     def __iter__(self):
 

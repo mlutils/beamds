@@ -303,14 +303,18 @@ class PureBeamPath:
         p = self.joinpath(key)
         p.write(value)
 
-    def not_empty(self):
+    def not_empty(self, filter_pattern=None):
 
         if self.is_dir():
             for p in self.iterdir():
                 if p.not_empty():
                     return True
                 if p.is_file():
-                    return True
+                    if filter_pattern is not None:
+                        if not re.match(filter_pattern, p.name):
+                            return True
+                    else:
+                        return True
         return False
 
     def copy(self, dst):

@@ -1,7 +1,7 @@
 import os
 import sys
 import torch
-
+import numpy as np
 
 def add_beam_to_path():
     beam_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
@@ -10,11 +10,26 @@ def add_beam_to_path():
 
 add_beam_to_path()
 
+
 def text_beam_data():
 
     from src.beam import BeamData
 
     bd = BeamData.from_path('/tmp/example')
+
+    # print(bd.values)
+    # print(bd.stacked_values)
+
+    print(bd)
+
+    bd['a'] = np.random.randn(100)
+    bd['b'] = np.random.randn(100)
+
+    bd.cache()
+
+    print(bd)
+
+    bd.store()
     print(bd)
 
 
