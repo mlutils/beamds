@@ -22,8 +22,8 @@ def text_beam_data():
 
     print(bd)
 
-    bd['a'] = np.random.randn(100)
-    bd['b'] = np.random.randn(100)
+    bd['c'] = np.random.randn(100)
+    bd['d'] = np.random.randn(100)
 
     bd.cache()
 
