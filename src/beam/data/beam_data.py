@@ -37,7 +37,7 @@ class BeamData(object):
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
                  override=True, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None,
-                 write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None,
+                 write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None, synced=False,
                  write_metadata=True, read_metadata=True, metadata_path_prefix=None, key_fold_map=None, **kwargs):
 
         '''
@@ -77,7 +77,11 @@ class BeamData(object):
 
         #todo: add support for target device+to_tensor when returning DataBatch
 
-        self.lazy = lazy
+        if synced and path is None:
+            raise ValueError("Synced mode requires a path")
+
+        self.lazy = lazy if synced is False else False
+        self.synced = synced
         self.override = override
         self.compress = compress
         self.chunksize = chunksize
@@ -171,7 +175,7 @@ class BeamData(object):
                                               self._root_path.not_empty(filter_pattern=r'^\.'))) and \
                 not self.is_cached:
             self.is_stored = True
-            if not lazy:
+            if not self.lazy:
                 self.cache()
 
     @lazy_property
@@ -1044,12 +1048,10 @@ class BeamData(object):
                 priority = ['.parquet', '.fea', '.pkl']
             elif data_type.minor == 'pandas':
                 priority = ['.fea', '.parquet', '.pkl']
-            elif data_type.minor == 'numpy' and len(data.shape) > 1:
-                priority = ['.fea', '.parquet', '.pkl']
-            elif data_type.minor == 'numpy' and len(data.shape) <= 1:
+            elif data_type.minor == 'numpy':
                 priority = ['.npy', '.pkl']
             elif data_type.minor == 'scipy_sparse':
-                priority = ['scipy_npz', 'npy', '.pkl']
+                priority = ['scipy_npz', '.pkl']
             elif data_type.minor == 'tensor':
                 priority = ['.pt']
             else:
@@ -1967,12 +1969,28 @@ class BeamData(object):
     def hash(self):
         return beam_hash(DataBatch(index=self.index, label=self.label, data=self.data))
 
+    @staticmethod
+    def set_first_key(key, value):
+        data = {}
+        if type(key) is tuple:
+            for k in key[:-1]:
+                data[k] = {}
+                data = data[k]
+            data[key[-1]] = value
+        else:
+            data[key] = value
+        return data
+
     def __setitem__(self, key, value):
         """
         Set value supports only key hierarchy except for the case of 'simple' orientation.
         @param key:
         @param value:
         """
+
+        if self.synced:
+            self.is_stored = True
+            self.is_cached = True
 
         org_key = key
         key_type = check_type(key)
@@ -1986,6 +2004,8 @@ class BeamData(object):
             all_paths = self.all_paths
             if type(all_paths) is str:
                 all_paths = {BeamData.default_data_file_name: all_paths}
+            elif self.all_paths is None:
+                all_paths = {}
 
             if key_type.major != 'scalar':
 
@@ -2019,7 +2039,10 @@ class BeamData(object):
             if self.orientation == 'simple':
                 self.data.__setitem__(key, value)
             else:
-                set_item_with_tuple_key(self.data, key, value)
+                if self.data is None:
+                    self.data = self.set_first_key(key, value)
+                else:
+                    set_item_with_tuple_key(self.data, key, value)
 
             if self.orientation == 'index':
                 if self.index is not None:
@@ -2032,7 +2055,7 @@ class BeamData(object):
             self.reset_metadata('_all_paths')
 
         if not self.is_stored and self.data is None:
-            self.data = {key: value}
+            self.data = self.set_first_key(key, value)
             self.reset_metadata('_all_paths')
             self.is_cached = True
 
