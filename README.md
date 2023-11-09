@@ -1,7 +1,7 @@
 # BeamDS Package (beam data-science)
 
 <p align="center">
-<img src="https://user-images.githubusercontent.com/32983309/175893461-19eeaacb-ddf0-43fd-b43c-20a9144ac65d.png" width="200">
+<img src="resources/beam_icon.png" width="200">
 </p>
 
 ## What is Beam for?
