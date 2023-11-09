@@ -752,6 +752,9 @@ class PureBeamPath:
             elif ext == '.csv':
                 x = pd.DataFrame(x)
                 x.to_csv(fo, **kwargs)
+            elif ext == '.avro':
+                import fastavro
+                fastavro.writer(fo, x, **kwargs)
             elif ext in ['.pkl', '.pickle']:
                 pd.to_pickle(x, fo, **kwargs)
             elif ext == '.npy':
