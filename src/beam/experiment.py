@@ -43,7 +43,7 @@ def gen_hparams_string(experiment_path):
 def path_depth(path):
 
     if isinstance(path, str):
-        path = BeamPath(path)
+        path = beam_path(path)
 
     return len(str(path.resolve()).split(os.sep))
 
@@ -211,8 +211,8 @@ class Experiment(object):
 
         self.tensorboard_hparams = {}
 
-        hparams = args.hparams
-        self.vars_args = copy.copy(vars(args))
+        hparams = args._tune_set
+        self.vars_args = {h:args[h] for h in hparams}
         for k, v in self.vars_args.items():
             param_type = check_type(v)
             if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float'] and k in hparams:
@@ -795,7 +795,7 @@ class Experiment(object):
         logger.add_file_handlers(self.root.joinpath('experiment.log'))
         print_beam_hyperparameters(self.args_to_print, debug_only=not self.print_hyperparameters)
 
-        self.root.joinpath('hparams.pkl').write(self.tensorboard_hparams)
+        self.root.joinpath('hparams.pkl').write(self.hparams)
 
         if not self.hparams.override:
             logger.info(f"Creating new experiment")

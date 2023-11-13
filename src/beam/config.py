@@ -11,6 +11,7 @@ from argparse import Namespace
 from .logger import beam_logger as logger
 from pathlib import Path
 from ._version import __version__
+from dataclasses import dataclass
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
@@ -24,32 +25,46 @@ def boolean_feature(parser, feature, default=False, help='', metavar=None):
             a.metavar = metavar
     parser.set_defaults(**{featurename: default})
 
-
-from collections import namedtuple
-HParam = namedtuple("HParam", "name type default help")
+@dataclass
+class BeamParam:
+    name: str
+    type: type
+    default: any
+    help: str
+    model: bool = True
+    tune: bool = False
 
 
 class BeamHparams(Namespace):
 
-    arguments = []
-    hyperparameters = []
+    parameters = []
     defaults = {}
 
+    @property
+    def __dict__(self):
+        # Only return the standard Namespace attributes
+        return {k: v for k, v in super().__dict__.items() if not k.startswith('_')}
+
     def __init__(self, *args, hparams=None, **kwargs):
+
+        self._model_set = set()
+        self._tune_set = set()
 
         if hparams is None:
             parser = get_beam_parser()
 
             defaults = None
-            arguments = None
-            hyperparameters = None
+            parameters = None
 
             types = type(self).__mro__
 
+            hparam_types = []
             for ti in types:
-
                 if ti is argparse.Namespace:
                     break
+                hparam_types.append(ti)
+
+            for ti in hparam_types[::-1]:
 
                 if ti.defaults is not defaults:
                     defaults = ti.defaults
@@ -57,45 +72,69 @@ class BeamHparams(Namespace):
                 else:
                     d = None
 
-                if ti.arguments is not arguments:
-                    arguments = ti.arguments
-                    a = arguments
-                else:
-                    a = None
-
-                if ti.hyperparameters is not hyperparameters:
-                    hyperparameters = ti.hyperparameters
-                    h = hyperparameters
+                if ti.parameters is not parameters:
+                    parameters = ti.parameters
+                    h = parameters
                 else:
                     h = None
 
-                self.update_parser(parser, defaults=d, arguments=a, hyperparameters=h)
+                model_set, tune_set = self.update_parser(parser, defaults=d, parameters=h)
+                self._tune_set = self._tune_set.union(tune_set)
+                self._model_set = self._model_set.union(model_set)
 
             hparams = beam_arguments(parser, *args, **kwargs)
+            self._tune_set = self._tune_set.union(hparams.tune_set)
+            self._model_set = self._model_set.union(hparams.model_set)
+            
+            del hparams.tune_set
+            del hparams.model_set
+
         super().__init__(**hparams.__dict__)
 
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return (f"{type(self).__name__}:\n\nSystem Parameters:\n\n{self.system_parameters}\n\n"
+                f"Model Parameters:\n\n{self.model_parameters}\n\nTune Parameters:\n\n{self.tune_parameters}")
+
+    @property
+    def tune_parameters(self):
+        return Namespace(**{k: getattr(self, k) for k in self._tune_set})
+
+    @property
+    def model_parameters(self):
+        return Namespace(**{k: getattr(self, k) for k in self._model_set})
+
+    @property
+    def system_parameters(self):
+        return Namespace(**{k: v for k, v in vars(self).items() if k not in self._tune_set.union(self._model_set)})
+
     @staticmethod
-    def update_parser(parser, defaults=None, arguments=None, hyperparameters=None):
+    def update_parser(parser, defaults=None, parameters=None):
+
+        model_set = set()
+        tune_set = set()
 
         if defaults is not None:
             # set defaults
             parser.set_defaults(**{k.replace('-', '_'): v for k, v in defaults.items()})
 
-        if arguments is not None:
-            for v in arguments:
+        if parameters is not None:
+            for v in parameters:
+
+                if v.model:
+                    model_set.add(v.name)
+
+                if v.tune:
+                    tune_set.add(v.name)
+
                 if v.type is bool:
                     boolean_feature(parser, v.name, v.default, v.help)
                 else:
-                    parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type,
-                                             default=v.default, help=v.help)
+                    parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type, default=v.default, help=v.help)
 
-        if hyperparameters is not None:
-            for v in hyperparameters:
-                if v.type is bool:
-                    boolean_feature(parser, v.name, v.default, v.help, metavar='hparam')
-                else:
-                    parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type, default=v.default,
-                                         help=v.help, metavar='hparam')
+        return model_set, tune_set
 
     def is_hparam(self, key):
         key = key.replace('-', '_')
@@ -187,12 +226,12 @@ def get_beam_parser():
                         'If None, will use an ascending order starting from the GPU passed in the --device parameter.'
                         'e.g. when --device=1 will use GPUs 1,2,3,4 when --parallel=4')
 
-    parser.add_argument('--parallel', type=int, default=1, metavar='hparam',
+    parser.add_argument('--parallel', type=int, default=1, metavar='tune',
                         help='Number of parallel gpu workers. Set <=1 for single process')
-    parser.add_argument('--schedulers-steps', type=str, default='epoch', metavar='hparam',
+    parser.add_argument('--schedulers-steps', type=str, default='epoch', metavar='tune',
                         help='When to apply schedulers steps [epoch|iteration|none]: each epoch or each iteration '
                              'Use none to avoid scheduler steps or to use your own custom steps policy')
-    parser.add_argument('--scheduler', type=str, default=None, metavar='hparam',
+    parser.add_argument('--scheduler', type=str, default=None, metavar='tune',
                         help='Build BeamScheduler. Supported schedulers: '
                              '[one_cycle,reduce_on_plateau,cosine_annealing]')
     parser.add_argument('--objective', type=str, default='objective',
@@ -205,6 +244,7 @@ def get_beam_parser():
     boolean_feature(parser, "tensorboard", True, "Log results to tensorboard")
     boolean_feature(parser, "mlflow", False, "Log results to MLFLOW serve")
 
+    boolean_feature(parser, "accelerate", False, "Whether to use accelerate package for training")
     boolean_feature(parser, "lognet", True, 'Log  networks parameters')
     boolean_feature(parser, "deterministic", False, 'Use deterministic pytorch optimization for reproducability'
                                                     'when enabling non-deterministic behavior, it sets '
@@ -214,10 +254,10 @@ def get_beam_parser():
                     'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch'
                     'When False: epoch length corresponds to the number of forward passes in each epoch')
 
-    boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='hparam')
-    parser.add_argument('--amp-dtype', type=str, default='float16', metavar='hparam',
+    boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='tune/model')
+    parser.add_argument('--amp-dtype', type=str, default='float16', metavar='tune/model',
                         help='dtype in automatic mixed precision. Supported dtypes: [float16, bfloat16]')
-    boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='hparam')
+    boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='tune/model')
     boolean_feature(parser, "scalene", False, "Profile the experiment with the Scalene python profiler")
 
     boolean_feature(parser, "find-unused-parameters", False, "For DDP applications: allows running backward on "
@@ -234,85 +274,90 @@ def get_beam_parser():
     boolean_feature(parser, "copy-code", True, "Copy the code directory into the experiment directory")
     boolean_feature(parser, "restart-epochs-count", True,
                     "When reloading an algorithm, restart counting epochs from zero "
-                    "(with respect to schedulers and swa training)", metavar='hparam')
+                    "(with respect to schedulers and swa training)", metavar='tune')
 
     # experiment parameters
-    parser.add_argument('--init', type=str, default='ortho', metavar='hparam',
+    parser.add_argument('--init', type=str, default='ortho', metavar='tune',
                         help='Initialization method [ortho|N02|xavier|]')
-    parser.add_argument('--seed', type=int, default=0, help='Seed for reproducability (zero is saved for random seed)')
+    parser.add_argument('--seed', type=int, default=0,
+                        help='Seed for reproducability (zero is saved for random seed)')
     parser.add_argument('--split-dataset-seed', type=int, default=5782,
                         help='Seed dataset split (set to zero to get random split)')
 
-    parser.add_argument('--total-steps', type=int, default=int(1e6), metavar='hparam', help='Total number of environment steps')
+    parser.add_argument('--total-steps', type=int, default=int(1e6), metavar='tune',
+                        help='Total number of environment steps')
 
-    parser.add_argument('--epoch-length', type=int, default=None, metavar='hparam',
+    parser.add_argument('--epoch-length', type=int, default=None, metavar='tune',
                         help='Length of train+eval epochs (if None - it is taken from epoch-length-train/epoch-length-eval arguments)')
-    parser.add_argument('--epoch-length-train', type=int, default=None, metavar='hparam',
+    parser.add_argument('--epoch-length-train', type=int, default=None, metavar='tune',
                         help='Length of each epoch (if None - it is the dataset[train] size)')
-    parser.add_argument('--epoch-length-eval', type=int, default=None, metavar='hparam',
+    parser.add_argument('--epoch-length-eval', type=int, default=None, metavar='tune',
                         help='Length of each evaluation epoch (if None - it is the dataset[validation] size)')
-    parser.add_argument('--n-epochs', type=int, default=None, metavar='hparam',
+    parser.add_argument('--n-epochs', type=int, default=None, metavar='tune',
                         help='Number of epochs, if None, it uses the total steps to determine the number of iterations')
 
-    boolean_feature(parser, "dynamic-sampler", False, 'Whether to use a dynamic sampler (mainly for rl/optimization)')
-    parser.add_argument('--buffer-size', type=int, default=None, metavar='hparam',
+    boolean_feature(parser, "dynamic-sampler", False,
+                    'Whether to use a dynamic sampler (mainly for rl/optimization)')
+    parser.add_argument('--buffer-size', type=int, default=None, metavar='tune',
                         help='Maximal Dataset size in dynamic problems')
     parser.add_argument('--probs-normalization', type=str, default='sum',
                         help='Sampler\'s probabilities normalization method [sum/softmax]')
-    parser.add_argument('--sample-size', type=int, default=100000, help='Periodic sample size for the dynamic sampler')
+    parser.add_argument('--sample-size', type=int, default=100000,
+                        help='Periodic sample size for the dynamic sampler')
     # environment parameters
 
     # Learning parameters
 
-    parser.add_argument('--batch-size', type=int, default=256, metavar='hparam', help='Batch Size')
-    parser.add_argument('--batch-size-train', type=int, default=None, metavar='hparam',
+    parser.add_argument('--batch-size', type=int, default=256, metavar='tune', help='Batch Size')
+    parser.add_argument('--batch-size-train', type=int, default=None, metavar='tune',
                         help='Batch Size for training iterations')
-    parser.add_argument('--batch-size-eval', type=int, default=None, metavar='hparam',
+    parser.add_argument('--batch-size-eval', type=int, default=None, metavar='tune',
                         help='Batch Size for testing/evaluation iterations')
 
-    parser.add_argument('--reduction', type=str, metavar='hparam', default='sum',
+    parser.add_argument('--reduction', type=str, metavar='tune', default='sum',
                         help='whether to sum loss elements or average them [sum|mean|mean_batch|sqrt|mean_sqrt]')
-    parser.add_argument('--lr-dense', '--lr', type=float, default=1e-3, metavar='hparam',
+    parser.add_argument('--lr-dense', '--lr', type=float, default=1e-3, metavar='tune',
                         help='learning rate for dense optimizers')
-    parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='hparam',
+    parser.add_argument('--lr-sparse', type=float, default=1e-2, metavar='tune',
                         help='learning rate for sparse optimizers')
-    parser.add_argument('--cycle-max-momentum', type=float, default=.95, metavar='hparam',
+    parser.add_argument('--cycle-max-momentum', type=float, default=.95, metavar='tune',
                         help='The maximum momentum in one-cycle optimizer')
-    parser.add_argument('--cycle-base-momentum', type=float, default=.85, metavar='hparam',
+    parser.add_argument('--cycle-base-momentum', type=float, default=.85, metavar='tune',
                         help='The base momentum in one-cycle optimizer')
-    parser.add_argument('--cawr-t0', type=int, default=10, metavar='hparam',
+    parser.add_argument('--cawr-t0', type=int, default=10, metavar='tune',
                         help=' Number of iterations for the first restart in CosineAnnealingWarmRestarts scheduler')
-    parser.add_argument('--cawr-tmult', type=int, default=1, metavar='hparam',
+    parser.add_argument('--cawr-tmult', type=int, default=1, metavar='tune',
                         help=' A factor increases Ti after a restart in CosineAnnealingWarmRestarts scheduler')
-    parser.add_argument('--scheduler-factor', '--scheduler-gamma', type=float, default=math.sqrt(.1), metavar='hparam',
+    parser.add_argument('--scheduler-factor', '--scheduler-gamma', type=float,
+                        default=math.sqrt(.1), metavar='tune',
                         help='The factor to reduce lr in schedulers such as ReduceOnPlateau')
-    parser.add_argument('--scheduler-patience', type=int, default=None, metavar='hparam',
+    parser.add_argument('--scheduler-patience', type=int, default=None, metavar='tune',
                         help='Patience for the ReduceOnPlateau scheduler')
-    parser.add_argument('--scheduler-warmup', type=float, default=5, metavar='hparam',
+    parser.add_argument('--scheduler-warmup', type=float, default=5, metavar='tune',
                         help='Scheduler\'s warmup factor (in epochs)')
-    parser.add_argument('--weight-decay', type=float, default=0., metavar='hparam', help='L2 regularization coefficient for dense optimizers')
-    parser.add_argument('--eps', type=float, default=1e-4, metavar='hparam', help='Adam\'s epsilon parameter')
-    parser.add_argument('--momentum', '--beta1', type=float, default=0.9, metavar='hparam',
+    parser.add_argument('--weight-decay', type=float, default=0., metavar='tune', help='L2 regularization coefficient for dense optimizers')
+    parser.add_argument('--eps', type=float, default=1e-4, metavar='tune', help='Adam\'s epsilon parameter')
+    parser.add_argument('--momentum', '--beta1', type=float, default=0.9, metavar='tune',
                         help='The momentum and Adam\'s β1 parameter')
-    parser.add_argument('--beta2', type=float, default=0.999, metavar='hparam', help='Adam\'s β2 parameter')
-    parser.add_argument('--clip-gradient', type=float, default=0., metavar='hparam', help='Clip Gradient L2 norm')
-    parser.add_argument('--accumulate', type=int, default=1, metavar='hparam', help='Accumulate gradients for this number of backward iterations')
-    parser.add_argument('--oversampling-factor', type=float, default=.0, metavar='hparam',
+    parser.add_argument('--beta2', type=float, default=0.999, metavar='tune', help='Adam\'s β2 parameter')
+    parser.add_argument('--clip-gradient', type=float, default=0., metavar='tune', help='Clip Gradient L2 norm')
+    parser.add_argument('--accumulate', type=int, default=1, metavar='tune', help='Accumulate gradients for this number of backward iterations')
+    parser.add_argument('--oversampling-factor', type=float, default=.0, metavar='tune',
                         help='A factor [0, 1] that controls how much to oversample where'
                              '0-no oversampling and 1-full oversampling. Set 0 for no oversampling')
     parser.add_argument('--expansion-size', type=int, default=int(1e7),
                         help='largest expanded index size for oversampling')
-    parser.add_argument('--stop-at', type=float, default=0., metavar='hparam',
+    parser.add_argument('--stop-at', type=float, default=0., metavar='tune',
                         help='Early stopping when objective >= stop_at')
-    parser.add_argument('--early-stopping-patience', type=int, default=0, metavar='hparam',
+    parser.add_argument('--early-stopping-patience', type=int, default=0, metavar='tune',
                         help='Early stopping patience in epochs, '
                              'stop when current_epoch - best_epoch >= early_stopping_patience')
 
     parser.add_argument('--swa', type=float, default=None,
                         help='SWA period. If float it is a fraction of the total number of epochs. '
                              'If integer, it is the number of SWA epochs.')
-    parser.add_argument('--swa-lr', type=float, default=0.05, metavar='hparam', help='The SWA learning rate')
-    parser.add_argument('--swa-anneal-epochs', type=int, default=10, metavar='hparam', help='The SWA lr annealing period')
+    parser.add_argument('--swa-lr', type=float, default=0.05, metavar='tune', help='The SWA learning rate')
+    parser.add_argument('--swa-anneal-epochs', type=int, default=10, metavar='tune', help='The SWA lr annealing period')
 
     # results printing and visualization
 
@@ -321,9 +366,11 @@ def get_beam_parser():
     boolean_feature(parser, "enable-tqdm", True, "Print tqdm progress bar when training")
     parser.add_argument('--visualize-results-log-base', type=int, default=10,
                         help='log base for the logarithmic based results visualization')
-    parser.add_argument('--tqdm-threshold', type=float, default=10., help='Minimal expected epoch time to print tqdm bar'
-                                                                         'set 0 to ignore and determine tqdm bar with tqdm-enable flag')
-    parser.add_argument('--tqdm-stats', type=float, default=1., help='Take this period to calculate the experted epoch time')
+    parser.add_argument('--tqdm-threshold', type=float, default=10.,
+                        help='Minimal expected epoch time to print tqdm bar'
+                             'set 0 to ignore and determine tqdm bar with tqdm-enable flag')
+    parser.add_argument('--tqdm-stats', type=float, default=1.,
+                        help='Take this period to calculate the experted epoch time')
 
     parser.add_argument('--visualize-results', type=str, default='yes',
                         help='when to visualize results on tensorboard [yes|no|logscale]')
@@ -353,15 +400,16 @@ def get_beam_parser():
 
     # catboost
 
-    boolean_feature(parser, "cb-ranker", False, "Whether to use catboost ranker instead of regression")
-    parser.add_argument('--cb-n-estimators', type=int, default=1000, metavar='hparam',
+    boolean_feature(parser, "cb-ranker", False,
+                    "Whether to use catboost ranker instead of regression", metavar='model')
+    parser.add_argument('--cb-n-estimators', type=int, default=1000, metavar='tune',
                         help='The number of trees in the catboost model')
 
     # transformer arguments
     parser.add_argument('--mp-method', type=str, default='joblib', help='The multiprocessing method to use')
-    parser.add_argument('--n-chunks', type=int, default=None, metavar='hparam',
+    parser.add_argument('--n-chunks', type=int, default=None, metavar='tune',
                         help='The number of chunks to split the dataset')
-    parser.add_argument('--name', type=str, default=None, metavar='hparam',
+    parser.add_argument('--name', type=str, default=None, metavar='tune',
                         help='The name of the dataset')
     parser.add_argument('--store-path', type=str, default=None, help='The path to store the results')
     parser.add_argument('--partition', type=str, default=None, help='The partition to use for splitting the dataset')
@@ -373,7 +421,7 @@ def get_beam_parser():
     parser.add_argument('--split-by', type=str, default='keys', help='The split strategy to use can be [keys|index|columns]')
     parser.add_argument('--store-suffix', type=str, default=None, help='The suffix to add to the stored file')
 
-    parser.add_argument('--llm', type=str, default=None,
+    parser.add_argument('--llm', type=str, default=None, metavar='model',
                         help='URI of a Large Language Model to be used in the experiment.')
 
     return parser
@@ -510,10 +558,13 @@ def beam_arguments(*args, **kwargs):
         for k, v in cf.items():
             setattr(args, k, v)
 
-    hparams = [pai.dest for pai in pr._actions if pai.metavar == 'hparam']
-    setattr(args, 'hparams', hparams)
-
     beam_key.set_hparams(vars(args))
+
+    tune = [pai.dest for pai in pr._actions if pai.metavar is not None and 'tune' in pai.metavar]
+    setattr(args, 'tune_set', set(tune))
+
+    model = [pai.dest for pai in pr._actions if pai.metavar is not None and 'model' in pai.metavar]
+    setattr(args, 'model_set', set(model))
 
     return args
 

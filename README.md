@@ -1,4 +1,4 @@
-# BeamDS Package (beam data-science)
+# BeamDS (Beam Data Science)
 
 <p align="center">
 <img src="resources/beam_icon.png" width="200">

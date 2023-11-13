@@ -1,4 +1,4 @@
-from .processor import Processor
+from .core.processor import Processor
 from .data import BeamData
 from .path import beam_key
 import pandas as pd
@@ -119,7 +119,7 @@ class BeamSQL(Processor):
     @staticmethod
     def df2table(df, name, metadata=None):
 
-        from sqlalchemy import Table, Column, String, Integer, Float, Boolean, DateTime, Date, Time, BigInteger
+        from sqlalchemy import Table, Column
         from sqlalchemy.schema import MetaData
 
         if metadata is None:

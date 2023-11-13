@@ -11,6 +11,14 @@ def add_beam_to_path():
 add_beam_to_path()
 
 
+def build_hparams():
+    from src.beam.tabular import TabularHparams
+    hparams = TabularHparams(path_to_data='xxxxx')
+
+    print(hparams.__dict__)
+    print(hparams)
+
+
 def text_beam_data():
 
     from src.beam import BeamData
@@ -184,6 +192,8 @@ if __name__ == '__main__':
 
     # test_data_apply()
 
-    text_beam_data()
+    # text_beam_data()
+
+    build_hparams()
 
     print('done')

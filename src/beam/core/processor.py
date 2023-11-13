@@ -1,12 +1,12 @@
-from .utils import retrieve_name, normalize_host, lazy_property, check_type
+from src.beam.utils import retrieve_name, lazy_property, check_type
 from collections import OrderedDict
-from .path import beam_path
-from .config import BeamHparams
+from src.beam.path import beam_path, normalize_host
+from src.beam.config import BeamHparams
 import pickle
 import io
 
 try:
-    from .data import BeamData
+    from src.beam.data import BeamData
     has_beam_ds = True
 except ImportError:
     has_beam_ds = False

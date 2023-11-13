@@ -3,22 +3,19 @@ from collections import defaultdict
 from torch import nn
 import torch
 import copy
-from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
 import numpy as np
 from ..optim import BeamOptimizer, BeamScheduler, MultipleScheduler
-from ..utils import to_device, check_type, rate_string_format, recursive_concatenate, \
-    as_numpy, beam_device, retrieve_name, filter_dict, BeamDict, \
-    recursive_collate_chunks, is_notebook, DataBatch, pretty_format_number, nested_defaultdict, dictionary_iterator
+from ..utils import to_device, check_type, recursive_concatenate, \
+    beam_device, filter_dict, lazy_property, \
+    is_notebook, DataBatch, dictionary_iterator
 from ..config import beam_arguments, get_beam_parser
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment
 from ..reporter import BeamReport
-from timeit import default_timer as timer
 from ..path import beam_path, PureBeamPath
-from ..processor import Processor
+from .processor import Processor
 from ..logger import beam_kpi, BeamResult
-from ..data import BeamData
 
 
 class Algorithm(Processor):
@@ -106,6 +103,13 @@ class Algorithm(Processor):
         self._train_reporter = None
         self.reporter = None
         self.training = False
+
+    @lazy_property
+    def accelerator(self):
+        if self.hparams.get('accelerate'):
+            from accelerate import Accelerator
+            return Accelerator()
+        return None
 
     @property
     def state_attributes(self):

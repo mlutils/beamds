@@ -1,6 +1,3 @@
-import json
-import re
-import string
 import time
 from functools import partial
 from typing import Optional, Any, Dict, List, Mapping
@@ -11,11 +8,12 @@ import pandas as pd
 from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens
-from ..processor import Processor
-from ..utils import BeamURL, parse_text_to_protocol, get_edit_ratio
+from ..core.processor import Processor
+from ..utils import parse_text_to_protocol, get_edit_ratio
+from ..path import BeamURL
 from langchain.llms.base import LLM
 from langchain.callbacks.manager import CallbackManagerForLLMRun
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import Field, PrivateAttr
 from transformers.pipelines import Conversation
 
 

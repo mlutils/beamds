@@ -5,7 +5,7 @@ from ..data import BeamData
 from ..path import beam_path
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
-from ..processor import Processor
+from ..core.processor import Processor
 from ..config import BeamHparams
 from enum import Enum
 

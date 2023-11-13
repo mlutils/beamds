@@ -1,7 +1,5 @@
 from .models import OpenAI, TGILLM, FastChatLLM, FastAPILLM, HuggingFaceLLM
-from ..path import beam_key
-
-from ..utils import BeamURL
+from ..path import beam_key, BeamURL
 
 
 def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwargs):

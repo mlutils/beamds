@@ -8,9 +8,8 @@ from transformers.pipelines import Conversation
 
 from ..logger import beam_logger as logger
 from .llm import BeamLLM
-from ..utils import normalize_host
 from pydantic import BaseModel, Field, PrivateAttr
-from ..path import beam_key
+from ..path import beam_key, normalize_host
 
 
 class OpenAIBase(BeamLLM):
