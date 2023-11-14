@@ -228,42 +228,9 @@ class TGILLM(FCConversationLLM):
         self.usage["total_tokens"] += 0 + response.details.generated_tokens
 
     def openai_format(self, res):
-
-        text = self.extract_text(res)
-
-        if res.chat:
-            choice = {
-                      "finish_reason": "stop",
-                      "index": 0,
-                      "message": {
-                        "content": text,
-                        "role": "assistant"
-                      }
-                    }
-        else:
-            choice = {
-                "finish_reason": "stop",
-                "index": 0,
-                "logprobs": res.response.details.tokens,
-                "text": text
-            }
-
-        res = {
-                  "choices": [
-                    choice
-                  ],
-                  "created": res.created,
-                  "id": res.id,
-                  "model": res.model,
-                  "object": res.object,
-                  "usage": {
-                    "completion_tokens": res.response.details.generated_tokens,
-                    "prompt_tokens": 0,
-                    "total_tokens": res.response.details.generated_tokens
-                  }
-                }
-
-        return res
+        return super().openai_format(res, tokens=res.response.details.tokens,
+                                     completion_tokens=res.response.details.generated_tokens,
+                                     total_tokens=res.response.details.generated_tokens)
 
     @property
     def is_chat(self):

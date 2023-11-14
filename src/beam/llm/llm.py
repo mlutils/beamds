@@ -15,6 +15,7 @@ from langchain.llms.base import LLM
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from pydantic import Field, PrivateAttr
 from transformers.pipelines import Conversation
+import openai
 
 
 class BeamLLM(LLM, Processor):
@@ -434,6 +435,45 @@ class BeamLLM(LLM, Processor):
         # res = res.choices[0].text
 
         return res
+
+    def openai_format(self, res, finish_reason="stop", tokens=None, completion_tokens=0, prompt_tokens=0, total_tokens=0):
+
+        text = self.extract_text(res)
+
+        if res.chat:
+            choice = {
+                      "finish_reason": finish_reason,
+                      "index": 0,
+                      "message": {
+                        "content": text,
+                        "role": "assistant"
+                      }
+                    }
+        else:
+            choice = {
+                "finish_reason": finish_reason,
+                "index": 0,
+                "logprobs": tokens,
+                "text": text
+            }
+
+        res = {
+                  "choices": [
+                    choice
+                  ],
+                  "created": res.created,
+                  "id": res.id,
+                  "model": res.model,
+                  "object": res.object,
+                  "usage": {
+                    "completion_tokens": completion_tokens,
+                    "prompt_tokens": prompt_tokens,
+                    "total_tokens": total_tokens
+                  }
+                }
+
+        return openai.openai_object.OpenAIObject(**res)
+
 
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
