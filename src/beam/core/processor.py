@@ -1,9 +1,9 @@
-from src.beam.utils import retrieve_name, lazy_property, check_type
 from collections import OrderedDict
-from src.beam.path import beam_path, normalize_host
-from src.beam.config import BeamHparams
 import pickle
 import io
+from ..path import beam_path, normalize_host
+from ..utils import retrieve_name, lazy_property, check_type
+from ..config import BeamHparams
 
 try:
     from src.beam.data import BeamData
