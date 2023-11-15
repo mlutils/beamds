@@ -9,7 +9,7 @@ from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens
 from ..core.processor import Processor
-from ..utils import parse_text_to_protocol, get_edit_ratio
+from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property
 from ..path import BeamURL
 from langchain.llms.base import LLM
 from langchain.callbacks.manager import CallbackManagerForLLMRun
@@ -98,16 +98,22 @@ class BeamLLM(LLM, Processor):
 
         self._chat_history = None
 
-        self._tokenizer = None
-        if path_to_tokenizer is not None:
-            from tokenizers import PreTrainedTokenizerFast
-            tokenizer = PreTrainedTokenizerFast(tokenizer_file=path_to_tokenizer)
-        if tokenizer is not None:
-            self._tokenizer = tokenizer
-
+        self._path_to_tokenizer = path_to_tokenizer
+        self._tokenizer = tokenizer
         self._len_function = len_function
+
         self.reset_chat()
         self._lazy_cache = {}
+
+    @lazy_property
+    def tokenizer(self):
+        tokenizer = None
+        if self._tokenizer is not None:
+            tokenizer = self._tokenizer
+        if self._path_to_tokenizer is not None:
+            from tokenizers import PreTrainedTokenizerFast
+            tokenizer = PreTrainedTokenizerFast(tokenizer_file=self._path_to_tokenizer)
+        return tokenizer
 
     @property
     def url(self):
@@ -161,8 +167,8 @@ class BeamLLM(LLM, Processor):
 
     def len_function(self, prompt):
 
-        if self._tokenizer is not None:
-            return len(self._tokenizer(prompt)['input_ids'])
+        if self.tokenizer is not None:
+            return len(self.tokenizer(prompt)['input_ids'])
 
         if self._len_function is None:
             return estimate_tokens(prompt)
