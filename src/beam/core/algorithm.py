@@ -108,7 +108,13 @@ class Algorithm(Processor):
     def accelerator(self):
         if self.hparams.get('accelerate'):
             from accelerate import Accelerator
-            return Accelerator()
+            return Accelerator(device_placement=self.hparams.get('device_placement'),
+                               split_batches=self.hparams.get('split_batches'),
+                               mixed_precision=self.hparams.get('amp_dtype'),
+                               gradient_accumulation_steps=self.hparams.get('accumulate'),
+                               cpu='cpu' == self.device.type,
+                               project_dir=self.experiment.root,
+                               )
         return None
 
     @property

@@ -244,7 +244,6 @@ def get_beam_parser():
     boolean_feature(parser, "tensorboard", True, "Log results to tensorboard")
     boolean_feature(parser, "mlflow", False, "Log results to MLFLOW serve")
 
-    boolean_feature(parser, "accelerate", False, "Whether to use accelerate package for training")
     boolean_feature(parser, "lognet", True, 'Log  networks parameters')
     boolean_feature(parser, "deterministic", False, 'Use deterministic pytorch optimization for reproducability'
                                                     'when enabling non-deterministic behavior, it sets '
@@ -423,6 +422,17 @@ def get_beam_parser():
 
     parser.add_argument('--llm', type=str, default=None, metavar='model',
                         help='URI of a Large Language Model to be used in the experiment.')
+
+
+    # accelerate parameters
+    # based on https://huggingface.co/docs/accelerate/v0.24.0/en/package_reference/accelerator#accelerate.Accelerator
+    boolean_feature(parser, "accelerate", False, "Whether to use accelerate package for training")
+    boolean_feature(parser, "device-placement", True,
+                    " Whether or not the accelerator should put objects on device")
+    boolean_feature(parser, "split-batches", False,
+                    "Whether or not the accelerator should split the batches "
+                    "yielded by the dataloaders across the devices")
+
 
     return parser
 
