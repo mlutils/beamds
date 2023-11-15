@@ -794,3 +794,75 @@ class HDFSPAPath(PyArrowPath):
                                          kerb_ticket=kerb_ticket, extra_conf=extra_conf)
 
         self.client = client
+
+
+class CometArtifact(PureBeamPath):
+    # a pathlib/beam_path api for comet artifacts
+
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
+                 secret_key=None, tls=True, **kwargs):
+        super().__init__(*pathsegments, scheme='comet', client=client, hostname=hostname, port=port,
+                         access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+
+        if client is None:
+
+            from comet_ml import API
+            client = API(api_key=access_key)
+
+        self.client = client
+        parts = self.parts
+
+        self.workspace = parts[0]
+        self.project_name = None
+        self.experiment_name = None
+        self.asset_name = None
+        self.level = len(parts)
+        if self.level > 1:
+            self.project_name = parts[1]
+        if self.level > 2:
+            self.experiment_name = parts[2]
+        if self.level > 3:
+            self.asset_name = parts[3]
+
+    @property
+    def assets_map(self):
+        if self.level < 2:
+            return None
+        assets_map = self.experiment.get_asset_list()
+        return {asset['fileName']: asset for asset in assets_map}
+
+    @property
+    def experiment(self):
+        arguments = {'workspace': self.workspace}
+        if self.level > 1:
+            arguments['project_name'] = self.project_name
+        if self.level > 2:
+            arguments['experiment'] = self.experiment_name
+        return self.client.get(**arguments)
+
+    def is_file(self):
+        if self.assets_map is None or self.name not in self.assets_map:
+            return False
+        return True
+
+    def is_dir(self):
+        return self.asset_name is None
+
+    def exists(self):
+        if self.experiment is None:
+            return False
+        pass
+
+    def iterdir(self):
+        arguments = {'workspace': self.workspace}
+        if self.level > 1:
+            arguments['project_name'] = self.project_name
+        if self.level > 2:
+            arguments['experiment'] = self.experiment
+        if self.level > 3:
+            raise ValueError("CometArtifact: too many levels, it is not a directory")
+
+
+
+
+

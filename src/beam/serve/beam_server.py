@@ -7,6 +7,7 @@ from collections import defaultdict
 from queue import Queue, Empty
 from threading import Thread
 from uuid import uuid4 as uuid
+from flask import Flask, request, jsonify, send_file
 
 from ..logger import beam_logger as logger
 from ..experiment import Experiment
@@ -17,6 +18,7 @@ try:
     has_torch = True
 except ImportError:
     has_torch = False
+
 
 class BeamServer(object):
 
@@ -148,7 +150,7 @@ class BeamServer(object):
 
     def _centralized_batch_executor(self):
 
-        from .data import BeamData
+        from ..data import BeamData
         while True:
             logger.info(f"Starting a new batch inference")
             batch = []

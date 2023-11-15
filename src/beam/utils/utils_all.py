@@ -792,6 +792,18 @@ import traceback
 import linecache
 
 
+def beam_traceback(exc_type=None, exc_value=None, tb=None, context=3):
+
+    if exc_type is None:
+        exc_type, exc_value, tb = sys.exc_info()
+
+    if exc_type is None:
+        print("No exception found, Printing stack only:")
+        return f"{traceback.print_stack()}"
+    else:
+        return jupyter_like_traceback(exc_type=exc_type, exc_value=exc_value, tb=tb, context=context)
+
+
 def jupyter_like_traceback(exc_type=None, exc_value=None, tb=None, context=3):
 
     if exc_type is None:
