@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 def add_beam_to_path():
-    beam_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
+    beam_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '../src')
     sys.path.insert(0, beam_path)
 
 

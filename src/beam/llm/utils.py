@@ -1,5 +1,6 @@
 import re
 import string
+from .model_adapter import get_model_adapter
 
 
 def text_splitter(text, separators=["\n\n", ". ", " "], chunk_size=100, length_function=None):
@@ -44,3 +45,8 @@ def estimate_tokens(s):
     token_count += len(unmatched_characters)
 
     return token_count
+
+
+def get_conversation_template(model_path):
+    ma = get_model_adapter(model_path)
+    return ma.get_default_conv_template('       ')

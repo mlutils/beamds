@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from pathlib import PurePath, Path
 from .core import PureBeamPath, normalize_host
 from io import StringIO, BytesIO
@@ -6,6 +7,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 import warnings
+from uuid import uuid4 as uuid
 
 
 class BeamPath(PureBeamPath):
@@ -796,6 +798,23 @@ class HDFSPAPath(PyArrowPath):
         self.client = client
 
 
+@contextmanager
+def temp_local_file(content, tmp_path='/tmp', name=None, ext=None, as_beam_path=True):
+    tmp_path = BeamPath(tmp_path).joinpath(uuid())
+    tmp_path.mkdir(exist_ok=True, parents=True)
+    if name is None:
+        name = uuid()
+    if ext is not None:
+        name = f"{name}{ext}"
+    tmp_path = tmp_path.joinpath(name)
+    try:
+        tmp_path.write(content)
+        yield tmp_path if as_beam_path else str(tmp_path)
+    finally:
+        tmp_path.unlink()
+        tmp_path.parent.rmdir()
+
+
 class CometArtifact(PureBeamPath):
     # a pathlib/beam_path api for comet artifacts
 
@@ -833,36 +852,96 @@ class CometArtifact(PureBeamPath):
 
     @property
     def experiment(self):
+        attr = 'get_experiments'
         arguments = {'workspace': self.workspace}
         if self.level > 1:
             arguments['project_name'] = self.project_name
         if self.level > 2:
             arguments['experiment'] = self.experiment_name
-        return self.client.get(**arguments)
+        if self.level > 3:
+            attr = 'get_experiment'
+        return getattr(self.client, attr)(**arguments)
 
     def is_file(self):
-        if self.assets_map is None or self.name not in self.assets_map:
+        assets_map = self.assets_map
+        if assets_map is None or self.name not in assets_map:
             return False
         return True
 
     def is_dir(self):
-        return self.asset_name is None
+        return self.level < 4 and self.assets_map is not None
 
     def exists(self):
-        if self.experiment is None:
+        assets_map = self.assets_map
+        if assets_map is None:
             return False
-        pass
+        if self.level < 4:
+            return True
+        return self.name in assets_map
 
     def iterdir(self):
-        arguments = {'workspace': self.workspace}
-        if self.level > 1:
-            arguments['project_name'] = self.project_name
-        if self.level > 2:
-            arguments['experiment'] = self.experiment
-        if self.level > 3:
-            raise ValueError("CometArtifact: too many levels, it is not a directory")
+        if self.level in [1, 2]:
+            for p in self.experiment:
+                path = self.path.joinpath(p)
+                yield self.gen(path)
+        elif self.level == 3:
+            assets_map = self.assets_map
+            if assets_map is None:
+                return
+            for a in assets_map:
+                path = self.path.joinpath(a)
+                yield self.gen(path)
 
+        raise ValueError("CometArtifact: too many levels, it is not a directory")
 
+    def mkdir(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    def rmdir(self):
+        raise NotImplementedError
 
+    def unlink(self, missing_ok=False):
+        if not missing_ok:
+            raise NotImplementedError
+        raise NotImplementedError
+
+    def rename(self, target):
+        raise NotImplementedError
+
+    def replace(self, target):
+        raise NotImplementedError
+
+    def read(self, ext=None, **kwargs):
+        raise NotImplementedError
+
+    def write(self, x, ext=None, **kwargs):
+        raise NotImplementedError
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+
+            content = self.experiment.get_asset(self.assets_map[self.name]['assetId'])
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+
+        elif self.mode in ['wb', 'w']:
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+        else:
+            raise ValueError
+
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ["rb", "r"]:
+            self.file_object.close()
+        else:
+            self.file_object.seek(0)
+            content = self.file_object.getvalue()
+            with temp_local_file(content, name=self.name, as_beam_path=True) as tmp_path:
+                cwd = os.getcwd()
+                os.chdir(tmp_path.parent)
+                self.experiment.log_asset(tmp_path.name)
+                os.chdir(cwd)
+            self.file_object.close()
 
 

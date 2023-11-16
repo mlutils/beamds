@@ -12,7 +12,7 @@ import numpy as np
 import os
 import pandas as pd
 
-from src.beam import beam_arguments, Experiment
+from beam import beam_arguments, Experiment
 from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
 from src.beam import beam_logger as logger
 from src.beam.utils import get_public_ip

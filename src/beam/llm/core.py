@@ -44,6 +44,7 @@ class BeamLLM(LLM, Processor):
     # To be used with pydantic classes and lazy_property
     _lazy_cache: Any = PrivateAttr()
     _tokenizer: Any = PrivateAttr()
+    _path_to_tokenizer: Any = PrivateAttr()
 
     _assistant_budget: Any = PrivateAttr()
     _assistant_docstrings: Any = PrivateAttr()
@@ -480,7 +481,6 @@ class BeamLLM(LLM, Processor):
 
         return openai.openai_object.OpenAIObject(**res)
 
-
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
             retrials=None, sleep=None, **kwargs):
@@ -508,6 +508,9 @@ class BeamLLM(LLM, Processor):
                                                  logit_bias=logit_bias,
                                                  max_new_tokens=max_new_tokens,
                                                  retrials=retrials, sleep=sleep)
+
+        # if response_format is not None:
+        #     question = f"{question}\nReplay with a valid {response_format} format"
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}

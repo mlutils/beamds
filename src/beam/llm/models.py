@@ -7,9 +7,11 @@ import numpy as np
 from transformers.pipelines import Conversation
 
 from ..logger import beam_logger as logger
-from .llm import BeamLLM
+from .core import BeamLLM
 from pydantic import BaseModel, Field, PrivateAttr
 from ..path import beam_key, normalize_host
+from .utils import get_conversation_template
+from ..utils import lazy_property
 
 
 class OpenAIBase(BeamLLM):
@@ -149,7 +151,6 @@ class OpenAI(OpenAIBase):
 
 class FCConversationLLM(BeamLLM):
 
-    _ma: Any = PrivateAttr()
     _conv: Any = PrivateAttr()
 
     def __init__(self, *args, model=None, model_adapter=None, **kwargs):
@@ -160,8 +161,7 @@ class FCConversationLLM(BeamLLM):
             model = model_adapter
 
         from fastchat.model.model_adapter import get_model_adapter
-        self._ma = get_model_adapter(model)
-        self._conv = self._ma.get_default_conv_template('       ')
+        self._conv = get_conversation_template(model)
 
     @property
     def stop_sequence(self):
@@ -450,12 +450,10 @@ class FastAPILLM(FCConversationLLM):
 
 
 class HuggingFaceLLM(BeamLLM):
-    config: Any
-    tokenizer: Any
-    net: Any
     pipline_kwargs: Any
     input_device: Optional[str] = Field(None)
     eos_pattern: Optional[str] = Field(None)
+    tokenizer_name: Optional[str] = Field(None)
     _text_generation_pipeline: Any = PrivateAttr()
     _conversational_pipeline: Any = PrivateAttr()
 
@@ -468,9 +466,7 @@ class HuggingFaceLLM(BeamLLM):
         kwargs['model'] = model
         super().__init__(*args, **kwargs)
 
-        from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
         import transformers
-
         transformers.logging.set_verbosity_error()
 
         if model_kwargs is None:
@@ -493,9 +489,10 @@ class HuggingFaceLLM(BeamLLM):
         self.input_device = input_device
         self.eos_pattern = eos_pattern
 
+        from transformers import AutoModelForCausalLM, AutoConfig
+
         self.config = AutoConfig.from_pretrained(model, trust_remote_code=True, **config_kwargs)
-        tokenizer_name = tokenizer or model
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
+        self.tokenizer_name = tokenizer or model
 
         self.net = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True,
                                                         config=self.config, **model_kwargs)
@@ -511,6 +508,11 @@ class HuggingFaceLLM(BeamLLM):
         self._conversational_pipeline = transformers.pipeline('conversational', model=self.net,
                                                               tokenizer=self.tokenizer, device=self.input_device,
                                                               **conversational_kwargs)
+
+    @lazy_property
+    def tokenizer(self):
+        from transformers import AutoTokenizer
+        return AutoTokenizer.from_pretrained(self.tokenizer_name, trust_remote_code=True)
 
     def extract_text(self, res):
 
