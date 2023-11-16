@@ -64,6 +64,7 @@ class BeamServer(object):
             self.centralized_thread.start()
         else:
             self.centralized_thread = None
+            self.batch = []
 
         atexit.register(self._cleanup)
 
@@ -121,6 +122,11 @@ class BeamServer(object):
         alg = experiment.algorithm_generator(Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         return BeamServer(alg)
+
+    def run_non_blocking(self, *args, **kwargs):
+        run_thread = Thread(target=self.run, args=args, kwargs=kwargs)
+        run_thread.daemon = True
+        run_thread.start()
 
     def run(self, host="0.0.0.0", port=None, server='wsgi', use_reloader=True):
         port = find_port(port=port, get_port_from_beam_port_range=True, application='flask')

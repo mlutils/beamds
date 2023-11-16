@@ -1,5 +1,6 @@
 from collections import OrderedDict
 import pickle
+from argparse import Namespace
 import io
 from ..path import beam_path, normalize_host
 from ..utils import retrieve_name, lazy_property, check_type
@@ -22,11 +23,11 @@ class Processor:
 
         if len(args) > 0:
             self.hparams = args[0]
-        elif 'hparams' in kwargs:
-            self.hparams = kwargs['hparams']
+        elif hparams is not None:
+            self.hparams = hparams
         else:
-            if hparams is not None:
-                self.hparams = BeamHparams(hparams={})
+            if not hasattr(self, 'hparams'):
+                self.hparams = BeamHparams(hparams=Namespace())
 
         for k, v in kwargs.items():
             v_type = check_type(v)

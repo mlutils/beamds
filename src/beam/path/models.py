@@ -80,8 +80,8 @@ class BeamPath(PureBeamPath):
     def lstat(self):
         return self.path.lstat()
 
-    def mkdir(self, *args, **kwargs):
-        return self.path.mkdir(*args, **kwargs)
+    def mkdir(self, parents=True, exist_ok=True):
+        return self.path.mkdir(parents=parents, exist_ok=exist_ok)
 
     def owner(self):
         return self.path.owner()
@@ -896,7 +896,7 @@ class CometArtifact(PureBeamPath):
 
     def mkdir(self, *args, **kwargs):
         raise NotImplementedError
-    
+
     def rmdir(self):
         raise NotImplementedError
 

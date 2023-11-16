@@ -636,9 +636,13 @@ class BeamKey:
                 self._config_file = pd.read_pickle(self.config_path)
         return self._config_file
 
-    def store(self, name=None, value=None):
+    def store(self, name=None, value=None, store_to_env=True):
         if name is not None:
             self.keys[name] = value
+
+        # store to environment
+        if store_to_env:
+            os.environ[name] = str(value)
 
         config_file = self.config_file
         if config_file is None:
@@ -650,6 +654,12 @@ class BeamKey:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         pd.to_pickle(config_file, self.config_path)
         self._config_file = config_file
+
+    def __setitem__(self, key, value):
+        self(key, value)
+
+    def __getitem__(self, item):
+        return self(item)
 
     def __call__(self, name, value=None, store=True):
 

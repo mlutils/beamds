@@ -1,7 +1,11 @@
 import io
 import pickle
 from functools import partial
+import requests
+
 from .beam_server import has_torch
+if has_torch:
+    import torch
 
 
 class BeamClient(object):

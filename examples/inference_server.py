@@ -1,9 +1,9 @@
 from examples.example_utils import add_beam_to_path
 add_beam_to_path()
 
-from beam.server import BeamServer
+from src.beam.serve import BeamServer
 # from examples.ssl_with_beam import my_ssl_algorithm
-from src.beam.similarity import SparseSimilarity
+from src.beam.sparse import SparseSimilarity
 
 
 if __name__ == '__main__':
@@ -15,6 +15,8 @@ if __name__ == '__main__':
     #                                                                 'lgb_max_depth': 4,
     #                                                                 'verbose_lgb': False})
 
-    sparse_sim = SparseSimilarity(metric='cosine', format='coo', vec_size=10000, device='cuda', k=10)
-    server = BeamServer(sparse_sim, max_batch_size=2, max_wait_time=10, batch='search')
+    M = 40000
+    sparse_sim = SparseSimilarity(metric='cosine', format='coo', vec_size=M, device='cuda', k=10)
+    # server = BeamServer(sparse_sim, max_batch_size=2, max_wait_time=10, batch='search')
+    server = BeamServer(sparse_sim)
     server.run(server='waitress')

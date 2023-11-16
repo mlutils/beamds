@@ -68,6 +68,14 @@ python -m build
 pip install dist/*.whl --force-reinstall
 ```
 
+## Getting Started
+
+There are several examples both in .py files (in the examples folder) and in jupyter notebooks (in the notebooks folder).
+Specifically, you can start by looking into the beam_resources.ipynb notebook which makes you familiar the different
+resources available in Beam.
+
+[View the Getting Started Notebook](/notebooks/beam_resources.ipynb)
+
 ## Building the Beam-DS docker image
 
 The docker image is based on the latest official NVIDIA pytorch image.

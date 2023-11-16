@@ -11,8 +11,9 @@ def resource(uri, **kwargs):
     if scheme in ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp']:
         from .path import beam_path
         return beam_path(uri, **kwargs)
-    elif scheme == 'beam-serve':
+    elif scheme == 'beam-server':
         from .serve.beam_client import BeamClient
+        uri = uri.removeprefix('beam-server://')
         return BeamClient(uri, **kwargs)
     elif scheme in ['openai', 'tgi', 'fastchat', 'huggingface', 'fastapi']:
         from .llm import beam_llm
