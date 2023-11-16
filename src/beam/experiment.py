@@ -219,8 +219,6 @@ class Experiment(object):
                 self.tensorboard_hparams[k] = v
 
         self.hparams = copy.deepcopy(args)
-        self.args_to_print = copy.deepcopy(args)
-
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 
         # parameters
@@ -793,7 +791,7 @@ class Experiment(object):
 
         logger.cleanup()
         logger.add_file_handlers(self.root.joinpath('experiment.log'))
-        print_beam_hyperparameters(self.args_to_print, debug_only=not self.print_hyperparameters)
+        print_beam_hyperparameters(self.hparams, debug_only=not self.print_hyperparameters)
 
         self.root.joinpath('hparams.pkl').write(self.hparams)
 
@@ -823,7 +821,6 @@ class Experiment(object):
         self.results_dir.mkdir(exist_ok=True, parents=True)
 
         # copy code to dir
-
         if is_notebook():
             code_root_path = os.getcwd()
         else:

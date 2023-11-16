@@ -15,10 +15,11 @@ except ImportError:
 
 class Processor:
 
-    def __init__(self, *args, name=None, state=None, path=None, hparams=None, override=True, **kwargs):
+    def __init__(self, *args, name=None, state=None, path=None, hparams=None, override=True, remote=None, **kwargs):
 
         self._name = name
         self._state = state
+        self.remote = remote
         self._path = path
 
         if len(args) > 0:
@@ -85,7 +86,7 @@ class Processor:
     def from_remote(cls, hostname, *args, port=None,  **kwargs):
 
         hostname = normalize_host(hostname, port=port)
-        from .serve.beam_client import BeamClient
+        from ..serve.beam_client import BeamClient
         remote = BeamClient(hostname)
         self = cls(*args, remote=remote, **kwargs)
 

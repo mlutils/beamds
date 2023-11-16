@@ -76,7 +76,7 @@ class BeamClient(object):
 
     def __getattr__(self, item):
 
-        if item in ['_lazy_cache']:
+        if item.startswith('_'):
             return super(BeamClient, self).__getattr__(item)
 
         if item not in self.attributes:

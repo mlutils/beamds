@@ -45,10 +45,10 @@ class BeamHparams(Namespace):
     #     # Only return the standard Namespace attributes
     #     return {k: v for k, v in super().__dict__.items() if not k.startswith('_')}
 
-    def __dir__(self):
-        directory = super().__dir__()
-        filtered_directory = [attr for attr in directory if attr not in {'_model_set', '_tune_set'}]
-        return filtered_directory
+    # def __dir__(self):
+    #     directory = super().__dir__()
+    #     filtered_directory = [attr for attr in directory if attr not in {'_model_set', '_tune_set'}]
+    #     return filtered_directory
 
     def __init__(self, *args, hparams=None, model_set=None, tune_set=None, **kwargs):
 
@@ -101,6 +101,12 @@ class BeamHparams(Namespace):
 
         super().__init__(**hparams.__dict__)
 
+    @staticmethod
+    def dict(hparams):
+        if hasattr(hparams, 'items'):
+            return dict(hparams.items())
+        return vars(hparams)
+
     def __str__(self):
         return self.__repr__()
 
@@ -116,9 +122,15 @@ class BeamHparams(Namespace):
     def model_parameters(self):
         return Namespace(**{k: getattr(self, k) for k in self._model_set})
 
+    def items(self):
+        for k, v in vars(self).items():
+            if k.startswith('_'):
+                continue
+            yield k, v
+
     @property
     def system_parameters(self):
-        return Namespace(**{k: v for k, v in vars(self).items() if k not in self._tune_set.union(self._model_set)})
+        return Namespace(**{k: v for k, v in self.items() if k not in self._tune_set.union(self._model_set)})
 
     @staticmethod
     def update_parser(parser, defaults=None, parameters=None):
@@ -546,7 +558,7 @@ def beam_arguments(*args, **kwargs):
         ar_type = check_type(ar)
 
         if isinstance(ar, Namespace):
-            args_dict.append(vars(ar))
+            args_dict.append(BeamHparams.dict(ar))
         elif ar_type.minor == 'dict':
             args_dict.append(ar)
         elif ar_type.major == 'scalar' and ar_type.element == 'str':
@@ -578,7 +590,7 @@ def beam_arguments(*args, **kwargs):
         for k, v in cf.items():
             setattr(args, k, v)
 
-    beam_key.set_hparams(vars(args))
+    beam_key.set_hparams(BeamHparams.dict(args))
 
     tune = [pai.dest for pai in pr._actions if pai.metavar is not None and 'tune' in pai.metavar]
     setattr(args, 'tune_set', set(tune))
@@ -625,7 +637,7 @@ def print_beam_hyperparameters(args, debug_only=False):
     else:
         hparams_list = args
 
-    var_args_sorted = dict(sorted(vars(args).items()))
+    var_args_sorted = dict(sorted(BeamHparams.dict(args).items()))
 
     default_params = get_beam_parser()
 
