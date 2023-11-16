@@ -94,9 +94,6 @@ if __name__ == '__main__':
     #                    tensorboard=True, stop_at=0.98, parallel=1, device=1, n_quantiles=6, catboost=True,
     #                    rulenet=False)
 
-    os.environ['COMET_API_KEY'] = 'jthyXB1jO4czVy63ntyWZSnlf'
-    os.environ['BEAM_LLM'] = 'openai:///gpt-4'
-
     from src.beam.config import get_beam_llm
 
     kwargs_base = dict(algorithm='debug_reporter',
@@ -107,7 +104,7 @@ if __name__ == '__main__':
 
     kwargs_all = {}
 
-    # kwargs_all['california_housing'] = dict(batch_size=128)
+    kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
@@ -116,7 +113,7 @@ if __name__ == '__main__':
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
-    kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=10)
+    # kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=10)
 
     for k in kwargs_all.keys():
 

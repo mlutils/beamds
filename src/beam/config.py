@@ -40,15 +40,22 @@ class BeamHparams(Namespace):
     parameters = []
     defaults = {}
 
-    @property
-    def __dict__(self):
-        # Only return the standard Namespace attributes
-        return {k: v for k, v in super().__dict__.items() if not k.startswith('_')}
+    # @property
+    # def __dict__(self):
+    #     # Only return the standard Namespace attributes
+    #     return {k: v for k, v in super().__dict__.items() if not k.startswith('_')}
 
-    def __init__(self, *args, hparams=None, **kwargs):
+    def __dir__(self):
+        directory = super().__dir__()
+        filtered_directory = [attr for attr in directory if attr not in {'_model_set', '_tune_set'}]
+        return filtered_directory
 
-        self._model_set = set()
-        self._tune_set = set()
+    def __init__(self, *args, hparams=None, model_set=None, tune_set=None, **kwargs):
+
+        if model_set is None:
+            model_set = set()
+        if tune_set is None:
+            tune_set = set()
 
         if hparams is None:
             parser = get_beam_parser()
@@ -78,16 +85,19 @@ class BeamHparams(Namespace):
                 else:
                     h = None
 
-                model_set, tune_set = self.update_parser(parser, defaults=d, parameters=h)
-                self._tune_set = self._tune_set.union(tune_set)
-                self._model_set = self._model_set.union(model_set)
+                ms, ts = self.update_parser(parser, defaults=d, parameters=h)
+                tune_set = tune_set.union(ts)
+                model_set = model_set.union(ms)
 
             hparams = beam_arguments(parser, *args, **kwargs)
-            self._tune_set = self._tune_set.union(hparams.tune_set)
-            self._model_set = self._model_set.union(hparams.model_set)
+            tune_set = tune_set.union(hparams.tune_set)
+            model_set = model_set.union(hparams.model_set)
             
             del hparams.tune_set
             del hparams.model_set
+
+        self._model_set = model_set
+        self._tune_set = tune_set
 
         super().__init__(**hparams.__dict__)
 
@@ -610,7 +620,11 @@ def print_beam_hyperparameters(args, debug_only=False):
     log_func('----------------------------------------------------------'
              '---------------------------------------------------------------------')
 
-    hparams_list = args.hparams
+    if hasattr(args, 'hparams'):
+        hparams_list = args.hparams
+    else:
+        hparams_list = args
+
     var_args_sorted = dict(sorted(vars(args).items()))
 
     default_params = get_beam_parser()

@@ -218,8 +218,8 @@ class Experiment(object):
             if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float'] and k in hparams:
                 self.tensorboard_hparams[k] = v
 
-        self.hparams = copy.copy(args)
-        self.args_to_print = copy.copy(args)
+        self.hparams = copy.deepcopy(args)
+        self.args_to_print = copy.deepcopy(args)
 
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 

@@ -118,12 +118,12 @@ class PureBeamPath:
     def clean(self):
 
         if self.exists():
-            rmtree(self)
+            self.rmtree()
         else:
             if self.parent.exists():
                 for p in self.parent.iterdir():
                     if p.stem == self.name:
-                        rmtree(p)
+                        p.rmtree()
 
         self.mkdir(parents=True)
         self.rmdir()
