@@ -74,7 +74,7 @@ There are several examples both in .py files (in the examples folder) and in jup
 Specifically, you can start by looking into the beam_resources.ipynb notebook which makes you familiar the different
 resources available in Beam.
 
-[View the Getting Started Notebook](/notebooks/beam_resources.ipynb)
+[Go To the beam_resource.ipynb page](/notebooks/beam_resource.ipynb)
 
 ## Building the Beam-DS docker image
 
