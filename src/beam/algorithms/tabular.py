@@ -1,16 +1,16 @@
 import torch
-from .core.algorithm import Algorithm
-from .utils import as_numpy, as_tensor
-from .data import BeamData
-from .config import BeamHparams, BeamParam
+from ..core.algorithm import Algorithm
+from ..utils import as_numpy, as_tensor
+from ..data import BeamData
+from ..config import BeamHparams, BeamParam
 import torch.nn.functional as F
 from torch import nn
 from torch import distributions
-from .dataset import UniversalDataset
+from ..dataset import UniversalDataset
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
 import pandas as pd
-from .logger import beam_logger as logger
+from ..logger import beam_logger as logger
 
 
 class TabularHparams(BeamHparams):

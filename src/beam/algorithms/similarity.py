@@ -1,7 +1,7 @@
 import torch
 
-from .core.processor import Processor
-from .utils import check_type, as_tensor, beam_device
+from ..core.processor import Processor
+from ..utils import check_type, as_tensor, beam_device
 from collections import Counter
 
 
