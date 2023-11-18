@@ -459,6 +459,14 @@ class PureBeamPath:
                 from scipy.io.wavfile import read as wav_read
                 x = wav_read(fo)
 
+            elif ext in ['.joblib', '.z', '.gz', '.bz2', '.xz', '.lzma']:
+                import joblib
+                x = joblib.load(fo.read(), **kwargs)
+
+            elif ext == '.safetensors':
+                from safetensors.torch import load
+                x = load(fo.read())
+
             else:
                 x = fo.read()
 
@@ -591,6 +599,22 @@ class PureBeamPath:
             elif ext == '.wav':
                 from scipy.io.wavfile import write as wav_write
                 wav_write(fo, *x)
+
+            elif ext in ['.joblib', '.z', '.gz', '.bz2', '.xz', '.lzma']:
+                import joblib
+                if ext != '.joblib':
+                    compress_methods = {'.z': 'zlib', '.gz': 'gzip', '.bz2': 'bz2', '.xz': 'xz', '.lzma': 'lzma'}
+                    compress_method = compress_methods[ext]
+                    if 'compress' not in kwargs:
+                        kwargs['compress'] = compress_method
+                    else:
+                        kwargs['compress'] = (compress_method, kwargs['compress'])
+                joblib.dump(x, fo, **kwargs)
+
+            elif ext == '.safetensors':
+                from safetensors.torch import save
+                raw_data = save(x, **kwargs)
+                fo.write(raw_data)
 
             else:
                 raise ValueError(f"Unsupported extension type: {ext} for file {x}.")

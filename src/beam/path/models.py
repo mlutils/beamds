@@ -815,7 +815,7 @@ def temp_local_file(content, tmp_path='/tmp', name=None, ext=None, as_beam_path=
         tmp_path.parent.rmdir()
 
 
-class CometArtifact(PureBeamPath):
+class CometAsset(PureBeamPath):
     # a pathlib/beam_path api for comet artifacts
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
@@ -895,7 +895,17 @@ class CometArtifact(PureBeamPath):
         raise ValueError("CometArtifact: too many levels, it is not a directory")
 
     def mkdir(self, *args, **kwargs):
-        raise NotImplementedError
+
+        if self.level == 1:
+            raise ValueError("CometArtifact: cannot create workspace")
+        elif self.level == 2:
+            self.client.create_project(self.project_name)
+        elif self.level == 3:
+            from comet_ml import APIExperiment
+            exp = APIExperiment(api_key=self.client.api_key, workspace=self.workspace, project_name=self.project_name)
+            exp.set_name(self.experiment_name)
+
+        ValueError("CometArtifact: cannot create a directory at this hierarchy level")
 
     def rmdir(self):
         raise NotImplementedError
@@ -903,18 +913,21 @@ class CometArtifact(PureBeamPath):
     def unlink(self, missing_ok=False):
         if not missing_ok:
             raise NotImplementedError
-        raise NotImplementedError
+        if self.level == 1:
+            raise ValueError("CometArtifact: cannot delete workspace")
+        elif self.level == 2:
+            self.client.delete_project(self.project_name)
+        elif self.level == 3:
+            self.client.delete_experiment(self.experiment.key)
+        elif self.level == 4:
+            self.experiment.delete_asset(self.assets_map[self.name]['assetId'])
+        else:
+            raise ValueError("CometArtifact: cannot delete an object at this hierarchy level")
 
     def rename(self, target):
         raise NotImplementedError
 
     def replace(self, target):
-        raise NotImplementedError
-
-    def read(self, ext=None, **kwargs):
-        raise NotImplementedError
-
-    def write(self, x, ext=None, **kwargs):
         raise NotImplementedError
 
     def __enter__(self):

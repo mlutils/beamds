@@ -1364,9 +1364,16 @@ class Algorithm(Processor):
                                 if scaler is not None else None for k, scaler in self.scalers.items()}
 
         if path is not None:
-            path.write(state, ext='.pt')
+            path.write(state, ext=self.file_format)
         else:
             return state
+
+    @property
+    def file_format(self):
+        if self.get_hparam('safetensors', default=False):
+            return '.safetensors'
+        return '.pt'
+
 
     def load_checkpoint(self, path_or_state, strict=True, networks=True, optimizers=True, schedulers=True, hparams=True,
                         processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True, load_epoch=True):
@@ -1375,7 +1382,7 @@ class Algorithm(Processor):
 
         if isinstance(path_or_state, PureBeamPath):
             logger.info(f"Loading network state from: {path_or_state}")
-            state = path_or_state.read(ext='.pt', map_location=self.device)
+            state = path_or_state.read(ext=self.file_format, map_location=self.device)
         else:
             state = path_or_state
 

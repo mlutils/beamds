@@ -280,7 +280,8 @@ def get_beam_parser():
                         help='dtype in automatic mixed precision. Supported dtypes: [float16, bfloat16]')
     boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='tune/model')
     boolean_feature(parser, "scalene", False, "Profile the experiment with the Scalene python profiler")
-
+    boolean_feature(parser, "safetensors", False, "Save tensors in safetensors format instead of "
+                                                  "native torch")
     boolean_feature(parser, "find-unused-parameters", False, "For DDP applications: allows running backward on "
                                                              "a subgraph of the model. introduces extra overheads, "
                                                              "so applications should only set find_unused_parameters "
