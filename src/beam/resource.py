@@ -8,7 +8,7 @@ def resource(uri, **kwargs):
         return beam_path(uri, **kwargs)
 
     scheme = uri.split(':')[0]
-    if scheme in ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp']:
+    if scheme in ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp', 'comet']:
         from .path import beam_path
         return beam_path(uri, **kwargs)
     elif scheme == 'beam-server':

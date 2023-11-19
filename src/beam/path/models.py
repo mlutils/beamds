@@ -799,7 +799,7 @@ class HDFSPAPath(PyArrowPath):
 
 
 @contextmanager
-def temp_local_file(content, tmp_path='/tmp', name=None, ext=None, as_beam_path=True):
+def temp_local_file(content, tmp_path='/tmp', name=None, ext=None, binary=True, as_beam_path=True):
     tmp_path = BeamPath(tmp_path).joinpath(uuid())
     tmp_path.mkdir(exist_ok=True, parents=True)
     if name is None:
@@ -808,7 +808,10 @@ def temp_local_file(content, tmp_path='/tmp', name=None, ext=None, as_beam_path=
         name = f"{name}{ext}"
     tmp_path = tmp_path.joinpath(name)
     try:
-        tmp_path.write(content)
+        if binary:
+            tmp_path.write_bytes(content)
+        else:
+            tmp_path.write_text(content)
         yield tmp_path if as_beam_path else str(tmp_path)
     finally:
         tmp_path.unlink()
@@ -829,19 +832,35 @@ class CometAsset(PureBeamPath):
             client = API(api_key=access_key)
 
         self.client = client
-        parts = self.parts
+        parts = self.parts[1:]
 
-        self.workspace = parts[0]
+        self.workspace = None
         self.project_name = None
         self.experiment_name = None
         self.asset_name = None
+        self._experiment_key = None
         self.level = len(parts)
+        if self.level > 0:
+            self.workspace = parts[0]
         if self.level > 1:
             self.project_name = parts[1]
         if self.level > 2:
             self.experiment_name = parts[2]
         if self.level > 3:
             self.asset_name = parts[3]
+
+    @property
+    def experiment_key(self):
+        if self.level < 3:
+            return None
+        if self._experiment_key is None:
+            experiments = self.client.get_experiments(self.workspace, self.project_name)
+            for e in experiments:
+                if e.name == self.experiment_name:
+                    self._experiment_key = e.key
+                    break
+        return self._experiment_key
+
 
     @property
     def assets_map(self):
@@ -851,16 +870,23 @@ class CometAsset(PureBeamPath):
         return {asset['fileName']: asset for asset in assets_map}
 
     @property
-    def experiment(self):
-        attr = 'get_experiments'
-        arguments = {'workspace': self.workspace}
+    def next_level(self):
+        kwargs = {}
+        args = ()
+        attr = 'get'
+        if self.level > 0:
+            attr = 'get'
+            kwargs['workspace'] = self.workspace
         if self.level > 1:
-            arguments['project_name'] = self.project_name
+            attr = 'get_experiments'
+            kwargs['project_name'] = self.project_name
         if self.level > 2:
-            arguments['experiment'] = self.experiment_name
-        if self.level > 3:
             attr = 'get_experiment'
-        return getattr(self.client, attr)(**arguments)
+            kwargs = {}
+            args = (self.workspace, self.project_name, self.experiment_key,)
+        if self.level > 3:
+            raise ValueError("CometArtifact: too many levels, it is not a directory")
+        return getattr(self.client, attr)(*args, **kwargs)
 
     def is_file(self):
         assets_map = self.assets_map
@@ -880,9 +906,13 @@ class CometAsset(PureBeamPath):
         return self.name in assets_map
 
     def iterdir(self):
-        if self.level in [1, 2]:
-            for p in self.experiment:
+        if self.level in [0, 1]:
+            for p in self.next_level:
                 path = self.path.joinpath(p)
+                yield self.gen(path)
+        elif self.level == 2:
+            for e in self.next_level:
+                path = self.path.joinpath(e.name)
                 yield self.gen(path)
         elif self.level == 3:
             assets_map = self.assets_map
@@ -891,8 +921,14 @@ class CometAsset(PureBeamPath):
             for a in assets_map:
                 path = self.path.joinpath(a)
                 yield self.gen(path)
+        else:
+            raise ValueError("CometArtifact: too many levels, it is not a directory")
 
-        raise ValueError("CometArtifact: too many levels, it is not a directory")
+    @property
+    def experiment(self):
+        if self.level < 3:
+            return None
+        return self.client.get_experiment(self.workspace, self.project_name, self.experiment_key)
 
     def mkdir(self, *args, **kwargs):
 
@@ -918,9 +954,9 @@ class CometAsset(PureBeamPath):
         elif self.level == 2:
             self.client.delete_project(self.project_name)
         elif self.level == 3:
-            self.client.delete_experiment(self.experiment.key)
+            self.client.delete_experiment(self.next_level.key)
         elif self.level == 4:
-            self.experiment.delete_asset(self.assets_map[self.name]['assetId'])
+            self.next_level.delete_asset(self.assets_map[self.name]['assetId'])
         else:
             raise ValueError("CometArtifact: cannot delete an object at this hierarchy level")
 
@@ -950,11 +986,13 @@ class CometAsset(PureBeamPath):
         else:
             self.file_object.seek(0)
             content = self.file_object.getvalue()
-            with temp_local_file(content, name=self.name, as_beam_path=True) as tmp_path:
+            with temp_local_file(content, name=self.name, as_beam_path=True, binary='b' in self.mode) as tmp_path:
                 cwd = os.getcwd()
-                os.chdir(tmp_path.parent)
-                self.experiment.log_asset(tmp_path.name)
-                os.chdir(cwd)
+                try:
+                    os.chdir(tmp_path.parent)
+                    self.experiment.log_asset(tmp_path.name)
+                finally:
+                    os.chdir(cwd)
             self.file_object.close()
 
 

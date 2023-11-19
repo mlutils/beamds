@@ -262,7 +262,7 @@ class Algorithm(Processor):
         if hparams is not None:
             experiment = Experiment(hparams)
 
-        alg.experiment = experiment
+        alg.next_level = experiment
         return alg
 
     @classmethod
