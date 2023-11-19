@@ -160,7 +160,6 @@ class FCConversationLLM(BeamLLM):
         if model_adapter is not None:
             model = model_adapter
 
-        from fastchat.model.model_adapter import get_model_adapter
         self._conv = get_conversation_template(model)
 
     @property
@@ -169,8 +168,7 @@ class FCConversationLLM(BeamLLM):
 
     def get_prompt(self, messages):
 
-        conv = self._ma.get_default_conv_template('       ')
-
+        conv = self._conv
         for m in messages:
 
             if m['role'] == 'system':
@@ -189,7 +187,7 @@ class FCConversationLLM(BeamLLM):
 
             conv.append_message(role, content)
 
-        conv.append_message(self._conv.roles[1], None)
+        conv.append_message(conv.roles[1], None)
 
         return conv.get_prompt()
 
@@ -227,7 +225,7 @@ class TGILLM(FCConversationLLM):
         self.usage["completion_tokens"] += response.details.generated_tokens
         self.usage["total_tokens"] += 0 + response.details.generated_tokens
 
-    def openai_format(self, res):
+    def openai_format(self, res, **kwargs):
         return super().openai_format(res, tokens=res.response.details.tokens,
                                      completion_tokens=res.response.details.generated_tokens,
                                      total_tokens=res.response.details.generated_tokens)

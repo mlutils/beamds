@@ -558,9 +558,6 @@ class BeamLLM(LLM, Processor):
     def extract_text(self, res):
         raise NotImplementedError
 
-    def openai_format(self, res):
-        raise NotImplementedError
-
     def question(self, text, question, **kwargs):
         """
         Answer a yes-no question
