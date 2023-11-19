@@ -73,6 +73,10 @@ class BeamDict(dict, Namespace):
         for key, value in kwargs.items():
             self.__dict__[key] = value
 
+        for key, value in self.__dict__.items():
+            if isinstance(value, dict):
+                self.__dict__[key] = BeamDict(value)
+
     def __getattr__(self, key):
         try:
             return self.__dict__[key]
