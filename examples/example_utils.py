@@ -2,6 +2,25 @@ import os
 import sys
 import torch
 import numpy as np
+from src.beam import resource
+
+
+def comet_path():
+    path = resource('comet:///eladsar/')
+    p = path.joinpath('beam', 'yyyy')
+    # p.joinpath('a.pt').write(torch.randn(10))
+    # p.joinpath('a.pt').read(ext='.pt')
+
+    # p.joinpath('a.pkl').write({'a': 1, 'b': 2})
+    # print(p.joinpath('a.pkl').read())
+
+    # p.joinpath('a.npy').write(np.random.randn(10))
+    # print(p.joinpath('a.npy').read())
+
+    p.joinpath('a.json').write({'a': 1, 'b': 2})
+    print(p.joinpath('a.json').read())
+    print('done!')
+
 
 def add_beam_to_path():
     beam_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '../src')
@@ -194,6 +213,8 @@ if __name__ == '__main__':
 
     # text_beam_data()
 
-    build_hparams()
+    # build_hparams()
+
+    comet_path()
 
     print('done')

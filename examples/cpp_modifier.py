@@ -73,7 +73,8 @@
 
 
 from pycparserext.ext_c_parser import GnuCParser
-from pycparser import c_generator, c_ast
+from pycparser import c_generator, c_ast, c_parser
+
 
 class CppModifier:
     def __init__(self, variable_name_map, function_name_map, new_variable_types, new_function_types):
@@ -95,18 +96,20 @@ class CppModifier:
     def modify_function(self, node):
         # Modify function name
         if node.decl.name in self.function_name_map:
+            # Update the function name
             node.decl.name = self.function_name_map[node.decl.name]
 
         # Modify return type
-        if isinstance(node.decl.type, c_ast.FuncDecl):
-            if node.decl.name in self.new_function_types:
-                new_return_type = self.new_function_types[node.decl.name]
-                node.decl.type.type = self.convert_type(new_return_type)
+        if node.decl.name in self.new_function_types:
+            # Update the return type
+            new_return_type = self.new_function_types[node.decl.name]
+            node.decl.type.type = self.convert_type(new_return_type)
 
-        # Modify parameter types
-        if isinstance(node.decl.type, c_ast.FuncDecl):
+        # Modify parameter types, if parameters exist
+        if node.decl.type.args:
             for param in node.decl.type.args.params:
                 if param.name in self.new_variable_types:
+                    # Update the parameter type
                     new_param_type = self.new_variable_types[param.name]
                     param.type = self.convert_type(new_param_type, param.name)
 
@@ -130,7 +133,7 @@ class CppModifier:
         )
 
     def transform(self, code):
-        parser = GnuCParser()
+        parser = c_parser.CParser()
         ast = parser.parse(code)
 
         self.visit(ast)
@@ -140,6 +143,57 @@ class CppModifier:
 
 
 if __name__ == '__main__':
+
+    # Modifications maps
+    variable_name_map = {'num1': 'firstNumber', 'num2': 'secondNumber'}
+    function_name_map = {'sum': 'addNumbers', 'swap': 'exchange'}
+    new_variable_types = {'firstNumber': 'long', 'secondNumber': 'long'}
+    new_function_types = {'addNumbers': 'long', 'exchange': 'void'}
+
+    modifier = CppModifier(variable_name_map, function_name_map, new_variable_types, new_function_types)
+
+    # Your C code as a string
+    code = """
+
+    int sum(int a, int b) {
+        return a + b;
+    }
+
+    void swap(double *x, double *y) {
+        double temp = *x;
+        *x = *y;
+        *y = temp;
+    }
+
+    int main() {
+        int num1 = 5, num2 = 10;
+        double val1 = 3.5, val2 = 4.5;
+
+        printf("Sum: %d\\n", sum(num1, num2));
+
+        swap(&val1, &val2);
+        printf("After swap: val1 = %lf, val2 = %lf\\n", val1, val2);
+
+        return 0;
+    }
+    """
+
+    # Apply transformations
+    modified_code = modifier.transform(code)
+    print(modified_code)
+
+
+
+    # def transform(self, code):
+    #     parser = GnuCParser()
+    #     ast = parser.parse(code)
+    #
+    #     # self.visit(ast)
+    #
+    #     generator = c_generator.CGenerator()
+    #     return generator.visit(ast)
+
+
     # code = """
     #
     # #include <iostream>
@@ -222,41 +276,3 @@ if __name__ == '__main__':
     # modified_code = modifier.transform("void oldFuncName() { float oldVarName; }")
     #
     # print(modified_code)
-
-    # Modifications maps
-    variable_name_map = {'num1': 'firstNumber', 'num2': 'secondNumber'}
-    function_name_map = {'sum': 'addNumbers', 'swap': 'exchange'}
-    new_variable_types = {'firstNumber': 'long', 'secondNumber': 'long'}
-    new_function_types = {'addNumbers': 'long', 'exchange': 'void'}
-
-    modifier = CppModifier(variable_name_map, function_name_map, new_variable_types, new_function_types)
-
-    # Your C code as a string
-    code = """
-
-    int sum(int a, int b) {
-        return a + b;
-    }
-
-    void swap(double *x, double *y) {
-        double temp = *x;
-        *x = *y;
-        *y = temp;
-    }
-
-    int main() {
-        int num1 = 5, num2 = 10;
-        double val1 = 3.5, val2 = 4.5;
-
-        printf("Sum: %d\\n", sum(num1, num2));
-
-        swap(&val1, &val2);
-        printf("After swap: val1 = %lf, val2 = %lf\\n", val1, val2);
-
-        return 0;
-    }
-    """
-
-    # Apply transformations
-    modified_code = modifier.transform(code)
-    print(modified_code)

@@ -82,7 +82,7 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
 
         alg = Alg
 
-    alg.experiment = experiment
+    alg.next_level = experiment
 
     if datasets is not None:
         alg.load_datasets(datasets)
