@@ -96,6 +96,28 @@ class BeamHparams(Namespace):
             del hparams.tune_set
             del hparams.model_set
 
+        elif isinstance(hparams, BeamHparams):
+            tune_set = tune_set.union(hparams.tune_parameters.__dict__.keys())
+            model_set = model_set.union(hparams.model_parameters.__dict__.keys())
+
+        elif isinstance(hparams, Namespace):
+
+            if hasattr(hparams, 'tune_set'):
+                tune_set = tune_set.union(hparams.tune_set)
+                del hparams.tune_set
+
+            if hasattr(hparams, 'model_set'):
+                model_set = model_set.union(hparams.model_set)
+                del hparams.model_set
+            else:
+                model_set = model_set.union(hparams.__dict__.keys())
+
+        elif isinstance(hparams, dict):
+            model_set = model_set.union(hparams.keys())
+
+        else:
+            raise ValueError(f"Invalid hparams type: {type(hparams)}")
+
         self._model_set = model_set
         self._tune_set = tune_set
 
@@ -127,6 +149,16 @@ class BeamHparams(Namespace):
             if k.startswith('_'):
                 continue
             yield k, v
+
+    def keys(self):
+        for k in vars(self).keys():
+            if k.startswith('_'):
+                continue
+            yield k
+
+    def values(self):
+        for k, v in self.items():
+            yield v
 
     @property
     def system_parameters(self):
@@ -218,7 +250,7 @@ def get_beam_parser():
     parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
 
     parser.add_argument('--mp-port', type=str, default='random', help='Port to be used for multiprocessing')
-    parser.add_argument('--BEAM-LLM', type=str, default=None, help='URI of the LLM service')
+    parser.add_argument('--beam-llm', type=str, default=None, help='URI of the LLM service')
 
     parser.add_argument('--root-dir', type=str,
                         default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'results'),
@@ -602,17 +634,16 @@ def beam_arguments(*args, **kwargs):
     return args
 
 
-def get_beam_llm():
-
-    llm = NoneClass()
-    key = beam_key('BEAM_LLM', store=False)
-    if key is not None:
+def get_beam_llm(llm_uri=None, get_from_key=True):
+    llm = None
+    if llm_uri is None and get_from_key:
+        llm_uri = beam_key('BEAM_LLM', store=False)
+    if llm_uri is not None:
         try:
             from .llm import beam_llm
-            llm = beam_llm(key)
+            llm = beam_llm(llm_uri)
         except ImportError:
             pass
-
     return llm
 
 

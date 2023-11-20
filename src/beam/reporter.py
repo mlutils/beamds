@@ -7,7 +7,7 @@ import os
 import torch
 import copy
 from collections import defaultdict
-from .utils import include_patterns, check_type, beam_device, check_element_type, rmtree
+from .utils import include_patterns, check_type, beam_device, check_element_type, rmtree, lazy_property
 import pandas as pd
 import torch.multiprocessing as mp
 from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
@@ -61,7 +61,6 @@ class BeamReport(object):
         self.subsets_keys = None
         self.batch_size_context = None
         self.total_epochs = None
-        self._llm = None
         self.stack = []
         self.stack_size = 4
 
@@ -85,9 +84,8 @@ class BeamReport(object):
                  f"Response: \"\"\"\n{{text input here}}\n\"\"\""
 
         llm_response = self.llm.ask(prompt)
-        if llm_response is not None:
-            print()
-            logger.info(f"LLM response: {llm_response.text}")
+        print()
+        logger.info(f"LLM response: {llm_response.text}")
 
     def reset_epoch(self, epoch, total_epochs=None):
 
@@ -179,12 +177,10 @@ class BeamReport(object):
         else:
             return v
 
-    @property
+    @lazy_property
     def llm(self):
-        if self._llm is None:
-            from .config import get_beam_llm
-            self._llm = get_beam_llm()
-        return self._llm
+        from .config import get_beam_llm
+        return get_beam_llm()
 
     def print_stats(self):
 
@@ -219,7 +215,8 @@ class BeamReport(object):
 
                     self.info(f'{paramp: <12} | {stat}')
 
-        threading.Thread(target=self.llm_info).start()
+        if self.llm is not None:
+            threading.Thread(target=self.llm_info).start()
 
     def print_metadata(self):
 

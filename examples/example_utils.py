@@ -5,6 +5,19 @@ import numpy as np
 from src.beam import resource
 
 
+def parallel_treading():
+
+    from src.beam.parallel import parallel, task
+
+    def func(i):
+        print(f'func {i}\n')
+        return i ** 2
+
+    res = parallel([task(func)(i) for i in range(10)], n_workers=2, method='threading')
+
+    print(res)
+
+
 def comet_path():
     path = resource('comet:///eladsar/')
     p = path.joinpath('beam', 'yyyy')
@@ -215,6 +228,8 @@ if __name__ == '__main__':
 
     # build_hparams()
 
-    comet_path()
+    # comet_path()
+
+    parallel_treading()
 
     print('done')

@@ -241,6 +241,8 @@ class Transformer(Processor):
         if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
             n_chunks = self.n_chunks
+        if (chunksize is None) and (n_chunks is None):
+            n_chunks = 1
         if squeeze is None:
             squeeze = self.squeeze
 

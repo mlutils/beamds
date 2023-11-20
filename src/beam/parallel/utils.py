@@ -42,5 +42,18 @@ def parallel(tasks, n_workers=0, func=None, method='joblib', progressbar='beam',
     return bp(tasks)
 
 
-def task(func, name=None, silence=False):
-    return BeamTask(func, name=name, silence=silence)
+# def task(func, name=None, silence=False):
+#     return BeamTask(func, name=name, silence=silence)
+
+
+def task(func=None, *, name=None, silence=False):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            return BeamTask(func, *args, name=name, silence=silence, **kwargs)
+        return wrapper
+
+    # Allows usage as both @task and @task(...)
+    if func is None:
+        return decorator
+    else:
+        return decorator(func)

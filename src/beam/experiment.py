@@ -29,7 +29,7 @@ import traceback
 from contextlib import contextmanager
 from timeit import default_timer as timer
 from .data import BeamData
-from .config import get_beam_llm, print_beam_hyperparameters
+from .config import get_beam_llm, print_beam_hyperparameters, BeamHparams
 
 
 done = mp.Event()
@@ -128,8 +128,8 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
         llm = get_beam_llm() if experiment.llm is None else experiment.llm
 
-        explain = llm.explain_traceback(tb)
-        if explain is not None:
+        if llm is not None:
+            explain = llm.explain_traceback(tb)
             logger.error(f"LLM Message: {explain}")
 
         if not is_notebook():
@@ -203,7 +203,6 @@ class Experiment(object):
         @param trial:
         @param print_hyperparameters: If None, default behavior is to print hyperparameters only outside of jupyter notebooks
         """
-        atexit.register(self.cleanup)
 
         if print_hyperparameters is None:
             print_hyperparameters = not is_notebook()
@@ -211,11 +210,13 @@ class Experiment(object):
 
         self.tensorboard_hparams = {}
 
-        hparams = args._tune_set
-        self.vars_args = {h:args[h] for h in hparams}
+        if not isinstance(args, BeamHparams):
+            args = BeamHparams(hparams=args)
+
+        self.vars_args = dict(args.items())
         for k, v in self.vars_args.items():
             param_type = check_type(v)
-            if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float'] and k in hparams:
+            if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float']:
                 self.tensorboard_hparams[k] = v
 
         self.hparams = copy.deepcopy(args)
@@ -340,6 +341,8 @@ class Experiment(object):
         self.comet_writer = None
         self.mlflow_writer = None
         self.root_dir_is_built = False
+
+        atexit.register(self.cleanup)
 
     @lazy_property
     def llm(self):
