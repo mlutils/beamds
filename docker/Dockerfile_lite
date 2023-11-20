@@ -8,7 +8,7 @@
 FROM nvidia/cuda:12.0.1-devel-ubuntu22.04
 
 
-LABEL "description"="beam image based on nvidia pytorch docker"
+LABEL "description"="lite-beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
 LABEL "build_command"="bash docker/build_beam.sh"
