@@ -145,16 +145,19 @@ class BeamHparams(Namespace):
         if parameters is not None:
             for v in parameters:
 
+                name_to_parse = v.name.replace('_', '-')
+                name_to_store = v.name.replace('-', '_')
+
                 if v.model:
-                    model_set.add(v.name)
+                    model_set.add(name_to_store)
 
                 if v.tune:
-                    tune_set.add(v.name)
+                    tune_set.add(name_to_store)
 
                 if v.type is bool:
-                    boolean_feature(parser, v.name, v.default, v.help)
+                    boolean_feature(parser, name_to_parse, v.default, v.help)
                 else:
-                    parser.add_argument(f"--{v.name.replace('_', '-')}", type=v.type, default=v.default, help=v.help)
+                    parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, help=v.help)
 
         return model_set, tune_set
 
@@ -175,7 +178,10 @@ class BeamHparams(Namespace):
         key = key.replace('-', '_')
         setattr(self, key, value)
 
-    def get(self, hparam, specific=None, default=None):
+    def get(self, hparam, default=None, preferred=None, specific=None):
+
+        if preferred is not None:
+            return preferred
 
         if type(specific) is list:
             for s in specific:

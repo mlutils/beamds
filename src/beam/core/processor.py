@@ -155,8 +155,8 @@ class Processor:
         state = path.read()
         return cls(state=state, path=path)
 
-    def get_hparam(self, hparam, specific=None, default=None):
-        return self.hparams.get(hparam, specific=specific, default=default)
+    def get_hparam(self, hparam, default=None, preferred=None, specific=None):
+        return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
 
 
 class Pipeline(Processor):

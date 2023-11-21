@@ -75,31 +75,31 @@ class Transformer(Processor):
                                        reduce_dim=reduce_dim, transform_strategy=transform_strategy,
                                        reduce=reduce, **kwargs)
 
-        self.chunksize = self.hparams.get('chunksize', chunksize)
-        self.n_chunks = self.hparams.get('n_chunks', n_chunks)
-        self.n_workers = self.hparams.get('n_workers', n_workers)
-        self.squeeze = self.hparams.get('squeeze', squeeze)
-        self.split_by = self.hparams.get('split_by', split_by)
-        self.store_suffix = self.hparams.get('store_suffix', store_suffix)
-        self.transform_strategy = self.hparams.get('transform_strategy', transform_strategy)
-        self.shuffle = self.hparams.get('shuffle', shuffle)
+        self.chunksize = self.get_hparam('chunksize', preferred=chunksize)
+        self.n_chunks = self.get_hparam('n_chunks', preferred=n_chunks)
+        self.n_workers = self.get_hparam('n_workers', preferred=n_workers)
+        self.squeeze = self.get_hparam('squeeze', preferred=squeeze)
+        self.split_by = self.get_hparam('split_by', preferred=split_by)
+        self.store_suffix = self.get_hparam('store_suffix', preferred=store_suffix)
+        self.transform_strategy = self.get_hparam('transform_strategy', preferred=transform_strategy)
+        self.shuffle = self.get_hparam('shuffle', preferred=shuffle)
         self.kwargs = kwargs
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
                            f'The split_by is set to "keys".')
             self.split_by = 'keys'
 
-        store_path = self.hparams.get('store_path', store_path)
+        store_path = self.get_hparam('store_path', preferred=store_path)
         if store_path is not None:
             store_path = beam_path(store_path)
         if store_path is not None and name is not None:
             store_path = store_path.joinpath(name)
 
         self.store_path = store_path
-        self.partition = self.hparams.get('partition', partition)
-        self.mp_method = self.hparams.get('mp_method', mp_method)
-        self.reduce_dim = self.hparams.get('reduce_dim', reduce_dim)
-        self.to_reduce = self.hparams.get('reduce', reduce)
+        self.partition = self.get_hparam('partition', preferred=partition)
+        self.mp_method = self.get_hparam('mp_method', preferred=mp_method)
+        self.reduce_dim = self.get_hparam('reduce_dim', preferred=reduce_dim)
+        self.to_reduce = self.get_hparam('reduce', preferred=reduce)
         self._exceptions = None
 
     def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None, split_by=None, partition=None):
