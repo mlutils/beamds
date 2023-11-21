@@ -9,6 +9,9 @@ from .sampler import UniversalBatchSampler
 from ..utils import (recursive_batch, to_device, recursive_device, container_len, beam_device, as_tensor, check_type,
                      as_numpy, slice_to_index, DataBatch)
 
+from ..path import beam_path
+from ..data import BeamData
+
 
 class UniversalDataset(torch.utils.data.Dataset):
 
@@ -176,6 +179,19 @@ class UniversalDataset(torch.utils.data.Dataset):
     @property
     def values(self):
         return self.data
+
+    # def save(self, path):
+    #
+    #     bd_path = beam_path(path).joinpath('beam_data')
+    #     bd = BeamData(self.data, index=self.index, label=self.label, path=bd_path, device=self.device)
+    #     bd.store()
+    #
+    #     state = self.state
+    #     if has_beam_ds and isinstance(state, BeamData):
+    #         state.store(path=path)
+    #     else:
+    #         path = beam_path(path)
+    #         path.write(state)
 
     def __len__(self):
 

@@ -33,7 +33,7 @@ class Algorithm(Processor):
         self.hparams = hparams
 
         # the following are set by the experiment
-        self.device = None
+        self._device = None
         self.ddp = None
         self.hpo = None
         self.rank = None
@@ -104,16 +104,59 @@ class Algorithm(Processor):
         self.reporter = None
         self.training = False
 
+    @property
+    def device(self):
+        if self._device is None:
+            if self.accelerator is None:
+                self._device = beam_device(self.get_hparam('device'))
+            else:
+                self._device = self.accelerator.device
+        return self._device
+
+    @device.setter
+    def device(self, device):
+        if self.accelerator is None:
+            self._device = beam_device(device)
+
+    @property
+    def deepspeed_plugin(self):
+        return None
+
+    @property
+    def fsdp_plugin(self):
+        return None
+
+    @property
+    def megatron_lm_plugin(self):
+        return None
+
+    @property
+    def accelerate_kwargs_handlers(self):
+        return None
+
+    @property
+    def gradient_accumulation_plugin(self):
+        return None
+
     @lazy_property
     def accelerator(self):
-        if self.hparams.get('accelerate'):
+        if self.get_hparam('accelerate'):
             from accelerate import Accelerator
-            return Accelerator(device_placement=self.hparams.get('device_placement'),
-                               split_batches=self.hparams.get('split_batches'),
-                               mixed_precision=self.hparams.get('amp_dtype'),
-                               gradient_accumulation_steps=self.hparams.get('accumulate'),
+            return Accelerator(device_placement=self.get_hparam('device_placement'),
+                               split_batches=self.get_hparam('split_batches'),
+                               mixed_precision=self.get_hparam('amp_dtype'),
+                               gradient_accumulation_steps=self.get_hparam('accumulate'),
+                               deepspeed_plugin=self.deepspeed_plugin,
+                               fsdp_plugin=self.fsdp_plugin,
+                               megatron_lm_plugin=self.megatron_lm_plugin,
+                               kwargs_handlers=self.accelerate_kwargs_handlers,
                                cpu='cpu' == self.device.type,
                                project_dir=self.experiment.root,
+                               dispatch_batches=self.get_hparam('dispatch_batches'),
+                               even_batches=True,
+                               step_scheduler_with_optimizer=self.get_hparam('schedulers_steps') == 'iteration',
+                               dynamo_backend=self.get_hparam('dynamo_backend'),
+                               gradient_accumulation_plugin=self.gradient_accumulation_plugin,
                                )
         return None
 
@@ -419,8 +462,11 @@ class Algorithm(Processor):
                         self.optimizers.pop(k)
 
                 networks[k] = self.register_network(networks[k], name=k)
+                if self.accelerator is not None:
+                    networks[k] = self.accelerator.prepare_model(networks[k])
                 self.networks[k] = networks[k]
-                self.inference_networks[k] = net
+                self.inference_networks[k] = self.networks[k]
+
                 if self.get_hparam('swa') is not None:
                     self.swa_networks[k] = torch.optim.swa_utils.AveragedModel(net)
 
@@ -491,6 +537,11 @@ class Algorithm(Processor):
             schedulers = {}
 
         for k, opt in optimizers.items():
+            if self.accelerator is not None:
+                if isinstance(opt, BeamOptimizer):
+                    opt.prepare(self.accelerator)
+                else:
+                    opt = self.accelerator.prepare_optimizer(opt)
             self.optimizers[k] = opt
 
             if self.get_hparam('swa') is not None:
@@ -669,6 +720,9 @@ class Algorithm(Processor):
                 if self.amp:
                     scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
                                                 create_graph=create_graph, inputs=inputs)
+                elif self.accelerator is not None:
+                    self.accelerator.backward(loss, gradient=gradient, retain_graph=retain_graph,
+                                              create_graph=create_graph, inputs=inputs)
                 else:
                     loss.backward(gradient=gradient, retain_graph=retain_graph,
                                   create_graph=create_graph, inputs=inputs)
@@ -681,8 +735,12 @@ class Algorithm(Processor):
                         if clip > 0:
                             if self.amp:
                                 scaler.unscale_(op)
-                            for pg in op.param_groups:
-                                torch.nn.utils.clip_grad_norm_(iter(pg['params']), clip)
+                            if self.accelerator is not None and self.accelerator.sync_gradients:
+                                for pg in op.param_groups:
+                                    self.accelerator.clip_grad_norm_(pg['params'], clip)
+                            else:
+                                for pg in op.param_groups:
+                                    torch.nn.utils.clip_grad_norm_(iter(pg['params']), clip)
 
                         if self.amp:
                             scaler.step(op)
@@ -779,10 +837,12 @@ class Algorithm(Processor):
                                                   }
                 self.persistent_dataloaders[k][s]['iterator'] = iter(self.persistent_dataloaders[k][s]['dataloader'])
 
+                if self.accelerator is not None:
+                    self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_dataloader(
+                        self.persistent_dataloaders[k][s]['dataloader'])
+
             if (set_epoch_length == 'first' and i == 0) or k==set_epoch_length:
                 self.set_epoch_length(dataset)
-
-
 
     def set_epoch_length(self, dataset):
 
@@ -836,6 +896,17 @@ class Algorithm(Processor):
                 scheduler.update_total_steps(epochs=self.n_epochs,
                                              steps_per_epochs=self.epoch_length['train'], initial_state=state)
 
+        if self.accelerator is not None:
+            for k, scheduler in self.schedulers.items():
+
+                if isinstance(scheduler, MultipleScheduler):
+                    scheduler.prepare(self.accelerator)
+                elif isinstance(scheduler, BeamScheduler):
+                    scheduler.prepare(self.accelerator)
+                else:
+                    self.schedulers[k] = self.accelerator.prepare_scheduler(scheduler)
+
+            self.refresh_optimizers_and_schedulers_pointers()
 
     def get_optimizer_name(self, opt):
         i = id(opt)
@@ -1458,15 +1529,17 @@ class Algorithm(Processor):
     def set_auxiliary_state(self, aux):
         pass
 
-    def optimize_for_inference(self, networks=True, **kwargs):
+    def compile(self, networks=True, **kwargs):
 
         self.inference_networks = {}
 
-        for k, v in filter_dict(self.networks, networks).items():
+        for k, net in filter_dict(self.networks, networks).items():
 
             logger.warning(f"Optimizing model: {k} with torch compile")
-            self.inference_networks[k] = torch.compile(v, **kwargs)
-
+            if self.accelerator is None:
+                self.inference_networks[k] = torch.compile(net, **kwargs)
+            else:
+                self.inference_networks[k] = self.accelerator.prepare_model(net, evaluate=True)
 
     def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, **kwargs):

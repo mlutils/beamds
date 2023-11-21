@@ -16,6 +16,13 @@ class MultipleScheduler(object):
         for op in multiple_optimizer.optimizers.keys():
             self.schedulers[op] = scheduler(multiple_optimizer.optimizers[op], *argc, **argv)
 
+    def prepare(self, accelerator):
+        for k, scheduler in self.schedulers.items():
+            if isinstance(scheduler, BeamScheduler):
+                scheduler.prepare(accelerator)
+            else:
+                self.schedulers[k] = accelerator.prepare_scheduler(scheduler)
+
     def step(self, *argc, **argv):
         for op in self.multiple_optimizer.optimizers.keys():
             self.schedulers[op].step(*argc, **argv)
@@ -115,6 +122,12 @@ class BeamScheduler(object):
                 logger.warning(f"Unsupported scheduler method: {method}, using None instead")
 
         self.scheduler = scheduler
+
+    def prepare(self, accelerator):
+        if self.warmup_scheduler is not None:
+            self.warmup_scheduler = accelerator.prepare_scheduler(self.warmup_scheduler)
+        if self.scheduler is not None:
+            self.scheduler = accelerator.prepare_scheduler(self.scheduler)
 
     def get_total_steps(self, total_steps=None, epochs=None, steps_per_epochs=None):
         if epochs is not None and self.step_type == 'epoch':
@@ -244,6 +257,10 @@ class BeamOptimizer(object):
 
         for k, o in self.optimizers.items():
             setattr(self, k, o)
+
+    def prepare(self, accelerator):
+        for k, o in self.optimizers.items():
+            self.optimizers[k] = accelerator.prepare_optimizer(o)
 
     @staticmethod
     def prototype(dense_args=None, clip=0, accumulate=1, amp=False,
