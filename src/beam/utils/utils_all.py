@@ -1,6 +1,7 @@
 import itertools
 import os, sys
 from collections import defaultdict
+import random
 import numpy as np
 from fnmatch import filter
 from tqdm.notebook import tqdm as tqdm_notebook
@@ -468,8 +469,14 @@ def check_type(x, check_minor=True, check_element=True):
                     elts = [check_element_type(xi) for xi in x]
 
                 else:
-                    ind = np.random.randint(len(x), size=(20,))
-                    elts = [check_element_type(x[i]) for i in ind]
+
+                    sample_size = 20
+                    try:
+                        ind = np.random.randint(len(x), size=(sample_size,))
+                        elts = [check_element_type(x[i]) for i in ind]
+                    except TypeError:
+                        # assuming we are in the case of a set
+                        random.sample(list(x), sample_size)
 
                 set_elts = set(elts)
                 if len(set_elts) == 1:

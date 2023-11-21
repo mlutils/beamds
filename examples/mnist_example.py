@@ -18,7 +18,8 @@ from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm
 from src.beam import LinearNet
 from src.beam import DataTensor, PackedFolds, as_numpy
-from src.beam.data import BeamData, DataBatch
+from src.beam.data import BeamData
+from src.beam.utils import DataBatch
 
 
 class MNISTDataset(UniversalDataset):
