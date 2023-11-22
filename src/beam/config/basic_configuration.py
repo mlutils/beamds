@@ -1,17 +1,7 @@
 import argparse
-import copy
 import os
-import sys
-from .utils import is_notebook, check_type, NoneClass
-import re
 import math
-import pandas as pd
-from .path import beam_path, beam_key
-from argparse import Namespace
-from .logger import beam_logger as logger
 from pathlib import Path
-from ._version import __version__
-from dataclasses import dataclass
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
@@ -25,219 +15,17 @@ def boolean_feature(parser, feature, default=False, help='', metavar=None):
             a.metavar = metavar
     parser.set_defaults(**{featurename: default})
 
-@dataclass
-class BeamParam:
-    name: str
-    type: type
-    default: any
-    help: str
-    model: bool = True
-    tune: bool = False
 
-
-class BeamHparams(Namespace):
-
-    parameters = []
-    defaults = {}
-
-    # @property
-    # def __dict__(self):
-    #     # Only return the standard Namespace attributes
-    #     return {k: v for k, v in super().__dict__.items() if not k.startswith('_')}
-
-    # def __dir__(self):
-    #     directory = super().__dir__()
-    #     filtered_directory = [attr for attr in directory if attr not in {'_model_set', '_tune_set'}]
-    #     return filtered_directory
-
-    def __init__(self, *args, hparams=None, model_set=None, tune_set=None, **kwargs):
-
-        if model_set is None:
-            model_set = set()
-        if tune_set is None:
-            tune_set = set()
-
-        if hparams is None:
-            parser = get_beam_parser()
-
-            defaults = None
-            parameters = None
-
-            types = type(self).__mro__
-
-            hparam_types = []
-            for ti in types:
-                if ti is argparse.Namespace:
-                    break
-                hparam_types.append(ti)
-
-            for ti in hparam_types[::-1]:
-
-                if ti.defaults is not defaults:
-                    defaults = ti.defaults
-                    d = defaults
-                else:
-                    d = None
-
-                if ti.parameters is not parameters:
-                    parameters = ti.parameters
-                    h = parameters
-                else:
-                    h = None
-
-                ms, ts = self.update_parser(parser, defaults=d, parameters=h)
-                tune_set = tune_set.union(ts)
-                model_set = model_set.union(ms)
-
-            hparams = beam_arguments(parser, *args, **kwargs)
-            tune_set = tune_set.union(hparams.tune_set)
-            model_set = model_set.union(hparams.model_set)
-            
-            del hparams.tune_set
-            del hparams.model_set
-
-        elif isinstance(hparams, BeamHparams):
-            tune_set = tune_set.union(hparams.tune_parameters.__dict__.keys())
-            model_set = model_set.union(hparams.model_parameters.__dict__.keys())
-
-        elif isinstance(hparams, Namespace):
-
-            if hasattr(hparams, 'tune_set'):
-                tune_set = tune_set.union(hparams.tune_set)
-                del hparams.tune_set
-
-            if hasattr(hparams, 'model_set'):
-                model_set = model_set.union(hparams.model_set)
-                del hparams.model_set
-            else:
-                model_set = model_set.union(hparams.__dict__.keys())
-
-        elif isinstance(hparams, dict):
-            model_set = model_set.union(hparams.keys())
-
-        else:
-            raise ValueError(f"Invalid hparams type: {type(hparams)}")
-
-        self._model_set = model_set
-        self._tune_set = tune_set
-
-        super().__init__(**hparams.__dict__)
-
-    @staticmethod
-    def dict(hparams):
-        if hasattr(hparams, 'items'):
-            return dict(hparams.items())
-        return vars(hparams)
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        return (f"{type(self).__name__}:\n\nSystem Parameters:\n\n{self.system_parameters}\n\n"
-                f"Model Parameters:\n\n{self.model_parameters}\n\nTune Parameters:\n\n{self.tune_parameters}")
-
-    @property
-    def tune_parameters(self):
-        return Namespace(**{k: getattr(self, k) for k in self._tune_set})
-
-    @property
-    def model_parameters(self):
-        return Namespace(**{k: getattr(self, k) for k in self._model_set})
-
-    def items(self):
-        for k, v in vars(self).items():
-            if k.startswith('_'):
-                continue
-            yield k, v
-
-    def keys(self):
-        for k in vars(self).keys():
-            if k.startswith('_'):
-                continue
-            yield k
-
-    def values(self):
-        for k, v in self.items():
-            yield v
-
-    @property
-    def system_parameters(self):
-        return Namespace(**{k: v for k, v in self.items() if k not in self._tune_set.union(self._model_set)})
-
-    @staticmethod
-    def update_parser(parser, defaults=None, parameters=None):
-
-        model_set = set()
-        tune_set = set()
-
-        if defaults is not None:
-            # set defaults
-            parser.set_defaults(**{k.replace('-', '_'): v for k, v in defaults.items()})
-
-        if parameters is not None:
-            for v in parameters:
-
-                name_to_parse = v.name.replace('_', '-')
-                name_to_store = v.name.replace('-', '_')
-
-                if v.model:
-                    model_set.add(name_to_store)
-
-                if v.tune:
-                    tune_set.add(name_to_store)
-
-                if v.type is bool:
-                    boolean_feature(parser, name_to_parse, v.default, v.help)
-                else:
-                    parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, help=v.help)
-
-        return model_set, tune_set
-
-    def is_hparam(self, key):
-        key = key.replace('-', '_')
-        if key in self.hparams:
-            return True
-        return False
-
-    def __getitem__(self, item):
-        item = item.replace('-', '_')
-        r = getattr(self, item)
-        if r is None and item in os.environ:
-            r = os.environ[item]
-        return r
-
-    def __setitem__(self, key, value):
-        key = key.replace('-', '_')
-        setattr(self, key, value)
-
-    def get(self, hparam, default=None, preferred=None, specific=None):
-
-        if preferred is not None:
-            return preferred
-
-        if type(specific) is list:
-            for s in specific:
-                if f"{hparam}_{s}" in self:
-                    return getattr(self, f"{specific}_{hparam}")
-        elif specific is not None and f"{specific}_{hparam}" in self:
-            return getattr(self, f"{specific}_{hparam}")
-
-        if hparam in self:
-            return getattr(self, hparam)
-
-        return default
-
-
-def get_beam_parser():
-
+def basic_beam_parser():
     # add a general argument parser, arguments may be overloaded
-    parser = argparse.ArgumentParser(description='List of available arguments for this project', conflict_handler='resolve')
+    parser = argparse.ArgumentParser(description='List of available arguments for this project',
+                                     conflict_handler='resolve')
     '''
-    
+
     Arguments
-    
+
         global parameters
-        
+
         These parameters are responsible for which experiment to load or to generate:
         the name of the experiment is <alg>_<identifier>_exp_<num>_<time>
         The possible configurations:
@@ -245,7 +33,7 @@ def get_beam_parser():
         reload = False, override = False: always append experiment to the list (increment experiment num)
         reload = True, resume = -1: resume to the last experiment
         reload = True, resume = <n>: resume to the <n> experiment
-        
+
     '''
 
     parser.add_argument('experiment_configuration', nargs='?', default=None,
@@ -282,9 +70,9 @@ def get_beam_parser():
     parser.add_argument('--device', type=str, default='0', help='GPU Number or cpu/cuda string')
     parser.add_argument("--device-list", nargs="+", default=None,
                         help='Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
-                        'when passing --parallel=2 and will use GPUs 2 1 3 when passing --parallel=3. '
-                        'If None, will use an ascending order starting from the GPU passed in the --device parameter.'
-                        'e.g. when --device=1 will use GPUs 1,2,3,4 when --parallel=4')
+                             'when passing --parallel=2 and will use GPUs 2 1 3 when passing --parallel=3. '
+                             'If None, will use an ascending order starting from the GPU passed in the --device parameter.'
+                             'e.g. when --device=1 will use GPUs 1,2,3,4 when --parallel=4')
 
     parser.add_argument('--parallel', type=int, default=1, metavar='tune',
                         help='Number of parallel gpu workers. Set <=1 for single process')
@@ -328,9 +116,10 @@ def get_beam_parser():
                                                        "buffers of the module at beginning of the forward function.")
 
     boolean_feature(parser, "store-initial-weights", False, "Store the network's initial weights")
-    boolean_feature(parser, "capturable", False, 'Temporary workaround that should be removed in future pytorch releases '
-                                                 'it makes possible to reload models with adam optimizers '
-                                                 'see: https://github.com/pytorch/pytorch/issues/80809')
+    boolean_feature(parser, "capturable", False,
+                    'Temporary workaround that should be removed in future pytorch releases '
+                    'it makes possible to reload models with adam optimizers '
+                    'see: https://github.com/pytorch/pytorch/issues/80809')
     boolean_feature(parser, "copy-code", True, "Copy the code directory into the experiment directory")
     boolean_feature(parser, "restart-epochs-count", True,
                     "When reloading an algorithm, restart counting epochs from zero "
@@ -395,13 +184,15 @@ def get_beam_parser():
                         help='Patience for the ReduceOnPlateau scheduler')
     parser.add_argument('--scheduler-warmup', type=float, default=5, metavar='tune',
                         help='Scheduler\'s warmup factor (in epochs)')
-    parser.add_argument('--weight-decay', type=float, default=0., metavar='tune', help='L2 regularization coefficient for dense optimizers')
+    parser.add_argument('--weight-decay', type=float, default=0., metavar='tune',
+                        help='L2 regularization coefficient for dense optimizers')
     parser.add_argument('--eps', type=float, default=1e-4, metavar='tune', help='Adam\'s epsilon parameter')
     parser.add_argument('--momentum', '--beta1', type=float, default=0.9, metavar='tune',
                         help='The momentum and Adam\'s β1 parameter')
     parser.add_argument('--beta2', type=float, default=0.999, metavar='tune', help='Adam\'s β2 parameter')
     parser.add_argument('--clip-gradient', type=float, default=0., metavar='tune', help='Clip Gradient L2 norm')
-    parser.add_argument('--accumulate', type=int, default=1, metavar='tune', help='Accumulate gradients for this number of backward iterations')
+    parser.add_argument('--accumulate', type=int, default=1, metavar='tune',
+                        help='Accumulate gradients for this number of backward iterations')
     parser.add_argument('--oversampling-factor', type=float, default=.0, metavar='tune',
                         help='A factor [0, 1] that controls how much to oversample where'
                              '0-no oversampling and 1-full oversampling. Set 0 for no oversampling')
@@ -454,9 +245,12 @@ def get_beam_parser():
     # keys
     parser.add_argument('--comet-api-key', type=str, default=None, help='The comet.ml api key to use for logging')
     parser.add_argument('--aws-access-key', type=str, default=None, help='The aws access key to use for S3 connections')
-    parser.add_argument('--aws-private-key', type=str, default=None, help='The aws private key to use for S3 connections')
-    parser.add_argument('--ssh-secret-key', type=str, default=None, help='The ssh secret key to use for ssh connections')
-    parser.add_argument('--openai-api-key', type=str, default=None, help='The openai api key to use for openai connections')
+    parser.add_argument('--aws-private-key', type=str, default=None,
+                        help='The aws private key to use for S3 connections')
+    parser.add_argument('--ssh-secret-key', type=str, default=None,
+                        help='The ssh secret key to use for ssh connections')
+    parser.add_argument('--openai-api-key', type=str, default=None,
+                        help='The openai api key to use for openai connections')
 
     # catboost
 
@@ -477,13 +271,14 @@ def get_beam_parser():
     parser.add_argument('--squeeze', type=bool, default=True, help='Whether to squeeze the results')
     parser.add_argument('--reduce', type=bool, default=True, help='Whether to reduce and collate the results')
     parser.add_argument('--reduce-dim', type=int, default=0, help='The dimension to reduce the results')
-    parser.add_argument('--transform-strategy', type=str, default=None, help='The transform strategy to use can be [CC|CS|SC|SS]')
-    parser.add_argument('--split-by', type=str, default='keys', help='The split strategy to use can be [keys|index|columns]')
+    parser.add_argument('--transform-strategy', type=str, default=None,
+                        help='The transform strategy to use can be [CC|CS|SC|SS]')
+    parser.add_argument('--split-by', type=str, default='keys',
+                        help='The split strategy to use can be [keys|index|columns]')
     parser.add_argument('--store-suffix', type=str, default=None, help='The suffix to add to the stored file')
 
     parser.add_argument('--llm', type=str, default=None, metavar='model',
                         help='URI of a Large Language Model to be used in the experiment.')
-
 
     # accelerate parameters
     # based on https://huggingface.co/docs/accelerate/v0.24.0/en/package_reference/accelerator#accelerate.Accelerator
@@ -494,198 +289,4 @@ def get_beam_parser():
                     "Whether or not the accelerator should split the batches "
                     "yielded by the dataloaders across the devices")
 
-
     return parser
-
-
-def normalize_key(k):
-    return k.replace('-', '_')
-
-def normalize_value(v):
-    try:
-        return int(v)
-    except:
-        pass
-    try:
-        return float(v)
-    except:
-        pass
-    return v
-
-
-def add_unknown_arguments(args, unknown):
-
-    from .logger import beam_logger as logger
-    args = copy.deepcopy(args)
-
-    i = 0
-
-    if len(unknown) > 0:
-        logger.warning(f"Parsing unkown arguments: {unknown}. Please check for typos")
-
-    while i < len(unknown):
-
-        arg = unknown[i]
-        if not arg.startswith("-"):
-            logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it as it does not start with \'-\' sign")
-            i += 1
-            continue
-        if arg.startswith("--"):
-            arg = arg[2:]
-        else:
-            arg = arg[1:]
-
-        if arg.startswith('no-'):
-            k = arg[3:]
-            setattr(args, normalize_key(k), False)
-            i += 1
-            continue
-
-        if '=' in arg:
-            arg = arg.split('=')
-            if len(arg) != 2:
-                logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it contains more than one \'=\' sign")
-                i += 1
-                continue
-            k, v = arg
-            setattr(args, normalize_key(k), normalize_value(v))
-            i += 1
-            continue
-
-        k = normalize_key(arg)
-        if i == len(unknown) - 1 or unknown[i+1].startswith("-"):
-            setattr(args, k, True)
-            i += 1
-        else:
-            v = unknown[i+1]
-            setattr(args, k, normalize_value(v))
-            i += 2
-
-    return args
-
-
-def beam_arguments(*args, **kwargs):
-    '''
-    args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
-    kwargs is a dictionary of both defined and undefined arguments
-    '''
-
-    def update_parser(p, d):
-        for pi in p._actions:
-            for o in pi.option_strings:
-                o = o.replace('--', '').replace('-', '_')
-                if o in d:
-                    p.set_defaults(**{pi.dest: d[o]})
-
-    if is_notebook():
-        sys.argv = sys.argv[:1]
-
-    file_name = sys.argv[0] if len(sys.argv) > 0 else '/tmp/tmp.py'
-    sys_args = sys.argv[1:]
-
-    args_str = []
-    args_dict = []
-
-    if len(args) and type(args[0]) == argparse.ArgumentParser:
-        pr = args[0]
-        args = args[1:]
-    else:
-        pr = get_beam_parser()
-
-    for ar in args:
-
-        ar_type = check_type(ar)
-
-        if isinstance(ar, Namespace):
-            args_dict.append(BeamHparams.dict(ar))
-        elif ar_type.minor == 'dict':
-            args_dict.append(ar)
-        elif ar_type.major == 'scalar' and ar_type.element == 'str':
-            args_str.append(ar)
-        else:
-            raise ValueError
-
-    for ar in args_dict:
-        kwargs = {**kwargs, **ar}
-
-    args_str = re.split(r"\s+", ' '.join([ar.strip() for ar in args_str]))
-
-    sys.argv = [file_name] + args_str + sys_args
-    sys.argv = list(filter(lambda x: bool(x), sys.argv))
-
-    update_parser(pr, kwargs)
-    # set defaults from environment variables
-    update_parser(pr, os.environ)
-
-    args, unknown = pr.parse_known_args()
-    args = add_unknown_arguments(args, unknown)
-
-    for k, v in kwargs.items():
-        if k not in args:
-            setattr(args, k, v)
-
-    if args.experiment_configuration is not None:
-        cf = beam_path(args.experiment_configuration).read()
-        for k, v in cf.items():
-            setattr(args, k, v)
-
-    beam_key.set_hparams(BeamHparams.dict(args))
-
-    tune = [pai.dest for pai in pr._actions if pai.metavar is not None and 'tune' in pai.metavar]
-    setattr(args, 'tune_set', set(tune))
-
-    model = [pai.dest for pai in pr._actions if pai.metavar is not None and 'model' in pai.metavar]
-    setattr(args, 'model_set', set(model))
-
-    return args
-
-
-def get_beam_llm(llm_uri=None, get_from_key=True):
-    llm = None
-    if llm_uri is None and get_from_key:
-        llm_uri = beam_key('BEAM_LLM', store=False)
-    if llm_uri is not None:
-        try:
-            from .llm import beam_llm
-            llm = beam_llm(llm_uri)
-        except ImportError:
-            pass
-    return llm
-
-
-def print_beam_hyperparameters(args, debug_only=False):
-
-    if debug_only:
-        log_func = logger.debug
-    else:
-        log_func = logger.info
-
-    log_func(f"Beam experiment (Beam version: {__version__})")
-    log_func(f"project: {args.project_name}, algorithm: {args.algorithm}, identifier: {args.identifier}")
-    log_func(f"Global paths:")
-    log_func(f"path-to-data (where the dataset should be): {args.path_to_data}")
-    log_func(f"root-dir (where results are written to): {args.root_dir}")
-    log_func(f'Experiment objective: {args.objective} (set for schedulers, early stopping and best checkpoint store)')
-    log_func('Experiment Hyperparameters (only non default values are listed):')
-    log_func('----------------------------------------------------------'
-             '---------------------------------------------------------------------')
-
-    if hasattr(args, 'hparams'):
-        hparams_list = args.hparams
-    else:
-        hparams_list = args
-
-    var_args_sorted = dict(sorted(BeamHparams.dict(args).items()))
-
-    default_params = get_beam_parser()
-
-    for k, v in var_args_sorted.items():
-        if k == 'hparams':
-            continue
-        elif k in hparams_list and (v is not None and v != default_params.get_default(k)):
-            log_func(k + ': ' + str(v))
-        else:
-            logger.debug(k + ': ' + str(v))
-
-    log_func('----------------------------------------------------------'
-             '---------------------------------------------------------------------')

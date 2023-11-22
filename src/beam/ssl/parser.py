@@ -1,9 +1,9 @@
-from ..config import boolean_feature, get_beam_parser
+from ..config import boolean_feature, basic_beam_parser
 
 
 def get_ssl_parser():
 
-    parser = get_beam_parser()
+    parser = basic_beam_parser()
 
     boolean_feature(parser, "verbose-lgb", False, "Print progress in lgb training")
     parser.add_argument('--similarity', type=str, metavar='hparam', default='cosine',

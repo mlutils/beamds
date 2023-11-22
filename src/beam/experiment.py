@@ -4,31 +4,23 @@ import time
 import numpy as np
 import os
 import warnings
-import inspect
-
 warnings.filterwarnings('ignore', category=FutureWarning)
 from shutil import copytree
 import torch
 import copy
-from collections import defaultdict
-from .utils import include_patterns, check_type, beam_device, check_element_type, rmtree
 import pandas as pd
 import torch.multiprocessing as mp
-from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
-    pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format, nested_defaultdict, \
-    as_tensor, jupyter_like_traceback, lazy_property
-import torch.distributed as dist
-from .utils import tqdm_beam as tqdm
-from functools import partial
-from argparse import Namespace
 import inspect
+import torch.distributed as dist
+from argparse import Namespace
+from functools import partial
+
+from .utils import (setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook,
+                    find_port, as_numpy, lazy_property, include_patterns, check_type, beam_device, rmtree)
 from .path import beam_path, BeamPath, beam_key
 from .logger import beam_logger as logger
 import atexit
 import traceback
-from contextlib import contextmanager
-from timeit import default_timer as timer
-from .data import BeamData
 from .config import get_beam_llm, print_beam_hyperparameters, BeamHparams
 
 
@@ -82,7 +74,7 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
 
         alg = Alg
 
-    alg.next_level = experiment
+    alg.experiment = experiment
 
     if datasets is not None:
         alg.load_datasets(datasets)

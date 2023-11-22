@@ -14,7 +14,7 @@ import numpy as np
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam.ssl import get_ssl_parser
-from src.beam.config import get_beam_parser
+from src.beam.config import basic_beam_parser
 
 from sklearn.datasets import fetch_covtype
 import pandas as pd
