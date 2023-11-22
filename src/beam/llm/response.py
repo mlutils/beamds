@@ -6,9 +6,10 @@ from ..utils import parse_text_to_protocol, retry
 
 
 class LLMResponse:
-    def __init__(self, response, prompt, llm, chat=False, stream=False, retrials=3, sleep=1, **kwargs):
+    def __init__(self, response, llm, prompt=None, prompt_kwargs=None, chat=False, stream=False, retrials=3, sleep=1, **kwargs):
         self.response = response
-        self.prompt = prompt
+        self._prompt = prompt
+        self._prompt_kwargs = prompt_kwargs
         self.retrials = retrials
         self.sleep = sleep
         self.llm = llm
@@ -26,6 +27,14 @@ class LLMResponse:
         else:
             for r in self.response:
                 yield LLMResponse(r, self.prompt, self.llm, self.chat, self.stream)
+
+    @property
+    def prompt(self):
+        return self._prompt
+
+    @property
+    def prompt_kwargs(self):
+        return self._prompt_kwargs
 
     def verify(self):
         return self.llm.verify_response(self)

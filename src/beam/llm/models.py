@@ -7,7 +7,7 @@ import numpy as np
 from transformers.pipelines import Conversation
 
 from ..logger import beam_logger as logger
-from .core import BeamLLM
+from .core import BeamLLM, CompletionObject
 from pydantic import BaseModel, Field, PrivateAttr
 from ..path import beam_key, normalize_host
 from .utils import get_conversation_template
@@ -43,11 +43,13 @@ class OpenAIBase(BeamLLM):
 
     def _chat_completion(self, **kwargs):
         self.sync_openai()
-        return openai.ChatCompletion.create(model=self.model, **kwargs)
+        res = openai.ChatCompletion.create(model=self.model, **kwargs)
+        return CompletionObject(prompt=kwargs['prompt'], kwargs=kwargs, response=res)
 
     def _completion(self, **kwargs):
         self.sync_openai()
-        return openai.Completion.create(engine=self.model, **kwargs)
+        res = openai.Completion.create(engine=self.model, **kwargs)
+        return CompletionObject(prompt=kwargs['messages'], kwargs=kwargs, response=res)
 
     def verify_response(self, res):
         res = res.response
@@ -312,14 +314,15 @@ class TGILLM(FCConversationLLM):
 
         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         generate_kwargs = self.process_kwargs(prompt, **kwargs)
-        return self._client.generate(prompt, **generate_kwargs)
+        res = self._client.generate(prompt, **generate_kwargs)
+        return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
     def _chat_completion(self, messages=None, **kwargs):
 
         prompt = self.get_prompt(messages)
         generate_kwargs = self.process_kwargs(prompt, **kwargs)
-
-        return self._client.generate(prompt, **generate_kwargs)
+        res = self._client.generate(prompt, **generate_kwargs)
+        return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
     def extract_text(self, res):
 
@@ -416,7 +419,7 @@ class FastAPILLM(FCConversationLLM):
 
         res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
                             verify=False)
-        return res.json()
+        return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
     def _completion(self, prompt=None, **kwargs):
 
@@ -428,7 +431,8 @@ class FastAPILLM(FCConversationLLM):
 
         res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
                             verify=False)
-        return res.json()
+
+        return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
     def verify_response(self, res):
         try:
@@ -544,13 +548,15 @@ class HuggingFaceLLM(BeamLLM):
         res = self._text_generation_pipeline(prompt, pad_token_id=self._text_generation_pipeline.tokenizer.eos_token_id,
                                              **self.pipline_kwargs)
 
-        return res
+        return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
     def _chat_completion(self, **kwargs):
 
         # pipeline = transformers.pipeline('conversational', model=self.model,
         #                                  tokenizer=self.tokenizer, device=self.input_device)
 
-        return self._conversational_pipeline(self.conversation,
+        res = self._conversational_pipeline(self.conversation,
                                              pad_token_id=self._conversational_pipeline.tokenizer.eos_token_id,
                                              **self.pipline_kwargs)
+
+        return CompletionObject(prompt=self.conversation, kwargs=kwargs, response=res)

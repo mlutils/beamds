@@ -1,4 +1,5 @@
 import time
+from collections import namedtuple
 from functools import partial
 from typing import Optional, Any, Dict, List, Mapping
 
@@ -14,8 +15,11 @@ from ..path import BeamURL
 from langchain.llms.base import LLM
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from pydantic import Field, PrivateAttr
-from transformers.pipelines import Conversation
+from .hf_conversation import Conversation
 import openai
+
+
+CompletionObject = namedtuple("CompletionObject", "prompt kwargs response")
 
 
 class BeamLLM(LLM, Processor):
@@ -108,12 +112,21 @@ class BeamLLM(LLM, Processor):
 
     @lazy_property
     def tokenizer(self):
-        tokenizer = None
         if self._tokenizer is not None:
             tokenizer = self._tokenizer
-        if self._path_to_tokenizer is not None:
-            from tokenizers import PreTrainedTokenizerFast
+        elif self._path_to_tokenizer is not None:
+            from transformers import PreTrainedTokenizerFast
             tokenizer = PreTrainedTokenizerFast(tokenizer_file=self._path_to_tokenizer)
+        else:
+            import tiktoken
+            try:
+                enc = tiktoken.encoding_for_model(self.model)
+            except KeyError:
+                enc = tiktoken.encoding_for_model("gpt-4")
+
+            def tokenizer(text):
+                return {"input_ids": enc.encode(text)}
+
         return tokenizer
 
     @property
@@ -189,17 +202,18 @@ class BeamLLM(LLM, Processor):
 
     def chat_completion(self, stream=False, retrials=3, sleep=1, **kwargs):
 
-        response = self._chat_completion(**kwargs)
-        self.update_usage(response)
+        completion_object = self._chat_completion(**kwargs)
+        self.update_usage(completion_object.response)
 
-        response = LLMResponse(response, kwargs, self, chat=True, stream=stream, retrials=retrials, sleep=sleep)
+        response = LLMResponse(completion_object.response, kwargs, self, chat=True, stream=stream, retrials=retrials, sleep=sleep)
         return response
 
     def completion(self, retrials=3, sleep=1, **kwargs):
 
-        response = self._completion(**kwargs)
-        self.update_usage(response)
-        response = LLMResponse(response, kwargs, self, chat=False, retrials=retrials, sleep=sleep)
+        completion_object = self._completion(**kwargs)
+        self.update_usage(completion_object.response)
+
+        response = LLMResponse(completion_object.response, kwargs, self, chat=False, retrials=retrials, sleep=sleep)
         return response
 
     def _completion(self, **kwargs):
