@@ -14,14 +14,15 @@ import inspect
 import torch.distributed as dist
 from argparse import Namespace
 from functools import partial
-
-from .utils import (setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook,
-                    find_port, as_numpy, lazy_property, include_patterns, check_type, beam_device, rmtree)
-from .path import beam_path, BeamPath, beam_key
-from .logger import beam_logger as logger
 import atexit
 import traceback
-from .config import get_beam_llm, print_beam_hyperparameters, BeamHparams
+
+
+from ..utils import (setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook,
+                    find_port, as_numpy, lazy_property, include_patterns, check_type, beam_device, rmtree)
+from ..path import beam_path, BeamPath, beam_key
+from ..logger import beam_logger as logger
+from ..config import get_beam_llm, print_beam_hyperparameters, BeamHparams
 
 
 done = mp.Event()
@@ -339,7 +340,7 @@ class Experiment(object):
     @lazy_property
     def llm(self):
         if self.hparams.llm is not None:
-            from .llm import beam_llm
+            from ..llm import beam_llm
             return beam_llm(self.hparams.llm)
         return None
 
@@ -483,7 +484,7 @@ class Experiment(object):
 
         if self.hparams.mlflow:
 
-            from beam_mlflow import MLflowSummaryWriter
+            from .beam_mlflow import MLflowSummaryWriter
             self.mlflow_writer = MLflowSummaryWriter(self.exp_name, self.tensorboard_hparams, self.hparams.mlflow_url)
 
         if networks is not None and enable:

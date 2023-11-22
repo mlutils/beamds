@@ -1,28 +1,21 @@
-import re
-import sys
 import time
 import numpy as np
 import os
 
 import torch
-import copy
 from collections import defaultdict
-from .utils import include_patterns, check_type, beam_device, check_element_type, rmtree, lazy_property
 import pandas as pd
-import torch.multiprocessing as mp
-from .utils import setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook, find_port, \
-    pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format, nested_defaultdict, \
-    as_tensor, squeeze_scalar
-from .config import get_beam_llm
-
-from .utils import tqdm_beam as tqdm
-
-from .logger import beam_logger as logger
-
 from contextlib import contextmanager
 from timeit import default_timer as timer
-from .data import BeamData
 import threading
+
+from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format,
+                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type,
+                     rmtree, lazy_property)
+
+from ..utils import tqdm_beam as tqdm
+from ..logger import beam_logger as logger
+from ..data import BeamData
 
 
 class BeamReport(object):
@@ -179,7 +172,7 @@ class BeamReport(object):
 
     @lazy_property
     def llm(self):
-        from .config import get_beam_llm
+        from ..config import get_beam_llm
         return get_beam_llm()
 
     def print_stats(self):

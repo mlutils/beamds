@@ -11,8 +11,7 @@ from ..utils import to_device, check_type, recursive_concatenate, \
     is_notebook, DataBatch, dictionary_iterator
 from ..config import beam_arguments, basic_beam_parser
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
-from ..experiment import Experiment
-from ..reporter import BeamReport
+from ..experiment import Experiment, BeamReport
 from ..path import beam_path, PureBeamPath
 from .processor import Processor
 from ..logger import beam_kpi, BeamResult
