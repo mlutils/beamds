@@ -25,46 +25,47 @@ ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 # apt installs
 #RUN chmod +x /workspace/install/apt_installs.sh
 RUN bash /workspace/install/apt_installs.sh
-RUN pip list
+#RUN pip list
 
 # pip installs
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install -U -r /workspace/install/requirements.txt
 # REMOVE FOR LITE VERSION
 RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0001.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0002.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0003.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0004.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0005.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0006.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0007.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0008.txt
-RUN pip list
+#RUN pip list
 RUN pip install -r /workspace/install/requirements_0009.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0010.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0011.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0012.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0014.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0015.txt
 # RUN pip list
+RUN pip install -U -r /workspace/install/requirements_0016.txt
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
-RUN pip list
+#RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 RUN pip list
 
@@ -93,7 +94,7 @@ RUN bash /workspace/install/install_dgl.sh
 
 # download datasets and models
 # REMOVE FOR LITE VERSION
-RUN python /workspace/install/downloader.py
+# RUN python /workspace/install/downloader.py
 
 ## download nlp data
 # RUN python /workspace/install/models_downloads.pyin
