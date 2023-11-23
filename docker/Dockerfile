@@ -31,7 +31,8 @@ RUN bash /workspace/install/apt_installs.sh
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install -U -r /workspace/install/requirements.txt
 # REMOVE FOR LITE VERSION
-RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
+#RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
+RUN pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.0+cu121.html
 #RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 #RUN pip list
