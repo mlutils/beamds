@@ -48,7 +48,7 @@ class Algorithm(Processor):
         self.cuda = None
         self.pin_memory = None
         self.autocast_device = None
-        self.amp_dtype = None
+        self.model_dtype = None
         self.amp = None
         self.scaler = None
 
@@ -141,7 +141,7 @@ class Algorithm(Processor):
             from accelerate import Accelerator
 
             mp_map = {'float16': 'fp16', 'bfloat16': 'bf16', 'float32': 'no', 'float8': 'fp8'}
-            mp = mp_map[self.get_hparam('amp_dtype')]
+            mp = mp_map[self.get_hparam('model_dtype')]
 
             return Accelerator(device_placement=self.get_hparam('device_placement'),
                                split_batches=self.get_hparam('split_batches'),
@@ -222,13 +222,13 @@ class Algorithm(Processor):
         self.cuda = (self.device.type == 'cuda')
         self.pin_memory = self.cuda
         self.autocast_device = 'cuda' if self.cuda else 'cpu'
-        amp_dtype = self.get_hparam('amp_dtype', default='float16')
+        model_dtype = self.get_hparam('model_dtype', default='float16')
         if self.cuda:
-            self.amp_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[amp_dtype]
+            self.model_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[model_dtype]
         else:
-            if amp_dtype != 'bfloat16':
+            if model_dtype != 'bfloat16':
                 logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
-            self.amp_dtype = torch.bfloat16
+            self.model_dtype = torch.bfloat16
         self.amp = self.get_hparam('amp') if self.cuda else False
         self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
 
@@ -517,7 +517,7 @@ class Algorithm(Processor):
                                                                 'eps': self.get_hparam('eps', specific=k)},
                                                    clip=self.get_hparam('clip_gradient', specific=k), amp=self.amp,
                                                    accumulate=self.get_hparam('accumulate', specific=k),
-                                                   amp_dtype=self.amp_dtype)
+                                                   model_dtype=self.model_dtype)
 
         if processors is None:
             processors = {}
@@ -700,7 +700,7 @@ class Algorithm(Processor):
                     optimizers = [optimizers]
                 optimizers = self.get_flat_optimizers(optimizers)
 
-            with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=False):
+            with torch.autocast(self.autocast_device, dtype=self.model_dtype, enabled=False):
 
                 it = {}
 
@@ -1148,7 +1148,7 @@ class Algorithm(Processor):
                     ind = None
                     label = None
 
-                with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=self.amp):
+                with torch.autocast(self.autocast_device, dtype=self.model_dtype, enabled=self.amp):
                     self.iteration(sample=sample, counter=i, training=training, index=ind, label=label)
 
                     objective = self.reporter.get_scalar(objective_name, subset=subset, aggregate=False, index=-1)

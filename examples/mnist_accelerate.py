@@ -6,7 +6,7 @@ from examples.mnist_example import MNISTDataset, MNISTAlgorithm
 
 class MNISTHparams(BeamHparams):
     defaults = dict(project_name='mnist', algorithm='MNISTAlgorithm', amp=False, accelerate=True,
-                    device=0, n_epochs=10, epoch_length=1000, objective='acc', amp_dtype='float16',
+                    device=0, n_epochs=10, epoch_length=1000, objective='acc', model_dtype='float16',
                     stop_at=.99, scheduler='exponential', gamma=.999, scale_epoch_by_batch_size=False)
 
 

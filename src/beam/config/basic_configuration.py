@@ -102,7 +102,7 @@ def basic_beam_parser():
                     'When False: epoch length corresponds to the number of forward passes in each epoch')
 
     boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='tune/model')
-    parser.add_argument('--amp-dtype', type=str, default='float16', metavar='tune/model',
+    parser.add_argument('--model-dtype', type=str, default='float16', metavar='tune/model',
                         help='dtype in automatic mixed precision. Supported dtypes: [float16, bfloat16]')
     boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='tune/model')
     boolean_feature(parser, "scalene", False, "Profile the experiment with the Scalene python profiler")
