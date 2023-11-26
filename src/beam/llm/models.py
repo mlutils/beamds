@@ -408,6 +408,9 @@ class FastAPILLM(FCConversationLLM):
         if temperature is not None:
             kwargs_processed['temp'] = temperature
 
+        if 'stop_criteria' in kwargs:
+            kwargs_processed['stop_criteria'] = kwargs.pop('stop_criteria')
+
         return kwargs_processed
 
     def _chat_completion(self, messages=None, **kwargs):

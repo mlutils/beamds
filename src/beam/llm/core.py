@@ -120,14 +120,19 @@ class BeamLLM(LLM, Processor):
             from transformers import PreTrainedTokenizerFast
             tokenizer = PreTrainedTokenizerFast(tokenizer_file=self._path_to_tokenizer)
         else:
-            import tiktoken
             try:
-                enc = tiktoken.encoding_for_model(self.model)
+                import tiktoken
+                enc = tiktoken.encoding_for_model(self.model).encode
+            except ImportError:
+                enc = split_to_tokens
             except KeyError:
-                enc = tiktoken.encoding_for_model("gpt-4")
+                try:
+                    enc = tiktoken.encoding_for_model("gpt-4").encode
+                except:
+                    enc = split_to_tokens
 
             def tokenizer(text):
-                return {"input_ids": enc.encode(text)}
+                return {"input_ids": enc(text)}
 
         return tokenizer
 
@@ -202,7 +207,8 @@ class BeamLLM(LLM, Processor):
     def _chat_completion(self, **kwargs):
         raise NotImplementedError
 
-    def chat_completion(self, stream=False, parse_retrials=3, sleep=1, ask_retrials=1, **kwargs):
+    def chat_completion(self, stream=False, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='chat_completion',
+                        **kwargs):
 
         chat_completion_function = self._chat_completion
         if ask_retrials > 1:
@@ -213,10 +219,12 @@ class BeamLLM(LLM, Processor):
         completion_object = chat_completion_function(**kwargs)
         self.update_usage(completion_object.response)
 
-        response = LLMResponse(completion_object.response, kwargs, self, chat=True, stream=stream, parse_retrials=parse_retrials, sleep=sleep)
+        response = LLMResponse(completion_object.response, self, chat=True, stream=stream,
+                               parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
+                               prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
         return response
 
-    def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, **kwargs):
+    def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', **kwargs):
 
         completion_function = self._completion
         if ask_retrials > 1:
@@ -227,7 +235,9 @@ class BeamLLM(LLM, Processor):
         completion_object = completion_function(**kwargs)
         self.update_usage(completion_object.response)
 
-        response = LLMResponse(completion_object.response, kwargs, self, chat=False, parse_retrials=parse_retrials, sleep=sleep)
+        response = LLMResponse(completion_object.response, self, chat=False,
+                               parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
+                               prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
         return response
 
     def _completion(self, **kwargs):
@@ -284,7 +294,8 @@ class BeamLLM(LLM, Processor):
 
     def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
-             logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None, **kwargs):
+             logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None,
+             prompt_type='chat_completion', **kwargs):
 
         '''
 
@@ -334,7 +345,7 @@ class BeamLLM(LLM, Processor):
 
         messages.append(message)
 
-        response = self.chat_completion(messages=messages, **default_params)
+        response = self.chat_completion(messages=messages, prompt_type=prompt_type, **default_params)
         self.add_to_chat(response.text, is_user=False)
 
         return response
@@ -514,23 +525,29 @@ class BeamLLM(LLM, Processor):
 
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
-            parse_retrials=None, sleep=None, ask_retrials=None, **kwargs):
-        """
-        Ask a question to the model
-        :param n:
-        :param logprobs:
-        :param stream:
-        :param echo:
-        :param question:
-        :param max_tokens:
-        :param temperature: 0.0 - 1.0
-        :param top_p:
-        :param frequency_penalty:
-        :param presence_penalty:
-        :param stop:
-        :return:
+            parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', **kwargs):
         """
 
+        @param question:
+        @param max_tokens:
+        @param temperature:
+        @param top_p:
+        @param frequency_penalty:
+        @param max_new_tokens:
+        @param presence_penalty:
+        @param stop:
+        @param n:
+        @param stream:
+        @param logprobs:
+        @param logit_bias:
+        @param echo:
+        @param parse_retrials:
+        @param sleep:
+        @param ask_retrials:
+        @param prompt_type:
+        @param kwargs:
+        @return:
+        """
         default_params = self.get_default_params(temperature=temperature,
                                                  top_p=top_p, n=n, stream=stream,
                                                  stop=stop, max_tokens=max_tokens,
@@ -545,9 +562,10 @@ class BeamLLM(LLM, Processor):
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
-            response = self.chat(question, reset_chat=True, **kwargs)
+            response = self.chat(question, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat', **kwargs)
         else:
-            response = self.completion(prompt=question, logprobs=logprobs, echo=echo, **default_params)
+            response = self.completion(prompt=question, logprobs=logprobs, echo=echo,
+                                       prompt_type=prompt_type, **default_params)
 
         self.instruction_history.append({'question': question, 'response': response.text, 'type': 'ask'})
 

@@ -6,7 +6,8 @@ from ..utils import parse_text_to_protocol, retry
 
 
 class LLMResponse:
-    def __init__(self, response, llm, prompt=None, prompt_kwargs=None, chat=False, stream=False, parse_retrials=3, sleep=1, **kwargs):
+    def __init__(self, response, llm, prompt=None, prompt_kwargs=None, chat=False, stream=False, parse_retrials=3,
+                 sleep=1, prompt_type='completion', **kwargs):
         self.response = response
         self._prompt = prompt
         self._prompt_kwargs = prompt_kwargs
@@ -19,6 +20,7 @@ class LLMResponse:
         self.chat = chat
         self.object = "chat.completion" if chat else "text_completion"
         self.stream = stream
+        self.prompt_type = prompt_type
         assert self.verify(), "Response is not valid"
 
     def __iter__(self):
@@ -26,7 +28,9 @@ class LLMResponse:
             yield self
         else:
             for r in self.response:
-                yield LLMResponse(r, self.prompt, self.llm, self.chat, self.stream)
+                yield LLMResponse(r, self.llm, prompt=self.prompt, chat=self.chat, stream=self.stream,
+                                  prompt_kwargs=self._prompt_kwargs, parse_retrials=self.parse_retrials,
+                                  sleep=self.sleep, prompt_type=self.prompt_type)
 
     @property
     def prompt(self):
