@@ -1,4 +1,4 @@
-from .models import OpenAI, TGILLM, FastChatLLM, FastAPILLM, HuggingFaceLLM
+from .models import OpenAI, TGILLM, FastChatLLM, FastAPILLM, HuggingFaceLLM, FastAPIDPLLM
 from ..path import beam_key, BeamURL
 
 
@@ -43,6 +43,9 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
     elif url.protocol == 'fastapi':
         return FastAPILLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
+
+    elif url.protocol == 'fastapi-dp':
+        return FastAPIDPLLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
 
     elif url.protocol == 'tgi':
         return TGILLM(model=model, hostname=hostname, port=port, username=username, **kwargs)

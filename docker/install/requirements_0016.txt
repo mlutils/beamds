@@ -18,3 +18,4 @@ krovetzstemmer
 indxr
 
 tiktoken
+asteroid

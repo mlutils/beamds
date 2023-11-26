@@ -8,9 +8,9 @@ import pandas as pd
 
 from ..logger import beam_logger as logger
 from .response import LLMResponse
-from .utils import estimate_tokens
+from .utils import estimate_tokens, split_to_tokens
 from ..core.processor import Processor
-from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property
+from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict
 from ..path import BeamURL
 from langchain.llms.base import LLM
 from langchain.callbacks.manager import CallbackManagerForLLMRun
@@ -41,7 +41,8 @@ class BeamLLM(LLM, Processor):
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     logit_bias: Optional[Dict[str, float]] = Field(None)
-    retrials: int = Field(3, ge=0)
+    parse_retrials: int = Field(3, ge=0)
+    ask_retrials: int = Field(1, ge=1)
     sleep: float = Field(1.0, ge=0.0)
     _len_function: Any = PrivateAttr()
 
@@ -54,8 +55,8 @@ class BeamLLM(LLM, Processor):
     _assistant_docstrings: Any = PrivateAttr()
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
-                 frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None,
-                 debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, retrials=3, sleep=1,
+                 frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
+                 debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
                  **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -83,7 +84,8 @@ class BeamLLM(LLM, Processor):
             frequency_penalty = float(frequency_penalty)
         self.frequency_penalty = frequency_penalty
 
-        self.retrials = int(retrials)
+        self.parse_retrials = int(parse_retrials)
+        self.ask_retrials = int(ask_retrials)
         self.sleep = float(sleep)
         self.logit_bias = logit_bias
         self.scheme = scheme
@@ -200,20 +202,32 @@ class BeamLLM(LLM, Processor):
     def _chat_completion(self, **kwargs):
         raise NotImplementedError
 
-    def chat_completion(self, stream=False, retrials=3, sleep=1, **kwargs):
+    def chat_completion(self, stream=False, parse_retrials=3, sleep=1, ask_retrials=1, **kwargs):
 
-        completion_object = self._chat_completion(**kwargs)
+        chat_completion_function = self._chat_completion
+        if ask_retrials > 1:
+            chat_completion_function = retry(func=chat_completion_function, retrials=ask_retrials,
+                                        sleep=sleep, logger=logger,
+                                        name=f"LLM chat-completion with model: {self.model}")
+
+        completion_object = chat_completion_function(**kwargs)
         self.update_usage(completion_object.response)
 
-        response = LLMResponse(completion_object.response, kwargs, self, chat=True, stream=stream, retrials=retrials, sleep=sleep)
+        response = LLMResponse(completion_object.response, kwargs, self, chat=True, stream=stream, parse_retrials=parse_retrials, sleep=sleep)
         return response
 
-    def completion(self, retrials=3, sleep=1, **kwargs):
+    def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, **kwargs):
 
-        completion_object = self._completion(**kwargs)
+        completion_function = self._completion
+        if ask_retrials > 1:
+            completion_function = retry(func=completion_function, retrials=ask_retrials,
+                                        sleep=sleep, logger=logger,
+                                        name=f"LLM completion with model: {self.model}")
+
+        completion_object = completion_function(**kwargs)
         self.update_usage(completion_object.response)
 
-        response = LLMResponse(completion_object.response, kwargs, self, chat=False, retrials=retrials, sleep=sleep)
+        response = LLMResponse(completion_object.response, kwargs, self, chat=False, parse_retrials=parse_retrials, sleep=sleep)
         return response
 
     def _completion(self, **kwargs):
@@ -221,7 +235,7 @@ class BeamLLM(LLM, Processor):
 
     def get_default_params(self, temperature=None, top_p=None, n=None, stream=None, stop=None, max_tokens=None,
                            presence_penalty=None, frequency_penalty=None, logit_bias=None, max_new_tokens=None,
-                           retrials=None, sleep=None):
+                           parse_retrials=None, ask_retrials=None, sleep=None):
 
         if temperature is None:
             temperature = self.temperature
@@ -241,9 +255,11 @@ class BeamLLM(LLM, Processor):
             max_new_tokens = self.max_new_tokens
         if max_tokens is None:
             max_tokens = self.max_tokens
+        if ask_retrials is None:
+            ask_retrials = self.ask_retrials
 
-        if retrials is None:
-            retrials = self.retrials
+        if parse_retrials is None:
+            parse_retrials = self.parse_retrials
         if sleep is None:
             sleep = self.sleep
 
@@ -255,7 +271,8 @@ class BeamLLM(LLM, Processor):
                   'max_tokens': max_tokens,
                   'presence_penalty': presence_penalty,
                   'frequency_penalty': frequency_penalty,
-                  'retrials': retrials,
+                  'parse_retrials': parse_retrials,
+                  'ask_retrials': ask_retrials,
                   'sleep': sleep}
 
         if max_new_tokens is not None:
@@ -267,7 +284,7 @@ class BeamLLM(LLM, Processor):
 
     def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
-             logit_bias=None, max_new_tokens=None, retrials=None, sleep=None, **kwargs):
+             logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None, **kwargs):
 
         '''
 
@@ -296,7 +313,7 @@ class BeamLLM(LLM, Processor):
                                                  presence_penalty=presence_penalty,
                                                  frequency_penalty=frequency_penalty,
                                                  logit_bias=logit_bias, max_new_tokens=max_new_tokens,
-                                                 retrials=retrials, sleep=sleep)
+                                                 parse_retrials=parse_retrials, sleep=sleep, ask_retrials=ask_retrials)
 
         if reset_chat:
             self.reset_chat()
@@ -493,11 +510,11 @@ class BeamLLM(LLM, Processor):
                   }
                 }
 
-        return openai.openai_object.OpenAIObject(**res)
+        return BeamDict(**res)
 
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
-            retrials=None, sleep=None, **kwargs):
+            parse_retrials=None, sleep=None, ask_retrials=None, **kwargs):
         """
         Ask a question to the model
         :param n:
@@ -520,8 +537,8 @@ class BeamLLM(LLM, Processor):
                                                  presence_penalty=presence_penalty,
                                                  frequency_penalty=frequency_penalty,
                                                  logit_bias=logit_bias,
-                                                 max_new_tokens=max_new_tokens,
-                                                 retrials=retrials, sleep=sleep)
+                                                 max_new_tokens=max_new_tokens, ask_retrials=ask_retrials,
+                                                 parse_retrials=parse_retrials, sleep=sleep)
 
         # if response_format is not None:
         #     question = f"{question}\nReplay with a valid {response_format} format"
@@ -535,16 +552,6 @@ class BeamLLM(LLM, Processor):
         self.instruction_history.append({'question': question, 'response': response.text, 'type': 'ask'})
 
         return response
-
-    def ask_with_retrials(self, question, retrials=1, sleep=1, **kwargs):
-        if retrials > 1:
-            try:
-                return self.ask(question, **kwargs)
-            except:
-                time.sleep(sleep * (1 + np.random.rand()))
-                return self.ask_with_retrials(question, retrials=retrials - 1, sleep=sleep, **kwargs)
-        else:
-            return self.ask(question, **kwargs)
 
     def reset_instruction_history(self):
         self.instruction_history = []
@@ -784,3 +791,10 @@ class BeamLLM(LLM, Processor):
 
     def update_usage(self, response):
         pass
+
+    def stem_message(self, message, n_tokens, skip_special_tokens=True):
+        if self.tokenizer is not None:
+            tokens = self.tokenizer(message)['input_ids'][:n_tokens+1]  # +1 for the start token
+            return self.tokenizer.decode(tokens, skip_special_tokens=skip_special_tokens)
+        else:
+            return ''.join(split_to_tokens(message)[:n_tokens])

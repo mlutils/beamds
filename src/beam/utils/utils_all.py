@@ -77,6 +77,8 @@ class BeamDict(dict, Namespace):
         for key, value in self.__dict__.items():
             if isinstance(value, dict):
                 self.__dict__[key] = BeamDict(value)
+            if isinstance(value, list):
+                self.__dict__[key] = [BeamDict(v) if isinstance(v, dict) else v for v in value]
 
     def __getattr__(self, key):
         try:

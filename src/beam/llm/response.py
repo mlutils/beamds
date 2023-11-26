@@ -6,11 +6,11 @@ from ..utils import parse_text_to_protocol, retry
 
 
 class LLMResponse:
-    def __init__(self, response, llm, prompt=None, prompt_kwargs=None, chat=False, stream=False, retrials=3, sleep=1, **kwargs):
+    def __init__(self, response, llm, prompt=None, prompt_kwargs=None, chat=False, stream=False, parse_retrials=3, sleep=1, **kwargs):
         self.response = response
         self._prompt = prompt
         self._prompt_kwargs = prompt_kwargs
-        self.retrials = retrials
+        self.parse_retrials = parse_retrials
         self.sleep = sleep
         self.llm = llm
         self.id = f'beamllm-{uuid.uuid4()}'
@@ -49,12 +49,12 @@ class LLMResponse:
 
     def _protocol(self, text, protocol='json'):
 
-        if self.retrials == 0:
+        if self.parse_retrials == 0:
             return parse_text_to_protocol(text, protocol=protocol)
         try:
             return parse_text_to_protocol(text, protocol=protocol)
         except:
-            retry_protocol = (retry(retrials=self.retrials, sleep=self.sleep,  logger=logger, name=f"fix-{protocol} with {self.model}")
+            retry_protocol = (retry(retrials=self.parse_retrials, sleep=self.sleep,  logger=logger, name=f"fix-{protocol} with {self.model}")
                               (self.llm.fix_protocol))
             return retry_protocol(text, protocol=protocol)
 

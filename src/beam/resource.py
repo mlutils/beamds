@@ -15,7 +15,7 @@ def resource(uri, **kwargs):
         from .serve.beam_client import BeamClient
         uri = uri.removeprefix('beam-server://')
         return BeamClient(uri, **kwargs)
-    elif scheme in ['openai', 'tgi', 'fastchat', 'huggingface', 'fastapi']:
+    elif scheme in ['openai', 'tgi', 'fastchat', 'huggingface', 'fastapi', 'fastapi-dp']:
         from .llm import beam_llm
         return beam_llm(uri, **kwargs)
     else:

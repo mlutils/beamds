@@ -1,4 +1,5 @@
 import json
+import math
 from typing import Optional, Any
 import openai
 import requests
@@ -411,27 +412,21 @@ class FastAPILLM(FCConversationLLM):
 
     def _chat_completion(self, messages=None, **kwargs):
 
-        d = {}
-        d['model_name'] = self.model
-        d['consumer'] = self.consumer
-        d['input'] = self.get_prompt(messages)
-        d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
-
-        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
-                            verify=False)
-        return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
+        prompt = self.get_prompt(messages)
+        return self._completion_internal(prompt, **kwargs)
 
     def _completion(self, prompt=None, **kwargs):
 
-        d = {}
-        d['model_name'] = self.model
-        d['consumer'] = self.consumer
-        d['input'] = self.get_prompt([{'role': 'user', 'content': prompt}])
-        d['hyper_params'] = self.process_kwargs(d['input'], **kwargs)
+        prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
+        return self._completion_internal(prompt, **kwargs)
+
+    def _completion_internal(self, prompt, **kwargs):
+
+        d = dict(model_name=self.model, consumer=self.consumer, input=prompt,
+                 hyper_params=self.process_kwargs(prompt, **kwargs))
 
         res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
                             verify=False)
-
         return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
     def verify_response(self, res):
@@ -449,6 +444,99 @@ class FastAPILLM(FCConversationLLM):
 
     def extract_text(self, res):
         return res.response['res']
+
+
+class FastAPIDPLLM(FastAPILLM):
+
+    stop_token_ids: Optional[list] = Field(None)
+    stop: Optional[str] = Field(None)
+    application: Optional[str] = Field(None)
+    task: Optional[str] = Field(None)
+    network: Optional[str] = Field(None)
+    cut_long_prompt: Optional[bool] = Field(None)
+    echo: Optional[bool] = Field(None)
+    worker_generate_stream_ep: Optional[str] = Field(None)
+    streaming_delimiter: Optional[bytes] = Field(None)
+    retrials: Optional[int] = Field(None)
+    timeout: Optional[int] = Field(None)
+
+    def __init__(self, *args, application='Botson', task='None', network='NH', cut_long_prompt=False, echo=False,
+                 worker_generate_stream_ep='worker_generate_stream/', streaming_delimiter=b"\0",
+                 retrials=None, stop_token_ids=None, protocol='http', stop=None, timeout=60, **kwargs):
+
+        kwargs['scheme'] = 'fastapi-dp'
+        super().__init__(*args, protocol=protocol, **kwargs)
+
+        self.application = application
+        self.task = task
+        self.network = network
+        self.cut_long_prompt = cut_long_prompt
+        self.echo = echo
+        self.worker_generate_stream_ep = worker_generate_stream_ep
+        self.streaming_delimiter = streaming_delimiter
+        self.stop_token_ids = stop_token_ids
+        self.stop = stop
+        self.retrials = retrials
+        self.timeout = timeout
+        self.headers = {'Content-Type': 'application/json', 'accept': 'application/json'}
+
+    def process_kwargs(self, prompt, number_of_generations=None, **kwargs):
+        kwargs_processed = super().process_kwargs(prompt, **kwargs)
+        max_new_tokens = kwargs_processed['max_new_tokens']
+        kwargs_processed['number_of_generations'] = int(math.ceil(max_new_tokens / 32))
+        return kwargs_processed
+
+    def post_process(self, res, max_new_tokens):
+
+        response = json.load(res.content.split(self.streaming_delimiter)[-2].decode())
+        response['text'] = self.stem_message(response['text'], max_new_tokens)
+
+        return res
+
+    def _completion(self, prompt=None, **kwargs):
+
+        prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
+        return self._completion_internal(prompt, **kwargs)
+
+    def _chat_completion(self, messages=None, **kwargs):
+
+        prompt = self.get_prompt(messages)
+        return self._completion_internal(prompt, **kwargs)
+
+    def _completion_internal(self, prompt, **kwargs):
+
+        kwargs_processed = self.process_kwargs(prompt, **kwargs)
+        d = dict(model=self.model, user=self.consumer, max_new_tokens=kwargs['max_new_tokens'],
+                 prompt=prompt, temperature=kwargs['temperature'], stop_token_ids=self.stop_token_ids,
+                 stop=self.stop, cut_long_prompt=self.cut_long_prompt, echo=self.echo,
+                 task=self.task, network=self.network, application=self.application,
+                 number_of_generations=kwargs_processed['number_of_generations'])
+
+        res = requests.post(f"{self.protocol}://{self.hostname}/{self.worker_generate_stream_ep}",
+                            headers=self.headers, json=d, verify=False, timeout=self.timeout)
+        res = self.post_process(res, kwargs['max_new_tokens'])
+        return CompletionObject(prompt=d['prompt'], kwargs=d, response=res)
+
+    def verify_response(self, res):
+        try:
+
+            if not res.response['error_code']:
+                logger.warning(f"Model {self.model}: error_code={res.response['error_code']}")
+
+            assert 'text' in res.response, f"Response does not contain 'text' key"
+
+        except Exception as e:
+            logger.error(f"Error in response: {res.response['error_code']}")
+            raise e
+        return True
+
+    def extract_text(self, res):
+        return res.response['text']
+
+    def openai_format(self, res):
+        return super().openai_format(res, tokens=res.response['tokens'],
+                                     completion_tokens=res.response['completion_tokens'],
+                                     total_tokens=res.response['total_tokens'])
 
 
 class HuggingFaceLLM(BeamLLM):
