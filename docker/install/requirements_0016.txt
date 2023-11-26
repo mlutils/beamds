@@ -18,4 +18,5 @@ krovetzstemmer
 indxr
 
 tiktoken
+cdlib[all]
 asteroid

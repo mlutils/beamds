@@ -8,7 +8,7 @@ pygraphviz
 gensim
 networkx
 
-cdlib[all]
+cdlib
 
 # remove for python 3.10
 # No matching distribution found for stellargraph - deprecated

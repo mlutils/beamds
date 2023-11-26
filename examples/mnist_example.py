@@ -146,7 +146,7 @@ if __name__ == '__main__':
 
     args = beam_arguments(
         f"--project-name=mnist --algorithm=MNISTAlgorithm --amp  --device=0   ",
-        " --n-epochs=10 --epoch-length=1000 --objective=acc --amp-dtype=float16", stop_at=.99,
+        " --n-epochs=10 --epoch-length=1000 --objective=acc --model-dtype=float16", stop_at=.99,
         scheduler='exponential', gamma=.999, scale_epoch_by_batch_size=False)
 
     experiment = Experiment(args)

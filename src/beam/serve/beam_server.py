@@ -12,7 +12,7 @@ from flask import Flask, request, jsonify, send_file
 from ..logger import beam_logger as logger
 from ..experiment import Experiment
 from ..utils import find_port
-from ..config import BeamHparams
+from ..config import BeamHparams, to_dict
 
 try:
     import torch
@@ -224,7 +224,7 @@ class BeamServer(object):
         else:
             d['vars_args'] = self.obj.__init__.__code__.co_varnames
             if hasattr(self.obj, 'hparams'):
-                d['hparams'] = BeamHparams.dict(self.obj.hparams)
+                d['hparams'] = to_dict(self.obj.hparams)
             else:
                 d['hparams'] = None
 

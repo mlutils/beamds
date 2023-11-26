@@ -9,10 +9,9 @@ from ..optim import BeamOptimizer, BeamScheduler, MultipleScheduler
 from ..utils import to_device, check_type, recursive_concatenate, \
     beam_device, filter_dict, lazy_property, \
     is_notebook, DataBatch, dictionary_iterator
-from ..config import beam_arguments, get_beam_parser
+from ..config import beam_arguments, basic_beam_parser
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
-from ..experiment import Experiment
-from ..reporter import BeamReport
+from ..experiment import Experiment, BeamReport
 from ..path import beam_path, PureBeamPath
 from .processor import Processor
 from ..logger import beam_kpi, BeamResult
@@ -27,10 +26,8 @@ class Algorithm(Processor):
 
         self._experiment = None
         self._default_hparams = None
-        self.hparams_warnings = []
+        # self.hparams_warnings = []
         self.trial = None
-
-        self.hparams = hparams
 
         # the following are set by the experiment
         self._device = None
@@ -51,7 +48,7 @@ class Algorithm(Processor):
         self.cuda = None
         self.pin_memory = None
         self.autocast_device = None
-        self.amp_dtype = None
+        self.model_dtype = None
         self.amp = None
         self.scaler = None
 
@@ -115,7 +112,7 @@ class Algorithm(Processor):
 
     @device.setter
     def device(self, device):
-        if self.accelerator is None:
+        if self.get_hparam('accelerate') is None:
             self._device = beam_device(device)
 
     @property
@@ -142,16 +139,20 @@ class Algorithm(Processor):
     def accelerator(self):
         if self.get_hparam('accelerate'):
             from accelerate import Accelerator
+
+            mp_map = {'float16': 'fp16', 'bfloat16': 'bf16', 'float32': 'no', 'float8': 'fp8'}
+            mp = mp_map[self.get_hparam('model_dtype')]
+
             return Accelerator(device_placement=self.get_hparam('device_placement'),
                                split_batches=self.get_hparam('split_batches'),
-                               mixed_precision=self.get_hparam('amp_dtype'),
+                               mixed_precision=mp,
                                gradient_accumulation_steps=self.get_hparam('accumulate'),
                                deepspeed_plugin=self.deepspeed_plugin,
                                fsdp_plugin=self.fsdp_plugin,
                                megatron_lm_plugin=self.megatron_lm_plugin,
                                kwargs_handlers=self.accelerate_kwargs_handlers,
-                               cpu='cpu' == self.device.type,
-                               project_dir=self.experiment.root,
+                               cpu='cpu' == self.get_hparam('device'),
+                               project_dir=self.experiment.root if self.experiment is not None else None,
                                dispatch_batches=self.get_hparam('dispatch_batches'),
                                even_batches=True,
                                step_scheduler_with_optimizer=self.get_hparam('schedulers_steps') == 'iteration',
@@ -221,13 +222,13 @@ class Algorithm(Processor):
         self.cuda = (self.device.type == 'cuda')
         self.pin_memory = self.cuda
         self.autocast_device = 'cuda' if self.cuda else 'cpu'
-        amp_dtype = self.get_hparam('amp_dtype', default='float16')
+        model_dtype = self.get_hparam('model_dtype', default='float16')
         if self.cuda:
-            self.amp_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[amp_dtype]
+            self.model_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[model_dtype]
         else:
-            if amp_dtype != 'bfloat16':
+            if model_dtype != 'bfloat16':
                 logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
-            self.amp_dtype = torch.bfloat16
+            self.model_dtype = torch.bfloat16
         self.amp = self.get_hparam('amp') if self.cuda else False
         self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
 
@@ -242,36 +243,36 @@ class Algorithm(Processor):
     def default_hparams(self):
 
         if self._default_hparams is None:
-            self._default_hparams = beam_arguments(get_beam_parser())
+            self._default_hparams = beam_arguments(basic_beam_parser())
 
         return self._default_hparams
 
-    def get_hparam(self, hparam, specific=None, default=None):
-
-        if type(specific) is list:
-            for s in specific:
-                if f"{s}_{hparam}" in self.hparams:
-                    return getattr(self.hparams, f"{specific}_{hparam}")
-        elif specific is not None and f"{specific}_{hparam}" in self.hparams:
-            return getattr(self.hparams, f"{specific}_{hparam}")
-
-        if hparam in self.hparams:
-            return getattr(self.hparams, hparam)
-
-        if default is None and hparam in self.default_hparams:
-            default = self.default_hparams[hparam]
-            setattr(self.hparams, hparam, default)
-
-        if hparam not in self.hparams_warnings:
-            experment_generated_hparams = ['ddp', 'hpo', 'rank', 'world_size', 'reload_path']
-            if hparam in experment_generated_hparams:
-                logger.warning("Please pass to the algorithm the hparams object from the experiment: Algorithm(hparams=experiment.hparams).")
-                self.hparams_warnings.extend(experment_generated_hparams)
-            else:
-                logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
-            self.hparams_warnings.append(hparam)
-
-        return default
+    # def get_hparam(self, hparam, specific=None, default=None):
+    #
+    #     if type(specific) is list:
+    #         for s in specific:
+    #             if f"{s}_{hparam}" in self.hparams:
+    #                 return getattr(self.hparams, f"{specific}_{hparam}")
+    #     elif specific is not None and f"{specific}_{hparam}" in self.hparams:
+    #         return getattr(self.hparams, f"{specific}_{hparam}")
+    #
+    #     if hparam in self.hparams:
+    #         return getattr(self.hparams, hparam)
+    #
+    #     if default is None and hparam in self.default_hparams:
+    #         default = self.default_hparams[hparam]
+    #         setattr(self.hparams, hparam, default)
+    #
+    #     if hparam not in self.hparams_warnings:
+    #         experiment_generated_hparams = ['ddp', 'hpo', 'rank', 'world_size', 'reload_path']
+    #         if hparam in experiment_generated_hparams:
+    #             logger.warning("Please pass to the algorithm the hparams object from the experiment: Algorithm(hparams=experiment.hparams).")
+    #             self.hparams_warnings.extend(experiment_generated_hparams)
+    #         else:
+    #             logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
+    #         self.hparams_warnings.append(hparam)
+    #
+    #     return default
 
     def to(self, device):
 
@@ -286,7 +287,7 @@ class Algorithm(Processor):
 
     @staticmethod
     def get_parser():
-        return get_beam_parser()
+        return basic_beam_parser()
 
     @classmethod
     def from_pretrained(cls, path, override_hparams=None, hparams=None, Dataset=None, alg_args=None, alg_kwargs=None,
@@ -305,7 +306,7 @@ class Algorithm(Processor):
         if hparams is not None:
             experiment = Experiment(hparams)
 
-        alg.next_level = experiment
+        alg.experiment = experiment
         return alg
 
     @classmethod
@@ -504,21 +505,19 @@ class Algorithm(Processor):
 
             for k, v in networks.items():
                 if k not in optimizers:
-                    optimizers[k] = BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', k),
-                                                                  'weight_decay': self.get_hparam('weight_decay', k),
-                                                                  'betas': (self.get_hparam('momentum', k,
-                                                                                            default=momentum),
-                                                                            self.get_hparam('beta2', k)),
-                                                                  'eps': self.get_hparam('eps', k),
-                                                                  'capturable': self.get_hparam('capturable', k)},
-                                                   sparse_args={'lr': self.get_hparam('lr_sparse', k),
-                                                                'betas': (self.get_hparam('momentum', k,
-                                                                                          default=momentum),
-                                                                          self.get_hparam('beta2', k)),
-                                                                'eps': self.get_hparam('eps', k)},
-                                                   clip=self.get_hparam('clip_gradient', k), amp=self.amp,
-                                                   accumulate=self.get_hparam('accumulate', k),
-                                                   amp_dtype=self.amp_dtype)
+                    optimizers[k] = BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', specific=k),
+                                                                  'weight_decay': self.get_hparam('weight_decay', specific=k),
+                                                                  'betas': (self.get_hparam('momentum', specific=k, default=momentum),
+                                                                            self.get_hparam('beta2', specific=k)),
+                                                                  'eps': self.get_hparam('eps', specific=k),
+                                                                  'capturable': self.get_hparam('capturable', specific=k)},
+                                                   sparse_args={'lr': self.get_hparam('lr_sparse', specific=k),
+                                                                'betas': (self.get_hparam('momentum', specific=k, default=momentum),
+                                                                          self.get_hparam('beta2', specific=k)),
+                                                                'eps': self.get_hparam('eps', specific=k)},
+                                                   clip=self.get_hparam('clip_gradient', specific=k), amp=self.amp,
+                                                   accumulate=self.get_hparam('accumulate', specific=k),
+                                                   model_dtype=self.model_dtype)
 
         if processors is None:
             processors = {}
@@ -546,25 +545,27 @@ class Algorithm(Processor):
 
             if self.get_hparam('swa') is not None:
 
-                kwargs = {'anneal_epochs': self.get_hparam('swa_anneal_epochs', k), 'anneal_strategy': 'cos'}
+                kwargs = {'anneal_epochs': self.get_hparam('swa_anneal_epochs', specific=k), 'anneal_strategy': 'cos'}
 
                 if type(opt) is BeamOptimizer:
                     self.swa_schedulers[k] = opt.set_scheduler(torch.optim.swa_utils.SWALR,
-                                                               self.get_hparam('swa_lr', k), **kwargs)
+                                                               self.get_hparam('swa_lr', specific=k), **kwargs)
                 else:
-                    self.swa_schedulers[k] = torch.optim.swa_utils.SWALR(opt, self.get_hparam('swa_lr', k), **kwargs)
+                    self.swa_schedulers[k] = torch.optim.swa_utils.SWALR(opt, self.get_hparam('swa_lr', specific=k), **kwargs)
 
             if k in schedulers:
                 self.schedulers[k] = schedulers[k]
 
-            elif build_schedulers and self.get_hparam('scheduler', k) is not None:
+            elif build_schedulers and self.get_hparam('scheduler', specific=k) is not None:
 
-                kwargs = {'warmup': self.get_hparam('scheduler_warmup', k), 'method': self.get_hparam('scheduler', k),
-                          'step_type': self.get_hparam('schedulers_steps', k),
-                          'cycle_momentum': True, 'base_momentum': self.get_hparam('cycle_base_momentum', k),
-                          'max_momentum': self.get_hparam('cycle_max_momentum', k),
-                          'patience': self.get_hparam('scheduler_patience', k),
-                          'factor': self.get_hparam('scheduler_factor', k)}
+                kwargs = {'warmup': self.get_hparam('scheduler_warmup', specific=k),
+                          'method': self.get_hparam('scheduler', specific=k),
+                          'step_type': self.get_hparam('schedulers_steps', specific=k),
+                          'cycle_momentum': True,
+                          'base_momentum': self.get_hparam('cycle_base_momentum', specific=k),
+                          'max_momentum': self.get_hparam('cycle_max_momentum', specific=k),
+                          'patience': self.get_hparam('scheduler_patience', specific=k),
+                          'factor': self.get_hparam('scheduler_factor', specific=k)}
 
                 if type(opt) is BeamOptimizer:
                     scheduler = opt.set_scheduler(BeamScheduler, **kwargs)
@@ -591,10 +592,6 @@ class Algorithm(Processor):
 
     @property
     def experiment(self):
-
-        if self._experiment is None:
-            raise ValueError('No experiment is currently linked with the algorithm')
-
         logger.debug(f"Fetching the experiment which is currently associated with the algorithm")
         return self._experiment
 
@@ -645,7 +642,7 @@ class Algorithm(Processor):
         for k, loss in losses.items():
             n = torch.numel(loss)
 
-            rd = self.get_hparam('reduction', k) if reduction is None else reduction
+            rd = self.get_hparam('reduction', specific=k) if reduction is None else reduction
 
             if n > 1:
 
@@ -703,7 +700,7 @@ class Algorithm(Processor):
                     optimizers = [optimizers]
                 optimizers = self.get_flat_optimizers(optimizers)
 
-            with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=False):
+            with torch.autocast(self.autocast_device, dtype=self.model_dtype, enabled=False):
 
                 it = {}
 
@@ -712,7 +709,7 @@ class Algorithm(Processor):
                     if k not in self.optimizers_steps:
                         self.optimizers_steps[k] = 0
                     it[k] = self.optimizers_steps[k] if iteration is None else iteration
-                    it[k] = (it[k] % self.get_hparam('accumulate', name))
+                    it[k] = (it[k] % self.get_hparam('accumulate', specific=name))
 
                     if not it[k]:
                         op.zero_grad(set_to_none=set_to_none)
@@ -729,9 +726,9 @@ class Algorithm(Processor):
 
                 for k, op in optimizers.items():
 
-                    if it[k] == self.get_hparam('accumulate', name) - 1:
+                    if it[k] == self.get_hparam('accumulate', specific=name) - 1:
 
-                        clip = self.get_hparam('clip_gradient', k)
+                        clip = self.get_hparam('clip_gradient', specific=k)
                         if clip > 0:
                             if self.amp:
                                 scaler.unscale_(op)
@@ -838,7 +835,7 @@ class Algorithm(Processor):
                 self.persistent_dataloaders[k][s]['iterator'] = iter(self.persistent_dataloaders[k][s]['dataloader'])
 
                 if self.accelerator is not None:
-                    self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_dataloader(
+                    self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_data_loader(
                         self.persistent_dataloaders[k][s]['dataloader'])
 
             if (set_epoch_length == 'first' and i == 0) or k==set_epoch_length:
@@ -976,8 +973,8 @@ class Algorithm(Processor):
 
             from torch.nn.parallel import DistributedDataParallel as DDP
             net_ddp = DDP(net, device_ids=device_ids,
-                      find_unused_parameters=self.get_hparam('find_unused_parameters', name),
-                      broadcast_buffers=self.get_hparam('broadcast_buffers', name))
+                      find_unused_parameters=self.get_hparam('find_unused_parameters', specific=name),
+                      broadcast_buffers=self.get_hparam('broadcast_buffers', specific=name))
 
             for a in dir(net):
                 if a not in dir(net_ddp) and not a.startswith('_'):
@@ -1151,7 +1148,7 @@ class Algorithm(Processor):
                     ind = None
                     label = None
 
-                with torch.autocast(self.autocast_device, dtype=self.amp_dtype, enabled=self.amp):
+                with torch.autocast(self.autocast_device, dtype=self.model_dtype, enabled=self.amp):
                     self.iteration(sample=sample, counter=i, training=training, index=ind, label=label)
 
                     objective = self.reporter.get_scalar(objective_name, subset=subset, aggregate=False, index=-1)

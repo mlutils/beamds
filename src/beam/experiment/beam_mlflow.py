@@ -1,9 +1,10 @@
 import mlflow.pyfunc
-from .core import Algorithm
-from .path import beam_path
 import mlflow
 from mlflow import log_params, log_metric
 import os
+from ..path import beam_path
+from ..core import Algorithm
+
 
 class MLflowSummaryWriter:
     def __init__(self,  exp_name, tensorboard_hparams=None, mlflow_uri=None):

@@ -21,6 +21,7 @@ class Processor:
         self._state = state
         self.remote = remote
         self._path = path
+        self._lazy_cache = {}
 
         if len(args) > 0:
             self.hparams = args[0]

@@ -13,7 +13,7 @@ from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
 from src.beam import beam_arguments, Experiment, beam_algorithm_generator
-from src.beam import UniversalDataset, UniversalBatchSampler, get_beam_parser
+from src.beam import UniversalDataset, UniversalBatchSampler, basic_beam_parser
 from src.beam import Algorithm
 from src.beam import LinearNet, as_numpy
 from src.beam import DataTensor, PackedFolds
@@ -223,7 +223,7 @@ class DeepTSNE(Algorithm):
 
 def get_deep_tsne_parser():
 
-    parser = get_beam_parser()
+    parser = basic_beam_parser()
     parser.add_argument('--emb-size', type=int, default=2, help='Size of embedding dimension')
     parser.add_argument('--p-norm', type=int, default=2, help='The norm degree')
     parser.add_argument('--perplexity-top', type=float, default=.02, help='The number of nearest neighbors that is used in'

@@ -17,7 +17,7 @@ from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm, PackedFolds, LinearNet
 from src.beam.model import PID
-from src.beam.config import get_beam_parser
+from src.beam.config import basic_beam_parser
 from src.beam.model import GBN, MHRuleLayer, mySequential
 
 from ray import tune
@@ -571,7 +571,7 @@ class CovtypeAlgorithm(Algorithm):
 # Add experiment hyperparameter arguments
 def get_covtype_parser():
 
-    parser = get_beam_parser()
+    parser = basic_beam_parser()
 
     parser.add_argument('--weight-factor', type=float, default=0., help='Squashing factor for the oversampling probabilities')
     parser.add_argument('--label-smoothing', type=float, default=0.1, help='Smoothing factor in the Cross Entropy loss')
