@@ -1,8 +1,10 @@
 import argparse
+import copy
 import os
 from argparse import Namespace
 from dataclasses import dataclass
 from .utils import beam_arguments, to_dict
+from ..path import beam_path
 from .basic_configuration import basic_beam_parser, boolean_feature
 
 
@@ -155,10 +157,25 @@ class BeamHparams(Namespace):
 
                 if v.type is bool:
                     boolean_feature(parser, name_to_parse, v.default, v.help)
+                elif v.type is list:
+                    parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, nargs='+', help=v.help)
                 else:
                     parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, help=v.help)
 
         return model_set, tune_set
+
+    def to_path(self, path, ext=None):
+        d = copy.deepcopy(self.dict())
+        d['_model_set'] = list(self._model_set)
+        d['_tune_set'] = list(self._tune_set)
+        beam_path(path).write(d, ext=ext)
+
+    @classmethod
+    def from_path(cls, path, ext=None):
+        d = beam_path(path).read(ext=ext)
+        model_set = set(d.pop('_model_set', set(d.keys())))
+        tune_set = set(d.pop('_tune_set', set()))
+        return cls(hparams=d, model_set=model_set, tune_set=tune_set)
 
     def is_hparam(self, key):
         key = key.replace('-', '_')

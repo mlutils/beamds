@@ -27,10 +27,12 @@ from ..config import get_beam_llm, print_beam_hyperparameters, BeamHparams
 
 done = mp.Event()
 
+
 def gen_hparams_string(experiment_path):
     experiment_path = beam_path(experiment_path)
-    tensorboard_hparams = experiment_path.joinpath("hparams.pkl").read()
-    return '/'.join([f"{k}_{v}" for k, v in tensorboard_hparams.items()])
+    tensorboard_hparams = BeamHparams.from_path(experiment_path.joinpath('args.pkl'))
+    tensorboard_hparams_keys = tensorboard_hparams.model_parameter + tensorboard_hparams.tune_parameter
+    return '/'.join([f"{k}_{tensorboard_hparams[k]}" for k in tensorboard_hparams_keys])
 
 
 def path_depth(path):
@@ -366,8 +368,7 @@ class Experiment(object):
         path = beam_path(path)
         logger.info(f"Reload experiment from path: {path}")
 
-        args = path.joinpath('args.pkl').read()
-        args = Namespace(**args)
+        args = BeamHparams.from_path(path.joinpath('args.pkl'))
         args.override = False
         args.reload = True
 
@@ -689,8 +690,6 @@ class Experiment(object):
         if filters['experiment'] is not None:
             experiments = list(filter(lambda x: x.split(os.sep)[-1] in filters['experiment'], experiments))
 
-        print(experiments)
-
         names = ['/'.join(e.split(os.sep)[-3:]) for e in experiments]
         names = [f"{n}/{gen_hparams_string(e)}" for n, e in zip(names, experiments)]
 
@@ -789,7 +788,7 @@ class Experiment(object):
         logger.add_file_handlers(self.root.joinpath('experiment.log'))
         print_beam_hyperparameters(self.hparams, debug_only=not self.print_hyperparameters)
 
-        self.root.joinpath('hparams.pkl').write(self.hparams)
+        self.hparams.to_path(self.root.joinpath('hparams.pkl'))
 
         if not self.hparams.override:
             logger.info(f"Creating new experiment")

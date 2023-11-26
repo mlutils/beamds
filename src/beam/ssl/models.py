@@ -40,7 +40,7 @@ class BeamBarlowTwins(BeamSSL):
         self.add_components(networks=ensemble, name='encoder', build_optimizers=False)
         beam_weights_initializer(self.networks['discriminator'], method='orthogonal')
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
@@ -130,7 +130,7 @@ class BarlowTwins(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, p))
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
@@ -180,7 +180,7 @@ class BeamVICReg(BeamSSL):
                                                nn.ReLU(), nn.Linear(h, p))
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
@@ -254,7 +254,7 @@ class VICReg(BeamSSL):
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
@@ -318,7 +318,7 @@ class SimCLR(BeamSSL):
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
@@ -376,7 +376,7 @@ class SimSiam(BeamSSL):
         p = p / torch.norm(p, dim=1, keepdim=True)
         return 2 - (z * p).sum(dim=1)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 
@@ -429,7 +429,7 @@ class BYOL(BeamSSL):
         networks['prediction'] = nn.Sequential(nn.Linear(p, p), nn.BatchNorm1d(p), nn.ReLU(), nn.Linear(p, p))
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_aug1, x_aug2 = sample['augmentations']
 

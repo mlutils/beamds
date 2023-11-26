@@ -395,7 +395,7 @@ class BeamTabularSSL(BeamSSL):
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_num, x_cat = sample['x']
 
@@ -460,7 +460,7 @@ class Vime(BeamSSL):
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         _, x = sample['x']
         _, x_aug = sample['augmentations'][0]['x']
@@ -545,7 +545,7 @@ class VicVime(BeamSSL):
 
         return results
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_num, x_cat = sample['x']
         x_num_aug1, x_cat_aug1 = sample['augmentations'][0]['x']

@@ -1090,7 +1090,7 @@ class Algorithm(Processor):
         '''
         pass
 
-    def iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -1149,7 +1149,7 @@ class Algorithm(Processor):
                     label = None
 
                 with torch.autocast(self.autocast_device, dtype=self.model_dtype, enabled=self.amp):
-                    self.iteration(sample=sample, counter=i, training=training, index=ind, label=label)
+                    self.train_iteration(sample=sample, counter=i, training=training, index=ind, label=label)
 
                     objective = self.reporter.get_scalar(objective_name, subset=subset, aggregate=False, index=-1)
 
@@ -1178,7 +1178,7 @@ class Algorithm(Processor):
         '''
         pass
 
-    def inference(self, sample=None, label=None, index=None, subset=None, predicting=False, **kwargs):
+    def predict_iteration(self, sample=None, label=None, index=None, subset=None, predicting=False, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -1187,7 +1187,7 @@ class Algorithm(Processor):
         loss: the loss fo this iteration
         aux: an auxiliary dictionary with all the calculated data needed for downstream computation (e.g. to calculate accuracy)
         '''
-        self.iteration(sample=sample, label=label, index=index, subset=subset, counter=0, training=False, **kwargs)
+        self.train_iteration(sample=sample, label=label, index=index, subset=subset, counter=0, training=False, **kwargs)
         return {}
 
     def postprocess_inference(self, sample=None, label=None, index=None, subset=None, predicting=False, **kwargs):
@@ -1299,8 +1299,8 @@ class Algorithm(Processor):
                 for i, (ind, label, sample) in self.reporter.iterate(data_generator, enable=enable_tqdm,
                                       threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                       notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
-                    transform = self.inference(sample=sample, subset=subset, predicting=predicting,
-                                                        label=label, index=ind, **kwargs)
+                    transform = self.predict_iteration(sample=sample, subset=subset, predicting=predicting,
+                                                       label=label, index=ind, **kwargs)
                     transforms.append(transform)
                     index.append(ind)
 

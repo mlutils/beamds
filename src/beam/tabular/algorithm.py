@@ -161,8 +161,8 @@ class DeepTabularAlg(Algorithm):
 
             self.report_scalar('mask_rate', 1 - self.net.mask.probs)
 
-    def iteration(self, sample=None, label=None, subset=None, counter=None, index=None,
-                  training=True, **kwargs):
+    def train_iteration(self, sample=None, label=None, subset=None, counter=None, index=None,
+                        training=True, **kwargs):
 
         y = label
         net = self.net
@@ -183,7 +183,7 @@ class DeepTabularAlg(Algorithm):
         logger.info(f'Setting best masking to {self.best_masking:.3f}')
         self.net.mask = distributions.Bernoulli(self.best_masking)
 
-    def inference(self, sample=None, label=None, subset=None, predicting=True, **kwargs):
+    def predict_iteration(self, sample=None, label=None, subset=None, predicting=True, **kwargs):
 
         y = label
         net = self.net

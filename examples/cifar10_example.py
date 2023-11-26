@@ -231,7 +231,7 @@ class CIFAR10Algorithm(Algorithm):
         x, y = sample['x'], sample['y']
         self.report_images('sample', x[:16].view(16, 3, 32, 32))
 
-    def iteration(self, sample=None, counter=None, subset=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, counter=None, subset=None, training=True, **kwargs):
 
         x, y = sample['x'], sample['y']
 
@@ -246,7 +246,7 @@ class CIFAR10Algorithm(Algorithm):
         # add scalar measurements
         self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-    def inference(self, sample=None, subset=None, predicting=True, **kwargs):
+    def predict_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample

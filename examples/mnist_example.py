@@ -85,7 +85,7 @@ class MNISTAlgorithm(Algorithm):
         x, y = sample['x'], sample['y']
         self.report_images('sample', x[:16].view(16, 1, 28, 28))
 
-    def iteration(self, sample=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, subset=None, counter=None, training=True, **kwargs):
 
         x, y = sample['x'], sample['y']
 
@@ -100,7 +100,7 @@ class MNISTAlgorithm(Algorithm):
         self.report_scalar('ones', x.sum(dim=-1))
         self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-    def inference(self, sample=None, subset=None, predicting=True, **kwargs):
+    def predict_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
