@@ -43,7 +43,73 @@ class TFIDF(Processor):
 
 
 class SparseSimilarity(Processor):
+    """
+    The `SparseSimilarity` class is a processor that computes similarity between sparse vectors.
 
+    Args:
+        metric (str): The similarity metric to use. Possible values are 'cosine', 'prod', 'l2', and 'max'.
+                      Default is 'cosine'.
+        layout (str): The layout format of the sparse vectors. Possible values are 'coo' and 'csr'. Default is 'coo'.
+        vec_size (int): The size of the vectors. Required if the layout is 'csr', otherwise optional.
+        device (str): The device to use for computation. Default is None, which means using the default device.
+        k (int): The number of nearest neighbors to search for. Default is 1.
+        q (float): The quantile value to use for the 'quantile' metric. Default is 0.9.
+
+    Methods:
+        reset()
+            Reset the state of the processor.
+
+        sparse_tensor(r, c, v)
+            Convert coordinate, row, column, and value data into a sparse tensor.
+
+            Args:
+                r (Tensor): The row indices.
+                c (Tensor): The column indices.
+                v (Tensor): The values.
+
+            Returns:
+                SparseTensor: The sparse tensor.
+
+        index
+            Get the current index tensor.
+
+        scipy_to_row_col_val(x)
+            Convert a sparse matrix in the scipy sparse format to row, column, and value data.
+
+            Args:
+                x (scipy.sparse.spmatrix): The sparse matrix.
+
+            Returns:
+                Tensor: The row indices.
+                Tensor: The column indices.
+                Tensor: The values.
+
+        to_sparse(x)
+            Convert input data to a sparse tensor.
+
+            Args:
+                x (Tensor, numpy.ndarray, scipy.sparse.spmatrix, dict, tuple): The input data.
+
+            Returns:
+                SparseTensor: The sparse tensor.
+
+        add(x)
+            Add a sparse vector to the index.
+
+            Args:
+                x (Tensor, numpy.ndarray, scipy.sparse.spmatrix, dict, tuple): The input sparse vector.
+
+        search(x, k=None)
+            Search for the nearest neighbors of a sparse vector.
+
+            Args:
+                x (SparseTensor, Tensor, numpy.ndarray, scipy.sparse.spmatrix, dict, tuple): The query sparse vector.
+                k (int): The number of nearest neighbors to search for. If not specified, use the default value.
+
+            Returns:
+                Tensor: The distances to the nearest neighbors.
+                Tensor: The indices of the nearest neighbors.
+    """
     def __init__(self, *args, metric='cosine', layout='coo', vec_size=None, device=None, k=1, q=.9, **kwargs):
 
         super().__init__(*args, **kwargs)

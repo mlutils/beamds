@@ -22,7 +22,57 @@ except ImportError:
 
 
 class BeamServer(object):
+    """
+    Class representing a server for executing inference on an object or function.
 
+    Args:
+        obj: The object or function to perform inference on.
+        use_torch (bool): Whether to use torch for serialization and deserialization. Default is True.
+        batch: The methods to batch execute. Can be a boolean, string or list.
+               If True, it will batch execute all the methods with '__call__' in the name.
+               If a string, it will batch execute the method with the specified name.
+               If a list, it will batch execute the methods with the names in the list.
+        max_wait_time (float): The maximum time to wait for new inference tasks in a batch. Default is 1.0 second.
+        max_batch_size (int): The maximum size of a batch for batch inference. Default is 10.
+        tls (bool): Whether to use a secure TLS connection. Default is False.
+        n_threads (int): The number of threads to use for the server. Default is 4.
+        **kwargs: Additional keyword arguments.
+
+    Attributes:
+        app (Flask): The Flask application object.
+        obj: The object or function being served.
+        load_function: The function used for deserializing data.
+        dump_function: The function used for serializing data.
+        serialization_method (str): The serialization method used ('torch' or 'pickle').
+        max_wait_time (float): The maximum time to wait for new inference tasks in a batch.
+        max_batch_size (int): The maximum size of a batch for batch inference.
+        tls (bool): Whether to use a secure TLS connection.
+        n_threads (int): The number of threads used for the server.
+        _request_queue (Queue): The queue for incoming inference tasks.
+        _response_queue (defaultdict(Queue)): The queue for outgoing inference results.
+        centralized_thread (Thread): The thread used for centralized batch inference.
+
+    Methods:
+        __init__: Initializes the BeamServer object.
+        set_variable: Sets the value of a variable in the object being served.
+        get_variable: Gets the value of a variable from the object being served.
+        _cleanup: Cleans up resources used by the server.
+        request_queue: Returns the request queue, creating it if necessary.
+        response_queue: Return the response queue, creating it if necessary.
+        build_algorithm_from_path: Creates a BeamServer object from an experiment file.
+        run_non_blocking: Starts the server in a separate thread.
+        run: Starts the server on the specified host and port.
+        _centralized_batch_executor: Executes batch inference in a centralized manner.
+        get_info: Gets information about the server and the object being served.
+        batched_query_algorithm: Executes a method on the object being served in batch mode.
+        call_function: Executes the '__call__' method on the function being served.
+        query_algorithm: Executes a method on the object being served.
+        run_uwsgi: Starts the server using uWSGI.
+        run_waitress: Starts the server using Waitress.
+        run_cherrypy: Starts the server using CherryPy.
+        run_gunicorn: Starts the server using Gunicorn.
+        run_wsgi: Starts the server using WSGI.
+    """
     def __init__(self, obj, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10, tls=False,
                  n_threads=4, **kwargs):
 
