@@ -1,3 +1,30 @@
+from ..utils import retrieve_name, lazy_property, check_type
+
+
+class BeamObject:
+    def __init__(self, *args, name=None, **kwargs):
+        self._name = name
+        self._lazy_cache = {}
+
+    @lazy_property
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
+
+    @classmethod
+    def from_path(cls, path, **kwargs):
+        raise NotImplementedError
+
+    def save(self, path, **kwargs):
+        raise NotImplementedError
+
+    def load_state(self, path, **kwargs):
+        raise NotImplementedError
+
+    def save_state(self, path, **kwargs):
+        raise NotImplementedError
+
 
 class MetaLLM:
     pass
