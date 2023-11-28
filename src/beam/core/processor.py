@@ -15,12 +15,10 @@ except ImportError:
 
 class Processor:
 
-    def __init__(self, *args, name=None, state=None, path=None, hparams=None, override=True, remote=None, **kwargs):
+    def __init__(self, *args, name=None, hparams=None, override=True, remote=None, **kwargs):
 
         self._name = name
-        self._state = state
         self.remote = remote
-        self._path = path
         self._lazy_cache = {}
 
         if len(args) > 0:
@@ -54,26 +52,6 @@ class Processor:
 
         return []
 
-    @property
-    def state(self):
-        '''
-        return the state of the processor. override this function to add more attributes to the state.
-        @return:
-        '''
-        return self._state
-
-    @state.setter
-    def state(self, value):
-        self._state = value
-
-    @property
-    def path(self):
-        return beam_path(self._path)
-
-    @path.setter
-    def path(self, value):
-        self._path = beam_path(value)
-
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
         state = {k: v for k, v in self.__dict__.items() if k not in self.state_attributes}
@@ -98,67 +76,50 @@ class Processor:
 
         return self
 
-    def save_state(self, path=None):
-        if path is None:
-            path = self.path
-        path = beam_path(path)
-
-        state = self.state
-        if has_beam_ds and isinstance(state, BeamData):
-            state.store(path=path)
-        else:
-            path = beam_path(path)
-            path.write(state)
-
-    def state_dict(self):
-
-        state = self.state
-        if has_beam_ds and isinstance(self.state, BeamData):
-            if not state.is_cached:
-                state.cache()
-            return state.state_dict()
-        else:
-
-            mem_file = io.BytesIO()
-            pickle.dump(state, mem_file)
-
-            return {'pickle': mem_file}
-
-    def load_state_dict(self, state_dict):
-
-        if 'pickle' in state_dict and len(state_dict) == 1:
-            mem_file = state_dict['pickle']
-            mem_file.seek(0)
-            self.state = pickle.load(mem_file)
-
-        elif has_beam_ds:
-            self.state = BeamData.load_state_dict(state_dict)
-        else:
-            raise NotImplementedError
-
-    def load_state(self, path=None):
-        if path is None:
-            path = self.path
-        if path is not None:
-            path = beam_path(path)
-
-        if path.is_file():
-            self.state = path.read()
-        elif has_beam_ds:
-            state = BeamData.from_path(path=path)
-            self.state = state.cache()
-        else:
-            raise NotImplementedError
+    def get_hparam(self, hparam, default=None, preferred=None, specific=None):
+        return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
 
     @classmethod
     def from_path(cls, path):
         path = beam_path(path)
         state = path.read()
-        return cls(state=state, path=path)
+        hparams = state['hparams']
+        alg = cls(hparams)
+        alg.load_state(state)
+        return alg
 
-    def get_hparam(self, hparam, default=None, preferred=None, specific=None):
-        return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
+    def state_dict(self):
+        raise NotImplementedError
 
+    def load_state_dict(self, state_dict):
+        raise NotImplementedError
+
+    def save_state(self, path):
+
+        state = self.state_dict()
+
+        path = beam_path(path)
+        if has_beam_ds and isinstance(state, BeamData):
+            state.store(path=path)
+        elif has_beam_ds:
+            state = BeamData(data=state, path=path)
+            state.store()
+        else:
+            path.write(state)
+
+    def load_state(self, path):
+
+        path = beam_path(path)
+
+        if path.is_file():
+            state = path.read()
+        elif has_beam_ds:
+            state = BeamData.from_path(path=path)
+            state = state.cache()
+        else:
+            raise NotImplementedError
+
+        self.load_state_dict(state)
 
 class Pipeline(Processor):
 

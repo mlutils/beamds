@@ -1,5 +1,5 @@
 import inspect
-import importlib
+from pickle import PicklingError
 import ast
 import os
 import sys
@@ -15,6 +15,8 @@ import warnings
 from collections import defaultdict
 import pkgutil
 from .logger import beam_logger as logger
+from .core import Processor
+from uuid import uuid4 as uuid
 
 
 class ImportCollector(ast.NodeVisitor):
@@ -216,9 +218,6 @@ class AutoBeam:
         else:
             self.visited_modules.add(str(module_path))
 
-            if 'algorithm' in str(module_path):
-                print('here')
-
         try:
             content = module_path.read()
         except:
@@ -250,13 +249,12 @@ class AutoBeam:
                         except ValueError:
                             logger.warning(f"Could not find module: {root_name}")
                             continue
-                        modules.union(self.recursive_module_dependencies(path))
+                        internal_modules = self.recursive_module_dependencies(path)
+                        modules = modules.union(internal_modules)
 
             elif type(a) is ast.ImportFrom:
 
                 root_name = a.module.split('.')[0]
-                if root_name == 'accelerate':
-                    print('here')
 
                 if a.level == 0 and (not is_std_lib(root_name)) and is_installed_package(root_name):
                     if root_name in self.loaded_modules:
@@ -269,7 +267,8 @@ class AutoBeam:
                         path = beam_path(get_origin(a.module))
                         if path in [module_path, self.self_path, None]:
                             continue
-                        modules.union(self.recursive_module_dependencies(path))
+                        internal_modules = self.recursive_module_dependencies(path)
+                        modules = modules.union(internal_modules)
 
                     else:
 
@@ -283,7 +282,8 @@ class AutoBeam:
                         else:
                             path = path.with_suffix('.py')
 
-                        modules.union(self.recursive_module_dependencies(path))
+                        internal_modules = self.recursive_module_dependencies(path)
+                        modules = modules.union(internal_modules)
 
         return modules
 
@@ -369,25 +369,44 @@ class AutoBeam:
             path = beam_path('.')
             if hasattr(obj, 'name'):
                 path = path.joinpath(obj.name)
+            else:
+                path = path.joinpath('beam_bundle')
         else:
             path = beam_path(path)
 
         path = path.resolve()
 
         ab = AutoBeam(obj)
+        path.clean()
         path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Saving object's files to path {path}: [requirements.txt, modules.tar.gz, state.pt]")
         ab.write_requirements(path.joinpath('requirements.txt'))
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
-        obj.save_state(path.joinpath('state.pt'))
-        # path.joinpath('skeleton.pkl').write(obj)
+        if hasattr(obj, 'save_state'):
+            obj.save_state(path.joinpath('state.pt'))
+        else:
+            logger.warning(f"Object {obj} does not have a save_state method.")
+        try:
+            path.joinpath('skeleton.pkl').write(obj)
+        except PicklingError:
+            logger.warning(f"Could not pickle object: {obj}")
+
+        if not path.joinpath('skeleton.pkl').is_file() and \
+                not path.joinpath('state.pt').is_file():
+            logger.error(f"Could not save object {obj} to path {path}. "
+                         f"Make sure the object has a save_state method and/or "
+                         f"it is pickleable.")
 
     @classmethod
-    def from_path(cls, path):
+    def from_path(cls, path, cache_path=None):
+
+        if cache_path is None:
+            cache_path = beam_path('/tmp/autobeam').joinpath(uuid())
+        else:
+            cache_path = beam_path(cache_path)
 
         import tarfile
-
         path = beam_path(path).resolve()
 
         # 1. Check necessary files
@@ -397,36 +416,50 @@ class AutoBeam:
         skeleton_file = path.joinpath('skeleton.pkl')
         metadata_file = path.joinpath('metadata.json')
 
-        if not all([file.exists() for file in [req_file, modules_tar, state_file, metadata_file]]):
+        if not all([file.exists() for file in [req_file, modules_tar, metadata_file]]) or \
+           not any([file.exists() for file in [state_file, skeleton_file]]):
             raise ValueError(f"Path {path} does not contain all necessary files for reconstruction.")
 
-        # 2. Install necessary packages
-        os.system(f"pip install -r {req_file}")
+        def load_obj():
 
-        # 3. Extract the Python modules
-        extracted_path = path.joinpath('modules')
-        extracted_path.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(modules_tar, "r:gz") as tar:
-            tar.extractall(str(extracted_path))
+            # 3. Extract the Python modules
+            cache_path.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(modules_tar, "r:gz") as tar:
+                tar.extractall(str(cache_path))
 
-        # 4. Add the directory containing the extracted Python modules to sys.path
-        sys.path.insert(0, str(extracted_path))
+            # 4. Add the directory containing the extracted Python modules to sys.path
+            sys.path.insert(0, str(cache_path))
 
-        # 5. Load metadata and import necessary modules
-        metadata = metadata_file.read()
+            # 5. Load metadata and import necessary modules
+            metadata = metadata_file.read()
 
-        import_statement = metadata['import_statement']
-        imported_class = metadata['type']
+            import_statement = metadata['import_statement']
+            imported_class = metadata['type']
 
-        exec(import_statement)
+            exec(import_statement, globals())
 
-        # 6. Load the state of the object using the imported class type
-        cls_obj = locals()[imported_class]
+            # 6. Load the state of the object using the imported class type
+            cls_obj = globals()[imported_class]
 
-        # 7. Construct the object from its state using a hypothetical from_state method
-        # obj = cls_obj.from_path(state_file)
-        obj = skeleton_file.read()
-        obj.load_state(state_file)
+            # 7. Construct the object from its state using a hypothetical from_state method
+            if skeleton_file.is_file():
+                try:
+                    obj = skeleton_file.read()
+                    if state_file.exists:
+                        obj.load_state(state_file)
+                except:
+                    obj = cls_obj.from_path(skeleton_file)
+            else:
+                obj = cls_obj.from_path(state_file)
+
+            return obj
+
+        try:
+            obj = load_obj()
+        except ImportError:
+            # 2. Install necessary packages
+            os.system(f"pip install -r {req_file}")
+            obj = load_obj()
 
         return obj
 

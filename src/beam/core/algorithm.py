@@ -309,14 +309,6 @@ class Algorithm(Processor):
         alg.experiment = experiment
         return alg
 
-    @classmethod
-    def from_path(cls, path):
-        path = beam_path(path)
-        state = path.read()
-        alg = cls(state['hparams'])
-        alg.load_state(state)
-        return alg
-
     def add_networks(self, networks):
         self.add_components(networks=networks)
 
@@ -1384,10 +1376,10 @@ class Algorithm(Processor):
 
         self.training = training
 
-    def save_state(self, path=None):
-        self.save_checkpoint(path=path, networks=True, optimizers=False, schedulers=False,
-                        processors=True, scaler=False, scalers=False, swa_schedulers=False, swa_networks=False,
-                        aux=None, pickle_model=False, hparams=True)
+    def state_dict(self):
+        return self.save_checkpoint(networks=True, optimizers=False, schedulers=False,
+                             processors=True, scaler=False, scalers=False, swa_schedulers=False, swa_networks=False,
+                             aux=None, pickle_model=False, hparams=True)
 
     def load_state(self, path):
         self.load_checkpoint(path, networks=True, optimizers=False, schedulers=False, processors=True,

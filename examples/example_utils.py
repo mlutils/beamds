@@ -5,6 +5,13 @@ import numpy as np
 from src.beam import resource
 
 
+def load_model():
+
+    from src.beam.auto import AutoBeam
+    alg = AutoBeam.from_path('/tmp/mnist_bundle')
+    print(alg)
+
+
 def parallel_treading():
 
     from src.beam.parallel import parallel, task
@@ -230,6 +237,8 @@ if __name__ == '__main__':
 
     # comet_path()
 
-    parallel_treading()
+    # parallel_treading()
+
+    load_model()
 
     print('done')
