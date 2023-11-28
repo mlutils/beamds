@@ -154,23 +154,6 @@ class OpenAI(OpenAIBase):
 
 class FCConversationLLM(BeamLLM):
 
-    model_adapter: Optional[str] = Field(None)
-    _conv: Any = PrivateAttr()
-
-    def __init__(self, *args, model=None, model_adapter=None, **kwargs):
-
-        super().__init__(*args, model=model, **kwargs)
-
-        if model_adapter is not None:
-            model = model_adapter
-
-        self.model_adapter = model
-        self._conv = get_conversation_template(model)
-
-    @property
-    def stop_sequence(self):
-        return self._conv.stop_str
-
     def get_prompt(self, messages):
 
         conv = get_conversation_template(self.model_adapter)

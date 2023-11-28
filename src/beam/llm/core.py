@@ -17,6 +17,7 @@ from langchain.callbacks.manager import CallbackManagerForLLMRun
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
 import openai
+from .utils import get_conversation_template
 
 
 CompletionObject = namedtuple("CompletionObject", "prompt kwargs response")
@@ -44,6 +45,7 @@ class BeamLLM(LLM, Processor):
     parse_retrials: int = Field(3, ge=0)
     ask_retrials: int = Field(1, ge=1)
     sleep: float = Field(1.0, ge=0.0)
+    model_adapter: Optional[str] = Field(None)
     _len_function: Any = PrivateAttr()
 
     # To be used with pydantic classes and lazy_property
@@ -53,11 +55,12 @@ class BeamLLM(LLM, Processor):
 
     _assistant_budget: Any = PrivateAttr()
     _assistant_docstrings: Any = PrivateAttr()
+    _conv: Any = PrivateAttr()
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
                  debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
-                 **kwargs):
+                 model_adapter=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         if temperature is not None:
@@ -99,6 +102,12 @@ class BeamLLM(LLM, Processor):
         if self.model is None:
             self.model = 'unknown'
 
+        if model_adapter is None:
+            model_adapter = self.model
+        self.model_adapter = model_adapter
+
+        self._conv = get_conversation_template(self.model_adapter)
+
         self.usage = {"prompt_tokens": 0,
                       "completion_tokens": 0,
                       "total_tokens": 0}
@@ -111,6 +120,22 @@ class BeamLLM(LLM, Processor):
 
         self.reset_chat()
         self._lazy_cache = {}
+
+    @property
+    def stop_sequence(self):
+        return self._conv.stop_str
+
+    @property
+    def sep(self):
+        return self._conv.sep
+
+    @property
+    def sep2(self):
+        return self._conv.sep2
+
+    @property
+    def roles(self):
+        return self._conv.roles
 
     @lazy_property
     def tokenizer(self):
