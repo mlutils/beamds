@@ -4,7 +4,7 @@ import ast
 import os
 import sys
 
-from .tabular import DeepTabularAlg
+from .utils import lazy_property
 from .path import beam_path
 
 import pkg_resources
@@ -15,6 +15,19 @@ import warnings
 from collections import defaultdict
 import pkgutil
 from .logger import beam_logger as logger
+
+
+class ImportCollector(ast.NodeVisitor):
+    def __init__(self):
+        self.import_nodes = []
+
+    def visit_Import(self, node):
+        self.import_nodes.append(node)
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node):
+        self.import_nodes.append(node)
+        self.generic_visit(node)
 
 
 def get_origin(module_name_or_spec):
@@ -38,7 +51,10 @@ def get_origin(module_name_or_spec):
             return spec.origin
         origin = str(beam_path(spec.origin).resolve())
     else:
-        origin = str(beam_path(spec.submodule_search_locations[0]).resolve())
+        try:
+            origin = str(beam_path(spec.submodule_search_locations[0]).resolve())
+        except:
+            origin = None
 
     return origin
 
@@ -110,7 +126,25 @@ class AutoBeam:
         self._module_dependencies = None
         self._requirements = None
         self._private_modules = None
+        self._visited_modules = None
         self.obj = obj
+
+    @lazy_property
+    def self_path(self):
+        return beam_path(inspect.getfile(AutoBeam)).resolve()
+
+    @lazy_property
+    def loaded_modules(self):
+        modules = list(sys.modules.keys())
+        root_modules = [m.split('.')[0] for m in modules]
+        return set(root_modules).union(set(modules))
+
+
+    @property
+    def visited_modules(self):
+        if self._visited_modules is None:
+            self._visited_modules = set()
+        return self._visited_modules
 
     @property
     def private_modules(self):
@@ -174,8 +208,16 @@ class AutoBeam:
 
     def recursive_module_dependencies(self, module_path):
 
+        if module_path is None:
+            return set()
         module_path = beam_path(module_path).resolve()
-        self_path = beam_path(inspect.getfile(AutoBeam)).resolve()
+        if str(module_path) in self.visited_modules:
+            return set()
+        else:
+            self.visited_modules.add(str(module_path))
+
+            if 'algorithm' in str(module_path):
+                print('here')
 
         try:
             content = module_path.read()
@@ -184,22 +226,26 @@ class AutoBeam:
             return set()
 
         ast_tree = ast.parse(content)
+        collector = ImportCollector()
+        collector.visit(ast_tree)
+        import_nodes = collector.import_nodes
 
         modules = set()
-        for a in ast_tree.body:
+        for a in import_nodes:
             if type(a) is ast.Import:
                 for ai in a.names:
                     root_name = ai.name.split('.')[0]
 
                     if is_installed_package(root_name) and not is_std_lib(root_name):
-                        modules.add(root_name)
+                        if root_name in self.loaded_modules:
+                            modules.add(root_name)
                     elif not is_installed_package(root_name) and not is_std_lib(root_name):
                         if root_name in ['__main__']:
                             continue
                         try:
-                            path = beam_path(get_origin(root_name))
                             self.add_private_module_spec(root_name)
-                            if path in [module_path, self_path]:
+                            path = beam_path(get_origin(ai))
+                            if path in [module_path, self.self_path, None]:
                                 continue
                         except ValueError:
                             logger.warning(f"Could not find module: {root_name}")
@@ -209,18 +255,22 @@ class AutoBeam:
             elif type(a) is ast.ImportFrom:
 
                 root_name = a.module.split('.')[0]
+                if root_name == 'accelerate':
+                    print('here')
 
                 if a.level == 0 and (not is_std_lib(root_name)) and is_installed_package(root_name):
-                    modules.add(root_name)
+                    if root_name in self.loaded_modules:
+                        modules.add(root_name)
                 elif not is_installed_package(root_name) and not is_std_lib(root_name):
                     if a.level == 0:
 
                         self.add_private_module_spec(root_name)
-                        path = beam_path(get_origin(root_name))
 
-                        if path in [module_path, self_path]:
+                        path = beam_path(get_origin(a.module))
+                        if path in [module_path, self.self_path, None]:
                             continue
                         modules.union(self.recursive_module_dependencies(path))
+
                     else:
 
                         path = module_path
@@ -302,9 +352,9 @@ class AutoBeam:
     @property
     def import_statement(self):
         module_name = type(self.obj).__module__
-        origin = beam_path(get_origin(module_name))
-        if origin.parent.joinpath('__init__.py').is_file():
-            module_name = f"{origin.parent.name}.{module_name}"
+        # origin = beam_path(get_origin(module_name))
+        # if origin.parent.joinpath('__init__.py').is_file():
+        #     module_name = f"{origin.parent.name}.{module_name}"
         class_name = type(self.obj).__name__
         return f"from {module_name} import {class_name}"
 
@@ -331,7 +381,7 @@ class AutoBeam:
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
         obj.save_state(path.joinpath('state.pt'))
-        path.joinpath('skeleton.pkl').write(obj)
+        # path.joinpath('skeleton.pkl').write(obj)
 
     @classmethod
     def from_path(cls, path):
