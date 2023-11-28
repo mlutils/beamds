@@ -154,6 +154,7 @@ class OpenAI(OpenAIBase):
 
 class FCConversationLLM(BeamLLM):
 
+    model_adapter: Optional[str] = Field(None)
     _conv: Any = PrivateAttr()
 
     def __init__(self, *args, model=None, model_adapter=None, **kwargs):
@@ -163,6 +164,7 @@ class FCConversationLLM(BeamLLM):
         if model_adapter is not None:
             model = model_adapter
 
+        self.model_adapter = model
         self._conv = get_conversation_template(model)
 
     @property
@@ -171,7 +173,7 @@ class FCConversationLLM(BeamLLM):
 
     def get_prompt(self, messages):
 
-        conv = self._conv
+        conv = get_conversation_template(self.model_adapter)
         for m in messages:
 
             if m['role'] == 'system':

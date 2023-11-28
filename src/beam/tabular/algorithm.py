@@ -14,7 +14,55 @@ from ..logger import beam_logger as logger
 
 
 class TabularTransformer(torch.nn.Module):
+    """
+    The TabularTransformer class is a PyTorch module that implements a transformer-based model for tabular data classification. It takes as input a set of hyperparameters, the number of classes, the number of tokens, and a categorical mask. The class inherits from the torch.nn.Module class.
 
+    Attributes:
+        - n_tokens (torch.Tensor): A tensor that represents the number of tokens for each categorical feature.
+        - tokens_offset (torch.Tensor): A tensor that represents the offset of each categorical feature in the token embedding.
+        - cat_mask (torch.Tensor): A tensor that masks categorical features.
+        - emb (torch.nn.Embedding): An embedding layer for the tokens.
+        - n_rules (int): The number of rules used in the model.
+        - feature_bias (torch.Parameter): A learnable parameter used as bias for the token embeddings.
+        - rule_bias (torch.Parameter): A learnable parameter used as bias for the rule embeddings.
+        - rules (torch.Parameter): A learnable parameter that represents the rules.
+        - mask (torch.distributions.Bernoulli): A Bernoulli distribution used for masking tokens.
+        - rule_mask (torch.distributions.Bernoulli): A Bernoulli distribution used for masking rules.
+        - transformer (torch.nn.Transformer): A transformer layer used for feature transformation.
+        - lin (torch.nn.Module): A linear layer used for classification.
+
+    Methods:
+        - __init__(self, hparams, n_classes, n_tokens, cat_mask): Initializes the TabularTransformer class.
+        - forward(self, sample): Performs a forward pass through the model.
+
+    Example usage:
+        hparams = {
+            'emb_dim': 256,
+            'n_rules': 4,
+            'feature_bias': True,
+            'rules_bias': True,
+            'mask_rate': 0.2,
+            'rule_mask_rate': 0.1,
+            'n_transformer_head': 4,
+            'n_encoder_layers': 4,
+            'n_decoder_layers': 4,
+            'transformer_hidden_dim': 512,
+            'transformer_dropout': 0.1,
+            'activation': 'relu',
+            'lin_version': 1,
+            'dropout': 0.2
+        }
+        n_classes = 2
+        n_tokens = [10, 5, 8]
+        cat_mask = [True, False, True]
+
+        model = TabularTransformer(hparams, n_classes, n_tokens, cat_mask)
+        sample = {
+            'x': torch.tensor([[1, 3, 5], [2, 4, 6]]),
+            'x_frac': torch.tensor([[0.2, 0.4, 0.6], [0.3, 0.5, 0.7]])
+        }
+        output = model.forward(sample)
+    """
     def __init__(self, hparams, n_classes, n_tokens, cat_mask):
         """
 
