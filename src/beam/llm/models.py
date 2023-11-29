@@ -5,12 +5,13 @@ import openai
 import requests
 import pandas as pd
 import numpy as np
-from transformers.pipelines import Conversation
 
+from .hf_conversation import Conversation
 from ..logger import beam_logger as logger
 from .core import BeamLLM, CompletionObject
 from pydantic import BaseModel, Field, PrivateAttr
 from ..path import beam_key, normalize_host
+
 from .utils import get_conversation_template
 from ..utils import lazy_property
 
@@ -42,15 +43,15 @@ class OpenAIBase(BeamLLM):
         openai.api_base = self.api_base
         openai.organization = self.organization
 
-    def _chat_completion(self, **kwargs):
+    def _completion(self, prompt=None, **kwargs):
         self.sync_openai()
-        res = openai.ChatCompletion.create(model=self.model, **kwargs)
-        return CompletionObject(prompt=kwargs['prompt'], kwargs=kwargs, response=res)
+        res = openai.Completion.create(engine=self.model, prompt=prompt, **kwargs)
+        return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
-    def _completion(self, **kwargs):
+    def _chat_completion(self, messages=None, **kwargs):
         self.sync_openai()
-        res = openai.Completion.create(engine=self.model, **kwargs)
-        return CompletionObject(prompt=kwargs['messages'], kwargs=kwargs, response=res)
+        res = openai.ChatCompletion.create(model=self.model, messages=messages, **kwargs)
+        return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 
     def verify_response(self, res):
         res = res.response
