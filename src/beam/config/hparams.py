@@ -22,7 +22,7 @@ class BeamHparams(Namespace):
     parameters = []
     defaults = {}
 
-    def __init__(self, *args, hparams=None, model_set=None, tune_set=None, **kwargs):
+    def __init__(self, *args, hparams=None, model_set=None, tune_set=None, return_defaults=False, **kwargs):
 
         if model_set is None:
             model_set = set()
@@ -61,7 +61,10 @@ class BeamHparams(Namespace):
                 tune_set = tune_set.union(ts)
                 model_set = model_set.union(ms)
 
-            hparams = beam_arguments(parser, *args, **kwargs)
+            if return_defaults:
+                hparams = parser.parse_args([])
+            else:
+                hparams = beam_arguments(parser, *args, **kwargs)
             tune_set = tune_set.union(hparams.tune_set)
             model_set = model_set.union(hparams.model_set)
 
@@ -94,6 +97,36 @@ class BeamHparams(Namespace):
         self._tune_set = tune_set
 
         super().__init__(**hparams.__dict__)
+
+    @classmethod
+    def defaults(cls):
+        return cls(return_defaults=True)
+
+    @classmethod
+    def add_argument(cls, name, type, default, help, model=True, tune=False):
+        cls.parameters.append(BeamParam(name, type, default, help, model, tune))
+
+    @classmethod
+    def add_arguments(cls, *args):
+        for arg in args:
+            cls.add_argument(**arg)
+
+    @classmethod
+    def remove_argument(cls, name):
+        cls.parameters = [p for p in cls.parameters if p.name != name]
+
+    @classmethod
+    def remove_arguments(cls, *args):
+        for arg in args:
+            cls.remove_argument(arg)
+
+    @classmethod
+    def set_defaults(cls, **kwargs):
+        cls.defaults.update(kwargs)
+
+    @classmethod
+    def set_default(cls, name, value):
+        cls.defaults[name] = value
 
     def dict(self):
         return to_dict(self)

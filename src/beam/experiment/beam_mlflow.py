@@ -75,16 +75,16 @@ class MFBeamAlgWrapper(mlflow.pyfunc.PythonModel):
     @staticmethod
     def save_model(alg, name, stage=None):
 
-        checkpoint_file = alg.next_level.checkpoints_dir.joinpath(f'checkpoint_mlflow_{alg.epoch + 1:06d}')
+        checkpoint_file = alg.experiment.checkpoints_dir.joinpath(f'checkpoint_mlflow_{alg.epoch + 1:06d}')
         alg.save_checkpoint(checkpoint_file)
 
-        artifacts = {'hparams': str(alg.next_level.root.joinpath('hparams.pkl')),
+        artifacts = {'hparams': str(alg.experiment.experiment_dir.joinpath('hparams.pkl')),
                      'state': str(checkpoint_file)}
         with mlflow.start_run() as run:
             mlflow.pyfunc.log_model(
                 artifact_path=str(checkpoint_file.parent.joinpath(checkpoint_file.stem)),
                 python_model=alg,
-                code_path=[str(alg.next_level.source_dir)],
+                code_path=[str(alg.experiment.source_dir)],
                 artifacts=artifacts,
                 registered_model_name=f"{name}/{stage}",
 

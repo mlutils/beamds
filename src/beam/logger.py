@@ -154,7 +154,7 @@ def beam_kpi(beam_result_class, path=None):
                 if hasattr(algorithm, 'name'):
                     algorithm_name = algorithm.name
                 if hasattr(algorithm, 'experiment') and algorithm.experiment is not None:
-                    experiment_path = algorithm.experiment.root
+                    experiment_path = algorithm.experiment.experiment_dir
 
             result = None
             exception_message = None

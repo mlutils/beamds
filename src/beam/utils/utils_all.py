@@ -265,21 +265,6 @@ def get_notebook_name():
     return display_javascript(js)
 
 
-def rmtree(path):
-    if type(path) is str:
-        path = Path(path)
-
-    if path.is_file():
-        path.unlink()
-    elif path.is_dir():
-        for item in path.iterdir():
-            if item.is_dir():
-                rmtree(item)
-            else:
-                item.unlink()
-        path.rmdir()
-
-
 def pretty_format_number(x, short=False):
 
     just = 4 if short else 10

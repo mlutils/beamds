@@ -152,7 +152,7 @@ class Algorithm(Processor):
                                megatron_lm_plugin=self.megatron_lm_plugin,
                                kwargs_handlers=self.accelerate_kwargs_handlers,
                                cpu='cpu' == self.get_hparam('device'),
-                               project_dir=self.experiment.root if self.experiment is not None else None,
+                               project_dir=self.experiment.experiment_dir if self.experiment is not None else None,
                                dispatch_batches=self.get_hparam('dispatch_batches'),
                                even_batches=True,
                                step_scheduler_with_optimizer=self.get_hparam('schedulers_steps') == 'iteration',
@@ -590,7 +590,7 @@ class Algorithm(Processor):
     # a setter function
     @experiment.setter
     def experiment(self, experiment):
-        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.root}")
+        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.experiment_dir}")
         self.trial = experiment.trial
         self.hparams = experiment.hparams
         self.set_experiment_properties()

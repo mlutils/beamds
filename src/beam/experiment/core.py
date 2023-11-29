@@ -5,7 +5,6 @@ import numpy as np
 import os
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
-from shutil import copytree
 import torch
 import copy
 import pandas as pd
@@ -19,7 +18,7 @@ import traceback
 
 
 from ..utils import (setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook,
-                    find_port, as_numpy, lazy_property, include_patterns, check_type, beam_device, rmtree)
+                    find_port, as_numpy, lazy_property, include_patterns, check_type, beam_device)
 from ..path import beam_path, BeamPath, beam_key
 from ..logger import beam_logger as logger
 from ..config import get_beam_llm, print_beam_hyperparameters, BeamHparams
@@ -190,7 +189,7 @@ class Experiment(object):
     """
 
     def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None, reload_iloc=-1,
-                 reload_loc=None, reload_name=None):
+                 reload_dir=None, reload_loc=None, reload_name=None):
         """
 
         @param args:
@@ -222,71 +221,77 @@ class Experiment(object):
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.hparams.device = beam_device(self.hparams.device)
 
-        root_path = beam_path(self.hparams.root_dir)
-        self.base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
-        self.base_dir.mkdir(exist_ok=True, parents=True)
-
         self.exp_name = None
         self.load_model = False
 
-        pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
-        exp_names = list(filter(lambda x: re.match(pattern, str(x)) is not None, self.base_dir.iterdir()))
-        exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
+        if reload_dir is None:
+            root_path = beam_path(self.hparams.root_dir)
+            base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
 
-        exp_num = None
-        if self.hparams.reload:
+            pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
+            exp_names = list(filter(lambda x: re.match(pattern, str(x)) is not None, base_dir.iterdir()))
+            exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
 
-            if type(self.hparams.resume) is str:
+            exp_num = None
+            if self.hparams.reload:
 
-                if self.base_dir.joinpath(self.hparams.resume).is_dir():
-                    self.exp_name = self.hparams.resume
-                    exp_num = int(self.exp_name.split('_')[0])
-                    self.load_model = True
+                if type(self.hparams.resume) is str:
 
-            elif self.hparams.resume >= 0:
-                ind = np.nonzero(exp_indices == self.hparams.resume)[0]
-                if len(ind):
-                    self.exp_name = exp_names[ind[0]]
-                    exp_num = self.hparams.resume
-                    self.load_model = True
+                    if base_dir.joinpath(self.hparams.resume).is_dir():
+                        self.exp_name = self.hparams.resume
+                        exp_num = int(self.exp_name.split('_')[0])
+                        self.load_model = True
+
+                elif self.hparams.resume >= 0:
+                    ind = np.nonzero(exp_indices == self.hparams.resume)[0]
+                    if len(ind):
+                        self.exp_name = exp_names[ind[0]]
+                        exp_num = self.hparams.resume
+                        self.load_model = True
+
+                else:
+                    if len(exp_indices):
+                        ind = np.argmax(exp_indices)
+                        self.exp_name = exp_names[ind]
+                        exp_num = exp_indices[ind]
+                        self.load_model = True
 
             else:
-                if len(exp_indices):
+
+                if self.hparams.override and len(exp_indices):
+
                     ind = np.argmax(exp_indices)
                     self.exp_name = exp_names[ind]
                     exp_num = exp_indices[ind]
-                    self.load_model = True
+                else:
+                    self.hparams.override = False
+
+            if self.hparams.reload and not self.load_model:
+                logger.warning(f"Did not find existing experiment to match your specifications: basedir={base_dir} resume={self.hparams.resume}")
+
+            if self.exp_name is None:
+                exp_num = np.max(exp_indices) + 1 if len(exp_indices) else 0
+                self.exp_name = "%04d_%s" % (exp_num, self.exptime)
+
+            self.exp_num = exp_num
+            # init experiment parameters
+            self.experiment_dir = base_dir.joinpath(self.exp_name)
 
         else:
-
-            if self.hparams.override and len(exp_indices):
-
-                ind = np.argmax(exp_indices)
-                self.exp_name = exp_names[ind]
-                exp_num = exp_indices[ind]
-            else:
-                self.hparams.override = False
-
-        if self.hparams.reload and not self.load_model:
-            logger.warning(f"Did not find existing experiment to match your specifications: basedir={self.base_dir} resume={self.hparams.resume}")
-
-        if self.exp_name is None:
-            exp_num = np.max(exp_indices) + 1 if len(exp_indices) else 0
-            self.exp_name = "%04d_%s" % (exp_num, self.exptime)
-
-        self.exp_num = exp_num
-        # init experiment parameters
-        self.root = self.base_dir.joinpath(self.exp_name)
+            self.experiment_dir = beam_path(reload_dir)
+            self.exp_name = self.experiment_dir.name
+            self.exp_num = None
+            self.load_model = True
 
         # set dirs
-        self.tensorboard_dir = self.root.joinpath('tensorboard')
-        self.checkpoints_dir = self.root.joinpath('checkpoints')
-        self.results_dir = self.root.joinpath('results')
-        self.code_dir = self.root.joinpath('code')
+        self.tensorboard_dir = self.experiment_dir.joinpath('tensorboard')
+        self.checkpoints_dir = self.experiment_dir.joinpath('checkpoints')
+        self.results_dir = self.experiment_dir.joinpath('results')
+        self.code_dir = self.experiment_dir.joinpath('code')
 
         if self.load_model:
             logger.cleanup()
-            logger.add_file_handlers(self.root.joinpath('experiment.log'))
+            logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
             logger.info(f"Resuming existing experiment")
 
         self.writer = None
@@ -336,6 +341,7 @@ class Experiment(object):
         self.comet_writer = None
         self.mlflow_writer = None
         self.root_dir_is_built = False
+        self.source_dir = None
 
         atexit.register(self.cleanup)
 
@@ -383,7 +389,8 @@ class Experiment(object):
                     continue
                 setattr(args, k, v)
 
-        return Experiment(args, reload_iloc=reload_iloc, reload_loc=reload_loc, reload_name=reload_name, **argv)
+        return Experiment(args, reload_iloc=reload_iloc, reload_loc=reload_loc, reload_name=reload_name,
+                          reload_dir=path, **argv)
 
     def reload_checkpoint(self, alg=None, iloc=None, loc=None, name=None):
 
@@ -541,7 +548,6 @@ class Experiment(object):
 
             if store_results == 'yes' or store_results == 'logscale' and logscale:
 
-                self.results_dir.mkdir(parents=True, exist_ok=True)
                 reporter.write_to_path(self.results_dir.joinpath(f'results_{epoch:06d}'))
 
             alg = algorithm if visualize_weights else None
@@ -571,7 +577,7 @@ class Experiment(object):
             reporter.print_stats()
 
         if self.writer is not None:
-            logger.info(f"Tensorboard results are stored to: {self.root}")
+            logger.info(f"Tensorboard results are stored to: {self.experiment_dir}")
             reporter.write_to_tensorboard(self.writer, hparams=self.tensorboard_hparams)
         if self.comet_writer is not None:
             logger.info(f"Comet results are stored to: {self.comet_exp.get_key()}")
@@ -715,7 +721,7 @@ class Experiment(object):
             base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
             depth = 1
         else:
-            base_dir = self.root
+            base_dir = self.experiment_dir
             depth = 0
 
         #TODO: add support for beampath
@@ -785,10 +791,11 @@ class Experiment(object):
     def build_experiment_dir(self):
 
         logger.cleanup()
-        logger.add_file_handlers(self.root.joinpath('experiment.log'))
+        logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
         print_beam_hyperparameters(self.hparams, debug_only=not self.print_hyperparameters)
 
-        self.hparams.to_path(self.root.joinpath('hparams.pkl'))
+        self.experiment_dir.mkdir()
+        self.hparams.to_path(self.experiment_dir.joinpath('hparams.pkl'))
 
         if not self.hparams.override:
             logger.info(f"Creating new experiment")
@@ -796,24 +803,24 @@ class Experiment(object):
         else:
             logger.warning("Deleting old experiment")
 
-            rmtree(self.root)
+            self.experiment_dir.rmtree()
             self.exp_name = "%04d_%s" % (self.exp_num, self.exptime)
-            self.root = self.base_dir.joinpath(self.exp_name)
+            self.experiment_dir = self.experiment_dir.parent.joinpath(self.exp_name)
 
             # set dirs
-            self.tensorboard_dir = self.root.joinpath('tensorboard')
-            self.checkpoints_dir = self.root.joinpath('checkpoints')
-            self.results_dir = self.root.joinpath('results')
-            self.code_dir = self.root.joinpath('code')
+            self.tensorboard_dir = self.experiment_dir.joinpath('tensorboard')
+            self.checkpoints_dir = self.experiment_dir.joinpath('checkpoints')
+            self.results_dir = self.experiment_dir.joinpath('results')
+            self.code_dir = self.experiment_dir.joinpath('code')
 
-        logger.info(f"Experiment directory is: {self.root}")
+        logger.info(f"Experiment directory is: {self.experiment_dir}")
 
-        self.tensorboard_dir.joinpath('logs').mkdir(exist_ok=True, parents=True)
-        self.tensorboard_dir.joinpath('hparams').mkdir(exist_ok=True, parents=True)
-        self.checkpoints_dir.mkdir(exist_ok=True, parents=True)
+        self.tensorboard_dir.joinpath('logs').mkdir()
+        self.tensorboard_dir.joinpath('hparams').mkdir()
+        self.checkpoints_dir.mkdir()
 
         # make log dirs
-        self.results_dir.mkdir(exist_ok=True, parents=True)
+        self.results_dir.mkdir()
 
         # copy code to dir
         if is_notebook():
@@ -822,15 +829,10 @@ class Experiment(object):
             code_root_path = sys.argv[0]
 
         self.source_dir = os.path.dirname(os.path.realpath(code_root_path))
-        #TODO: handle the case where root_path is not BeamPath object
-        if self.hparams.copy_code and isinstance(self.code_dir, BeamPath):
-            copytree(self.source_dir, str(self.code_dir),
-                     ignore=include_patterns('*.py', '*.md', '*.ipynb'))
-        else:
-            if not isinstance(self.code_dir, BeamPath):
-                logger.warning("Code directory is not BeamPath object. Skipping code copy.")
+        if self.hparams.copy_code:
+            self.code_dir.copy(beam_path(self.source_dir), include=['.py', '.md', '.ipynb'])
 
-        self.root.joinpath('args.pkl').write(self.vars_args)
+        self.experiment_dir.joinpath('args.pkl').write(self.vars_args)
         self.root_dir_is_built = True
 
     def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False,

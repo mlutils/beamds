@@ -1,6 +1,5 @@
 import json
 import os
-from shutil import rmtree
 from pathlib import PurePosixPath, PureWindowsPath, Path
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 import pandas as pd
@@ -78,28 +77,57 @@ class PureBeamPath:
                         return True
         return False
 
-    def copy(self, dst):
+    def copy(self, dst, ignore=None, include=None):
+
+        if type(dst) is str:
+            dst = self.gen(dst)
 
         if self.is_dir():
             dst.mkdir(parents=True, exist_ok=True)
             for p in self.iterdir():
-                p.copy(dst / p.name)
+                p.copy(dst.joinpath(p.name), ignore=ignore, include=include)
         else:
-            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.parent.mkdir()
+            ext = self.suffix
+            if ignore is not None:
+                if type(ignore) is str:
+                    ignore = [ignore]
+                if ext in ignore:
+                    return
+            if include is not None:
+                if type(include) is str:
+                    include = [include]
+                if ext not in include:
+                    return
             with self.open("rb") as f:
                 with dst.open("wb") as g:
                     g.write(f.read())
 
-    def rmtree(self):
+    def rmtree(self, ignore=None, include=None):
         if self.is_file():
             self.unlink()
         elif self.is_dir():
+            delete_dir = True
             for item in self.iterdir():
                 if item.is_dir():
-                    rmtree(item)
+                    item.rmtree(ignore=ignore, include=include)
                 else:
+                    ext = item.suffix
+                    if ignore is not None:
+                        if type(ignore) is str:
+                            ignore = [ignore]
+                        if ext in ignore:
+                            delete_dir = False
+                            continue
+                    if include is not None:
+                        if type(include) is str:
+                            include = [include]
+                        if ext not in include:
+                            delete_dir = False
+                            continue
                     item.unlink()
-            self.rmdir()
+            if delete_dir:
+                self.rmdir()
 
     def walk(self):
         dirs = []
@@ -115,15 +143,15 @@ class PureBeamPath:
         for dir in dirs:
             yield from self.joinpath(dir).walk()
 
-    def clean(self):
+    def clean(self, ignore=None, include=None):
 
         if self.exists():
-            self.rmtree()
+            self.rmtree(ignore=ignore, include=include)
         else:
             if self.parent.exists():
                 for p in self.parent.iterdir():
                     if p.stem == self.name:
-                        p.rmtree()
+                        p.rmtree(ignore=ignore, include=include)
 
         self.mkdir(parents=True)
         self.rmdir()
