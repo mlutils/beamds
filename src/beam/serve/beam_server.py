@@ -12,7 +12,7 @@ from flask import Flask, request, jsonify, send_file
 from ..logger import beam_logger as logger
 from ..experiment import Experiment
 from ..utils import find_port
-from ..config import BeamHparams, to_dict
+from ..config import to_dict
 
 try:
     import torch

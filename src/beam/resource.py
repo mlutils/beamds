@@ -1,5 +1,4 @@
 
-
 def resource(uri, **kwargs):
     if type(uri) != str:
         return uri

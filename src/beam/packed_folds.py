@@ -1,4 +1,3 @@
-
 import torch
 from .utils import check_type, slice_to_index, as_tensor, beam_device
 import pandas as pd

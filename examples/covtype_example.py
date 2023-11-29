@@ -16,9 +16,9 @@ import os
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam import Algorithm, PackedFolds, LinearNet
-from src.beam.model import PID
+from src.beam.nn import PID
 from src.beam.config import basic_beam_parser
-from src.beam.model import GBN, MHRuleLayer, mySequential
+from src.beam.nn import GBN, MHRuleLayer, mySequential
 
 from ray import tune
 from sklearn.datasets import fetch_covtype

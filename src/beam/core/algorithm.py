@@ -5,7 +5,7 @@ import torch
 import copy
 from ..logger import beam_logger as logger
 import numpy as np
-from ..optim import BeamOptimizer, BeamScheduler, MultipleScheduler
+from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler
 from ..utils import to_device, check_type, recursive_concatenate, \
     beam_device, filter_dict, lazy_property, \
     is_notebook, DataBatch, dictionary_iterator
