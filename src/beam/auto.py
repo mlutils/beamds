@@ -1,5 +1,4 @@
 import inspect
-from pickle import PicklingError
 import ast
 import os
 import sys
@@ -15,7 +14,6 @@ import warnings
 from collections import defaultdict
 import pkgutil
 from .logger import beam_logger as logger
-from .core import Processor
 from uuid import uuid4 as uuid
 
 
@@ -389,8 +387,9 @@ class AutoBeam:
             logger.warning(f"Object {obj} does not have a save_state method.")
         try:
             path.joinpath('skeleton.pkl').write(obj)
-        except PicklingError:
-            logger.warning(f"Could not pickle object: {obj}")
+        except Exception as e:
+            path.joinpath('skeleton.pkl').unlink()
+            logger.warning(f"Could not pickle object: {obj} ({e}), saving only the state.")
 
         if not path.joinpath('skeleton.pkl').is_file() and \
                 not path.joinpath('state.pt').is_file():
@@ -448,7 +447,7 @@ class AutoBeam:
                     if state_file.exists:
                         obj.load_state(state_file)
                 except:
-                    obj = cls_obj.from_path(skeleton_file)
+                    obj = cls_obj.from_path(state_file)
             else:
                 obj = cls_obj.from_path(state_file)
 

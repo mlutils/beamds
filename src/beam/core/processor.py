@@ -83,29 +83,30 @@ class Processor:
     def from_path(cls, path):
         path = beam_path(path)
         state = path.read()
-        hparams = state['hparams']
+        hparams = BeamHparams(hparams=state['hparams'])
         alg = cls(hparams)
         alg.load_state(state)
         return alg
 
     def state_dict(self):
+        # The state must contain a key 'hparams' with the hparams of the instance
         raise NotImplementedError
 
     def load_state_dict(self, state_dict):
         raise NotImplementedError
 
-    def save_state(self, path):
+    def save_state(self, path, ext=None):
 
         state = self.state_dict()
 
         path = beam_path(path)
         if has_beam_ds and isinstance(state, BeamData):
-            state.store(path=path)
-        elif has_beam_ds:
+            state.store(path=path, file_type=ext)
+        elif has_beam_ds and (not path.suffix) and ext is None:
             state = BeamData(data=state, path=path)
             state.store()
         else:
-            path.write(state)
+            path.write(state, ext=ext)
 
     def load_state(self, path):
 

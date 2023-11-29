@@ -71,24 +71,27 @@ class BeamHparams(Namespace):
             del hparams.tune_set
             del hparams.model_set
 
+            hparams = hparams.__dict__
+
         elif isinstance(hparams, BeamHparams):
             tune_set = tune_set.union(hparams.tune_parameters.__dict__.keys())
             model_set = model_set.union(hparams.model_parameters.__dict__.keys())
 
-        elif isinstance(hparams, Namespace):
+            hparams = hparams.__dict__
 
-            if hasattr(hparams, 'tune_set'):
-                tune_set = tune_set.union(hparams.tune_set)
-                del hparams.tune_set
+        elif isinstance(hparams, dict) or isinstance(hparams, Namespace):
 
-            if hasattr(hparams, 'model_set'):
-                model_set = model_set.union(hparams.model_set)
-                del hparams.model_set
+            if isinstance(hparams, Namespace):
+                hparams = vars(hparams)
+            hparams = copy.deepcopy(hparams)
+
+            if 'tune_set' in hparams:
+                tune_set = tune_set.union(hparams.pop('_tune_set'))
+
+            if 'model_set' in hparams:
+                model_set = model_set.union(hparams.pop('_model_set'))
             else:
-                model_set = model_set.union(hparams.__dict__.keys())
-
-        elif isinstance(hparams, dict):
-            model_set = model_set.union(hparams.keys())
+                model_set = model_set.union(hparams.keys())
 
         else:
             raise ValueError(f"Invalid hparams type: {type(hparams)}")
@@ -96,10 +99,10 @@ class BeamHparams(Namespace):
         self._model_set = model_set
         self._tune_set = tune_set
 
-        super().__init__(**hparams.__dict__)
+        super().__init__(**hparams)
 
     @classmethod
-    def defaults(cls):
+    def default_values(cls):
         return cls(return_defaults=True)
 
     @classmethod
@@ -145,6 +148,10 @@ class BeamHparams(Namespace):
     @property
     def model_parameters(self):
         return Namespace(**{k: getattr(self, k) for k in self._model_set})
+
+    @property
+    def namespace(self):
+        return Namespace(**self.__dict__)
 
     def items(self):
         for k, v in vars(self).items():

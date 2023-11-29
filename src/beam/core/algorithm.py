@@ -1394,7 +1394,7 @@ class Algorithm(Processor):
         wrapper = copy.deepcopy if path is None else (lambda x: x)
 
         if hparams:
-            state['hparams'] = self.hparams
+            state['hparams'] = self.hparams.namespace
 
         for k, net in filter_dict(self.networks, networks).items():
             state[f"{k}_parameters"] = wrapper(net.state_dict())
