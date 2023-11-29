@@ -88,6 +88,10 @@ class Processor:
         alg.load_state(state)
         return alg
 
+    def to_bundle(self, path):
+        from ..auto import AutoBeam
+        AutoBeam.to_bundle(self, path)
+
     def state_dict(self):
         # The state must contain a key 'hparams' with the hparams of the instance
         raise NotImplementedError
