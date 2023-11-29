@@ -485,6 +485,7 @@ class AutoBeam:
     def write_requirements(self, path):
         path = beam_path(path)
         content = '\n'.join(self.requirements)
+        content = f"{content}\n"
         path.write(content, ext='.txt')
 
     def modules_to_tar(self, path):
