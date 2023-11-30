@@ -6,6 +6,8 @@ import sys
 from .utils import lazy_property
 from .path import beam_path
 
+import importlib.metadata
+
 import pkg_resources
 import os
 import importlib
@@ -117,14 +119,17 @@ def is_installed_package(module_name):
     return classify_module(module_name) == 'installed'
 
 
+def is_module_installed(module_name):
+    try:
+        importlib.metadata.version(module_name)
+        return True
+    except importlib.metadata.PackageNotFoundError:
+        return False
+
+
 class AutoBeam:
 
     def __init__(self, obj):
-        self._top_levels = None
-        self._private_modules_walk = None
-        self._module_spec = None
-        self._module_dependencies = None
-        self._requirements = None
         self._private_modules = None
         self._visited_modules = None
         self.obj = obj
@@ -138,7 +143,6 @@ class AutoBeam:
         modules = list(sys.modules.keys())
         root_modules = [m.split('.')[0] for m in modules]
         return set(root_modules).union(set(modules))
-
 
     @property
     def visited_modules(self):
@@ -162,14 +166,11 @@ class AutoBeam:
             return
         self._private_modules.append(module_spec)
 
-    @property
+    @lazy_property
     def module_spec(self):
-        if self._module_spec is None:
-            module_spec = importlib.util.find_spec(type(self.obj).__module__)
-            root_module = module_spec.name.split('.')[0]
-            self._module_spec = importlib.util.find_spec(root_module)
-
-        return self._module_spec
+        module_spec = importlib.util.find_spec(type(self.obj).__module__)
+        root_module = module_spec.name.split('.')[0]
+        return  importlib.util.find_spec(root_module)
 
     @staticmethod
     def module_walk(root_path):
@@ -193,18 +194,15 @@ class AutoBeam:
 
         return module_walk
 
-    @property
+    @lazy_property
     def private_modules_walk(self):
-        if self._private_modules_walk is None:
-            private_modules_walk = {}
 
-            root_paths = set(sum([get_module_paths(m) for m in self.private_modules if m is not None], []))
+        private_modules_walk = {}
+        root_paths = set(sum([get_module_paths(m) for m in self.private_modules if m is not None], []))
+        for root_path in root_paths:
+            private_modules_walk[root_path] = self.module_walk(root_path)
 
-            for root_path in root_paths:
-                private_modules_walk[root_path] = self.module_walk(root_path)
-
-            self._private_modules_walk = private_modules_walk
-        return self._private_modules_walk
+        return private_modules_walk
 
     def recursive_module_dependencies(self, module_path):
 
@@ -285,67 +283,60 @@ class AutoBeam:
 
         return modules
 
-    @property
+    @lazy_property
     def module_dependencies(self):
+        module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
+        modules = self.recursive_module_dependencies(module_path)
+        return list(set(modules))
 
-        if self._module_dependencies is None:
 
-            module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
-            modules = self.recursive_module_dependencies(module_path)
-            self._module_dependencies = list(set(modules))
-
-        return self._module_dependencies
-
-    @property
+    @lazy_property
     def top_levels(self):
 
-        if self._top_levels is None:
-            top_levels = {}
-            for i, dist in enumerate(pkg_resources.working_set):
-                egg_info = beam_path(dist.egg_info).resolve()
-                tp_file = egg_info.joinpath('top_level.txt')
-                module_name = None
-                project_name = dist.project_name
+        top_levels = {}
+        for i, dist in enumerate(pkg_resources.working_set):
+            egg_info = beam_path(dist.egg_info).resolve()
+            tp_file = egg_info.joinpath('top_level.txt')
+            module_name = None
+            project_name = dist.project_name
 
-                if egg_info.parent.joinpath(project_name).is_dir():
-                    module_name = project_name
-                elif egg_info.parent.joinpath(project_name.replace('-', '_')).is_dir():
-                    module_name = project_name.replace('-', '_')
-                elif egg_info.joinpath('RECORD').is_file():
+            if egg_info.parent.joinpath(project_name).is_dir():
+                module_name = project_name
+            elif egg_info.parent.joinpath(project_name.replace('-', '_')).is_dir():
+                module_name = project_name.replace('-', '_')
+            elif egg_info.joinpath('RECORD').is_file():
 
-                    record = egg_info.joinpath('RECORD').read(ext='.txt', readlines=True)
-                    for line in record:
-                        if '__init__.py' in line:
-                            module_name = line.split('/')[0]
-                            break
-                if module_name is None and tp_file.is_file():
-                    module_names = tp_file.read(ext='.txt', readlines=True)
-                    module_names = list(filter(lambda x: len(x) >= 2 and (not x.startswith('_')), module_names))
-                    if len(module_names):
-                        module_name = module_names[0].strip()
+                record = egg_info.joinpath('RECORD').read(ext='.txt', readlines=True)
+                for line in record:
+                    if '__init__.py' in line:
+                        module_name = line.split('/')[0]
+                        break
+            if module_name is None and tp_file.is_file():
+                module_names = tp_file.read(ext='.txt', readlines=True)
+                module_names = list(filter(lambda x: len(x) >= 2 and (not x.startswith('_')), module_names))
+                if len(module_names):
+                    module_name = module_names[0].strip()
 
-                if module_name is None and egg_info.parent.joinpath(f"{project_name.replace('-', '_')}.py").is_file():
-                    module_name = project_name.replace('-', '_')
+            if module_name is None and egg_info.parent.joinpath(f"{project_name.replace('-', '_')}.py").is_file():
+                module_name = project_name.replace('-', '_')
 
-                if module_name is None:
-                    # warnings.warn(f"Could not find top level module for package: {project_name}")
-                    top_levels[module_name] = project_name
-                elif not (module_name):
-                    warnings.warn(f"{project_name}: is empty")
-                else:
-                    if module_name in top_levels:
-                        if type(top_levels[module_name]) is list:
-                            v = top_levels[module_name]
-                        else:
-                            v = [top_levels[module_name]]
-                            v.append(dist)
-                        top_levels[module_name] = v
+            if module_name is None:
+                # warnings.warn(f"Could not find top level module for package: {project_name}")
+                top_levels[module_name] = project_name
+            elif not (module_name):
+                warnings.warn(f"{project_name}: is empty")
+            else:
+                if module_name in top_levels:
+                    if type(top_levels[module_name]) is list:
+                        v = top_levels[module_name]
                     else:
-                        top_levels[module_name] = dist
+                        v = [top_levels[module_name]]
+                        v.append(dist)
+                    top_levels[module_name] = v
+                else:
+                    top_levels[module_name] = dist
 
-            self._top_levels = top_levels
-
-        return self._top_levels
+        return top_levels
 
     @property
     def import_statement(self):
@@ -358,7 +349,8 @@ class AutoBeam:
 
     @property
     def metadata(self):
-        return {'name': self.obj.name, 'type': type(self.obj).__name__, 'import_statement': self.import_statement}
+        return {'name': self.obj.name, 'type': type(self.obj).__name__,
+                'import_statement': self.import_statement, 'module_name': type(self.obj).__module__}
 
     @staticmethod
     def to_bundle(obj, path=None):
@@ -376,9 +368,9 @@ class AutoBeam:
 
         ab = AutoBeam(obj)
         path.clean()
-        path.mkdir(parents=True, exist_ok=True)
+        path.mkdir()
         logger.info(f"Saving object's files to path {path}: [requirements.txt, modules.tar.gz, state.pt]")
-        ab.write_requirements(path.joinpath('requirements.txt'))
+        path.joinpath('requirements.json').write(ab.requirements)
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
         if hasattr(obj, 'save_state'):
@@ -398,8 +390,9 @@ class AutoBeam:
                          f"it is pickleable.")
 
     @classmethod
-    def from_path(cls, path, cache_path=None):
+    def from_bundle(cls, path, cache_path=None):
 
+        logger.info(f"Loading object from path {path}")
         if cache_path is None:
             cache_path = beam_path('/tmp/autobeam').joinpath(uuid())
         else:
@@ -432,13 +425,13 @@ class AutoBeam:
             # 5. Load metadata and import necessary modules
             metadata = metadata_file.read()
 
-            import_statement = metadata['import_statement']
             imported_class = metadata['type']
+            module = importlib.import_module(metadata['module_name'])
+            cls_obj = getattr(module, imported_class)
 
-            exec(import_statement, globals())
-
-            # 6. Load the state of the object using the imported class type
-            cls_obj = globals()[imported_class]
+            # import_statement = metadata['import_statement']
+            # exec(import_statement, globals())
+            # cls_obj = globals()[imported_class]
 
             # 7. Construct the object from its state using a hypothetical from_state method
             if skeleton_file.is_file():
@@ -456,9 +449,20 @@ class AutoBeam:
         try:
             obj = load_obj()
         except ImportError:
+            logger.error(f"ImportError, some of the packages are not installed. "
+                         f"Trying to install only the missing requirements.")
             # 2. Install necessary packages
-            os.system(f"pip install -r {req_file}")
-            obj = load_obj()
+            requirements = req_file.read()
+            for r in requirements:
+                if not is_module_installed(r['module_name']):
+                    os.system(f"pip install {r['pip_package']}=={r['version']}")
+            try:
+                obj = load_obj()
+            except Exception as e:
+                logger.error(f"Exception: {e}. Trying to install all requirements.")
+                all_reqs = ' '.join([f"{r['pip_package']}=={r['version']}" for r in requirements])
+                os.system(f"pip install {all_reqs}")
+                obj = load_obj()
 
         return obj
 
@@ -468,23 +472,22 @@ class AutoBeam:
             return None
         return self.top_levels[module_name]
 
-    @property
+    @lazy_property
     def requirements(self):
-        if self._requirements is None:
-            requirements = []
-            for module_name in self.module_dependencies:
-                pip_package = self.get_pip_package(module_name)
-                if pip_package is not None:
-                    requirements.append(f"{pip_package.project_name}>={pip_package.version}")
-                else:
-                    logger.warning(f"Could not find pip package for module: {module_name}")
-            self._requirements = requirements
-
-        return self._requirements
+        requirements = []
+        for module_name in self.module_dependencies:
+            pip_package = self.get_pip_package(module_name)
+            if pip_package is not None:
+                requirements.append({'pip_package': pip_package.project_name, 'module_name': module_name,
+                                     'version': pip_package.version
+                                     })
+            else:
+                logger.warning(f"Could not find pip package for module: {module_name}")
+        return requirements
 
     def write_requirements(self, path):
         path = beam_path(path)
-        content = '\n'.join(self.requirements)
+        content = '\n'.join([f"{r['pip_package']}=={r['version']}" for r in self.requirements])
         content = f"{content}\n"
         path.write(content, ext='.txt')
 

@@ -8,7 +8,7 @@ from src.beam import resource
 def load_model():
 
     from src.beam.auto import AutoBeam
-    alg = AutoBeam.from_path('/tmp/mnist_bundle')
+    alg = AutoBeam.from_bundle('/tmp/mnist_bundle')
     print(alg)
 
 
@@ -158,7 +158,7 @@ def write_bundle_cifar(path):
 
 def load_bundle(path):
     from src.beam.auto import AutoBeam
-    alg = AutoBeam.from_path(path)
+    alg = AutoBeam.from_bundle(path)
     print(alg)
     print(alg.hparams)
     print('done loading bundle')
