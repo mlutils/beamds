@@ -520,7 +520,7 @@ class CovtypeAlgorithm(Algorithm):
 
         return results
 
-    def predict_iteration(self, sample=None, results=None, subset=None, with_labels=True, **kwargs):
+    def inference_iteration(self, sample=None, results=None, subset=None, with_labels=True, **kwargs):
 
         if with_labels:
             x_num, x_cat, y = sample['x_num'], sample['x_cat'], sample['y']

@@ -100,7 +100,7 @@ class MNISTAlgorithm(Algorithm):
         self.report_scalar('ones', x.sum(dim=-1))
         self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-    def predict_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample

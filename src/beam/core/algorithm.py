@@ -25,38 +25,15 @@ class Algorithm(Processor):
         super().__init__(hparams, name=name, **kwargs)
 
         self._experiment = None
-        self._default_hparams = None
-        # self.hparams_warnings = []
         self.trial = None
 
         # the following are set by the experiment
         self._device = None
-        self.ddp = None
-        self.hpo = None
-        self.rank = None
-        self.world_size = None
-
         # some experiment hyperparameters
-        self.half = None
-        self.enable_tqdm = None
-        self.n_epochs = None
-        self.swa_epochs = 0
 
-        self.batch_size_train = None
-        self.batch_size_eval = None
-
-        self.cuda = None
-        self.pin_memory = None
-        self.autocast_device = None
-        self.model_dtype = None
-        self.amp = None
-        self.scaler = None
-
-        self.set_experiment_properties()
+        self.clear_experiment_properties()
 
         self.scalers = {}
-        self.epoch = 0
-
         self.networks = {}
         self.processors = {}
         self.swa_networks = {}
@@ -95,11 +72,101 @@ class Algorithm(Processor):
             self.load_dataset(dataset)
 
         self.cb_model = None
-        self._is_notebook = None
-        self._predict_reporter = None
-        self._train_reporter = None
         self.reporter = None
         self.training = False
+
+    @staticmethod
+    def no_experiment_message(property):
+        logger.warning(f"{property} is not supported without an active experiment. Set self.experiment = experiment")
+
+    @lazy_property
+    def ddp(self):
+        if self.experiment is None:
+            self.no_experiment_message('ddp')
+        return self.get_hparam('ddp')
+
+    @lazy_property
+    def hpo(self):
+        if self.experiment is None:
+            self.no_experiment_message('hpo')
+        return self.get_hparam('hpo')
+
+    @lazy_property
+    def rank(self):
+        if self.experimental is None:
+            self.no_experiment_message('rank')
+        return self.get_hparam('rank')
+
+    @lazy_property
+    def world_size(self):
+        if self.experiment is None:
+            self.no_experiment_message('world_size')
+        return self.get_hparam('world_size')
+
+    @lazy_property
+    def half(self):
+        return self.get_hparam('half')
+
+    @lazy_property
+    def enable_tqdm(self):
+        return self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
+                                                              or not self.get_hparam('enable_tqdm')) else None
+
+    @lazy_property
+    def n_epochs(self):
+        return self.get_hparam('n_epochs')
+
+    @lazy_property
+    def batch_size_train(self):
+        return self.get_hparam('batch_size_train')
+
+    @lazy_property
+    def batch_size_eval(self):
+        return self.get_hparam('batch_size_eval')
+
+    @lazy_property
+    def pin_memory(self):
+        return self.is_cuda
+
+    @lazy_property
+    def autocast_device(self):
+        return 'cuda' if self.is_cuda else 'cpu'
+
+    @lazy_property
+    def model_dtype(self):
+        model_dtype = self.get_hparam('model_dtype', default='float32')
+        model_mapping = {'float16': torch.float16, 'bfloat16': torch.bfloat16,
+                         'float32': torch.float32, 'complex32': torch.complex32, 'complex64': torch.complex64,}
+
+        if not self.is_cuda and model_dtype == 'float16':
+            logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
+            model_dtype = 'bfloat16'
+
+        return model_mapping[model_dtype]
+
+    @lazy_property
+    def amp(self):
+        return self.get_hparam('amp') if self.is_cuda else False
+
+    @lazy_property
+    def scaler(self):
+        return torch.cuda.amp.GradScaler() if self.amp else None
+
+    @lazy_property
+    def swa_epochs(self):
+        swa_epochs = 0
+        if self.get_hparam('swa') is not None:
+            if int(self.get_hparam('swa')) == self.get_hparam('swa'):
+                swa_epochs = int(self.get_hparam('swa'))
+            else:
+                swa_epochs = int(np.round(self.get_hparam('swa') * self.n_epochs))
+        return swa_epochs
+
+    def clear_experiment_properties(self):
+
+        self.clear_cache('device', 'ddp', 'hpo', 'rank', 'world_size', 'half', 'enable_tqdm', 'n_epochs',
+                            'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
+                            'scaler', 'swa_epochs')
 
     @property
     def device(self):
@@ -167,11 +234,9 @@ class Algorithm(Processor):
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
                 'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']
 
-    @property
+    @lazy_property
     def train_reporter(self):
-        if self._train_reporter is None:
-            self._train_reporter = BeamReport(objective=self.get_hparam('objective'))
-        return self._train_reporter
+        return BeamReport(objective=self.get_hparam('objective'))
 
     def __getattr__(self, item):
         if item in self.__dict__:
@@ -200,79 +265,9 @@ class Algorithm(Processor):
         self.reporter = self.train_reporter
         self.reporter.reset_time(first_epoch=first_epoch, n_epochs=n_epochs)
 
-    def set_experiment_properties(self):
-
-        self.device = beam_device(self.get_hparam('device'))
-
-        # the following are set by the experiment
-        self.ddp = self.get_hparam('ddp')
-        self.hpo = self.get_hparam('hpo')
-        self.rank = self.get_hparam('rank')
-        self.world_size = self.get_hparam('world_size')
-
-        # some experiment hyperparameters
-        self.half = self.get_hparam('half')
-        self.enable_tqdm = self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
-                                                              or not self.get_hparam('enable_tqdm')) else None
-        self.n_epochs = self.get_hparam('n_epochs')
-
-        self.batch_size_train = self.get_hparam('batch_size_train')
-        self.batch_size_eval = self.get_hparam('batch_size_eval')
-
-        self.cuda = (self.device.type == 'cuda')
-        self.pin_memory = self.cuda
-        self.autocast_device = 'cuda' if self.cuda else 'cpu'
-        model_dtype = self.get_hparam('model_dtype', default='float16')
-        if self.cuda:
-            self.model_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[model_dtype]
-        else:
-            if model_dtype != 'bfloat16':
-                logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
-            self.model_dtype = torch.bfloat16
-        self.amp = self.get_hparam('amp') if self.cuda else False
-        self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
-
-    @property
+    @lazy_property
     def is_notebook(self):
-        if self._is_notebook is None:
-            self._is_notebook = is_notebook()
-
-        return self._is_notebook
-
-    @property
-    def default_hparams(self):
-
-        if self._default_hparams is None:
-            self._default_hparams = beam_arguments(basic_beam_parser())
-
-        return self._default_hparams
-
-    # def get_hparam(self, hparam, specific=None, default=None):
-    #
-    #     if type(specific) is list:
-    #         for s in specific:
-    #             if f"{s}_{hparam}" in self.hparams:
-    #                 return getattr(self.hparams, f"{specific}_{hparam}")
-    #     elif specific is not None and f"{specific}_{hparam}" in self.hparams:
-    #         return getattr(self.hparams, f"{specific}_{hparam}")
-    #
-    #     if hparam in self.hparams:
-    #         return getattr(self.hparams, hparam)
-    #
-    #     if default is None and hparam in self.default_hparams:
-    #         default = self.default_hparams[hparam]
-    #         setattr(self.hparams, hparam, default)
-    #
-    #     if hparam not in self.hparams_warnings:
-    #         experiment_generated_hparams = ['ddp', 'hpo', 'rank', 'world_size', 'reload_path']
-    #         if hparam in experiment_generated_hparams:
-    #             logger.warning("Please pass to the algorithm the hparams object from the experiment: Algorithm(hparams=experiment.hparams).")
-    #             self.hparams_warnings.extend(experiment_generated_hparams)
-    #         else:
-    #             logger.warning(f"Hyperparameter: {hparam} was not found in the experiment hparams object. Returning {default}.")
-    #         self.hparams_warnings.append(hparam)
-    #
-    #     return default
+        return is_notebook()
 
     def to(self, device):
 
@@ -593,13 +588,7 @@ class Algorithm(Processor):
         logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.experiment_dir}")
         self.trial = experiment.trial
         self.hparams = experiment.hparams
-        self.set_experiment_properties()
-
-        self.ddp = experiment.hparams.ddp
-        self.hpo = experiment.hparams.hpo
-        self.rank = experiment.hparams.rank
-        self.world_size = experiment.hparams.world_size
-
+        self.clear_experiment_properties()
         self._experiment = experiment
 
     def apply(self, *losses, weights=None, training=None, optimizers=None, set_to_none=True, gradient=None,
@@ -830,7 +819,7 @@ class Algorithm(Processor):
                     self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_data_loader(
                         self.persistent_dataloaders[k][s]['dataloader'])
 
-            if (set_epoch_length == 'first' and i == 0) or k==set_epoch_length:
+            if (set_epoch_length == 'first' and i == 0) or k == set_epoch_length:
                 self.set_epoch_length(dataset)
 
     def set_epoch_length(self, dataset):
@@ -866,12 +855,6 @@ class Algorithm(Processor):
 
         if self.n_epochs is None:
             self.n_epochs = self.get_hparam('total_steps') // self.epoch_length['train']
-
-        if self.get_hparam('swa') is not None:
-            if int(self.get_hparam('swa')) == self.get_hparam('swa'):
-                self.swa_epochs = int(self.get_hparam('swa'))
-            else:
-                self.swa_epochs = int(np.round(self.get_hparam('swa') * self.n_epochs))
 
         for k, scheduler in self.schedulers_flat.items():
             if type(scheduler) is BeamScheduler:
@@ -949,16 +932,23 @@ class Algorithm(Processor):
 
         return schedulers_flat
 
+    @property
+    def is_cuda(self):
+        if self.device is not None and self.device.type == 'cuda':
+            return True
+        return False
+
     def register_network(self, net, name=None):
 
         if self.half:
             net = net.half()
 
-        net = net.to(self.device)
+        if self.device is not None and self.accelerator is None:
+            net = net.to(self.device, dtype=self.model_dtype)
 
-        if self.ddp:
+        if self.experiment is not None and self.ddp:
 
-            if self.device.type == 'cuda':
+            if self.is_cuda:
                 device_ids = [self.device]
             else:
                 device_ids = None
@@ -1170,7 +1160,7 @@ class Algorithm(Processor):
         '''
         pass
 
-    def predict_iteration(self, sample=None, label=None, index=None, subset=None, predicting=False, **kwargs):
+    def inference_iteration(self, sample=None, label=None, index=None, subset=None, predicting=False, **kwargs):
         '''
         :param sample: the data fetched by the dataloader
         :param aux: a dictionary of auxiliary data
@@ -1291,8 +1281,8 @@ class Algorithm(Processor):
                 for i, (ind, label, sample) in self.reporter.iterate(data_generator, enable=enable_tqdm,
                                       threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
                                       notebook=(not self.ddp and self.is_notebook), desc=desc, total=total_iterations):
-                    transform = self.predict_iteration(sample=sample, subset=subset, predicting=predicting,
-                                                       label=label, index=ind, **kwargs)
+                    transform = self.inference_iteration(sample=sample, subset=subset, predicting=predicting,
+                                                         label=label, index=ind, **kwargs)
                     transforms.append(transform)
                     index.append(ind)
 

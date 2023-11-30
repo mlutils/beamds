@@ -9,7 +9,7 @@ class FineTuneLLM(Algorithm):
 
     def __init__(self, hparams, **kwargs):
 
-        model_config = AutoConfig.from_pretrained(hparams.model)
+        model_config = AutoConfig.from_pretrained(hparams.model, cache_dir=hparams.hf_cache_dir)
         model = AutoModel.from_pretrained(hparams.model, config=model_config)
         self._tokenizer = AutoTokenizer.from_pretrained(hparams.model, config=model_config)
 
@@ -19,9 +19,12 @@ class FineTuneLLM(Algorithm):
                                  modules_to_save=hparams.modules_to_save,
                                  layers_to_transform=hparams.layers_to_transform,
                                  task_type="CAUSAL_LM")
-        model = get_peft_model(model, lora_config)
 
+        model = get_peft_model(model, lora_config)
         super().__init__(hparams, networks={'llm': model}, **kwargs)
+
+        # self.llm = get_peft_model(model, lora_config)
+        # super().__init__(hparams, **kwargs)
 
 
     @property

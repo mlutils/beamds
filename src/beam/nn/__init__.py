@@ -1,2 +1,2 @@
-from model import *
-from optim import *
+from .model import *
+from .optim import *

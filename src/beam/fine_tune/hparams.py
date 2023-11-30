@@ -3,7 +3,7 @@ from ..config import BeamHparams, BeamParam
 
 class FTLLMHparams(BeamHparams):
 
-    defaults = dict(accelerate=True, amp=False, batch_size=4, model_dtype='float16')
+    defaults = dict(accelerate=True, amp=False, batch_size=4, model_dtype='bfloat16')
     parameters = [BeamParam('model', str, None, 'Model to use for fine-tuning'),
                   BeamParam('lora_alpha', float, 16, 'Lora alpha parameter', tune=True, model=False),
                   BeamParam('lora_dropout', float, 0.05, 'Lora dropout', tune=True, model=False),
@@ -18,5 +18,6 @@ class FTLLMHparams(BeamHparams):
                                                                'is specified, it will apply the LoRA transformations '
                                                                'on the layer indexes that are specified in this list.'),
                   BeamParam('target_modules', list, None, 'The names of the modules to apply Lora to'),
+                  BeamParam('hf_cache_dir ', str, None, 'Directory for Huggingface to cache to and load from', model=False),
 
                   ]

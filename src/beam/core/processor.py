@@ -35,6 +35,14 @@ class Processor:
                 if k not in self.hparams or override:
                     self.hparams[k] = v
 
+    def clear_cache(self, *args):
+        if len(args) == 0:
+            self._lazy_cache = {}
+        else:
+            for k in args:
+                if k in self._lazy_cache:
+                    del self._lazy_cache[k]
+
     @lazy_property
     def name(self):
         if self._name is None:

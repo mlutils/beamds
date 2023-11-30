@@ -246,7 +246,7 @@ class CIFAR10Algorithm(Algorithm):
         # add scalar measurements
         self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-    def predict_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample

@@ -197,7 +197,7 @@ class DeepTSNE(Algorithm):
 
         return results
 
-    def predict_iteration(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample

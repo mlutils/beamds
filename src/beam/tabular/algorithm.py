@@ -231,7 +231,7 @@ class DeepTabularAlg(Algorithm):
         logger.info(f'Setting best masking to {self.best_masking:.3f}')
         self.net.mask = distributions.Bernoulli(self.best_masking)
 
-    def predict_iteration(self, sample=None, label=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, label=None, subset=None, predicting=True, **kwargs):
 
         y = label
         net = self.net

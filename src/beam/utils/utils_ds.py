@@ -79,14 +79,7 @@ def as_numpy(x):
     return x
 
 
-def as_tensor(x, device=None, dtype=None, return_vector=False):
-    x_type = check_type(x)
-    if x_type.major == 'container' and x_type.minor == 'dict':
-        return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
-    elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
-        return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
-    elif x is None:
-        return None
+def as_tensor_element(x, device=None, dtype=None, return_vector=False):
 
     if dtype is None and hasattr(x, 'dtype'):
         if 'int' in str(x.dtype):
@@ -105,6 +98,24 @@ def as_tensor(x, device=None, dtype=None, return_vector=False):
             x = x.unsqueeze(0)
 
     return x
+
+
+def as_tensor(x, device=None, dtype=None, return_vector=False):
+    x_type = check_type(x)
+    device = beam_device(device)
+    if x_type.major == 'container' and x_type.minor == 'dict':
+        return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
+    elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
+        if x_type.element not in ['object', 'unknown', 'other']:
+            try:
+                return as_tensor_element(x, device=device, dtype=dtype, return_vector=return_vector)
+            except:
+                pass
+            return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
+    elif x is None:
+        return None
+
+    return as_tensor_element(x, device=device, dtype=dtype, return_vector=return_vector)
 
 
 def recursive_concatenate(data, dim=0):
@@ -219,6 +230,8 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
 
 
 def to_device(data, device='cuda', half=False):
+    if device is None:
+        return data
     if isinstance(data, dict):
         return {k: to_device(v, device=device, half=half) for k, v in data.items()}
     elif isinstance(data, list) or isinstance(data, tuple):

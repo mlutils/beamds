@@ -179,9 +179,9 @@ class BeamSSL(Algorithm):
 
         return self.sim
 
-    def predict_iteration(self, sample=None, results=None, subset=None, predicting=True, similarity=0,
-                          projection=True, prediction=True, augmentations=0, inference_networks=True,
-                          add_to_sim=False, latent_variable='h', **kwargs):
+    def inference_iteration(self, sample=None, results=None, subset=None, predicting=True, similarity=0,
+                            projection=True, prediction=True, augmentations=0, inference_networks=True,
+                            add_to_sim=False, latent_variable='h', **kwargs):
 
         data = {}
         if isinstance(sample, dict):
