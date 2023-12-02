@@ -1,6 +1,3 @@
-from examples.example_utils import add_beam_to_path
-add_beam_to_path()
-
 from src.beam.serve import BeamServer
 # from examples.ssl_with_beam import my_ssl_algorithm
 from src.beam.sparse import SparseSimilarity

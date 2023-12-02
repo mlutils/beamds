@@ -108,7 +108,7 @@ def load_ipython_extension(ipython):
                     ipython.push({k: module.__dict__[k]})
 
     print(f"Done importing packages. It took: {time.time() - t0: .2} seconds")
-    print(f"Beam library is loaded from path: {os.path.dirname(beam_importer.beam.__file__)}")
+    print(f"Beam library is loaded from path: {os.path.abspath(os.path.dirname(beam_importer.beam.__file__))}")
     print(f"The Beam version is: {beam_importer.beam.__version__}")
 
 

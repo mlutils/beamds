@@ -231,8 +231,26 @@ class BeamHparams(Namespace):
         return r
 
     def __setitem__(self, key, value):
+        self.set(key, value)
+
+    def set(self, key, value, tune=None, model=None):
         key = key.replace('-', '_')
+        if key in self.__dict__:
+            if key in self._model_set and model is not None:
+                self._model_set.remove(key)
+            if key in self._tune_set and tune is not None:
+                self._tune_set.remove(key)
         setattr(self, key, value)
+        if tune:
+            self._tune_set.add(key)
+        if model is not None and not model:
+            self._model_set.remove(key)
+
+    def __setattr__(self, key, value):
+        key = key.replace('-', '_')
+        if key not in self.__dict__:  # new key
+            self._model_set.add(key)
+        super().__setattr__(key, value)
 
     def get(self, hparam, default=None, preferred=None, specific=None):
 

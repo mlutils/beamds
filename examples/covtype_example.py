@@ -625,7 +625,7 @@ if __name__ == '__main__':
                              n_layers=5, scheduler_factor=1 / math.sqrt(10))
 
     experiment = Experiment(hparams)
-    alg = experiment.fit(Alg=CovtypeAlgorithm, Dataset=CovtypeDataset, tensorboard_arguments=None)
+    alg = experiment.fit(alg=CovtypeAlgorithm, dataset=CovtypeDataset, tensorboard_arguments=None)
 
     # ## Inference
     inference = alg('test')

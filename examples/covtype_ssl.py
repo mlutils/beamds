@@ -778,4 +778,4 @@ if __name__ == '__main__':
     logger.info(f"BeamSSL algorithm: {hparams.algorithm}")
     logger.info(f"BeamSSL dataset: {hparams.dataset}")
 
-    alg = experiment.fit(Alg=Alg, Dataset=Dataset)
+    alg = experiment.fit(alg=Alg, dataset=Dataset)

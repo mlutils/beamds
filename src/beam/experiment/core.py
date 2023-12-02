@@ -42,7 +42,7 @@ def path_depth(path):
     return len(str(path.resolve()).split(os.sep))
 
 
-def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
+def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None,
                              dataset_args=None, dataset_kwargs=None):
 
     if alg_args is None:
@@ -54,10 +54,10 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
     if dataset_kwargs is None:
         dataset_kwargs = dict()
 
-    if Dataset is not None and not isinstance(Dataset, dict):
-        datasets = {'dataset': Dataset}
+    if dataset is not None and not isinstance(dataset, dict):
+        datasets = {'dataset': dataset}
     else:
-        datasets = Dataset
+        datasets = dataset
 
     if datasets is not None:
         for k, v in datasets.items():
@@ -66,15 +66,12 @@ def beam_algorithm_generator(experiment, Alg, Dataset=None, alg_args=None, alg_k
             elif inspect.isfunction(v):
                 datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
 
-    if inspect.isclass(Alg):
+    if inspect.isclass(alg):
 
-        alg = Alg(experiment.hparams, *alg_args, **alg_kwargs)
+        alg = alg(experiment.hparams, *alg_args, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
-    else:
-
-        alg = Alg
 
     alg.experiment = experiment
 
@@ -767,21 +764,21 @@ class Experiment(object):
 
     def algorithm_generator(self, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
                              dataset_args=None, dataset_kwargs=None):
-        return beam_algorithm_generator(self, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+        return beam_algorithm_generator(self, alg=Alg, dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                                        dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
 
-    def fit(self, Alg=None, Dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
+    def fit(self, alg=None, dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
             dataset_kwargs=None, **kwargs):
 
         if algorithm_generator is None:
-            ag = partial(beam_algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                                 dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+            ag = partial(beam_algorithm_generator, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                         dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         else:
 
-            if Alg is not None:
-                ag = partial(algorithm_generator, Alg=Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                                     dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+            if alg is not None:
+                ag = partial(algorithm_generator, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
             else:
                 ag = algorithm_generator
 

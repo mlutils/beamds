@@ -2,17 +2,22 @@ import io
 import pickle
 from functools import partial
 import requests
+from ..core import Processor
+from ..utils import lazy_property
 
 from .beam_server import has_torch
 if has_torch:
     import torch
 
 
-class BeamClient(object):
+class BeamClient(Processor):
 
-    def __init__(self, host):
+    def __init__(self, host, *args, tls=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        from requests.packages.urllib3.exceptions import InsecureRequestWarning
+        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
         self.host = host
-        self._info = None
+        self.protocol = 'https' if tls else 'http'
 
     @property
     def load_function(self):
@@ -36,11 +41,9 @@ class BeamClient(object):
     def serialization(self):
         return self.info['serialization']
 
-    @property
+    @lazy_property
     def info(self):
-        if self._info is None:
-            self._info = requests.get(f'http://{self.host}/').json()
-        return self._info
+        return requests.get(f'{self.protocol}://{self.host}/').json()
 
     @property
     def attributes(self):
@@ -48,7 +51,7 @@ class BeamClient(object):
 
     def get(self, path):
 
-        response = requests.get(f'http://{self.host}/{path}')
+        response = requests.get(f'{self.protocol}://{self.host}/{path}')
         if response.status_code == 200:
             response = self.load_function(io.BytesIO(response.raw.data))
 
@@ -64,7 +67,8 @@ class BeamClient(object):
         self.dump_function(kwargs, io_kwargs)
         io_kwargs.seek(0)
 
-        response = requests.post(f'http://{self.host}/{path}', files={'args': io_args, 'kwargs': io_kwargs}, stream=True)
+        response = requests.post(f'{self.protocol}://{self.host}/{path}',
+                                 files={'args': io_args, 'kwargs': io_kwargs}, stream=True)
 
         if response.status_code == 200:
             response = self.load_function(io.BytesIO(response.content))
@@ -80,7 +84,7 @@ class BeamClient(object):
             return super(BeamClient, self).__getattr__(item)
 
         if item not in self.attributes:
-            self._info = None
+            self.clear_cache('info')
 
         attribute_type = self.attributes[item]
         if attribute_type == 'variable':

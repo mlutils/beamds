@@ -21,7 +21,7 @@ if __name__ == '__main__':
     alg = MNISTAlgorithm(hparams)
 
     # train
-    alg = experiment.fit(Alg=alg, Dataset=dataset)
+    alg = experiment.fit(alg=alg, dataset=dataset)
 
     examples = alg.dataset[np.random.choice(len(alg.dataset), size=50000, replace=True)]
 
