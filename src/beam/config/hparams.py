@@ -61,10 +61,7 @@ class BeamHparams(Namespace):
                 tune_set = tune_set.union(ts)
                 model_set = model_set.union(ms)
 
-            if return_defaults:
-                hparams = parser.parse_args([])
-            else:
-                hparams = beam_arguments(parser, *args, **kwargs)
+            hparams = beam_arguments(parser, *args, return_defaults=return_defaults, **kwargs)
             tune_set = tune_set.union(hparams.tune_set)
             model_set = model_set.union(hparams.model_set)
 
@@ -248,9 +245,12 @@ class BeamHparams(Namespace):
 
     def __setattr__(self, key, value):
         key = key.replace('-', '_')
-        if key not in self.__dict__:  # new key
-            self._model_set.add(key)
-        super().__setattr__(key, value)
+        if key.startswith('_'):
+            super().__setattr__(key, value)
+        else:
+            if key not in self.__dict__:  # new key
+                self._model_set.add(key)
+            super().__setattr__(key, value)
 
     def get(self, hparam, default=None, preferred=None, specific=None):
 

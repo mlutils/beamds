@@ -12,6 +12,7 @@ class FTLLMHparams(BeamHparams):
                                                                 'weight like (fan_in, fan_out)'),
                   BeamParam('lora_bias', str, 'none', 'Bias type for Lora. Can be ‘none’, '
                                                       '‘all’ or ‘lora_only’. If ‘all’ or ‘lora_only’', tune=True),
+                  BeamParam('load_in_8bit', bool, False, 'Load the model in 8bit mode'),
                   BeamParam('modules_to_save', list, None, 'List of modules apart from LoRA layers to be set '
                                                            'as trainable and saved in the final checkpoint'),
                   BeamParam('layers_to_transform', list, None, 'The layer indexes to transform, if this argument '

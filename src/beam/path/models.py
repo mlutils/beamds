@@ -947,7 +947,7 @@ class CometAsset(PureBeamPath):
         raise NotImplementedError
 
     def unlink(self, missing_ok=False):
-        if not missing_ok:
+        if missing_ok:
             raise NotImplementedError
         if self.level == 1:
             raise ValueError("CometArtifact: cannot delete workspace")
@@ -995,4 +995,125 @@ class CometAsset(PureBeamPath):
                     os.chdir(cwd)
             self.file_object.close()
 
+
+class IOPath(PureBeamPath):
+
+    # this class represents a in memory file system in the form of dictionaries of dictionaries of bytes/strings objects
+    # like other PureBeamPath implementations, it is a pathlib/beam_path api
+
+    def __init__(self, *pathsegments, client=None, data=None, **kwargs):
+        super().__init__(*pathsegments, scheme='io', **kwargs)
+        if client is None:
+            client = {}
+        if data is not None:
+            client = data
+        self.client = client
+
+    @property
+    def data(self):
+        return self.get_data()
+
+    def get_data(self):
+        return self.client
+
+    def set_data(self, data):
+        self.client = data
+
+    def is_file(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return False
+        for p in self.parts[1:]:
+            if p not in client:
+                return False
+        return isinstance(client[p], (bytes, str))
+
+    def is_dir(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return True
+        for p in self.parts[1:]:
+            if p not in client:
+                return False
+        return isinstance(client[self.parts[-1]], dict)
+
+    def exists(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return True
+        for p in self.parts[1:]:
+            if p not in client:
+                return False
+        return True
+
+    def _obj(self):
+        client = self.client
+        for p in self.parts[1:]:
+            client = client[p]
+        return client
+
+    def _parent(self):
+        client = self.client
+        for p in self.parts[1:-1]:
+            client = client[p]
+        return client
+
+    def iterdir(self):
+        client = self._obj()
+        for p in client:
+            yield self.gen(p)
+
+    def mkdir(self, *args, parents=True, exist_ok=True, **kwargs):
+        if not exist_ok:
+            if self.exists():
+                raise FileExistsError
+
+        if not parents:
+            if self._parent() is None:
+                raise FileNotFoundError
+
+        client = self._parent()
+        client[self.parts[-1]] = {}
+
+    def rmdir(self):
+        client = self._parent()
+        del client[self.parts[-1]]
+
+    def unlink(self, missing_ok=False):
+
+        client = self._parent()
+        try:
+            del client[self.parts[-1]]
+        except KeyError as e:
+            if not missing_ok:
+                raise e
+
+    def rename(self, target):
+        if type(target) is str:
+            target = self.gen(target)
+        target_parent = target._parent()
+        target_parent[target.parts[-1]] = self._obj()
+        self.unlink()
+
+    def replace(self, target):
+        self.rename(target)
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            self.file_object = BytesIO(self._obj())
+        elif self.mode in ['wb', 'w']:
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+        else:
+            raise ValueError
+
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        parent = self._parent()
+        name = self.parts[-1]
+        self.file_object.seek(0)
+        content = self.file_object.getvalue()
+        parent[name] = content
+        self.file_object.close()
 

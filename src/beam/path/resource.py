@@ -1,4 +1,4 @@
-from .models import BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset
+from .models import BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset, IOPath
 from .core import BeamKey, BeamURL
 
 
@@ -81,6 +81,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
         access_key = beam_key('COMET_API_KEY', access_key)
         return CometAsset(path, access_key=access_key, **kwargs)
+
+    elif url.protocol == 'io':
+        return IOPath(path, **kwargs)
 
     elif url.protocol == 'gs':
         raise NotImplementedError

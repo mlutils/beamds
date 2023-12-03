@@ -943,7 +943,7 @@ class Algorithm(Processor):
         if self.half:
             net = net.half()
 
-        if self.device is not None and self.accelerator is None:
+        if self.device is not None and (self.accelerator is None or not self.accelerator.device_placement):
             net = net.to(self.device, dtype=self.model_dtype)
 
         if self.experiment is not None and self.ddp:

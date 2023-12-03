@@ -283,7 +283,7 @@ def basic_beam_parser():
     # accelerate parameters
     # based on https://huggingface.co/docs/accelerate/v0.24.0/en/package_reference/accelerator#accelerate.Accelerator
     boolean_feature(parser, "accelerate", False, "Whether to use accelerate package for training")
-    boolean_feature(parser, "device-placement", True,
+    boolean_feature(parser, "device-placement", False,
                     " Whether or not the accelerator should put objects on device")
     boolean_feature(parser, "split-batches", False,
                     "Whether or not the accelerator should split the batches "

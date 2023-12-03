@@ -83,7 +83,7 @@ def add_unknown_arguments(args, unknown):
     return args
 
 
-def beam_arguments(*args, **kwargs):
+def beam_arguments(*args, return_defaults=False, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
@@ -136,8 +136,11 @@ def beam_arguments(*args, **kwargs):
     # set defaults from environment variables
     update_parser(pr, os.environ)
 
-    args, unknown = pr.parse_known_args()
-    args = add_unknown_arguments(args, unknown)
+    if return_defaults:
+        args = pr.parse_args([])
+    else:
+        args, unknown = pr.parse_known_args()
+        args = add_unknown_arguments(args, unknown)
 
     for k, v in kwargs.items():
         if k not in args:

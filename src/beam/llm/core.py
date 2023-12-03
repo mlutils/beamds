@@ -496,12 +496,12 @@ class BeamLLM(LLM, Processor):
             try:
                 res = self.chat(prompt, **kwargs)
             except Exception as e:
-                print(f"Error in response: {e}")
+                logger.error(f"Error in response: {e}")
                 try:
-                    print(f"{name}: switching to gpt-4 model")
+                    logger.warning(f"{name}: switching to gpt-4 model")
                     res = self.chat(prompt, model='gpt-4', **kwargs)
                 except:
-                    print(f"{name}: error in response")
+                    logger.error(f"{name}: error in response")
                     res = None
         else:
             res = self.ask(prompt, **kwargs)

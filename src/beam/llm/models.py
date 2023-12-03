@@ -120,7 +120,7 @@ class OpenAI(OpenAIBase):
         records = data.to_dict(orient='records')
 
         if path is None:
-            print('No path provided, using default path: dataset.jsonl')
+            logger.warning('No path provided, using default path: dataset.jsonl')
             path = 'dataset.jsonl'
 
         # Open a file for writing
