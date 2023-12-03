@@ -20,3 +20,5 @@ indxr
 tiktoken
 cdlib[all]
 asteroid
+
+grpcio-tools

@@ -12,12 +12,9 @@ if has_torch:
 
 class BeamClient(Processor):
 
-    def __init__(self, host, *args, tls=False, **kwargs):
+    def __init__(self, host, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from requests.packages.urllib3.exceptions import InsecureRequestWarning
-        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
         self.host = host
-        self.protocol = 'https' if tls else 'http'
 
     @property
     def load_function(self):
@@ -43,7 +40,7 @@ class BeamClient(Processor):
 
     @lazy_property
     def info(self):
-        return requests.get(f'{self.protocol}://{self.host}/').json()
+        raise NotImplementedError
 
     @property
     def attributes(self):
@@ -51,11 +48,7 @@ class BeamClient(Processor):
 
     def get(self, path):
 
-        response = requests.get(f'{self.protocol}://{self.host}/{path}')
-        if response.status_code == 200:
-            response = self.load_function(io.BytesIO(response.raw.data))
-
-        return response
+        raise NotImplementedError
 
     def post(self, path, *args, **kwargs):
 
@@ -67,13 +60,12 @@ class BeamClient(Processor):
         self.dump_function(kwargs, io_kwargs)
         io_kwargs.seek(0)
 
-        response = requests.post(f'{self.protocol}://{self.host}/{path}',
-                                 files={'args': io_args, 'kwargs': io_kwargs}, stream=True)
-
-        if response.status_code == 200:
-            response = self.load_function(io.BytesIO(response.content))
+        response = self._post(path, io_args, io_kwargs)
 
         return response
+
+    def _post(self, path, io_args, io_kwargs):
+            raise NotImplementedError
 
     def __call__(self, *args, **kwargs):
         return self.post('call', *args, **kwargs)
