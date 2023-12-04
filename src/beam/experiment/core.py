@@ -226,8 +226,14 @@ class Experiment(object):
             base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
 
             pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
-            exp_names = list(filter(lambda x: re.match(pattern, str(x)) is not None, base_dir.iterdir()))
-            exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
+
+            if base_dir.exists():
+                assert base_dir.is_dir(), f"Experiment directory contains an existing file: {base_dir}"
+                exp_names = list(filter(lambda x: re.match(pattern, str(x)) is not None, base_dir.iterdir()))
+                exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
+            else:
+                exp_names = []
+                exp_indices = np.array([])
 
             exp_num = None
             if self.hparams.reload:
@@ -348,9 +354,6 @@ class Experiment(object):
             from ..llm import beam_llm
             return beam_llm(self.hparams.llm)
         return None
-
-    def __del__(self):
-        self.cleanup()
 
     def cleanup(self):
         if self.comet_writer is not None:

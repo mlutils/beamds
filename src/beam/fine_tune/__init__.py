@@ -1,5 +1,6 @@
 from .hparams import FTLLMHparams
 from .algorithm import FineTuneLLM
+from .dataset import FineTuneHFDataset
 
 # look for examples at
 

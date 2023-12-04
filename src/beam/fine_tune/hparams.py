@@ -19,6 +19,7 @@ class FTLLMHparams(BeamHparams):
                                                                'is specified, it will apply the LoRA transformations '
                                                                'on the layer indexes that are specified in this list.'),
                   BeamParam('target_modules', list, None, 'The names of the modules to apply Lora to'),
-                  BeamParam('hf_cache_dir ', str, None, 'Directory for Huggingface to cache to and load from', model=False),
-
+                  BeamParam('hf_cache_dir', str, None, 'Directory for Huggingface to cache to and load from', model=False),
+                  BeamParam('dataset', str, 'iamtarun/python_code_instructions_18k_alpaca',
+                            'The dataset which is used for fine-tuning', model=False),
                   ]

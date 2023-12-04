@@ -1636,7 +1636,7 @@ class BeamData(object):
                 elif x_type.minor == 'native':
                     return index, [xi], label, flat_key + 1
                 else:
-                    xi_slicer = Slicer(xi, x_type=x_type)
+                    xi_slicer = Slicer(xi, x_type=x_type, wrap_object=True)
                     return index, xi_slicer[in_fold_index.values], label, flat_key + 1
 
         i, d, l, _ = _recursive_filter(x)
@@ -1695,7 +1695,8 @@ class BeamData(object):
                 index_map = pd.Series(np.arange(len(index)), index=index)
                 index_map = index_map.loc[batch_info.index].values
 
-                data = Slicer(data)[index_map]
+                # data = Slicer(data)[index_map]
+                data = recursive_batch(data, index_map)
 
                 if label is not None:
                     label = label.values[index_map]
@@ -1703,17 +1704,22 @@ class BeamData(object):
                 index = batch_info.index
                 orientation = 'simple'
 
+                if self.quick_getitem:
+                    return DataBatch(data=data, index=index, label=label)
+
         else:
             raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
 
         if self.quick_getitem:
-            return BeamData.data_batch(data, index=index, label=label, orientation=self.orientation, info=info)
+            return BeamData.data_batch(data, index=index, label=label, orientation=self.orientation, info=info,
+                                       flatten_index=True, flatten_label=True)
 
         return self.clone(data=data, columns=self.columns, index=index, label=label,
                           orientation=orientation, info=info, key_fold_map=key_fold_map)
 
     @staticmethod
-    def data_batch(data, index=None, label=None, orientation=None, info=None):
+    def data_batch(data, index=None, label=None, orientation=None, info=None,
+                   flatten_index=False, flatten_label=False):
 
         ic = is_container(data)
         if ic and len(data) == 1:
@@ -1723,14 +1729,16 @@ class BeamData(object):
                 key = 0
 
             data = data[key]
-            if index is not None:
-                index = index[key]
-                if isinstance(label, pd.Series):
-                    label = label.values
-            if label is not None:
-                label = label[key]
-                if isinstance(label, pd.Series):
-                    label = label.values
+            if not flatten_index:
+                if index is not None:
+                    index = index[key]
+                    if isinstance(index, pd.Series):
+                        index = index.values
+            if not flatten_label:
+                if label is not None:
+                    label = label[key]
+                    if isinstance(label, pd.Series):
+                        label = label.values
 
         elif ic:
             data = BeamData._concatenate_values(data=data, orientation=orientation)
@@ -2218,11 +2226,13 @@ class BeamData(object):
                 continue
 
             i_type = check_type(ind_i)
-
             # skip the first axis in these case
             if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'slice', 'tensor']):
                 axes.pop(0)
             if axes[0] == 'keys' and (i_type.minor == 'list' and i_type.element == 'int'):
+                axes.pop(0)
+            if (axes[0] == 'keys' and (i_type.major == 'scalar' and i_type.element == 'int')
+                    and check_type(list(self.keys()), check_minor=False).element == 'str'):
                 axes.pop(0)
             # for orientation == 'simple' we skip the first axis if we slice over columns
             if short_list and axes[0] == 'index' and i_type.element == 'str':

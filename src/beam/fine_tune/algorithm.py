@@ -16,7 +16,7 @@ class FineTuneLLM(Algorithm):
 
         model = AutoModelForCausalLM.from_pretrained(hparams.model, config=model_config,
                                                      load_in_8bit=hparams.load_in_8bit)
-        self._tokenizer = AutoTokenizer.from_pretrained(hparams.model, config=model_config)
+        self.tokenizer = AutoTokenizer.from_pretrained(hparams.model, config=model_config)
 
         lora_config = LoraConfig(r=hparams.lora_r, lora_alpha=hparams.lora_alpha,
                                  target_modules=hparams.target_modules, lora_dropout=hparams.lora_dropout,
@@ -31,14 +31,10 @@ class FineTuneLLM(Algorithm):
         # # self.llm = get_peft_model(model, lora_config)
         # super().__init__(hparams, **kwargs)
 
-
-    @property
-    def tokenizer(self):
-        return self._tokenizer
-
     def train_iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
         net = self.networks['llm']
-        res = net(sample, labels=label)
+
+        res = net(**sample)
         self.apply(res.loss)
 
     def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,

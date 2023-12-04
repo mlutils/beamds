@@ -22,3 +22,50 @@ def local_copy(path, tmp_path='/tmp', as_beam_path=True, copy_changes=False):
             tmp_path.copy(path)
 
         tmp_dir.rmtree()
+
+
+class FileSystem:
+    def __init__(self, path):
+        self.path = beam_path(path)
+
+    def exists(self):
+        return self.path.exists()
+
+    def is_file(self):
+        return self.path.is_file()
+
+    def is_dir(self):
+        return self.path.is_dir()
+
+    def joinpath(self, path):
+         self.path = self.path.joinpath(path)
+
+    def rmtree(self):
+        self.path.rmtree()
+
+    def mkdir(self, exist_ok=True, parents=True):
+        self.path.mkdir(exist_ok=exist_ok, parents=parents)
+
+    def copy(self, path):
+        path = beam_path(path)
+        path.parent.mkdir(exist_ok=True, parents=True)
+        self.path.copy(path)
+
+    def open(self, mode='r'):
+        return self.path.open(mode=mode)
+
+    def root(self):
+        self.path = self.path.root()
+
+    def __str__(self):
+        return str(self.path)
+
+    def __repr__(self):
+        return repr(self.path)
+
+    def __iter__(self):
+        for p in self.path:
+            yield p.name
+
+    def iterdir(self):
+        return self.__iter__()

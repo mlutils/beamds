@@ -1,4 +1,4 @@
-from .models import BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset, IOPath
+from .models import BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset, IOPath, DictPath
 from .core import BeamKey, BeamURL
 
 
@@ -84,6 +84,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
     elif url.protocol == 'io':
         return IOPath(path, **kwargs)
+
+    elif url.protocol == 'dict':
+        return DictPath(path, **kwargs)
 
     elif url.protocol == 'gs':
         raise NotImplementedError

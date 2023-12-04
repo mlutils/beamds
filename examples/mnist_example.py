@@ -1,11 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-from examples.example_utils import add_beam_to_path
-add_beam_to_path()
-
 import torch
 import torchvision
 import torch.nn.functional as F

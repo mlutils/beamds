@@ -123,6 +123,7 @@ def retrieve_name(var):
         if len(names) > 0:
             return names[0]
 
+
 class nested_defaultdict(defaultdict):
 
     @staticmethod
@@ -156,6 +157,14 @@ def lazy_property(fn):
             v = fn(self)
             setattr(self, '_lazy_cache', {fn.__name__: v})
             return v
+
+    @_lazy_property.setter
+    def _lazy_property(self, value):
+        try:
+            cache = getattr(self, '_lazy_cache')
+            cache[fn.__name__] = value
+        except AttributeError:
+            setattr(self, '_lazy_cache', {fn.__name__: value})
 
     return _lazy_property
 
@@ -779,6 +788,8 @@ def filter_dict(d, keys):
 
 def none_function(*args, **kwargs):
     return None
+
+
 class NoneClass:
     def __init__(self, *args, **kwargs):
         pass
@@ -899,17 +910,30 @@ def parse_text_to_protocol(text, protocol='json'):
 
 
 class Slicer:
-    def __init__(self, x, x_type=None):
+    def __init__(self, x, x_type=None, wrap_object=False):
         self.x = x
         if x_type is None:
             x_type = check_type(x)
         self.x_type = x_type
+        self.wrap_object = wrap_object
 
     def __getitem__(self, item):
-        return slice_array(self.x, item, x_type=self.x_type)
+        return slice_array(self.x, item, x_type=self.x_type, wrap_object=self.wrap_object)
 
 
-def slice_array(x, index, x_type=None, indices_type=None):
+class DataObject:
+    def __init__(self, data, data_type=None):
+        self.data = data
+        self._data_type = data_type
+
+    @property
+    def data_type(self):
+        if self._data_type is None:
+            self._data_type = check_type(self.data)
+        return self._data_type
+
+
+def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
 
     if x_type is None:
         x_type = check_minor_type(x)
@@ -923,7 +947,8 @@ def slice_array(x, index, x_type=None, indices_type=None):
 
     if indices_type == 'pandas':
         index = index.values
-
+    if indices_type == 'other': # the case where there is a scalar value with a dtype attribute
+        index = int(index)
     if x_type == 'numpy':
         return x[index]
     elif x_type == 'pandas':
@@ -935,7 +960,13 @@ def slice_array(x, index, x_type=None, indices_type=None):
     elif x_type == 'list':
         return [x[i] for i in index]
     else:
-        raise TypeError(f"Cannot slice object of type {x_type}")
+        try:
+            xi = x[index]
+            if wrap_object:
+                xi = DataObject(xi)
+            return xi
+        except:
+            raise TypeError(f"Cannot slice object of type {x_type}")
 
 
 def is_arange(x, convert_str=True):

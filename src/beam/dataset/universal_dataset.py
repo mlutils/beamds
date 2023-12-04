@@ -7,7 +7,7 @@ import torch
 
 from .sampler import UniversalBatchSampler
 from ..utils import (recursive_batch, to_device, recursive_device, container_len, beam_device, as_tensor, check_type,
-                     as_numpy, slice_to_index, DataBatch)
+                     as_numpy, slice_to_index, DataBatch, lazy_property)
 
 from ..path import beam_path
 from ..data import BeamData
@@ -48,11 +48,10 @@ class UniversalDataset(torch.utils.data.Dataset):
         # The training label is to be used when one wants to apply some data transformations/augmentations
         # only in training mode
         self.training = False
-        self.data_type = None
         self.statistics = None
         self.target_device = target_device
 
-        if len(args) >= 1 and type(args[0]) is argparse.Namespace:
+        if len(args) >= 1 and isinstance(args[0], argparse.Namespace):
             self.hparams = args[0]
             args = args[1:]
 
@@ -96,10 +95,11 @@ class UniversalDataset(torch.utils.data.Dataset):
     def eval(self):
         self.training = False
 
-    def getitem(self, ind):
+    @lazy_property
+    def data_type(self):
+        return check_type(self.data).minor
 
-        if self.data_type is None:
-            self.data_type = check_type(self.data).minor
+    def getitem(self, ind):
 
         if self.data_type == 'dict':
 
@@ -151,14 +151,8 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         return DataBatch(index=ind, data=sample, label=label)
 
-    def __device__(self):
-        raise NotImplementedError(f"For data type: {type(self.data)}")
-
-    @property
+    @lazy_property
     def device(self):
-
-        if self.data_type is None:
-            self.data_type = check_type(self.data).minor
 
         if self.data_type == 'dict':
             device = recursive_device(next(iter(self.data.values())))
@@ -166,10 +160,10 @@ class UniversalDataset(torch.utils.data.Dataset):
             device = recursive_device(self.data[0])
         elif self.data_type == 'simple':
             device = self.data.device
-        elif hasattr(self.data, 'device'):
+        elif hasattr(self.data, 'device') and self.data.device is not None:
             device = self.data.device
         else:
-            device = self.__device__()
+            device = 'cpu'
 
         return beam_device(device)
 

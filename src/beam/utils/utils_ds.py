@@ -14,7 +14,7 @@ from functools import partial
 import itertools
 import scipy
 import re
-from .utils_all import check_type, check_minor_type, slice_array, is_arange
+from .utils_all import check_type, check_minor_type, slice_array, is_arange, DataObject
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -617,8 +617,8 @@ def _beam_hash(x, h, bytes_threshold=int(1e6), fast=True):
         h.update(pickle.dumps(x))
 
 
-
 def is_container(x):
+
     if isinstance(x, dict):
         return True
     if isinstance(x, list):
@@ -638,7 +638,7 @@ def is_container(x):
             if elt != elt0:
                 return True
 
-            if elt in ['array', 'none']:
+            if elt in ['array', 'none', 'object']:
                 return True
 
     return False
@@ -873,7 +873,10 @@ def recursive_flatten(x, flat_array=False, x_type=None, tolist=True):
             l.extend(recursive_flatten(xi, flat_array=flat_array))
         return l
     else:
-        if not flat_array or x_type.major == 'scalar':
+
+        if isinstance(x, DataObject):
+            return [x.data]
+        elif not flat_array or x_type.major == 'scalar':
             return [x]
         else:
             return recursive_flat_array(x, x_type=x_type, tolist=tolist)

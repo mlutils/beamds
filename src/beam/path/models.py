@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import PurePath, Path
 from .core import PureBeamPath, normalize_host
 from io import StringIO, BytesIO
@@ -8,6 +9,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 import warnings
 from uuid import uuid4 as uuid
+from collections import namedtuple
+
+BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 
 
 class BeamPath(PureBeamPath):
@@ -996,13 +1000,10 @@ class CometAsset(PureBeamPath):
             self.file_object.close()
 
 
-class IOPath(PureBeamPath):
 
-    # this class represents a in memory file system in the form of dictionaries of dictionaries of bytes/strings objects
-    # like other PureBeamPath implementations, it is a pathlib/beam_path api
-
-    def __init__(self, *pathsegments, client=None, data=None, **kwargs):
-        super().__init__(*pathsegments, scheme='io', **kwargs)
+class DictBasedPath(PureBeamPath):
+    def __init__(self, *pathsegments, scheme=None, client=None, data=None, **kwargs):
+        super().__init__(*pathsegments, scheme=scheme, **kwargs)
         if client is None:
             client = {}
         if data is not None:
@@ -1020,22 +1021,19 @@ class IOPath(PureBeamPath):
         self.client = data
 
     def is_file(self):
-        client = self.client
-        if len(self.parts) == 1:
-            return False
-        for p in self.parts[1:]:
-            if p not in client:
-                return False
-        return isinstance(client[p], (bytes, str))
+        raise NotImplementedError
 
     def is_dir(self):
         client = self.client
         if len(self.parts) == 1:
             return True
         for p in self.parts[1:]:
+            if not isinstance(client, dict):
+                return False
             if p not in client:
                 return False
-        return isinstance(client[self.parts[-1]], dict)
+            client = client[p]
+        return isinstance(client, dict)
 
     def exists(self):
         client = self.client
@@ -1046,12 +1044,14 @@ class IOPath(PureBeamPath):
                 return False
         return True
 
+    @property
     def _obj(self):
         client = self.client
         for p in self.parts[1:]:
             client = client[p]
         return client
 
+    @property
     def _parent(self):
         client = self.client
         for p in self.parts[1:-1]:
@@ -1059,7 +1059,7 @@ class IOPath(PureBeamPath):
         return client
 
     def iterdir(self):
-        client = self._obj()
+        client = self._obj
         for p in client:
             yield self.gen(p)
 
@@ -1069,19 +1069,19 @@ class IOPath(PureBeamPath):
                 raise FileExistsError
 
         if not parents:
-            if self._parent() is None:
+            if self._parent is None:
                 raise FileNotFoundError
 
-        client = self._parent()
+        client = self._parent
         client[self.parts[-1]] = {}
 
     def rmdir(self):
-        client = self._parent()
+        client = self._parent
         del client[self.parts[-1]]
 
     def unlink(self, missing_ok=False):
 
-        client = self._parent()
+        client = self._parent
         try:
             del client[self.parts[-1]]
         except KeyError as e:
@@ -1091,12 +1091,39 @@ class IOPath(PureBeamPath):
     def rename(self, target):
         if type(target) is str:
             target = self.gen(target)
-        target_parent = target._parent()
-        target_parent[target.parts[-1]] = self._obj()
+        target_parent = target._parent
+        target_parent[target.parts[-1]] = self._obj
         self.unlink()
 
     def replace(self, target):
         self.rename(target)
+
+    def __enter__(self):
+        raise NotImplementedError
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        raise NotImplementedError
+
+
+class IOPath(DictBasedPath):
+
+    # this class represents a in memory file system in the form of dictionaries of dictionaries of bytes/strings objects
+    # like other PureBeamPath implementations, it is a pathlib/beam_path api
+
+    def __init__(self, *pathsegments, client=None, data=None, **kwargs):
+        super().__init__(*pathsegments, scheme='io', client=client, data=data, **kwargs)
+
+    def is_file(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return False
+        for p in self.parts[1:]:
+            if not isinstance(client, dict):
+                return False
+            if p not in client:
+                return False
+            client = client[p]
+        return isinstance(client, (bytes, str))
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
@@ -1110,10 +1137,35 @@ class IOPath(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        parent = self._parent()
+        parent = self._parent
         name = self.parts[-1]
         self.file_object.seek(0)
         content = self.file_object.getvalue()
         parent[name] = content
         self.file_object.close()
+
+
+class DictPath(DictBasedPath):
+
+    def __init__(self, *pathsegments, client=None, data=None, **kwargs):
+        super().__init__(*pathsegments, scheme='dict', client=client, data=data, **kwargs)
+
+    def is_file(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return False
+        for p in self.parts[1:]:
+            if not isinstance(client, dict):
+                return False
+            if p not in client:
+                return False
+            client = client[p]
+        return isinstance(client, BeamFile)
+
+    def write(self, x, ext=None, **kwargs):
+        self._parent[self.parts[-1]] = BeamFile(x, timestamp=datetime.now())
+
+    def read(self, ext=None, **kwargs):
+        return self._obj.data
+
 

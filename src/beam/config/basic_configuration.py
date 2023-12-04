@@ -132,6 +132,8 @@ def basic_beam_parser():
                         help='Seed for reproducability (zero is saved for random seed)')
     parser.add_argument('--split-dataset-seed', type=int, default=5782,
                         help='Seed dataset split (set to zero to get random split)')
+    parser.add_argument('--test-size', type=float, default=.2, help='Test set percentage')
+    parser.add_argument('--validation-size', type=float, default=.2, help='Validation set percentage')
 
     parser.add_argument('--total-steps', type=int, default=int(1e6), metavar='tune',
                         help='Total number of environment steps')

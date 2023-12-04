@@ -57,7 +57,7 @@ class BeamHparams(Namespace):
                 else:
                     h = None
 
-                ms, ts = self.update_parser(parser, defaults=d, parameters=h)
+                parser, ms, ts = self.update_parser(parser, defaults=d, parameters=h)
                 tune_set = tune_set.union(ts)
                 model_set = model_set.union(ms)
 
@@ -178,13 +178,13 @@ class BeamHparams(Namespace):
 
         if defaults is not None:
             # set defaults
-            parser.set_defaults(**{k.replace('-', '_'): v for k, v in defaults.items()})
+            parser.set_defaults(**{k.replace('-', '_').strip(): v for k, v in defaults.items()})
 
         if parameters is not None:
             for v in parameters:
 
-                name_to_parse = v.name.replace('_', '-')
-                name_to_store = v.name.replace('-', '_')
+                name_to_parse = v.name.replace('_', '-').strip()
+                name_to_store = v.name.replace('-', '_').strip()
 
                 if v.model:
                     model_set.add(name_to_store)
@@ -199,7 +199,7 @@ class BeamHparams(Namespace):
                 else:
                     parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, help=v.help)
 
-        return model_set, tune_set
+        return parser, model_set, tune_set
 
     def to_path(self, path, ext=None):
         d = copy.deepcopy(self.dict())
@@ -215,13 +215,13 @@ class BeamHparams(Namespace):
         return cls(hparams=d, model_set=model_set, tune_set=tune_set)
 
     def is_hparam(self, key):
-        key = key.replace('-', '_')
+        key = key.replace('-', '_').strip()
         if key in self.hparams:
             return True
         return False
 
     def __getitem__(self, item):
-        item = item.replace('-', '_')
+        item = item.replace('-', '_').strip()
         r = getattr(self, item)
         if r is None and item in os.environ:
             r = os.environ[item]
@@ -231,7 +231,7 @@ class BeamHparams(Namespace):
         self.set(key, value)
 
     def set(self, key, value, tune=None, model=None):
-        key = key.replace('-', '_')
+        key = key.replace('-', '_').strip()
         if key in self.__dict__:
             if key in self._model_set and model is not None:
                 self._model_set.remove(key)
@@ -244,7 +244,7 @@ class BeamHparams(Namespace):
             self._model_set.remove(key)
 
     def __setattr__(self, key, value):
-        key = key.replace('-', '_')
+        key = key.replace('-', '_').strip()
         if key.startswith('_'):
             super().__setattr__(key, value)
         else:

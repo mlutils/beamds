@@ -32,6 +32,7 @@ class Algorithm(Processor):
         # some experiment hyperparameters
 
         self.clear_experiment_properties()
+        self.epoch = 0
 
         self.scalers = {}
         self.networks = {}
@@ -171,7 +172,7 @@ class Algorithm(Processor):
     @property
     def device(self):
         if self._device is None:
-            if self.accelerator is None:
+            if self.accelerator is None or not self.accelerator.device_placement:
                 self._device = beam_device(self.get_hparam('device'))
             else:
                 self._device = self.accelerator.device
@@ -179,7 +180,7 @@ class Algorithm(Processor):
 
     @device.setter
     def device(self, device):
-        if self.get_hparam('accelerate') is None:
+        if self.get_hparam('accelerate') is None or not self.accelerator.device_placement:
             self._device = beam_device(device)
 
     @property
