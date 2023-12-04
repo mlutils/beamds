@@ -1205,8 +1205,8 @@ class Algorithm(Processor):
                 kwargs = {self.get_hparam('objective'): objective}
             else:
                 kwargs = {'objective': objective}
-            from ray import tune
-            tune.report(**kwargs)
+            from ray import train
+            train.report(**kwargs)
         elif self.hpo == 'optuna':
             import optuna
             self.trial.report(objective, epoch)

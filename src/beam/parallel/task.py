@@ -1,5 +1,5 @@
-from ..utils import divide_chunks, collate_chunks, retrieve_name, jupyter_like_traceback, lazy_property, dict_to_list
-from ..logger import Timer
+from ..utils import (divide_chunks, Timer, collate_chunks, retrieve_name,
+                     jupyter_like_traceback, lazy_property, dict_to_list)
 from ..logger import beam_logger as logger
 
 
@@ -71,7 +71,7 @@ class BeamTask(object):
         if not self.silence:
             logger.info(f"Starting task: {self.name}")
         try:
-            with Timer(silence=True) as t:
+            with Timer(logger, silence=True) as t:
                 res = self.func(*self.args, **self.kwargs)
                 self.result = res
                 if not self.silence:
