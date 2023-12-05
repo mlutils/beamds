@@ -18,6 +18,7 @@ from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
 import openai
 from .utils import get_conversation_template
+from .task import LLMTool
 
 
 CompletionObject = namedtuple("CompletionObject", "prompt kwargs response")
@@ -56,11 +57,12 @@ class BeamLLM(LLM, Processor):
     _assistant_budget: Any = PrivateAttr()
     _assistant_docstrings: Any = PrivateAttr()
     _conv: Any = PrivateAttr()
+    _tools: Any = PrivateAttr()
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
                  debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
-                 model_adapter=None, **kwargs):
+                 model_adapter=None, tools=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         if temperature is not None:
@@ -120,6 +122,14 @@ class BeamLLM(LLM, Processor):
 
         self.reset_chat()
         self._lazy_cache = {}
+        self._tools = tools
+
+    def add_tool(self, name=None, type='function', func=None, description=None, tool=None, **kwargs):
+        if self._tools is None:
+            self._tools = []
+        if tool is None:
+            tool = LLMTool(name=name, type=type, description=description, func=func, **kwargs)
+        self._tools.append(tool)
 
     @property
     def stop_sequence(self):

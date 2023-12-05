@@ -492,13 +492,15 @@ class FastAPIDPLLM(FastAPILLM):
         prompt = self.get_prompt(messages)
         return self._completion_internal(prompt, **kwargs)
 
-    def _completion_internal(self, prompt, **kwargs):
+    def _completion_internal(self, prompt, stop=None, stop_token_ids=None, cut_long_prompt=None,
+                             echo=None, task=None, network=None, application=None, **kwargs):
 
         kwargs_processed = self.process_kwargs(prompt, **kwargs)
         d = dict(model=self.model, user=self.consumer, max_new_tokens=kwargs['max_new_tokens'],
-                 prompt=prompt, temperature=kwargs['temperature'], stop_token_ids=self.stop_token_ids,
-                 stop=self.stop, cut_long_prompt=self.cut_long_prompt, echo=self.echo,
-                 task=self.task, network=self.network, application=self.application,
+                 prompt=prompt, temperature=kwargs['temperature'], stop_token_ids=stop_token_ids or self.stop_token_ids,
+                 stop=stop or self.stop, cut_long_prompt=cut_long_prompt or self.cut_long_prompt,
+                 echo=echo or self.echo, task=self.task or self.task, network=network or self.network,
+                 application=application or self.application,
                  number_of_generations=kwargs_processed['number_of_generations'])
 
         res = requests.post(f"{self.protocol}://{self.hostname}/{self.worker_generate_stream_ep}",

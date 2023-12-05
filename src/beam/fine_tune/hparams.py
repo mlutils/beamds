@@ -3,7 +3,8 @@ from ..config import BeamHparams, BeamParam
 
 class FTLLMHparams(BeamHparams):
 
-    defaults = dict(accelerate=True, amp=False, batch_size=4, model_dtype='bfloat16')
+    defaults = dict(accelerate=True, amp=False, batch_size=2, model_dtype='bfloat16', epoch_length=100,
+                    scale_epoch_by_batch_size=False, lr_dense=1e-5, lr_sparse=1e-4, reduction='mean_batch')
     parameters = [BeamParam('model', str, None, 'Model to use for fine-tuning'),
                   BeamParam('lora_alpha', float, 16, 'Lora alpha parameter', tune=True, model=False),
                   BeamParam('lora_dropout', float, 0.05, 'Lora dropout', tune=True, model=False),
@@ -19,7 +20,13 @@ class FTLLMHparams(BeamHparams):
                                                                'is specified, it will apply the LoRA transformations '
                                                                'on the layer indexes that are specified in this list.'),
                   BeamParam('target_modules', list, None, 'The names of the modules to apply Lora to'),
-                  BeamParam('hf_cache_dir', str, None, 'Directory for Huggingface to cache to and load from', model=False),
+                  BeamParam('hf_cache_dir', str, None, 'Directory for Huggingface to cache to and load from',
+                            model=False),
+                  BeamParam('return_overflowing_tokens', bool, False, 'Whether or not to split overflowing tokens into '
+                                                                      'their own batch'),
+                  BeamParam('context_length', int, 128, 'The maximal context length to train the model with',
+                            tune=True, model=False),
+
                   BeamParam('dataset', str, 'iamtarun/python_code_instructions_18k_alpaca',
                             'The dataset which is used for fine-tuning', model=False),
                   ]

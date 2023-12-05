@@ -21,8 +21,12 @@ if has_torch:
     from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch, beam_hash
 
 from .config import basic_beam_parser, beam_arguments, BeamHparams
-from .utils import check_type
-from .logger import beam_logger, beam_kpi, Timer
+from .utils import check_type, Timer
+from .logger import beam_logger, beam_kpi
+
+from functools import partial
+Timer = partial(Timer, logger=beam_logger)
+
 from .path import beam_path, beam_key
 from ._version import __version__
 from .resource import resource

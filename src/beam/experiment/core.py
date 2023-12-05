@@ -93,7 +93,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
         for i, results in enumerate(iter(alg)):
 
             total_time = time.time() - t0
-            estimated_time = total_time * (alg.hparams.n_epochs - i - 1) / (i + 1)
+            estimated_time = total_time * (alg.n_epochs - i - 1) / (i + 1)
 
             experiment.save_model_results(copy.deepcopy(results), alg, i,
                                           print_results=experiment.hparams.print_results,

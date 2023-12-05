@@ -94,7 +94,7 @@ class Algorithm(Processor):
 
     @lazy_property
     def rank(self):
-        if self.experimental is None:
+        if self.experiment is None:
             self.no_experiment_message('rank')
         return self.get_hparam('rank')
 
@@ -1424,7 +1424,6 @@ class Algorithm(Processor):
         if self.get_hparam('safetensors', default=False):
             return '.safetensors'
         return '.pt'
-
 
     def load_checkpoint(self, path_or_state, strict=True, networks=True, optimizers=True, schedulers=True, hparams=True,
                         processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True, load_epoch=True):

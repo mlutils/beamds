@@ -1,4 +1,9 @@
 
+# from src.beam import as_tensor
+# from src.beam.data import BeamData
+# from datasets import load_dataset
+
+
 # hparams = FTLLMHparams(model='codellama/CodeLlama-7b-hf', hf_cache_dir='/mnt/data/models', device=1)
 # dataset = FineTuneHFDataset(hparams)
 # print(dataset[1])
@@ -13,8 +18,6 @@
 # print(bdi)
 
 
-
-
 # dataset = load_dataset("iamtarun/python_code_instructions_18k_alpaca")
 # hparams = FTLLMHparams(model='codellama/CodeLlama-7b-hf', hf_cache_dir='/mnt/data/models', device=1, accelerate=True,
 #                        amp=False)
@@ -27,14 +30,8 @@
 # alg.llm.save_pretrained('/tmp/models/llm')
 
 
-
-
 from src.beam.fine_tune import FineTuneLLM, FTLLMHparams, FineTuneHFDataset
-from src.beam import as_tensor
-from src.beam.data import BeamData
 from src.beam import Experiment
-
-from datasets import load_dataset
 
 
 if __name__ == '__main__':

@@ -1,3 +1,6 @@
+import json
+
+from dataclasses import dataclass
 
 
 class LLMTask:
@@ -27,4 +30,23 @@ class LLMTask:
 
 
 class LLMTool:
-    pass
+    # a class that holds an OpenAI tool object
+
+    def __init__(self, name=None, type='function', description=None, func=None, required=None, **kwargs):
+
+        self.name = name or 'func'
+        self.type = type
+        self.description = description or 'See properties for more information.'
+        self.func = func
+        self.parameters = kwargs
+        self.required = required or []
+
+    @property
+    def prompt(self):
+        message = json.dumps({'type': self.type,
+                              self.type: {'name': self.name,
+                                          'description': self.description,
+                                          'properties': self.parameters,
+                                          'required': self.required}}, indent=4)
+        return message
+
