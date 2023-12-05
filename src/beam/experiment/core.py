@@ -392,6 +392,9 @@ class Experiment(object):
         return Experiment(args, reload_iloc=reload_iloc, reload_loc=reload_loc, reload_name=reload_name,
                           reload_dir=path, **argv)
 
+    def reload_best_checkpoint(self, alg=None):
+            return self.reload_checkpoint(alg, name='checkpoint_best')
+
     def reload_checkpoint(self, alg=None, iloc=None, loc=None, name=None):
 
         if iloc is None and loc is None and name is None:
@@ -765,9 +768,9 @@ class Experiment(object):
         self._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
                           base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
-    def algorithm_generator(self, Alg, Dataset=None, alg_args=None, alg_kwargs=None,
+    def algorithm_generator(self, alg, dataset=None, alg_args=None, alg_kwargs=None,
                              dataset_args=None, dataset_kwargs=None):
-        return beam_algorithm_generator(self, alg=Alg, dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+        return beam_algorithm_generator(self, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                         dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
 
     def fit(self, alg=None, dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,

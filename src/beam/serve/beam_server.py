@@ -109,11 +109,11 @@ class BeamServer(Processor):
         return self._response_queue
 
     @classmethod
-    def build_algorithm_from_path(cls, path, Alg, override_hparams=None, Dataset=None, alg_args=None, alg_kwargs=None,
+    def build_algorithm_from_path(cls, path, alg, override_hparams=None, dataset=None, alg_args=None, alg_kwargs=None,
                              dataset_args=None, dataset_kwargs=None, **argv):
 
         experiment = Experiment.reload_from_path(path, override_hparams=override_hparams, **argv)
-        alg = experiment.algorithm_generator(Alg, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+        alg = experiment.algorithm_generator(alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         return cls(alg)
 

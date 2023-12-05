@@ -99,7 +99,7 @@ if __name__ == '__main__':
     kwargs_base = dict(algorithm='debug_reporter',
                        path_to_data=path_to_data,
                        path_to_results=path_to_results,
-                       copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=100,
+                       copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=4,
                        stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
@@ -134,7 +134,7 @@ if __name__ == '__main__':
             net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
             alg = DeepTabularAlg(hparams, networks=net)
 
-            alg = exp.fit(Alg=alg, Dataset=dataset)
+            alg = exp.fit(alg=alg, dataset=dataset)
             logger.info(f"Training finished, reloading best model")
             exp.reload_checkpoint(alg)
             alg.set_best_masking()

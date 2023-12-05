@@ -51,15 +51,7 @@ class OptunaHPO(BeamHPO):
     def runner(self, trial, suggest):
 
         config = suggest(trial)
-
-        logger.info('Next Hyperparameter suggestion:')
-        for k, v in config.items():
-            logger.info(k + ': ' + str(v))
-
-        hparams = copy.deepcopy(self.hparams)
-
-        for k, v in config.items():
-            setattr(hparams, k.replace('-', '_'), v)
+        hparams = self.generate_hparams(config)
 
         experiment = Experiment(hparams, hpo='optuna', trial=trial, print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
@@ -67,12 +59,7 @@ class OptunaHPO(BeamHPO):
         self.tracker(algorithm=alg, results=results, hparams=hparams, suggestion=config)
 
         if 'objective' in results:
-            if type('objective') is tuple:
-                return results['objective']
-            elif isinstance(results['objective'], dict):
-                tune.report(**results['objective'])
-            else:
-                return results['objective']
+            return results['objective']
 
     def grid_search(self, load_study=False, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
                     load_if_exists=False, directions=None, sync_parameters=None, explode_parameters=None, **kwargs):

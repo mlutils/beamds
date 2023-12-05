@@ -12,7 +12,7 @@ from ..utils import to_device, check_type, recursive_concatenate, \
 from ..config import beam_arguments, basic_beam_parser
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
-from ..path import beam_path, PureBeamPath
+from ..path import beam_path
 from .processor import Processor
 from ..logger import beam_kpi, BeamResult
 
@@ -286,7 +286,7 @@ class Algorithm(Processor):
         return basic_beam_parser()
 
     @classmethod
-    def from_pretrained(cls, path, override_hparams=None, hparams=None, Dataset=None, alg_args=None, alg_kwargs=None,
+    def from_pretrained(cls, path, override_hparams=None, hparams=None, dataset=None, alg_args=None, alg_kwargs=None,
                              dataset_args=None, dataset_kwargs=None, reload_iloc=-1, reload_loc=None, reload_name=None,
                              **kwargs):
 
@@ -296,7 +296,7 @@ class Algorithm(Processor):
         experiment = Experiment.reload_from_path(path, override_hparams=override_hparams, reload_iloc=reload_iloc,
                                                  reload_loc=reload_loc, reload_name=reload_name, **kwargs)
 
-        alg = experiment.algorithm_generator(cls, Dataset=Dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+        alg = experiment.algorithm_generator(cls, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                        dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
 
         if hparams is not None:
@@ -1430,7 +1430,7 @@ class Algorithm(Processor):
 
         path_or_state = beam_path(path_or_state)
 
-        if isinstance(path_or_state, PureBeamPath):
+        if hasattr(path_or_state, 'read') and hasattr(path_or_state, 'as_uri') :
             logger.info(f"Loading network state from: {path_or_state}")
             state = path_or_state.read(ext=self.file_format, map_location=self.device)
         else:

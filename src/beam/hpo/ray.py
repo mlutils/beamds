@@ -1,12 +1,14 @@
 import copy
 
+from ray.air import RunConfig
+
 from .utils import TimeoutStopper
 from ..utils import find_port, check_type, is_notebook, beam_device
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
 
 import ray
-from ray.tune import JupyterNotebookReporter
+from ray.tune import JupyterNotebookReporter, TuneConfig
 from ray import tune
 from functools import partial
 from ..experiment import Experiment
@@ -75,15 +77,12 @@ class RayHPO(BeamHPO):
 
     def runner(self, config, parallel=None):
 
-        hparams = copy.deepcopy(self.hparams)
-
-        for k, v in config.items():
-            setattr(hparams.replace('-', '_'), k, v)
+        hparams = self.generate_hparams(config)
 
         # set device to 0 (ray exposes only a single device
-        hparams.device = '0'
+        hparams.set('device', 'cuda')
         if parallel is not None:
-            hparams.parallel = parallel
+            hparams.set('parallel', parallel)
 
         experiment = Experiment(hparams, hpo='tune', print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
@@ -145,7 +144,10 @@ class RayHPO(BeamHPO):
         if 'progress_reporter' not in kwargs.keys() and is_notebook():
             kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
 
-        tuner = tune.Tuner(runner_tune, param_space=search_space,)
+        tune_config = TuneConfig(**kwargs)
+        run_config = RunConfig(stop=stop, local_dir=local_dir)
+
+        tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()
 
         # analysis = tune.run(runner_tune, config=config, local_dir=local_dir, *args, stop=stop, **kwargs)

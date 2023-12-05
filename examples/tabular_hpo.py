@@ -113,7 +113,7 @@ if __name__ == '__main__':
         # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
         # alg = DeepTabularAlg(hparams, networks=net)
 
-        study = Study(hparams, Alg=DeepTabularAlg, Dataset=dataset, print_results=False,
+        study = Study(hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
                       alg_kwargs={'net_kwargs':{'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
                                                  'cat_mask': dataset.cat_mask, }})
 

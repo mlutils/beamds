@@ -1,3 +1,4 @@
+import copy
 import time
 from ..utils import find_port, check_type, is_notebook, beam_device
 from ..config import print_beam_hyperparameters
@@ -15,7 +16,7 @@ class BeamHPO(Processor):
     def __init__(self, hparams, *args,
                  alg=None, dataset=None, algorithm_generator=None, print_results=False, alg_args=None,
                  alg_kwargs=None, dataset_args=None, dataset_kwargs=None,
-                 enable_tqdm=False, print_hyperparameters=True,
+                 enable_tqdm=False, print_hyperparameters=True, verbose=True,
                  track_results=False, track_algorithms=False, track_hparams=True, track_suggestion=True, hpo_dir=None,
                  **kwargs):
 
@@ -67,6 +68,7 @@ class BeamHPO(Processor):
         self.track_hparams = track_hparams
         self.track_suggestion = track_suggestion
         self.suggestions = {}
+        self.verbose = verbose
 
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}
@@ -76,7 +78,7 @@ class BeamHPO(Processor):
         self.suggestions[param] = partial(self._linspace, param=param, start=start, end=end, n_steps=n_steps,
                        endpoint=endpoint, dtype=dtype)
 
-    def logspace(self, param, start, end, n_steps,base=None, dtype=None):
+    def logspace(self, param, start, end, n_steps, base=None, dtype=None):
         param = param.replace('-', '_').strip()
         self.suggestions[param] = partial(self._logspace, param=param, start=start, end=end,
                                           n_steps=n_steps, base=base, dtype=dtype)
@@ -159,9 +161,6 @@ class BeamHPO(Processor):
     def sample_from(self, param, *args, **kwargs):
         raise NotImplementedError
 
-    def categorical(self, param, *args, **kwargs):
-        raise NotImplementedError
-
     def discrete_uniform(self, param, *args, **kwargs):
         raise NotImplementedError
 
@@ -194,6 +193,17 @@ class BeamHPO(Processor):
             path = beam_path(self.hpo_dir).joinpath('tracker')
             path.mkdir(parents=True, exist_ok=True)
             path.joinpath('tracker.pkl').write(tracker)
+
+    def generate_hparams(self, config):
+
+        hparams = copy.deepcopy(self.hparams)
+        if self.verbose:
+            logger.info('Next Hyperparameter suggestion:')
+            for k, v in config.items():
+                logger.info(k + ': ' + str(v))
+
+        hparams.update(config)
+        return hparams
 
     def runner(self, *args, **kwargs):
         raise NotImplementedError

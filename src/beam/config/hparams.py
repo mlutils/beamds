@@ -230,6 +230,10 @@ class BeamHparams(Namespace):
     def __setitem__(self, key, value):
         self.set(key, value)
 
+    def update(self, hparams, tune=None, model=None):
+        for k, v in hparams.items():
+            self.set(k, v, tune=tune, model=model)
+
     def set(self, key, value, tune=None, model=None):
         key = key.replace('-', '_').strip()
         if key in self.__dict__:
