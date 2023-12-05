@@ -50,18 +50,72 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
     return s
 
 
-def as_numpy(x):
-    if isinstance(x, dict):
-        return {k: as_numpy(v) for k, v in x.items()}
-    elif isinstance(x, list):
-        x_type = check_type(x, check_minor=False, check_element=False)
-        if x_type.major != 'container':
-            # take care of the case of a list of scalar tensors
-            if isinstance(x[0], torch.Tensor):
-                return torch.stack(x).detach().cpu().numpy()
-            return np.array(x)
-        return [as_numpy(s) for s in x]
+def beam_device(device):
+    if isinstance(device, torch.device) or device is None:
+        return device
+    device = str(device)
+    if device == 'cuda':
+        device = '0'
+    return torch.device(int(device) if device.isnumeric() else device)
 
+
+def as_something_recursively(as_something_func):
+    def as_func_recursively(x, **kwargs):
+        x_type = check_type(x)
+        if x_type.major == 'container' and x_type.minor == 'dict':
+            return {k: as_func_recursively(v, **kwargs) for k, v in x.items()}
+        elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
+            if x_type.element not in ['object', 'unknown']:
+                try:
+                    return as_something_func(x, x_type=x_type, **kwargs)
+                except:
+                    pass
+            return [as_func_recursively(s, **kwargs) for s in x]
+        elif x is None:
+            return None
+
+        return as_something_func(x, x_type=x_type, **kwargs)
+
+    return as_func_recursively
+
+
+@as_something_recursively
+def as_tensor(x, x_type=None, device=None, dtype=None,
+              half=False, return_vector=False, convert_to_tensor=True, copy=False, **kwargs):
+
+    if x_type is None:
+        x_type = check_type(x, check_element=False)
+
+    if not convert_to_tensor and x_type.minor != 'tensor':
+        return x
+
+    device = beam_device(device)
+
+    if dtype is None and hasattr(x, 'dtype'):
+        dtype = str(x.dtype)
+        if 'int' in dtype:
+            dtype = torch.int64
+        elif 'float' in dtype:
+            dtype = torch.float16 if half else torch.float32
+        elif 'complex' in dtype:
+            dtype = torch.complex32 if half else torch.complex64
+
+    if x_type.minor == 'pandas':
+        x = x.values
+
+    if copy:
+        x = torch.tensor(x, device=device, dtype=dtype)
+    else:
+        x = torch.as_tensor(x, device=device, dtype=dtype)
+    if return_vector:
+        if not len(x.shape):
+            x = x.unsqueeze(0)
+
+    return x
+
+
+@as_something_recursively
+def as_numpy(x, **kwargs):
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
     else:
@@ -79,43 +133,8 @@ def as_numpy(x):
     return x
 
 
-def as_tensor_element(x, device=None, dtype=None, return_vector=False):
-
-    if dtype is None and hasattr(x, 'dtype'):
-        if 'int' in str(x.dtype):
-            dtype = torch.int64
-        elif 'float' in str(x.dtype):
-            dtype = torch.float32
-        elif 'complex' in str(x.dtype):
-            dtype = torch.complex64
-
-    if check_type(x, check_element=False).minor == 'pandas':
-        x = x.values
-
-    x = torch.as_tensor(x, device=device, dtype=dtype)
-    if return_vector:
-        if not len(x.shape):
-            x = x.unsqueeze(0)
-
-    return x
-
-
-def as_tensor(x, device=None, dtype=None, return_vector=False):
-    x_type = check_type(x)
-    device = beam_device(device)
-    if x_type.major == 'container' and x_type.minor == 'dict':
-        return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
-    elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
-        if x_type.element not in ['object', 'unknown', 'other']:
-            try:
-                return as_tensor_element(x, device=device, dtype=dtype, return_vector=return_vector)
-            except:
-                pass
-            return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
-    elif x is None:
-        return None
-
-    return as_tensor_element(x, device=device, dtype=dtype, return_vector=return_vector)
+def to_device(data, device='cuda', half=False):
+    return as_tensor(data, device=device, half=half, convert_to_tensor=False)
 
 
 def recursive_concatenate(data, dim=0):
@@ -177,8 +196,6 @@ def hash_tensor(x, fast=False, coarse=False):
     return int(hashlib.sha1(x).hexdigest(), 16)
 
 
-
-
 def setup_distributed(rank, world_size, port='7463', backend='gloo'):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = port
@@ -227,32 +244,6 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
         torch.backends.cudnn.deterministic = False
         torch.use_deterministic_algorithms(False)
         torch.backends.cudnn.benchmark = True
-
-
-def to_device(data, device='cuda', half=False):
-    if device is None:
-        return data
-    if isinstance(data, dict):
-        return {k: to_device(v, device=device, half=half) for k, v in data.items()}
-    elif isinstance(data, list) or isinstance(data, tuple):
-        return [to_device(s, device=device, half=half) for s in data]
-    elif isinstance(data, torch.Tensor):
-        if half and data.dtype in [torch.float32, torch.float64]:
-            data = data.half()
-        if half and data.dtype in [torch.complex64, torch.complex128]:
-            data = data.astype(torch.complex32)
-        return data.to(device)
-    else:
-        return data
-
-
-def beam_device(device):
-    if isinstance(device, torch.device) or device is None:
-        return device
-    device = str(device)
-    if device == 'cuda':
-        device = '0'
-    return torch.device(int(device) if device.isnumeric() else device)
 
 
 def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):

@@ -13,7 +13,7 @@ class FineTuneHFDataset(UniversalDataset):
         model_config = AutoConfig.from_pretrained(hparams.model, cache_dir=hparams.hf_cache_dir)
         self.tokenizer = AutoTokenizer.from_pretrained(hparams.model, config=model_config)
 
-        super().__init__()
+        super().__init__(target_device=hparams.device)
         dataset = datasets.load_dataset(hparams.dataset)
 
         self.data = BeamData({**dataset}, quick_getitem=True)

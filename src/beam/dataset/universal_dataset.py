@@ -15,7 +15,7 @@ from ..data import BeamData
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self, *args, index=None, label=None, device=None, target_device=None, **kwargs):
+    def __init__(self, *args, index=None, label=None, device=None, target_device=None, to_torch=True, **kwargs):
         """
         Universal Beam dataset class
 
@@ -50,6 +50,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.training = False
         self.statistics = None
         self.target_device = target_device
+        self.to_torch = to_torch
 
         if len(args) >= 1 and isinstance(args[0], argparse.Namespace):
             self.hparams = args[0]
@@ -142,7 +143,9 @@ class UniversalDataset(torch.utils.data.Dataset):
             iloc = ind
 
         sample = self.getitem(iloc)
-        if self.target_device is not None:
+        if self.to_torch:
+            sample = as_tensor(sample, device=self.target_device)
+        elif self.target_device is not None:
             sample = to_device(sample, device=self.target_device)
 
         label = None
