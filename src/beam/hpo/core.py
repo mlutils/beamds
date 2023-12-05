@@ -1,23 +1,13 @@
 import time
-import copy
-
-from .utils import TimeoutStopper
 from ..utils import find_port, check_type, is_notebook, beam_device
 from ..config import print_beam_hyperparameters
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
 from ..core import Processor
-import pandas as pd
-import ray
-from ray.tune import JupyterNotebookReporter
-from ray import tune
-import optuna
 from functools import partial
-from ..experiment import Experiment, beam_algorithm_generator
+from ..experiment import beam_algorithm_generator
 
 from .._version import __version__
-import numpy as np
-from scipy.special import erfinv
 
 
 class BeamHPO(Processor):
@@ -76,41 +66,111 @@ class BeamHPO(Processor):
         self.track_algorithms = track_algorithms
         self.track_hparams = track_hparams
         self.track_suggestion = track_suggestion
+        self.suggestions = {}
 
-    def uniform(self, param, *args, **kwargs):
+    def add_suggestion(self, param, func, *args, **kwargs):
+        self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}
+
+    def linspace(self, param, start, end, n_steps, endpoint=True,  dtype=None):
+        param = param.replace('-', '_').strip()
+        self.suggestions[param] = partial(self._linspace, param=param, start=start, end=end, n_steps=n_steps,
+                       endpoint=endpoint, dtype=dtype)
+
+    def logspace(self, param, start, end, n_steps,base=None, dtype=None):
+        param = param.replace('-', '_').strip()
+        self.suggestions[param] = partial(self._logspace, param=param, start=start, end=end,
+                                          n_steps=n_steps, base=base, dtype=dtype)
+
+    def uniform(self, param, start, end):
+        param = param.replace('-', '_').strip()
+        self.suggestions[param] = partial(self._uniform, param=param, start=start, end=end)
+
+    def loguniform(self, param, start, end):
+        param = param.replace('-', '_').strip()
+        self.suggestions[param] = partial(self._loguniform, param=param, start=start, end=end)
+
+    def categorical(self, param, choices):
+        param = param.replace('-', '_').strip()
+        self.suggestions[param] = partial(self._categorical, param=param, choices=choices)
+
+    def randn(self, param, mu, sigma):
+        param = param.replace('-', '_').strip()
+        self.suggestions[param] = partial(self._randn, param=param, mu=mu, sigma=sigma)
+
+    def get_suggestions(self, *args, **kwargs):
+
+        config = {}
+        for k, v in self.suggestions.items():
+            config[k] = v(*args, **kwargs)
+
+        return config
+
+    @staticmethod
+    def _linspace(*args, **kwargs):
         raise NotImplementedError
-    def loguniform(self, param, *args, **kwargs):
+
+    @staticmethod
+    def _logspace(*args, **kwargs):
         raise NotImplementedError
+
+    @staticmethod
+    def _uniform(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def _loguniform(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def _categorical(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def _randn(*args, **kwargs):
+        raise NotImplementedError
+
     def choice(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def quniform(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def qloguniform(self, param, *args, **kwargs):
         raise NotImplementedError
-    def randn(self, param, *args, **kwargs):
-        raise NotImplementedError
+
     def qrandn(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def randint(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def qrandint(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def lograndint(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def qlograndint(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def grid_search(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def sample_from(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def categorical(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def discrete_uniform(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def float(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def int(self, param, *args, **kwargs):
         raise NotImplementedError
+
     def tracker(self, algorithm=None, results=None, hparams=None, suggestion=None):
 
         tracker = {}
