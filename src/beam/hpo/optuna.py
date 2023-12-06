@@ -58,8 +58,7 @@ class OptunaHPO(BeamHPO):
 
         self.tracker(algorithm=alg, results=results, hparams=hparams, suggestion=config)
 
-        if 'objective' in results:
-            return results['objective']
+        return results.objective
 
     def grid_search(self, load_study=False, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
                     load_if_exists=False, directions=None, sync_parameters=None, explode_parameters=None, **kwargs):

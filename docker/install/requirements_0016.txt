@@ -22,3 +22,4 @@ cdlib[all]
 asteroid
 
 grpcio-tools
+gpustat

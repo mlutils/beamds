@@ -14,7 +14,7 @@ cmaes
 
 
 # hyperparameter optimizations
-ray[tune,rllib,serve]
+ray[tune,rllib,serve,data,train]
 optuna
 hyperopt
 bayesian-optimization

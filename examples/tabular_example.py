@@ -75,30 +75,28 @@ def get_paths():
 
     if ip.startswith('199'):
         data_path = '/mnt/data/dataset/tabular/'
-        path_to_results = '/home/shared/results/'
+        logs_path = '/home/shared/results/'
     else:
         data_path = '/home/dsi/elads/data/tabular/data/'
-        path_to_results = '/dsi/shared/elads/elads/data/tabular/results/'
+        logs_path = '/dsi/shared/elads/elads/data/tabular/results/'
 
-    return data_path, path_to_results
+    return data_path, logs_path
 
 
 if __name__ == '__main__':
 
-    data_path, path_to_results = get_paths()
+    data_path, logs_path = get_paths()
 
     # kwargs_base = dict(algorithm='catboost_default',
     #                    data_path=data_path,
-    #                    path_to_results=path_to_results,
+    #                    logs_path=logs_path,
     #                    copy_code=False, dynamic_masking=False,
     #                    tensorboard=True, stop_at=0.98, parallel=1, device=1, n_quantiles=6, catboost=True,
     #                    rulenet=False)
 
     from src.beam.config import get_beam_llm
 
-    kwargs_base = dict(algorithm='debug_reporter',
-                       data_path=data_path,
-                       path_to_results=path_to_results,
+    kwargs_base = dict(algorithm='debug_reporter', data_path=data_path, logs_path=logs_path,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=4,
                        stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
 
@@ -142,7 +140,6 @@ if __name__ == '__main__':
             predictions = alg.evaluate('test')
             logger.info(f"Test objective: {predictions.statistics['test']['scalar']['objective'].values}")
             exp.results_dir.joinpath('predictions.pt').write(predictions)
-
 
         if hparams.catboost:
             logger.info(f"Training a Catboost predictor")

@@ -144,8 +144,11 @@ class RayHPO(BeamHPO):
         if 'progress_reporter' not in kwargs.keys() and is_notebook():
             kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
 
-        tune_config = TuneConfig(**kwargs)
         run_config = RunConfig(stop=stop, local_dir=local_dir)
+
+        kwargs['num_samples'] = kwargs.pop('n_trials', None)
+        kwargs['max_concurrent_trials'] = kwargs.pop('n_jobs', None)
+        tune_config = TuneConfig(**kwargs)
 
         tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()

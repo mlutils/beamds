@@ -1075,14 +1075,21 @@ class DictBasedPath(PureBeamPath):
             if self._parent is None:
                 raise FileNotFoundError
 
-        client = self._parent
-        client[self.parts[-1]] = {}
+        client = self.client
+        for p in self.parts[1:]:
+            if p not in client:
+                client[p] = {}
+            elif p in client and not isinstance(client[p], dict):
+                raise NotADirectoryError
 
     def rmdir(self):
         client = self._parent
         del client[self.parts[-1]]
 
     def unlink(self, missing_ok=False):
+
+        if self.is_root():
+            raise ValueError("Cannot delete root")
 
         client = self._parent
         try:
@@ -1092,6 +1099,10 @@ class DictBasedPath(PureBeamPath):
                 raise e
 
     def rename(self, target):
+
+        if target.is_root():
+            raise ValueError("Cannot rename to root")
+
         if type(target) is str:
             target = self.gen(target)
         target_parent = target._parent

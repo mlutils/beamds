@@ -89,7 +89,7 @@ def write_bundle_tabular(path):
     kwargs_base = dict(algorithm='debug_reporter',
                        # data_path='/dsi/shared/elads/elads/data/tabular/dataset/data/',
                        data_path='/home/dsi/elads/data/tabular/data/',
-                       path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
+                       logs_path='/dsi/shared/elads/elads/data/tabular/results/',
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=2,
                        stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
 
