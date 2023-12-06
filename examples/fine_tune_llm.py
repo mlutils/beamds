@@ -8,7 +8,7 @@ if __name__ == '__main__':
     dataset_name = 'iamtarun/python_code_instructions_18k_alpaca'
     hparams = FTLLMHparams(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir='/mnt/data/models',
                            device=1, algorithm=dataset_name.replace('/', '-'),
-                           accelerate=True, dataset=dataset_name, reload=True, resume=0)
+                           accelerate=True, dataset=dataset_name, reload=False, resume=0)
     experiment = Experiment(hparams)
 
     # dataset = FineTuneHFDataset(hparams)

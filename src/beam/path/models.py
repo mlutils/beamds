@@ -1000,7 +1000,6 @@ class CometAsset(PureBeamPath):
             self.file_object.close()
 
 
-
 class DictBasedPath(PureBeamPath):
     def __init__(self, *pathsegments, scheme=None, client=None, data=None, **kwargs):
         super().__init__(*pathsegments, scheme=scheme, **kwargs)
@@ -1061,9 +1060,13 @@ class DictBasedPath(PureBeamPath):
     def iterdir(self):
         client = self._obj
         for p in client:
-            yield self.gen(p)
+            yield self.gen(self.path.joinpath(p))
 
     def mkdir(self, *args, parents=True, exist_ok=True, **kwargs):
+
+        if self.is_root():
+            return
+
         if not exist_ok:
             if self.exists():
                 raise FileExistsError
