@@ -102,8 +102,8 @@ class RayHPO(BeamHPO):
 
         search_space = self.get_suggestions()
 
-        if local_dir is None and self.hpo_dir is not None:
-            path = beam_path(self.hpo_dir)
+        if local_dir is None and self.hpo_path is not None:
+            path = beam_path(self.hpo_path)
             local_dir = path.joinpath('tune')
             local_dir.mkdir(parents=True, exist_ok=True)
 

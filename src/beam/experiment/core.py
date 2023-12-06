@@ -185,7 +185,7 @@ class Experiment(object):
     :param args:
     """
 
-    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None, reload_iloc=-1,
+    def __init__(self, args, hpo=None, trial=None, print_hyperparameters=None, reload_iloc=None,
                  reload_dir=None, reload_loc=None, reload_name=None):
         """
 
@@ -222,15 +222,15 @@ class Experiment(object):
         self.load_model = False
 
         if reload_dir is None:
-            root_path = beam_path(self.hparams.root_dir)
+            root_path = beam_path(self.hparams.logs_path)
             base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
 
             pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
 
             if base_dir.exists():
                 assert base_dir.is_dir(), f"Experiment directory contains an existing file: {base_dir}"
-                exp_names = list(filter(lambda x: re.match(pattern, str(x)) is not None, base_dir.iterdir()))
-                exp_indices = np.array([int(d.split('_')[0]) for d in exp_names])
+                exp_names = list(filter(lambda x: re.match(pattern, x.name) is not None, base_dir.iterdir()))
+                exp_indices = np.array([int(d.name.split('_')[0]) for d in exp_names])
             else:
                 exp_names = []
                 exp_indices = np.array([])
@@ -323,6 +323,17 @@ class Experiment(object):
         # build the hyperparamter class which will be sent to the dataset and algorithm classes
 
         if self.load_model:
+
+            if reload_iloc is None and reload_loc is None and reload_name is not None:
+
+                if self.hparams.reload_checkpoint == 'last':
+                    reload_iloc, reload_loc, reload_name = -1, None, None
+                elif self.hparams.reload_checkpoint != 'best':
+                    try:
+                        reload_iloc, reload_loc, reload_name = None, int(self.hparams.reload_checkpoint), None
+                    except ValueError:
+                        reload_iloc, reload_loc, reload_name = None, None, self.hparams.reload_checkpoint
+
             self.hparams.reload_path = self.reload_checkpoint(iloc=reload_iloc, loc=reload_loc, name=reload_name)
         else:
             self.hparams.reload_path = None
@@ -343,7 +354,7 @@ class Experiment(object):
         self.comet_exp = None
         self.comet_writer = None
         self.mlflow_writer = None
-        self.root_dir_is_built = False
+        self.logs_path_is_built = False
         self.source_dir = None
 
         atexit.register(self.cleanup)
@@ -385,7 +396,7 @@ class Experiment(object):
 
         if override_hparams is not None:
             for k, v in override_hparams.items():
-                if k in ['reload', 'resume', 'override', 'project', 'algorithm', 'identifier', 'root_dir']:
+                if k in ['reload', 'resume', 'override', 'project', 'algorithm', 'identifier', 'logs_path']:
                     continue
                 setattr(args, k, v)
 
@@ -410,7 +421,7 @@ class Experiment(object):
 
             checkpoints = list(self.checkpoints_dir.iterdir())
             checkpoints = [c for c in checkpoints if str(c).split('_')[-1].isnumeric()]
-            checkpoints_int = [int(str(c).split('_')[-1]) for c in checkpoints]
+            checkpoints_int = [int(c.name.split('_')[-1]) for c in checkpoints]
 
             if not(len(checkpoints)):
                 logger.error(f"Directory of checkpoints does not contain valid checkpoint files")
@@ -632,9 +643,9 @@ class Experiment(object):
 
     def normalize_experiment_path(self, path, level=0):
 
-        normal_path = [self.hparams.root_dir, self.hparams.project_name,
+        normal_path = [self.hparams.logs_path, self.hparams.project_name,
                        self.hparams.algorithm, self.hparams.identifier]
-        pd = path_depth(self.hparams.root_dir)
+        pd = path_depth(self.hparams.logs_path)
 
         return os.path.join(*normal_path[:len(normal_path)-pd-level], path)
 
@@ -715,13 +726,13 @@ class Experiment(object):
         suffix = 'hparams' if hparams else 'logs'
 
         if add_all_of_same_project:
-            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name)
+            base_dir = os.path.join(self.hparams.logs_path, self.hparams.project_name)
             depth = 3
         elif add_all_of_same_algorithm:
-            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm)
+            base_dir = os.path.join(self.hparams.logs_path, self.hparams.project_name, self.hparams.algorithm)
             depth = 2
         elif add_all_of_same_identifier:
-            base_dir = os.path.join(self.hparams.root_dir, self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
+            base_dir = os.path.join(self.hparams.logs_path, self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
             depth = 1
         else:
             base_dir = self.experiment_dir
@@ -836,12 +847,12 @@ class Experiment(object):
             self.code_dir.copy(beam_path(self.source_dir), include=['.py', '.md', '.ipynb'])
 
         self.experiment_dir.joinpath('args.pkl').write(self.vars_args)
-        self.root_dir_is_built = True
+        self.logs_path_is_built = True
 
     def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False,
                   tensorboard_arguments=None, **kwargs):
 
-        if not self.load_model and not self.root_dir_is_built:
+        if not self.load_model and not self.logs_path_is_built:
             self.build_experiment_dir()
 
         try:
@@ -862,7 +873,7 @@ class Experiment(object):
                 for subset in alg.results_dir.iterdir():
 
                     res = list(subset.iterdir())
-                    res = pd.DataFrame({'name': res, 'index': [int(str(c).split('_')[-1]) for c in res]})
+                    res = pd.DataFrame({'name': res, 'index': [int(c.name.split('_')[-1]) for c in res]})
                     res = res.sort_values('index')
 
                     res = res.iloc['name']

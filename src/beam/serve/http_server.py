@@ -71,9 +71,9 @@ class HTTPServer(BeamServer):
         self.app.add_url_rule('/', view_func=self.get_info)
 
         if self.type == 'function':
-            self.app.add_url_rule('/call', view_func=self.call_function, methods=['POST'])
+            self.app.add_url_rule('/call/<client>', view_func=self.call_function, methods=['POST'])
         elif self.type == 'class':
-            self.app.add_url_rule('/alg/<method>', view_func=self.query_algorithm, methods=['POST'])
+            self.app.add_url_rule('/alg/<client>/<method>', view_func=self.query_algorithm, methods=['POST'])
             self.app.add_url_rule('/setvar/<name>', view_func=self.set_variable, methods=['POST'])
             self.app.add_url_rule('/getvar/<name>', view_func=self.get_variable)
         else:
@@ -116,19 +116,19 @@ class HTTPServer(BeamServer):
         d = super().get_info()
         return jsonify(d)
 
-    def call_function(self, *args, **kwargs):
+    def call_function(self, client, *args, **kwargs):
 
         args = request.files['args']
         kwargs = request.files['kwargs']
 
-        io_results = super().call_function(args, kwargs)
+        io_results = super().call_function(client, args, kwargs)
         return send_file(io_results, mimetype="text/plain")
 
-    def query_algorithm(self, method, *args, **kwargs):
+    def query_algorithm(self, method, client, *args, **kwargs):
 
         args = request.files['args']
         kwargs = request.files['kwargs']
-        io_results = super().query_algorithm(method, args, kwargs)
+        io_results = super().query_algorithm(method, client, args, kwargs)
 
         return send_file(io_results, mimetype="text/plain")
 

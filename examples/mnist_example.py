@@ -18,7 +18,7 @@ class MNISTDataset(UniversalDataset):
 
     def __init__(self, hparams):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         seed = hparams.split_dataset_seed
 
         super().__init__()
@@ -134,7 +134,7 @@ class MNISTAlgorithm(Algorithm):
 
 if __name__ == '__main__':
 
-     # in this example we do not set the root-dir and the path-to-data, so the defaults will be used
+     # in this example we do not set the logs-path and the data-path, so the defaults will be used
 
     args = beam_arguments(
         f"--project-name=mnist --algorithm=MNISTAlgorithm --amp  --device=0   ",

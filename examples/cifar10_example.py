@@ -125,7 +125,7 @@ class CIFAR10Dataset(UniversalDataset):
     def __init__(self, hparams):
         super().__init__()
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         padding = hparams.padding
 

@@ -503,3 +503,6 @@ class AutoBeam:
                         local_name = root_path.joinpath(sub_path, file_name)
                         relative_name = local_name.relative_to(root_path.parent)
                         tar.add(str(local_name), arcname=str(relative_name))
+
+    def dockerfile(self, base_image=None, service='https'):
+        return NotImplementedError

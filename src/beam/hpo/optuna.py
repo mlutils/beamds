@@ -91,12 +91,12 @@ class OptunaHPO(BeamHPO):
             direction = 'maximize'
 
         if storage is None:
-            if self.hpo_dir is not None:
+            if self.hpo_path is not None:
 
-                path = beam_path(self.hpo_dir)
+                path = beam_path(self.hpo_path)
                 path.joinpath('optuna').mkdir(parents=True, exist_ok=True)
 
-                storage = f'sqlite:///{self.hpo_dir}/{study_name}.db'
+                storage = f'sqlite:///{self.hpo_path}/{study_name}.db'
 
         if load_study:
             study = optuna.create_study(storage=storage, sampler=sampler, pruner=pruner, study_name=study_name)
@@ -143,12 +143,12 @@ class OptunaHPO(BeamHPO):
             study_name = f'{self.hparams.project_name}/{self.hparams.algorithm}/{self.hparams.identifier}'
 
         if storage is None:
-            if self.hpo_dir is not None:
+            if self.hpo_path is not None:
 
-                path = beam_path(self.hpo_dir)
+                path = beam_path(self.hpo_path)
                 path.joinpath('optuna').mkdir(parents=True, exist_ok=True)
 
-                # storage = f'sqlite:///{self.hpo_dir}/{study_name}.db'
+                # storage = f'sqlite:///{self.hpo_path}/{study_name}.db'
                 # logger.info(f"Using {storage} as storage to store the trials results")
 
         runner = partial(self.runner, suggest=suggest)

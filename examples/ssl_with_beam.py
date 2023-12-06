@@ -50,17 +50,17 @@ def my_default_configuration_by_cluster():
     ip = requests.get(r'http://jsonip.com').json()['ip']
 
     if '132.70.60' not in ip:
-        path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
-        root_dir = '/home/shared/data/results/'
+        data_path = '/home/shared/data/dataset/stl10/stl10_binary'
+        logs_path = '/home/shared/data/results/'
     else:
-        # path_to_data = '/home/dsi/elads/external/data/datasets/stl10/stl10_binary'
-        # root_dir = '/home/dsi/elads/external/data/resutls'
-        path_to_data = '/external/data/datasets/stl10/stl10_binary'
-        root_dir = '/external/data/resutls'
-        # path_to_data = '/localdata/elads/data/datasets/stl10/stl10_binary'
-        # root_dir = '/localdata/elads/data/resutls'
+        # data_path = '/home/dsi/elads/external/data/datasets/stl10/stl10_binary'
+        # logs_path = '/home/dsi/elads/external/data/resutls'
+        data_path = '/external/data/datasets/stl10/stl10_binary'
+        logs_path = '/external/data/resutls'
+        # data_path = '/localdata/elads/data/datasets/stl10/stl10_binary'
+        # logs_path = '/localdata/elads/data/resutls'
 
-    return path_to_data, root_dir
+    return data_path, logs_path
 
 
 class ImageNetAugmented(UniversalDataset):
@@ -112,7 +112,7 @@ class STL10Dataset(ImageNetAugmented):
 
     def __init__(self, hparams, subset='unlabeled'):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         seed = hparams.split_dataset_seed
 
         super().__init__(hparams)
@@ -219,11 +219,11 @@ def imagenet_ssl_parser():
 
     parser = get_ssl_parser()
 
-    path_to_data, root_dir = my_default_configuration_by_cluster()
+    data_path, logs_path = my_default_configuration_by_cluster()
     beam_boolean_feature(parser, "pretrained", False, "Whether to load pretrained weights", metavar='hparam')
 
-    parser.add_argument('--path-to-data', type=str, default=path_to_data, help='Path to the STL10 binaries')
-    parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
+    parser.add_argument('--data-path', type=str, default=data_path, help='Path to the STL10 binaries')
+    parser.add_argument('--logs-path', type=str, default=logs_path, help='Root directory for Logs and results')
     parser.add_argument('--n-ensembles', type=int, default=1, help='Size of the ensemble model')
     parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
     parser.add_argument('--model', type=str, default='resnet18', metavar='hparam',

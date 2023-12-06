@@ -386,7 +386,7 @@ class CovtypeDataset(UniversalDataset):
 
     def __init__(self, hparams):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         seed = hparams.seed
 
@@ -603,25 +603,25 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data/dataset/covtype'
-    root_dir = '/home/shared/data/results/covtype'
+    data_path = '/home/shared/data/dataset/covtype'
+    logs_path = '/home/shared/data/results/covtype'
 
     # hparams = beam_arguments(get_covtype_parser(),
-    #                       f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1",
+    #                       f"--project-name=covtype --logs-path={logs_path} --algorithm=CovtypeAlgorithm --device=1",
     #                       f" --no-half --lr-d=1e-3 --lr-s=1e-2 --batch-size=512",
     #                       "--n-epochs=100 --clip-gradient=0 --parallel=1 --accumulate=1",
     #                       "--momentum=0.9 --beta2=0.99", weight_factor=.0, scheduler_patience=16,
     #                       weight_decay=1e-5, label_smoothing=0.,
     #                       k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
-    #                       path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
+    #                       data_path=data_path, dropout=.0, activation='gelu', channels=256, n_rules=128,
     #                       n_layers=2, scheduler_factor=1 / math.sqrt(10))
 
     hparams = beam_arguments(get_covtype_parser(),
-                             f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=0 --no-half --lr-d=1e-3 --lr-s=.01 --batch-size=512",
+                             f"--project-name=covtype --logs-path={logs_path} --algorithm=CovtypeAlgorithm --device=0 --no-half --lr-d=1e-3 --lr-s=.01 --batch-size=512",
                              "--n-epochs=200 --clip-gradient=0 --parallel=1 --accumulate=1",
                              "--weight-decay=1e-5 --beta1=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
                              label_smoothing=.1, initial_mask=1,
-                             path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
+                             data_path=data_path, dropout=.0, activation='gelu', channels=256, n_rules=128,
                              n_layers=5, scheduler_factor=1 / math.sqrt(10))
 
     experiment = Experiment(hparams)

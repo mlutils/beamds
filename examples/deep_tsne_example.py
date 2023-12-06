@@ -59,7 +59,7 @@ class MNISTDataset(UniversalDataset):
 
     def __init__(self, hparams):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         seed = hparams.split_dataset_seed
 
         super().__init__()
@@ -243,12 +243,12 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data//dataset/mnist'
-    root_dir = '/home/shared/data/results'
+    data_path = '/home/shared/data//dataset/mnist'
+    logs_path = '/home/shared/data/results'
 
     args = beam_arguments(get_deep_tsne_parser(),
-        f"--project-name=deep_tsne_mnist --root-dir={root_dir} --algorithm=DeepTSNE --device=cpu",
-        "--epoch-length=200000 --n-epochs=10 --parallel=1", path_to_data=path_to_data)
+        f"--project-name=deep_tsne_mnist --logs-path={logs_path} --algorithm=DeepTSNE --device=cpu",
+        "--epoch-length=200000 --n-epochs=10 --parallel=1", data_path=data_path)
 
     experiment = Experiment(args)
     experiment.fit(DeepTSNE, MNISTDataset)

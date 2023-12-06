@@ -17,7 +17,7 @@ class BeamHPO(Processor):
                  alg=None, dataset=None, algorithm_generator=None, print_results=False, alg_args=None,
                  alg_kwargs=None, dataset_args=None, dataset_kwargs=None,
                  enable_tqdm=False, print_hyperparameters=True, verbose=True,
-                 track_results=False, track_algorithms=False, track_hparams=True, track_suggestion=True, hpo_dir=None,
+                 track_results=False, track_algorithms=False, track_hparams=True, track_suggestion=True, hpo_path=None,
                  **kwargs):
 
         super().__init__(*args, hparams=hparams, **kwargs)
@@ -44,23 +44,23 @@ class BeamHPO(Processor):
         if print_hyperparameters:
             print_beam_hyperparameters(hparams)
 
-        if hpo_dir is None:
-            if self.hparams.hpo_dir is not None:
+        if hpo_path is None:
+            if self.hparams.hpo_path is not None:
 
-                root_path = beam_path(self.hparams.hpo_dir)
-                hpo_dir = str(root_path.joinpath('hpo_results', self.hparams.project_name, self.hparams.algorithm,
+                root_path = beam_path(self.hparams.hpo_path)
+                hpo_path = str(root_path.joinpath('hpo', self.hparams.project_name, self.hparams.algorithm,
                                                  self.hparams.identifier))
 
             else:
-                root_path = beam_path(self.hparams.root_dir)
+                root_path = beam_path(self.hparams.logs_path)
                 if type(root_path) is BeamPath:
-                    hpo_dir = str(root_path.joinpath('hpo_results', self.hparams.project_name, self.hparams.algorithm,
+                    hpo_path = str(root_path.joinpath('hpo', self.hparams.project_name, self.hparams.algorithm,
                                                           self.hparams.identifier))
 
-        self.hpo_dir = hpo_dir
+        self.hpo_path = hpo_path
 
-        if hpo_dir is None:
-            logger.warning("No hpo_dir specified. HPO results will be saved only to each experiment directory.")
+        if hpo_path is None:
+            logger.warning("No hpo_path specified. HPO results will be saved only to each experiment directory.")
 
         self.experiments_tracker = []
         self.track_results = track_results
@@ -189,8 +189,8 @@ class BeamHPO(Processor):
         if len(tracker):
             self.experiments_tracker.append(tracker)
 
-        if self.hpo_dir is not None:
-            path = beam_path(self.hpo_dir).joinpath('tracker')
+        if self.hpo_path is not None:
+            path = beam_path(self.hpo_path).joinpath('tracker')
             path.mkdir(parents=True, exist_ok=True)
             path.joinpath('tracker.pkl').write(tracker)
 

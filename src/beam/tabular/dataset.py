@@ -11,7 +11,7 @@ class TabularDataset(UniversalDataset):
 
     def __init__(self, hparams):
 
-        bd = BeamData.from_path(hparams.path_to_data)
+        bd = BeamData.from_path(hparams.data_path)
         dataset = bd[hparams.dataset_name].cached()
         info = dataset['info'].values
         self.task_type = info['task_type']

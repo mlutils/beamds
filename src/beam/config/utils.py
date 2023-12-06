@@ -184,8 +184,8 @@ def print_beam_hyperparameters(args, debug_only=False):
     log_func(f"Beam experiment (Beam version: {__version__})")
     log_func(f"project: {args.project_name}, algorithm: {args.algorithm}, identifier: {args.identifier}")
     log_func(f"Global paths:")
-    log_func(f"path-to-data (where the dataset should be): {args.path_to_data}")
-    log_func(f"root-dir (where results are written to): {args.root_dir}")
+    log_func(f"data-path (where the dataset should be): {args.data_path}")
+    log_func(f"logs-path (where the experiments are log to): {args.logs_path}")
     log_func(f'Experiment objective: {args.objective} (set for schedulers, early stopping and best checkpoint store)')
     log_func('Experiment Hyperparameters (only non default values are listed):')
     log_func('----------------------------------------------------------'

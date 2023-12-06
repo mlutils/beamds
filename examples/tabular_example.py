@@ -74,21 +74,21 @@ def get_paths():
     ip = get_public_ip()
 
     if ip.startswith('199'):
-        path_to_data = '/mnt/data/dataset/tabular/'
+        data_path = '/mnt/data/dataset/tabular/'
         path_to_results = '/home/shared/results/'
     else:
-        path_to_data = '/home/dsi/elads/data/tabular/data/'
+        data_path = '/home/dsi/elads/data/tabular/data/'
         path_to_results = '/dsi/shared/elads/elads/data/tabular/results/'
 
-    return path_to_data, path_to_results
+    return data_path, path_to_results
 
 
 if __name__ == '__main__':
 
-    path_to_data, path_to_results = get_paths()
+    data_path, path_to_results = get_paths()
 
     # kwargs_base = dict(algorithm='catboost_default',
-    #                    path_to_data=path_to_data,
+    #                    data_path=data_path,
     #                    path_to_results=path_to_results,
     #                    copy_code=False, dynamic_masking=False,
     #                    tensorboard=True, stop_at=0.98, parallel=1, device=1, n_quantiles=6, catboost=True,
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     from src.beam.config import get_beam_llm
 
     kwargs_base = dict(algorithm='debug_reporter',
-                       path_to_data=path_to_data,
+                       data_path=data_path,
                        path_to_results=path_to_results,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=4,
                        stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)

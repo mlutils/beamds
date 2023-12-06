@@ -12,7 +12,7 @@ class MNISTHparams(BeamHparams):
 
 if __name__ == '__main__':
 
-    # in this example we do not set the root-dir and the path-to-data, so the defaults will be used
+    # in this example we do not set the logs-path and the data-path, so the defaults will be used
 
     hparams = MNISTHparams()
     experiment = Experiment(hparams)

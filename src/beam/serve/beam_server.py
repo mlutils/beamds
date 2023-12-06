@@ -233,10 +233,11 @@ class BeamServer(Processor):
         del self.response_queue[req_id]
         return result
 
-    def call_function(self, args, kwargs):
+    def call_function(self, client, args, kwargs):
 
-        args = self.load_function(args)
-        kwargs = self.load_function(kwargs)
+        if client == 'beam':
+            args = self.load_function(args)
+            kwargs = self.load_function(kwargs)
 
         if '__call__' in self.batch:
             results = self.batched_query_algorithm('__call__', args, kwargs)
@@ -249,10 +250,11 @@ class BeamServer(Processor):
 
         return io_results
 
-    def query_algorithm(self, method, args, kwargs):
+    def query_algorithm(self, method, client, args, kwargs):
 
-        args = self.load_function(args)
-        kwargs = self.load_function(kwargs)
+        if client == 'beam':
+            args = self.load_function(args)
+            kwargs = self.load_function(kwargs)
 
         if method in self.batch:
             results = self.batched_query_algorithm(method, args, kwargs)

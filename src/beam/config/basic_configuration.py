@@ -46,16 +46,16 @@ def basic_beam_parser():
     parser.add_argument('--mp-port', type=str, default='random', help='Port to be used for multiprocessing')
     parser.add_argument('--beam-llm', type=str, default=None, help='URI of the LLM service')
 
-    parser.add_argument('--root-dir', type=str,
-                        default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'results'),
+    parser.add_argument('--logs-path', type=str,
+                        default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'experiments'),
                         help='Root directory for Logs and results')
 
-    parser.add_argument('--hpo-dir', type=str,
-                        default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'hpo_results'),
+    parser.add_argument('--hpo-path', type=str,
+                        default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'hpo'),
                         help='Root directory for Logs and results of Hyperparameter optimization. '
                              'Must be a file system path')
 
-    parser.add_argument('--path-to-data', type=str,
+    parser.add_argument('--data-path', type=str,
                         default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'data'),
                         help='Where the dataset is located')
 
@@ -63,6 +63,8 @@ def basic_beam_parser():
     parser.add_argument('--resume', type=int, default=-1,
                         help='Resume experiment number, set -1 for last experiment: active when reload=True')
     boolean_feature(parser, "override", False, "Override last experiment: active when reload=False")
+    parser.add_argument('--reload-checkpoint', type=str, default='best',
+                        help='Which checkpoint to reload [best|last|<epoch>]')
 
     parser.add_argument('--cpu-workers', type=int, default=0, help='How many CPUs will be used for the data loading')
     parser.add_argument('--data-fetch-timeout', type=float, default=0., help='Timeout for the dataloader fetching. '

@@ -52,7 +52,7 @@ add_beam_to_path()
 
 def build_hparams():
     from src.beam.tabular import TabularHparams
-    hparams = TabularHparams(path_to_data='xxxxx')
+    hparams = TabularHparams(data_path='xxxxx')
 
     print(hparams.__dict__)
     print(hparams)
@@ -87,8 +87,8 @@ def write_bundle_tabular(path):
     from src.beam.tabular import TabularTransformer, TabularHparams, DeepTabularAlg
 
     kwargs_base = dict(algorithm='debug_reporter',
-                       # path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-                       path_to_data='/home/dsi/elads/data/tabular/data/',
+                       # data_path='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+                       data_path='/home/dsi/elads/data/tabular/data/',
                        path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=2,
                        stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
