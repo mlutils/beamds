@@ -1,7 +1,7 @@
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, PeftModel
 
 from ..core import Algorithm
-from ..path import local_copy, beam_path
+from ..path import local_copy, in_memory_storage
 from transformers import Trainer, LlamaForCausalLM
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 import transformers
@@ -11,12 +11,40 @@ class FineTuneLLM(Algorithm):
 
     def __init__(self, hparams, **kwargs):
 
-        model_config = AutoConfig.from_pretrained(hparams.model, cache_dir=hparams.hf_cache_dir)
-        # architecture = getattr(transformers, model_config.architectures[0])
+        networks = None
+        config = None
+        if hparams.get('reload_path', None) is None:
+            config = self.load_configuration(hparams)
+            model = self.load_lora_model(hparams, config=config)
+            networks = {'llm': model}
 
-        model = AutoModelForCausalLM.from_pretrained(hparams.model, config=model_config,
-                                                     load_in_8bit=hparams.load_in_8bit)
-        self.tokenizer = AutoTokenizer.from_pretrained(hparams.model, config=model_config)
+        self.tokenizer = self.load_tokenizer(hparams, config=config)
+        super().__init__(hparams, networks=networks, **kwargs)
+
+    @staticmethod
+    def load_configuration(hparams):
+        return AutoConfig.from_pretrained(hparams.model, cache_dir=hparams.hf_cache_dir)
+
+    @staticmethod
+    def load_tokenizer(hparams, config=None):
+        if config is None:
+            config = FineTuneLLM.load_configuration(hparams)
+        return AutoTokenizer.from_pretrained(hparams.model, config=config)
+
+    @staticmethod
+    def load_model(hparams, config=None):
+
+        if config is None:
+            config = FineTuneLLM.load_configuration(hparams)
+
+        model = AutoModelForCausalLM.from_pretrained(hparams.model, config=config, load_in_8bit=hparams.load_in_8bit)
+        return model
+
+    @staticmethod
+    def load_lora_model(hparams, config=None, model=None):
+
+        if model is None:
+            model = FineTuneLLM.load_model(hparams, config=config)
 
         lora_config = LoraConfig(r=hparams.lora_r, lora_alpha=hparams.lora_alpha,
                                  target_modules=hparams.target_modules, lora_dropout=hparams.lora_dropout,
@@ -26,10 +54,7 @@ class FineTuneLLM(Algorithm):
                                  task_type="CAUSAL_LM")
 
         model = get_peft_model(model, lora_config)
-        super().__init__(hparams, networks={'llm': model}, **kwargs)
-
-        # # self.llm = get_peft_model(model, lora_config)
-        # super().__init__(hparams, **kwargs)
+        return model
 
     def train_iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
         net = self.networks['llm']
@@ -41,14 +66,14 @@ class FineTuneLLM(Algorithm):
                         processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,
                         hparams=True, aux=None, pickle_model=False):
 
-        tmp_path = beam_path('io:///')
-        with local_copy(tmp_path, as_beam_path=False) as local_path:
+        in_memory_path = in_memory_storage(mode='file')
+        with local_copy(in_memory_path, as_beam_path=False) as local_path:
             self.networks['llm'].save_pretrained(local_path)
 
         if networks:
             if aux is None:
                 aux = {}
-            aux['lora'] = tmp_path.data
+            aux['lora'] = in_memory_path.data
 
         return super().save_checkpoint(path=path, networks=False, optimizers=optimizers, schedulers=schedulers,
                         processors=processors, scaler=scaler, scalers=scalers, swa_schedulers=swa_schedulers, swa_networks=swa_networks,
@@ -62,8 +87,11 @@ class FineTuneLLM(Algorithm):
                         processors=processors, scaler=scaler, scalers=scalers, swa_schedulers=swa_schedulers, swa_networks=swa_networks,
                         hparams=hparams)
 
-        tmp_path = beam_path('io:///', data=aux.pop('lora'))
-        with local_copy(tmp_path, as_beam_path=False) as local_path:
-            self.networks['llm'].load_pretrained(local_path)
+        in_memory_path = in_memory_storage(mode='file', data=aux.pop('lora'))
+        with local_copy(in_memory_path, as_beam_path=False) as local_path:
+            model = self.load_model(self.hparams)
+            model = PeftModel.from_pretrained(model, local_path, is_trainable=True)
+            self.add_network(model, 'llm')
+            # self.networks['llm'].from_pretrained(local_path)
 
         return aux

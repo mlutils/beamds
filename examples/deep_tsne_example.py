@@ -248,7 +248,7 @@ if __name__ == '__main__':
 
     args = beam_arguments(get_deep_tsne_parser(),
         f"--project-name=deep_tsne_mnist --logs-path={logs_path} --algorithm=DeepTSNE --device=cpu",
-        "--epoch-length=200000 --n-epochs=10 --parallel=1", data_path=data_path)
+        "--epoch-length=200000 --n-epochs=10 --n-gpus=1", data_path=data_path)
 
     experiment = Experiment(args)
     experiment.fit(DeepTSNE, MNISTDataset)

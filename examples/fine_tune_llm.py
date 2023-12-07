@@ -6,9 +6,14 @@ from src.beam import Experiment
 if __name__ == '__main__':
 
     dataset_name = 'iamtarun/python_code_instructions_18k_alpaca'
+    # hparams = FTLLMHparams(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir='/mnt/data/models',
+    #                        device=0, algorithm=dataset_name.replace('/', '-'), batch_size=6,
+    #                        accelerate=True, device_placement=True, dataset=dataset_name, reload=False, resume=-1,
+    #                        n_gpus=1)
     hparams = FTLLMHparams(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir='/mnt/data/models',
-                           device=1, algorithm=dataset_name.replace('/', '-'),
-                           accelerate=True, dataset=dataset_name, reload=False, resume=0)
+                           device=0, algorithm=dataset_name.replace('/', '-'), batch_size=6,
+                           accelerate=True, device_placement=True, dataset=dataset_name, reload=False, resume=-1,
+                           n_gpus=3)
     experiment = Experiment(hparams)
 
     # dataset = FineTuneHFDataset(hparams)

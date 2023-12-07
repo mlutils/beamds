@@ -91,14 +91,14 @@ if __name__ == '__main__':
     #                    data_path=data_path,
     #                    logs_path=logs_path,
     #                    copy_code=False, dynamic_masking=False,
-    #                    tensorboard=True, stop_at=0.98, parallel=1, device=1, n_quantiles=6, catboost=True,
+    #                    tensorboard=True, stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, catboost=True,
     #                    rulenet=False)
 
     from src.beam.config import get_beam_llm
 
     kwargs_base = dict(algorithm='debug_reporter', data_path=data_path, logs_path=logs_path,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=4,
-                       stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
+                       stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 

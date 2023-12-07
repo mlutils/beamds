@@ -196,20 +196,6 @@ def hash_tensor(x, fast=False, coarse=False):
     return int(hashlib.sha1(x).hexdigest(), 16)
 
 
-def setup_distributed(rank, world_size, port='7463', backend='gloo'):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = port
-
-    # initialize the process group
-    import torch.distributed as dist
-    dist.init_process_group(backend, rank=rank, world_size=world_size)
-
-
-def cleanup(rank, world_size):
-    import torch.distributed as dist
-    dist.destroy_process_group()
-
-
 def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
     '''
     :param seed: set -1 to avoid change, set 0 to randomly select seed, set [1, 2**31) to get new seed

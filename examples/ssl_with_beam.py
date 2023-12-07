@@ -240,7 +240,7 @@ if __name__ == '__main__':
     hparams = beam_arguments(imagenet_ssl_parser(),
                          f"--project-name=beam_ssl --epoch-length=200 --reduction=mean --no-scale-epoch-by-batch-size",
                          f" --identifier=parallel_alternatives",
-                         "--algorithm=BeamVICReg --parallel=4 --amp --model=swin_s --no-pretrained --layer=avgpool ",
+                         "--algorithm=BeamVICReg --n-gpus=4 --amp --model=swin_s --no-pretrained --layer=avgpool ",
                          f"--batch-size=96 --n-epochs=20000 --no-broadcast-buffers --lr-d=1e-3 --weight-decay=1e-5")
 
     experiment = Experiment(hparams)

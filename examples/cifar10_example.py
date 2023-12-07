@@ -292,7 +292,7 @@ if __name__ == '__main__':
 
     args = beam_arguments(
         f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
-        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --no-deterministic",
+        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --n-gpus=1 --accumulate=1 --no-deterministic",
         "--weight-decay=.00256 --momentum=0.9 --beta2=0.999 --temperature=1 --objective=acc --scheduler=one_cycle",
         dropout=.0, activation='gelu', channels=512, label_smoothing=.2, padding=4, scale_down=.7,
         scale_up=1.4, ratio_down=.7, ratio_up=1.4)

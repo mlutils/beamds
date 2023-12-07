@@ -1,6 +1,6 @@
 from ..utils import (collate_chunks, recursive_chunks, iter_container,
                         build_container_from_tupled_keys, is_empty, )
-from ..parallel import BeamParallel, BeamTask
+from ..n_gpus import BeamParallel, BeamTask
 from ..data import BeamData
 from ..path import beam_path
 from ..utils import tqdm_beam as tqdm

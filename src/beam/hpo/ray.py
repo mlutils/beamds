@@ -75,14 +75,14 @@ class RayHPO(BeamHPO):
         ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
                  include_dashboard=include_dashboard, dashboard_host="0.0.0.0")
 
-    def runner(self, config, parallel=None):
+    def runner(self, config, n_gpus=None):
 
         hparams = self.generate_hparams(config)
 
         # set device to 0 (ray exposes only a single device
         hparams.set('device', 'cuda')
-        if parallel is not None:
-            hparams.set('parallel', parallel)
+        if n_gpus is not None:
+            hparams.set('n_gpus', n_gpus)
 
         experiment = Experiment(hparams, hpo='tune', print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
@@ -123,13 +123,13 @@ class RayHPO(BeamHPO):
             if timeout > 0:
                 stop = TimeoutStopper(timeout)
 
-        parallel = None
+        n_gpus = None
         if 'resources_per_trial' in kwargs and 'gpu' in kwargs['resources_per_trial']:
             gpus = kwargs['resources_per_trial']['gpu']
             if 'cpu' not in self.device.type:
-                parallel = gpus
+                n_gpus = gpus
 
-        runner_tune = partial(self.runner, parallel=parallel)
+        runner_tune = partial(self.runner, n_gpus=n_gpus)
 
         logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {local_dir}")
 

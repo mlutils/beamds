@@ -183,23 +183,27 @@ class Algorithm(Processor):
         if self.get_hparam('accelerate') is None or not self.accelerator.device_placement:
             self._device = beam_device(device)
 
-    @property
+    @lazy_property
     def deepspeed_plugin(self):
-        return None
+        deepspeed_plugin = None
+        if self.get_hparam('n_gpus') > 1:
+            from accelerate.utils import DeepSpeedPlugin
+            deepspeed_plugin = DeepSpeedPlugin()
+        return deepspeed_plugin
 
-    @property
+    @lazy_property
     def fsdp_plugin(self):
         return None
 
-    @property
+    @lazy_property
     def megatron_lm_plugin(self):
         return None
 
-    @property
+    @lazy_property
     def accelerate_kwargs_handlers(self):
         return None
 
-    @property
+    @lazy_property
     def gradient_accumulation_plugin(self):
         return None
 
@@ -451,8 +455,7 @@ class Algorithm(Processor):
                         self.optimizers.pop(k)
 
                 networks[k] = self.register_network(networks[k], name=k)
-                if self.accelerator is not None:
-                    networks[k] = self.accelerator.prepare_model(networks[k])
+
                 self.networks[k] = networks[k]
                 self.inference_networks[k] = self.networks[k]
 
@@ -947,6 +950,12 @@ class Algorithm(Processor):
         if self.device is not None and (self.accelerator is None or not self.accelerator.device_placement):
             net = net.to(self.device, dtype=self.model_dtype)
 
+        if self.accelerator is not None:
+            if self.accelerator.device_placement:
+                # let accelerate handle the device placement but provide accelerator with the correct dtype
+                net = net.to('cpu', dtype=self.model_dtype)
+            net = self.accelerator.prepare_model(net)
+
         if self.experiment is not None and self.ddp:
 
             if self.is_cuda:
@@ -1040,9 +1049,14 @@ class Algorithm(Processor):
         for i, (ind, label, sample) in dataloader:
             if max_iterations is not None and i >= max_iterations:
                 break
-            sample = to_device(sample, self.device, half=self.half)
-            label = to_device(label, self.device, half=False)
+            sample, label = self.to_device(sample, label)
             yield i, DataBatch(index=ind, label=label, data=sample)
+
+    def to_device(self, *args):
+        if self.accelerator is None or not self.accelerator.device_placement:
+            return to_device(args, self.device, half=self.half)
+        device = 'cuda' if self.is_cuda else 'cpu'
+        return to_device(args, device, half=self.half)
 
     def finite_data_generator(self, subset, length):
 
@@ -1053,8 +1067,7 @@ class Algorithm(Processor):
 
             for k, (ind, label, sample) in samples.items():
 
-                sample = to_device(sample, self.device, half=self.half)
-                label = to_device(label, self.device, half=False)
+                sample, label = self.to_device(sample, label)
                 samples[k] = DataBatch(index=ind, label=label, data=sample)
 
             if len(samples) == 1:
@@ -1534,7 +1547,7 @@ class Algorithm(Processor):
 
             return self
 
-        if self.get_hparam('parallel') == 1:
+        if self.get_hparam('n_gpus') == 1:
             algorithm_generator = algorithm_generator_single
         else:
             raise NotImplementedError("To continue training in parallel mode: please re-run experiment() with "

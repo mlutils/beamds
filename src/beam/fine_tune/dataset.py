@@ -15,7 +15,7 @@ class FineTuneHFDataset(UniversalDataset):
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        super().__init__(hparams, target_device=hparams.device)
+        super().__init__(hparams)
         dataset = datasets.load_dataset(hparams.dataset)
 
         self.truncation = False

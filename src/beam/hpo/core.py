@@ -28,7 +28,7 @@ class BeamHPO(Processor):
         self.hparams.set('print_results', print_results, model=False)
         self.hparams.set('visualize_weights', False, model=False)
         self.hparams.set('enable_tqdm', enable_tqdm, model=False)
-        self.hparams.set('parallel', 0, model=False)
+        self.hparams.set('n_gpus', 0, model=False)
 
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.hparams.set('identifier', f'{self.hparams.identifier}_hp_optimization_{exptime}', model=False)

@@ -107,3 +107,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
         return SFTPPath(path, hostname=hostname, username=username, port=port, private_key=private_key, **kwargs)
     else:
         raise NotImplementedError
+
+
+def in_memory_storage(mode=None, data=None):
+    if mode == 'file':
+        return beam_path('io:///', data=data)
+    return beam_path('dict:///', data=data)

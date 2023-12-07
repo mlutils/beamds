@@ -49,7 +49,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         # only in training mode
         self.training = False
         self.statistics = None
-        self.target_device = target_device
+        self._target_device = target_device
         self.to_torch = to_torch
 
         if len(args) >= 1 and isinstance(args[0], argparse.Namespace):
@@ -77,6 +77,19 @@ class UniversalDataset(torch.utils.data.Dataset):
                 self.data_type = 'dict'
             else:
                 self.data = None
+
+    @lazy_property
+    def target_device(self):
+        if self._target_device is not None:
+            return self._target_device
+
+        if hasattr(self, 'hparams'):
+            if self.hparams.get('accelerate', False) and self.hparams.get('device_placement', False):
+                return None
+            if self.hparams.get('device', None) is not None and self.hparams.get('n_gpus', 1) <= 1:
+                return beam_device(self.hparams.get('device', None))
+
+        return None
 
     def set_index(self, index):
 

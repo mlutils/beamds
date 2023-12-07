@@ -91,7 +91,7 @@ def write_bundle_tabular(path):
                        data_path='/home/dsi/elads/data/tabular/data/',
                        logs_path='/dsi/shared/elads/elads/data/tabular/results/',
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=2,
-                       stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
+                       stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 
@@ -139,7 +139,7 @@ def write_bundle_cifar(path):
 
     args = beam_arguments(
         f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
-        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --no-deterministic",
+        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --n-gpus=1 --accumulate=1 --no-deterministic",
         "--weight-decay=.00256 --momentum=0.9 --beta2=0.999 --temperature=1 --objective=acc --scheduler=one_cycle",
         dropout=.0, activation='gelu', channels=512, label_smoothing=.2, padding=4, scale_down=.7,
         scale_up=1.4, ratio_down=.7, ratio_up=1.4)

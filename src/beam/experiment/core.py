@@ -17,7 +17,7 @@ import atexit
 import traceback
 
 
-from ..utils import (setup_distributed, cleanup, set_seed, find_free_port, check_if_port_is_available, is_notebook,
+from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_notebook,
                     find_port, as_numpy, lazy_property, include_patterns, check_type, beam_device)
 from ..path import beam_path, BeamPath, beam_key
 from ..logger import beam_logger as logger
@@ -25,6 +25,43 @@ from ..config import get_beam_llm, print_beam_hyperparameters, BeamHparams
 
 
 done = mp.Event()
+
+
+def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='ddp'):
+
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = port
+
+    # initialize the process group
+    import torch.distributed as dist
+    logger.info(f"Initializing distributed training with backend={backend} and framework={framework}")
+    if framework == 'ddp':
+        dist.init_process_group(backend, rank=rank, world_size=world_size)
+    elif framework == 'deepspeed':
+        import deepspeed
+        deepspeed.init_distributed(dist_backend=backend)
+    elif framework == 'horovbod':
+        import horovod.torch as hvd
+        hvd.init()
+    else:
+        raise ValueError(f"Unknown distributed framework: {framework}")
+
+
+def cleanup(rank, world_size, framework='ddp'):
+
+    if framework == 'ddp':
+        import torch.distributed as dist
+        dist.destroy_process_group()
+    elif framework == 'deepspeed':
+        pass
+        # import deepspeed
+        # deepspeed.destroy()
+    elif framework == 'horovbod':
+        import horovod.torch as hvd
+        hvd.shutdown()
+    else:
+        raise ValueError(f"Unknown distributed framework: {framework}")
+
 
 
 def gen_hparams_string(experiment_path):
@@ -147,7 +184,8 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
         if backend is None:
             backend = 'nccl' if experiment.hparams.device.type == 'cuda' else 'gloo'
 
-        setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend)
+        setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend,
+                          framework=experiment.framework)
 
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.hparams.seed, constant=rank+1, increment=False, deterministic=experiment.hparams.deterministic)
@@ -156,7 +194,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
 
     if world_size > 1:
 
-        cleanup(rank, world_size)
+        cleanup(rank, world_size, experiment.framework)
         results_queue.put({'rank': rank, 'results': res})
 
         done.wait()
@@ -300,7 +338,7 @@ class Experiment(object):
         self.writer = None
 
         self.rank = 0
-        self.world_size = args.parallel
+        self.world_size = args.n_gpus
 
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
@@ -349,7 +387,7 @@ class Experiment(object):
             if self.hparams.device_list is not None:
                 self.hparams.device_list = [beam_device(di) for di in self.hparams.device_list]
             else:
-                self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.parallel)]
+                self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.n_gpus)]
 
         self.comet_exp = None
         self.comet_writer = None
@@ -801,6 +839,12 @@ class Experiment(object):
 
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
+
+    @property
+    def framework(self):
+        if self.hparams.accelerate:
+            return 'deepspeed'
+        return 'ddp'
 
     def build_experiment_dir(self):
 

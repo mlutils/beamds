@@ -767,7 +767,7 @@ if __name__ == '__main__':
 
     hparams = beam_arguments(get_covtype_parser(),
                              f"--project-name=covtype_ssl --logs-path={logs_path} --algorithm=BeamVICReg --device=2",
-                             "--batch-size=512 --n-epochs=100 --parallel=1 --momentum=0.9 --beta2=0.99",
+                             "--batch-size=512 --n-epochs=100 --n-gpus=1 --momentum=0.9 --beta2=0.99",
                              weight_factor=.0, weight_decay=1e-5, data_path=data_path, dropout=.0, channels=256,
                              n_layers=2)
 

@@ -1141,7 +1141,7 @@ class IOPath(DictBasedPath):
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
-            self.file_object = BytesIO(self._obj())
+            self.file_object = BytesIO(self._obj)
         elif self.mode in ['wb', 'w']:
             self.file_object = BytesIO() if 'b' in self.mode else StringIO()
         else:

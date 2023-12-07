@@ -47,14 +47,13 @@ class LLMTask(Processor):
 
 
 @dataclass
-class LLMToolParameter:
+class LLMToolProperty:
     # a class that holds an OpenAI tool parameter object
 
     name: str
     type: str
     description: str
-    default: str
-    choices: list = None
+    default = None
     required: bool = False
 
     def __str__(self):
@@ -66,28 +65,37 @@ class LLMToolParameter:
                               'type': self.type,
                               'description': self.description,
                               'default': self.default,
-                              'choices': self.choices,
                               'required': self.required}
         return obj
+
+    @property
+    def attributes(self):
+        return {'type': self.type, 'description': self.description, 'default': self.default}
 
 
 class LLMTool:
     # a class that holds an OpenAI tool object
 
-    def __init__(self, name=None, type='function', description=None, func=None, required=None, **kwargs):
+    def __init__(self, name=None, type='function', description=None, func=None, **properties):
 
         self.name = name or 'func'
         self.type = type
         self.description = description or 'See properties for more information.'
         self.func = func
-        self.parameters = kwargs
-        self.required = required or []
+        self.properties = properties
+
+    @property
+    def required(self):
+        return [k for k, v in self.properties.items() if v.required]
 
     def __str__(self):
-        message = json.dumps({'type': self.type,
-                              self.type: {'name': self.name,
-                                          'description': self.description,
-                                          'parameters': self.parameters,
-                                          'required': self.required}}, indent=4)
+        message = json.dumps(repr(self), indent=4)
         return message
+
+    def __repr__(self):
+        return {'type': self.type, self.type: {'name': self.name, 'description': self.description,
+                                               'parameters': {'type': 'object',
+                                                              'properties': {p: v.attributes
+                                                                             for p, v in self.properties.items()},
+                                                              'required': self.required}}}
 

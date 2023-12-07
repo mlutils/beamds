@@ -609,7 +609,7 @@ if __name__ == '__main__':
     # hparams = beam_arguments(get_covtype_parser(),
     #                       f"--project-name=covtype --logs-path={logs_path} --algorithm=CovtypeAlgorithm --device=1",
     #                       f" --no-half --lr-d=1e-3 --lr-s=1e-2 --batch-size=512",
-    #                       "--n-epochs=100 --clip-gradient=0 --parallel=1 --accumulate=1",
+    #                       "--n-epochs=100 --clip-gradient=0 --n-gpus=1 --accumulate=1",
     #                       "--momentum=0.9 --beta2=0.99", weight_factor=.0, scheduler_patience=16,
     #                       weight_decay=1e-5, label_smoothing=0.,
     #                       k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
@@ -618,7 +618,7 @@ if __name__ == '__main__':
 
     hparams = beam_arguments(get_covtype_parser(),
                              f"--project-name=covtype --logs-path={logs_path} --algorithm=CovtypeAlgorithm --device=0 --no-half --lr-d=1e-3 --lr-s=.01 --batch-size=512",
-                             "--n-epochs=200 --clip-gradient=0 --parallel=1 --accumulate=1",
+                             "--n-epochs=200 --clip-gradient=0 --n-gpus=1 --accumulate=1",
                              "--weight-decay=1e-5 --beta1=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
                              label_smoothing=.1, initial_mask=1,
                              data_path=data_path, dropout=.0, activation='gelu', channels=256, n_rules=128,

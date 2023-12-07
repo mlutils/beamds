@@ -10,7 +10,7 @@ if __name__ == '__main__':
 
     kwargs_base = dict(algorithm='hpo_debug', data_path=data_path, logs_path=logs_path,
                        copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=4,
-                       tensorboard=False, stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
+                       tensorboard=False, stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 
