@@ -5,7 +5,7 @@ from argparse import Namespace
 from dataclasses import dataclass
 from .utils import beam_arguments, to_dict
 from ..path import beam_path
-from .basic_configuration import basic_beam_parser, boolean_feature
+from .basic_configuration import basic_beam_parser, empty_beam_parser, boolean_feature
 
 
 @dataclass
@@ -21,6 +21,7 @@ class BeamParam:
 class BeamHparams(Namespace):
     parameters = []
     defaults = {}
+    use_basic_parser = True
 
     def __init__(self, *args, hparams=None, model_set=None, tune_set=None, return_defaults=False, **kwargs):
 
@@ -30,7 +31,12 @@ class BeamHparams(Namespace):
             tune_set = set()
 
         if hparams is None:
-            parser = basic_beam_parser()
+
+            t = type(self)
+            if t.use_basic_parser:
+                parser = basic_beam_parser()
+            else:
+                parser = empty_beam_parser()
 
             defaults = None
             parameters = None
@@ -39,8 +45,8 @@ class BeamHparams(Namespace):
 
             hparam_types = []
             for ti in types:
-                if ti is argparse.Namespace:
-                    break
+                if not issubclass(ti, argparse.Namespace):
+                    continue
                 hparam_types.append(ti)
 
             for ti in hparam_types[::-1]:

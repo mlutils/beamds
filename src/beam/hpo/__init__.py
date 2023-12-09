@@ -1,2 +1,3 @@
-from .ray import RayHPO
-from .optuna import OptunaHPO
+
+from .resource import beam_hpo
+from .params import HPOConfig

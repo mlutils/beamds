@@ -1,5 +1,5 @@
 from examples.tabular_example import get_paths
-from src.beam.hpo import RayHPO, OptunaHPO
+from src.beam.hpo import beam_hpo, HPOConfig
 from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
 from src.beam import beam_logger as logger
 
@@ -10,7 +10,7 @@ if __name__ == '__main__':
 
     kwargs_base = dict(algorithm='hpo_debug', data_path=data_path, logs_path=logs_path,
                        copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=4,
-                       tensorboard=False, stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, label_smoothing=.2)
+                       tensorboard=False, stop_at=0.98, n_gpus=1, device=0, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 
@@ -40,8 +40,11 @@ if __name__ == '__main__':
         # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
         # alg = DeepTabularAlg(hparams, networks=net)
 
-        study = RayHPO(hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
-                       alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+        hpo_config = HPOConfig(n_trials=1000, timeout=60 * 60 * 24, n_jobs=1)
+
+        study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
+                            hpo_config=hpo_config,
+                        alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
                                                   'cat_mask': dataset.cat_mask, }})
 
         study.uniform('lr-dense', 1e-4, 1e-2)
@@ -62,6 +65,7 @@ if __name__ == '__main__':
         study.uniform('transformer_dropout', 0., 0.4)
         study.uniform('label_smoothing', 0., 0.4)
 
-        study.run(n_trials=1000, timeout=60 * 60 * 24, n_jobs=1)
+        study.run(runtime_env={"working_dir": "/home/mlspeech/elads/projects/beamds/",
+                               'excludes': ['/home/mlspeech/elads/projects/beamds/notebooks']})
 
         logger.info(f"Done HPO for dataset: {k}")

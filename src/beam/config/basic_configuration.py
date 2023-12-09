@@ -16,6 +16,13 @@ def boolean_feature(parser, feature, default=False, help='', metavar=None):
     parser.set_defaults(**{featurename: default})
 
 
+def empty_beam_parser():
+
+    parser = argparse.ArgumentParser(description='List of available arguments for this project',
+                                     conflict_handler='resolve')
+    return parser
+
+
 def basic_beam_parser():
     # add a general argument parser, arguments may be overloaded
     parser = argparse.ArgumentParser(description='List of available arguments for this project',

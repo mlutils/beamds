@@ -63,7 +63,6 @@ def cleanup(rank, world_size, framework='ddp'):
         raise ValueError(f"Unknown distributed framework: {framework}")
 
 
-
 def gen_hparams_string(experiment_path):
     experiment_path = beam_path(experiment_path)
     tensorboard_hparams = BeamHparams.from_path(experiment_path.joinpath('args.pkl'))

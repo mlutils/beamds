@@ -77,7 +77,7 @@ def get_paths():
         data_path = '/mnt/data/dataset/tabular/'
         logs_path = '/home/shared/results/'
     else:
-        data_path = '/home/dsi/elads/data/tabular/data/'
+        data_path = '/home/mlspeech/elads/data/tabular/data/'
         logs_path = '/dsi/shared/elads/elads/data/tabular/results/'
 
     return data_path, logs_path

@@ -1,5 +1,7 @@
 import copy
 import time
+
+from .params import HPOConfig
 from ..utils import find_port, check_type, is_notebook, beam_device
 from ..config import print_beam_hyperparameters
 from ..logger import beam_logger as logger
@@ -13,25 +15,27 @@ from .._version import __version__
 
 class BeamHPO(Processor):
 
-    def __init__(self, hparams, *args,
-                 alg=None, dataset=None, algorithm_generator=None, print_results=False, alg_args=None,
-                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None,
-                 enable_tqdm=False, print_hyperparameters=True, verbose=True,
-                 track_results=False, track_algorithms=False, track_hparams=True, track_suggestion=True, hpo_path=None,
-                 **kwargs):
+    def __init__(self, hparams, *args, hpo_config=None,
+                 alg=None, dataset=None, algorithm_generator=None, alg_args=None,
+                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, **kwargs):
 
-        super().__init__(*args, hparams=hparams, **kwargs)
+        if hpo_config is None:
+            hpo_config = HPOConfig(**kwargs)
+
+        super().__init__(*args, hparams=hpo_config)
         logger.info(f"Creating new study (Beam version: {__version__})")
 
-        self.hparams.set('reload', False, model=False)
-        self.hparams.set('override', False, model=False)
-        self.hparams.set('print_results', print_results, model=False)
-        self.hparams.set('visualize_weights', False, model=False)
-        self.hparams.set('enable_tqdm', enable_tqdm, model=False)
-        self.hparams.set('n_gpus', 0, model=False)
+        self.experiment_hparams = hparams
+
+        self.experiment_hparams.set('reload', False, model=False)
+        self.experiment_hparams.set('override', False, model=False)
+        self.experiment_hparams.set('print_results', self.hparams.get('print_results'), model=False)
+        self.experiment_hparams.set('visualize_weights', False, model=False)
+        self.experiment_hparams.set('enable_tqdm', self.hparams.get('enable_tqdm', False), model=False)
+        self.experiment_hparams.set('n_gpus', 0, model=False)
 
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.hparams.set('identifier', f'{self.hparams.identifier}_hp_optimization_{exptime}', model=False)
+        self.experiment_hparams.set('identifier', f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}', model=False)
 
         if algorithm_generator is None:
             self.ag = partial(beam_algorithm_generator, alg=alg, dataset=dataset,
@@ -39,36 +43,30 @@ class BeamHPO(Processor):
                               dataset_kwargs=dataset_kwargs)
         else:
             self.ag = algorithm_generator
-        self.device = beam_device(hparams.device)
+        self.device = beam_device(self.experiment_hparams.device)
 
-        if print_hyperparameters:
-            print_beam_hyperparameters(hparams)
+        if self.hparams.get('print_hyperparameters'):
+            print_beam_hyperparameters(self.experiment_hparams)
 
-        if hpo_path is None:
-            if self.hparams.hpo_path is not None:
+        hpo_path = self.hparams.get('hpo_path')
+        if hpo_path is not None:
 
-                root_path = beam_path(self.hparams.hpo_path)
-                hpo_path = str(root_path.joinpath('hpo', self.hparams.project_name, self.hparams.algorithm,
-                                                 self.hparams.identifier))
+            root_path = beam_path(hpo_path)
+            hpo_path = str(root_path.joinpath(self.experiment_hparams.project_name,
+                                              self.experiment_hparams.algorithm,
+                                              self.experiment_hparams.identifier))
 
-            else:
-                root_path = beam_path(self.hparams.logs_path)
-                if type(root_path) is BeamPath:
-                    hpo_path = str(root_path.joinpath('hpo', self.hparams.project_name, self.hparams.algorithm,
-                                                          self.hparams.identifier))
+        else:
+            logger.warning("No hpo_path specified. HPO results will be saved only to each experiment directory.")
+            root_path = beam_path(self.experiment_hparams.get('logs_path'))
+            if type(root_path) is BeamPath:
+                hpo_path = str(root_path.joinpath('hpo', self.experiment_hparams.project_name,
+                                                  self.experiment_hparams.algorithm,
+                                                  self.experiment_hparams.identifier))
 
         self.hpo_path = hpo_path
-
-        if hpo_path is None:
-            logger.warning("No hpo_path specified. HPO results will be saved only to each experiment directory.")
-
         self.experiments_tracker = []
-        self.track_results = track_results
-        self.track_algorithms = track_algorithms
-        self.track_hparams = track_hparams
-        self.track_suggestion = track_suggestion
         self.suggestions = {}
-        self.verbose = verbose
 
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}
@@ -174,16 +172,16 @@ class BeamHPO(Processor):
 
         tracker = {}
 
-        if algorithm is not None and self.track_algorithms:
+        if algorithm is not None and self.hparams.get('track_algorithms'):
             tracker['algorithm'] = algorithm
 
-        if results is not None and self.track_results:
+        if results is not None and self.hparams.get('track_results'):
             tracker['results'] = results
 
-        if hparams is not None and self.track_hparams:
+        if hparams is not None and self.hparams.get('track_hparams'):
             tracker['hparams'] = hparams
 
-        if suggestion is not None and self.track_suggestion:
+        if suggestion is not None and self.hparams.get('track_suggestion'):
             tracker['suggestion'] = suggestion
 
         if len(tracker):
@@ -196,8 +194,8 @@ class BeamHPO(Processor):
 
     def generate_hparams(self, config):
 
-        hparams = copy.deepcopy(self.hparams)
-        if self.verbose:
+        hparams = copy.deepcopy(self.experiment_hparams)
+        if self.experiment_hparams.get('print_hyperparameters'):
             logger.info('Next Hyperparameter suggestion:')
             for k, v in config.items():
                 logger.info(k + ': ' + str(v))

@@ -75,14 +75,13 @@ class RayHPO(BeamHPO):
         ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
                  include_dashboard=include_dashboard, dashboard_host="0.0.0.0")
 
-    def runner(self, config, n_gpus=None):
+    @staticmethod
+    def shutdown_ray():
+        ray.shutdown()
+
+    def runner(self, config):
 
         hparams = self.generate_hparams(config)
-
-        # set device to 0 (ray exposes only a single device
-        hparams.set('device', 'cuda')
-        if n_gpus is not None:
-            hparams.set('n_gpus', n_gpus)
 
         experiment = Experiment(hparams, hpo='tune', print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
@@ -97,44 +96,45 @@ class RayHPO(BeamHPO):
             else:
                 return results['objective']
 
-    def run(self, *args, config=None, timeout=0, runtime_env=None, dashboard_port=None,
-             get_port_from_beam_port_range=True, include_dashboard=True, local_dir=None, **kwargs):
+    def run(self, *args, runtime_env=None, **kwargs):
+
+        hparams = copy.deepcopy(self.hparams)
+        hparams.update(kwargs)
 
         search_space = self.get_suggestions()
 
-        if local_dir is None and self.hpo_path is not None:
-            path = beam_path(self.hpo_path)
-            local_dir = path.joinpath('tune')
-            local_dir.mkdir(parents=True, exist_ok=True)
+        self.shutdown_ray()
 
-        ray.shutdown()
-
-        dashboard_port = find_port(port=dashboard_port, get_port_from_beam_port_range=get_port_from_beam_port_range)
+        dashboard_port = find_port(port=self.hparams.get('dashboard_port'),
+                                   get_port_from_beam_port_range=self.hparams.get('get_port_from_beam_port_range'))
         if dashboard_port is None:
             return
 
         logger.info(f"Opening ray-dashboard on port: {dashboard_port}")
-        self.init_ray(runtime_env=runtime_env, dashboard_port=int(dashboard_port), include_dashboard=include_dashboard)
+        self.init_ray(runtime_env=runtime_env, dashboard_port=int(dashboard_port),
+                      include_dashboard=self.hparams.get('include_dashboard'))
 
         if 'stop' in kwargs:
             stop = kwargs['stop']
         else:
             stop = None
-            if timeout > 0:
-                stop = TimeoutStopper(timeout)
+            if hparams.get('ray-timeout') > 0:
+                stop = TimeoutStopper(hparams.get('ray-timeout'))
 
-        n_gpus = None
-        if 'resources_per_trial' in kwargs and 'gpu' in kwargs['resources_per_trial']:
-            gpus = kwargs['resources_per_trial']['gpu']
-            if 'cpu' not in self.device.type:
-                n_gpus = gpus
+        # fix gpu to device 0
+        if self.experiment_hparams.get('device') != 'cpu':
+            self.experiment_hparams.set('device', 'cuda')
 
-        runner_tune = partial(self.runner, n_gpus=n_gpus)
+        runner_tune = tune.with_resources(
+                tune.with_parameters(partial(self.runner)),
+                resources={"cpu": hparams.get('cpus-per-trial'),
+                           "gpu": hparams.get('gpus-per-trial')}
+            ),
 
         logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {local_dir}")
 
         if 'metric' not in kwargs.keys():
-            if 'objective' in self.hparams and self.hparams.objective is not None:
+            if 'objective' in hparams and self.hparams.objective is not None:
                 kwargs['metric'] = self.hparams.objective
             else:
                 kwargs['metric'] = 'objective'
@@ -144,11 +144,11 @@ class RayHPO(BeamHPO):
         if 'progress_reporter' not in kwargs.keys() and is_notebook():
             kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
 
-        run_config = RunConfig(stop=stop, local_dir=local_dir)
-
         kwargs['num_samples'] = kwargs.pop('n_trials', None)
         kwargs['max_concurrent_trials'] = kwargs.pop('n_jobs', None)
         tune_config = TuneConfig(**kwargs)
+
+        run_config = RunConfig(stop=stop)
 
         tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()
