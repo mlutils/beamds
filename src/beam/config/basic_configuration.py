@@ -110,11 +110,9 @@ def basic_beam_parser():
                     'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch'
                     'When False: epoch length corresponds to the number of forward passes in each epoch')
 
-    boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='tune/model')
     parser.add_argument('--model-dtype', type=str, default='float32', metavar='tune/model',
                         help='dtype, both for automatic mixed precision and accelerate. Supported dtypes: '
                              '[float32, float16, bfloat16]')
-    boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='tune/model')
     boolean_feature(parser, "scalene", False, "Profile the experiment with the Scalene python profiler")
     boolean_feature(parser, "safetensors", False, "Save tensors in safetensors format instead of "
                                                   "native torch")
@@ -294,11 +292,21 @@ def basic_beam_parser():
 
     # accelerate parameters
     # based on https://huggingface.co/docs/accelerate/v0.24.0/en/package_reference/accelerator#accelerate.Accelerator
-    boolean_feature(parser, "accelerate", False, "Whether to use accelerate package for training")
+
     boolean_feature(parser, "device-placement", False,
                     " Whether or not the accelerator should put objects on device")
     boolean_feature(parser, "split-batches", False,
                     "Whether or not the accelerator should split the batches "
                     "yielded by the dataloaders across the devices")
+
+    # boolean_feature(parser, "accelerate", False, "Whether to use accelerate package for training")
+    # boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='tune/model')
+    # boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='tune/model')
+
+    parser.add_argument('--parallel-backend', type=str, default='ddp',
+                        help='Chose between [ddp|deepspeed|horovord], currently only ddp is supported')
+
+    parser.add_argument('--training-framework', type=str, default='torch',
+                        help='Chose between [torch|amp|accelerate]')
 
     return parser

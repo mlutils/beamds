@@ -35,10 +35,13 @@ apt install -y unixodbc-dev
 apt install -y sqlite3
 apt install -y python3.10-venv
 
-pip install pykerberos
-
 # don't install libopenmpi as it messes up the pytorch geometric installation
 # libopenmpi-dev
+apt install -y libopenmpi-dev
+
+pip install pykerberos
+
+
 
 
 ## for hfds-fuse installation

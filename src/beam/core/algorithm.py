@@ -105,10 +105,6 @@ class Algorithm(Processor):
         return self.get_hparam('world_size')
 
     @lazy_property
-    def half(self):
-        return self.get_hparam('half')
-
-    @lazy_property
     def enable_tqdm(self):
         return self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
                                                               or not self.get_hparam('enable_tqdm')) else None
@@ -130,24 +126,70 @@ class Algorithm(Processor):
         return self.is_cuda
 
     @lazy_property
+    def half(self):
+
+        # maybe we should add bfloat16 + accelerate
+        if self.training_framework == 'torch' and self.model_dtype in [torch.float16, torch.bfloat16,
+                                                                       torch.complex32]:
+            return True
+
+        return False
+
+    @lazy_property
     def autocast_device(self):
         return 'cuda' if self.is_cuda else 'cpu'
 
     @lazy_property
-    def model_dtype(self):
-        model_dtype = self.get_hparam('model_dtype', default='float32')
-        model_mapping = {'float16': torch.float16, 'bfloat16': torch.bfloat16,
-                         'float32': torch.float32, 'complex32': torch.complex32, 'complex64': torch.complex64,}
+    def brain(self):
+        if self.model_dtype in [torch.bfloat16, 'bfloat16', 'bf16']:
+            return True
+        return False
 
+    @lazy_property
+    def model_dtype(self):
+
+        if self.training_framework == 'amp':
+            return None
+        model_dtype = self.get_hparam('model_dtype', default='float32')
         if not self.is_cuda and model_dtype == 'float16':
             logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
             model_dtype = 'bfloat16'
 
+        return model_dtype
+
+    @staticmethod
+    def amp_model_dtype(model_dtype):
+        model_mapping = {'float16': torch.float16, 'bfloat16': torch.bfloat16,
+                         'float32': torch.float32, 'complex32': torch.complex32, 'complex64': torch.complex64, }
+        return model_mapping[model_dtype]
+
+    @staticmethod
+    def accelerate_model_dtype(model_dtype):
+        model_mapping = {'float16': 'fp16', 'bfloat16': 'bf16', 'float32': 'no'}
         return model_mapping[model_dtype]
 
     @lazy_property
+    def training_framework(self):
+        return self.get_hparam('training_framework', default='torch')
+
+    @lazy_property
+    def mixed_precision_dtype(self):
+
+        if self.training_framework == 'torch':
+            return None
+
+        model_dtype = self.get_hparam('model_dtype', default='float32')
+
+        if self.training_framework == 'amp':
+            if not self.is_cuda and model_dtype == 'float16':
+                logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
+                model_dtype = 'bfloat16'
+
+        return model_dtype
+
+    @lazy_property
     def amp(self):
-        return self.get_hparam('amp') if self.is_cuda else False
+        return self.training_framework == 'amp' if self.is_cuda else False
 
     @lazy_property
     def scaler(self):
@@ -165,7 +207,7 @@ class Algorithm(Processor):
 
     def clear_experiment_properties(self):
 
-        self.clear_cache('device', 'ddp', 'hpo', 'rank', 'world_size', 'half', 'enable_tqdm', 'n_epochs',
+        self.clear_cache('device', 'ddp', 'hpo', 'rank', 'world_size', 'enable_tqdm', 'n_epochs',
                             'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
                             'scaler', 'swa_epochs')
 
@@ -180,15 +222,15 @@ class Algorithm(Processor):
 
     @device.setter
     def device(self, device):
-        if self.get_hparam('accelerate') is None or not self.accelerator.device_placement:
+        if self.training_framework != 'accelerate' or not self.accelerator.device_placement:
             self._device = beam_device(device)
 
     @lazy_property
     def deepspeed_plugin(self):
-        deepspeed_plugin = None
-        if self.get_hparam('n_gpus') > 1:
-            from accelerate.utils import DeepSpeedPlugin
-            deepspeed_plugin = DeepSpeedPlugin()
+        # deepspeed_plugin = None
+        # if self.get_hparam('n_gpus') > 1:
+        from accelerate.utils import DeepSpeedPlugin
+        deepspeed_plugin = DeepSpeedPlugin(gradient_accumulation_steps=self.get_hparam('accumulate'))
         return deepspeed_plugin
 
     @lazy_property
@@ -209,15 +251,12 @@ class Algorithm(Processor):
 
     @lazy_property
     def accelerator(self):
-        if self.get_hparam('accelerate'):
+        if self.training_framework == 'accelerate':
             from accelerate import Accelerator
-
-            mp_map = {'float16': 'fp16', 'bfloat16': 'bf16', 'float32': 'no', 'float8': 'fp8'}
-            mp = mp_map[self.get_hparam('model_dtype')]
 
             return Accelerator(device_placement=self.get_hparam('device_placement'),
                                split_batches=self.get_hparam('split_batches'),
-                               mixed_precision=mp,
+                               mixed_precision=self.accelerate_model_dtype(self.mixed_precision_dtype),
                                gradient_accumulation_steps=self.get_hparam('accumulate'),
                                deepspeed_plugin=self.deepspeed_plugin,
                                fsdp_plugin=self.fsdp_plugin,
@@ -509,7 +548,7 @@ class Algorithm(Processor):
                                                                 'eps': self.get_hparam('eps', specific=k)},
                                                    clip=self.get_hparam('clip_gradient', specific=k), amp=self.amp,
                                                    accumulate=self.get_hparam('accumulate', specific=k),
-                                                   model_dtype=self.model_dtype)
+                                                   model_dtype=self.mixed_precision_dtype)
 
         if processors is None:
             processors = {}
@@ -686,7 +725,7 @@ class Algorithm(Processor):
                     optimizers = [optimizers]
                 optimizers = self.get_flat_optimizers(optimizers)
 
-            with torch.autocast(self.autocast_device, dtype=self.model_dtype, enabled=False):
+            with torch.autocast(self.autocast_device, dtype=self.amp_model_dtype(self.mixed_precision_dtype), enabled=False):
 
                 it = {}
 
@@ -728,6 +767,8 @@ class Algorithm(Processor):
                         if self.amp:
                             scaler.step(op)
                         else:
+                            # from torch.cuda.amp import grad_scaler
+                            # from accelerate import optimizer
                             op.step()
 
                     self.optimizers_steps[k] = self.optimizers_steps[k] + 1
@@ -945,17 +986,16 @@ class Algorithm(Processor):
 
     def register_network(self, net, name=None):
 
-        if self.half:
-            net = net.half()
-
-        if self.device is not None and (self.accelerator is None or not self.accelerator.device_placement):
-            net = net.to(self.device, dtype=self.model_dtype)
-
         if self.accelerator is not None:
             if self.accelerator.device_placement:
                 # let accelerate handle the device placement but provide accelerator with the correct dtype
                 net = net.to('cpu', dtype=self.model_dtype)
+            else:
+                net = net.to(self.device, dtype=self.model_dtype)
+
             net = self.accelerator.prepare_model(net)
+        else:
+            net = net.to(self.device, dtype=self.model_dtype)
 
         if self.experiment is not None and self.ddp:
 
@@ -1055,9 +1095,9 @@ class Algorithm(Processor):
 
     def to_device(self, *args):
         if self.accelerator is None or not self.accelerator.device_placement:
-            return to_device(args, self.device, half=self.half)
+            return to_device(args, self.device, half=self.half, brain=self.brain)
         device = 'cuda' if self.is_cuda else 'cpu'
-        return to_device(args, device, half=self.half)
+        return to_device(args, device, half=self.half, brain=self.brain)
 
     def finite_data_generator(self, subset, length):
 
@@ -1145,7 +1185,8 @@ class Algorithm(Processor):
                     ind = None
                     label = None
 
-                with torch.autocast(self.autocast_device, dtype=self.model_dtype, enabled=self.amp):
+                with torch.autocast(self.autocast_device, dtype=self.amp_model_dtype(self.mixed_precision_dtype),
+                                    enabled=self.amp):
                     self.train_iteration(sample=sample, counter=i, training=training, index=ind, label=label)
 
                     objective = self.reporter.get_scalar(objective_name, subset=subset, aggregate=False, index=-1)

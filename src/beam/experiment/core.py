@@ -184,7 +184,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
             backend = 'nccl' if experiment.hparams.device.type == 'cuda' else 'gloo'
 
         setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend,
-                          framework=experiment.framework)
+                          framework=experiment.parallel_backend)
 
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.hparams.seed, constant=rank+1, increment=False, deterministic=experiment.hparams.deterministic)
@@ -193,7 +193,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
 
     if world_size > 1:
 
-        cleanup(rank, world_size, experiment.framework)
+        cleanup(rank, world_size, experiment.parallel_backend)
         results_queue.put({'rank': rank, 'results': res})
 
         done.wait()
@@ -337,7 +337,7 @@ class Experiment(object):
         self.writer = None
 
         self.rank = 0
-        self.world_size = args.n_gpus
+        self.world_size = args.n_gpus if self.training_framework != 'accelerate' else 1
 
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
@@ -395,6 +395,10 @@ class Experiment(object):
         self.source_dir = None
 
         atexit.register(self.cleanup)
+
+    @lazy_property
+    def training_framework(self):
+        return self.hparams.get('training_framework', 'torch')
 
     @lazy_property
     def llm(self):
@@ -839,9 +843,9 @@ class Experiment(object):
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
 
-    @property
-    def framework(self):
-        if self.hparams.accelerate:
+    @lazy_property
+    def parallel_backend(self):
+        if self.training_framework == 'accelerate':
             return 'deepspeed'
         return 'ddp'
 

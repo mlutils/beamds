@@ -80,7 +80,7 @@ def as_something_recursively(as_something_func):
 
 
 @as_something_recursively
-def as_tensor(x, x_type=None, device=None, dtype=None,
+def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
               half=False, return_vector=False, convert_to_tensor=True, copy=False, **kwargs):
 
     if x_type is None:
@@ -96,7 +96,7 @@ def as_tensor(x, x_type=None, device=None, dtype=None,
         if 'int' in dtype:
             dtype = torch.int64
         elif 'float' in dtype:
-            dtype = torch.float16 if half else torch.float32
+            dtype = (torch.bfloat16 if brain else torch.float16) if half else torch.float32
         elif 'complex' in dtype:
             dtype = torch.complex32 if half else torch.complex64
 
@@ -133,8 +133,8 @@ def as_numpy(x, **kwargs):
     return x
 
 
-def to_device(data, device='cuda', half=False):
-    return as_tensor(data, device=device, half=half, convert_to_tensor=False)
+def to_device(data, device='cuda', half=False, dtype=None, brain=False):
+    return as_tensor(data, device=device, half=half, convert_to_tensor=False, dtype=dtype, brain=brain)
 
 
 def recursive_concatenate(data, dim=0):

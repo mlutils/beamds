@@ -45,7 +45,7 @@ class BeamHparams(Namespace):
 
             hparam_types = []
             for ti in types:
-                if not issubclass(ti, argparse.Namespace):
+                if not issubclass(ti, argparse.Namespace) or ti is argparse.Namespace:
                     continue
                 hparam_types.append(ti)
 

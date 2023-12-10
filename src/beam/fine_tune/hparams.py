@@ -4,8 +4,8 @@ from ..config import BeamHparams, BeamParam
 class FTLLMHparams(BeamHparams):
 
 
-    defaults = dict(project_name='fine_tune_llm',
-                    accelerate=True, amp=False, batch_size=2, model_dtype='bfloat16', epoch_length=100,
+    defaults = dict(project_name='fine_tune_llm', training_framework='accelerate', batch_size=2,
+                    model_dtype='bfloat16', epoch_length=100,
                     scale_epoch_by_batch_size=False, lr_dense=1e-5, lr_sparse=1e-4, reduction='mean_batch')
     parameters = [BeamParam('model', str, None, 'Model to use for fine-tuning'),
                   BeamParam('lora_alpha', float, 16, 'Lora alpha parameter', tune=True, model=False),
