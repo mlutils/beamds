@@ -96,7 +96,7 @@ class RayHPO(BeamHPO):
             else:
                 return results['objective']
 
-    def run(self, *args, runtime_env=None, **kwargs):
+    def run(self, *args, runtime_env=None, tune_config_kwargs=None, run_config_kwargs=None, **kwargs):
 
         hparams = copy.deepcopy(self.hparams)
         hparams.update(kwargs)
@@ -133,6 +133,10 @@ class RayHPO(BeamHPO):
 
         logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {local_dir}")
 
+        tune_config_kwargs = tune_config_kwargs or {}
+        tune_config_kwargs['metric'] = self.experiment_hparams.get('objective')
+        tune_config_kwargs['mode'] = 'max'
+
         if 'metric' not in kwargs.keys():
             if 'objective' in hparams and self.hparams.objective is not None:
                 kwargs['metric'] = self.hparams.objective
@@ -143,6 +147,8 @@ class RayHPO(BeamHPO):
 
         if 'progress_reporter' not in kwargs.keys() and is_notebook():
             kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
+
+
 
         kwargs['num_samples'] = kwargs.pop('n_trials', None)
         kwargs['max_concurrent_trials'] = kwargs.pop('n_jobs', None)

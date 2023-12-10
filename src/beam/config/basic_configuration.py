@@ -57,11 +57,6 @@ def basic_beam_parser():
                         default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'experiments'),
                         help='Root directory for Logs and results')
 
-    parser.add_argument('--hpo-path', type=str,
-                        default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'hpo'),
-                        help='Root directory for Logs and results of Hyperparameter optimization. '
-                             'Must be a file system path')
-
     parser.add_argument('--data-path', type=str,
                         default=os.path.join(os.path.expanduser('~'), 'beam_projects', 'data'),
                         help='Where the dataset is located')
@@ -95,6 +90,11 @@ def basic_beam_parser():
                         help='A single objective to apply hyperparameter optimization or ReduceLROnPlateau scheduling. '
                              'By default we consider maximization of the objective (e.g. accuracy) '
                              'You can override this behavior by overriding the Algorithm.report method.')
+
+    parser.add_argument('--objective-min-mode', type=bool, default=None,
+                        help='Set true to minimize the objective instead of maximizing it.'
+                             'By default objectives that contain the words "loss/error/mse" a are minimized and '
+                             'other objectives are maximized. You can override this behavior by setting this flag.')
 
     # booleans
 

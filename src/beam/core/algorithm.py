@@ -241,7 +241,8 @@ class Algorithm(Processor):
 
     @lazy_property
     def train_reporter(self):
-        return BeamReport(objective=self.get_hparam('objective'))
+        return BeamReport(objective=self.get_hparam('objective'),
+                          objective_mode=self.optimization_mode)
 
     def __getattr__(self, item):
         if item in self.__dict__:
@@ -1228,6 +1229,18 @@ class Algorithm(Processor):
             if self.trial.should_prune():
                 raise optuna.TrialPruned()
 
+    @lazy_property
+    def optimization_mode(self):
+
+        if self.get_hparam('objective_min_mode'):
+            return 'min'
+
+        objective_name = self.get_hparam('objective')
+        if any(n in objective_name.lower() for n in ['loss', 'error', 'mse']):
+            return 'min'
+
+        return 'max'
+
     def early_stopping(self, epoch=None):
         '''
         Use this function to early stop your model based on the results or any other metric in the algorithm class
@@ -1240,11 +1253,17 @@ class Algorithm(Processor):
                 logger.warning("Early stopping is enabled but no objective is defined. set objective in the hparams")
                 return False
 
-        if stop_at is not None and stop_at > 0:
+        if stop_at is not None:
             if self.best_objective is not None:
-                res = self.best_objective > stop_at
-                if res:
-                    logger.info(f"Stopping training at {self.best_objective} > {stop_at}")
+
+                if self.optimization_mode == 'max':
+                    res = self.best_objective > stop_at
+                    if res:
+                        logger.info(f"Stopping training at {self.best_objective} > {stop_at}")
+                else:
+                    res = self.best_objective < stop_at
+                    if res:
+                        logger.info(f"Stopping training at {self.best_objective} < {stop_at}")
                 return res
 
         if early_stopping_patience is not None and early_stopping_patience > 0:
@@ -1258,7 +1277,8 @@ class Algorithm(Processor):
     def __call__(self, subset, dataset_name='dataset', predicting=False, enable_tqdm=None, max_iterations=None,
                  head=None, eval_mode=True, return_dataset=None, **kwargs):
 
-        self.set_reporter(BeamReport(objective=self.get_hparam('objective')))
+        self.set_reporter(BeamReport(objective=self.get_hparam('objective'),
+                                     objective_mode=self.optimization_mode))
 
         with torch.no_grad():
 

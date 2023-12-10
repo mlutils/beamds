@@ -19,7 +19,7 @@ from ..data import BeamData
 
 class BeamReport(object):
 
-    def __init__(self, objective=None):
+    def __init__(self, objective=None, objective_mode='max'):
 
         self.scalar = None
         self.aux = None
@@ -35,6 +35,7 @@ class BeamReport(object):
         self.scalars_aggregation = None
 
         self.objective_name = objective
+        self.objective_mode = objective_mode
 
         self.epoch = None
         self.best_epoch = None
@@ -273,11 +274,15 @@ class BeamReport(object):
             name = k.lstrip(f"{subset}/")
         return subset, name
 
+    @lazy_property
+    def comparison(self):
+        return {'max': np.greater, 'min': np.less}[self.objective_mode]
+
     def set_objective(self, objective):
 
         self.objective = objective
 
-        if self.best_objective is None or self.objective > self.best_objective:
+        if self.best_objective is None or self.comparison(self.objective, self.best_objective):
             self.info(f"Epoch {self.epoch+1}: The new best objective is {pretty_format_number(objective)}", new=True)
             self.best_objective = objective
             self.best_epoch = self.epoch
@@ -311,7 +316,7 @@ class BeamReport(object):
             n_epochs = self.n_epochs - self.first_epoch
             epoch = self.epoch - self.first_epoch
 
-            self.estimated_time = self.total_time * (n_epochs -  epoch - 1) / (epoch + 1)
+            self.estimated_time = self.total_time * (n_epochs - epoch - 1) / (epoch + 1)
 
         agg = None
 
