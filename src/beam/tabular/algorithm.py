@@ -1,6 +1,6 @@
 import torch
 from ..core.algorithm import Algorithm
-from ..utils import as_numpy, as_tensor
+from ..utils import as_numpy, as_tensor, lazy_property
 from ..data import BeamData
 from ..config import BeamHparams, BeamParam
 import torch.nn.functional as F
@@ -164,14 +164,16 @@ class DeepTabularAlg(Algorithm):
         super().__init__(hparams, networks=networks, **kwargs)
         self.loss_function = None
         self.loss_kwargs = None
-        self.task_type = None
         self.train_acc = None
         self.previous_masking = 1 - self.get_hparam('mask_rate')
         self.best_masking = 1 - self.get_hparam('mask_rate')
 
+    @property
+    def task_type(self):
+        return self.dataset.task_type
+
     def preprocess_epoch(self, epoch=None, subset=None, training=True, **kwargs):
         if epoch == 0:
-            self.task_type = self.dataset.task_type
 
             if self.task_type == 'regression':
                 self.loss_kwargs = {'reduction': 'none'}

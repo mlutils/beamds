@@ -1,6 +1,7 @@
 # from examples.example_utils import add_beam_to_path
-from example_utils import add_beam_to_path
-add_beam_to_path()
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
 
 import torch
 from torch import distributions
@@ -9,10 +10,9 @@ import torch.nn.functional as F
 from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
-import os
 import pandas as pd
 
-from beam import beam_arguments, Experiment
+from src.beam import beam_arguments, Experiment
 from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
 from src.beam import beam_logger as logger
 from src.beam.utils import get_public_ip
@@ -98,7 +98,8 @@ if __name__ == '__main__':
 
     kwargs_base = dict(algorithm='debug_reporter', data_path=data_path, logs_path=logs_path,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=4,
-                       stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, label_smoothing=.2)
+                       stop_at=0.98, n_gpus=4, device=0, n_quantiles=6, label_smoothing=.2,
+                       model_dtype='bfloat16', training_framework='accelerate', device_placement=True)
 
     kwargs_all = {}
 
@@ -123,16 +124,17 @@ if __name__ == '__main__':
         hparams = TabularHparams(hparams)
 
         exp = Experiment(hparams)
-
         dataset = TabularDataset(hparams)
 
         if hparams.rulenet:
 
             logger.info(f"Training a RuleNet predictor")
-            net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
-            alg = DeepTabularAlg(hparams, networks=net)
+            # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
+            # alg = DeepTabularAlg(hparams, networks=net)
 
-            alg = exp.fit(alg=alg, dataset=dataset)
+            alg = exp.fit(alg=DeepTabularAlg, dataset=TabularDataset,
+                          alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+                                                                                  'cat_mask': dataset.cat_mask}})
             logger.info(f"Training finished, reloading best model")
             exp.reload_checkpoint(alg)
             alg.set_best_masking()
@@ -142,5 +144,6 @@ if __name__ == '__main__':
             exp.results_dir.joinpath('predictions.pt').write(predictions)
 
         if hparams.catboost:
+
             logger.info(f"Training a Catboost predictor")
             train_catboost(dataset, exp)

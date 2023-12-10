@@ -23,6 +23,13 @@ class MultipleScheduler(object):
             else:
                 self.schedulers[k] = accelerator.prepare_scheduler(scheduler)
 
+    # def set_prepared(self, prepared):
+    #     for k, scheduler in self.schedulers.items():
+    #         if isinstance(scheduler, BeamScheduler):
+    #             scheduler.set_prepared(prepared[k])
+    #         else:
+    #             self.schedulers[k] = prepared[k]
+
     def step(self, *argc, **argv):
         for op in self.multiple_optimizer.optimizers.keys():
             self.schedulers[op].step(*argc, **argv)
@@ -128,6 +135,12 @@ class BeamScheduler(object):
             self.warmup_scheduler = accelerator.prepare_scheduler(self.warmup_scheduler)
         if self.scheduler is not None:
             self.scheduler = accelerator.prepare_scheduler(self.scheduler)
+
+    # def set_prepared(self, prepared):
+    #     if self.warmup_scheduler is not None:
+    #         self.warmup_scheduler = prepared['warmup_scheduler']
+    #     if self.scheduler is not None:
+    #         self.scheduler = prepared['scheduler']
 
     def get_total_steps(self, total_steps=None, epochs=None, steps_per_epochs=None):
         if epochs is not None and self.step_type == 'epoch':
@@ -261,6 +274,10 @@ class BeamOptimizer(object):
     def prepare(self, accelerator):
         for k, o in self.optimizers.items():
             self.optimizers[k] = accelerator.prepare_optimizer(o)
+
+    # def set_prepared(self, prepared):
+    #     for k, o in self.optimizers.items():
+    #         self.optimizers[k] = prepared[k]
 
     @staticmethod
     def prototype(dense_args=None, clip=0, accumulate=1, amp=False,

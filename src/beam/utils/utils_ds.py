@@ -86,7 +86,7 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
     if x_type is None:
         x_type = check_type(x, check_element=False)
 
-    if not convert_to_tensor and x_type.minor != 'tensor':
+    if not convert_to_tensor and x_type.minor in ['numpy', 'pandas', 'scipy_sparse', 'native', 'modin']:
         return x
 
     device = beam_device(device)

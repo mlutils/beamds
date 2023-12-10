@@ -141,31 +141,34 @@ class Algorithm(Processor):
 
     @lazy_property
     def brain(self):
-        if self.model_dtype in [torch.bfloat16, 'bfloat16', 'bf16']:
+        if self.model_dtype in [torch.bfloat16]:
             return True
         return False
 
     @lazy_property
     def model_dtype(self):
 
-        if self.training_framework == 'amp':
+        # if self.training_framework == 'amp':
+        #     return None
+        if self.training_framework != 'torch':
             return None
+
         model_dtype = self.get_hparam('model_dtype', default='float32')
         if not self.is_cuda and model_dtype == 'float16':
             logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
             model_dtype = 'bfloat16'
 
-        return model_dtype
+        return self.dtype_mapping(model_dtype)
 
     @staticmethod
-    def amp_model_dtype(model_dtype):
+    def dtype_mapping(model_dtype):
         model_mapping = {'float16': torch.float16, 'bfloat16': torch.bfloat16,
                          'float32': torch.float32, 'complex32': torch.complex32, 'complex64': torch.complex64, }
         return model_mapping[model_dtype]
 
     @staticmethod
-    def accelerate_model_dtype(model_dtype):
-        model_mapping = {'float16': 'fp16', 'bfloat16': 'bf16', 'float32': 'no'}
+    def accelerate_dtype_mapper(model_dtype):
+        model_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'no'}
         return model_mapping[model_dtype]
 
     @lazy_property
@@ -185,7 +188,7 @@ class Algorithm(Processor):
                 logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
                 model_dtype = 'bfloat16'
 
-        return model_dtype
+        return self.dtype_mapping(model_dtype)
 
     @lazy_property
     def amp(self):
@@ -230,7 +233,7 @@ class Algorithm(Processor):
         # deepspeed_plugin = None
         # if self.get_hparam('n_gpus') > 1:
         from accelerate.utils import DeepSpeedPlugin
-        deepspeed_plugin = DeepSpeedPlugin(gradient_accumulation_steps=self.get_hparam('accumulate'))
+        deepspeed_plugin = DeepSpeedPlugin(gradient_accumulation_steps=self.get_hparam('accumulate'),)
         return deepspeed_plugin
 
     @lazy_property
@@ -256,7 +259,7 @@ class Algorithm(Processor):
 
             return Accelerator(device_placement=self.get_hparam('device_placement'),
                                split_batches=self.get_hparam('split_batches'),
-                               mixed_precision=self.accelerate_model_dtype(self.mixed_precision_dtype),
+                               mixed_precision=self.accelerate_dtype_mapper(self.mixed_precision_dtype),
                                gradient_accumulation_steps=self.get_hparam('accumulate'),
                                deepspeed_plugin=self.deepspeed_plugin,
                                fsdp_plugin=self.fsdp_plugin,
@@ -272,6 +275,26 @@ class Algorithm(Processor):
                                )
         return None
 
+    def prepare_accelerate(self):
+
+        # dataloaders = [(k, s, v[s]) for k, v in self.dataloaders.items() for s in v.keys()]
+        networks = [(None, k, v) for k, v in self.networks.items()]
+        # n_dl = len(dataloaders)
+        # objects = list(zip(*(dataloaders + networks)))[2]
+        objects = list(zip(*networks))[2]
+
+        self.accelerator.state.deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = self.batch_size_train
+        prepared_objects = self.accelerator.prepare(*objects)
+
+        # for i, (k, s, _) in enumerate(dataloaders):
+        #     self.dataloaders[k][s]['dataloader'] = prepared_objects[i]
+
+        # for i, (k, _, _) in enumerate(networks):
+        #     self.networks[k] = prepared_objects[n_dl + i]
+
+        for i, (k, _, _) in enumerate(networks):
+            self.networks[k] = prepared_objects[i]
+
     @property
     def state_attributes(self):
         return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler', 'inference_networks',
@@ -286,8 +309,10 @@ class Algorithm(Processor):
     def __getattr__(self, item):
         if item in self.__dict__:
             return self.__dict__[item]
-        else:
+        elif hasattr(self, 'networks') and item in self.networks:
             return self.networks[item]
+        else:
+            raise AttributeError(f"Algorithm has no attribute {item}")
 
     @property
     def dataset(self):
@@ -725,7 +750,7 @@ class Algorithm(Processor):
                     optimizers = [optimizers]
                 optimizers = self.get_flat_optimizers(optimizers)
 
-            with torch.autocast(self.autocast_device, dtype=self.amp_model_dtype(self.mixed_precision_dtype), enabled=False):
+            with torch.autocast(self.autocast_device, dtype=self.mixed_precision_dtype, enabled=False):
 
                 it = {}
 
@@ -993,7 +1018,7 @@ class Algorithm(Processor):
             else:
                 net = net.to(self.device, dtype=self.model_dtype)
 
-            net = self.accelerator.prepare_model(net)
+            # net = self.accelerator.prepare(net)
         else:
             net = net.to(self.device, dtype=self.model_dtype)
 
@@ -1185,7 +1210,7 @@ class Algorithm(Processor):
                     ind = None
                     label = None
 
-                with torch.autocast(self.autocast_device, dtype=self.amp_model_dtype(self.mixed_precision_dtype),
+                with torch.autocast(self.autocast_device, dtype=self.mixed_precision_dtype,
                                     enabled=self.amp):
                     self.train_iteration(sample=sample, counter=i, training=training, index=ind, label=label)
 
@@ -1379,6 +1404,9 @@ class Algorithm(Processor):
 
         n_epochs = self.n_epochs + self.swa_epochs + int(self.swa_epochs > 0)
         self.refresh_optimizers_and_schedulers_pointers()
+
+        if self.training_framework == 'accelerate':
+            self.prepare_accelerate()
 
         epoch_start = 0 if self.get_hparam("restart_epochs_count", default=True) else self.epoch
         self.set_train_reporter(first_epoch=epoch_start, n_epochs=n_epochs)
