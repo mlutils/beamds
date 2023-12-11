@@ -369,7 +369,7 @@ class AutoBeam:
         ab = AutoBeam(obj)
         path.clean()
         path.mkdir()
-        logger.info(f"Saving object's files to path {path}: [requirements.txt, modules.tar.gz, state.pt]")
+        logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state.pt]")
         path.joinpath('requirements.json').write(ab.requirements)
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)

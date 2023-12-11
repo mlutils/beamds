@@ -18,6 +18,7 @@ class BeamClient(Processor):
         self.host = normalize_host(hostname, port)
         self.api_key = api_key
         self.username = username
+        self.info = self.get_info()
 
     @property
     def load_function(self):
@@ -40,10 +41,6 @@ class BeamClient(Processor):
     @property
     def serialization(self):
         return self.info['serialization']
-
-    @lazy_property
-    def info(self):
-        return self.get_info()
 
     @property
     def attributes(self):
@@ -71,26 +68,24 @@ class BeamClient(Processor):
             raise NotImplementedError
 
     def __call__(self, *args, **kwargs):
-        return self.post('call', *args, **kwargs)
+        return self.post('call/beam', *args, **kwargs)
 
     def __getattr__(self, item):
-        if item.startswith('_'):
-            return super().__getattribute__(item)
-        if not hasattr(self, '_lazy_cache') or 'info' not in self._lazy_cache:
+        if item.startswith('_') or item in ['info'] or not hasattr(self, 'info'):
             return super().__getattribute__(item)
 
         if item not in self.attributes:
-            self.clear_cache('info')
+            self.info = self.get_info()
 
         attribute_type = self.attributes[item]
         if attribute_type == 'variable':
-            return self.get(f'getvar/{item}')
+            return self.get(f'getvar/beam/{item}')
         elif attribute_type == 'method':
-            return partial(self.post, f'alg/{item}')
+            return partial(self.post, f'alg/beam/{item}')
         raise ValueError(f"Unknown attribute type: {attribute_type}")
 
     def __setattr__(self, key, value):
         if key.startswith('_') or not hasattr(self, '_lazy_cache') or 'info' not in self._lazy_cache:
             super().__setattr__(key, value)
         else:
-            self.post(f'setvar/{key}', value)
+            self.post(f'setvar/beam/{key}', value)

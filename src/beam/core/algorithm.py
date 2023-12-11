@@ -1072,9 +1072,8 @@ class Algorithm(Processor):
             subset_type = check_type(subset)
             index = None
 
-            if type(subset) is DataBatch:
-                index = subset.index
-                dataset = UniversalDataset(subset.data, index=index)
+            if 'DataBatch' in str(type(subset)):
+                dataset = UniversalDataset(subset.data, index=subset.index, label=subset.label)
             elif subset_type.minor in ['list', 'tuple']:
                 dataset = UniversalDataset(*subset)
             elif subset_type.minor in ['dict']:

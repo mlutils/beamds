@@ -74,18 +74,18 @@ class HTTPServer(BeamServer):
             self.app.add_url_rule('/call/<client>', view_func=self.call_function, methods=['POST'])
         elif self.type == 'class':
             self.app.add_url_rule('/alg/<client>/<method>', view_func=self.query_algorithm, methods=['POST'])
-            self.app.add_url_rule('/setvar/<name>', view_func=self.set_variable, methods=['POST'])
-            self.app.add_url_rule('/getvar/<name>', view_func=self.get_variable)
+            self.app.add_url_rule('/setvar/<client>/<name>', view_func=self.set_variable, methods=['POST'])
+            self.app.add_url_rule('/getvar/<client>/<name>', view_func=self.get_variable)
         else:
             raise ValueError(f"Unknown type: {self.type}")
 
-    def set_variable(self, name, *args, **kwargs):
+    def set_variable(self, client, name, *args, **kwargs):
         value = request.files['value']
-        res = super().set_variable(name, value)
+        res = super().set_variable(client, name, value)
         return jsonify(res)
 
-    def get_variable(self, name):
-        io_results = super().get_variable(name)
+    def get_variable(self, client, name):
+        io_results = super().get_variable(client, name)
         return send_file(io_results, mimetype="text/plain")
 
     def _run(self, host="0.0.0.0", port=None, server='waitress', use_reloader=True):
@@ -118,17 +118,28 @@ class HTTPServer(BeamServer):
 
     def call_function(self, client, *args, **kwargs):
 
-        args = request.files['args']
-        kwargs = request.files['kwargs']
+        if client == 'beam':
+            args = request.files['args']
+            kwargs = request.files['kwargs']
+        else:
+            data = request.get_json()
+            args = data['args']
+            kwargs = data['kwargs']
 
         io_results = super().call_function(client, args, kwargs)
         return send_file(io_results, mimetype="text/plain")
 
-    def query_algorithm(self, method, client, *args, **kwargs):
+    def query_algorithm(self, client, method, *args, **kwargs):
 
-        args = request.files['args']
-        kwargs = request.files['kwargs']
-        io_results = super().query_algorithm(method, client, args, kwargs)
+        if client == 'beam':
+            args = request.files['args']
+            kwargs = request.files['kwargs']
+        else:
+            data = request.get_json()
+            args = data['args']
+            kwargs = data['kwargs']
+
+        io_results = super().query_algorithm(client, method, args, kwargs)
 
         return send_file(io_results, mimetype="text/plain")
 

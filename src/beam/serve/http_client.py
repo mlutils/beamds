@@ -8,10 +8,10 @@ from .client import BeamClient
 class HTTPClient(BeamClient):
 
     def __init__(self, *args, tls=False, **kwargs):
-        super().__init__(*args, **kwargs)
         from requests.packages.urllib3.exceptions import InsecureRequestWarning
         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
         self.protocol = 'https' if tls else 'http'
+        super().__init__(*args, **kwargs)
 
     def get_info(self):
         return requests.get(f'{self.protocol}://{self.host}/').json()

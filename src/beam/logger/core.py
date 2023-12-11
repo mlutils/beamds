@@ -114,7 +114,14 @@ class BeamLogger:
         self.logger.exception(message, **extra)
 
     def __getstate__(self):
-        state = {'path': self.path.as_uri()}
+
+        if self.path is None:
+            path = None
+        elif isinstance(self.path, str):
+            path = self.path
+        else:
+            path = self.path.as_uri()
+        state = {'path': path}
         return state
 
     def __setstate__(self, state):

@@ -73,24 +73,27 @@ class BeamServer(Processor):
         else:
             self.type = 'class'
 
-    def set_variable(self, name, value):
+    def set_variable(self, client, name, value, *args, **kwargs):
 
-        value = self.load_function(value)
+        if client == 'beam':
+            value = self.load_function(value)
+
         setattr(self.obj, name, value)
-
         return {'success': True}
 
-    def get_variable(self, name):
+    def get_variable(self, client, name):
 
         logger.info(f"Getting variable: {name}")
         value = getattr(self.obj, name)
         logger.info(f"value: {value}")
 
-        io_results = io.BytesIO()
-        self.dump_function(value, io_results)
-        io_results.seek(0)
+        if client == 'beam':
+            io_results = io.BytesIO()
+            self.dump_function(value, io_results)
+            io_results.seek(0)
+            return io_results
 
-        return io_results
+        return value
 
     def _cleanup(self):
         if self.centralized_thread is not None:
@@ -246,13 +249,14 @@ class BeamServer(Processor):
         else:
             results = self.obj(*args, **kwargs)
 
-        io_results = io.BytesIO()
-        self.dump_function(results, io_results)
-        io_results.seek(0)
+        if client == 'beam':
+            io_results = io.BytesIO()
+            self.dump_function(results, io_results)
+            io_results.seek(0)
+            return io_results
+        return results
 
-        return io_results
-
-    def query_algorithm(self, method, client, args, kwargs):
+    def query_algorithm(self, client, method, args, kwargs):
 
         if client == 'beam':
             args = self.load_function(args)
@@ -264,8 +268,9 @@ class BeamServer(Processor):
             method = getattr(self.obj, method)
             results = method(*args, **kwargs)
 
-        io_results = io.BytesIO()
-        self.dump_function(results, io_results)
-        io_results.seek(0)
-
-        return io_results
+        if client == 'beam':
+            io_results = io.BytesIO()
+            self.dump_function(results, io_results)
+            io_results.seek(0)
+            return io_results
+        return results
