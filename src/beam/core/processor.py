@@ -73,7 +73,7 @@ class Processor:
     def from_remote(cls, hostname, *args, port=None,  **kwargs):
 
         hostname = normalize_host(hostname, port=port)
-        from ..serve.beam_client import BeamClient
+        from ..serve.client import BeamClient
         remote = BeamClient(hostname)
         self = cls(*args, remote=remote, **kwargs)
 
@@ -91,8 +91,15 @@ class Processor:
     def from_path(cls, path):
         path = beam_path(path)
         state = path.read()
+        kwargs = dict()
+        args = tuple()
+        if 'aux' in state:
+            if 'kwargs' in state['aux']:
+                kwargs = state['aux']['kwargs']
+            if 'args' in state['aux']:
+                args = state['aux']['args']
         hparams = BeamHparams(hparams=state['hparams'])
-        alg = cls(hparams)
+        alg = cls(hparams, *args,  **kwargs)
         alg.load_state(state)
         return alg
 

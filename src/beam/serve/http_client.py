@@ -2,19 +2,18 @@ import io
 
 import requests
 from ..utils import lazy_property
-from .beam_client import BeamClient
+from .client import BeamClient
 
 
 class HTTPClient(BeamClient):
 
-    def __init__(self, host, *args, tls=False, **kwargs):
-        super().__init__(host, *args, **kwargs)
+    def __init__(self, *args, tls=False, **kwargs):
+        super().__init__(*args, **kwargs)
         from requests.packages.urllib3.exceptions import InsecureRequestWarning
         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
         self.protocol = 'https' if tls else 'http'
 
-    @lazy_property
-    def info(self):
+    def get_info(self):
         return requests.get(f'{self.protocol}://{self.host}/').json()
 
     def get(self, path):

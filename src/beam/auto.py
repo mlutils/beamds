@@ -402,7 +402,7 @@ class AutoBeam:
         path = beam_path(path).resolve()
 
         # 1. Check necessary files
-        req_file = path.joinpath('requirements.txt')
+        req_file = path.joinpath('requirements.json')
         modules_tar = path.joinpath('modules.tar.gz')
         state_file = path.joinpath('state.pt')
         skeleton_file = path.joinpath('skeleton.pkl')

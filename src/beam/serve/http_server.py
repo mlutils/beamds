@@ -4,7 +4,7 @@ from threading import Thread
 from flask import Flask, request, jsonify, send_file
 
 from ..logger import beam_logger as logger
-from .beam_server import BeamServer
+from .server import BeamServer
 
 try:
     import torch

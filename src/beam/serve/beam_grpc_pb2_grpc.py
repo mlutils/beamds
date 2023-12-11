@@ -2,8 +2,10 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import beam_grpc_pb2 as beam__grpc__pb2
-
+# import beam_grpc_pb2 as beam__grpc__pb2
+from .beam_grpc_pb2 import (pickled_response, info_response, set_variable_response,
+                            get_variable_response, method_request, info_request, set_variable_request,
+                            get_variable_request, func_request)
 
 class BeamServiceStub(object):
     """Missing associated documentation comment in .proto file."""
@@ -16,28 +18,28 @@ class BeamServiceStub(object):
         """
         self.query_algorithm = channel.unary_unary(
                 '/beam_grpc.BeamService/query_algorithm',
-                request_serializer=beam__grpc__pb2.method_request.SerializeToString,
-                response_deserializer=beam__grpc__pb2.pickled_response.FromString,
+                request_serializer=method_request.SerializeToString,
+                response_deserializer=pickled_response.FromString,
                 )
         self.call_function = channel.unary_unary(
                 '/beam_grpc.BeamService/call_function',
-                request_serializer=beam__grpc__pb2.func_request.SerializeToString,
-                response_deserializer=beam__grpc__pb2.pickled_response.FromString,
+                request_serializer=func_request.SerializeToString,
+                response_deserializer=pickled_response.FromString,
                 )
         self.get_info = channel.unary_unary(
                 '/beam_grpc.BeamService/get_info',
-                request_serializer=beam__grpc__pb2.info_request.SerializeToString,
-                response_deserializer=beam__grpc__pb2.info_response.FromString,
+                request_serializer=info_request.SerializeToString,
+                response_deserializer=info_response.FromString,
                 )
         self.set_variable = channel.unary_unary(
                 '/beam_grpc.BeamService/set_variable',
-                request_serializer=beam__grpc__pb2.set_variable_request.SerializeToString,
-                response_deserializer=beam__grpc__pb2.set_variable_response.FromString,
+                request_serializer=set_variable_request.SerializeToString,
+                response_deserializer=set_variable_response.FromString,
                 )
         self.get_variable = channel.unary_unary(
                 '/beam_grpc.BeamService/get_variable',
-                request_serializer=beam__grpc__pb2.get_variable_request.SerializeToString,
-                response_deserializer=beam__grpc__pb2.get_variable_response.FromString,
+                request_serializer=get_variable_request.SerializeToString,
+                response_deserializer=get_variable_response.FromString,
                 )
 
 
@@ -79,28 +81,28 @@ def add_BeamServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'query_algorithm': grpc.unary_unary_rpc_method_handler(
                     servicer.query_algorithm,
-                    request_deserializer=beam__grpc__pb2.method_request.FromString,
-                    response_serializer=beam__grpc__pb2.pickled_response.SerializeToString,
+                    request_deserializer=method_request.FromString,
+                    response_serializer=pickled_response.SerializeToString,
             ),
             'call_function': grpc.unary_unary_rpc_method_handler(
                     servicer.call_function,
-                    request_deserializer=beam__grpc__pb2.func_request.FromString,
-                    response_serializer=beam__grpc__pb2.pickled_response.SerializeToString,
+                    request_deserializer=func_request.FromString,
+                    response_serializer=pickled_response.SerializeToString,
             ),
             'get_info': grpc.unary_unary_rpc_method_handler(
                     servicer.get_info,
-                    request_deserializer=beam__grpc__pb2.info_request.FromString,
-                    response_serializer=beam__grpc__pb2.info_response.SerializeToString,
+                    request_deserializer=info_request.FromString,
+                    response_serializer=info_response.SerializeToString,
             ),
             'set_variable': grpc.unary_unary_rpc_method_handler(
                     servicer.set_variable,
-                    request_deserializer=beam__grpc__pb2.set_variable_request.FromString,
-                    response_serializer=beam__grpc__pb2.set_variable_response.SerializeToString,
+                    request_deserializer=set_variable_request.FromString,
+                    response_serializer=set_variable_response.SerializeToString,
             ),
             'get_variable': grpc.unary_unary_rpc_method_handler(
                     servicer.get_variable,
-                    request_deserializer=beam__grpc__pb2.get_variable_request.FromString,
-                    response_serializer=beam__grpc__pb2.get_variable_response.SerializeToString,
+                    request_deserializer=get_variable_request.FromString,
+                    response_serializer=get_variable_response.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -124,8 +126,8 @@ class BeamService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/query_algorithm',
-            beam__grpc__pb2.method_request.SerializeToString,
-            beam__grpc__pb2.pickled_response.FromString,
+            method_request.SerializeToString,
+            pickled_response.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -141,8 +143,8 @@ class BeamService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/call_function',
-            beam__grpc__pb2.func_request.SerializeToString,
-            beam__grpc__pb2.pickled_response.FromString,
+            func_request.SerializeToString,
+            pickled_response.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -158,8 +160,8 @@ class BeamService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/get_info',
-            beam__grpc__pb2.info_request.SerializeToString,
-            beam__grpc__pb2.info_response.FromString,
+            info_request.SerializeToString,
+            info_response.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -175,8 +177,8 @@ class BeamService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/set_variable',
-            beam__grpc__pb2.set_variable_request.SerializeToString,
-            beam__grpc__pb2.set_variable_response.FromString,
+            set_variable_request.SerializeToString,
+            set_variable_response.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -192,7 +194,7 @@ class BeamService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/get_variable',
-            beam__grpc__pb2.get_variable_request.SerializeToString,
-            beam__grpc__pb2.get_variable_response.FromString,
+            get_variable_request.SerializeToString,
+            get_variable_response.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

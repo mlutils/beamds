@@ -181,7 +181,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     if world_size > 1:
         backend = experiment.hparams.mp_backend
         if backend is None:
-            backend = 'nccl' if experiment.hparams.device.type == 'cuda' else 'gloo'
+            backend = 'nccl' if experiment.device.type == 'cuda' else 'gloo'
 
         setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend,
                           framework=experiment.parallel_backend)
@@ -253,7 +253,8 @@ class Experiment(object):
         # parameters
         self.start_time = time.time()
         self.exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.hparams.device = beam_device(self.hparams.device)
+        self.device = beam_device(self.hparams.device)
+        self.device_list = None
 
         self.exp_name = None
         self.load_model = False
@@ -382,11 +383,11 @@ class Experiment(object):
         self.hparams.rank = self.rank
         self.hparams.world_size = self.world_size
 
-        if self.hparams.device.type == 'cuda':
-            if self.hparams.device_list is not None:
-                self.hparams.device_list = [beam_device(di) for di in self.hparams.device_list]
+        if self.device.type == 'cuda':
+            if self.device_list is not None:
+                self.device_list = [beam_device(di) for di in self.device_list]
             else:
-                self.hparams.device_list = [beam_device(di+self.hparams.device.index) for di in range(self.hparams.n_gpus)]
+                self.device_list = [beam_device(di + self.device.index) for di in range(self.hparams.n_gpus)]
 
         self.comet_exp = None
         self.comet_writer = None
@@ -497,10 +498,10 @@ class Experiment(object):
         self.hparams.ddp = self.world_size > 1
         self.hparams.enable_tqdm = self.hparams.enable_tqdm and (rank == 0)
 
-        if self.hparams.device.type != 'cpu' and world_size > 1:
-            self.hparams.device = beam_device(self.hparams.device_list[rank])
+        if self.device.type != 'cpu' and world_size > 1:
+            self.device = beam_device(self.device_list[rank])
 
-        logger.info(f'Worker {rank + 1} will be running on device={str(self.hparams.device)}')
+        logger.info(f'Worker {rank + 1} will be running on device={str(self.device)}')
 
     def writer_control(self, enable=True, networks=None, inputs=None):
 

@@ -216,7 +216,10 @@ class Algorithm(Processor):
     def device(self):
         if self._device is None:
             if self.accelerator is None or not self.accelerator.device_placement:
-                self._device = beam_device(self.get_hparam('device'))
+                if self.experiment is not None and hasattr(self.experiment, 'device'):
+                    self._device = beam_device(self.experiment.device)
+                else:
+                    self._device = beam_device(self.get_hparam('device'))
             else:
                 self._device = self.accelerator.device
         return self._device

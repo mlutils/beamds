@@ -4,17 +4,20 @@ from functools import partial
 import requests
 from ..core import Processor
 from ..utils import lazy_property
+from ..path import normalize_host
 
-from .beam_server import has_torch
+from .server import has_torch
 if has_torch:
     import torch
 
 
 class BeamClient(Processor):
 
-    def __init__(self, host, *args, **kwargs):
+    def __init__(self, *args, hostname=None, port=None, username=None, api_key=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.host = host
+        self.host = normalize_host(hostname, port)
+        self.api_key = api_key
+        self.username = username
 
     @property
     def load_function(self):
@@ -40,7 +43,7 @@ class BeamClient(Processor):
 
     @lazy_property
     def info(self):
-        raise NotImplementedError
+        return self.get_info()
 
     @property
     def attributes(self):
@@ -71,9 +74,10 @@ class BeamClient(Processor):
         return self.post('call', *args, **kwargs)
 
     def __getattr__(self, item):
-
         if item.startswith('_'):
-            return super(BeamClient, self).__getattr__(item)
+            return super().__getattribute__(item)
+        if not hasattr(self, '_lazy_cache') or 'info' not in self._lazy_cache:
+            return super().__getattribute__(item)
 
         if item not in self.attributes:
             self.clear_cache('info')
@@ -86,7 +90,7 @@ class BeamClient(Processor):
         raise ValueError(f"Unknown attribute type: {attribute_type}")
 
     def __setattr__(self, key, value):
-        if key in ['host', '_info', '_lazy_cache']:
-            super(BeamClient, self).__setattr__(key, value)
+        if key.startswith('_') or not hasattr(self, '_lazy_cache') or 'info' not in self._lazy_cache:
+            super().__setattr__(key, value)
         else:
             self.post(f'setvar/{key}', value)

@@ -28,6 +28,7 @@ from functools import partial
 Timer = partial(Timer, logger=beam_logger)
 
 from .path import beam_path, beam_key
+from .serve import beam_server, beam_client
 from ._version import __version__
 from .resource import resource
 

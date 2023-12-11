@@ -146,7 +146,7 @@ def beam_arguments(*args, return_defaults=False, **kwargs):
         if k not in args:
             setattr(args, k, v)
 
-    if args.experiment_configuration is not None:
+    if hasattr(args, 'experiment_configuration') and args.experiment_configuration is not None:
         cf = beam_path(args.experiment_configuration).read()
         for k, v in cf.items():
             setattr(args, k, v)

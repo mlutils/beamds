@@ -288,3 +288,15 @@ class DeepTabularAlg(Algorithm):
                 self.report_data('metrics/support', support)
 
                 self.report_scalar('objective', self.get_scalar('acc', aggregate=True))
+
+    def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
+                        processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,
+                        hparams=True, aux=None, pickle_model=False):
+        aux = {'kwargs': {'net_kwargs': {'n_classes': self.dataset.n_classes,
+                              'n_tokens': self.dataset.n_tokens,
+                              'cat_mask': self.dataset.cat_mask}}}
+
+        return super().save_checkpoint(path=path, networks=networks, optimizers=optimizers, schedulers=schedulers,
+                                processors=processors, scaler=scaler, scalers=scalers,
+                                swa_schedulers=swa_schedulers, swa_networks=swa_networks, hparams=hparams,
+                                aux=aux, pickle_model=pickle_model)

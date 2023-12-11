@@ -122,7 +122,9 @@ class BeamServer(Processor):
         run_thread.daemon = True
         run_thread.start()
 
-    def run(self, host="0.0.0.0", port=None, **kwargs):
+    def run(self, host=None, port=None, **kwargs):
+        if host is None:
+            host = "0.0.0.0"
         port = find_port(port=port, get_port_from_beam_port_range=True, application=self.application)
         logger.info(f"Opening a {self.application} inference serve on port: {port}")
         return self._run(host=host, port=port, **kwargs)

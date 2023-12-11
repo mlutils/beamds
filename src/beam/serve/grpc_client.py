@@ -1,23 +1,25 @@
 import grpc
-import beam_grpc_pb2 as beamgrpc_pb2
-import beam_grpc_pb2_grpc as beamgrpc_pb2_grpc
+from .beam_grpc_pb2 import (pickled_response, info_response, set_variable_response,
+                            get_variable_response, method_request, info_request, set_variable_request,
+                            get_variable_request, func_request)
+from .beam_grpc_pb2_grpc import BeamServiceStub
 import pickle
-from .beam_client import BeamClient  # Import your BeamClient
+from .client import BeamClient  # Import your BeamClient
 from functools import partial
 
 
 class GRPCClient(BeamClient):
 
-    def __init__(self, host, *args, **kwargs):
-        super().__init__(host, *args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         # Establish a gRPC channel
-        self.channel = grpc.insecure_channel(host)
+        self.channel = grpc.insecure_channel(self.host)
         # Create a stub (client proxy) for the BeamService
-        self.stub = beamgrpc_pb2_grpc.BeamServiceStub(self.channel)
+        self.stub = BeamServiceStub(self.channel)
 
     def get_info(self):
         # Call the get_info RPC method
-        response = self.stub.get_info(beamgrpc_pb2.info_request())
+        response = self.stub.get_info(info_request())
         return response.info_json
 
     def call_function(self, *args, **kwargs):
@@ -27,7 +29,7 @@ class GRPCClient(BeamClient):
 
         # Call the call_function RPC method
         response = self.stub.call_function(
-            beamgrpc_pb2.func_request(args=serialized_args, kwargs=serialized_kwargs)
+            func_request(args=serialized_args, kwargs=serialized_kwargs)
         )
 
         return pickle.loads(response.result)
@@ -39,7 +41,7 @@ class GRPCClient(BeamClient):
 
         # Call the query_algorithm RPC method
         response = self.stub.query_algorithm(
-            beamgrpc_pb2.method_request(method_name=method_name, args=serialized_args, kwargs=serialized_kwargs)
+            method_request(method_name=method_name, args=serialized_args, kwargs=serialized_kwargs)
         )
 
         return pickle.loads(response.result)
@@ -50,14 +52,14 @@ class GRPCClient(BeamClient):
 
         # Call the set_variable RPC method
         response = self.stub.set_variable(
-            beamgrpc_pb2.set_variable_request(name=name, value=serialized_value)
+            set_variable_request(name=name, value=serialized_value)
         )
 
         return response.success
 
     def get_variable(self, name):
         # Call the get_variable RPC method
-        response = self.stub.get_variable(beamgrpc_pb2.get_variable_request(name=name))
+        response = self.stub.get_variable(get_variable_request(name=name))
 
         return pickle.loads(response.value)
 
