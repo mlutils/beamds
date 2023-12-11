@@ -22,7 +22,7 @@ if __name__ == '__main__':
     hparams = FTLLMHparams(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir='/mnt/data/models',
                            device=0, algorithm=dataset_name.replace('/', '-'), batch_size=6,
                            training_framework='accelerate', device_placement=True, dataset=dataset_name, reload=False, resume=-1,
-                           n_gpus=2, model_dtype='bfloat16')
+                           n_gpus=1, model_dtype='bfloat16')
     experiment = Experiment(hparams)
 
     # dataset = FineTuneHFDataset(hparams)

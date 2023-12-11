@@ -148,9 +148,7 @@ class Algorithm(Processor):
     @lazy_property
     def model_dtype(self):
 
-        # if self.training_framework == 'amp':
-        #     return None
-        if self.training_framework != 'torch':
+        if self.training_framework == 'amp' or self.multip_procees_accelerate:
             return None
 
         model_dtype = self.get_hparam('model_dtype', default='float32')
@@ -230,10 +228,10 @@ class Algorithm(Processor):
 
     @lazy_property
     def deepspeed_plugin(self):
-        # deepspeed_plugin = None
-        # if self.get_hparam('n_gpus') > 1:
-        from accelerate.utils import DeepSpeedPlugin
-        deepspeed_plugin = DeepSpeedPlugin(gradient_accumulation_steps=self.get_hparam('accumulate'),)
+        deepspeed_plugin = None
+        if self.multip_procees_accelerate:
+            from accelerate.utils import DeepSpeedPlugin
+            deepspeed_plugin = DeepSpeedPlugin(gradient_accumulation_steps=self.get_hparam('accumulate'),)
         return deepspeed_plugin
 
     @lazy_property
@@ -283,7 +281,9 @@ class Algorithm(Processor):
         # objects = list(zip(*(dataloaders + networks)))[2]
         objects = list(zip(*networks))[2]
 
-        self.accelerator.state.deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = self.batch_size_train
+        if self.accelerator.state.deepspeed_plugin is not None:
+            self.accelerator.state.deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = self.batch_size_train
+
         prepared_objects = self.accelerator.prepare(*objects)
 
         # for i, (k, s, _) in enumerate(dataloaders):
@@ -1018,7 +1018,8 @@ class Algorithm(Processor):
             else:
                 net = net.to(self.device, dtype=self.model_dtype)
 
-            # net = self.accelerator.prepare(net)
+            if not self.multip_procees_accelerate:
+                net = self.accelerator.prepare(net)
         else:
             net = net.to(self.device, dtype=self.model_dtype)
 
@@ -1400,12 +1401,16 @@ class Algorithm(Processor):
 
         return dataset
 
+    @lazy_property
+    def multip_procees_accelerate(self):
+        return self.training_framework == 'accelerate' and self.get_hparam('n_gpus') > 1
+
     def __iter__(self):
 
         n_epochs = self.n_epochs + self.swa_epochs + int(self.swa_epochs > 0)
         self.refresh_optimizers_and_schedulers_pointers()
 
-        if self.training_framework == 'accelerate':
+        if self.multip_procees_accelerate:
             self.prepare_accelerate()
 
         epoch_start = 0 if self.get_hparam("restart_epochs_count", default=True) else self.epoch
