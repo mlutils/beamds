@@ -1,6 +1,4 @@
-import json
-from ..utils import lazy_property
-from dataclasses import dataclass
+from ..utils import lazy_property, jupyter_like_traceback
 from .resource import beam_llm
 from ..core import Processor
 
@@ -8,7 +6,7 @@ from ..core import Processor
 class LLMTask(Processor):
 
     def __init__(self, name=None, description=None, system=None, input_kwargs=None, output_kwargs=None,
-                 input_format='.json', output_format='.json', sep='\n', llm=None, *args, **kwargs):
+                 output_format='json', sep='\n', llm=None, *args, **kwargs):
 
         super().__init__(*args, name=name, **kwargs)
         self.name = name
@@ -19,7 +17,6 @@ class LLMTask(Processor):
             output_kwargs = {}
         self.input_kwargs = input_kwargs
         self.output_kwargs = output_kwargs
-        self.input_format = input_format
         self.output_format = output_format
         self.sep = sep
         self.system = system
@@ -35,67 +32,25 @@ class LLMTask(Processor):
         self.clear_cache('llm')
         self._llm = value
 
-    def __str__(self, **kwargs):
-        message = f""
+    def prompt(self, **kwargs):
+        message = (f"System message: {self.system}\n"
+                   f"Task: {self.name}\n"
+                   f"Input arguments description: {self.input_kwargs}\n"
+                   f"Task description: {self.description}\n"
+                   f"Input arguments values: {kwargs}\n"
+                   f"Output arguments description: {self.output_kwargs}\n"
+                   f"Output format: {self.output_format}\n"
+                   f"Your answer should start here:\n\n")
         return message
 
-    def __call__(self, *args, **kwargs):
-        return self.run(*args, **kwargs)
+    def __call__(self, llm_kwargs=None, **kwargs):
+
+        if llm_kwargs is None:
+            llm_kwargs = {}
+        prompt = self.prompt(**kwargs)
+
+        res = self.llm.ask(prompt, **llm_kwargs)
+        return res.parse(protocol=self.output_format)
 
     def parse(self, response):
         raise NotImplementedError
-
-
-@dataclass
-class LLMToolProperty:
-    # a class that holds an OpenAI tool parameter object
-
-    name: str
-    type: str
-    description: str
-    default = None
-    required: bool = False
-
-    def __str__(self):
-        message = json.dumps(repr(self), indent=4)
-        return message
-
-    def __repr__(self):
-        obj = {'name': self.name,
-                              'type': self.type,
-                              'description': self.description,
-                              'default': self.default,
-                              'required': self.required}
-        return obj
-
-    @property
-    def attributes(self):
-        return {'type': self.type, 'description': self.description, 'default': self.default}
-
-
-class LLMTool:
-    # a class that holds an OpenAI tool object
-
-    def __init__(self, name=None, type='function', description=None, func=None, **properties):
-
-        self.name = name or 'func'
-        self.type = type
-        self.description = description or 'See properties for more information.'
-        self.func = func
-        self.properties = properties
-
-    @property
-    def required(self):
-        return [k for k, v in self.properties.items() if v.required]
-
-    def __str__(self):
-        message = json.dumps(repr(self), indent=4)
-        return message
-
-    def __repr__(self):
-        return {'type': self.type, self.type: {'name': self.name, 'description': self.description,
-                                               'parameters': {'type': 'object',
-                                                              'properties': {p: v.attributes
-                                                                             for p, v in self.properties.items()},
-                                                              'required': self.required}}}
-

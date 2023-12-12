@@ -51,6 +51,12 @@ class LLMResponse:
     def openai_format(self):
         return self.llm.openai_format(self)
 
+    def parse_text(self, text, protocol='json'):
+        return self._protocol(text, protocol=protocol)
+
+    def parse(self, protocol='json'):
+        return self._protocol(self.text, protocol=protocol)
+
     def _protocol(self, text, protocol='json'):
 
         if self.parse_retrials == 0:

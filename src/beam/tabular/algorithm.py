@@ -11,6 +11,8 @@ import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
 import pandas as pd
 from ..logger import beam_logger as logger
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
 
 class TabularTransformer(torch.nn.Module):
@@ -211,17 +213,26 @@ class DeepTabularAlg(Algorithm):
 
             self.report_scalar('mask_rate', 1 - self.net.mask.probs)
 
+    def inner_train(self, net, sample, y, training):
+        y_hat = net(sample)
+        loss = self.loss_function(y_hat, y, **self.loss_kwargs)
+        self.apply(loss, training=training)
+        return loss.clone(), y_hat.clone()
+
+    @lazy_property
+    def optimized_train(self):
+        return torch.compile(self.inner_train, mode="reduce-overhead")
+
     def train_iteration(self, sample=None, label=None, subset=None, counter=None, index=None,
                         training=True, **kwargs):
 
         y = label
         net = self.net
 
-        y_hat = net(sample)
-
-        loss = self.loss_function(y_hat, y, **self.loss_kwargs)
-
-        self.apply(loss, training=training)
+        loss, y_hat = self.optimized_train(net, sample, y, training)
+        # y_hat = net(sample)
+        # loss = self.loss_function(y_hat, y, **self.loss_kwargs)
+        # self.apply(loss, training=training)
 
         # add scalar measurements
         if self.task_type == 'regression':

@@ -16,9 +16,8 @@ from langchain.llms.base import LLM
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
-import openai
 from .utils import get_conversation_template
-from .task import LLMTool
+from .tools import LLMTool
 
 
 CompletionObject = namedtuple("CompletionObject", "prompt kwargs response")
@@ -124,12 +123,34 @@ class BeamLLM(LLM, Processor):
         self._lazy_cache = {}
         self._tools = tools
 
-    def add_tool(self, name=None, type='function', func=None, description=None, tool=None, **kwargs):
+    def add_tool(self, name=None, tool_type='function', func=None, description=None, tool=None, **kwargs):
         if self._tools is None:
             self._tools = []
+        if type(name) is LLMTool:
+            tool = name
         if tool is None:
-            tool = LLMTool(name=name, type=type, description=description, func=func, **kwargs)
+            tool = LLMTool(name=name, tool_type=tool_type, description=description, func=func, **kwargs)
         self._tools.append(tool)
+
+    @property
+    def tools(self):
+        return self._tools
+
+    @property
+    def tool_message(self):
+        if self.tools is None:
+            return ""
+
+        all_tools_message = ""
+        for tool in self.tools:
+            all_tools_message = f"{all_tools_message}\n\n{tool.name}:\n{tool.dict()}\n"
+
+        message = (f"\nBelow is a list of available tools:\n"
+                   f"{all_tools_message}"
+                   f"To activate a tool use the following pattern with a JSON formatted argument:\n"
+                   f"[TOOL][<tool name>]{{\"args\": [<list of args>], "
+                   f"\"kwargs\": {{<a dictionary of kwargs>}}}}[/TOOL]\n\n")
+        return message
 
     @property
     def stop_sequence(self):
@@ -329,7 +350,7 @@ class BeamLLM(LLM, Processor):
 
     def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
-             logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None,
+             logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None, add_tools=True,
              prompt_type='chat_completion', **kwargs):
 
         '''
@@ -365,6 +386,12 @@ class BeamLLM(LLM, Processor):
             self.reset_chat()
 
         messages = []
+        if add_tools and self.tools is not None:
+            if system is None:
+                system = self.tool_message
+            else:
+                system = f"{system}\n\n{self.tool_message}"
+
         if system is not None:
             system = {'role': 'system', 'content': system}
             if system_name is not None:
@@ -398,7 +425,7 @@ class BeamLLM(LLM, Processor):
         docs = ""
         for i, (k, v) in enumerate(docstrings.items()):
             docs += (f"{i}. Function: {k}\n\n{v}\n\n"
-                     f"========================================================================\n")
+                     f"[SEP]\n")
 
         system = (f"You are given a list of docstrings of several functions. Each docstring details the function name, "
                   f"its purpose, its arguments and its keyworded arguments.\n"
@@ -410,7 +437,7 @@ class BeamLLM(LLM, Processor):
                   f"If you are confident that you can assign a function to the user request and fill all the required arguments, "
                   f"and fill as much as possible keyworded arguments, you need to respond in a single valid JSON object "
                   f"of the form {{\"function\": <function name>, \"args\": [list of arguments], \"kwargs\": {{<dictionary of kwargs>}} }}\n\n"
-                  f"========================================================================\n\n"
+                  f"[SEP]\n\n"
                   f"{docs}\n")
 
         if message is None:
@@ -431,25 +458,24 @@ class BeamLLM(LLM, Processor):
                 f"keyworded arguments according to the user request. You are required to respond in a single "
                 f"valid JSON object of the form {{\"function\": <function name>, \"args\": [list of arguments], "
                 f"\"kwargs\": {{<dictionary of kwargs>}} }}\n\n"
-                f"========================================================================\n\n"
+                f"[SEP]\n\n"
                 f"Docstrings:\n\n"
                 f"{docs}\n"
                 f"Chat session:\n\n"
                 f"{self.chat_history}"
-                f"========================================================================\n\n"
+                f"[SEP]\n\n"
                 f"Response: \"\"\"\n{{text input here}}\n\"\"\"")
 
             res = self.ask(instruction, system=system, **kwargs)
 
         return res
 
-
     def explain_traceback(self, traceback, n_words=100, **kwargs):
         prompt = (f"Task: explain the following traceback and suggest a correction. Be concise don't use more than"
                   f"{n_words} words and don't use newlines.\n\n"
-                    f"========================================================================\n\n"
+                    f"[SEP]\n\n"
                     f"{traceback}\n\n"
-                    f"========================================================================\n\n"
+                    f"[SEP]\n\n"
                     f"Response: \"\"\"\n{{text input here}}\n\"\"\"")
 
         res = self.ask(prompt, **kwargs)
@@ -461,9 +487,9 @@ class BeamLLM(LLM, Processor):
 
         prompt = (f"Task: fix the following {protocols_text[protocol]} object. "
                   f"Return a valid {protocols_text[protocol]} object without anything else\n\n"
-                    f"========================================================================\n\n"
+                    f"[SEP]\n\n"
                     f"{text}\n\n"
-                    f"========================================================================\n\n"
+                    f"[SEP]\n\n"
                     f"Response: \"\"\"\n{{text input here}}\n\"\"\"")
         res = self.ask(prompt).text
 
@@ -480,24 +506,24 @@ class BeamLLM(LLM, Processor):
             docstring_format = ""
 
         prompt = f"Task: write a full python docstring {docstring_format}for the following {element_type}\n\n" \
-                 f"========================================================================\n\n" \
+                 f"[SEP]\n\n" \
                  f"{text}\n\n" \
-                 f"========================================================================\n\n"
+                 f"[SEP]\n\n"
 
         if parent is not None:
             prompt = f"{prompt}" \
                      f"where its parent {parent_type}: {parent_name}, has the following docstring\n\n" \
-                     f"========================================================================\n\n" \
+                     f"[SEP]\n\n" \
                      f"{parent}\n\n" \
-                     f"========================================================================\n\n"
+                     f"[SEP]\n\n"
 
         if children is not None:
             for i, (c, cn, ct) in enumerate(zip(children, children_name, children_type)):
                 prompt = f"{prompt}" \
                          f"and its #{i} child: {ct} named {cn}, has the following docstring\n\n" \
-                         f"========================================================================\n\n" \
+                         f"[SEP]\n\n" \
                          f"{c}\n\n" \
-                         f"========================================================================\n\n"
+                         f"[SEP]\n\n"
 
         prompt = f"{prompt}" \
                  f"Response: \"\"\"\n{{docstring text here (do not add anything else)}}\n\"\"\""
@@ -560,7 +586,7 @@ class BeamLLM(LLM, Processor):
 
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
-            parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', **kwargs):
+            parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', add_tools=True, **kwargs):
         """
 
         @param question:
@@ -594,6 +620,9 @@ class BeamLLM(LLM, Processor):
 
         # if response_format is not None:
         #     question = f"{question}\nReplay with a valid {response_format} format"
+
+        if add_tools and self.tools is not None:
+            question = f"{question}\n\n{self.tool_message}"
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
@@ -742,9 +771,9 @@ class BeamLLM(LLM, Processor):
 
         prompt = f"Task: Out of the following set of terms: {features}\n" \
                  f"list in comma separated values (csv) the terms that describe the following Text:\n" \
-                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
+                 f"[SEP]\n" \
                  f" {text}\n" \
-                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
+                 f"[SEP]\n" \
                  f"Important: do not list any other term that did not appear in the aforementioned list.\n" \
                  f"Response: \"\"\"\n{{text input here}}\n\"\"\""
 
