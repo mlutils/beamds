@@ -1,7 +1,7 @@
 from ..path import BeamURL
 
 
-def beam_server(obj, protocol='http', host=None, port=None, backend=None, **kwargs):
+def beam_server(obj, protocol='http', host=None, port=None, backend=None, non_blocking=False, **kwargs):
 
     run_kwargs = {}
     if 'http' in protocol:
@@ -17,7 +17,12 @@ def beam_server(obj, protocol='http', host=None, port=None, backend=None, **kwar
     else:
         raise ValueError(f"Unknown protocol: {protocol}")
 
-    server.run(host=host, port=port, **run_kwargs)
+    if non_blocking:
+        server.run_non_blocking(host=host, port=port, **run_kwargs)
+    else:
+        server.run(host=host, port=port, **run_kwargs)
+
+    return server
 
 
 def beam_client(uri, hostname=None, port=None, username=None, api_key=None, **kwargs):

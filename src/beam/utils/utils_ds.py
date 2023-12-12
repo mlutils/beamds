@@ -1,3 +1,4 @@
+import copy
 import os, sys
 from collections import defaultdict
 import numpy as np
@@ -598,6 +599,9 @@ def recursive(func):
             if isinstance(x, dict):
                 values = dict(zip(keys, values))
 
+            if isinstance(x, tuple):
+                values = tuple(values)
+
             return values
 
         else:
@@ -605,6 +609,21 @@ def recursive(func):
             return func(x, *args, **kwargs)
 
     return apply_recursively
+
+
+@recursive
+def recursive_clone(x):
+    x_minor = check_minor_type(x)
+    if x_minor == 'tensor':
+        return x.clone()
+    elif x_minor == 'numpy':
+        return x.copy()
+    elif x_minor == 'pandas':
+        return x.copy(deep=True)
+    elif x_minor == 'scipy_sparse':
+        return x.copy()
+    else:
+        return copy.deepcopy(x)
 
 
 def beam_hash(x, bytes_threshold=int(1e6), fast=True):
