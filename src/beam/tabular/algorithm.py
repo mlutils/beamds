@@ -213,26 +213,20 @@ class DeepTabularAlg(Algorithm):
 
             self.report_scalar('mask_rate', 1 - self.net.mask.probs)
 
-    def inner_train(self, net, sample, y, training):
+    def inner_train(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
+        y = label
+        net = self.net
+
         y_hat = net(sample)
         loss = self.loss_function(y_hat, y, **self.loss_kwargs)
         self.apply(loss, training=training)
-        return loss.clone(), y_hat.clone()
-
-    @lazy_property
-    def optimized_train(self):
-        return torch.compile(self.inner_train, mode="reduce-overhead")
+        return loss, y_hat, y
 
     def train_iteration(self, sample=None, label=None, subset=None, counter=None, index=None,
                         training=True, **kwargs):
 
-        y = label
-        net = self.net
-
-        loss, y_hat = self.optimized_train(net, sample, y, training)
-        # y_hat = net(sample)
-        # loss = self.loss_function(y_hat, y, **self.loss_kwargs)
-        # self.apply(loss, training=training)
+        loss, y_hat, y = self.optimized_inner_train(sample=sample, label=label, index=index, counter=counter, subset=subset,
+                                       training=training, **kwargs)
 
         # add scalar measurements
         if self.task_type == 'regression':

@@ -8,7 +8,7 @@ import numpy as np
 from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler
 from ..utils import to_device, check_type, recursive_concatenate, \
     beam_device, filter_dict, lazy_property, \
-    is_notebook, DataBatch, dictionary_iterator
+    is_notebook, DataBatch, dictionary_iterator, recursive
 from ..config import beam_arguments, basic_beam_parser
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
@@ -1175,6 +1175,20 @@ class Algorithm(Processor):
         a placeholder for operations to execute before each epoch, e.g. shuffling/augmenting the dataset
         '''
         pass
+
+    @lazy_property
+    def optimized_inner_train(self):
+        def inner_train_with_cloned_ouptut(*args, **kwargs):
+            res = self.inner_train(*args, **kwargs)
+            return recursive(torch.clone)(res)
+
+        if self.hparams.get('compile_train', False):
+            return torch.compile(inner_train_with_cloned_ouptut, mode="reduce-overhead")
+
+        return self.inner_train
+
+    def inner_train(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
+        raise NotImplementedError
 
     def iterate_epoch(self, subset, training, n):
 

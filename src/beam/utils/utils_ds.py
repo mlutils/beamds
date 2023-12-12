@@ -556,6 +556,33 @@ def object_size(x, x_type=None):
         return sys.getsizeof(x)
 
 
+def is_container(x):
+
+    if isinstance(x, dict):
+        return True
+    if isinstance(x, list) or isinstance(x, tuple):
+
+        if len(x) < 100:
+            sampled_indices = range(len(x))
+        else:
+            sampled_indices = np.random.randint(len(x), size=(100,))
+
+        elt0 = None
+        for i in sampled_indices:
+            elt = check_element_type(x[i])
+
+            if elt0 is None:
+                elt0 = elt
+
+            if elt != elt0:
+                return True
+
+            if elt in ['array', 'none', 'object']:
+                return True
+
+    return False
+
+
 def recursive(func):
     def apply_recursively(x, *args, **kwargs):
 
@@ -592,34 +619,6 @@ def _beam_hash(x, h, bytes_threshold=int(1e6), fast=True):
         h.update(big_array_representation(x))
     else:
         h.update(pickle.dumps(x))
-
-
-def is_container(x):
-
-    if isinstance(x, dict):
-        return True
-    if isinstance(x, list):
-
-        if len(x) < 100:
-            sampled_indices = range(len(x))
-        else:
-            sampled_indices = np.random.randint(len(x), size=(100,))
-
-        elt0 = None
-        for i in sampled_indices:
-            elt = check_element_type(x[i])
-
-            if elt0 is None:
-                elt0 = elt
-
-            if elt != elt0:
-                return True
-
-            if elt in ['array', 'none', 'object']:
-                return True
-
-    return False
-
 
 
 @recursive

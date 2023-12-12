@@ -100,7 +100,8 @@ if __name__ == '__main__':
     kwargs_base = dict(algorithm='debug_reporter', data_path=data_path, logs_path=logs_path,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=100,
                        stop_at=0.98, n_gpus=0, device=0, n_quantiles=6, label_smoothing=.2,
-                       model_dtype='float32', training_framework='torch', device_placement=True)
+                       model_dtype='float32', training_framework='torch', device_placement=True,
+                       compile_train=True)
 
     kwargs_all = {}
 

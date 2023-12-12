@@ -309,4 +309,9 @@ def basic_beam_parser():
     parser.add_argument('--training-framework', type=str, default='torch',
                         help='Chose between [torch|amp|accelerate]')
 
+    boolean_feature(parser, "compile-train", False,
+                    "Apply torch.compile to optimize the inner_train function to speed up training. "
+                    "To use this feature, you must override and use the alg.inner_train function "
+                    "in your alg.train_iteration function")
+
     return parser
