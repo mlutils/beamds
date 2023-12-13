@@ -3,7 +3,7 @@ import json
 from typing import Any
 
 from ..utils import lazy_property, jupyter_like_traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 
 
@@ -14,8 +14,9 @@ class LLMToolProperty:
     name: str
     type: str
     description: str
-    default = None
+    default: any = None
     required: bool = False
+    enum: list = None
 
     def __str__(self):
         message = json.dumps(self.dict(), indent=4)
@@ -26,12 +27,18 @@ class LLMToolProperty:
                               'type': self.type,
                               'description': self.description,
                               'default': self.default,
-                              'required': self.required}
+                              'required': self.required,
+                              'enum': self.enum}
         return obj
 
     @property
     def attributes(self):
-        return {'type': self.type, 'description': self.description, 'default': self.default}
+        d = {'type': self.type, 'description': self.description}
+        if self.default is not None:
+            d['default'] = self.default
+        if self.enum is not None:
+            d['enum'] = self.enum
+        return d
 
 
 class LLMTool:
@@ -40,7 +47,7 @@ class LLMTool:
     token_start = '[TOOL]'
     token_end = '[/TOOL]'
 
-    def __init__(self, name=None, tool_type='function', description=None, func=None, **properties):
+    def __init__(self, name=None, tool_type='function', description=None, func=None, required=None, **properties):
 
         self.func = func
 
@@ -54,9 +61,24 @@ class LLMTool:
         self.tool_type = tool_type
         self.description = description or 'See properties for more information.'
 
-        self.properties = properties
+        self.properties = {}
+        required = required or []
+        for name, p in properties.items():
+            if isinstance(p, LLMToolProperty):
+                self.properties[name] = p
+            else:
+                r = name in required
+                self.properties[name] = LLMToolProperty(name=name, required=r, **p)
+
         self.tool_token = f"[{self.name}]"
 
+    @lazy_property
+    def args(self):
+        return [k for k, v in self.properties.items() if v.required]
+
+    @lazy_property
+    def kwargs(self):
+        return [k for k, v in self.properties.items() if not v.required]
 
     @property
     def required(self):
@@ -64,17 +86,30 @@ class LLMTool:
 
     @lazy_property
     def tool_search_pattern(self):
-        return fr"{re.escape(self.token_start)}{re.escape(self.tool_token)}(.*?){re.escape(self.token_end)}"
+        # Escape special characters in tokens
+        escaped_token_start = re.escape(self.token_start)
+        escaped_token_end = re.escape(self.token_end)
+
+        # Pattern to match with or without square brackets and optional whitespace
+        pattern = (rf"{escaped_token_start}\s*"
+                   rf"\[?{self.name}\]?"
+                   rf"\s*(.*?)\s*"
+                   rf"{escaped_token_end}")
+
+        return pattern
 
     def __call__(self, response):
 
         match = re.match(self.tool_search_pattern, response.text)
         if match:
             arguments = match.group(1)
-            arguments = response.parse_text(arguments, protocol='json')
-            args = arguments.get('args', [])
-            kwargs = arguments.get('kwargs', {})
-
+            try:
+                arguments = response.parse_text(arguments, protocol='json')
+                args = arguments.get('args', [])
+                kwargs = arguments.get('kwargs', {})
+            except:
+                return ExecutedTool(tool=self, success=False, executed=False,
+                                    traceback=jupyter_like_traceback(), unparsed_arguments=arguments)
             executed = False
             success = False
             traceback = None
@@ -106,9 +141,10 @@ class LLMTool:
 @dataclass
 class ExecutedTool:
     tool: LLMTool
-    args: tuple
-    kwargs: dict
-    success: bool
-    executed: bool
-    traceback: str
-    response: Any
+    args: tuple = None
+    kwargs: dict = None
+    success: bool = False
+    executed: bool = False
+    traceback: str = None
+    response: Any = None
+    unparsed_arguments: str = None

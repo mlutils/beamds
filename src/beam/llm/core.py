@@ -1,8 +1,9 @@
+import json
 import time
 from collections import namedtuple
 from functools import partial
 from typing import Optional, Any, Dict, List, Mapping
-
+from uuid import uuid4 as uuid
 import numpy as np
 import pandas as pd
 
@@ -125,12 +126,22 @@ class BeamLLM(LLM, Processor):
 
     def add_tool(self, name=None, tool_type='function', func=None, description=None, tool=None, **kwargs):
         if self._tools is None:
-            self._tools = []
+            self._tools = {}
+        if name in self._tools:
+            return
         if type(name) is LLMTool:
             tool = name
         if tool is None:
             tool = LLMTool(name=name, tool_type=tool_type, description=description, func=func, **kwargs)
-        self._tools.append(tool)
+        self._tools[name] = tool
+
+    def remove_tool(self, name):
+        if self._tools is None:
+            return
+        if name in self._tools:
+            self._tools.pop(name)
+        if len(self._tools) == 0:
+            self._tools = None
 
     @property
     def tools(self):
@@ -263,8 +274,28 @@ class BeamLLM(LLM, Processor):
     def _chat_completion(self, **kwargs):
         raise NotImplementedError
 
+    def add_tool_message_to_chat(self, messages=None):
+
+        if self.tools is None:
+            return messages
+
+        if messages is None:
+            messages = []
+
+        system_found = False
+        for m in messages:
+            if m['role'] == 'system':
+                m['content'] = f"{m['content']}\n\n{self.tool_message}"
+                system_found = True
+                break
+        if not system_found:
+            messages.insert(0, {'role': 'system', 'content': self.tool_message})
+
+        return messages
+
+
     def chat_completion(self, stream=False, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='chat_completion',
-                        **kwargs):
+                        add_tools_message=False, **kwargs):
 
         chat_completion_function = self._chat_completion
         if ask_retrials > 1:
@@ -272,12 +303,35 @@ class BeamLLM(LLM, Processor):
                                         sleep=sleep, logger=logger,
                                         name=f"LLM chat-completion with model: {self.model}")
 
+        tool_names = []
+        if self.scheme != 'openai' and add_tools_message and 'tools' in kwargs and kwargs['tools'] is not None:
+
+            # add tools
+            tools = kwargs.pop('tools')
+
+            for t in tools:
+                tool_type = t['type']
+                name = t[tool_type]['name']
+                description = t[tool_type]['description']
+                parameters = t[tool_type]['parameters']
+                tool_names.append(name)
+                self.add_tool(name=name, tool_type=tool_type, func=None, description=description, tool=None,
+                              **parameters)
+
+            # add tools message
+            self.add_tool_message_to_chat(kwargs.pop('messages', None))
+
         completion_object = chat_completion_function(**kwargs)
         self.update_usage(completion_object.response)
 
         response = LLMResponse(completion_object.response, self, chat=True, stream=stream,
                                parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
+
+        if tool_names:
+            for tool_name in tool_names:
+                self.remove_tool(tool_name)
+
         return response
 
     def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', **kwargs):
@@ -386,11 +440,6 @@ class BeamLLM(LLM, Processor):
             self.reset_chat()
 
         messages = []
-        if add_tools and self.tools is not None:
-            if system is None:
-                system = self.tool_message
-            else:
-                system = f"{system}\n\n{self.tool_message}"
 
         if system is not None:
             system = {'role': 'system', 'content': system}
@@ -406,6 +455,9 @@ class BeamLLM(LLM, Processor):
             message['name'] = name
 
         messages.append(message)
+
+        if add_tools:
+            self.add_tool_message_to_chat(messages)
 
         response = self.chat_completion(messages=messages, prompt_type=prompt_type, **default_params)
         self.add_to_chat(response.text, is_user=False)
@@ -551,14 +603,48 @@ class BeamLLM(LLM, Processor):
         text = self.extract_text(res)
 
         if res.chat:
-            choice = {
-                      "finish_reason": finish_reason,
-                      "index": 0,
-                      "message": {
-                        "content": text,
-                        "role": "assistant"
-                      }
+
+            if len(self.tools):
+
+                tool_calls = []
+                for t in self.tools:
+                    et = t(res)
+                    if et is not None and et.success:
+
+                        arguments = {}
+                        for i, k in enumerate(et.args):
+                            arguments[t.args[i]] = k
+                        for k, v in et.kwargs.items():
+                            arguments[k] = v
+
+                        tool_res = {
+                            "id": f"call_{uuid()}",
+                            "type": "function",
+                            "function": {
+                                "name": t.name,
+                                "arguments": json.dumps(arguments)
+                            }}
+                        tool_calls.append(tool_res)
+
+            if len(tool_calls):
+                choice = {
+                    "finish_reason": finish_reason,
+                    "index": 0,
+                    "message": {
+                        "content": None,
+                        "role": "assistant",
+                        "tool_calls": tool_calls
                     }
+                }
+            else:
+                choice = {
+                          "finish_reason": finish_reason,
+                          "index": 0,
+                          "message": {
+                            "content": text,
+                            "role": "assistant"
+                          }
+                        }
         else:
             choice = {
                 "finish_reason": finish_reason,
@@ -621,8 +707,8 @@ class BeamLLM(LLM, Processor):
         # if response_format is not None:
         #     question = f"{question}\nReplay with a valid {response_format} format"
 
-        if add_tools and self.tools is not None:
-            question = f"{question}\n\n{self.tool_message}"
+        if add_tools:
+            self.add_tool_message_to_prompt(question)
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
@@ -880,3 +966,8 @@ class BeamLLM(LLM, Processor):
             return self.tokenizer.decode(tokens, skip_special_tokens=skip_special_tokens)
         else:
             return ''.join(split_to_tokens(message)[:n_tokens])
+
+    def add_tool_message_to_prompt(self, question):
+        if self.tools is not None:
+            question = f"{question}\n\n{self.tool_message}"
+        return question

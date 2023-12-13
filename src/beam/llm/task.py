@@ -50,7 +50,17 @@ class LLMTask(Processor):
         prompt = self.prompt(**kwargs)
 
         res = self.llm.ask(prompt, **llm_kwargs)
-        return res.parse(protocol=self.output_format)
+
+        try:
+            result = res.parse(protocol=self.output_format)
+            success = True
+        except:
+            result = jupyter_like_traceback()
+            success = False
+
+        res.add_task_result(result, success=success)
+
+        return res
 
     def parse(self, response):
         raise NotImplementedError

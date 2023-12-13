@@ -194,7 +194,7 @@ class TGILLM(FCConversationLLM):
     _info: Any = PrivateAttr()
     _client: Any = PrivateAttr()
 
-    def __init__(self, hostname=None, port=None, *args, **kwargs):
+    def __init__(self, hostname=None, port=None, *args, model_adapter=None, **kwargs):
 
         api_base = f"http://{normalize_host(hostname, port)}"
 
@@ -206,7 +206,10 @@ class TGILLM(FCConversationLLM):
 
         kwargs['model'] = self._info['model_id']
         kwargs['scheme'] = 'tgi'
-        super().__init__(*args, **kwargs)
+
+        if model_adapter is None:
+            model_adapter = 'raw'
+        super().__init__(*args, model_adapter=model_adapter, **kwargs)
 
     def update_usage(self, response):
 

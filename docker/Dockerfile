@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:23.10-py3
+FROM nvcr.io/nvidia/pytorch:23.11-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -65,6 +65,7 @@ RUN pip install -U -r /workspace/install/requirements_0014.txt
 RUN pip install -U -r /workspace/install/requirements_0015.txt
 # RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0016.txt
+
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 #RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
@@ -113,6 +114,11 @@ RUN bash /workspace/install/install_cusignal.sh
 # RUN conda install -y -c conda-forge faiss-gpu
 # RUN pip install faiss-gpu
 RUN bash /workspace/install/install_faiss.sh
+
+# Install cx_oracle
+ENV ORACLE_HOME /opt/oracle/instantclient
+ENV LD_LIBRARY_PATH $ORACLE_HOME:$LD_LIBRARY_PATH
+RUN bash /workspace/install/install_oracle.sh
 
 # install beam - from pip (see requirements_no_deps.txt file)
 

@@ -21,6 +21,8 @@ class LLMResponse:
         self.object = "chat.completion" if chat else "text_completion"
         self.stream = stream
         self.prompt_type = prompt_type
+        self._task_result = None
+        self._task_success = None
         assert self.verify(), "Response is not valid"
 
     def __iter__(self):
@@ -31,6 +33,18 @@ class LLMResponse:
                 yield LLMResponse(r, self.llm, prompt=self.prompt, chat=self.chat, stream=self.stream,
                                   prompt_kwargs=self._prompt_kwargs, parse_retrials=self.parse_retrials,
                                   sleep=self.sleep, prompt_type=self.prompt_type)
+
+    def add_task_result(self, task_result, success=True):
+        self._task_result = task_result
+        self._task_success = success
+
+    @property
+    def task_result(self):
+        return self._task_result
+
+    @property
+    def task_success(self):
+        return self._task_success
 
     @property
     def prompt(self):

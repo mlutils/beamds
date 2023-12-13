@@ -345,6 +345,15 @@ class PeftModelAdapter:
         return base_adapter.get_default_conv_template(config.base_model_name_or_path)
 
 
+class RawAdapter(BaseModelAdapter):
+    "raw model adapter" ""
+
+    def match(self, model_path: str):
+        return "raw" == model_path.lower()
+    def get_default_conv_template(self, model_path: str) -> Conversation:
+        return get_conv_template("raw")
+
+
 class VicunaAdapter(BaseModelAdapter):
     "Model adapter for Vicuna models (e.g., lmsys/vicuna-7b-v1.5)" ""
 
@@ -1573,6 +1582,7 @@ class PygmalionAdapter(BaseModelAdapter):
 # The one registered earlier has a higher matching priority.
 register_model_adapter(PeftModelAdapter)
 register_model_adapter(VicunaAdapter)
+register_model_adapter(RawAdapter)
 register_model_adapter(AiroborosAdapter)
 register_model_adapter(LongChatAdapter)
 register_model_adapter(GoogleT5Adapter)
