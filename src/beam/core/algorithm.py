@@ -12,7 +12,7 @@ from ..utils import to_device, check_type, recursive_concatenate, \
 from ..config import beam_arguments, basic_beam_parser
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
-from ..path import beam_path
+from ..path import beam_path, local_copy
 from .processor import Processor
 from ..logger import beam_kpi, BeamResult
 
@@ -81,27 +81,38 @@ class Algorithm(Processor):
         logger.warning(f"{property} is not supported without an active experiment. Set self.experiment = experiment")
 
     @lazy_property
-    def ddp(self):
+    def distributed_training(self):
         if self.experiment is None:
-            self.no_experiment_message('ddp')
-        return self.get_hparam('ddp')
+            self.no_experiment_message('distributed_training')
+            return False
+        return self.get_hparam('distributed_training')
+
+    @lazy_property
+    def distributed_training_framework(self):
+        if self.experiment is None:
+            self.no_experiment_message('distributed_training_framework')
+            return None
+        return self.get_hparam('distributed_training_framework')
 
     @lazy_property
     def hpo(self):
         if self.experiment is None:
             self.no_experiment_message('hpo')
+            return False
         return self.get_hparam('hpo')
 
     @lazy_property
     def rank(self):
         if self.experiment is None:
             self.no_experiment_message('rank')
+            return 0
         return self.get_hparam('rank')
 
     @lazy_property
     def world_size(self):
         if self.experiment is None:
             self.no_experiment_message('world_size')
+            return 1
         return self.get_hparam('world_size')
 
     @lazy_property
@@ -208,7 +219,7 @@ class Algorithm(Processor):
 
     def clear_experiment_properties(self):
 
-        self.clear_cache('device', 'ddp', 'hpo', 'rank', 'world_size', 'enable_tqdm', 'n_epochs',
+        self.clear_cache('device', 'distributed_training', 'distributed_training_framework', 'hpo', 'rank', 'world_size', 'enable_tqdm', 'n_epochs',
                             'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
                             'scaler', 'swa_epochs')
 
@@ -738,68 +749,80 @@ class Algorithm(Processor):
         loss = total_loss
         if training:
 
-            if self.amp:
-                if name is None:
-                    scaler = self.scaler
-                else:
-                    if name not in self.scalers:
-                        self.scalers[name] = torch.cuda.amp.GradScaler()
-                    scaler = self.scalers[name]
+            if self.deepspeed:
+                engines = optimizers
+                if engines is None:
+                    engines = list(self.networks.values())
+                for eng in engines:
+                    eng.zero_grad()
+                for eng in engines:
+                    eng.backward(loss, retain_graph=retain_graph, scale_wrt_gas=True)
+                for eng in engines:
+                    eng.step()
 
-            if optimizers is None:
-                optimizers = self.optimizers_flat
             else:
-                if isinstance(optimizers, torch.optim.Optimizer) or isinstance(optimizers, BeamOptimizer):
-                    optimizers = [optimizers]
-                optimizers = self.get_flat_optimizers(optimizers)
-
-            with torch.autocast(self.autocast_device, dtype=self.mixed_precision_dtype, enabled=False):
-
-                it = {}
-
-                for k, op in optimizers.items():
-
-                    if k not in self.optimizers_steps:
-                        self.optimizers_steps[k] = 0
-                    it[k] = self.optimizers_steps[k] if iteration is None else iteration
-                    it[k] = (it[k] % self.get_hparam('accumulate', specific=name))
-
-                    if not it[k]:
-                        op.zero_grad(set_to_none=set_to_none)
-
                 if self.amp:
-                    scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
-                                                create_graph=create_graph, inputs=inputs)
-                elif self.accelerator is not None:
-                    self.accelerator.backward(loss, gradient=gradient, retain_graph=retain_graph,
-                                              create_graph=create_graph, inputs=inputs)
+                    if name is None:
+                        scaler = self.scaler
+                    else:
+                        if name not in self.scalers:
+                            self.scalers[name] = torch.cuda.amp.GradScaler()
+                        scaler = self.scalers[name]
+
+                if optimizers is None:
+                    optimizers = self.optimizers_flat
                 else:
-                    loss.backward(gradient=gradient, retain_graph=retain_graph,
-                                  create_graph=create_graph, inputs=inputs)
+                    if isinstance(optimizers, torch.optim.Optimizer) or isinstance(optimizers, BeamOptimizer):
+                        optimizers = [optimizers]
+                    optimizers = self.get_flat_optimizers(optimizers)
 
-                for k, op in optimizers.items():
+                with torch.autocast(self.autocast_device, dtype=self.mixed_precision_dtype, enabled=False):
 
-                    if it[k] == self.get_hparam('accumulate', specific=name) - 1:
+                    it = {}
 
-                        clip = self.get_hparam('clip_gradient', specific=k)
-                        if clip > 0:
+                    for k, op in optimizers.items():
+
+                        if k not in self.optimizers_steps:
+                            self.optimizers_steps[k] = 0
+                        it[k] = self.optimizers_steps[k] if iteration is None else iteration
+                        it[k] = (it[k] % self.get_hparam('accumulate', specific=name))
+
+                        if not it[k]:
+                            op.zero_grad(set_to_none=set_to_none)
+
+                    if self.amp:
+                        scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
+                                                    create_graph=create_graph, inputs=inputs)
+                    elif self.accelerator is not None:
+                        self.accelerator.backward(loss, gradient=gradient, retain_graph=retain_graph,
+                                                  create_graph=create_graph, inputs=inputs)
+                    else:
+                        loss.backward(gradient=gradient, retain_graph=retain_graph,
+                                      create_graph=create_graph, inputs=inputs)
+
+                    for k, op in optimizers.items():
+
+                        if it[k] == self.get_hparam('accumulate', specific=name) - 1:
+
+                            clip = self.get_hparam('clip_gradient', specific=k)
+                            if clip > 0:
+                                if self.amp:
+                                    scaler.unscale_(op)
+                                if self.accelerator is not None and self.accelerator.sync_gradients:
+                                    for pg in op.param_groups:
+                                        self.accelerator.clip_grad_norm_(pg['params'], clip)
+                                else:
+                                    for pg in op.param_groups:
+                                        torch.nn.utils.clip_grad_norm_(iter(pg['params']), clip)
+
                             if self.amp:
-                                scaler.unscale_(op)
-                            if self.accelerator is not None and self.accelerator.sync_gradients:
-                                for pg in op.param_groups:
-                                    self.accelerator.clip_grad_norm_(pg['params'], clip)
+                                scaler.step(op)
                             else:
-                                for pg in op.param_groups:
-                                    torch.nn.utils.clip_grad_norm_(iter(pg['params']), clip)
+                                # from torch.cuda.amp import grad_scaler
+                                # from accelerate import optimizer
+                                op.step()
 
-                        if self.amp:
-                            scaler.step(op)
-                        else:
-                            # from torch.cuda.amp import grad_scaler
-                            # from accelerate import optimizer
-                            op.step()
-
-                    self.optimizers_steps[k] = self.optimizers_steps[k] + 1
+                        self.optimizers_steps[k] = self.optimizers_steps[k] + 1
 
         return loss
 
@@ -1012,9 +1035,17 @@ class Algorithm(Processor):
             return True
         return False
 
+    @property
+    def ddp(self):
+        return self.distributed_training and self.distributed_training_framework == 'ddp'
+
+    @property
+    def deepspeed(self):
+        return self.distributed_training and self.distributed_training_framework == 'deepspeed'
+
     def register_network(self, net, name=None):
 
-        if self.accelerator is not None:
+        if self.accelerator:
             if self.accelerator.device_placement:
                 # let accelerate handle the device placement but provide accelerator with the correct dtype
                 net = net.to('cpu', dtype=self.model_dtype)
@@ -1026,7 +1057,7 @@ class Algorithm(Processor):
         else:
             net = net.to(self.device, dtype=self.model_dtype)
 
-        if self.experiment is not None and self.ddp:
+        if self.ddp:
 
             if self.is_cuda:
                 device_ids = [self.device]
@@ -1042,6 +1073,10 @@ class Algorithm(Processor):
                 if a not in dir(net_ddp) and not a.startswith('_'):
                     setattr(net_ddp, a, getattr(net, a))
             net = net_ddp
+
+        elif self.deepspeed:
+            from deepspeed import DeepSpeedEngine
+            net = DeepSpeedEngine(net, config=self.experiment.ds_config_file)
 
         return net
 
@@ -1510,37 +1545,53 @@ class Algorithm(Processor):
         if hparams:
             state['hparams'] = self.hparams.namespace
 
-        for k, net in filter_dict(self.networks, networks).items():
-            state[f"{k}_parameters"] = wrapper(net.state_dict())
-            if pickle_model:
-                state[f"{k}_model"] = net
+        if not self.deepspeed:
 
-        for k, optimizer in filter_dict(self.optimizers, optimizers).items():
-            state[f"{k}_optimizer"] = wrapper(optimizer.state_dict())
+            for k, net in filter_dict(self.networks, networks).items():
+                state[f"{k}_parameters"] = wrapper(net.state_dict())
+                if pickle_model:
+                    state[f"{k}_model"] = net
 
-        for k, scheduler in filter_dict(self.schedulers, schedulers).items():
-            state[f"{k}_scheduler"] = wrapper(scheduler.state_dict())
+            for k, optimizer in filter_dict(self.optimizers, optimizers).items():
+                state[f"{k}_optimizer"] = wrapper(optimizer.state_dict())
 
-        for k, processor in filter_dict(self.processors, processors).items():
-            state[f"{k}_processor"] = wrapper(processor.state_dict())
+            for k, scheduler in filter_dict(self.schedulers, schedulers).items():
+                state[f"{k}_scheduler"] = wrapper(scheduler.state_dict())
 
-        for k, swa_scheduler in filter_dict(self.swa_schedulers, swa_schedulers).items():
-            state[f"{k}_swa_scheduler"] = wrapper(swa_scheduler.state_dict())
+            for k, processor in filter_dict(self.processors, processors).items():
+                state[f"{k}_processor"] = wrapper(processor.state_dict())
 
-        for k, swa_network in filter_dict(self.swa_networks, swa_networks).items():
-            state[f"{k}_swa_network"] = wrapper(swa_network.state_dict())
+            for k, swa_scheduler in filter_dict(self.swa_schedulers, swa_schedulers).items():
+                state[f"{k}_swa_scheduler"] = wrapper(swa_scheduler.state_dict())
 
-        if scaler:
-            state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
+            for k, swa_network in filter_dict(self.swa_networks, swa_networks).items():
+                state[f"{k}_swa_network"] = wrapper(swa_network.state_dict())
 
-        if scalers:
-            state['scalers'] = {k: scaler.state_dict()
-                                if scaler is not None else None for k, scaler in self.scalers.items()}
+            if scaler:
+                state['scaler'] = self.scaler.state_dict() if self.scaler is not None else None
 
-        if path is not None:
-            path.write(state, ext=self.file_format)
+            if scalers:
+                state['scalers'] = {k: scaler.state_dict()
+                                    if scaler is not None else None for k, scaler in self.scalers.items()}
+
+            if path is not None:
+                path.write(state, ext=self.file_format)
+            else:
+                return state
+
         else:
-            return state
+
+            def save_models(path):
+
+                path.mkdir()
+                for k, net in filter_dict(self.networks, networks).items():
+                    net.save_checkpoint(str(path), client_state=state)
+
+            if path.is_local:
+                save_models(path)
+
+            with local_copy(path) as path:
+                save_models(path)
 
     @property
     def file_format(self):
@@ -1553,72 +1604,93 @@ class Algorithm(Processor):
 
         path_or_state = beam_path(path_or_state)
 
-        if hasattr(path_or_state, 'read') and hasattr(path_or_state, 'as_uri') :
-            logger.info(f"Loading network state from: {path_or_state}")
-            state = path_or_state.read(ext=self.file_format, map_location=self.device)
+        if self.deepspeed:
+
+            def load_models(path):
+
+                client_state = {}
+                for k, net in filter_dict(self.networks, networks).items():
+                    _, client_state = net.load_checkpoint(str(path), load_module_strict=strict,
+                                                    load_optimizer_states=optimizers,
+                                                    load_lr_scheduler_states=schedulers,
+                                                    load_module_only=False)
+
+                return client_state
+
+            if path_or_state.is_local:
+                state = load_models(path_or_state)
+            else:
+                with local_copy(path_or_state) as path:
+                    state = load_models(path)
+
         else:
-            state = path_or_state
 
-        for k, net in filter_dict(self.networks, networks).items():
-
-            if f"{k}_parameters" in state.keys():
-                s = state[f"{k}_parameters"]
-
-                if not self.ddp:
-                    torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(s, 'module.')
-
-                net.load_state_dict(s, strict=strict)
+            if hasattr(path_or_state, 'read') and hasattr(path_or_state, 'as_uri') :
+                logger.info(f"Loading network state from: {path_or_state}")
+                state = path_or_state.read(ext=self.file_format, map_location=self.device)
             else:
-                logger.warning(f"Network {k} is missing from the state-dict")
+                state = path_or_state
 
-        for k, net in filter_dict(self.swa_networks, swa_networks).items():
+            for k, net in filter_dict(self.networks, networks).items():
 
-            if f"{k}_swa_network" in state.keys():
-                s = state[f"{k}_swa_network"]
+                if f"{k}_parameters" in state.keys():
+                    s = state[f"{k}_parameters"]
 
-                if not self.ddp:
-                    torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(s, 'module.')
+                    if not self.ddp:
+                        torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(s, 'module.')
 
-                net.load_state_dict(s, strict=strict)
-            else:
-                logger.warning(f"SWA Network {k} is missing from the state-dict")
+                    net.load_state_dict(s, strict=strict)
+                else:
+                    logger.warning(f"Network {k} is missing from the state-dict")
 
-        for k, optimizer in filter_dict(self.optimizers, optimizers).items():
-            if f"{k}_optimizer" in state.keys():
-                optimizer.load_state_dict(state[f"{k}_optimizer"])
-            else:
-                logger.warning(f"Optimizer {k} is missing from the state-dict")
+            for k, net in filter_dict(self.swa_networks, swa_networks).items():
 
-        for k, processor in filter_dict(self.processors, processors).items():
-            if f"{k}_processor" in state.keys():
-                processor.load_state_dict(state[f"{k}_processor"])
-            else:
-                logger.warning(f"Processor {k} is missing from the state-dict")
+                if f"{k}_swa_network" in state.keys():
+                    s = state[f"{k}_swa_network"]
 
-        for k, scheduler in filter_dict(self.schedulers, schedulers).items():
-            if f"{k}_scheduler" in state.keys():
-                self.schedulers_initial_state[k] = state[f"{k}_scheduler"]
-                try:
-                    scheduler.load_state_dict(state[f"{k}_scheduler"])
-                except AttributeError:
-                    logger.warning("Tries to load scheduler which requires dataset info: please load dataset first")
-            else:
-                logger.warning(f"Scheduler {k} is missing from the state-dict")
+                    if not self.ddp:
+                        torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(s, 'module.')
 
-        for k, swa_scheduler in filter_dict(self.swa_schedulers, swa_schedulers).items():
-            if f"{k}_swa_scheduler" in state.keys():
-                swa_scheduler.load_state_dict(state[f"{k}_swa_scheduler"])
-            else:
-                logger.warning(f"SWA Scheduler {k} is missing from the state-dict")
+                    net.load_state_dict(s, strict=strict)
+                else:
+                    logger.warning(f"SWA Network {k} is missing from the state-dict")
 
-        if scaler:
-            if self.scaler is not None and 'scaler' in state.keys():
-                self.scaler.load_state_dict(state["scaler"])
+            for k, optimizer in filter_dict(self.optimizers, optimizers).items():
+                if f"{k}_optimizer" in state.keys():
+                    optimizer.load_state_dict(state[f"{k}_optimizer"])
+                else:
+                    logger.warning(f"Optimizer {k} is missing from the state-dict")
 
-        if "scalers" in state.keys():
-            for k, s in filter_dict(self.scalers, scalers).items():
-                if k in state["scalers"]:
-                    self.scalers[k].load_state_dict(state["scalers"][k])
+            for k, processor in filter_dict(self.processors, processors).items():
+                if f"{k}_processor" in state.keys():
+                    processor.load_state_dict(state[f"{k}_processor"])
+                else:
+                    logger.warning(f"Processor {k} is missing from the state-dict")
+
+            for k, scheduler in filter_dict(self.schedulers, schedulers).items():
+                if f"{k}_scheduler" in state.keys():
+                    self.schedulers_initial_state[k] = state[f"{k}_scheduler"]
+                    try:
+                        scheduler.load_state_dict(state[f"{k}_scheduler"])
+                    except AttributeError:
+                        logger.warning("Tries to load scheduler which requires dataset info: please load dataset first")
+                else:
+                    logger.warning(f"Scheduler {k} is missing from the state-dict")
+
+            for k, swa_scheduler in filter_dict(self.swa_schedulers, swa_schedulers).items():
+                if f"{k}_swa_scheduler" in state.keys():
+                    swa_scheduler.load_state_dict(state[f"{k}_swa_scheduler"])
+                else:
+                    logger.warning(f"SWA Scheduler {k} is missing from the state-dict")
+
+            if scaler:
+                if self.scaler is not None and 'scaler' in state.keys():
+                    self.scaler.load_state_dict(state["scaler"])
+
+            if "scalers" in state.keys():
+                for k, s in filter_dict(self.scalers, scalers).items():
+                    if k in state["scalers"]:
+                        self.scalers[k].load_state_dict(state["scalers"][k])
 
         if load_epoch and 'epoch' in state.keys():
             self.epoch = state['epoch']

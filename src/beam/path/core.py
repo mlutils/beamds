@@ -156,6 +156,10 @@ class PureBeamPath:
         self.mkdir(parents=True)
         self.rmdir()
 
+    @property
+    def is_local(self):
+        return self.url.scheme == 'file'
+
     def getmtime(self):
         return None
 

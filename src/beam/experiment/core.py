@@ -39,7 +39,7 @@ def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='
         dist.init_process_group(backend, rank=rank, world_size=world_size)
     elif framework == 'deepspeed':
         import deepspeed
-        deepspeed.init_distributed(dist_backend=backend)
+        deepspeed.init_distributed(dist_backend=backend, rank=rank, world_size=world_size)
     elif framework == 'horovbod':
         import horovod.torch as hvd
         hvd.init()
@@ -54,8 +54,6 @@ def cleanup(rank, world_size, framework='ddp'):
         dist.destroy_process_group()
     elif framework == 'deepspeed':
         pass
-        # import deepspeed
-        # deepspeed.destroy()
     elif framework == 'horovbod':
         import horovod.torch as hvd
         hvd.shutdown()
@@ -184,7 +182,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
             backend = 'nccl' if experiment.device.type == 'cuda' else 'gloo'
 
         setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend,
-                          framework=experiment.parallel_backend)
+                          framework=experiment.distributed_training_framework)
 
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.hparams.seed, constant=rank+1, increment=False, deterministic=experiment.hparams.deterministic)
@@ -193,7 +191,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
 
     if world_size > 1:
 
-        cleanup(rank, world_size, experiment.parallel_backend)
+        cleanup(rank, world_size, experiment.distributed_training_framework)
         results_queue.put({'rank': rank, 'results': res})
 
         done.wait()
@@ -305,7 +303,7 @@ class Experiment(object):
                     self.exp_name = exp_names[ind]
                     exp_num = exp_indices[ind]
                 else:
-                    self.hparams.override = False
+                    self.hparams.set('override', False)
 
             if self.hparams.reload and not self.load_model:
                 logger.warning(f"Did not find existing experiment to match your specifications: basedir={base_dir} resume={self.hparams.resume}")
@@ -345,18 +343,18 @@ class Experiment(object):
 
         # replace zero split_dataset_seed to none (non-deterministic split) - if zero
         if self.hparams.split_dataset_seed == 0:
-            self.hparams.split_dataset_seed = None
+            self.hparams.set('split_dataset_seed', None)
 
         # fill the batch size
 
         if self.hparams.batch_size_train is None:
-            self.hparams.batch_size_train = self.hparams.batch_size
+            self.hparams.set('batch_size_train', self.hparams.batch_size)
 
         if self.hparams.batch_size_eval is None:
-            self.hparams.batch_size_eval = self.hparams.batch_size
+            self.hparams.set('batch_size_eval', self.hparams.batch_size)
 
         if self.hparams.batch_size is None:
-            self.hparams.batch_size = self.hparams.batch_size_train
+            self.hparams.set('batch_size', self.hparams.batch_size_train)
 
         # build the hyperparamter class which will be sent to the dataset and algorithm classes
 
@@ -372,16 +370,16 @@ class Experiment(object):
                     except ValueError:
                         reload_iloc, reload_loc, reload_name = None, None, self.hparams.reload_checkpoint
 
-            self.hparams.reload_path = self.reload_checkpoint(iloc=reload_iloc, loc=reload_loc, name=reload_name)
+            reload_path = self.reload_checkpoint(iloc=reload_iloc, loc=reload_loc, name=reload_name)
         else:
-            self.hparams.reload_path = None
+            reload_path = None
+
+        self.hparams.set('reload_path', reload_path)
 
         self.trial = trial
 
-        self.hparams.hpo = hpo
-        self.hparams.ddp = False
-        self.hparams.rank = self.rank
-        self.hparams.world_size = self.world_size
+        self.hpo = hpo
+        self.distributed_training = False
 
         if self.device.type == 'cuda':
             if self.device_list is not None:
@@ -492,11 +490,8 @@ class Experiment(object):
         self.rank = rank
         self.world_size = world_size
 
-        self.hparams.rank = rank
-        self.hparams.world_size = world_size
-
-        self.hparams.ddp = self.world_size > 1
-        self.hparams.enable_tqdm = self.hparams.enable_tqdm and (rank == 0)
+        self.distributed_training = self.world_size > 1
+        self.hparams.set('enable_tqdm', self.hparams.enable_tqdm and (rank == 0))
 
         if self.device.type != 'cpu' and world_size > 1:
             self.device = beam_device(self.device_list[rank])
@@ -557,18 +552,6 @@ class Experiment(object):
                     self.writer.add_graph(net, inputs[k])
             if self.comet_exp is not None:
                 self.comet_exp.set_model_graph(str(networks))
-
-    def upload(self, path, name=None, overwrite=False):
-        pass
-        # if name is None:
-        #     name = path.name
-        #
-        # if self.hparams.upload == 'comet':
-        #     self.comet_exp.log_asset(path, overwrite=overwrite)
-        # elif self.hparams.upload == 'mlflow':
-        #     self.mlflow_writer.log_artifact(path, name)
-        # else:
-        #     raise ValueError(f"Unknown upload method: {self.hparams.upload}")
 
     def save_model_results(self, reporter, algorithm, iteration, visualize_results='yes',
                            store_results='logscale', store_networks='logscale', print_results=True,
@@ -845,8 +828,8 @@ class Experiment(object):
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
 
     @lazy_property
-    def parallel_backend(self):
-        if self.training_framework == 'accelerate':
+    def distributed_training_framework(self):
+        if self.training_framework in ['accelerate', 'deepspeed']:
             return 'deepspeed'
         return 'ddp'
 
@@ -966,7 +949,7 @@ class Experiment(object):
                            f"set --find-unused-parameters")
 
             if self.hparams.mp_port == 'random' or check_if_port_is_available(self.hparams.mp_port):
-                self.hparams.mp_port = find_free_port()
+                self.hparams.set('mp_port', find_free_port())
 
             logger.info(f'Multiprocessing port is: {self.hparams.mp_port}')
 
