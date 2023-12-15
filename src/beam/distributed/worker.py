@@ -1,8 +1,19 @@
+import atexit
 import inspect
+import threading
+import time
+from collections import defaultdict
+from queue import Queue
+from typing import Tuple, Dict, Any
+from uuid import uuid4 as uuid
+from multiprocessing import Process
+
+from dataclasses import dataclass, field
 
 from ..core import Processor
 from ..utils import lazy_property
 from ..path import BeamURL
+from ..logger import beam_logger as logger
 
 
 class BeamWorker(Processor):
@@ -44,5 +55,76 @@ class BeamWorker(Processor):
             for at in attributes:
                 self.celery.task(name=at)(getattr(self.obj, at))
 
+        def start_worker():
+            self.celery.worker_main(argv=['worker', '--loglevel=info'])
+
+        Process(target=start_worker).start()
 
 
+@dataclass
+class Task:
+    req_id: str
+    args: Tuple = tuple()
+    kwargs: Dict = field(default_factory=dict)
+    done: bool = False
+    in_progress: bool = False
+    result: Any = None
+    success: bool = False
+    exception: Exception = None
+    traceback: str = None
+    start_time: float = None
+    end_time: float = None
+
+
+class BatchExecutor(Processor):
+
+    def __init__(self, *args, batch_size=None, **kwargs):
+        super().__init__(*args, batch_size=batch_size, **kwargs)
+        self.model = None
+        self.batch_size = self.hparams.get('batch_size')
+        self.request_queue = Queue()
+        self.response_queue = defaultdict(Queue)
+
+        # Start the batch processing in a separate thread
+        self.centralized_thread = threading.Thread(target=self._centralized_batch_executor, daemon=True)
+        self.centralized_thread.start()
+
+        atexit.register(self._cleanup)
+
+    def _cleanup(self):
+        if self.centralized_thread is not None:
+            self.centralized_thread.join()
+
+    def execute(self, *args, **kwargs):
+        # Add request to queue
+        req_id = str(uuid())
+        response_queue = self.response_queue[req_id]
+
+        logger.info(f"Putting task with req_id: {req_id}")
+        self.request_queue.put(Task(req_id, args, kwargs, start_time=time.time()))
+        # Wait for response
+        result = response_queue.get()
+        logger.info(f"Got result for task with req_id: {req_id}")
+
+        return result
+
+    def process_batch(self, *tasks, **kwargs):
+        raise NotImplementedError
+
+    def _centralized_batch_executor(self):
+        # fetch from queue, generate n-steps tokens check done sequences and return to queue
+        # running 1 generated token is done with self.model.step(batch_of_sequences)
+
+        tasks = []
+
+        while True:
+
+            while len(tasks) < self.batch_size:
+                tasks.append(self.request_queue.get_nowait())
+
+            tasks = list(self.process_batch(tasks))
+            for i, t in enumerate(tasks):
+                if t.done:
+                    t = tasks.pop(i)
+                    t.end_time = time.time()
+                    self.response_queue[t.req_id].put(t)

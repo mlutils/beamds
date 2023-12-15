@@ -35,6 +35,8 @@ apt install -y unzip
 apt install -y unixodbc-dev
 apt install -y sqlite3
 apt install -y python3.10-venv
+apt install -y redis-server
+apt install -y rabbitmq-server
 
 # don't install libopenmpi as it messes up the pytorch geometric installation
 # libopenmpi-dev

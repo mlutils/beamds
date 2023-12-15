@@ -26,6 +26,8 @@ echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
 echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
 
 service ssh start
+service redis-server start
+service rabbitmq-server start
 jupyter-lab &
 
 bash
