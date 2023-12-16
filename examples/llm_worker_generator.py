@@ -28,26 +28,24 @@ class VLLMGenerator(Processor):
 
     def __init__(self, hparams):
         super().__init__(hparams)
-        self.model = None
         self.n_steps = hparams.n_steps
         self.batch_size = hparams.batch_size
+
+    @lazy_property
+    def model(self):
         from vllm import LLM
-
-        import multiprocessing as mp
-        mp.set_start_method('spawn', force=True)
-        self.model = LLM(self.hparams.get('model'), revision=self.hparams.get('revision'),
-                            trust_remote_code=True)
-
-
-    # @lazy_property
-    # def model(self):
-    #     from vllm import LLM
-    #     return LLM(self.hparams.get('model'), revision=self.hparams.get('revision'),
-    #                trust_remote_code=True)
+        return LLM(self.hparams.get('model'), revision=self.hparams.get('revision'),
+                   trust_remote_code=True)
 
     def generate(self, prompts, sampling_params=None):
         outputs = self.model.generate(prompts, sampling_params=sampling_params, use_tqdm=False)
-        return outputs
+
+        generated_text = []
+        for output in outputs:
+            # prompt = output.prompt
+            generated_text.append(output.outputs[0].text)
+
+        return generated_text
 
 
 if __name__ == '__main__':

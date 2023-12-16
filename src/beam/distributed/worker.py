@@ -14,16 +14,17 @@ from ..core import Processor
 from ..utils import lazy_property
 from ..path import BeamURL
 from ..logger import beam_logger as logger
+from ..parallel import parallel, task
 
 
 class BeamWorker(Processor):
 
-    def __init__(self, obj, *args, name=None, broker=None, backend=None,
+    def __init__(self, obj, *args, name=None, n_workers=1, daemon=False, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
                  backend_username=None, backend_password=None, backend_port=None, backend_scheme=None, backend_host=None,
                  **kwargs):
 
-        super().__init__(*args, name=name, **kwargs)
+        super().__init__(*args, name=name, n_workers=n_workers, daemon=daemon, **kwargs)
 
         if broker_scheme is None:
             broker_scheme = 'amqp'
@@ -36,6 +37,11 @@ class BeamWorker(Processor):
                                    scheme=backend_scheme, host=backend_host)
 
         self.obj = obj
+        self.n_workers = self.hparams.get('n_workers')
+        self.daemon = self.hparams.get('daemon')
+
+        logger.info(f"Broker: {self.broker_url.url}, Backend: {self.backend_url.url}, "
+                    f"n_workers: {self.n_workers}, daemon: {self.daemon}")
 
     @lazy_property
     def type(self):
@@ -44,21 +50,30 @@ class BeamWorker(Processor):
         return 'class'
 
     @lazy_property
-    def celery(self):
+    def broker(self):
         from celery import Celery
         return Celery(self.name, broker=self.broker_url.url, backend=self.backend_url.url)
 
+    def start_worker(self):
+        from celery.apps.worker import Worker
+        worker = Worker(app=self.broker, loglevel='info', traceback=True)
+        worker.start()
+
     def run(self, *attributes):
         if self.type == 'function':
-            self.celery.task(name='function')(self.obj)
+            self.broker.task(name='function')(self.obj)
         else:
             for at in attributes:
-                self.celery.task(name=at)(getattr(self.obj, at))
+                self.broker.task(name=at)(getattr(self.obj, at))
 
-        def start_worker():
-            self.celery.worker_main(argv=['worker', '--loglevel=info'])
-
-        Process(target=start_worker).start()
+        if self.n_workers == 1 and not self.daemon:
+            # Run in the main process
+            self.start_worker()
+        else:
+            # Start multiple workers in separate processes
+            processes = [Process(target=self.start_worker, daemon=self.daemon) for _ in range(self.n_workers)]
+            for p in processes:
+                p.start()
 
 
 @dataclass
