@@ -25,7 +25,7 @@ class BeamDispatcher(Processor):
                                    scheme=backend_scheme, host=backend_host)
 
     @lazy_property
-    def celery(self):
+    def broker(self):
         from celery import Celery
         return Celery(self.name, broker=self.broker_url.url, backend=self.backend_url.url)
 
@@ -33,7 +33,11 @@ class BeamDispatcher(Processor):
         return self.dispatch('function', *args, **kwargs)
 
     def dispatch(self, attribute, *args, **kwargs):
-        return self.celery.send_task(attribute, args=args, kwargs=kwargs)
+        return self.broker.send_task(attribute, args=args, kwargs=kwargs)
 
     def __getattr__(self, item):
         return partial(self.dispatch, item)
+
+
+class BeamDispatcherServer(BeamDispatcher):
+    raise NotImplementedError
