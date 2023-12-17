@@ -85,35 +85,35 @@ class Algorithm(Processor):
         if self.experiment is None:
             self.no_experiment_message('distributed_training')
             return False
-        return self.get_hparam('distributed_training')
+        return self.experiment.distributed_training
 
     @lazy_property
     def distributed_training_framework(self):
         if self.experiment is None:
             self.no_experiment_message('distributed_training_framework')
             return None
-        return self.get_hparam('distributed_training_framework')
+        return self.experiment.distributed_training_framework
 
     @lazy_property
     def hpo(self):
         if self.experiment is None:
             self.no_experiment_message('hpo')
             return False
-        return self.get_hparam('hpo')
+        return self.experiment.hpo
 
     @lazy_property
     def rank(self):
         if self.experiment is None:
             self.no_experiment_message('rank')
             return 0
-        return self.get_hparam('rank')
+        return self.experiment.rank
 
     @lazy_property
     def world_size(self):
         if self.experiment is None:
             self.no_experiment_message('world_size')
             return 1
-        return self.get_hparam('world_size')
+        return self.experiment.world_size
 
     @lazy_property
     def enable_tqdm(self):
@@ -1334,11 +1334,11 @@ class Algorithm(Processor):
 
         if self.hpo == 'tune':
             if self.get_hparam('objective') is not None:
-                kwargs = {self.get_hparam('objective'): objective}
+                metrics = {self.get_hparam('objective'): objective}
             else:
-                kwargs = {'objective': objective}
+                metrics = {'objective': objective}
             from ray import train
-            train.report(**kwargs)
+            train.report(metrics)
         elif self.hpo == 'optuna':
             import optuna
             self.trial.report(objective, epoch)

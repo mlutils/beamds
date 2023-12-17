@@ -265,19 +265,20 @@ class BeamHparams(Namespace):
                 self._model_set.add(key)
             super().__setattr__(key, value)
 
-    def get(self, hparam, default=None, preferred=None, specific=None):
+    def get(self, key, default=None, preferred=None, specific=None):
 
+        key = key.replace('-', '_').strip()
         if preferred is not None:
             return preferred
 
         if type(specific) is list:
             for s in specific:
-                if f"{hparam}_{s}" in self:
-                    return getattr(self, f"{specific}_{hparam}")
-        elif specific is not None and f"{specific}_{hparam}" in self:
-            return getattr(self, f"{specific}_{hparam}")
+                if f"{key}_{s}" in self:
+                    return getattr(self, f"{specific}_{key}")
+        elif specific is not None and f"{specific}_{key}" in self:
+            return getattr(self, f"{specific}_{key}")
 
-        if hparam in self:
-            return getattr(self, hparam)
+        if key in self:
+            return getattr(self, key)
 
         return default

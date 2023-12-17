@@ -9,7 +9,7 @@ from ..path import beam_path, BeamPath
 
 import ray
 from ray.tune import JupyterNotebookReporter, TuneConfig
-from ray import tune
+from ray import tune, train
 from functools import partial
 from ..experiment import Experiment
 
@@ -84,17 +84,10 @@ class RayHPO(BeamHPO):
         hparams = self.generate_hparams(config)
 
         experiment = Experiment(hparams, hpo='tune', print_hyperparameters=False)
-        alg, results = experiment(self.ag, return_results=True)
+        alg, report = experiment(self.ag, return_results=True)
+        train.report({report.objective_name: report.best_objective})
 
-        self.tracker(algorithm=alg, results=results, hparams=hparams, suggestion=config)
-
-        if 'objective' in results:
-            if type('objective') is tuple:
-                return results['objective']
-            elif isinstance(results['objective'], dict):
-                tune.report(**results['objective'])
-            else:
-                return results['objective']
+        self.tracker(algorithm=alg, results=report.data, hparams=hparams, suggestion=config)
 
     def run(self, *args, runtime_env=None, tune_config_kwargs=None, run_config_kwargs=None, **kwargs):
 
@@ -118,7 +111,8 @@ class RayHPO(BeamHPO):
             stop = kwargs['stop']
         else:
             stop = None
-            if hparams.get('ray-timeout') > 0:
+            ray_timeout = hparams.get('ray-timeout')
+            if ray_timeout is not None and ray_timeout > 0:
                 stop = TimeoutStopper(hparams.get('ray-timeout'))
 
         # fix gpu to device 0
@@ -129,9 +123,7 @@ class RayHPO(BeamHPO):
                 tune.with_parameters(partial(self.runner)),
                 resources={"cpu": hparams.get('cpus-per-trial'),
                            "gpu": hparams.get('gpus-per-trial')}
-            ),
-
-        logger.info(f"Starting ray-tune hyperparameter optimization process. Results and logs will be stored at {local_dir}")
+            )
 
         tune_config_kwargs = tune_config_kwargs or {}
         tune_config_kwargs['metric'] = self.experiment_hparams.get('objective')
@@ -148,13 +140,15 @@ class RayHPO(BeamHPO):
         if 'progress_reporter' not in kwargs.keys() and is_notebook():
             kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
 
-
-
-        kwargs['num_samples'] = kwargs.pop('n_trials', None)
-        kwargs['max_concurrent_trials'] = kwargs.pop('n_jobs', None)
+        kwargs['num_samples'] = self.hparams.get('n_trials')
+        kwargs['max_concurrent_trials'] = self.hparams.get('n_jobs', 1)
         tune_config = TuneConfig(**kwargs)
 
-        run_config = RunConfig(stop=stop)
+        local_dir = self.hparams.get('hpo_path')
+        run_config = RunConfig(stop=stop, local_dir=local_dir)
+
+        logger.info(f"Starting ray-tune hyperparameter optimization process. "
+                    f"Results and logs will be stored at {local_dir}")
 
         tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()

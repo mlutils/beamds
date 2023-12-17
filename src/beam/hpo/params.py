@@ -8,7 +8,7 @@ class HPOConfig(BeamHparams):
     use_basic_parser = False
     parameters = [
         BeamParam('gpus-per-trial', int, 1, 'number of gpus per trial', model=False),
-        BeamParam('cpus-per-trial', int, 1, 'number of cpus per trial', model=False),
+        BeamParam('cpus-per-trial', int, 4, 'number of cpus per trial', model=False),
         BeamParam('num-trials', int, 1000, 'number of HPO trails', model=False),
         BeamParam('n-jobs', int, 1, 'number of parallel HPO jobs', model=False),
         BeamParam('time-budget-s', int, None, 'time budget in seconds', model=False),

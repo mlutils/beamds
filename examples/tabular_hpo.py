@@ -1,8 +1,9 @@
+import os
+
 from examples.tabular_example import get_paths
 from src.beam.hpo import beam_hpo, HPOConfig
 from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
-from src.beam import beam_logger as logger
-
+from src.beam import beam_logger as logger, beam_path
 
 if __name__ == '__main__':
 
@@ -40,12 +41,17 @@ if __name__ == '__main__':
         # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
         # alg = DeepTabularAlg(hparams, networks=net)
 
-        hpo_config = HPOConfig(n_trials=1000, timeout=60 * 60 * 24, n_jobs=1)
+        hpo_config = HPOConfig(n_trials=1000, timeout=60 * 60 * 24, n_jobs=4)
 
+        # study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
+        #                     hpo_config=hpo_config,
+        #                 alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+        #                                           'cat_mask': dataset.cat_mask, }})
+        cwd = beam_path(os.getcwd())
         study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
-                            hpo_config=hpo_config,
-                        alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
-                                                  'cat_mask': dataset.cat_mask, }})
+                         hpo_config=hpo_config,
+                         alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+                                                    'cat_mask': dataset.cat_mask, }})
 
         study.uniform('lr-dense', 1e-4, 1e-2)
         study.uniform('lr-sparse', 1e-3, 1e-1)
@@ -65,7 +71,7 @@ if __name__ == '__main__':
         study.uniform('transformer_dropout', 0., 0.4)
         study.uniform('label_smoothing', 0., 0.4)
 
-        study.run(runtime_env={"working_dir": "/home/mlspeech/elads/projects/beamds/",
-                               'excludes': ['/home/mlspeech/elads/projects/beamds/notebooks']})
+        study.run(runtime_env={'working_dir': str(cwd),
+                                       'excludes': [str(p) for p in cwd.joinpath('notebooks')]},)
 
         logger.info(f"Done HPO for dataset: {k}")
