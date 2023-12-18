@@ -13,7 +13,7 @@ from scipy.special import erfinv
 from .core import BeamHPO
 
 
-class OptunaHPO(BeamHPO):
+class OptunaBase:
 
     @staticmethod
     def _linspace(trial, param, start, end, n_steps, endpoint=True,  dtype=None):
@@ -47,6 +47,9 @@ class OptunaHPO(BeamHPO):
     def _randn(trial, param, mu, sigma):
         x = trial.suggest_uniform(param, 0, 1)
         return mu + sigma * np.sqrt(2) * erfinv(2 * x - 1)
+
+
+class OptunaHPO(BeamHPO, OptunaBase):
 
     def runner(self, trial, suggest):
 

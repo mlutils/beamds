@@ -126,23 +126,17 @@ class RayHPO(BeamHPO):
             )
 
         tune_config_kwargs = tune_config_kwargs or {}
-        tune_config_kwargs['metric'] = self.experiment_hparams.get('objective')
-        tune_config_kwargs['mode'] = 'max'
+        if 'metric' not in tune_config_kwargs.keys():
+            tune_config_kwargs['metric'] = self.experiment_hparams.get('objective')
+        if 'mode' not in tune_config_kwargs.keys():
+            tune_config_kwargs['mode'] = self.experiment_hparams.get('mode')
 
-        if 'metric' not in kwargs.keys():
-            if 'objective' in hparams and self.hparams.objective is not None:
-                kwargs['metric'] = self.hparams.objective
-            else:
-                kwargs['metric'] = 'objective'
-        if 'mode' not in kwargs.keys():
-            kwargs['mode'] = 'max'
+        if 'progress_reporter' not in tune_config_kwargs.keys() and is_notebook():
+            tune_config_kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
 
-        if 'progress_reporter' not in kwargs.keys() and is_notebook():
-            kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
-
-        kwargs['num_samples'] = self.hparams.get('n_trials')
-        kwargs['max_concurrent_trials'] = self.hparams.get('n_jobs', 1)
-        tune_config = TuneConfig(**kwargs)
+        tune_config_kwargs['num_samples'] = self.hparams.get('n_trials')
+        tune_config_kwargs['max_concurrent_trials'] = self.hparams.get('n_jobs', 1)
+        tune_config = TuneConfig(**tune_config_kwargs)
 
         local_dir = self.hparams.get('hpo_path')
         run_config = RunConfig(stop=stop, local_dir=local_dir)

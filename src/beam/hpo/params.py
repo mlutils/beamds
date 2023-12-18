@@ -13,6 +13,7 @@ class HPOConfig(BeamHparams):
         BeamParam('n-jobs', int, 1, 'number of parallel HPO jobs', model=False),
         BeamParam('time-budget-s', int, None, 'time budget in seconds', model=False),
         BeamParam('metric', str, None, 'metric to optimize', model=False),
+        BeamParam('mode', str, None, 'mode to optimize', model=False),
         BeamParam('print-results', bool, False, 'print the intermediate results during training', model=False),
         BeamParam('enable-tqdm', bool, False, 'enable tqdm progress bar', model=False),
         BeamParam('print-hyperparameters', bool, True, 'print the hyperparameters before training', model=False),
@@ -30,6 +31,8 @@ class HPOConfig(BeamHparams):
         BeamParam('dashboard-port', int, None, 'dashboard port for ray', model=False),
         BeamParam('get-port-from-beam-port-range', bool, True, 'get port from beam port range', model=False),
         BeamParam('ray-timeout', int, 0, 'ray experiment timeout', model=False),
+        BeamParam('replay-buffer-size', int, None, 'Maximal size of finite-memory hpo', model=False),
+        BeamParam('time-window', int, None, 'Maximal time window of finite-memory hpo', model=False),
 
     ]
 
