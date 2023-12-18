@@ -36,8 +36,7 @@ class BeamDispatcher(Processor):
         return self.broker.send_task(attribute, args=args, kwargs=kwargs)
 
     def __getattr__(self, item):
+        if item.startswith('_'):
+            return super().__getattribute__(item)
         return partial(self.dispatch, item)
 
-
-class BeamDispatcherServer(BeamDispatcher):
-    raise NotImplementedError

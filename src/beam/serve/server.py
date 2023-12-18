@@ -24,7 +24,7 @@ except ImportError:
 class BeamServer(Processor):
 
     def __init__(self, obj, *args, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
-                 tls=False, n_threads=4, application=None, **kwargs):
+                 tls=False, n_threads=4, application=None, predefined_attributes=None, **kwargs):
 
         super().__init__(*args, **kwargs)
         self.obj = obj
@@ -72,6 +72,10 @@ class BeamServer(Processor):
             self.type = 'function'
         else:
             self.type = 'class'
+
+        if predefined_attributes is None:
+            predefined_attributes = {}
+        self._predefined_attributes = predefined_attributes
 
     def set_variable(self, client, name, value, *args, **kwargs):
 
@@ -208,7 +212,7 @@ class BeamServer(Processor):
             else:
                 d['hparams'] = None
 
-            attributes = {}
+            attributes = self._predefined_attributes.copy()
             for name, attr in inspect.getmembers(self.obj):
                 if inspect.ismethod(attr) or inspect.isfunction(attr):
                     attributes[name] = 'method'
