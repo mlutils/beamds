@@ -1,9 +1,7 @@
 import io
 import pickle
 from functools import partial
-import requests
 from ..core import Processor
-from ..utils import lazy_property
 from ..path import normalize_host
 
 from .server import has_torch

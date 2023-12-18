@@ -123,8 +123,8 @@ class HTTPServer(BeamServer):
             kwargs = request.files['kwargs']
         else:
             data = request.get_json()
-            args = data['args']
-            kwargs = data['kwargs']
+            args = data.pop('args', [])
+            kwargs = data.pop('kwargs', {})
 
         io_results = super().call_function(client, args, kwargs)
         return send_file(io_results, mimetype="text/plain")
@@ -136,8 +136,8 @@ class HTTPServer(BeamServer):
             kwargs = request.files['kwargs']
         else:
             data = request.get_json()
-            args = data['args']
-            kwargs = data['kwargs']
+            args = data.pop('args', [])
+            kwargs = data.pop('kwargs', {})
 
         io_results = super().query_algorithm(client, method, args, kwargs)
 
