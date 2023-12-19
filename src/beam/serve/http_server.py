@@ -127,7 +127,10 @@ class HTTPServer(BeamServer):
             kwargs = data.pop('kwargs', {})
 
         io_results = super().call_function(client, args, kwargs)
-        return send_file(io_results, mimetype="text/plain")
+        if client == 'beam':
+            return send_file(io_results, mimetype="text/plain")
+        else:
+            return jsonify(io_results)
 
     def query_algorithm(self, client, method, *args, **kwargs):
 
@@ -141,7 +144,10 @@ class HTTPServer(BeamServer):
 
         io_results = super().query_algorithm(client, method, args, kwargs)
 
-        return send_file(io_results, mimetype="text/plain")
+        if client == 'beam':
+            return send_file(io_results, mimetype="text/plain")
+        else:
+            return jsonify(io_results)
 
     def run_uwsgi(self, host, port):
 

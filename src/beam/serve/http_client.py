@@ -26,6 +26,8 @@ class HTTPClient(BeamClient):
 
     def _post(self, path, io_args, io_kwargs):
 
+        print(f'{self.protocol}://{self.host}/{path}')
+
         response = requests.post(f'{self.protocol}://{self.host}/{path}',
                                  files={'args': io_args, 'kwargs': io_kwargs}, stream=True)
 
