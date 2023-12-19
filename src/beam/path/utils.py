@@ -4,7 +4,12 @@ from .resource import beam_path
 
 
 @contextmanager
-def local_copy(path, tmp_path='/tmp', as_beam_path=True, copy_changes=False):
+def local_copy(path, tmp_path='/tmp', as_beam_path=True, copy_changes=False, disable=False):
+
+    if disable:
+        yield path
+        return
+
     path = beam_path(path)
     tmp_dir = beam_path(tmp_path).joinpath(uuid())
     tmp_dir.mkdir(exist_ok=True, parents=True)
