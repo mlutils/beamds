@@ -1,13 +1,16 @@
-# tensorflow
 tensorflow
 
 # graph packages
 pyvis
 graphviz
-pygraphviz
+
+# do not install pygraphviz as it causes errors
+# pygraphviz
+
 gensim
 networkx
 
+# do not install cdlib[all] as infomap, leidenalg cause errors, install separately in requirements_0017
 cdlib
 
 # remove for python 3.10

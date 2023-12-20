@@ -1,6 +1,6 @@
-from .core.processor import Processor
-from .data import BeamData
-from .path import beam_key
+from ..core.processor import Processor
+from ..data import BeamData
+from ..path import beam_key
 import pandas as pd
 import re
 from sqlalchemy.engine import create_engine

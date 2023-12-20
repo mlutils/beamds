@@ -14,10 +14,9 @@ if has_torch:
     from .experiment import Experiment, beam_algorithm_generator
     from .core import Algorithm
     from .nn import LinearNet, PackedSet, copy_network, reset_network
-    from .tensor import DataTensor
+    from src.beam.nn.tensor import DataTensor
     from .nn import BeamOptimizer, BeamScheduler
     from .data import BeamData
-    from .packed_folds import PackedFolds
     from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch, beam_hash
 
 from .config import basic_beam_parser, beam_arguments, BeamHparams

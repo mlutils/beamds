@@ -1,130 +1,20 @@
 import inspect
 import ast
-import os
 import sys
 
-from .utils import lazy_property
-from .path import beam_path
+from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
+from ..utils import lazy_property
+from ..path import beam_path
 
 import importlib.metadata
 
 import pkg_resources
 import os
 import importlib
-from pathlib import Path
 import warnings
-from collections import defaultdict
-import pkgutil
-from .logger import beam_logger as logger
+
+from ..logger import beam_logger as logger
 from uuid import uuid4 as uuid
-
-
-class ImportCollector(ast.NodeVisitor):
-    def __init__(self):
-        self.import_nodes = []
-
-    def visit_Import(self, node):
-        self.import_nodes.append(node)
-        self.generic_visit(node)
-
-    def visit_ImportFrom(self, node):
-        self.import_nodes.append(node)
-        self.generic_visit(node)
-
-
-def get_origin(module_name_or_spec):
-
-    if type(module_name_or_spec) is str:
-        module_name = module_name_or_spec
-
-        try:
-            spec = importlib.util.find_spec(module_name)
-        except:
-            return None
-
-        if spec is None:
-            return None
-
-    else:
-        spec = module_name_or_spec
-
-    if hasattr(spec, 'origin') and spec.origin is not None:
-        if spec.origin == 'built-in':
-            return spec.origin
-        origin = str(beam_path(spec.origin).resolve())
-    else:
-        try:
-            origin = str(beam_path(spec.submodule_search_locations[0]).resolve())
-        except:
-            origin = None
-
-    return origin
-
-
-def get_module_paths(spec):
-
-    if spec is None:
-        return []
-
-    paths = []
-
-    if hasattr(spec, 'origin') and spec.origin is not None:
-        origin = beam_path(spec.origin).resolve()
-        if origin.is_file() and origin.parent.joinpath('__init__.py').is_file():
-            origin = origin.parent
-
-        paths.append(str(origin))
-
-    if hasattr(spec, 'submodule_search_locations') and spec.submodule_search_locations is not None:
-        for path in spec.submodule_search_locations:
-            path = beam_path(path).resolve()
-            if path.is_file():
-                path = path.parent
-            paths.append(str(path))
-
-    return list(set(paths))
-
-
-def classify_module(module_name):
-
-    origin = get_origin(module_name)
-
-    if origin == 'built-in':
-        return "stdlib"
-
-    if origin is None:
-        return None
-
-    # Get the standard library path using base_exec_prefix
-    std_lib_path = beam_path(sys.base_exec_prefix).joinpath('lib')
-
-    # Check for standard library
-    if beam_path(origin).parts[:len(std_lib_path.parts)] == std_lib_path.parts:
-        return "stdlib"
-
-    # Check for installed packages in site-packages or dist-packages
-    elif "site-packages" in origin or "dist-packages" in origin:
-        return "installed"
-
-    # Otherwise, it's a custom module
-    else:
-        return "custom"
-
-
-def is_std_lib(module_name):
-    return classify_module(module_name) == 'stdlib'
-
-
-def is_installed_package(module_name):
-    return classify_module(module_name) == 'installed'
-
-
-def is_module_installed(module_name):
-    try:
-        importlib.metadata.version(module_name)
-        return True
-    except importlib.metadata.PackageNotFoundError:
-        return False
 
 
 class AutoBeam:
@@ -356,7 +246,7 @@ class AutoBeam:
     def to_bundle(obj, path=None):
 
         if path is None:
-            path = beam_path('.')
+            path = beam_path('..')
             if hasattr(obj, 'name'):
                 path = path.joinpath(obj.name)
             else:
@@ -369,8 +259,9 @@ class AutoBeam:
         ab = AutoBeam(obj)
         path.clean()
         path.mkdir()
-        logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state.pt]")
+        logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state.pt, requierements.txt]")
         path.joinpath('requirements.json').write(ab.requirements)
+        ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'))
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
         if hasattr(obj, 'save_state'):
@@ -388,6 +279,8 @@ class AutoBeam:
             logger.error(f"Could not save object {obj} to path {path}. "
                          f"Make sure the object has a save_state method and/or "
                          f"it is pickleable.")
+
+        return path
 
     @classmethod
     def from_bundle(cls, path, cache_path=None):
@@ -485,9 +378,10 @@ class AutoBeam:
                 logger.warning(f"Could not find pip package for module: {module_name}")
         return requirements
 
-    def write_requirements(self, path):
+    @staticmethod
+    def write_requirements(path, requirements):
         path = beam_path(path)
-        content = '\n'.join([f"{r['pip_package']}=={r['version']}" for r in self.requirements])
+        content = '\n'.join([f"{r['pip_package']}=={r['version']}" for r in requirements])
         content = f"{content}\n"
         path.write(content, ext='.txt')
 
@@ -504,5 +398,38 @@ class AutoBeam:
                         relative_name = local_name.relative_to(root_path.parent)
                         tar.add(str(local_name), arcname=str(relative_name))
 
-    def dockerfile(self, base_image=None, service='https'):
-        return NotImplementedError
+    @staticmethod
+    def _build_image(image_name, base_image, entry_point, path):
+        path = beam_path(path)
+        import docker
+        from docker.errors import BuildError
+        # Initialize Docker client
+        client = docker.from_env()
+
+        # Define build arguments
+        build_args = {
+            'BASE_IMAGE': base_image,
+            'REQUIREMENTS_FILE': path.joinpath('requirements.txt').str,
+            'ALGORITHM_DIR': path.str,
+            'ENTRYPOINT_SCRIPT': entry_point
+        }
+
+        # Path to the directory containing the Dockerfile
+        path_to_dockerfile = beam_path(__file__).parent.joinpath('Dockerfile').str
+
+        try:
+            # Build the image
+            image, build_logs = client.images.build(path=path_to_dockerfile, buildargs=build_args,
+                                                    tag=image_name)
+
+            # Print build logs (optional)
+            for line in build_logs:
+                if 'stream' in line:
+                    print(line['stream'].strip())
+
+        except BuildError as e:
+            print("Error building Docker image:", e)
+        except Exception as e:
+            print("Error:", e)
+        finally:
+            client.close()

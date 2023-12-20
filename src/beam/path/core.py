@@ -42,6 +42,10 @@ class PureBeamPath:
         self.file_object = None
         self.client = client
 
+    @property
+    def str(self):
+        return str(self.path)
+
     def __getstate__(self):
         return self.as_uri()
 

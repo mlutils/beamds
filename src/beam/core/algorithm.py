@@ -1046,7 +1046,7 @@ class Algorithm(Processor):
 
     def register_network(self, net, name=None):
 
-        net = BeamNN.from_module(net, name=name)
+        # net = BeamNN.from_module(net, name=name)
 
         if self.accelerator:
             if self.accelerator.device_placement:

@@ -1,10 +1,12 @@
-peacanpy
+pecanpy
 rocketchat-API
 safetensors
 bitsandbytes
-trl
 
-torchaudio
+# consider moving to no-deps
+# trl
+# torchaudio
+
 getdaft
 kaggle
 marshmallow-dataclass
@@ -14,12 +16,14 @@ retry
 torchinfo
 unidecode
 ranx
-krovetzstemmer
+# krovetzstemmer
 indxr
 
 tiktoken
-cdlib[all]
-asteroid
+# cdlib[all]
+
+# consider moving to no-deps
+# asteroid
 
 grpcio-tools
 gpustat

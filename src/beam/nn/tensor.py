@@ -3,8 +3,8 @@ import pandas as pd
 import warnings
 from collections import namedtuple
 import numpy as np
-from .utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy, beam_device
-from .path import beam_path
+from ..utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy, beam_device
+from ..path import beam_path
 import pickletools
 
 

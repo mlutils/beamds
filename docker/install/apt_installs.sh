@@ -17,7 +17,6 @@ apt install -y iputils-ping
 apt install -y net-tools
 apt install -y python3-sphinx
 apt install -y graphviz
-apt install -y graphviz
 apt install -y pkg-config
 apt install -y expect
 apt install -y libgraphviz-dev
@@ -37,9 +36,12 @@ apt install -y sqlite3
 apt install -y python3.10-venv
 apt install -y redis-server
 apt install -y rabbitmq-server
+apt install -y ca-certificates
+apt install -y curl
+apt install -y gnupg
+apt install -y lsb-release
 
 # don't install libopenmpi as it messes up the pytorch geometric installation
-# libopenmpi-dev
 apt install -y libopenmpi-dev
 
 pip install pykerberos

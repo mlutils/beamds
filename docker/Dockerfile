@@ -27,12 +27,15 @@ ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 RUN bash /workspace/install/apt_installs.sh
 #RUN pip list
 
+RUN python /workspace/install/verify.py
+
+# install docker
+RUN bash /workspace/install/install_docker.sh
+
 # pip installs
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install -U -r /workspace/install/requirements.txt
-# REMOVE FOR LITE VERSION
-#RUN pip install -U -r /workspace/install/requirements_torch_geometric.txt
-RUN pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.0+cu121.html
+
 #RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 #RUN pip list
@@ -42,8 +45,10 @@ RUN pip install -U -r /workspace/install/requirements_0002.txt
 #RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0003.txt
 #RUN pip list
+# COPY docker/install_fixed/requirements_0004.txt /workspace/install/requirements_0004.txt
 RUN pip install -U -r /workspace/install/requirements_0004.txt
 #RUN pip list
+# COPY docker/install_fixed/requirements_0005.txt /workspace/install/requirements_0005.txt
 RUN pip install -U -r /workspace/install/requirements_0005.txt
 #RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0006.txt
@@ -51,6 +56,8 @@ RUN pip install -U -r /workspace/install/requirements_0006.txt
 RUN pip install -U -r /workspace/install/requirements_0007.txt
 #RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0008.txt
+
+RUN python /workspace/install/verify.py
 #RUN pip list
 RUN pip install -r /workspace/install/requirements_0009.txt
 #RUN pip list
@@ -64,13 +71,26 @@ RUN pip install -U -r /workspace/install/requirements_0014.txt
 #RUN pip list
 RUN pip install -U -r /workspace/install/requirements_0015.txt
 # RUN pip list
+# COPY docker/install_fixed/requirements_0016.txt /workspace/install/requirements_0016.txt
 RUN pip install -U -r /workspace/install/requirements_0016.txt
 
+#COPY docker/install_fixed/requirements_fixed.txt /workspace/install/requirements_fixed.txt
+#RUN pip install -U -r /workspace/install/requirements_fixed.txt
+
+# COPY docker/install_fixed/requirements_no_deps.txt /workspace/install/requirements_no_deps.txt
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 #RUN pip list
 RUN pip install -U --no-deps -r /workspace/install/verify_requirements.txt
 RUN pip list
 
+
+RUN python /workspace/install/verify.py
+
+# REMOVE FOR LITE VERSION
+#install pytorch geometric
+# RUN bash /workspace/install/install_pyg.sh
+
+# REMOVE FOR LITE VERSION
 #install torchsig
 RUN bash /workspace/install/install_torchsig.sh
 
@@ -81,6 +101,8 @@ RUN bash /workspace/install/install_torchsig.sh
 # Install dgl from source so it would be compatible with cuda 12.0
 # RUN pip install  dgl -f https://data.dgl.ai/wheels/repo.html
 # RUN pip install  dglgo -f https://data.dgl.ai/wheels-test/repo.html
+
+RUN python /workspace/install/verify.py
 
 # install DGL from source
 # REMOVE FOR LITE VERSION
@@ -109,6 +131,7 @@ RUN bash /workspace/install/install_cusignal.sh
 # RUN pip install cuml-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
 # RUN pip install cugraph-cu11 --extra-index-url=https://pypi.ngc.nvidia.com
 
+RUN python /workspace/install/verify.py
 
 # need to see how to install faiss-gpu. for now we install only the cpu version
 # RUN conda install -y -c conda-forge faiss-gpu
@@ -122,8 +145,10 @@ RUN bash /workspace/install/install_oracle.sh
 
 # install beam - from pip (see requirements_no_deps.txt file)
 
-RUN mkdir /workspace/beamds/
-COPY . /workspace/beamds/
+#RUN mkdir /workspace/beamds/
+#COPY . /workspace/beamds/
+
+RUN bash /workspace/install/install_beam.sh
 ENV PATH "$PATH:/workspace/beamds/notebooks/"
 
 #WORKDIR /workspace/beamds/
