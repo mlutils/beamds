@@ -4,200 +4,23 @@ import time
 import numpy as np
 import os
 import warnings
+
+from .utils import path_depth, gen_hparams_string, beam_algorithm_generator, default_runner, run_worker
+
 warnings.filterwarnings('ignore', category=FutureWarning)
 import torch
 import copy
 import pandas as pd
 import torch.multiprocessing as mp
-import inspect
 import torch.distributed as dist
-from argparse import Namespace
 from functools import partial
-import atexit
-import traceback
 
 
 from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_notebook,
-                    find_port, as_numpy, lazy_property, include_patterns, check_type, beam_device)
+                    find_port, as_numpy, lazy_property, check_type, beam_device)
 from ..path import beam_path, BeamPath, beam_key
 from ..logger import beam_logger as logger
-from ..config import get_beam_llm, print_beam_hyperparameters, BeamHparams
-
-
-done = mp.Event()
-
-
-def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='ddp'):
-
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = port
-
-    # initialize the process group
-    import torch.distributed as dist
-    logger.info(f"Initializing distributed training with backend={backend} and framework={framework}")
-    if framework == 'ddp':
-        dist.init_process_group(backend, rank=rank, world_size=world_size)
-    elif framework == 'deepspeed':
-        import deepspeed
-        deepspeed.init_distributed(dist_backend=backend, rank=rank, world_size=world_size)
-    elif framework == 'horovbod':
-        import horovod.torch as hvd
-        hvd.init()
-    else:
-        raise ValueError(f"Unknown distributed framework: {framework}")
-
-
-def cleanup(rank, world_size, framework='ddp'):
-
-    if framework == 'ddp':
-        import torch.distributed as dist
-        dist.destroy_process_group()
-    elif framework == 'deepspeed':
-        pass
-    elif framework == 'horovbod':
-        import horovod.torch as hvd
-        hvd.shutdown()
-    else:
-        raise ValueError(f"Unknown distributed framework: {framework}")
-
-
-def gen_hparams_string(experiment_path):
-    experiment_path = beam_path(experiment_path)
-    tensorboard_hparams = BeamHparams.from_path(experiment_path.joinpath('args.pkl'))
-    tensorboard_hparams_keys = tensorboard_hparams.model_parameter + tensorboard_hparams.tune_parameter
-    return '/'.join([f"{k}_{tensorboard_hparams[k]}" for k in tensorboard_hparams_keys])
-
-
-def path_depth(path):
-
-    if isinstance(path, str):
-        path = beam_path(path)
-
-    return len(str(path.resolve()).split(os.sep))
-
-
-def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None):
-
-    if alg_args is None:
-        alg_args = tuple()
-    if alg_kwargs is None:
-        alg_kwargs = dict()
-    if dataset_args is None:
-        dataset_args = tuple()
-    if dataset_kwargs is None:
-        dataset_kwargs = dict()
-
-    if dataset is not None and not isinstance(dataset, dict):
-        datasets = {'dataset': dataset}
-    else:
-        datasets = dataset
-
-    if datasets is not None:
-        for k, v in datasets.items():
-            if inspect.isclass(v):
-                datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
-            elif inspect.isfunction(v):
-                datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
-
-    if inspect.isclass(alg):
-
-        alg = alg(experiment.hparams, *alg_args, **alg_kwargs)
-        # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
-        # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
-        experiment.writer_cleanup()
-
-    alg.experiment = experiment
-
-    if datasets is not None:
-        alg.load_datasets(datasets)
-
-    return alg
-
-
-def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
-    alg = algorithm_generator(*args, **kwargs)
-
-    experiment.writer_control(enable=not (bool(rank)))
-    results = {}
-
-    t0 = time.time()
-
-    try:
-        for i, results in enumerate(iter(alg)):
-
-            total_time = time.time() - t0
-            estimated_time = total_time * (alg.n_epochs - i - 1) / (i + 1)
-
-            experiment.save_model_results(copy.deepcopy(results), alg, i,
-                                          print_results=experiment.hparams.print_results,
-                                          visualize_results=experiment.hparams.visualize_results,
-                                          store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
-                                          visualize_weights=experiment.hparams.visualize_weights,
-                                          argv=tensorboard_arguments, total_time=total_time, estimated_time=estimated_time)
-
-    except KeyboardInterrupt as e:
-
-        tb = traceback.format_exc()
-        logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
-        logger.debug(f"KeyboardInterrupt: {e}")
-        logger.debug(f"KeyboardInterrupt: {tb}")
-
-        if rank == 0:
-            checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
-            alg.save_checkpoint(checkpoint_file)
-
-    except Exception as e:
-
-        tb = traceback.format_exc()
-
-        llm = get_beam_llm() if experiment.llm is None else experiment.llm
-
-        if llm is not None:
-            explain = llm.explain_traceback(tb)
-            logger.error(f"LLM Message: {explain}")
-
-        if not is_notebook():
-            raise e
-
-        logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
-        logger.error(f"Exception: {e}")
-        logger.error(f"Exception: {tb}")
-
-        if rank == 0:
-            checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
-            alg.save_checkpoint(checkpoint_file)
-
-    if world_size == 1:
-        return alg, results
-
-
-def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
-
-    logger.info(f"Worker: {rank + 1}/{world_size} is running...")
-
-    if world_size > 1:
-        backend = experiment.hparams.mp_backend
-        if backend is None:
-            backend = 'nccl' if experiment.device.type == 'cuda' else 'gloo'
-
-        setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend,
-                          framework=experiment.distributed_training_framework)
-
-    experiment.set_rank(rank, world_size)
-    set_seed(seed=experiment.hparams.seed, constant=rank+1, increment=False, deterministic=experiment.hparams.deterministic)
-
-    res = job(rank, world_size, experiment, *args, **kwargs)
-
-    if world_size > 1:
-
-        cleanup(rank, world_size, experiment.distributed_training_framework)
-        results_queue.put({'rank': rank, 'results': res})
-
-        done.wait()
-
-    else:
-        return res
+from ..config import print_beam_hyperparameters, BeamHparams
 
 
 class Experiment(object):
@@ -333,7 +156,7 @@ class Experiment(object):
             logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
             logger.info(f"Resuming existing experiment")
 
-        self.writer = None
+        self.tensorboard_writer = None
 
         self.rank = 0
         self.world_size = args.n_gpus if self.training_framework != 'accelerate' else 1
@@ -393,8 +216,6 @@ class Experiment(object):
         self.logs_path_is_built = False
         self.source_dir = None
 
-        atexit.register(self.cleanup)
-
     @lazy_property
     def training_framework(self):
         return self.hparams.get('training_framework', 'torch')
@@ -405,19 +226,6 @@ class Experiment(object):
             from ..llm import beam_llm
             return beam_llm(self.hparams.llm)
         return None
-
-    def cleanup(self):
-        if self.comet_writer is not None:
-            self.comet_writer.close()
-            self.comet_writer = None
-
-        if self.mlflow_writer is not None:
-            self.mlflow_writer.close()
-            self.mlflow_writer = None
-
-        if self.writer is not None:
-            self.writer.close()
-            self.writer = None
 
     @staticmethod
     def reload_from_path(path, override_hparams=None, reload_iloc=-1, reload_loc=None, reload_name=None, **argv):
@@ -500,11 +308,11 @@ class Experiment(object):
 
     def writer_control(self, enable=True, networks=None, inputs=None):
 
-        if enable and self.writer is None and self.hparams.tensorboard:
+        if enable and self.tensorboard_writer is None and self.hparams.tensorboard:
             if isinstance(self.tensorboard_dir, BeamPath):
                 from tensorboardX import SummaryWriter
-                self.writer = SummaryWriter(log_dir=str(self.tensorboard_dir.joinpath('logs')),
-                                            comment=self.hparams.identifier)
+                self.tensorboard_writer = SummaryWriter(log_dir=str(self.tensorboard_dir.joinpath('logs')),
+                                                        comment=self.hparams.identifier)
             else:
                 logger.warning(f"Tensorboard directory is not a BeamPath object. Tensorboard will not be enabled.")
 
@@ -547,9 +355,9 @@ class Experiment(object):
             self.mlflow_writer = MLflowSummaryWriter(self.exp_name, self.tensorboard_hparams, self.hparams.mlflow_url)
 
         if networks is not None and enable:
-            if self.writer is not None:
+            if self.tensorboard_writer is not None:
                 for k, net in networks.items():
-                    self.writer.add_graph(net, inputs[k])
+                    self.tensorboard_writer.add_graph(net, inputs[k])
             if self.comet_exp is not None:
                 self.comet_exp.set_model_graph(str(networks))
 
@@ -615,9 +423,9 @@ class Experiment(object):
         if print_log:
             reporter.print_stats()
 
-        if self.writer is not None:
+        if self.tensorboard_writer is not None:
             logger.info(f"Tensorboard results are stored to: {self.experiment_dir}")
-            reporter.write_to_tensorboard(self.writer, hparams=self.tensorboard_hparams)
+            reporter.write_to_tensorboard(self.tensorboard_writer, hparams=self.tensorboard_hparams)
         if self.comet_writer is not None:
             logger.info(f"Comet results are stored to: {self.comet_exp.get_key()}")
             reporter.write_to_tensorboard(self.comet_writer, hparams=self.tensorboard_hparams)
@@ -642,7 +450,7 @@ class Experiment(object):
             for net in networks:
                 for name, param in networks[net].named_parameters():
                     try:
-                        write_network(self.writer, net, name, n)
+                        write_network(self.tensorboard_writer, net, name, n)
                     except:
                         pass
                     try:
@@ -895,6 +703,7 @@ class Experiment(object):
             res = None
             logger.warning(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
 
+        # take care of what is done after training ends
         if res is None or self.world_size > 1:
             alg = algorithm_generator(self, *args, **kwargs)
             self.reload_checkpoint(alg)
@@ -938,8 +747,6 @@ class Experiment(object):
             for rank in range(world_size):
                 res.append(results_queue.get())
 
-            done.set()
-
             return res
 
         if self.world_size > 1:
@@ -960,13 +767,14 @@ class Experiment(object):
 
     def writer_cleanup(self):
 
-        if self.writer is not None:
-            self.writer.close()
-            self.writer = None
+        if self.tensorboard_writer is not None:
+            self.tensorboard_writer.close()
+            self.tensorboard_writer = None
 
         if self.comet_writer is not None:
             self.comet_writer.close()
             self.comet_writer = None
 
-
-
+        if self.mlflow_writer is not None:
+            self.mlflow_writer.close()
+            self.mlflow_writer = None

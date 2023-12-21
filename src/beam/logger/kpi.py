@@ -9,27 +9,27 @@ from .core import beam_logger
 
 def beam_kpi(beam_result_class, path=None):
     def _beam_kpi(func):
-        def wrapper(x, *args, username=None, ip_address=None, algorithm=None, **kwargs):
+        def wrapper(x, *args, _username=None, _ip_address=None, _algorithm=None, **kwargs):
 
             execution_time = datetime.now()
 
             # Get the IP address of the computer
-            if ip_address is None:
-                ip_address = socket.gethostbyname(socket.gethostname())
+            if _ip_address is None:
+                _ip_address = socket.gethostbyname(socket.gethostname())
 
             # Get the username of the current user
-            if username is None:
-                username = getpass.getuser()
+            if _username is None:
+                _username = getpass.getuser()
 
             algorithm_class = None
             algorithm_name = None
             experiment_path = None
-            if algorithm is None:
-                algorithm_class = type(algorithm).__name__
-                if hasattr(algorithm, 'name'):
-                    algorithm_name = algorithm.name
-                if hasattr(algorithm, 'experiment') and algorithm.experiment is not None:
-                    experiment_path = algorithm.experiment.experiment_dir
+            if _algorithm is None:
+                algorithm_class = type(_algorithm).__name__
+                if hasattr(_algorithm, 'name'):
+                    algorithm_name = _algorithm.name
+                if hasattr(_algorithm, 'experiment') and _algorithm.experiment is not None:
+                    experiment_path = _algorithm.experiment.experiment_dir
 
             result = None
             exception_message = None
@@ -47,7 +47,7 @@ def beam_kpi(beam_result_class, path=None):
                 beam_logger.exception(e)
             finally:
 
-                metadata = dict(ip_address=ip_address, username=username, execution_time=execution_time,
+                metadata = dict(ip_address=_ip_address, username=_username, execution_time=execution_time,
                                 elapsed=timer.elapsed, algorithm_class=algorithm_class, algorithm_name=algorithm_name,
                                 experiment_path=experiment_path, exception_message=exception_message,
                                 exception_type=exception_type, traceback=tb)

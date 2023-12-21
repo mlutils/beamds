@@ -4,9 +4,11 @@ from collections import defaultdict
 import math
 from functools import partial
 from ..logger import beam_logger as logger
+from torch.optim.lr_scheduler import LRScheduler
+from torch.optim import Optimizer
 
 
-class MultipleScheduler(object):
+class MultipleScheduler(LRScheduler):
 
     def __init__(self, multiple_optimizer, scheduler, *argc, **argv):
 
@@ -30,6 +32,12 @@ class MultipleScheduler(object):
     #         else:
     #             self.schedulers[k] = prepared[k]
 
+    def get_lr(self):
+        lr = []
+        for op in self.multiple_optimizer.optimizers.keys():
+            lr.extend(self.schedulers[op].get_lr())
+        return lr
+
     def step(self, *argc, **argv):
         for op in self.multiple_optimizer.optimizers.keys():
             self.schedulers[op].step(*argc, **argv)
@@ -45,7 +53,7 @@ class MultipleScheduler(object):
                 logger.error(f"Missing scheduler key from state_dict: {k}")
 
 
-class BeamScheduler(object):
+class BeamScheduler(LRScheduler):
 
     def __init__(self, optimizer, total_steps=None, epochs=None, steps_per_epochs=None,
                  warmup=5, method='one_cycle', step_type='epoch',
@@ -224,11 +232,18 @@ class BeamScheduler(object):
         self.epoch = self.epoch + 1
         self.get_current_state()
 
+    def get_lr(self):
+        if self.warmup_scheduler is not None and self.epoch < self.warmup:
+            return self.warmup_scheduler.get_lr()
+        else:
+            return self.scheduler.get_lr()
 
-class BeamOptimizer(object):
 
-    def __init__(self, net, dense_args=None, clip=0, accumulate=1, amp=False, model_dtype='float16',
-                 sparse_args=None, dense_optimizer='AdamW', sparse_optimizer='SparseAdam'):
+class BeamOptimizer(Optimizer):
+
+    def __init__(self, net, dense_args=None, clip=0, accumulate=1,
+                 amp=False, model_dtype='float16', sparse_args=None, dense_optimizer='AdamW',
+                 sparse_optimizer='SparseAdam'):
 
         sparse_optimizer = getattr(torch.optim, sparse_optimizer)
         dense_optimizer = getattr(torch.optim, dense_optimizer)
@@ -262,11 +277,15 @@ class BeamOptimizer(object):
                     if not any([p is pi for pi in dense_parameters]):
                         dense_parameters.append(p)
 
+        self.param_groups = []
+        self.defaults = None
         if len(dense_parameters) > 0:
             self.optimizers['dense'] = dense_optimizer(dense_parameters, **dense_args)
+            self.param_groups.extend(self.optimizers['dense'].param_groups)
 
         if len(sparse_parameters) > 0:
             self.optimizers['sparse'] = sparse_optimizer(sparse_parameters, **sparse_args)
+            self.param_groups.extend(self.optimizers['sparse'].param_groups)
 
         for k, o in self.optimizers.items():
             setattr(self, k, o)

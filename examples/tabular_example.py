@@ -95,12 +95,11 @@ if __name__ == '__main__':
     #                    tensorboard=True, stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, catboost=True,
     #                    rulenet=False)
 
-    from src.beam.config import get_beam_llm
-
     kwargs_base = dict(algorithm='debug_reporter', data_path=data_path, logs_path=logs_path,
+                       scheduler=None, device_placement=False, device=0, n_gpus=2,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=100,
-                       stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, label_smoothing=.2,
-                       model_dtype='float32', training_framework='torch', device_placement=True,
+                       stop_at=-.57, n_quantiles=6, label_smoothing=.2,
+                       model_dtype='float32', training_framework='deepspeed',
                        compile_train=False)
 
     kwargs_all = {}

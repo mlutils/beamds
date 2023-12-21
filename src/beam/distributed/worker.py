@@ -139,7 +139,7 @@ class BatchExecutor(Processor):
 
             tasks = list(self.process_batch(tasks))
             for i, t in enumerate(tasks):
-                if t.done:
+                if t.done_training:
                     t = tasks.pop(i)
                     t.end_time = time.time()
                     self.response_queue[t.req_id].put(t)

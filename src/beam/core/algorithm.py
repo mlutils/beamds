@@ -534,9 +534,9 @@ class Algorithm(Processor):
                     if k in self.optimizers:
                         self.optimizers.pop(k)
 
-                networks[k] = self.register_network(networks[k], name=k)
+                net = self.register_network(networks[k], name=k)
 
-                self.networks[k] = networks[k]
+                self.networks[k] = net
                 self.inference_networks[k] = self.networks[k]
 
                 if self.get_hparam('swa') is not None:
@@ -575,7 +575,7 @@ class Algorithm(Processor):
                 momentum = self.get_hparam('beta1')
 
             for k, v in networks.items():
-                if k not in optimizers:
+                if k not in optimizers and self.training_framework != 'deepspeed':
                     optimizers[k] = BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', specific=k),
                                                                   'weight_decay': self.get_hparam('weight_decay', specific=k),
                                                                   'betas': (self.get_hparam('momentum', specific=k, default=momentum),
@@ -627,7 +627,8 @@ class Algorithm(Processor):
             if k in schedulers:
                 self.schedulers[k] = schedulers[k]
 
-            elif build_schedulers and self.get_hparam('scheduler', specific=k) is not None:
+            elif (build_schedulers and self.get_hparam('scheduler', specific=k) is not None
+                  and self.training_framework != 'deepspeed'):
 
                 kwargs = {'warmup': self.get_hparam('scheduler_warmup', specific=k),
                           'method': self.get_hparam('scheduler', specific=k),
@@ -645,7 +646,30 @@ class Algorithm(Processor):
 
                 self.schedulers[k] = scheduler
 
+        if self.training_framework == 'deepspeed':
+
+            import deepspeed
+
+            for k, net in self.networks.items():
+
+                opt = self.optimizers[k] if k in self.optimizers else None
+                sch = self.schedulers[k] if k in self.schedulers else None
+
+                net, opt, dataloader, sch = deepspeed.initialize(args=self.deepspeed_args, model=net, optimizer=opt,
+                                                                 lr_scheduler=sch, model_parameters=None)
+                # {n: p for n, p in net.named_parameters() if p.requires_grad}
+
+                self.networks[k] = net
+                # self.optimizers[k] = opt
+                self.optimizers[k] = net
+                if sch is not None:
+                    self.schedulers[k] = sch
+
         self.refresh_optimizers_and_schedulers_pointers()
+
+    @property
+    def deepspeed_args(self):
+        raise NotImplementedError
 
     def reset_optimizers_and_schedulers(self):
 
@@ -797,6 +821,10 @@ class Algorithm(Processor):
                     elif self.accelerator is not None:
                         self.accelerator.backward(loss, gradient=gradient, retain_graph=retain_graph,
                                                   create_graph=create_graph, inputs=inputs)
+                    elif self.training_framework == 'deepspeed':
+                        # runs backpropagation
+                        op.backward(loss)
+
                     else:
                         loss.backward(gradient=gradient, retain_graph=retain_graph,
                                       create_graph=create_graph, inputs=inputs)
@@ -818,6 +846,9 @@ class Algorithm(Processor):
 
                             if self.amp:
                                 scaler.step(op)
+                            elif self.training_framework == 'deepspeed':
+                                # weight update
+                                op.step()
                             else:
                                 # from torch.cuda.amp import grad_scaler
                                 # from accelerate import optimizer
@@ -1366,6 +1397,9 @@ class Algorithm(Processor):
         '''
         Use this function to early stop your model based on the results or any other metric in the algorithm class
         '''
+
+        if self.rank > 0:
+            return False
 
         stop_at = self.get_hparam('stop_at')
         early_stopping_patience = self.get_hparam('early_stopping_patience')
