@@ -27,9 +27,6 @@ def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='
     elif framework == 'deepspeed':
         import deepspeed
         deepspeed.init_distributed(dist_backend=backend, rank=rank, world_size=world_size)
-    elif framework == 'horovbod':
-        import horovod.torch as hvd
-        hvd.init()
     else:
         raise ValueError(f"Unknown distributed framework: {framework}")
 

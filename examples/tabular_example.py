@@ -96,10 +96,10 @@ if __name__ == '__main__':
     #                    rulenet=False)
 
     kwargs_base = dict(algorithm='debug_reporter', data_path=data_path, logs_path=logs_path,
-                       scheduler=None, device_placement=False, device=0, n_gpus=2,
+                       scheduler=None, device_placement=False, device=0, n_gpus=1,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=100,
                        stop_at=-.57, n_quantiles=6, label_smoothing=.2,
-                       model_dtype='float32', training_framework='deepspeed',
+                       model_dtype='float32', training_framework='accelerate',
                        compile_train=False)
 
     kwargs_all = {}
