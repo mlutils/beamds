@@ -293,21 +293,42 @@ def basic_beam_parser():
     # accelerate parameters
     # based on https://huggingface.co/docs/accelerate/v0.24.0/en/package_reference/accelerator#accelerate.Accelerator
 
+    # boolean_feature(parser, "deepspeed-dataloader", False,
+    #                 "Use optimized deepspeed dataloader instead of native pytorch dataloader")
     boolean_feature(parser, "device-placement", False,
                     " Whether or not the accelerator should put objects on device")
     boolean_feature(parser, "split-batches", False,
                     "Whether or not the accelerator should split the batches "
                     "yielded by the dataloaders across the devices")
 
+    parser.add_argument('--deepspeed-optimizer', type=str, default='AdamW',
+                        help='Optimizer type (currently used for deepspeed configuration only) '
+                             'Supported optimizers: [Adam, AdamW, Lamb, OneBitAdam, OneBitLamb]')
+
+    parser.add_argument('--deepspeed-config', type=str, default=None,
+                        help='Path to a deepspeed configuration file.')
+
     # boolean_feature(parser, "accelerate", False, "Whether to use accelerate package for training")
     # boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='tune/model')
     # boolean_feature(parser, "amp", False, "Use Automatic Mixed Precision", metavar='tune/model')
 
-    parser.add_argument('--parallel-backend', type=str, default='ddp',
-                        help='Chose between [ddp|deepspeed|horovord], currently only ddp is supported')
+    # parser.add_argument('--parallel-backend', type=str, default='ddp',
+    #                     help='Chose between [ddp|deepspeed|horovord], currently only ddp is supported')
 
     parser.add_argument('--training-framework', type=str, default='torch',
-                        help='Chose between [torch|amp|accelerate]')
+                        help='Chose between [torch|amp|accelerate|deepspeed]')
+
+    # possible combinations for single gpu:
+    # 1. torch
+    # 2. amp
+    # 3. accelerate
+    # 4. native deepspeed
+
+    # possible combinations for multiple gpus:
+    # 1. torch + ddp
+    # 2. amp + ddp
+    # 3. accelerate + deepspeed
+    # 4. native deepspeed
 
     boolean_feature(parser, "compile-train", False,
                     "Apply torch.compile to optimize the inner_train function to speed up training. "

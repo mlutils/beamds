@@ -7,9 +7,9 @@ from ..logger import beam_logger as logger
 import numpy as np
 from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler
 from ..nn.core import BeamNN
-from ..utils import to_device, check_type, recursive_concatenate, \
-    beam_device, filter_dict, lazy_property, \
-    is_notebook, DataBatch, dictionary_iterator, recursive_clone
+from ..utils import (to_device, check_type, recursive_concatenate,
+                     beam_device, filter_dict, lazy_property,
+                     is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key)
 from ..config import beam_arguments, basic_beam_parser
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
@@ -160,7 +160,7 @@ class Algorithm(Processor):
     @lazy_property
     def model_dtype(self):
 
-        if self.training_framework == 'amp' or self.multip_procees_accelerate:
+        if self.training_framework in ['amp']:
             return None
 
         model_dtype = self.get_hparam('model_dtype', default='float32')
@@ -205,6 +205,10 @@ class Algorithm(Processor):
         return self.training_framework == 'amp' if self.is_cuda else False
 
     @lazy_property
+    def deepspeed(self):
+        return self.training_framework == 'deepspeed'
+
+    @lazy_property
     def scaler(self):
         return torch.cuda.amp.GradScaler() if self.amp else None
 
@@ -244,7 +248,7 @@ class Algorithm(Processor):
     @lazy_property
     def deepspeed_plugin(self):
         deepspeed_plugin = None
-        if self.multip_procees_accelerate:
+        if self.n_gpus > 1 and self.training_framework == 'accelerate':
             from accelerate.utils import DeepSpeedPlugin
             deepspeed_plugin = DeepSpeedPlugin(gradient_accumulation_steps=self.get_hparam('accumulate'),)
         return deepspeed_plugin
@@ -287,28 +291,6 @@ class Algorithm(Processor):
                                gradient_accumulation_plugin=self.gradient_accumulation_plugin,
                                )
         return None
-
-    def prepare_accelerate(self):
-
-        # dataloaders = [(k, s, v[s]) for k, v in self.dataloaders.items() for s in v.keys()]
-        networks = [(None, k, v) for k, v in self.networks.items()]
-        # n_dl = len(dataloaders)
-        # objects = list(zip(*(dataloaders + networks)))[2]
-        objects = list(zip(*networks))[2]
-
-        if self.accelerator.state.deepspeed_plugin is not None:
-            self.accelerator.state.deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = self.batch_size_train
-
-        prepared_objects = self.accelerator.prepare(*objects)
-
-        # for i, (k, s, _) in enumerate(dataloaders):
-        #     self.dataloaders[k][s]['dataloader'] = prepared_objects[i]
-
-        # for i, (k, _, _) in enumerate(networks):
-        #     self.networks[k] = prepared_objects[n_dl + i]
-
-        for i, (k, _, _) in enumerate(networks):
-            self.networks[k] = prepared_objects[i]
 
     @property
     def state_attributes(self):
@@ -607,11 +589,7 @@ class Algorithm(Processor):
             schedulers = {}
 
         for k, opt in optimizers.items():
-            if self.accelerator is not None:
-                if isinstance(opt, BeamOptimizer):
-                    opt.prepare(self.accelerator)
-                else:
-                    opt = self.accelerator.prepare_optimizer(opt)
+
             self.optimizers[k] = opt
 
             if self.get_hparam('swa') is not None:
@@ -646,30 +624,37 @@ class Algorithm(Processor):
 
                 self.schedulers[k] = scheduler
 
-        if self.training_framework == 'deepspeed':
-
-            import deepspeed
-
-            for k, net in self.networks.items():
-
-                opt = self.optimizers[k] if k in self.optimizers else None
-                sch = self.schedulers[k] if k in self.schedulers else None
-
-                net, opt, dataloader, sch = deepspeed.initialize(args=self.deepspeed_args, model=net, optimizer=opt,
-                                                                 lr_scheduler=sch, model_parameters=None)
-                # {n: p for n, p in net.named_parameters() if p.requires_grad}
-
-                self.networks[k] = net
-                # self.optimizers[k] = opt
-                self.optimizers[k] = net
-                if sch is not None:
-                    self.schedulers[k] = sch
-
         self.refresh_optimizers_and_schedulers_pointers()
 
     @property
-    def deepspeed_args(self):
-        raise NotImplementedError
+    def deepspeed_config(self):
+
+        if self.get_hparam('deepspeed_config') is not None:
+            config_file = beam_path(self.get_hparam('deepspeed_config'))
+            config = config_file.read()
+            return config
+
+        from ..config import deepspeed_config
+        config = copy.deepcopy(deepspeed_config)
+        config['train_micro_batch_size_per_gpu'] = self.batch_size_train
+        config['gradient_accumulation_steps'] = self.get_hparam('accumulate')
+
+        return config
+
+        # params =
+        # lr = self.get_hparam('lr'),
+        # weight_decay = self.get_hparam('weight_decay'),
+        # eps = self.get_hparam('eps'),
+        # optimizer_config = dict(type=self.hparams.get('deepspeed-optimizer'),
+        #                         params=params)
+        #
+        # config = dict(train_micro_batch_size_per_gpu=self.batch_size_train,
+        #               gradient_accumulation_steps=self.get_hparam('accumulate'),
+        #               optimizer=optimizer_config, scheduler=scheduler_config,
+        #               )
+        #
+        #
+        # return config
 
     def reset_optimizers_and_schedulers(self):
 
@@ -944,10 +929,6 @@ class Algorithm(Processor):
                                                   }
                 self.persistent_dataloaders[k][s]['iterator'] = iter(self.persistent_dataloaders[k][s]['dataloader'])
 
-                if self.accelerator is not None:
-                    self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_data_loader(
-                        self.persistent_dataloaders[k][s]['dataloader'])
-
             if (set_epoch_length == 'first' and i == 0) or k == set_epoch_length:
                 self.set_epoch_length(dataset)
 
@@ -997,17 +978,97 @@ class Algorithm(Processor):
                 scheduler.update_total_steps(epochs=self.n_epochs,
                                              steps_per_epochs=self.epoch_length['train'], initial_state=state)
 
-        if self.accelerator is not None:
-            for k, scheduler in self.schedulers.items():
+    def prepare_accelerate(self):
 
-                if isinstance(scheduler, MultipleScheduler):
-                    scheduler.prepare(self.accelerator)
-                elif isinstance(scheduler, BeamScheduler):
-                    scheduler.prepare(self.accelerator)
-                else:
-                    self.schedulers[k] = self.accelerator.prepare_scheduler(scheduler)
+        elements = []
+        elements_origin = []
+        elements_keys = []
 
-            self.refresh_optimizers_and_schedulers_pointers()
+        for k, v in self.networks.items():
+            elements.append(v)
+            elements_origin.append(self.networks)
+            elements_keys.append((k,))
+        for k, v in self.optimizers.items():
+            elements.append(v)
+            elements_origin.append(self.optimizers)
+            elements_keys.append((k,))
+        for k, v in self.schedulers.items():
+            elements.append(v)
+            elements_origin.append(self.schedulers)
+            elements_keys.append((k,))
+        for k, v in self.persistent_dataloaders.items():
+            for s, v in v.items():
+                elements.append(v['dataloader'])
+                elements_origin.append(self.persistent_dataloaders)
+                elements_keys.append((k, s, 'dataloader'))
+
+        modified_elements = self.accelerator.prepare(elements)
+
+        for e, o, kk in zip(modified_elements, elements_origin, elements_keys):
+            set_item_with_tuple_key(o, kk, e)
+
+        self.refresh_optimizers_and_schedulers_pointers()
+
+        if self.accelerator.state.deepspeed_plugin is not None:
+            self.accelerator.state.deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = self.batch_size_train
+
+        # if self.accelerator is not None:
+        #     self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_data_loader(
+        #         self.persistent_dataloaders[k][s]['dataloader'])
+        #
+        # if self.accelerator is not None:
+        #     for k, scheduler in self.schedulers.items():
+        #
+        #         if isinstance(scheduler, MultipleScheduler):
+        #             scheduler.prepare(self.accelerator)
+        #         elif isinstance(scheduler, BeamScheduler):
+        #             scheduler.prepare(self.accelerator)
+        #         else:
+        #             self.schedulers[k] = self.accelerator.prepare_scheduler(scheduler)
+        #
+        # if self.accelerator:
+        #     if self.accelerator.device_placement:
+        #         # let accelerate handle the device placement but provide accelerator with the correct dtype
+        #         net = net.to('cpu', dtype=self.model_dtype)
+        #     else:
+        #         net = net.to(self.device, dtype=self.model_dtype)
+        #
+        #     if not self.multip_procees_accelerate:
+        #         net = self.accelerator.prepare(net)
+        #
+        # if self.accelerator is not None:
+        #     if isinstance(opt, BeamOptimizer):
+        #         opt.prepare(self.accelerator)
+        #     else:
+        #         opt = self.accelerator.prepare_optimizer(opt)
+
+    def prepare_deepspeed(self):
+
+        import deepspeed
+        for k, net in self.networks.items():
+            opt = self.optimizers[k] if k in self.optimizers else None
+            sch = self.schedulers[k] if k in self.schedulers else None
+
+            # if self.hparams.get('deepspeed-dataloader', False):
+            #
+            #     if len(self.persistent_dataloaders) > 1:
+            #         logger.warning("DeepSpeed dataloader is not supported for multiple datasets. "
+            #                        "Defaulting to PyTorch dataloader.")
+            #     else:
+            #         dataset_name = list(self.datasets)[0]
+            #         dataloader = self.persistent_dataloaders[dataset_name]['train']['dataloader']
+
+            net, opt, _, sch = deepspeed.initialize(model=net, optimizer=opt, lr_scheduler=sch,
+                                                    config=self.deepspeed_config)
+            self.networks[k] = net
+            self.optimizers[k] = opt
+            self.schedulers[k] = sch
+
+        self.refresh_optimizers_and_schedulers_pointers()
+
+        from deepspeed import DeepSpeedEngine
+        # net = DeepSpeedEngine(net, config=self.experiment.ds_config_file)
+
 
     def get_optimizer_name(self, opt):
         i = id(opt)
@@ -1071,25 +1132,11 @@ class Algorithm(Processor):
     def ddp(self):
         return self.distributed_training and self.distributed_training_framework == 'ddp'
 
-    @property
-    def deepspeed(self):
-        return self.distributed_training and self.distributed_training_framework == 'deepspeed'
-
     def register_network(self, net, name=None):
 
         # net = BeamNN.from_module(net, name=name)
 
-        if self.accelerator:
-            if self.accelerator.device_placement:
-                # let accelerate handle the device placement but provide accelerator with the correct dtype
-                net = net.to('cpu', dtype=self.model_dtype)
-            else:
-                net = net.to(self.device, dtype=self.model_dtype)
-
-            if not self.multip_procees_accelerate:
-                net = self.accelerator.prepare(net)
-        else:
-            net = net.to(self.device, dtype=self.model_dtype)
+        net = net.to(self.device, dtype=self.model_dtype)
 
         if self.ddp:
 
@@ -1107,10 +1154,6 @@ class Algorithm(Processor):
                 if a not in dir(net_ddp) and not a.startswith('_'):
                     setattr(net_ddp, a, getattr(net, a))
             net = net_ddp
-
-        elif self.deepspeed:
-            from deepspeed import DeepSpeedEngine
-            net = DeepSpeedEngine(net, config=self.experiment.ds_config_file)
 
         return net
 
@@ -1191,10 +1234,13 @@ class Algorithm(Processor):
             yield i, DataBatch(index=ind, label=label, data=sample)
 
     def to_device(self, *args):
-        if self.accelerator is None or not self.accelerator.device_placement:
-            return to_device(args, self.device, half=self.half, brain=self.brain)
-        device = 'cuda' if self.is_cuda else 'cpu'
-        return to_device(args, device, half=self.half, brain=self.brain)
+        return to_device(args, self.device, half=self.half, brain=self.brain)
+
+        # if self.accelerator is None or not self.accelerator.device_placement:
+        #     return to_device(args, self.device, half=self.half, brain=self.brain)
+        # else:
+        #     device = 'cuda' if self.is_cuda else 'cpu'
+        #     return to_device(args, device, half=self.half, brain=self.brain)
 
     def finite_data_generator(self, subset, length):
 
@@ -1251,7 +1297,7 @@ class Algorithm(Processor):
             res = self.inner_train(*args, **kwargs)
             return recursive_clone(res)
 
-        if self.hparams.get('compile_train', False):
+        if self.get_hparam('compile_train', False):
             return torch.compile(inner_train_with_cloned_ouptut, mode="reduce-overhead")
 
         return self.inner_train
@@ -1489,17 +1535,15 @@ class Algorithm(Processor):
 
         return dataset
 
-    @lazy_property
-    def multip_procees_accelerate(self):
-        return self.training_framework == 'accelerate' and self.get_hparam('n_gpus') > 1
-
     def __iter__(self):
 
         n_epochs = self.n_epochs + self.swa_epochs + int(self.swa_epochs > 0)
         self.refresh_optimizers_and_schedulers_pointers()
 
-        if self.multip_procees_accelerate:
+        if self.training_framework == 'accelerate':
             self.prepare_accelerate()
+        elif self.training_framework == 'deepspeed':
+            self.prepare_deepspeed()
 
         epoch_start = 0 if self.get_hparam("restart_epochs_count", default=True) else self.epoch
         self.set_train_reporter(first_epoch=epoch_start, n_epochs=n_epochs)

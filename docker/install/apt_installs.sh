@@ -40,13 +40,11 @@ apt install -y ca-certificates
 apt install -y curl
 apt install -y gnupg
 apt install -y lsb-release
-
-# don't install libopenmpi as it messes up the pytorch geometric installation
-apt install -y libopenmpi-dev
+#
+## don't install libopenmpi as it messes up the pytorch geometric installation
+#apt install -y libopenmpi-dev
 
 pip install pykerberos
-
-
 
 
 ## for hfds-fuse installation
