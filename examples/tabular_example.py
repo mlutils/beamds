@@ -21,10 +21,16 @@ if __name__ == '__main__':
 
     device = 3
 
-    hparams = TabularHparams(dataset_name='jannis', algorithm='deep_tabnet',
-                             path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-                             path_to_results='/dsi/shared/elads/elads/data/tabular/results/', batch_size=256,
-                             copy_code=False, stop_at=0.98, parallel=1, device=device, n_quantiles=6)
+    hparams = TabularHparams(dataset_name='covtype', algorithm='dynamic_masking', path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+                             path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
+                             copy_code=False, stop_at=0.98, parallel=1, mask_rate=.15, dynamic_delta=0.00,
+                             maximal_mask_rate=.2, minimal_mask_rate=.1,
+                             dynamic_masking=True, store_data_on_device=True, device=device)
+
+    # hparams = TabularHparams(dataset_name='jannis', algorithm='deep_tabnet',
+    #                          path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+    #                          path_to_results='/dsi/shared/elads/elads/data/tabular/results/', batch_size=256,
+    #                          copy_code=False, stop_at=0.98, parallel=1, device=device, n_quantiles=6)
 
     # hparams = TabularHparams(dataset_name='yahoo', algorithm='deep_tabnet',
     #                          path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',

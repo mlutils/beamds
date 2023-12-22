@@ -31,6 +31,12 @@ class TabularHparams(BeamHparams):
         parser.add_argument('--transformer_dropout', type=float, default=0., metavar='hparam', help='transformer dropout')
         parser.add_argument('--mask_rate', type=float, default=0.15, metavar='hparam',
                             help='rate of masked features during training')
+        parser.add_argument('--maximal_mask_rate', type=float, default=0.2, metavar='hparam',
+                            help='the maximal mask rate with dynamic masking')
+        parser.add_argument('--minimal_mask_rate', type=float, default=0.1, metavar='hparam',
+                            help='the minimal mask rate with dynamic masking')
+        parser.add_argument('--dynamic_delta', type=float, default=0.005, metavar='hparam',
+                            help='the incremental delta for dynamic masking')
         parser.add_argument('--n_rules', type=int, default=64, metavar='hparam',
                             help='number of transformers rules in the decoder')
         parser.add_argument('--activation', type=str, default='gelu', metavar='hparam', help='transformer activation')
@@ -45,6 +51,7 @@ class TabularHparams(BeamHparams):
         boolean_feature(parser, "oh_to_cat", False, "Try to convert one-hot encoded categorical features to "
                                                     "categorical features")
         boolean_feature(parser, "store_data_on_device", True, "Store the data on the device (GPU/CPU) in advance")
+        boolean_feature(parser, 'dynamic_masking', False, 'Use dynamic masking scheduling')
 
         return parser
 
@@ -272,6 +279,7 @@ class DeepTabularAlg(Algorithm):
         super().__init__(hparams, networks=networks, **kwargs)
         self.loss_function = None
         self.task_type = None
+        self.train_acc = None
 
     def preprocess_epoch(self, results=None, epoch=None, subset=None, training=True, **kwargs):
         if epoch == 0:
@@ -285,6 +293,23 @@ class DeepTabularAlg(Algorithm):
         if self.task_type == 'regression':
             results['scalar']['rmse'] = float(torch.sqrt(results['scalar']['mse'].mean()))
             results['scalar']['objective'] = -results['scalar']['rmse']
+
+        if self.get_hparam('dynamic_masking'):
+            if training:
+                self.train_acc = float(torch.mean(results['scalar']['acc']))
+            else:
+                test_acc = float(torch.mean(results['scalar']['acc']))
+                if test_acc > self.train_acc:
+                    delta = self.get_hparam('dynamic_delta')
+                else:
+                    delta = -self.get_hparam('dynamic_delta')
+                non_mask_rate = max(float(self.networks['net'].mask.probs) + delta,
+                                                          1. - self.get_hparam('maximal_mask_rate'))
+
+                self.networks['net'].mask = distributions.Bernoulli(min(non_mask_rate,
+                                                                        1. - self.get_hparam('minimal_mask_rate')))
+
+            results['scalar']['mask_rate'] = float(1 - self.networks['net'].mask.probs)
 
         return results
 
