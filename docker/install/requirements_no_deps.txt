@@ -15,8 +15,11 @@ rtdl
 
 beam-ds
 HEBO
-GPy
+# GPy
 botorch
+
+retriv
+ludwig
 
 # requires torch<=2.1.0
 tsai

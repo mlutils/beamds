@@ -14,7 +14,7 @@ import numpy as np
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
 from src.beam.ssl import get_ssl_parser
-from src.beam.config import get_beam_parser
+from src.beam.config import basic_beam_parser
 
 from sklearn.datasets import fetch_covtype
 import pandas as pd
@@ -29,7 +29,7 @@ class EmbeddingCovtypeDataset(UniversalDataset):
 
     def __init__(self, hparams):
         emb_size = hparams.channels
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         seed = hparams.seed
         self.mask = hparams.mask
@@ -99,7 +99,7 @@ class EmbeddingCovtypeDataset(UniversalDataset):
 class CovtypeDatasetOrg(UniversalDataset):
 
     def __init__(self, hparams):
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         seed = hparams.seed
 
@@ -133,7 +133,7 @@ class CovtypeDatasetOrg(UniversalDataset):
 class CovtypeDataset(UniversalDataset):
 
     def __init__(self, hparams):
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         seed = hparams.seed
         self.mask = hparams.mask
@@ -207,7 +207,7 @@ class CovtypeDataset(UniversalDataset):
 class CovtypeCategoricalMaskedDataset(UniversalDataset):
 
     def __init__(self, hparams):
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         seed = hparams.seed
         self.mask = hparams.mask
@@ -286,7 +286,7 @@ class CovtypeCategoricalMaskedDataset(UniversalDataset):
 class CovtypeFullMaskedDataset(UniversalDataset):
 
     def __init__(self, hparams):
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         seed = hparams.seed
         self.mask = hparams.mask
@@ -395,7 +395,7 @@ class BeamTabularSSL(BeamSSL):
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_num, x_cat = sample['x']
 
@@ -460,7 +460,7 @@ class Vime(BeamSSL):
 
         super().__init__(hparams, networks=networks, optimizers=optimizers, schedulers=schedulers, **kwargs)
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         _, x = sample['x']
         _, x_aug = sample['augmentations'][0]['x']
@@ -545,7 +545,7 @@ class VicVime(BeamSSL):
 
         return results
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x_num, x_cat = sample['x']
         x_num_aug1, x_cat_aug1 = sample['augmentations'][0]['x']
@@ -762,13 +762,13 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data/dataset/covtype'
-    root_dir = '/home/shared/data/results/covtype'
+    data_path = '/home/shared/data/dataset/covtype'
+    logs_path = '/home/shared/data/results/covtype'
 
     hparams = beam_arguments(get_covtype_parser(),
-                             f"--project-name=covtype_ssl --root-dir={root_dir} --algorithm=BeamVICReg --device=2",
-                             "--batch-size=512 --n-epochs=100 --parallel=1 --momentum=0.9 --beta2=0.99",
-                             weight_factor=.0, weight_decay=1e-5, path_to_data=path_to_data, dropout=.0, channels=256,
+                             f"--project-name=covtype_ssl --logs-path={logs_path} --algorithm=BeamVICReg --device=2",
+                             "--batch-size=512 --n-epochs=100 --n-gpus=1 --momentum=0.9 --beta2=0.99",
+                             weight_factor=.0, weight_decay=1e-5, data_path=data_path, dropout=.0, channels=256,
                              n_layers=2)
 
     experiment = Experiment(hparams)
@@ -778,4 +778,4 @@ if __name__ == '__main__':
     logger.info(f"BeamSSL algorithm: {hparams.algorithm}")
     logger.info(f"BeamSSL dataset: {hparams.dataset}")
 
-    alg = experiment.fit(Alg=Alg, Dataset=Dataset)
+    alg = experiment.fit(alg=Alg, dataset=Dataset)

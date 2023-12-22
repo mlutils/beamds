@@ -12,16 +12,9 @@ from pathlib import Path
 import sys
 import time
 
-from src.beam.parallel import BeamTask, BeamParallel, parallel, task
-from src.beam.utils import collate_chunks, divide_chunks
 from src.beam.data import BeamData
-from src.beam.processor import Transformer
+from src.beam.transformer import Transformer
 
-from src.beam import beam_arguments, Experiment
-from src.beam import Algorithm
-
-from src.beam import DataTensor
-from src.beam.utils import is_notebook
 from datasets import list_datasets, load_dataset
 from pprint import pprint
 

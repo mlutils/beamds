@@ -17,7 +17,6 @@ apt install -y iputils-ping
 apt install -y net-tools
 apt install -y python3-sphinx
 apt install -y graphviz
-apt install -y graphviz
 apt install -y pkg-config
 apt install -y expect
 apt install -y libgraphviz-dev
@@ -31,12 +30,23 @@ apt install -y binwalk
 apt install -y ncdu
 apt install -y vim
 apt install -y zip
+apt install -y unzip
 apt install -y unixodbc-dev
+apt install -y sqlite3
+apt install -y python3.10-venv
+apt install -y redis-server
+apt install -y rabbitmq-server
+apt install -y ca-certificates
+apt install -y curl
+apt install -y gnupg
+apt install -y lsb-release
+
+# don't install libopenmpi as it messes up the pytorch geometric installation
+apt install -y libopenmpi-dev
 
 pip install pykerberos
 
-# don't install libopenmpi as it messes up the pytorch geometric installation
-# libopenmpi-dev
+
 
 
 ## for hfds-fuse installation
@@ -47,7 +57,7 @@ pip install pykerberos
 
 # applications
 
-# ssh server
+# ssh serve
 echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 # ssh connection immediately disconnects after session start with exit code 254:

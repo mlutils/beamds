@@ -61,10 +61,13 @@ class BeamImporter:
 
         try:
             imported_object = importlib.import_module(actual_name)
-        except:
-            module_name, object_name = actual_name.rsplit('.', 1)
-            module = importlib.import_module(module_name)
-            imported_object = getattr(module, object_name)
+        except Exception as e:
+            try:
+                module_name, object_name = actual_name.rsplit('.', 1)
+                module = importlib.import_module(module_name)
+                imported_object = getattr(module, object_name)
+            except:
+                raise e
 
         return imported_object
 
@@ -72,7 +75,13 @@ class BeamImporter:
 def load_ipython_extension(ipython):
     import sys
     import os
+    import time
+
+    t0 = time.time()
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+    print("Setting up the Beam environment for interactive use")
+    print("Standard modules will be automatically imported so you can use them without explicit import")
 
     if ipython is not None:
         ipython.run_line_magic('load_ext', 'autoreload')
@@ -98,9 +107,8 @@ def load_ipython_extension(ipython):
                 if not k.startswith('_'):
                     ipython.push({k: module.__dict__[k]})
 
-    print("Setting up the Beam environment for interactive use")
-    print("Standard modules are imported automatically so you can use them without explicit import")
-    print(f"Beam library is loaded from path: {os.path.dirname(beam_importer.beam.__file__)}")
+    print(f"Done importing packages. It took: {time.time() - t0: .2} seconds")
+    print(f"Beam library is loaded from path: {os.path.abspath(os.path.dirname(beam_importer.beam.__file__))}")
     print(f"The Beam version is: {beam_importer.beam.__version__}")
 
 

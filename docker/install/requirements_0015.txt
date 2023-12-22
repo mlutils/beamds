@@ -1,3 +1,31 @@
-pandas-profiling
+pip-tools
 pulearn
+text-generation
+streamlit
+waitress
+cherrypy
+uwsgi
+chainlit
+s3fs
+rank_bm25
+netcal
+ibis-framework[pandas,duckdb,mysql,sqlite]
+ordered_set
+PyPDF2
+streamlit-aggrid
+pyahocorasick
+pdfplumber
+pdfminer.six
+tabula-py
+sentence-transformers
 rouge-score
+
+
+# pandas-profiling
+# scikit-hubness
+
+
+
+# skypilot
+# vllm
+# fschat

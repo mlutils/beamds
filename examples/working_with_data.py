@@ -4,8 +4,8 @@ add_beam_to_path()
 
 from src.beam.data import BeamData
 from src.beam.path import beam_path
-from src.beam.processor import Transformer
-from src.beam.tensor import LazyTensor
+from src.beam.transformer import Transformer
+from src.beam.nn.tensor import LazyTensor
 from src.beam import Timer
 import numpy as np
 import pandas as pd

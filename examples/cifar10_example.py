@@ -125,7 +125,7 @@ class CIFAR10Dataset(UniversalDataset):
     def __init__(self, hparams):
         super().__init__()
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         padding = hparams.padding
 
@@ -157,100 +157,25 @@ class CIFAR10Dataset(UniversalDataset):
 
             torch.save((x_train, x_test, y_train, y_test), file)
 
-        # self.data = torch.cat([x_train, x_test])
-        # self.labels = torch.cat([y_train, y_test])
-        # test_indices = len(x_train) + torch.arange(len(x_test))
-        # self.split(validation=.2, test=test_indices, seed=hparams.split_dataset_seed)
-
-        # self.data = PackedFolds({'train': x_train, 'test': x_test})
-        # self.labels = PackedFolds({'train': y_train, 'test': y_test})
-        # self.split(validation=.2, test=self.labels['test'].index, seed=hparams.split_dataset_seed)
-
-        self.data = BeamData({'train': x_train, 'test': x_test}, label={'train': y_train, 'test': y_test})
+        self.data = BeamData.simple({'train': x_train, 'test': x_test}, label={'train': y_train, 'test': y_test})
         self.labels = self.data.label
         self.split(validation=.2, test=self.data['test'].index, seed=hparams.split_dataset_seed)
 
     def getitem(self, ind):
 
         data = self.data[ind]
-
-        if isinstance(data, BeamData):
-            # x = data.stacked_values
-            # labels = data.stacked_labels
-            x = data.data
-            labels = data.label
-        else:
-            x = data
-            labels = self.labels[ind]
+        x = data.data
+        labels = data.label
 
         x = x.half() / 255
 
-        # print(x.shape)
         if self.training:
             x = self.augmentations(x)
 
         x = (x.float() - self.mu) / self.sigma
-
         x = x.to(memory_format=torch.channels_last)
 
         return {'x': x, 'y': labels}
-
-# class CIFAR10Dataset(UniversalDataset):
-#
-#     def __init__(self, hparams):
-#         super().__init__()
-#
-#         path = hparams.path_to_data
-#         device = hparams.device
-#         padding = hparams.padding
-#
-#         augmentations = transforms.Compose([transforms.RandomHorizontalFlip(),
-#                                             transforms.RandomCrop(32, padding=padding, padding_mode='edge'),])
-#
-#         self.t_basic = transforms.Compose([transforms.Lambda(lambda x: (x / 255)),
-#                                            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
-#
-#         self.t_train = transforms.Compose([augmentations, self.t_basic])
-#
-#         file = os.path.join(path, 'dataset_uint8.pt')
-#         if os.path.exists(file):
-#             x_train, x_test, y_train, y_test = torch.load(file, map_location=device)
-#
-#         else:
-#             dataset_train = torchvision.datasets.CIFAR10(root=path, train=True,
-#                                                          transform=torchvision.transforms.PILToTensor(), download=True)
-#             dataset_test = torchvision.datasets.CIFAR10(root=path, train=False,
-#                                                         transform=torchvision.transforms.PILToTensor(), download=True)
-#
-#             x_train = torch.stack([dataset_train[i][0] for i in range(len(dataset_train))]).to(device)
-#             x_test = torch.stack([dataset_test[i][0] for i in range(len(dataset_test))]).to(device)
-#
-#             y_train = torch.LongTensor(dataset_train.targets).to(device)
-#             y_test = torch.LongTensor(dataset_test.targets).to(device)
-#
-#             torch.save((x_train, x_test, y_train, y_test), file)
-#
-#         # self.data = torch.cat([x_train, x_test])
-#         # self.labels = torch.cat([y_train, y_test])
-#         # test_indices = len(x_train) + torch.arange(len(x_test))
-#         # self.split(validation=.2, test=test_indices, seed=hparams.split_dataset_seed)
-#
-#         self.data = PackedFolds({'train': x_train, 'test': x_test})
-#         self.labels = PackedFolds({'train': y_train, 'test': y_test})
-#         self.split(validation=.2, test=self.labels['test'].index, seed=hparams.split_dataset_seed)
-#
-#     def getitem(self, ind):
-#
-#         x = self.data[ind]
-#
-#         if self.training:
-#             x = self.t_train(x)
-#         else:
-#             x = self.t_basic(x)
-#
-#         x = x.to(memory_format=torch.channels_last)
-#
-#         return {'x': x, 'y': self.labels[ind]}
 
 
 class LRPolicy(object):
@@ -302,18 +227,11 @@ class CIFAR10Algorithm(Algorithm):
         #                                                                          final_point=hparams.final_point,
         #                                                                          minimal_gain=hparams.minimal_gain))
 
-    def postprocess_epoch(self, sample=None, results=None, epoch=None, subset=None, training=True, **kwargs):
-
+    def postprocess_epoch(self, sample=None, epoch=None, subset=None, training=True, **kwargs):
         x, y = sample['x'], sample['y']
+        self.report_images('sample', x[:16].view(16, 3, 32, 32))
 
-        results['images']['sample'] = x[:16].view(16, 3, 32, 32).data.cpu()
-
-        if training:
-            results['scalar'][f'lr'] = self.optimizers['net'].dense.param_groups[0]['lr']
-
-        return results
-
-    def iteration(self, sample=None, results=None, counter=None, subset=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, counter=None, subset=None, training=True, **kwargs):
 
         x, y = sample['x'], sample['y']
 
@@ -323,30 +241,12 @@ class CIFAR10Algorithm(Algorithm):
         y_hat = net(x)
         loss = F.cross_entropy(y_hat, y, reduction='sum', label_smoothing=self.hparams.label_smoothing)
 
-        if training:
-            opt.apply(loss)
+        self.apply(loss)
 
         # add scalar measurements
-        results['scalar']['loss'].append(float(loss))
-        results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
+        self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-        return results
-
-    # def report(self, objective, epoch=None, **kwargs):
-    #
-    #     # acc = np.mean(results['validation']['scalar']['acc'])
-    #     acc = objective
-    #
-    #     if self.hpo == 'tune':
-    #         tune.report(mean_accuracy=acc)
-    #     elif self.hpo == 'optuna':
-    #
-    #         self.trial.report(acc, epoch)
-    #         # results['objective'] = acc
-    #
-    #     return results
-
-    def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
@@ -356,29 +256,30 @@ class CIFAR10Algorithm(Algorithm):
         net = self.networks['net']
         y_hat = net(x)
 
-        # add scalar measurements
-        results['predictions']['y_pred'].append(y_hat.detach())
+        # add scalar metrics
+        self.report_scalar('y_pred', y_hat)
 
         if not predicting:
-            results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
-            results['predictions']['target'].append(y)
-            return {'y': y, 'y_hat': y_hat}, results
+            self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
+            self.report_scalar('target', y)
+            return {'y': y, 'y_hat': y_hat}
 
-        return y_hat, results
+        return y_hat
 
-    def postprocess_inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
-
-        y_pred = as_numpy(torch.argmax(results['predictions']['y_pred'], dim=1))
+    def postprocess_inference(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if not predicting:
-            y_true = as_numpy(results['predictions']['target'])
+
+            y_pred = as_numpy(torch.argmax(self.get_scalar('y_pred'), dim=1))
+            y_true = as_numpy(self.get_scalar('target'))
             precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
-            results['metrics']['precision'] = precision
-            results['metrics']['recall'] = recall
-            results['metrics']['fscore'] = fscore
-            results['metrics']['support'] = support
 
-        return results
+            self.report_data('metrics/precision', precision)
+            self.report_data('metrics/recall', recall)
+            self.report_data('metrics/fscore', fscore)
+            self.report_data('metrics/support', support)
+
+            self.report_scalar('objective', self.get_scalar('acc', aggregate=True))
 
 
 # ## Training
@@ -388,15 +289,13 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data/dataset/cifar10'
-    root_dir = '/home/shared/data/results/cifar10'
 
     args = beam_arguments(
-        f"--project-name=cifar10 --root-dir={root_dir} --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
-        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --no-deterministic",
+        f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
+        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --n-gpus=1 --accumulate=1 --no-deterministic",
         "--weight-decay=.00256 --momentum=0.9 --beta2=0.999 --temperature=1 --objective=acc --scheduler=one_cycle",
-        path_to_data=path_to_data, dropout=.0, activation='gelu',
-        channels=512, label_smoothing=.2, padding=4, scale_down=.7, scale_up=1.4, ratio_down=.7, ratio_up=1.4)
+        dropout=.0, activation='gelu', channels=512, label_smoothing=.2, padding=4, scale_down=.7,
+        scale_up=1.4, ratio_down=.7, ratio_up=1.4)
 
     experiment = Experiment(args)
     alg = experiment.fit(CIFAR10Algorithm, CIFAR10Dataset, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})

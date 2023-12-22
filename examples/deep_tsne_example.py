@@ -13,7 +13,7 @@ from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
 from src.beam import beam_arguments, Experiment, beam_algorithm_generator
-from src.beam import UniversalDataset, UniversalBatchSampler, get_beam_parser
+from src.beam import UniversalDataset, UniversalBatchSampler, basic_beam_parser
 from src.beam import Algorithm
 from src.beam import LinearNet, as_numpy
 from src.beam import DataTensor, PackedFolds
@@ -59,7 +59,7 @@ class MNISTDataset(UniversalDataset):
 
     def __init__(self, hparams):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         seed = hparams.split_dataset_seed
 
         super().__init__()
@@ -123,7 +123,7 @@ class DeepTSNE(Algorithm):
 
         return results
 
-    def iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
+    def train_iteration(self, sample=None, results=None, subset=None, counter=None, training=True, **kwargs):
 
         x, y = sample['x'], sample['y']
 
@@ -197,7 +197,7 @@ class DeepTSNE(Algorithm):
 
         return results
 
-    def inference(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
@@ -223,7 +223,7 @@ class DeepTSNE(Algorithm):
 
 def get_deep_tsne_parser():
 
-    parser = get_beam_parser()
+    parser = basic_beam_parser()
     parser.add_argument('--emb-size', type=int, default=2, help='Size of embedding dimension')
     parser.add_argument('--p-norm', type=int, default=2, help='The norm degree')
     parser.add_argument('--perplexity-top', type=float, default=.02, help='The number of nearest neighbors that is used in'
@@ -243,12 +243,12 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data//dataset/mnist'
-    root_dir = '/home/shared/data/results'
+    data_path = '/home/shared/data//dataset/mnist'
+    logs_path = '/home/shared/data/results'
 
     args = beam_arguments(get_deep_tsne_parser(),
-        f"--project-name=deep_tsne_mnist --root-dir={root_dir} --algorithm=DeepTSNE --device=cpu",
-        "--epoch-length=200000 --n-epochs=10 --parallel=1", path_to_data=path_to_data)
+        f"--project-name=deep_tsne_mnist --logs-path={logs_path} --algorithm=DeepTSNE --device=cpu",
+        "--epoch-length=200000 --n-epochs=10 --n-gpus=1", data_path=data_path)
 
     experiment = Experiment(args)
     experiment.fit(DeepTSNE, MNISTDataset)
