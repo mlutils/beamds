@@ -29,7 +29,6 @@ class Algorithm(Processor):
         self.trial = None
 
         # the following are set by the experiment
-        self._device = None
         # some experiment hyperparameters
 
         self.clear_experiment_properties()
@@ -141,8 +140,7 @@ class Algorithm(Processor):
     def half(self):
 
         # maybe we should add bfloat16 + accelerate
-        if self.training_framework == 'torch' and self.model_dtype in [torch.float16, torch.bfloat16,
-                                                                       torch.complex32]:
+        if self.native_training and self.model_dtype in [torch.float16, torch.bfloat16, torch.complex32]:
             return True
 
         return False
@@ -160,7 +158,7 @@ class Algorithm(Processor):
     @lazy_property
     def model_dtype(self):
 
-        if self.training_framework in ['amp']:
+        if self.amp:
             return None
 
         model_dtype = self.get_hparam('model_dtype', default='float32')
@@ -186,14 +184,18 @@ class Algorithm(Processor):
         return self.get_hparam('training_framework', default='torch')
 
     @lazy_property
+    def native_training(self):
+        return self.training_framework == 'torch'
+
+    @lazy_property
     def mixed_precision_dtype(self):
 
-        if self.training_framework == 'torch':
+        if self.native_training:
             return None
 
         model_dtype = self.get_hparam('model_dtype', default='float32')
 
-        if self.training_framework == 'amp':
+        if self.amp:
             if not self.is_cuda and model_dtype == 'float16':
                 logger.warning(f'Autocast on CPU is only supported for bfloat16, defaulting to bfloat16.')
                 model_dtype = 'bfloat16'
@@ -206,7 +208,7 @@ class Algorithm(Processor):
 
     @lazy_property
     def deepspeed(self):
-        return self.training_framework == 'deepspeed'
+        return self.training_framework == 'deepspeed' and self.get_hparam('n_gpus') > 1
 
     @lazy_property
     def scaler(self):
@@ -228,27 +230,28 @@ class Algorithm(Processor):
                             'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
                             'scaler', 'swa_epochs')
 
-    @property
+    @lazy_property
     def device(self):
-        if self._device is None:
-            if self.accelerator is None or not self.accelerator.device_placement:
-                if self.experiment is not None and hasattr(self.experiment, 'device'):
-                    self._device = beam_device(self.experiment.device)
-                else:
-                    self._device = beam_device(self.get_hparam('device'))
-            else:
-                self._device = self.accelerator.device
-        return self._device
+        # if self.deepspeed:
+        #     return None
+        if self.accelerate and self.accelerator.device_placement:
+            device = self.accelerator.device
+        elif self.experiment is not None and hasattr(self.experiment, 'device'):
+            device = beam_device(self.experiment.device)
+        else:
+            device = beam_device(self.get_hparam('device'))
+
+        return device
 
     @device.setter
     def device(self, device):
-        if self.training_framework != 'accelerate' or not self.accelerator.device_placement:
+        if not self.accelerate or not self.accelerator.device_placement:
             self._device = beam_device(device)
 
     @lazy_property
     def deepspeed_plugin(self):
         deepspeed_plugin = None
-        if self.n_gpus > 1 and self.training_framework == 'accelerate':
+        if self.get_hparam('n_gpus') > 1 and self.accelerate:
             from accelerate.utils import DeepSpeedPlugin
             deepspeed_plugin = DeepSpeedPlugin(gradient_accumulation_steps=self.get_hparam('accumulate'),)
         return deepspeed_plugin
@@ -270,8 +273,12 @@ class Algorithm(Processor):
         return None
 
     @lazy_property
+    def accelerate(self):
+        return self.training_framework == 'accelerate'
+
+    @lazy_property
     def accelerator(self):
-        if self.training_framework == 'accelerate':
+        if self.accelerate:
             from accelerate import Accelerator
 
             return Accelerator(device_placement=self.get_hparam('device_placement'),
@@ -557,7 +564,7 @@ class Algorithm(Processor):
                 momentum = self.get_hparam('beta1')
 
             for k, v in networks.items():
-                if k not in optimizers and self.training_framework != 'deepspeed':
+                if k not in optimizers and not self.deepspeed:
                     optimizers[k] = BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', specific=k),
                                                                   'weight_decay': self.get_hparam('weight_decay', specific=k),
                                                                   'betas': (self.get_hparam('momentum', specific=k, default=momentum),
@@ -606,7 +613,7 @@ class Algorithm(Processor):
                 self.schedulers[k] = schedulers[k]
 
             elif (build_schedulers and self.get_hparam('scheduler', specific=k) is not None
-                  and self.training_framework != 'deepspeed'):
+                  and not self.deepspeed):
 
                 kwargs = {'warmup': self.get_hparam('scheduler_warmup', specific=k),
                           'method': self.get_hparam('scheduler', specific=k),
@@ -803,10 +810,10 @@ class Algorithm(Processor):
                     if self.amp:
                         scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
                                                     create_graph=create_graph, inputs=inputs)
-                    elif self.accelerator is not None:
+                    elif self.accelerate:
                         self.accelerator.backward(loss, gradient=gradient, retain_graph=retain_graph,
                                                   create_graph=create_graph, inputs=inputs)
-                    elif self.training_framework == 'deepspeed':
+                    elif self.deepspeed:
                         # runs backpropagation
                         op.backward(loss)
 
@@ -831,7 +838,7 @@ class Algorithm(Processor):
 
                             if self.amp:
                                 scaler.step(op)
-                            elif self.training_framework == 'deepspeed':
+                            elif self.deepspeed:
                                 # weight update
                                 op.step()
                             else:
@@ -1136,7 +1143,8 @@ class Algorithm(Processor):
 
         # net = BeamNN.from_module(net, name=name)
 
-        net = net.to(self.device, dtype=self.model_dtype)
+        if self.device is not None:
+            net = net.to(self.device, dtype=self.model_dtype)
 
         if self.ddp:
 
@@ -1540,9 +1548,9 @@ class Algorithm(Processor):
         n_epochs = self.n_epochs + self.swa_epochs + int(self.swa_epochs > 0)
         self.refresh_optimizers_and_schedulers_pointers()
 
-        if self.training_framework == 'accelerate':
+        if self.accelerate:
             self.prepare_accelerate()
-        elif self.training_framework == 'deepspeed':
+        elif self.deepspeed:
             self.prepare_deepspeed()
 
         epoch_start = 0 if self.get_hparam("restart_epochs_count", default=True) else self.epoch

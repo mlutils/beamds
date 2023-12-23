@@ -37,5 +37,6 @@ class TabularHparams(BeamHparams):
         BeamParam('catboost', bool, False, 'Train a catboost model on the data'),
         BeamParam('store_data_on_device', bool, True, 'Store the data on the device (GPU/CPU) in advance', model=False),
         BeamParam('rulenet', bool, True, 'Train our RuleNet model on the data'),
+        BeamParam('sparse-embedding', bool, True, 'Use sparse embedding for the features embeddings'),
     ]
 

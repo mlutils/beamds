@@ -87,7 +87,7 @@ class TabularTransformer(torch.nn.Module):
 
         # self.emb = nn.Embedding(total_tokens, hparams.emb_dim, sparse=True)
         # TODO: figure out should we add another dummy token for the case of categorical feature in the last position
-        self.emb = nn.Embedding(total_tokens + 1, hparams.emb_dim, sparse=True)
+        self.emb = nn.Embedding(total_tokens + 1, hparams.emb_dim, sparse=hparams.sparse_embedding)
 
         self.n_rules = hparams.n_rules
 

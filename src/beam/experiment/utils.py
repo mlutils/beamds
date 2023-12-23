@@ -18,15 +18,20 @@ def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='
 
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = port
-
-    # initialize the process group
-    import torch.distributed as dist
     logger.info(f"Initializing distributed training with backend={backend} and framework={framework}")
     if framework == 'ddp':
+        # initialize the process group
+        import torch.distributed as dist
         dist.init_process_group(backend, rank=rank, world_size=world_size)
     elif framework == 'deepspeed':
+
+        # make sure that mpi path is in the path variable
+        os.environ['PATH'] = f"/usr/local/mpi/bin:{os.environ['PATH']}"
+        os.environ['LOCAL_RANK'] = str(rank)
+
         import deepspeed
-        deepspeed.init_distributed(dist_backend=backend, rank=rank, world_size=world_size)
+        deepspeed.init_distributed(dist_backend=backend, auto_mpi_discovery=False,
+                                   rank=rank, world_size=world_size, distributed_port=port)
     else:
         raise ValueError(f"Unknown distributed framework: {framework}")
 

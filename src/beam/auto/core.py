@@ -2,6 +2,7 @@ import inspect
 import ast
 import sys
 
+from ..core import Processor
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
 from ..utils import lazy_property
 from ..path import beam_path
@@ -17,7 +18,7 @@ from ..logger import beam_logger as logger
 from uuid import uuid4 as uuid
 
 
-class AutoBeam:
+class AutoBeam(Processor):
 
     def __init__(self, obj):
         self._private_modules = None
@@ -379,7 +380,7 @@ class AutoBeam:
         return requirements
 
     @staticmethod
-    def write_requirements(path, requirements):
+    def write_requirements(requirements, path):
         path = beam_path(path)
         content = '\n'.join([f"{r['pip_package']}=={r['version']}" for r in requirements])
         content = f"{content}\n"

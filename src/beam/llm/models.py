@@ -29,6 +29,11 @@ class OpenAIBase(BeamLLM):
         self.api_base = api_base
         self.organization = organization
 
+    @lazy_property
+    def client(self):
+        from openai import OpenAI
+        return OpenAi(organization=self.organization, api_key=self.api_key, api_base=self.api_base)
+
     def update_usage(self, response):
 
         if 'usage' in response:
@@ -38,19 +43,19 @@ class OpenAIBase(BeamLLM):
             self.usage["completion_tokens"] += response["completion_tokens"]
             self.usage["total_tokens"] += response["prompt_tokens"] + response["completion_tokens"]
 
-    def sync_openai(self):
-        openai.api_key = self.api_key
-        openai.api_base = self.api_base
-        openai.organization = self.organization
+    # def sync_openai(self):
+    #     openai.api_key = self.api_key
+    #     openai.api_base = self.api_base
+    #     openai.organization = self.organization
 
     def _completion(self, prompt=None, **kwargs):
-        self.sync_openai()
-        res = openai.Completion.create(engine=self.model, prompt=prompt, **kwargs)
+        # self.sync_openai()
+        res = self.client.completion.create(engine=self.model, prompt=prompt, **kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
     def _chat_completion(self, messages=None, **kwargs):
-        self.sync_openai()
-        res = openai.ChatCompletion.create(model=self.model, messages=messages, **kwargs)
+        # self.sync_openai()
+        res = self.client.chat.completions.create(model=self.model, messages=messages, **kwargs)
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 
     def verify_response(self, res):
