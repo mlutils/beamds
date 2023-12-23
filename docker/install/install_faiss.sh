@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Install faiss if you encounter GPU issues when using the pip version:
+# https://github.com/kyamagu/faiss-wheels/issues/54
+
+# need to see how to install faiss-gpu. for now we install only the cpu version
+# RUN conda install -y -c conda-forge faiss-gpu
+
 apt update
 apt install -y swig
 git clone https://github.com/facebookresearch/faiss.git

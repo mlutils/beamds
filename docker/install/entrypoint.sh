@@ -8,6 +8,7 @@ JUPYTER_PORT="${INITIALS}88"
 MLFLOW_PORT="${INITIALS}80"
 REDIS_PORT="${INITIALS}79"
 RABBITMQ_PORT="${INITIALS}72"
+PREFECT_PORT="${INITIALS}20"
 ROOT_PASSWORD="12345678"
 
 echo "SSH Port: $SSH_PORT"
@@ -56,5 +57,9 @@ service rabbitmq-server start
 # run mlflow serve
 mlflow server --host 0.0.0.0 --port "$MLFLOW_PORT" --backend-store-uri /workspace/mlruns --default-artifact-root /workspace/mlruns --workers 1 &
 export MLFLOW_TRACKING_URI=http://localhost:$MLFLOW_PORT
+
+# run prefect server
+
+prefect server start --host 0.0.0.0 --port $PREFECT_PORT
 
 bash
