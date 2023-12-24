@@ -10,7 +10,7 @@ if __name__ == '__main__':
     data_path, logs_path = get_paths()
 
     kwargs_base = dict(algorithm='hpo_debug', data_path=data_path, logs_path=logs_path,
-                       copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=4,
+                       copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=100,
                        tensorboard=False, stop_at=0.98, n_gpus=1, device=0, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
@@ -41,7 +41,7 @@ if __name__ == '__main__':
         # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
         # alg = DeepTabularAlg(hparams, networks=net)
 
-        hpo_config = HPOConfig(n_trials=1000, timeout=60 * 60 * 24, n_jobs=4)
+        hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, n_jobs=4)
 
         # study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
         #                     hpo_config=hpo_config,
@@ -71,7 +71,6 @@ if __name__ == '__main__':
         study.uniform('transformer_dropout', 0., 0.4)
         study.uniform('label_smoothing', 0., 0.4)
 
-        study.run(runtime_env={'working_dir': str(cwd),
-                                       'excludes': [str(p) for p in cwd.joinpath('notebooks')]},)
+        study.run(runtime_env={'working_dir': str(cwd), 'excludes': [str(p) for p in cwd.joinpath('notebooks')]},)
 
         logger.info(f"Done HPO for dataset: {k}")

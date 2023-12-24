@@ -127,8 +127,8 @@ class OptunaHPO(BeamHPO, OptunaBase):
 
         return study
 
-    def run(self, suggest=None, load_study=False, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
-               load_if_exists=False, directions=None, *args, **kwargs):
+    def run(self, suggest=None, load_study=False, storage=None, sampler=None, pruner=None, study_name=None,
+            direction=None, load_if_exists=False, directions=None, *args, **kwargs):
 
         if suggest is None:
             suggest = self.get_suggestions
@@ -150,8 +150,8 @@ class OptunaHPO(BeamHPO, OptunaBase):
                 path = beam_path(self.hpo_path)
                 path.joinpath('optuna').mkdir(parents=True, exist_ok=True)
 
-                # storage = f'sqlite:///{self.hpo_path}/{study_name}.db'
-                # logger.info(f"Using {storage} as storage to store the trials results")
+                storage = f'sqlite:///{self.hpo_path}/{study_name}.db'
+                logger.info(f"Using {storage} as storage to store the trials results")
 
         runner = partial(self.runner, suggest=suggest)
 

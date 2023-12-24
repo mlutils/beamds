@@ -6,7 +6,7 @@ from ..utils import find_port, check_type, is_notebook, beam_device
 from ..config import print_beam_hyperparameters
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
-from ..core import Processor
+from ..core import Processor, Algorithm
 from functools import partial
 from ..experiment import beam_algorithm_generator
 
@@ -67,6 +67,10 @@ class BeamHPO(Processor):
         self.hpo_path = hpo_path
         self.experiments_tracker = []
         self.suggestions = {}
+
+    @staticmethod
+    def get_optimization_mode(mode, objective_name):
+        return Algorithm.get_optimization_mode(mode, objective_name)
 
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}

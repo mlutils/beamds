@@ -91,8 +91,8 @@ def basic_beam_parser():
                              'By default we consider maximization of the objective (e.g. accuracy) '
                              'You can override this behavior by overriding the Algorithm.report method.')
 
-    parser.add_argument('--objective-min-mode', type=bool, default=None,
-                        help='Set true to minimize the objective instead of maximizing it.'
+    parser.add_argument('--objective-mode', type=str, default=None,
+                        help='Set [min/max] to minimize/maximize the objective.'
                              'By default objectives that contain the words "loss/error/mse" a are minimized and '
                              'other objectives are maximized. You can override this behavior by setting this flag.')
 
@@ -167,6 +167,8 @@ def basic_beam_parser():
 
     # Learning parameters
 
+    parser.add_argument('--train-timeout', type=int, default=None, metavar='tune',
+                        help='Timeout for the training in seconds. Set to None for no timeout')
     parser.add_argument('--batch-size', type=int, default=256, metavar='tune', help='Batch Size')
     parser.add_argument('--batch-size-train', type=int, default=None, metavar='tune',
                         help='Batch Size for training iterations')

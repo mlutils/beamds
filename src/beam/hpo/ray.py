@@ -1,6 +1,8 @@
 import copy
 
 from ray.air import RunConfig
+from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search.optuna import OptunaSearch
 
 from .utils import TimeoutStopper
 from ..utils import find_port, check_type, is_notebook, beam_device
@@ -100,20 +102,15 @@ class RayHPO(BeamHPO):
 
         dashboard_port = find_port(port=self.hparams.get('dashboard_port'),
                                    get_port_from_beam_port_range=self.hparams.get('get_port_from_beam_port_range'))
-        if dashboard_port is None:
-            return
 
         logger.info(f"Opening ray-dashboard on port: {dashboard_port}")
         self.init_ray(runtime_env=runtime_env, dashboard_port=int(dashboard_port),
                       include_dashboard=self.hparams.get('include_dashboard'))
 
-        if 'stop' in kwargs:
-            stop = kwargs['stop']
-        else:
-            stop = None
-            ray_timeout = hparams.get('ray-timeout')
-            if ray_timeout is not None and ray_timeout > 0:
-                stop = TimeoutStopper(hparams.get('ray-timeout'))
+        stop = kwargs.get('stop', None)
+        train_timeout = hparams.get('train-timeout')
+        if train_timeout is not None and train_timeout > 0:
+            stop = TimeoutStopper(train_timeout)
 
         # fix gpu to device 0
         if self.experiment_hparams.get('device') != 'cpu':
@@ -129,13 +126,24 @@ class RayHPO(BeamHPO):
         if 'metric' not in tune_config_kwargs.keys():
             tune_config_kwargs['metric'] = self.experiment_hparams.get('objective')
         if 'mode' not in tune_config_kwargs.keys():
-            tune_config_kwargs['mode'] = self.experiment_hparams.get('mode')
+            mode = self.experiment_hparams.get('objective-mode')
+            tune_config_kwargs['mode'] = self.get_optimization_mode(mode, tune_config_kwargs['metric'])
 
         if 'progress_reporter' not in tune_config_kwargs.keys() and is_notebook():
             tune_config_kwargs['progress_reporter'] = JupyterNotebookReporter(overwrite=True)
 
         tune_config_kwargs['num_samples'] = self.hparams.get('n_trials')
         tune_config_kwargs['max_concurrent_trials'] = self.hparams.get('n_jobs', 1)
+
+        # if 'scheduler' not in tune_config_kwargs.keys():
+        #     tune_config_kwargs['scheduler'] = ASHAScheduler()
+
+        if 'search_alg' not in tune_config_kwargs.keys():
+            metric = tune_config_kwargs['metric']
+            mode = tune_config_kwargs['mode']
+            tune_config_kwargs['search_alg'] = OptunaSearch(search_space, metric=metric, mode=mode)
+            # tune_config_kwargs['search_alg'] = OptunaSearch()
+
         tune_config = TuneConfig(**tune_config_kwargs)
 
         local_dir = self.hparams.get('hpo_path')
@@ -144,9 +152,7 @@ class RayHPO(BeamHPO):
         logger.info(f"Starting ray-tune hyperparameter optimization process. "
                     f"Results and logs will be stored at {local_dir}")
 
-        tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
+        tuner = tune.Tuner(runner_tune, param_space=None, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()
-
-        # analysis = tune.run(runner_tune, config=config, local_dir=local_dir, *args, stop=stop, **kwargs)
 
         return analysis

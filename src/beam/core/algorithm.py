@@ -17,6 +17,7 @@ from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
 from .processor import Processor
 from ..logger import beam_kpi, BeamResult
+from timeit import default_timer as timer
 
 
 class Algorithm(Processor):
@@ -37,6 +38,7 @@ class Algorithm(Processor):
         # some experiment hyperparameters
 
         self.epoch = 0
+        self.t0 = timer()
 
         self.scalers = {}
         self.networks = {}
@@ -79,6 +81,10 @@ class Algorithm(Processor):
         self.cb_model = None
         self.reporter = None
         self.training = False
+
+    @property
+    def elapsed_time(self):
+        return timer() - self.t0
 
     @staticmethod
     def no_experiment_message(property):
@@ -1474,16 +1480,22 @@ class Algorithm(Processor):
             if self.trial.should_prune():
                 raise optuna.TrialPruned()
 
+            train_timeout = self.get_hparam('train-timeout')
+            if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
+                raise optuna.exceptions.OptunaError(f"Trial timed out after {self.get_hparam('train-timeout')} seconds.")
+
     @lazy_property
     def optimization_mode(self):
-
-        if self.get_hparam('objective_min_mode'):
-            return 'min'
-
+        objective_mode = self.get_hparam('objective_mode')
         objective_name = self.get_hparam('objective')
+        return self.get_optimization_mode(objective_mode, objective_name)
+
+    @staticmethod
+    def get_optimization_mode(mode, objective_name):
+        if mode is not None:
+            return mode
         if any(n in objective_name.lower() for n in ['loss', 'error', 'mse']):
             return 'min'
-
         return 'max'
 
     def early_stopping(self, epoch=None):
@@ -1493,6 +1505,11 @@ class Algorithm(Processor):
 
         if self.rank > 0:
             return False
+
+        train_timeout = self.get_hparam('train-timeout')
+        if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
+            logger.info(f"Stopping training at epoch {self.epoch} - timeout {self.get_hparam('train-timeout')}")
+            return True
 
         stop_at = self.get_hparam('stop_at')
         early_stopping_patience = self.get_hparam('early_stopping_patience')
@@ -1583,6 +1600,8 @@ class Algorithm(Processor):
         return dataset
 
     def __iter__(self):
+
+        self.t0 = timer()
 
         n_epochs = self.n_epochs + self.swa_epochs + int(self.swa_epochs > 0)
         self.refresh_optimizers_and_schedulers_pointers()
