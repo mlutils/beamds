@@ -21,7 +21,7 @@ if __name__ == '__main__':
     #                        n_gpus=1)
     hparams = FTLLMHparams(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir='/mnt/data/models',
                            device=0, algorithm=dataset_name.replace('/', '-'), batch_size=6,
-                           training_framework='accelerate', device_placement=True, dataset=dataset_name, reload=False, resume=-1,
+                           training_framework='torch', device_placement=True, dataset=dataset_name, reload=False, resume=-1,
                            n_gpus=1, model_dtype='bfloat16')
     experiment = Experiment(hparams)
 

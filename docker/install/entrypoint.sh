@@ -18,8 +18,13 @@ echo "Redis Port: $REDIS_PORT"
 echo "RabbitMQ Port: $RABBITMQ_PORT"
 echo "Root password was updated"
 
-echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
 export JUPYTER_PORT=$JUPYTER_PORT
+export MLFLOW_PORT=$MLFLOW_PORT
+export REDIS_PORT=$REDIS_PORT
+export RABBITMQ_PORT=$RABBITMQ_PORT
+export PREFECT_PORT=$PREFECT_PORT
+
+echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
 echo "root:$ROOT_PASSWORD" | chpasswd
 
 # Update Redis configuration
@@ -60,6 +65,6 @@ export MLFLOW_TRACKING_URI=http://localhost:$MLFLOW_PORT
 
 # run prefect server
 
-prefect server start --host 0.0.0.0 --port $PREFECT_PORT
+prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
 
 bash

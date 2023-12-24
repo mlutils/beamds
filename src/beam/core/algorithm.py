@@ -1,4 +1,5 @@
 import math
+import os
 from collections import defaultdict
 from torch import nn
 import torch
@@ -21,17 +22,20 @@ from ..logger import beam_kpi, BeamResult
 class Algorithm(Processor):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
-                 name=None, **kwargs):
+                 name=None, experiment=None, **kwargs):
 
         super().__init__(hparams, name=name, **kwargs)
 
+        self.clear_experiment_properties()
         self._experiment = None
+        if experiment is not None:
+            self.experiment = experiment
+
         self.trial = None
 
         # the following are set by the experiment
         # some experiment hyperparameters
 
-        self.clear_experiment_properties()
         self.epoch = 0
 
         self.scalers = {}
@@ -234,7 +238,7 @@ class Algorithm(Processor):
     def device(self):
         # if self.deepspeed:
         #     return None
-        if self.accelerate and self.accelerator.device_placement:
+        if self.in_cache('accelerator') and self.accelerator.device_placement:
             device = self.accelerator.device
         elif self.experiment is not None and hasattr(self.experiment, 'device'):
             device = beam_device(self.experiment.device)
@@ -253,7 +257,9 @@ class Algorithm(Processor):
         deepspeed_plugin = None
         if self.get_hparam('n_gpus') > 1 and self.accelerate:
             from accelerate.utils import DeepSpeedPlugin
-            deepspeed_plugin = DeepSpeedPlugin(gradient_accumulation_steps=self.get_hparam('accumulate'),)
+            deepspeed_plugin = DeepSpeedPlugin(self.deepspeed_config(target='accelerate'),
+                                               gradient_accumulation_steps=self.get_hparam('accumulate'),)
+
         return deepspeed_plugin
 
     @lazy_property
@@ -281,11 +287,14 @@ class Algorithm(Processor):
         if self.accelerate:
             from accelerate import Accelerator
 
-            return Accelerator(device_placement=self.get_hparam('device_placement'),
+            deepspeed_plugin = self.deepspeed_plugin
+            device_placement = None if self.deepspeed else self.get_hparam('device_placement')
+
+            return Accelerator(device_placement=device_placement,
                                split_batches=self.get_hparam('split_batches'),
                                mixed_precision=self.accelerate_dtype_mapper(self.mixed_precision_dtype),
                                gradient_accumulation_steps=self.get_hparam('accumulate'),
-                               deepspeed_plugin=self.deepspeed_plugin,
+                               deepspeed_plugin=deepspeed_plugin,
                                fsdp_plugin=self.fsdp_plugin,
                                megatron_lm_plugin=self.megatron_lm_plugin,
                                kwargs_handlers=self.accelerate_kwargs_handlers,
@@ -633,18 +642,45 @@ class Algorithm(Processor):
 
         self.refresh_optimizers_and_schedulers_pointers()
 
-    @property
-    def deepspeed_config(self):
+    def deepspeed_config(self, target='accelerate'):
 
         if self.get_hparam('deepspeed_config') is not None:
             config_file = beam_path(self.get_hparam('deepspeed_config'))
             config = config_file.read()
             return config
 
-        from ..config import deepspeed_config
-        config = copy.deepcopy(deepspeed_config)
-        config['train_micro_batch_size_per_gpu'] = self.batch_size_train
-        config['gradient_accumulation_steps'] = self.get_hparam('accumulate')
+        if target == 'accelerate':
+            offload_optimizer_device = os.environ.get("ACCELERATE_DEEPSPEED_OFFLOAD_OPTIMIZER_DEVICE", "none")
+            offload_param_device = os.environ.get("ACCELERATE_DEEPSPEED_OFFLOAD_PARAM_DEVICE", "none")
+            offload_param_nvme_path = os.environ.get("ACCELERATE_DEEPSPEED_OFFLOAD_OPTIMIZER_NVME_PATH", "none")
+            offload_optimizer_nvme_path = os.environ.get("ACCELERATE_DEEPSPEED_OFFLOAD_PARAM_NVME_PATH", "none")
+            zero3_save_16bit_model = (os.environ.get("ACCELERATE_DEEPSPEED_ZERO3_SAVE_16BIT_MODEL", "false") == "true")
+            config = {
+                "train_batch_size": "auto",
+                "train_micro_batch_size_per_gpu": self.batch_size_train,
+                "gradient_accumulation_steps": self.get_hparam('accumulate'),
+                "zero_optimization": {
+                    "stage": self.get_hparam('zero-stage'),
+                    "offload_optimizer": {
+                        "device": offload_optimizer_device,
+                        "nvme_path": offload_optimizer_nvme_path
+                        if offload_optimizer_device == "nvme"
+                        else None,
+                    },
+                    "offload_param": {
+                        "device": offload_param_device,
+                        "nvme_path": offload_param_nvme_path if offload_param_device == "nvme" else None,
+                    },
+                    "stage3_gather_16bit_weights_on_model_save": zero3_save_16bit_model,
+                },
+            }
+        else:
+            from ..config import deepspeed_config
+            config = copy.deepcopy(deepspeed_config)
+
+            config['train_micro_batch_size_per_gpu'] = self.batch_size_train
+            config['gradient_accumulation_steps'] = self.get_hparam('accumulate')
+
 
         return config
 
@@ -1003,21 +1039,24 @@ class Algorithm(Processor):
             elements.append(v)
             elements_origin.append(self.schedulers)
             elements_keys.append((k,))
-        for k, v in self.persistent_dataloaders.items():
-            for s, v in v.items():
-                elements.append(v['dataloader'])
-                elements_origin.append(self.persistent_dataloaders)
-                elements_keys.append((k, s, 'dataloader'))
+        # don't prepare dataloaders if you know the batch size
+        # for k, v in self.persistent_dataloaders.items():
+        #     for s, v in v.items():
+        #         elements.append(v['dataloader'])
+        #         elements_origin.append(self.persistent_dataloaders)
+        #         elements_keys.append((k, s, 'dataloader'))
 
-        modified_elements = self.accelerator.prepare(elements)
+        modified_elements = self.accelerator.prepare(*elements)
 
         for e, o, kk in zip(modified_elements, elements_origin, elements_keys):
             set_item_with_tuple_key(o, kk, e)
 
         self.refresh_optimizers_and_schedulers_pointers()
 
-        if self.accelerator.state.deepspeed_plugin is not None:
-            self.accelerator.state.deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = self.batch_size_train
+        print('distributed type:')
+        print(self.accelerator.distributed_type)
+        print('deepspeed_engine_wrapped')
+        print(type(self.accelerator.deepspeed_engine_wrapped))
 
         # if self.accelerator is not None:
         #     self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_data_loader(
@@ -1066,7 +1105,7 @@ class Algorithm(Processor):
             #         dataloader = self.persistent_dataloaders[dataset_name]['train']['dataloader']
 
             net, opt, _, sch = deepspeed.initialize(model=net, optimizer=opt, lr_scheduler=sch,
-                                                    config=self.deepspeed_config)
+                                                    config=self.deepspeed_config(target='deepspeed'))
             self.networks[k] = net
             self.optimizers[k] = opt
             self.schedulers[k] = sch

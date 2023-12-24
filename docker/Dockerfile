@@ -137,7 +137,7 @@ ENV JAVA_HOME /usr/lib/jvm/default-java
 
 # config jupyter notebook
 RUN bash /workspace/install/configure_jupyter.sh
-# RUN bash /workspace/install/language_servers.sh
+RUN bash /workspace/install/language_servers.sh
 
 
 RUN bash /workspace/install/aux_installs.sh

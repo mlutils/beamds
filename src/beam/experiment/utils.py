@@ -26,7 +26,7 @@ def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='
     elif framework == 'deepspeed':
 
         # make sure that mpi path is in the path variable
-        os.environ['PATH'] = f"/usr/local/mpi/bin:{os.environ['PATH']}"
+        # os.environ['PATH'] = f"/usr/local/mpi/bin:{os.environ['PATH']}"
         os.environ['LOCAL_RANK'] = str(rank)
 
         import deepspeed
@@ -91,12 +91,12 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
 
     if inspect.isclass(alg):
 
-        alg = alg(experiment.hparams, *alg_args, **alg_kwargs)
+        alg = alg(experiment.hparams, experiment=experiment, *alg_args, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
-
-    alg.experiment = experiment
+    else:
+        alg.experiment = experiment
 
     if datasets is not None:
         alg.load_datasets(datasets)

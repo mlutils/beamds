@@ -43,6 +43,9 @@ class Processor:
                 if k in self._lazy_cache:
                     del self._lazy_cache[k]
 
+    def in_cache(self, attr):
+        return attr in self._lazy_cache
+
     @lazy_property
     def name(self):
         if self._name is None:

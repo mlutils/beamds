@@ -22,4 +22,5 @@ echo "c.LabServerApp.open_browser = False" >> /root/.jupyter/jupyter_lab_config.
 # see https://jupyterlab-lsp.readthedocs.io/en/latest/Language%20Servers.html
 pip install -U jedi-language-server
 apt install -y nodejs
+apt install -y npm
 
