@@ -14,7 +14,7 @@ class BeamImporter:
             'Path': 'pathlib.Path',
             'plt': 'matplotlib.pyplot',
             # 'sns': 'seaborn',
-            'tg': 'torch_geometric',
+            # 'tg': 'torch_geometric',
             'nn': 'torch.nn',
             'optim': 'torch.optim',
             'distributions': 'torch.distributions',
@@ -67,7 +67,8 @@ class BeamImporter:
                 module = importlib.import_module(module_name)
                 imported_object = getattr(module, object_name)
             except:
-                raise e
+                print(f"Warning: Could not import {actual_name}, {e}, Skipping...")
+                imported_object = None
 
         return imported_object
 

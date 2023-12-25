@@ -1,6 +1,9 @@
 #!/bin/bash
 
 INITIALS=$1
+OPTIONAL_COMMAND=$2
+MORE_ARGS=${@:3}
+
 INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
 
 SSH_PORT="${INITIALS}22"
@@ -67,4 +70,12 @@ export MLFLOW_TRACKING_URI=http://localhost:$MLFLOW_PORT
 
 prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
 
-bash
+if [ -z "$OPTIONAL_COMMAND" ]; then
+    # If OPTIONAL_COMMAND is empty, run bash
+    bash
+else
+    echo /etc/motd
+    echo "Running command: ${OPTIONAL_COMMAND} ${MORE_ARGS}"
+    # If OPTIONAL_COMMAND is provided, run it
+    eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
+fi
