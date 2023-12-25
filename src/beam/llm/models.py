@@ -32,7 +32,7 @@ class OpenAIBase(BeamLLM):
     @lazy_property
     def client(self):
         from openai import OpenAI
-        return OpenAi(organization=self.organization, api_key=self.api_key, api_base=self.api_base)
+        return OpenAI(organization=self.organization, api_key=self.api_key, base_url=self.api_base)
 
     def update_usage(self, response):
 

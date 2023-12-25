@@ -1,3 +1,4 @@
+import re
 import time
 import uuid
 
@@ -81,6 +82,40 @@ class LLMResponse:
             retry_protocol = (retry(retrials=self.parse_retrials, sleep=self.sleep,  logger=logger, name=f"fix-{protocol} with {self.model}")
                               (self.llm.fix_protocol))
             return retry_protocol(text, protocol=protocol)
+
+    @property
+    def judge(self):
+        # boolean judgement of response by LLM for the prompt
+
+        if hasattr(self.llm, 'judge'):
+            return self.llm.judge(self)
+
+        judge_prompt = (f"Evaluate the following response by an LLM for accuracy and relevance to the given prompt.\n"
+                        f"Original Prompt: {self.prompt}\n"
+                        f"LLM Response: {self.text}\n"
+                        f"Based on the factual correctness, relevance to the original prompt, and logical consistency, "
+                        f"is the provided response accurate? "
+                        f"Respond with 'True' for accurate or 'False' for inaccurate.")
+
+        res = self.llm.ask(judge_prompt)
+
+        return res.bool
+
+    @property
+    def bool(self):
+
+        text = re.findall(r'\w+', self.text.lower())
+        n_words = len(text)
+
+        if 'true' in text:
+            return True
+        elif 'false' in text:
+            return False
+        elif 'yes' in text:
+            return True
+        elif 'no' in text and n_words == 1:
+            return False
+        return None
 
     @property
     def json(self):
