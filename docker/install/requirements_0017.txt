@@ -11,3 +11,5 @@ pyclustering
 
 docker
 prefect
+kubernetes
+openshift

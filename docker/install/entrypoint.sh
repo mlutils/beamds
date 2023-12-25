@@ -12,6 +12,9 @@ MLFLOW_PORT="${INITIALS}80"
 REDIS_PORT="${INITIALS}79"
 RABBITMQ_PORT="${INITIALS}72"
 PREFECT_PORT="${INITIALS}20"
+RAY_REDIS_PORT="${INITIALS}78"
+RAY_DASHBOARD_PORT="${INITIALS}90"
+
 ROOT_PASSWORD="12345678"
 
 echo "SSH Port: $SSH_PORT"
@@ -19,13 +22,19 @@ echo "Jupyter Port: $JUPYTER_PORT"
 echo "MLflow Port: $MLFLOW_PORT"
 echo "Redis Port: $REDIS_PORT"
 echo "RabbitMQ Port: $RABBITMQ_PORT"
+echo "Prefect Port: $PREFECT_PORT"
+echo "Ray Redis Port: $RAY_REDIS_PORT"
+echo "Ray Dashboard Port: $RAY_DASHBOARD_PORT"
 echo "Root password was updated"
 
+export SSH_PORT=$SSH_PORT
 export JUPYTER_PORT=$JUPYTER_PORT
 export MLFLOW_PORT=$MLFLOW_PORT
 export REDIS_PORT=$REDIS_PORT
 export RABBITMQ_PORT=$RABBITMQ_PORT
 export PREFECT_PORT=$PREFECT_PORT
+export RAY_REDIS_PORT=$RAY_REDIS_PORT
+export RAY_DASHBOARD_PORT=$RAY_DASHBOARD_PORT
 
 echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
 echo "root:$ROOT_PASSWORD" | chpasswd
@@ -57,6 +66,9 @@ echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
 echo "mlflow_port, ${MLFLOW_PORT}" >> /workspace/configuration/config.csv
 echo "redis_port, ${REDIS_PORT}" >> /workspace/configuration/config.csv
 echo "rabbitmq_port, ${RABBITMQ_PORT}" >> /workspace/configuration/config.csv
+echo "prefect_port, ${PREFECT_PORT}" >> /workspace/configuration/config.csv
+echo "ray_redis_port, ${RAY_REDIS_PORT}" >> /workspace/configuration/config.csv
+echo "ray_dashboard_port, ${RAY_DASHBOARD_PORT}" >> /workspace/configuration/config.csv
 
 jupyter-lab &
 service ssh start
@@ -69,6 +81,10 @@ export MLFLOW_TRACKING_URI=http://localhost:$MLFLOW_PORT
 # run prefect server
 
 prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
+
+# run ray serve
+ray start --head --port=${RAY_REDIS_PORT} --dashboard-port=${RAY_DASHBOARD_PORT} &
+
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
     # If OPTIONAL_COMMAND is empty, run bash

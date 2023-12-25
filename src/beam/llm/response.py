@@ -26,6 +26,18 @@ class LLMResponse:
         self._task_success = None
         assert self.verify(), "Response is not valid"
 
+    def __str__(self):
+        return self.text
+
+    def __bool__(self):
+        return self.bool
+
+    def __int__(self):
+        return self.int
+
+    def __float__(self):
+        return self.float
+
     def __iter__(self):
         if not self.stream:
             yield self
@@ -38,6 +50,20 @@ class LLMResponse:
     def add_task_result(self, task_result, success=True):
         self._task_result = task_result
         self._task_success = success
+
+    @property
+    def int(self):
+        try:
+            return int(self.text)
+        except:
+            return None
+
+    @property
+    def float(self):
+        try:
+            return float(self.text)
+        except:
+            return None
 
     @property
     def task_result(self):

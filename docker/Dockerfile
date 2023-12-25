@@ -3,7 +3,7 @@
 
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
-FROM nvcr.io/nvidia/pytorch:23.11-py3
+FROM nvcr.io/nvidia/pytorch:23.12-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -81,7 +81,7 @@ RUN pip list
 
 #install pytorch geometric
 # REMOVE FOR LITE VERSION
-# RUN bash /workspace/install/install_pyg.sh
+RUN bash /workspace/install/install_pyg.sh
 
 #install torchsig
 # REMOVE FOR LITE VERSION
@@ -101,7 +101,7 @@ RUN bash /workspace/install/install_dgl.sh
 # RUN python /workspace/install/downloader.py
 
 ## download nlp data
-# RUN python /workspace/install/models_downloads.pyin
+# RUN python /workspace/install/models_downloads.py
 
 
 # no need to install RAPIDS as it comes with the image, except cusignal which is not found
