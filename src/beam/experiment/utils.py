@@ -27,6 +27,8 @@ def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='
 
         # make sure that mpi path is in the path variable
         # os.environ['PATH'] = f"/usr/local/mpi/bin:{os.environ['PATH']}"
+        # os.environ['LD_LIBRARY_PATH'] = f"/usr/local/mpi/lib:{os.environ['PATH']}"
+
         os.environ['LOCAL_RANK'] = str(rank)
 
         import deepspeed
@@ -174,7 +176,7 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
     if world_size > 1:
-        backend = experiment.hparams.mp_backend
+        backend = experiment.hparams.distributed_backend
         if backend is None:
             backend = 'nccl' if experiment.device.type == 'cuda' else 'gloo'
 

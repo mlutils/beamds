@@ -70,6 +70,8 @@ echo "prefect_port, ${PREFECT_PORT}" >> /workspace/configuration/config.csv
 echo "ray_redis_port, ${RAY_REDIS_PORT}" >> /workspace/configuration/config.csv
 echo "ray_dashboard_port, ${RAY_DASHBOARD_PORT}" >> /workspace/configuration/config.csv
 
+bash /workspace/docker/install/setup_env_vars.sh
+
 jupyter-lab &
 service ssh start
 service redis-server start

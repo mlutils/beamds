@@ -309,7 +309,9 @@ def basic_beam_parser():
 
     parser.add_argument('--deepspeed-config', type=str, default=None,
                         help='Path to a deepspeed configuration file.')
-    parser.add_argument('--sero-stage', type=int, default=2, help='The ZeRO training stage to use.')
+    parser.add_argument('--zero-stage', type=int, default=2, help='The ZeRO training stage to use.')
+    parser.add_argument('--distributed-backend', type=str, default=None,
+                        help='The distributed backend to use. Supported backends: [nccl, gloo, mpi]')
 
     # boolean_feature(parser, "accelerate", False, "Whether to use accelerate package for training")
     # boolean_feature(parser, "half", False, "Use FP16 instead of FP32", metavar='tune/model')

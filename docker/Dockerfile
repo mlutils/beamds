@@ -73,6 +73,10 @@ RUN pip install -U -r /workspace/install/requirements_0017.txt
 #COPY docker/install_fixed/requirements_fixed.txt /workspace/install/requirements_fixed.txt
 #RUN pip install -U -r /workspace/install/requirements_fixed.txt
 
+#install huggingface ecosystem
+# REMOVE FOR LITE VERSION
+RUN bash /workspace/install/install_huggingface_ecosystem.sh
+
 # COPY docker/install_fixed/requirements_no_deps.txt /workspace/install/requirements_no_deps.txt
 RUN pip install -U --no-deps -r /workspace/install/requirements_no_deps.txt
 #RUN pip list

@@ -290,6 +290,11 @@ class BeamOptimizer(Optimizer):
         for k, o in self.optimizers.items():
             setattr(self, k, o)
 
+    @property
+    def state(self):
+        combined_dict = {k: v for opt in self.optimizers.values() for k, v in opt.state.items()}
+        return combined_dict
+
     def prepare(self, accelerator):
         for k, o in self.optimizers.items():
             self.optimizers[k] = accelerator.prepare_optimizer(o)
@@ -346,13 +351,13 @@ class BeamOptimizer(Optimizer):
                 self.step()
                 self.zero_grad(set_to_none=set_to_none)
 
-    def step(self):
+    def step(self, closure=None):
 
         for op in self.optimizers.values():
             if self.amp:
                 self.scaler.step(op)
             else:
-                op.step()
+                op.step(closure=closure)
 
         if self.amp:
             self.scaler.update()

@@ -853,11 +853,10 @@ class Algorithm(Processor):
                         scaler.scale(loss).backward(gradient=gradient, retain_graph=retain_graph,
                                                     create_graph=create_graph, inputs=inputs)
                     elif self.accelerate:
-                        self.accelerator.backward(loss, gradient=gradient, retain_graph=retain_graph,
-                                                  create_graph=create_graph, inputs=inputs)
+                        self.accelerator.backward(loss, retain_graph=retain_graph)
                     elif self.deepspeed:
                         # runs backpropagation
-                        op.backward(loss)
+                        op.backward(loss, retain_graph=retain_graph)
 
                     else:
                         loss.backward(gradient=gradient, retain_graph=retain_graph,
@@ -1059,10 +1058,10 @@ class Algorithm(Processor):
 
         self.refresh_optimizers_and_schedulers_pointers()
 
-        print('distributed type:')
-        print(self.accelerator.distributed_type)
-        print('deepspeed_engine_wrapped')
-        print(type(self.accelerator.deepspeed_engine_wrapped))
+        # print('distributed type:')
+        # print(self.accelerator.distributed_type)
+        # print('deepspeed_engine_wrapped')
+        # print(type(self.accelerator.deepspeed_engine_wrapped))
 
         # if self.accelerator is not None:
         #     self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_data_loader(
@@ -1189,6 +1188,9 @@ class Algorithm(Processor):
         # net = BeamNN.from_module(net, name=name)
 
         if self.device is not None:
+            # print(f"Moving network to device: {self.device}")
+            # print(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES')}")
+            # print(f"n-device: {torch.cuda.device_count()}")
             net = net.to(self.device, dtype=self.model_dtype)
 
         if self.ddp:
@@ -1624,7 +1626,11 @@ class Algorithm(Processor):
 
             # add learning rate and momentum of schedulers_steps
             for k, scheduler in self.schedulers_flat.items():
-                lr = scheduler.optimizer.param_groups[0]['lr']
+
+                if self.accelerate:
+                    lr = scheduler.optimizers[0].param_groups[0]['lr']
+                else:
+                    lr = scheduler.optimizer.param_groups[0]['lr']
 
                 self.report_scalar(f'lr_{k}', lr, subset='train')
                 if type(scheduler) is BeamScheduler and scheduler.method in ['one_cycle']:
