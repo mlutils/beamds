@@ -143,6 +143,20 @@ class BeamLLM(LLM, Processor):
         if len(self._tools) == 0:
             self._tools = None
 
+    def judge(self, prompt, response, **kwargs):
+        # boolean judgement of response by LLM for the prompt
+
+        judge_prompt = (f"Evaluate the following response by an LLM for accuracy and relevance to the given prompt.\n"
+                        f"Original Prompt: {prompt}\n"
+                        f"LLM Response: {response}\n"
+                        f"Based on the factual correctness, relevance to the original prompt, and logical consistency, "
+                        f"is the provided response accurate? "
+                        f"Respond with 'True' for accurate or 'False' for inaccurate.")
+
+        res = self.ask(judge_prompt, **kwargs)
+
+        return res.bool
+
     @property
     def tools(self):
         return self._tools

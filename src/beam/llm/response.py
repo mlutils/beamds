@@ -112,20 +112,8 @@ class LLMResponse:
     @property
     def judge(self):
         # boolean judgement of response by LLM for the prompt
-
-        if hasattr(self.llm, 'judge'):
-            return self.llm.judge(self)
-
-        judge_prompt = (f"Evaluate the following response by an LLM for accuracy and relevance to the given prompt.\n"
-                        f"Original Prompt: {self.prompt}\n"
-                        f"LLM Response: {self.text}\n"
-                        f"Based on the factual correctness, relevance to the original prompt, and logical consistency, "
-                        f"is the provided response accurate? "
-                        f"Respond with 'True' for accurate or 'False' for inaccurate.")
-
-        res = self.llm.ask(judge_prompt)
-
-        return res.bool
+        # return self.llm.judge(self.prompt, self.text, **self.prompt_kwargs)
+        return self.llm.judge(self.prompt, self.text)
 
     @property
     def bool(self):

@@ -1,7 +1,10 @@
 pecanpy
 rocketchat-API
-safetensors
-bitsandbytes
+mattermostdriver
+
+# install with script
+# bitsandbytes
+# safetensors
 
 # consider moving to no-deps
 # trl

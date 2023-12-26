@@ -3,42 +3,82 @@
 apt update
 apt update
 
+echo "Installing openssh-server"
 apt install -y openssh-server
+echo "Installing libkrb5"
 apt install -y libkrb5
+echo "Installing libkrb5-dev"
 apt install -y libkrb5-dev
+echo "Installing htop"
 apt install -y htop
+echo "Installing tmux"
 apt install -y tmux
+echo "Installing libtool"
 apt install -y libtool
+echo "Installing dh-autoconf"
 apt install -y dh-autoreconf
+echo "Installing debhelper"
 apt install -y debhelper
+echo "Installing libaio-dev"
 apt install -y libaio-dev
+echo "Installing telnet"
 apt install -y telnet
+echo "Installing iputils-ping"
 apt install -y iputils-ping
+echo "Installing net-tools"
 apt install -y net-tools
+echo "Installing python3-sphinx"
 apt install -y python3-sphinx
+echo "Installing graphviz"
 apt install -y graphviz
+echo "Installing pkg-config"
 apt install -y pkg-config
+echo "Installing expect"
 apt install -y expect
+echo "Installing libgraphviz-dev"
 apt install -y libgraphviz-dev
+echo "Installing cron"
 apt install -y cron
+echo "Installing default-jdk"
 apt install -y default-jdk
+echo "Installing ltrace"
 apt install -y ltrace
+echo "Installing binutils"
 apt install -y binutils
+echo "Installing alien"
 apt install -y alien
+echo "Installing libaio1"
 apt install -y libaio1
-apt install -y binwalk
+
+# for now don't install binwalk as it messes up the python environment, consider adding virtualenv
+#echo "Installing binwalk"
+#apt install -y binwalk
+
+echo "Installing ncdu"
 apt install -y ncdu
+echo "Installing vim"
 apt install -y vim
+echo "Installing zip"
 apt install -y zip
+echo "Installing unzip"
 apt install -y unzip
+echo "Installing unixodbc-dev"
 apt install -y unixodbc-dev
+echo "Installing sqlite3"
 apt install -y sqlite3
+echo "Installing python3.10-venv"
 apt install -y python3.10-venv
+echo "Installing redis-server"
 apt install -y redis-server
+echo "Installing rabbitmq-server"
 apt install -y rabbitmq-server
+echo "Installing ca-certificates"
 apt install -y ca-certificates
+echo "Installing curl"
 apt install -y curl
+echo "Installing gnupg"
 apt install -y gnupg
+echo "Installing lsb-release"
 apt install -y lsb-release
 #
 ## don't install libopenmpi as it messes up the pytorch geometric installation

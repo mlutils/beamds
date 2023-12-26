@@ -13,3 +13,6 @@ docker
 prefect
 kubernetes
 openshift
+pytorch-optimizer
+pyts
+lightning

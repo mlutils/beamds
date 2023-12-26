@@ -20,6 +20,7 @@ from src.beam import DataTensor, PackedFolds
 from functools import partial
 import math
 import matplotlib.pyplot as plt
+import matplotlib.projections as proj
 
 # In[2]:
 
