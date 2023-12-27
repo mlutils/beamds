@@ -1,7 +1,6 @@
 import json
 import math
 from typing import Optional, Any
-import openai
 import requests
 import pandas as pd
 import numpy as np
@@ -108,6 +107,7 @@ class OpenAI(OpenAIBase):
         return False
 
     def file_list(self):
+        import openai
         return openai.File.list()
 
     def build_dataset(self, data=None, question=None, answer=None, path=None) -> object:
@@ -138,6 +138,7 @@ class OpenAI(OpenAIBase):
         return path
 
     def retrieve(self, model=None):
+        import openai
         if model is None:
             model = self.model
         return openai.Engine.retrieve(id=model)
@@ -145,6 +146,7 @@ class OpenAI(OpenAIBase):
     @property
     def models(self):
         if self._models is None:
+            import openai
             models = openai.Model.list()
             models = {m.id: m for m in models.data}
             self._models = models
@@ -153,6 +155,7 @@ class OpenAI(OpenAIBase):
     def embedding(self, text, model=None):
         if model is None:
             model = self.model
+        import openai
         response = openai.Engine(model).embedding(input=text, model=model)
         embedding = np.array(response.data[1]['embedding'])
         return embedding
