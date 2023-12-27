@@ -13,8 +13,14 @@ from .utils import estimate_tokens, split_to_tokens
 from ..core.processor import Processor
 from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict
 from ..path import BeamURL
-from langchain.llms.base import LLM
-from langchain.callbacks.manager import CallbackManagerForLLMRun
+
+try:
+    from langchain.llms.base import LLM
+    from langchain.callbacks.manager import CallbackManagerForLLMRun
+except ImportError:
+    LLM = object
+    CallbackManagerForLLMRun = object
+
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
 from .utils import get_conversation_template
