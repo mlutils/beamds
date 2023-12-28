@@ -14,6 +14,7 @@ RABBITMQ_PORT="${INITIALS}72"
 PREFECT_PORT="${INITIALS}20"
 RAY_REDIS_PORT="${INITIALS}78"
 RAY_DASHBOARD_PORT="${INITIALS}90"
+MONGODB_PORT="${INITIALS}17"
 
 ROOT_PASSWORD="12345678"
 
@@ -25,6 +26,7 @@ echo "RabbitMQ Port: $RABBITMQ_PORT"
 echo "Prefect Port: $PREFECT_PORT"
 echo "Ray Redis Port: $RAY_REDIS_PORT"
 echo "Ray Dashboard Port: $RAY_DASHBOARD_PORT"
+echo "MongoDB Port: $MONGODB_PORT"
 echo "Root password was updated"
 
 export SSH_PORT=$SSH_PORT
@@ -35,6 +37,7 @@ export RABBITMQ_PORT=$RABBITMQ_PORT
 export PREFECT_PORT=$PREFECT_PORT
 export RAY_REDIS_PORT=$RAY_REDIS_PORT
 export RAY_DASHBOARD_PORT=$RAY_DASHBOARD_PORT
+export MONGODB_PORT=$MONGODB_PORT
 
 echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
 echo "root:$ROOT_PASSWORD" | chpasswd
@@ -69,6 +72,7 @@ echo "rabbitmq_port, ${RABBITMQ_PORT}" >> /workspace/configuration/config.csv
 echo "prefect_port, ${PREFECT_PORT}" >> /workspace/configuration/config.csv
 echo "ray_redis_port, ${RAY_REDIS_PORT}" >> /workspace/configuration/config.csv
 echo "ray_dashboard_port, ${RAY_DASHBOARD_PORT}" >> /workspace/configuration/config.csv
+echo "mongodb_port, ${MONGODB_PORT}" >> /workspace/configuration/config.csv
 
 bash /workspace/docker/install/setup_env_vars.sh
 
@@ -86,6 +90,9 @@ prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
 
 # run ray serve
 ray start --head --port=${RAY_REDIS_PORT} --dashboard-port=${RAY_DASHBOARD_PORT} &
+
+# run mongodb
+#bash /workspace/docker/install/run_mongo.sh $MONGODB_PORT
 
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
