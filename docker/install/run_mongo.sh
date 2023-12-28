@@ -40,7 +40,8 @@ else
 fi
 
 # Restart MongoDB to apply the changes
-systemctl restart mongod
+#systemctl restart mongod
+service mongod start
 
 # Confirm completion
 echo "MongoDB port changed to $NEW_PORT and service restarted."

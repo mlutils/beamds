@@ -20,7 +20,7 @@ from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_no
                     find_port, as_numpy, lazy_property, check_type, beam_device)
 from ..path import beam_path, BeamPath, beam_key
 from ..logger import beam_logger as logger
-from ..config import print_beam_hyperparameters, BeamConfig
+from ..config import print_beam_hyperparameters, BeamConfig, UniversalConfig
 
 
 class Experiment(object):
@@ -641,11 +641,16 @@ class Experiment(object):
             return 'deepspeed'
         return 'ddp'
 
+    @lazy_property
+    def default_hparams(self):
+        return UniversalConfig(return_defaults=True)
+
     def build_experiment_dir(self):
 
         logger.cleanup()
         logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
-        print_beam_hyperparameters(self.hparams, debug_only=not self.print_hyperparameters)
+        print_beam_hyperparameters(self.hparams, default_params=UniversalConfig(return_defaults=True),
+                                   debug_only=not self.print_hyperparameters)
 
         self.experiment_dir.mkdir()
         self.hparams.to_path(self.experiment_dir.joinpath('hparams.pkl'))

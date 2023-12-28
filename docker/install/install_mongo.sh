@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# roughly .5GB
+
 apt install -y gnupg curl
 curl -fsSL https://pgp.mongodb.com/server-7.0.asc | gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
 

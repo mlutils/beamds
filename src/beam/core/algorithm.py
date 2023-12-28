@@ -11,7 +11,6 @@ from ..nn.core import BeamNN
 from ..utils import (to_device, check_type, recursive_concatenate,
                      beam_device, filter_dict, lazy_property,
                      is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key)
-from ..config import beam_arguments, basic_beam_parser
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
@@ -368,10 +367,6 @@ class Algorithm(Processor):
             net.to(device)
 
         return self
-
-    @staticmethod
-    def get_parser():
-        return basic_beam_parser()
 
     @classmethod
     def from_pretrained(cls, path, override_hparams=None, hparams=None, dataset=None, alg_args=None, alg_kwargs=None,

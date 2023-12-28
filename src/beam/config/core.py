@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import List, Union
 
 from dataclasses import dataclass, field
-from .utils import beam_arguments, to_dict, empty_beam_parser, boolean_feature
+from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
 from ..path import beam_path
 import json
 
@@ -66,8 +66,8 @@ class BeamConfig(Namespace):
 
                 parser = self.update_parser(parser, defaults=d, parameters=h, source=ti.__name__)
 
-            config, more_tags = beam_arguments(parser, *args, return_defaults=return_defaults,
-                                               return_tags=True, **kwargs)
+            config, more_tags = _beam_arguments(parser, *args, return_defaults=return_defaults,
+                                                return_tags=True, **kwargs)
 
             for k, v in more_tags.items():
                 tags[k] = tags[k].union(v)
@@ -245,8 +245,7 @@ class BeamConfig(Namespace):
         if key.startswith('_'):
             super().__setattr__(key, value)
         else:
-            if key not in self.__dict__:  # new key
-                self._model_set.add(key)
+            self._tags['new'].add(key)
             super().__setattr__(key, value)
 
     def get(self, key, default=None, preferred=None, specific=None):

@@ -46,7 +46,7 @@ class BeamHPO(Processor):
         self.device = beam_device(self.experiment_hparams.device)
 
         if self.hparams.get('print_hyperparameters'):
-            print_beam_hyperparameters(self.experiment_hparams)
+            print_beam_hyperparameters(self.experiment_hparams, default_params=HPOConfig(return_defaults=True))
 
         hpo_path = self.hparams.get('hpo_path')
         if hpo_path is not None:

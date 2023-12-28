@@ -6,7 +6,6 @@ from argparse import Namespace
 import re
 from collections import defaultdict
 
-from .configurations import basic_beam_parser
 from ..utils import is_notebook, check_type
 from ..path import beam_path, beam_key
 from ..logger import beam_logger as logger
@@ -30,6 +29,9 @@ def empty_beam_parser():
 
     parser = argparse.ArgumentParser(description='List of available arguments for this project',
                                      conflict_handler='resolve')
+    parser.add_argument('config_files', nargs='*',
+                        help='A list config files (optional) to load, will be loaded in reverse order '
+                             '(first one has higher priority). Pass explicit arguments to override these configs')
     return parser
 
 
@@ -104,11 +106,14 @@ def add_unknown_arguments(args, unknown):
     return args
 
 
-def beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
+def _beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
     '''
+
+    pr = args[0]
+    args = args[1:]
 
     def update_parser(p, d):
         for pi in p._actions:
@@ -125,12 +130,6 @@ def beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
 
     args_str = []
     args_dict = []
-
-    if len(args) and type(args[0]) == argparse.ArgumentParser:
-        pr = args[0]
-        args = args[1:]
-    else:
-        pr = basic_beam_parser()
 
     for ar in args:
 
@@ -167,17 +166,28 @@ def beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
         if k not in args:
             setattr(args, k, v)
 
-    if hasattr(args, 'experiment_configuration') and args.experiment_configuration is not None:
-        cf = beam_path(args.experiment_configuration).read()
-        for k, v in cf.items():
-            setattr(args, k, v)
+    tags = defaultdict(set)
+    if hasattr(args, 'config_files') and args.config_files:
+        config_files = args.config_files
+        delattr(args, 'config_files')
+
+        config_args = {}
+
+        for config_file in config_files:
+            cf = beam_path(config_file).read()
+            if '_tags' in cf:
+                for k, v in cf['_tags'].items():
+                    tags[k].add(v)
+                del cf['_tags']
+            config_args = config_args.update(cf)
+
+        args = Namespace(**{**config_args, **to_dict(args)})
 
     beam_key.set_hparams(to_dict(args))
 
     if not return_tags:
         return args
 
-    tags = defaultdict(set)
     for pai in pr._actions:
         tag_list = get_tags_from_action(pai)
         for tag in tag_list:
@@ -206,7 +216,7 @@ def get_beam_llm(llm_uri=None, get_from_key=True):
     return llm
 
 
-def print_beam_hyperparameters(args, debug_only=False):
+def print_beam_hyperparameters(args, default_params=None, debug_only=False):
     if debug_only:
         log_func = logger.debug
     else:
@@ -229,12 +239,11 @@ def print_beam_hyperparameters(args, debug_only=False):
 
     var_args_sorted = dict(sorted(to_dict(args).items()))
 
-    default_params = basic_beam_parser()
-
     for k, v in var_args_sorted.items():
         if k == 'hparams':
             continue
-        elif k in hparams_list and (v is not None and v != default_params.get_default(k)):
+        elif (default_params is not None and k in hparams_list and hasattr(default_params, k) and
+              (v is not None and v != getattr(default_params, k))):
             log_func(k + ': ' + str(v))
         else:
             logger.debug(k + ': ' + str(v))

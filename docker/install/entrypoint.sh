@@ -92,7 +92,15 @@ prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
 ray start --head --port=${RAY_REDIS_PORT} --dashboard-port=${RAY_DASHBOARD_PORT} &
 
 # run mongodb
-#bash /workspace/docker/install/run_mongo.sh $MONGODB_PORT
+bash /workspace/docker/install/run_mongo.sh $MONGODB_PORT
+
+
+# redirecting ports
+iptables -t nat -A PREROUTING -p tcp --dport 5672 -j REDIRECT --to-port $RABBITMQ_PORT
+iptables -t nat -A PREROUTING -p tcp --dport 6379 -j REDIRECT --to-port $REDIS_PORT
+iptables -t nat -A PREROUTING -p tcp --dport 5000 -j REDIRECT --to-port $MLFLOW_PORT
+iptables -t nat -A PREROUTING -p tcp --dport 27017 -j REDIRECT --to-port $MONGODB_PORT
+
 
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
