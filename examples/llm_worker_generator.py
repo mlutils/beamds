@@ -2,7 +2,7 @@ import threading
 from queue import Queue
 from uuid import uuid4 as uuid
 
-from src.beam.config import BeamHparams, BeamParam
+from src.beam.config import BeamConfig, BeamParam
 from src.beam import beam_logger as logger
 from src.beam.distributed.worker import BeamWorker, BatchExecutor
 from src.beam.core import Processor
@@ -10,7 +10,7 @@ from src.beam.utils import lazy_property
 from collections import defaultdict
 
 
-class LLMServeHparams(BeamHparams):
+class LLMServeConfig(BeamConfig):
 
     defaults = {}
     use_basic_parser = False
@@ -50,7 +50,7 @@ class VLLMGenerator(Processor):
 
 if __name__ == '__main__':
 
-    hparams = LLMServeHparams()
+    hparams = LLMServeConfig()
     llm_worker = VLLMGenerator(hparams)
 
     celery_worker = BeamWorker(llm_worker, name='llm_worker', broker=hparams.broker, backend=hparams.backend)

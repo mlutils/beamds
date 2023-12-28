@@ -2,7 +2,7 @@ import os
 
 from examples.tabular_example import get_paths
 from src.beam.hpo import beam_hpo, HPOConfig
-from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
+from src.beam.tabular import TabularDataset, TabularTransformer, TabularConfig, DeepTabularAlg
 from src.beam import beam_logger as logger, beam_path
 
 if __name__ == '__main__':
@@ -33,7 +33,7 @@ if __name__ == '__main__':
         hparams.update(kwargs_all[k])
         hparams['dataset_name'] = k
         hparams['identifier'] = k
-        hparams = TabularHparams(hparams)
+        hparams = TabularConfig(hparams)
 
         dataset = TabularDataset(hparams)
 

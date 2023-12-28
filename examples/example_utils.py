@@ -51,8 +51,8 @@ add_beam_to_path()
 
 
 def build_hparams():
-    from src.beam.tabular import TabularHparams
-    hparams = TabularHparams(data_path='xxxxx')
+    from src.beam.tabular import TabularConfig
+    hparams = TabularConfig(data_path='xxxxx')
 
     print(hparams.__dict__)
     print(hparams)
@@ -84,7 +84,7 @@ def write_bundle_tabular(path):
 
     from src.beam import beam_logger as logger
 
-    from src.beam.tabular import TabularTransformer, TabularHparams, DeepTabularAlg
+    from src.beam.tabular import TabularTransformer, TabularConfig, DeepTabularAlg
 
     kwargs_base = dict(algorithm='debug_reporter',
                        # data_path='/dsi/shared/elads/elads/data/tabular/dataset/data/',
@@ -103,7 +103,7 @@ def write_bundle_tabular(path):
     hparams.update(kwargs_all[k])
     hparams['dataset_name'] = k
     hparams['identifier'] = k
-    hparams = TabularHparams(hparams)
+    hparams = TabularConfig(hparams)
 
     # exp = Experiment(hparams)
     # dataset = TabularDataset(hparams)

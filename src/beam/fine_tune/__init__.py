@@ -1,4 +1,4 @@
-from .hparams import FTLLMHparams
+from .hparams import FTLLMConfig
 from .algorithm import FineTuneLLM
 from .dataset import FineTuneHFDataset
 

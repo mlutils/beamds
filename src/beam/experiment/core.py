@@ -20,7 +20,7 @@ from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_no
                     find_port, as_numpy, lazy_property, check_type, beam_device)
 from ..path import beam_path, BeamPath, beam_key
 from ..logger import beam_logger as logger
-from ..config import print_beam_hyperparameters, BeamHparams
+from ..config import print_beam_hyperparameters, BeamConfig
 
 
 class Experiment(object):
@@ -59,8 +59,8 @@ class Experiment(object):
 
         self.tensorboard_hparams = {}
 
-        if not isinstance(args, BeamHparams):
-            args = BeamHparams(hparams=args)
+        if not isinstance(args, BeamConfig):
+            args = BeamConfig(config=args)
 
         self.vars_args = dict(args.items())
         for k, v in self.vars_args.items():
@@ -233,7 +233,7 @@ class Experiment(object):
         path = beam_path(path)
         logger.info(f"Reload experiment from path: {path}")
 
-        args = BeamHparams.from_path(path.joinpath('args.pkl'))
+        args = BeamConfig.from_path(path.joinpath('args.pkl'))
         args.override = False
         args.reload = True
 

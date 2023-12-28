@@ -1,4 +1,5 @@
-from .models import OpenAI, TGILLM, FastChatLLM, FastAPILLM, HuggingFaceLLM, FastAPIDPLLM
+from .models import TGILLM, FastChatLLM, FastAPILLM, HuggingFaceLLM, FastAPIDPLLM
+from .openai import OpenAI
 from ..path import beam_key, BeamURL
 
 

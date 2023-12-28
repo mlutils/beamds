@@ -4,12 +4,33 @@ import os
 import sys
 from argparse import Namespace
 import re
+from collections import defaultdict
 
-from .basic_configuration import basic_beam_parser
+from .configurations import basic_beam_parser
 from ..utils import is_notebook, check_type
 from ..path import beam_path, beam_key
 from ..logger import beam_logger as logger
 from .._version import __version__
+import re
+
+
+def boolean_feature(parser, feature, default=False, help='', metavar=None):
+    featurename = feature.replace("-", "_")
+    feature_parser = parser.add_mutually_exclusive_group(required=False)
+    feature_parser.add_argument('--%s' % feature, dest=featurename, action='store_true', help=help)
+    feature_parser.add_argument('--no-%s' % feature, dest=featurename, action='store_false', help=help)
+    pa = parser._actions
+    for a in pa:
+        if a.dest == featurename:
+            a.metavar = metavar
+    parser.set_defaults(**{featurename: default})
+
+
+def empty_beam_parser():
+
+    parser = argparse.ArgumentParser(description='List of available arguments for this project',
+                                     conflict_handler='resolve')
+    return parser
 
 
 def to_dict(hparams):
@@ -83,7 +104,7 @@ def add_unknown_arguments(args, unknown):
     return args
 
 
-def beam_arguments(*args, return_defaults=False, **kwargs):
+def beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
@@ -153,13 +174,23 @@ def beam_arguments(*args, return_defaults=False, **kwargs):
 
     beam_key.set_hparams(to_dict(args))
 
-    tune = [pai.dest for pai in pr._actions if pai.metavar is not None and 'tune' in pai.metavar]
-    setattr(args, 'tune_set', set(tune))
+    if not return_tags:
+        return args
 
-    model = [pai.dest for pai in pr._actions if pai.metavar is not None and 'model' in pai.metavar]
-    setattr(args, 'model_set', set(model))
+    tags = defaultdict(set)
+    for pai in pr._actions:
+        tag_list = get_tags_from_action(pai)
+        for tag in tag_list:
+            tags[tag].add(pai.dest)
 
-    return args
+    return args, tags
+
+
+def get_tags_from_action(action):
+    tags = set()
+    if action.metavar is not None:
+        tags = re.findall(r'[a-zA-Z0-9_-]+', action.metavar)
+    return list(tags)
 
 
 def get_beam_llm(llm_uri=None, get_from_key=True):

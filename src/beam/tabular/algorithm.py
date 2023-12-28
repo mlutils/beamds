@@ -2,7 +2,7 @@ import torch
 from ..core.algorithm import Algorithm
 from ..utils import as_numpy, as_tensor, lazy_property
 from ..data import BeamData
-from ..config import BeamHparams, BeamParam
+from ..config import BeamConfig, BeamParam
 import torch.nn.functional as F
 from torch import nn
 from torch import distributions

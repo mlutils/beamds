@@ -8,7 +8,7 @@ import os
 from ..utils import (set_seed, is_notebook,)
 from ..path import beam_path
 from ..logger import beam_logger as logger
-from ..config import get_beam_llm, BeamHparams
+from ..config import get_beam_llm, BeamConfig
 
 
 done_training = mp.Event()
@@ -54,7 +54,7 @@ def cleanup(rank, world_size, framework='ddp'):
 
 def gen_hparams_string(experiment_path):
     experiment_path = beam_path(experiment_path)
-    tensorboard_hparams = BeamHparams.from_path(experiment_path.joinpath('args.pkl'))
+    tensorboard_hparams = BeamConfig.from_path(experiment_path.joinpath('args.pkl'))
     tensorboard_hparams_keys = tensorboard_hparams.model_parameter + tensorboard_hparams.tune_parameter
     return '/'.join([f"{k}_{tensorboard_hparams[k]}" for k in tensorboard_hparams_keys])
 

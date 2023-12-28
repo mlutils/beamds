@@ -6,7 +6,7 @@ from ..path import beam_path
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
 from ..core.processor import Processor
-from ..config import BeamHparams
+from ..config import BeamConfig
 from enum import Enum
 
 
@@ -67,13 +67,13 @@ class Transformer(Processor):
 
         self.transformers = None
 
-        if len(args) > 0 and isinstance(args[0], BeamHparams):
+        if len(args) > 0 and isinstance(args[0], BeamConfig):
             self.hparams = args[0]
         else:
-            self.hparams = BeamHparams(chunksizes=chunksize, n_chunks=n_chunks, n_workers=n_workers, squeeze=squeeze,
-                                       split_by=split_by, partition=partition, mp_method=mp_method, shuffle=shuffle,
-                                       reduce_dim=reduce_dim, transform_strategy=transform_strategy,
-                                       reduce=reduce, **kwargs)
+            self.hparams = BeamConfig(chunksizes=chunksize, n_chunks=n_chunks, n_workers=n_workers, squeeze=squeeze,
+                                      split_by=split_by, partition=partition, mp_method=mp_method, shuffle=shuffle,
+                                      reduce_dim=reduce_dim, transform_strategy=transform_strategy,
+                                      reduce=reduce, **kwargs)
 
         self.chunksize = self.get_hparam('chunksize', preferred=chunksize)
         self.n_chunks = self.get_hparam('n_chunks', preferred=n_chunks)

@@ -1,7 +1,7 @@
-from ..config import BeamHparams, BeamParam
+from ..config import BeamConfig, BeamParam
 
 
-class FTLLMHparams(BeamHparams):
+class FTLLMConfig(BeamConfig):
 
 
     defaults = dict(project_name='fine_tune_llm', training_framework='accelerate', batch_size=2,

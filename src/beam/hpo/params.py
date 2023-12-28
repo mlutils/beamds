@@ -1,8 +1,8 @@
-from ..config import BeamHparams, BeamParam
+from ..config import BeamConfig, BeamParam
 import os
 
 
-class HPOConfig(BeamHparams):
+class HPOConfig(BeamConfig):
 
     defaults = {}
     use_basic_parser = False

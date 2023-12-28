@@ -8,6 +8,8 @@ from ..path import beam_path, local_copy
 
 class BeamNN(nn.Module, Processor):
 
+    # add initialization api with hparams
+
     def __init__(self, *args, **kwargs):
         nn.Module.__init__(self)
         Processor.__init__(self, *args, **kwargs)

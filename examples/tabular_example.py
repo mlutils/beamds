@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from src.beam import beam_arguments, Experiment
-from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
+from src.beam.tabular import TabularDataset, TabularTransformer, TabularConfig, DeepTabularAlg
 from src.beam import beam_logger as logger
 from src.beam.utils import get_public_ip
 from src.beam.auto import AutoBeam
@@ -125,7 +125,7 @@ if __name__ == '__main__':
         hparams.update(kwargs_all[k])
         hparams['dataset_name'] = k
         hparams['identifier'] = k
-        hparams = TabularHparams(hparams)
+        hparams = TabularConfig(hparams)
 
         exp = Experiment(hparams)
         dataset = TabularDataset(hparams)

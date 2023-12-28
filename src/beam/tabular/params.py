@@ -1,7 +1,7 @@
-from ..config import BeamHparams, BeamParam
+from ..config import BeamConfig, BeamParam
 
 
-class TabularHparams(BeamHparams):
+class TabularConfig(BeamConfig):
 
     defaults = dict(project_name='deep_tabular', algorithm='TabularNet', n_epochs=100, scheduler='one_cycle',
                     batch_size=512, lr_dense=2e-3, lr_sparse=2e-2, early_stopping_patience=16)

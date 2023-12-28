@@ -4,7 +4,7 @@ from argparse import Namespace
 import io
 from ..path import beam_path, normalize_host
 from ..utils import retrieve_name, lazy_property, check_type
-from ..config import BeamHparams
+from ..config import BeamConfig
 
 try:
     from src.beam.data import BeamData
@@ -27,7 +27,7 @@ class Processor:
             self.hparams = hparams
         else:
             if not hasattr(self, 'hparams'):
-                self.hparams = BeamHparams(hparams=Namespace())
+                self.hparams = BeamConfig(config=Namespace())
 
         for k, v in kwargs.items():
             v_type = check_type(v)
@@ -101,7 +101,7 @@ class Processor:
                 kwargs = state['aux']['kwargs']
             if 'args' in state['aux']:
                 args = state['aux']['args']
-        hparams = BeamHparams(hparams=state['hparams'])
+        hparams = BeamConfig(config=state['hparams'])
         alg = cls(hparams, *args,  **kwargs)
         alg.load_state(state)
         return alg

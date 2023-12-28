@@ -19,7 +19,7 @@ if has_torch:
     from .data import BeamData
     from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch, beam_hash
 
-from .config import basic_beam_parser, beam_arguments, BeamHparams
+from .config import basic_beam_parser, beam_arguments, BeamConfig
 from .utils import check_type, Timer
 from .logger import beam_logger, beam_kpi
 
