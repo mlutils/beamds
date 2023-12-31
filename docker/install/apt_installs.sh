@@ -80,6 +80,9 @@ echo "Installing gnupg"
 apt install -y gnupg
 echo "Installing lsb-release"
 apt install -y lsb-release
+
+echo "Installing iptables"
+apt install -y iptables
 #
 ## don't install libopenmpi as it messes up the pytorch geometric installation
 #apt install -y libopenmpi-dev

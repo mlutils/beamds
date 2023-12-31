@@ -1188,18 +1188,11 @@ class DictPath(DictBasedPath):
 class RedisPath(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, password=None, username=None, data=None,
-                 tls=False, **kwargs):
+                 tls=False, db=0, **kwargs):
         super().__init__(*pathsegments, scheme='redis', client=client, data=data, **kwargs)
 
         if type(tls) is str:
             tls = tls.lower() == 'true'
-
-        try:
-            self._keys = self.parts[1:]
-            self.db = int(self.parts[0])
-        except ValueError:
-            self._keys = self.parts
-            self.db = 0
 
         if client is None:
 
@@ -1209,7 +1202,7 @@ class RedisPath(PureBeamPath):
                 hostname = 'localhost'
 
             import redis
-            client = redis.Redis(host=hostname, port=port, db=self.db, password=password, username=username, ssl=tls)
+            client = redis.Redis(host=hostname, port=port, db=db, password=password, username=username, ssl=tls)
 
         self.client = client
 
@@ -1274,16 +1267,23 @@ class RedisPath(PureBeamPath):
             raise NotADirectoryError
 
         prefix = self.directory_key
+        for key in self.client.scan_iter(f'{prefix}*'):
+            key = key.decode('utf-8')
+            if key.count('/') == prefix.count('/') or (key.endswith('/') and key.count('/') == prefix.count('/') + 1):
 
-        # Pattern for files
-        file_pattern = f'{prefix}[^/]+'
-        for key in self.client.scan_iter(file_pattern):
-            yield self.gen(key.decode('utf-8'))
+                if prefix.rstrip('/') == key.rstrip('/'):
+                    continue
+                yield self.gen(key)
 
-        # Pattern for directories
-        dir_pattern = f'{prefix}[^/]+/'
-        for key in self.client.scan_iter(dir_pattern):
-            yield self.gen(key.decode('utf-8'))
+        # # Pattern for files
+        # file_pattern = f'{prefix}[^/]+'
+        # for key in self.client.scan_iter(file_pattern):
+        #     yield self.gen(key.decode('utf-8'))
+        #
+        # # Pattern for directories
+        # dir_pattern = f'{prefix}[^/]+/'
+        # for key in self.client.scan_iter(dir_pattern):
+        #     yield self.gen(key.decode('utf-8'))
 
     def is_empty(self):
         for _ in self.iterdir():
@@ -1304,7 +1304,10 @@ class RedisPath(PureBeamPath):
 
     @property
     def key(self):
-        key = '/'.join(self._keys)
+        # key = '/'.join(self.parts)
+        # # to remove the leading slash if exists
+        # key = key.lstrip('/')
+        key = str(self)
         return key
 
     @property
@@ -1320,7 +1323,7 @@ class RedisPath(PureBeamPath):
     def __enter__(self):
         if self.mode in ["rb", "r"]:
             content = self._obj
-            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode('utf-8'))
         elif self.mode in ['wb', 'w']:
             self.file_object = BytesIO() if 'b' in self.mode else StringIO()
         else:

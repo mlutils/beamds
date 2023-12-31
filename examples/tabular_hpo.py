@@ -13,10 +13,13 @@ if __name__ == '__main__':
                        copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=100,
                        tensorboard=False, stop_at=0.98, n_gpus=1, device=0, n_quantiles=6, label_smoothing=.2)
 
+    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24,
+                           n_jobs=3, hpo_path=os.path.join(logs_path, 'hpo'))
+
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128)
-    # kwargs_all['adult'] = dict(batch_size=128)
+    # kwargs_all['california_housing'] = dict(batch_size=128)
+    kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
     #                             label_smoothing=.25, n_quantiles=6, dynamic_masking=False)
@@ -40,8 +43,6 @@ if __name__ == '__main__':
         logger.info(f"Training a RuleNet predictor")
         # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
         # alg = DeepTabularAlg(hparams, networks=net)
-
-        hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, n_jobs=4)
 
         # study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
         #                     hpo_config=hpo_config,

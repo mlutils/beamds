@@ -45,6 +45,7 @@ echo "root:$ROOT_PASSWORD" | chpasswd
 # Update Redis configuration
 REDIS_CONF="/etc/redis/redis.conf"
 sed -i "s/^port .*/port $REDIS_PORT/" $REDIS_CONF
+sed -i 's/bind 127.0.0.1/bind 0.0.0.0/' $REDIS_CONF
 
 # Update RabbitMQ configuration
 RABBITMQ_CONF="/etc/rabbitmq/rabbitmq.conf"
@@ -94,12 +95,14 @@ ray start --head --port=${RAY_REDIS_PORT} --dashboard-port=${RAY_DASHBOARD_PORT}
 # run mongodb
 bash /workspace/install/run_mongo.sh $MONGODB_PORT
 
-
-# redirecting ports
-iptables -t nat -A PREROUTING -p tcp --dport 5672 -j REDIRECT --to-port $RABBITMQ_PORT
-iptables -t nat -A PREROUTING -p tcp --dport 6379 -j REDIRECT --to-port $REDIS_PORT
-iptables -t nat -A PREROUTING -p tcp --dport 5000 -j REDIRECT --to-port $MLFLOW_PORT
-iptables -t nat -A PREROUTING -p tcp --dport 27017 -j REDIRECT --to-port $MONGODB_PORT
+#update-alternatives --set iptables /usr/sbin/iptables-legacy
+#update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+#
+## redirecting ports
+#iptables -t nat -A PREROUTING -p tcp --dport 5672 -j REDIRECT --to-port $RABBITMQ_PORT
+#iptables -t nat -A PREROUTING -p tcp --dport 6379 -j REDIRECT --to-port $REDIS_PORT
+#iptables -t nat -A PREROUTING -p tcp --dport 5000 -j REDIRECT --to-port $MLFLOW_PORT
+#iptables -t nat -A PREROUTING -p tcp --dport 27017 -j REDIRECT --to-port $MONGODB_PORT
 
 
 

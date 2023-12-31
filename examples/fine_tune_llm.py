@@ -3,6 +3,9 @@ from src.beam.fine_tune import FineTuneLLM, FTLLMConfig, FineTuneHFDataset
 from src.beam import Experiment
 
 
+from accelerate import Accelerator
+import deepspeed
+
 if __name__ == '__main__':
 
     dataset_name = 'iamtarun/python_code_instructions_18k_alpaca'

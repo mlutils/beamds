@@ -21,5 +21,5 @@ backoff_memory_mb=$(awk -v x=$backoff_memory_kb 'BEGIN {printf "%.0f", x / 1024}
 
 # -e USER_HOME=${HOME}
 echo "Home directory: ${HOME_DIR}"
-docker run -p ${INITIALS}00-${INITIALS}99:${INITIALS}00-${INITIALS}99 --gpus=all --shm-size=8g --memory=${backoff_memory_mb}m --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v ${HOME_DIR}:${HOME_DIR} -v /mnt/:/mnt/ ${MORE_ARGS} --name ${NAME} ${IMAGE} ${INITIALS}
+docker run -p ${INITIALS}00-${INITIALS}99:${INITIALS}00-${INITIALS}99 --cap-add=NET_ADMIN --gpus=all --shm-size=8g --memory=${backoff_memory_mb}m --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v ${HOME_DIR}:${HOME_DIR} -v /mnt/:/mnt/ ${MORE_ARGS} --name ${NAME} ${IMAGE} ${INITIALS}
 # docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 28

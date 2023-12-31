@@ -32,6 +32,9 @@ class BeamDispatcher(Processor):
     def __call__(self, *args, **kwargs):
         return self.dispatch('function', *args, **kwargs)
 
+    def poll(self, task_id, *args, **kwargs):
+        return self.broker.AsyncResult(task_id)
+
     def dispatch(self, attribute, *args, **kwargs):
         return self.broker.send_task(attribute, args=args, kwargs=kwargs)
 

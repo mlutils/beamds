@@ -27,15 +27,15 @@ class BeamHPO(Processor):
 
         self.experiment_hparams = hparams
 
-        self.experiment_hparams.set('reload', False, model=False)
-        self.experiment_hparams.set('override', False, model=False)
-        self.experiment_hparams.set('print_results', self.hparams.get('print_results'), model=False)
-        self.experiment_hparams.set('visualize_weights', False, model=False)
-        self.experiment_hparams.set('enable_tqdm', self.hparams.get('enable_tqdm', False), model=False)
-        self.experiment_hparams.set('n_gpus', 0, model=False)
+        self.experiment_hparams.set('reload', False)
+        self.experiment_hparams.set('override', False)
+        self.experiment_hparams.set('print_results', self.hparams.get('print_results'))
+        self.experiment_hparams.set('visualize_weights', False)
+        self.experiment_hparams.set('enable_tqdm', self.hparams.get('enable_tqdm', False))
+        self.experiment_hparams.set('n_gpus', 0)
 
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.experiment_hparams.set('identifier', f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}', model=False)
+        self.experiment_hparams.set('identifier', f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}')
 
         if algorithm_generator is None:
             self.ag = partial(beam_algorithm_generator, alg=alg, dataset=dataset,

@@ -4,6 +4,7 @@ import os
 from argparse import Namespace
 from collections import defaultdict
 from typing import List, Union
+from pprint import pformat
 
 from dataclasses import dataclass, field
 from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
@@ -138,8 +139,8 @@ class BeamConfig(Namespace):
         return self.__repr__()
 
     def __repr__(self):
-        return (f"{type(self).__name__}:\n\nParameters:\n\n{self.dict()}\n\n"
-                f"Tags:\n\n{vars(self.tags)}\n\n")
+        return (f"{type(self).__name__}:\n\nParameters:\n\n{pformat(self.dict())}\n\n"
+                f"Tags:\n\n{pformat(vars(self.tags))}\n\n")
 
     @property
     def namespace(self):

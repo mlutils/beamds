@@ -147,7 +147,7 @@ class RayHPO(BeamHPO):
         tune_config = TuneConfig(**tune_config_kwargs)
 
         local_dir = self.hparams.get('hpo_path')
-        run_config = RunConfig(stop=stop, local_dir=local_dir)
+        run_config = RunConfig(stop=stop, storage_path=local_dir)
 
         logger.info(f"Starting ray-tune hyperparameter optimization process. "
                     f"Results and logs will be stored at {local_dir}")
