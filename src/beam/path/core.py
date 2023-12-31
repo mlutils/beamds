@@ -67,6 +67,9 @@ class PureBeamPath:
         p = self.joinpath(key)
         p.write(value)
 
+    def touch(self):
+        self.write(b'', ext='.bin')
+
     def not_empty(self, filter_pattern=None):
 
         if self.is_dir():

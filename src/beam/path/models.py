@@ -1151,11 +1151,13 @@ class IOPath(DictBasedPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        parent = self._parent
-        name = self.parts[-1]
-        self.file_object.seek(0)
-        content = self.file_object.getvalue()
-        parent[name] = content
+        if self.mode in ["wb", "w"]:
+            parent = self._parent
+            name = self.parts[-1]
+            self.file_object.seek(0)
+            content = self.file_object.getvalue()
+            parent[name] = content
+
         self.file_object.close()
 
 
@@ -1183,3 +1185,165 @@ class DictPath(DictBasedPath):
         return self._obj.data
 
 
+class RedisPath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, password=None, username=None, data=None,
+                 tls=False, **kwargs):
+        super().__init__(*pathsegments, scheme='redis', client=client, data=data, **kwargs)
+
+        if type(tls) is str:
+            tls = tls.lower() == 'true'
+
+        try:
+            self._keys = self.parts[1:]
+            self.db = int(self.parts[0])
+        except ValueError:
+            self._keys = self.parts
+            self.db = 0
+
+        if client is None:
+
+            if port is None:
+                port = 6379
+            if hostname is None:
+                hostname = 'localhost'
+
+            import redis
+            client = redis.Redis(host=hostname, port=port, db=self.db, password=password, username=username, ssl=tls)
+
+        self.client = client
+
+    def normalize_directory_key(self, key=None):
+        if key is None:
+            key = self.key
+        if key is None:
+            return None
+        if not key.endswith('/'):
+            key = f'{key}/'
+        return key
+
+    def mkdir(self, *args, parents=True, exist_ok=True):
+
+        if self.is_root():
+            return
+
+        if not exist_ok:
+            if self.exists():
+                raise FileExistsError
+
+        if not parents:
+            if not self.parent.exists():
+                raise FileNotFoundError
+        else:
+            p = self.parent
+            while not p.root:
+                if not p.exists():
+                    p.mkdir()
+                else:
+                    break
+                p = p.parent
+
+        self.write_to_redis(self.client, self.directory_key, '')
+
+    def rmdir(self):
+        if not self.is_dir():
+            raise NotADirectoryError
+        if not self.is_empty():
+            raise OSError("Directory not empty: %s" % self)
+        self.client.delete(self.directory_key)
+
+    def unlink(self, missing_ok=False):
+        if self.is_dir():
+            raise IsADirectoryError
+        self.client.delete(self.key)
+
+    def is_file(self):
+
+        if self.key.endswith('/'):
+            return False
+        return bool(self.client.exists(self.key))
+
+    def is_dir(self):
+        return bool(self.client.exists(self.directory_key))
+
+    def exists(self):
+        return bool(self.client.exists(self.key) or self.client.exists(self.directory_key))
+
+    def iterdir(self):
+        if not self.is_dir():
+            raise NotADirectoryError
+
+        prefix = self.directory_key
+
+        # Pattern for files
+        file_pattern = f'{prefix}[^/]+'
+        for key in self.client.scan_iter(file_pattern):
+            yield self.gen(key.decode('utf-8'))
+
+        # Pattern for directories
+        dir_pattern = f'{prefix}[^/]+/'
+        for key in self.client.scan_iter(dir_pattern):
+            yield self.gen(key.decode('utf-8'))
+
+    def is_empty(self):
+        for _ in self.iterdir():
+            return False
+        return True
+
+    def rename(self, target):
+        self.client.rename(self.key, target.key)
+
+    def replace(self, target):
+        if target.exists():
+            target.unlink()
+        self.rename(target)
+
+    @property
+    def directory_key(self):
+        return self.normalize_directory_key(self.key)
+
+    @property
+    def key(self):
+        key = '/'.join(self._keys)
+        return key
+
+    @property
+    def _obj(self):
+        obj = self.client.hget(self.key, 'data')
+        return obj
+
+    @property
+    def _timestamp(self):
+        timestamp = self.client.hget(self.key, 'modified')
+        return timestamp
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            content = self._obj
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+        elif self.mode in ['wb', 'w']:
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+        else:
+            raise ValueError
+
+        return self.file_object
+
+    @staticmethod
+    def write_to_redis(client, key, content, timestamp=None):
+        if timestamp is None:
+            timestamp = str(datetime.now())
+        client.hset(key, 'data', content)
+        client.hset(key, 'modified', timestamp)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ['wb', 'w']:
+            self.file_object.seek(0)
+            content = self.file_object.getvalue()
+            self.write_to_redis(self.client, self.key, content)
+
+        self.file_object.close()
+
+    def glob(self, pattern):
+        full_pattern = f'{self.directory_key}{pattern}'
+        return [self.gen(key) for key in self.client.scan_iter(full_pattern)]

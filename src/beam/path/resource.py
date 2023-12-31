@@ -1,4 +1,4 @@
-from .models import BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset, IOPath, DictPath
+from .models import BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset, IOPath, DictPath, RedisPath
 from .core import BeamKey, BeamURL
 
 
@@ -76,6 +76,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
     elif url.protocol == 'hdfs-pa':
         return HDFSPAPath(path, hostname=hostname, port=port, username=username, **kwargs)
+
+    elif url.protocol == 'redis':
+        return RedisPath(path, hostname=hostname, port=port, username=username, **kwargs)
 
     elif url.protocol == 'comet':
 

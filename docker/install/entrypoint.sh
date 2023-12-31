@@ -74,7 +74,7 @@ echo "ray_redis_port, ${RAY_REDIS_PORT}" >> /workspace/configuration/config.csv
 echo "ray_dashboard_port, ${RAY_DASHBOARD_PORT}" >> /workspace/configuration/config.csv
 echo "mongodb_port, ${MONGODB_PORT}" >> /workspace/configuration/config.csv
 
-bash /workspace/docker/install/setup_env_vars.sh
+bash /workspace/install/setup_env_vars.sh
 
 jupyter-lab &
 service ssh start
@@ -92,7 +92,7 @@ prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
 ray start --head --port=${RAY_REDIS_PORT} --dashboard-port=${RAY_DASHBOARD_PORT} &
 
 # run mongodb
-bash /workspace/docker/install/run_mongo.sh $MONGODB_PORT
+bash /workspace/install/run_mongo.sh $MONGODB_PORT
 
 
 # redirecting ports
