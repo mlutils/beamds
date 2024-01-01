@@ -143,7 +143,7 @@ class OpenAI(OpenAIBase):
     def models(self):
         if self._models is None:
             import openai
-            models = openai.Model.list()
+            models = openai.models.list()
             models = {m.id: m for m in models.data}
             self._models = models
         return self._models

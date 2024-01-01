@@ -1,5 +1,10 @@
 import os
 
+available_devices = [1, 2, 3]
+os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
+n_jobs = len(available_devices)
+
+
 from examples.tabular_example import get_paths
 from src.beam.hpo import beam_hpo, HPOConfig
 from src.beam.tabular import TabularDataset, TabularTransformer, TabularConfig, DeepTabularAlg
@@ -14,15 +19,15 @@ if __name__ == '__main__':
                        tensorboard=False, stop_at=0.98, n_gpus=1, device=0, n_quantiles=6, label_smoothing=.2)
 
     hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24,
-                           n_jobs=3, hpo_path=os.path.join(logs_path, 'hpo'))
+                           n_jobs=n_jobs, hpo_path=os.path.join(logs_path, 'hpo'))
 
     kwargs_all = {}
 
     # kwargs_all['california_housing'] = dict(batch_size=128)
-    kwargs_all['adult'] = dict(batch_size=128)
-    # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
-    #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
-    #                             label_smoothing=.25, n_quantiles=6, dynamic_masking=False)
+    # kwargs_all['adult'] = dict(batch_size=128)
+    kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
+                                minimal_mask_rate=.2, maximal_mask_rate=.4,
+                                label_smoothing=.25, n_quantiles=6, dynamic_masking=False)
     # kwargs_all['jannis'] = dict(batch_size=256)
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)

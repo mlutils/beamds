@@ -23,8 +23,8 @@ class BeamWorker(Processor):
 
     def __init__(self, obj, *routes, name=None, n_workers=1, daemon=False, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
-                 backend_username=None, backend_password=None, backend_port=None, backend_scheme=None, backend_host=None,
-                 **kwargs):
+                 backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
+                 backend_host=None, log_level='INFO', **kwargs):
 
         if name is None:
             try:
@@ -47,6 +47,7 @@ class BeamWorker(Processor):
         self.n_workers = self.hparams.get('n_workers')
         self.daemon = self.hparams.get('daemon')
         self.routes = routes
+        self.log_level = log_level
 
         logger.info(f"Broker: {self.broker_url.url}, Backend: {self.backend_url.url}, "
                     f"n_workers: {self.n_workers}, daemon: {self.daemon}")
@@ -65,7 +66,13 @@ class BeamWorker(Processor):
         from celery import Celery
         from celery.exceptions import SecurityWarning
         warnings.filterwarnings("ignore", category=SecurityWarning)
-        return Celery(self.name, broker=self.broker_url.url, backend=self.backend_url.url)
+        app = Celery(self.name, broker=self.broker_url.url, backend=self.backend_url.url)
+
+        app.conf.update(
+            worker_log_level=self.log_level,
+        )
+
+        return app
 
     def start_worker(self):
         from celery.apps.worker import Worker
@@ -81,8 +88,8 @@ class BeamWorker(Processor):
             if len(routes) == 0:
                 routes = self.routes
             if len(routes) == 0:
-                routes = [a for a in dir(self.obj) if not a.startswith('_') and callable(getattr(self.obj, a))]
-
+                routes = [name for name, attr in inspect.getmembers(self.obj)
+                          if not name.startswith('_') and inspect.ismethod(attr)]
             for route in routes:
                 self.broker.task(name=route)(getattr(self.obj, route))
 

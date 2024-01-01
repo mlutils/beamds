@@ -13,7 +13,6 @@ from collections import defaultdict
 class LLMServeConfig(BeamConfig):
 
     defaults = {}
-    use_basic_parser = False
     parameters = [
         BeamParam('broker', str, 'amqp://localhost:5672//', 'The broker URL', model=False),
         BeamParam('backend', str, 'redis://localhost:6379/0', 'The backend URL', model=False),

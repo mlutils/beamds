@@ -17,11 +17,11 @@ class BeamAsyncServer(Processor):
         predefined_attributes = {k: 'method' for k in routes}
 
         self.dispatcher = BeamDispatcher(name=name, broker=broker, backend=backend,
-                                 broker_username=broker_username, broker_password=broker_password,
-                                 broker_port=broker_port, broker_scheme=broker_scheme, broker_host=broker_host,
-                                 backend_username=backend_username, backend_password=backend_password,
-                                 backend_port=backend_port, backend_scheme=backend_scheme, backend_host=backend_host,
-                                 **kwargs)
+                                         broker_username=broker_username, broker_password=broker_password,
+                                         broker_port=broker_port, broker_scheme=broker_scheme, broker_host=broker_host,
+                                         backend_username=backend_username, backend_password=backend_password,
+                                         backend_port=backend_port, backend_scheme=backend_scheme,
+                                         backend_host=backend_host, **kwargs)
 
         self.http_server = HTTPServer(obj=self.dispatcher, use_torch=use_torch, batch=batch,
                                       max_wait_time=max_wait_time, max_batch_size=max_batch_size,

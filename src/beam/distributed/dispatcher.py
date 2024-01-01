@@ -9,8 +9,8 @@ class BeamDispatcher(Processor):
 
     def __init__(self, *args, name=None, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
-                 backend_username=None, backend_password=None, backend_port=None, backend_scheme=None, backend_host=None,
-                 **kwargs):
+                 backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
+                 backend_host=None, serve='local', **kwargs):
 
         super().__init__(*args, name=name, **kwargs)
 
@@ -22,6 +22,8 @@ class BeamDispatcher(Processor):
                                            backend_password=backend_password, backend_port=backend_port,
                                            backend_scheme=backend_scheme, backend_host=backend_host)
 
+        self.serve = serve
+
     @lazy_property
     def broker(self):
         from celery import Celery
@@ -31,10 +33,27 @@ class BeamDispatcher(Processor):
         return self.dispatch('function', *args, **kwargs)
 
     def poll(self, task_id, *args, **kwargs):
-        return self.broker.AsyncResult(task_id)
+        res = self.broker.AsyncResult(task_id)
+        if res.state == 'SUCCESS':
+            return res.result
+        return None
+
+    def metadata(self, task_id, *args, **kwargs):
+        res = self.broker.AsyncResult(task_id)
+        d = {'task_id': task_id, 'state': res.state, 'result': res.result,
+             'traceback': res.traceback if res.state == 'FAILURE' else None, 'status': res.status,
+             'children': res.children, 'retries': res.retries, "parent_id": res.parent.id if res.parent else None,
+             'exception': str(res.result) if res.state == 'FAILURE' else None,
+             'date_done': res.date_done if hasattr(res, 'date_done') else None,
+             'runtime': res.runtime if hasattr(res, 'runtime') else None}
+
+        return d
 
     def dispatch(self, attribute, *args, **kwargs):
-        return self.broker.send_task(attribute, args=args, kwargs=kwargs)
+        res = self.broker.send_task(attribute, args=args, kwargs=kwargs)
+        if self.serve == 'local':
+            return res
+        return res.task_id
 
     def __getattr__(self, item):
         if item.startswith('_'):

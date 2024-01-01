@@ -11,7 +11,6 @@ from beam import beam_logger as logger
 class BeamServeConfig(BeamHparams):
 
     defaults = {}
-    use_basic_parser = False
     parameters = [
         BeamParam('protocol', str, 'http', 'The serving protocol [http|grpc]', model=False),
         BeamParam('http-backend', str, 'waitress', 'The HTTP server backend', model=False),

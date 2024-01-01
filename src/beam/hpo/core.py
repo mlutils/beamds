@@ -35,7 +35,8 @@ class BeamHPO(Processor):
         self.experiment_hparams.set('n_gpus', 0)
 
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.experiment_hparams.set('identifier', f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}')
+        self.identifier = f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}'
+        self.experiment_hparams.set('identifier', self.identifier)
 
         if algorithm_generator is None:
             self.ag = partial(beam_algorithm_generator, alg=alg, dataset=dataset,

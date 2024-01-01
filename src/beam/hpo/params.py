@@ -2,10 +2,18 @@ from ..config import BeamConfig, BeamParam
 import os
 
 
-class HPOConfig(BeamConfig):
+class RayConfig(BeamConfig):
+    parameters = [
+        BeamParam('include-dashboard', bool, True, 'include ray-dashboard', ),
+        BeamParam('runtime-env', str, None, 'runtime environment for ray', ),
+        BeamParam('dashboard-port', int, None, 'dashboard port for ray', ),
+        BeamParam('ray-address', str, 'auto', 'whether to link to existing ray cluster (auto/ip) or to '
+                                              'set up a local ray instance (local/ip)', ),
+    ]
 
-    defaults = {}
-    use_basic_parser = False
+
+class HPOConfig(RayConfig, BeamConfig):
+
     parameters = [
         BeamParam('gpus-per-trial', int, 1, 'number of gpus per trial',),
         BeamParam('cpus-per-trial', int, 4, 'number of cpus per trial',),
@@ -23,9 +31,6 @@ class HPOConfig(BeamConfig):
         BeamParam('hpo-path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'hpo'),
                   'Root directory for Logs and results of Hyperparameter optimizations and the associated experiments'),
         BeamParam('stop', str, None, 'stop criteria for the HPO',),
-        BeamParam('include-dashboard', bool, True, 'include ray-dashboard',),
-        BeamParam('runtime-env', str, None, 'runtime environment for ray',),
-        BeamParam('dashboard-port', int, None, 'dashboard port for ray',),
         BeamParam('get-port-from-beam-port-range', bool, True, 'get port from beam port range',),
         BeamParam('replay-buffer-size', int, None, 'Maximal size of finite-memory hpo',),
         BeamParam('time-window', int, None, 'Maximal time window of finite-memory hpo',),

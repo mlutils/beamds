@@ -313,7 +313,6 @@ class BeamLLM(LLM, Processor):
 
         return messages
 
-
     def chat_completion(self, stream=False, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='chat_completion',
                         add_tools_message=False, **kwargs):
 
