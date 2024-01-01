@@ -343,10 +343,10 @@ class FastAPIDPLLM(FastAPILLM):
 
     def post_process(self, res, max_new_tokens):
 
-        response = json.load(res.content.split(self.streaming_delimiter)[-2].decode())
+        response = json.loads(res.content.split(self.streaming_delimiter)[-2].decode())
         response['text'] = self.stem_message(response['text'], max_new_tokens)
 
-        return res
+        return response
 
     def _completion(self, prompt=None, **kwargs):
 
@@ -377,7 +377,7 @@ class FastAPIDPLLM(FastAPILLM):
     def verify_response(self, res):
         try:
 
-            if not res.response['error_code']:
+            if res.response['error_code']:
                 logger.warning(f"Model {self.model}: error_code={res.response['error_code']}")
 
             assert 'text' in res.response, f"Response does not contain 'text' key"

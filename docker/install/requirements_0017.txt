@@ -16,3 +16,7 @@ openshift
 pytorch-optimizer
 pyts
 lightning
+
+websocket
+websockets
+coolname

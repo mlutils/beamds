@@ -10,38 +10,49 @@ from multiprocessing import Process
 
 from dataclasses import dataclass, field
 
+from .utils import get_broker_url, get_backend_url
 from ..core import Processor
 from ..utils import lazy_property
 from ..path import BeamURL
 from ..logger import beam_logger as logger
 from ..parallel import parallel, task
+import warnings
 
 
 class BeamWorker(Processor):
 
-    def __init__(self, obj, *args, name=None, n_workers=1, daemon=False, broker=None, backend=None,
+    def __init__(self, obj, *routes, name=None, n_workers=1, daemon=False, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
                  backend_username=None, backend_password=None, backend_port=None, backend_scheme=None, backend_host=None,
                  **kwargs):
 
-        super().__init__(*args, name=name, n_workers=n_workers, daemon=daemon, **kwargs)
+        if name is None:
+            try:
+                import coolname
+                name = coolname.generate_slug(2)
+            except ImportError:
+                name = str(uuid())
 
-        if broker_scheme is None:
-            broker_scheme = 'amqp'
-        self.broker_url = BeamURL(url=broker, username=broker_username, password=broker_password, port=broker_port,
-                           scheme=broker_scheme, host=broker_host)
+        super().__init__(name=name, n_workers=n_workers, daemon=daemon, **kwargs)
 
-        if backend_scheme is None:
-            backend_scheme = 'redis'
-        self.backend_url = BeamURL(url=backend, username=backend_username, password=backend_password, port=backend_port,
-                                   scheme=backend_scheme, host=backend_host)
+        self.broker_url = get_broker_url(broker=broker, broker_username=broker_username,
+                                         broker_password=broker_password, broker_port=broker_port,
+                                         broker_scheme=broker_scheme, broker_host=broker_host)
+
+        self.backend_url = get_backend_url(backend=backend, backend_username=backend_username,
+                                           backend_password=backend_password, backend_port=backend_port,
+                                           backend_scheme=backend_scheme, backend_host=backend_host)
 
         self.obj = obj
         self.n_workers = self.hparams.get('n_workers')
         self.daemon = self.hparams.get('daemon')
+        self.routes = routes
 
         logger.info(f"Broker: {self.broker_url.url}, Backend: {self.backend_url.url}, "
                     f"n_workers: {self.n_workers}, daemon: {self.daemon}")
+
+        logger.info(f"Setting up a Celery worker: app name: {self.name} broker: {self.broker_url.url} "
+                    f"backend: {self.backend_url.url}")
 
     @lazy_property
     def type(self):
@@ -52,6 +63,8 @@ class BeamWorker(Processor):
     @lazy_property
     def broker(self):
         from celery import Celery
+        from celery.exceptions import SecurityWarning
+        warnings.filterwarnings("ignore", category=SecurityWarning)
         return Celery(self.name, broker=self.broker_url.url, backend=self.backend_url.url)
 
     def start_worker(self):
@@ -59,12 +72,19 @@ class BeamWorker(Processor):
         worker = Worker(app=self.broker, loglevel='info', traceback=True)
         worker.start()
 
-    def run(self, *attributes):
+    def run(self, *routes):
+
         if self.type == 'function':
             self.broker.task(name='function')(self.obj)
         else:
-            for at in attributes:
-                self.broker.task(name=at)(getattr(self.obj, at))
+
+            if len(routes) == 0:
+                routes = self.routes
+            if len(routes) == 0:
+                routes = [a for a in dir(self.obj) if not a.startswith('_') and callable(getattr(self.obj, a))]
+
+            for route in routes:
+                self.broker.task(name=route)(getattr(self.obj, route))
 
         if self.n_workers == 1 and not self.daemon:
             # Run in the main process

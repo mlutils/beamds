@@ -185,6 +185,13 @@ def rate_string_format(n, t):
     return f"{t / n: .4} [sec/iter]"
 
 
+def beam_base_port():
+    base_range = None
+    if 'JUPYTER_PORT' in os.environ:
+        base_range = 100 * (int(os.environ['JUPYTER_PORT']) // 100)
+    return base_range
+
+
 def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
     from ..logger import beam_logger as logger
 
@@ -209,7 +216,6 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
 
             base_range = None
             if 'JUPYTER_PORT' in os.environ:
-
                 base_range = int(os.environ['JUPYTER_PORT']) // 100
 
             elif os.path.isfile('/workspace/configuration/config.csv'):

@@ -167,11 +167,11 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
 class KeysConfig(BeamConfig):
 
     parameters = [
-        BeamParam('comet_api_key', str, None, 'The comet.ml api key to use for logging'),
-        BeamParam('aws_access_key', str, None, 'The aws access key to use for S3 connections'),
-        BeamParam('aws_private_key', str, None, 'The aws private key to use for S3 connections'),
-        BeamParam('ssh_secret_key', str, None, 'The ssh secret key to use for ssh connections'),
-        BeamParam('openai_api_key', str, None, 'The openai api key to use for openai connections'),
+        BeamParam('COMET_API_KEY', str, None, 'The comet.ml api key to use for logging'),
+        BeamParam('AWS_ACCESS_KEY_ID', str, None, 'The aws access key to use for S3 connections'),
+        BeamParam('AWS_SECRET_ACCESS_KEY', str, None, 'The aws private key to use for S3 connections'),
+        BeamParam('SSH_PRIVATE_KEY', str, None, 'The ssh secret key to use for ssh connections'),
+        BeamParam('OPENAI_API_KEY', str, None, 'The openai api key to use for openai connections'),
     ]
 
 

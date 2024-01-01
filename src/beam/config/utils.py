@@ -182,6 +182,8 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
             config_args = config_args.update(cf)
 
         args = Namespace(**{**config_args, **to_dict(args)})
+    elif hasattr(args, 'config_files'):
+        delattr(args, 'config_files')
 
     beam_key.set_hparams(to_dict(args))
 

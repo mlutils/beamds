@@ -1,7 +1,7 @@
 from functools import partial
 
+from .utils import get_broker_url, get_backend_url
 from ..core import Processor
-from ..path import BeamURL
 from ..utils import lazy_property
 
 
@@ -14,15 +14,13 @@ class BeamDispatcher(Processor):
 
         super().__init__(*args, name=name, **kwargs)
 
-        if broker_scheme is None:
-            broker_scheme = 'amqp'
-        self.broker_url = BeamURL(url=broker, username=broker_username, password=broker_password, port=broker_port,
-                           scheme=broker_scheme, host=broker_host)
+        self.broker_url = get_broker_url(broker=broker, broker_username=broker_username,
+                                         broker_password=broker_password, broker_port=broker_port,
+                                         broker_scheme=broker_scheme, broker_host=broker_host)
 
-        if backend_scheme is None:
-            backend_scheme = 'redis'
-        self.backend_url = BeamURL(url=backend, username=backend_username, password=backend_password, port=backend_port,
-                                   scheme=backend_scheme, host=backend_host)
+        self.backend_url = self.backend_url = get_backend_url(backend=backend, backend_username=backend_username,
+                                           backend_password=backend_password, backend_port=backend_port,
+                                           backend_scheme=backend_scheme, backend_host=backend_host)
 
     @lazy_property
     def broker(self):
