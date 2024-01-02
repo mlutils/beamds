@@ -1,4 +1,4 @@
-
+import copy
 from queue import Queue, Empty
 from threading import Thread
 from flask import Flask, request, jsonify, send_file
@@ -116,21 +116,24 @@ class HTTPServer(BeamServer):
         d = super().get_info()
         return jsonify(d)
 
-    def call_function(self, client, *args, **kwargs):
+    @staticmethod
+    def request_metadata(client='beam', method=None):
 
-        if client == 'beam':
-            args = request.files['args']
-            kwargs = request.files['kwargs']
-        else:
-            data = request.get_json()
-            args = data.pop('args', [])
-            kwargs = data.pop('kwargs', {})
+        metadata = {
+            'method': request.method,
+            'url': request.url,
+            'base_url': request.base_url,
+            'args': copy.deepcopy(request.args),
+            'form': copy.deepcopy(request.form),
+            'headers': copy.deepcopy(dict(request.headers)),
+            'remote_addr': request.remote_addr,
+            'user_agent': str(request.user_agent),
+            'client': client,
+            'alg_method': method,
 
-        io_results = super().call_function(client, args, kwargs)
-        if client == 'beam':
-            return send_file(io_results, mimetype="text/plain")
-        else:
-            return jsonify(io_results)
+        }
+
+        return metadata
 
     def query_algorithm(self, client, method, *args, **kwargs):
 

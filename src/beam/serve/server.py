@@ -243,22 +243,7 @@ class BeamServer(Processor):
         return result
 
     def call_function(self, client, args, kwargs):
-
-        if client == 'beam':
-            args = self.load_function(args)
-            kwargs = self.load_function(kwargs)
-
-        if '__call__' in self.batch:
-            results = self.batched_query_algorithm('__call__', args, kwargs)
-        else:
-            results = self.obj(*args, **kwargs)
-
-        if client == 'beam':
-            io_results = io.BytesIO()
-            self.dump_function(results, io_results)
-            io_results.seek(0)
-            return io_results
-        return results
+        return self.query_algorithm(client, '__call__', args, kwargs)
 
     def query_algorithm(self, client, method, args, kwargs):
 

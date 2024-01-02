@@ -8,11 +8,12 @@ from tqdm.notebook import tqdm as tqdm_notebook
 from tqdm import tqdm
 
 import pandas as pd
-import json
 import __main__
 from datetime import timedelta
 import time
 import re
+import threading
+
 
 try:
     import modin.pandas as mpd
@@ -1079,3 +1080,57 @@ class Timer(object):
         elapsed = self.pause()
         if not self.silence:
             self.logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
+
+
+class ThreadSafeDict(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lock = threading.Lock()
+
+    def __setitem__(self, key, value):
+        with self.lock:
+            super().__setitem__(key, value)
+
+    def __getitem__(self, key):
+        with self.lock:
+            return super().__getitem__(key)
+
+    def __delitem__(self, key):
+        with self.lock:
+            super().__delitem__(key)
+
+    def update(self, *args, **kwargs):
+        with self.lock:
+            super().update(*args, **kwargs)
+
+    def pop(self, key, *args):
+        with self.lock:
+            return super().pop(key, *args)
+
+    def clear(self):
+        with self.lock:
+            super().clear()
+
+    def setdefault(self, key, default=None):
+        with self.lock:
+            return super().setdefault(key, default)
+
+    def popitem(self):
+        with self.lock:
+            return super().popitem()
+
+    def copy(self):
+        with self.lock:
+            return super().copy()
+
+    def keys(self):
+        with self.lock:
+            return list(super().keys())
+
+    def values(self):
+        with self.lock:
+            return list(super().values())
+
+    def items(self):
+        with self.lock:
+            return list(super().items())
