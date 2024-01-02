@@ -2,6 +2,7 @@ from .dispatcher import BeamDispatcher
 from ..core import Processor
 from ..serve.http_server import HTTPServer
 import websockets
+from ..logger import beam_logger as logger
 
 
 class BeamAsyncServer(Processor):
@@ -28,10 +29,11 @@ class BeamAsyncServer(Processor):
                                       tls=tls, n_threads=n_threads, application=application,
                                       predefined_attributes=predefined_attributes, **kwargs)
 
+        from celery.signals import task_postrun
         if callback is None:
-            self.callback = self.job_done
+            self.callback = task_postrun.connect(self.job_done)
         else:
-            self.callback = callback
+            self.callback = task_postrun.connect(callback)
 
-    def job_done(self, task_id, *args, **kwargs):
-        raise NotImplementedError
+    def job_done(self, task_id, state, result):
+        logger.info(f"Task {task_id} finished with state {state}.")
