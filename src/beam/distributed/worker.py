@@ -89,7 +89,7 @@ class BeamWorker(Processor):
                 routes = self.routes
             if len(routes) == 0:
                 routes = [name for name, attr in inspect.getmembers(self.obj)
-                          if not name.startswith('_') and inspect.ismethod(attr)]
+                          if not name.startswith('_') and (inspect.ismethod(attr) or inspect.isfunction(attr))]
             for route in routes:
                 self.broker.task(name=route)(getattr(self.obj, route))
 
