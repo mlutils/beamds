@@ -1,24 +1,24 @@
-import threading
+import json
+from threading import Thread
 
 from .dispatcher import BeamDispatcher
-from ..core import Processor
 from ..serve.http_server import HTTPServer
 from ..serve.server import BeamServer
 from ..logger import beam_logger as logger
 import websockets
 import asyncio
 from celery.signals import task_postrun
-from flask import Flask, request, jsonify, send_file
-from ..utils import ThreadSafeDict
+from flask import request, jsonify, send_file
+from ..utils import ThreadSafeDict, find_port
 
 
-class BeamAsyncServer(HTTPServer):
+class AsyncServer(HTTPServer):
 
     def __init__(self, *routes, name=None, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
                  backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
                  backend_host=None, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
-                 tls=False, n_threads=4, application=None, postrun=None, **kwargs):
+                 tls=False, n_threads=4, application=None, postrun=None, ws_tls=False, **kwargs):
 
         predefined_attributes = {k: 'method' for k in routes}
 
@@ -35,11 +35,37 @@ class BeamAsyncServer(HTTPServer):
                         predefined_attributes=predefined_attributes, **kwargs)
 
         self.tasks = ThreadSafeDict()
+        self.ws_clients = ThreadSafeDict()
+        self.ws_tls = ws_tls
+        self.ws_application = 'ws' if not ws_tls else 'wss'
 
         if postrun is None:
             self.postrun_callback = self.postrun
         else:
             self.postrun_callback = postrun
+
+    async def websocket_handler(self, ws):
+        # Wait for the client to send its client_id
+        client_id = await ws.recv()
+        self.ws_clients[client_id] = ws
+        await ws.wait_closed()
+        # self.ws_clients.pop(client_id)
+
+    @staticmethod
+    def run_ws_server(ws_server):
+        asyncio.new_event_loop().run_until_complete(ws_server)
+        asyncio.get_event_loop().run_forever()
+
+    def run(self, ws_host=None, ws_port=None, **kwargs):
+
+        if ws_host is None:
+            ws_host = "0.0.0.0"
+        ws_port = find_port(port=ws_port, get_port_from_beam_port_range=True, application=self.ws_application)
+        logger.info(f"Opening a Websocket ({self.ws_application}) serve on port: {ws_port}")
+        ws = websockets.serve(self.websocket_handler, ws_host, ws_port, ssl=self.ws_tls)
+        Thread(target=self.run_ws_server, args=(ws,)).start()
+
+        super().run(**kwargs)
 
     def query_algorithm(self, client, method, *args, **kwargs):
 
@@ -81,19 +107,16 @@ class BeamAsyncServer(HTTPServer):
 
         # Send notification to the client via WebSocket
         if task_inf['ws_client_id'] is not None:
-            websocket = self.websocket_clients.get(str(task_inf['ws_client_id']))
-            if websocket and websocket.open:
-                asyncio.run(websocket.send({"task_id": task_id, "state": state}))
-                asyncio.run(websocket.close())
-                del self.websocket_clients[str(task_inf['ws_client_id'])]
+            client_id = task_inf['ws_client_id']
+            ws = self.ws_clients.get(client_id)
+            if ws and ws.open:
+                asyncio.run(ws.send(json.dumps({"task_id": task_id, "state": state})))
+            else:
+                asyncio.run(ws.close())
+                self.ws_clients.pop(client_id)
 
         self.postrun_callback(task_args=args, task_kwargs=kwargs, retval=retval, state=state, task=task, **task_inf)
 
     def postrun(self, task_args=None, task_kwargs=None, retval=None, state=None, task=None, metadata=None,
                 postrun_args=None, postrun_kwargs=None, **kwargs):
         pass
-
-    def run(self, *args, **kwargs):
-
-        # start the web socket server
-        super().run(*args, **kwargs)

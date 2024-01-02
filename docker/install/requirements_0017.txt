@@ -17,6 +17,6 @@ pytorch-optimizer
 pyts
 lightning
 
-websocket
 websockets
+websocket-client
 coolname

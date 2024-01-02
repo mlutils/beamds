@@ -1,6 +1,6 @@
 import os
 
-available_devices = [1, 2, 3]
+available_devices = [0, 1, 2, 3]
 os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
 n_jobs = len(available_devices)
 
@@ -25,10 +25,10 @@ if __name__ == '__main__':
 
     # kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
-    kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
-                                minimal_mask_rate=.2, maximal_mask_rate=.4,
-                                label_smoothing=.25, n_quantiles=6, dynamic_masking=False)
-    # kwargs_all['jannis'] = dict(batch_size=256)
+    # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
+    #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
+    #                             label_smoothing=.25, n_quantiles=6, dynamic_masking=False)
+    kwargs_all['jannis'] = dict(batch_size=256)
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
@@ -77,6 +77,6 @@ if __name__ == '__main__':
         study.uniform('transformer_dropout', 0., 0.4)
         study.uniform('label_smoothing', 0., 0.4)
 
-        study.run(runtime_env={'working_dir': str(cwd), 'excludes': [str(p) for p in cwd.joinpath('notebooks')]},)
+        study.run()
 
         logger.info(f"Done HPO for dataset: {k}")
