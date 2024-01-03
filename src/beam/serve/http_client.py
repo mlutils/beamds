@@ -24,12 +24,14 @@ class HTTPClient(BeamClient):
 
         return response
 
-    def _post(self, path, io_args, io_kwargs):
+    def _post(self, path, io_args, io_kwargs, **other_kwargs):
 
         print(f'{self.protocol}://{self.host}/{path}')
+        files = {'args': io_args, 'kwargs': io_kwargs}
+        files = {**files, **other_kwargs}
 
         response = requests.post(f'{self.protocol}://{self.host}/{path}',
-                                 files={'args': io_args, 'kwargs': io_kwargs}, stream=True)
+                                 files=files, stream=True)
 
         if response.status_code == 200:
             response = self.load_function(io.BytesIO(response.content))

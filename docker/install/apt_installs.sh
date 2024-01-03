@@ -49,6 +49,12 @@ echo "Installing alien"
 apt install -y alien
 echo "Installing libaio1"
 apt install -y libaio1
+echo "Installing websocat"
+wget https://github.com/vi/websocat/releases/download/v1.8.0/websocat_amd64-linux -O websocat
+chmod +x websocat
+mv websocat /usr/local/bin/
+
+#apt install -y websocat
 
 # for now don't install binwalk as it messes up the python environment, consider adding virtualenv
 #echo "Installing binwalk"

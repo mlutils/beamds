@@ -20,3 +20,4 @@ lightning
 websockets
 websocket-client
 coolname
+Faker

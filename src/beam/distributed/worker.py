@@ -46,7 +46,7 @@ class BeamWorker(Processor):
         self.obj = obj
         self.n_workers = self.hparams.get('n_workers')
         self.daemon = self.hparams.get('daemon')
-        self.routes = routes
+        self._routes = routes
         self.log_level = log_level
 
         logger.info(f"Broker: {self.broker_url.url}, Backend: {self.backend_url.url}, "
@@ -79,17 +79,23 @@ class BeamWorker(Processor):
         worker = Worker(app=self.broker, loglevel='info', traceback=True)
         worker.start()
 
+    @property
+    def routes(self):
+        routes = self._routes
+        if routes is None or len(routes) == 0:
+            routes = [name for name, attr in inspect.getmembers(self.obj)
+                      if type(name) is str and not name.startswith('_') and
+                      (inspect.ismethod(attr) or inspect.isfunction(attr))]
+
+        return routes
+
     def run(self, *routes):
 
         if self.type == 'function':
             self.broker.task(name='function')(self.obj)
         else:
-
             if len(routes) == 0:
                 routes = self.routes
-            if len(routes) == 0:
-                routes = [name for name, attr in inspect.getmembers(self.obj)
-                          if not name.startswith('_') and (inspect.ismethod(attr) or inspect.isfunction(attr))]
             for route in routes:
                 self.broker.task(name=route)(getattr(self.obj, route))
 

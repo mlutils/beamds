@@ -65,8 +65,9 @@ class HTTPServer(BeamServer):
         run_gunicorn: Starts the server using Gunicorn.
         run_wsgi: Starts the server using WSGI.
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, application='flask', **kwargs)
+    def __init__(self, *args, application=None, **kwargs):
+        application = 'flask' or application
+        super().__init__(*args, application=application, **kwargs)
         self.app = Flask(__name__)
         self.app.add_url_rule('/', view_func=self.get_info)
 

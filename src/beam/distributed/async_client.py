@@ -1,3 +1,4 @@
+import io
 import json
 from threading import Thread
 from uuid import uuid4 as uuid
@@ -21,11 +22,38 @@ class AsyncClient(HTTPClient):
         else:
             self.postrun_callback = postrun
 
-        self.client_id = str(uuid.uuid4())
+        self.client_id = f"ws-client-{uuid()}"
         self.init_websocket()
 
         self.ws = None
         self.wst = None
+
+    def post(self, path, *args, postrun_args=None, postrun_kwargs=None, **kwargs):
+
+        io_args = io.BytesIO()
+        self.dump_function(args, io_args)
+        io_args.seek(0)
+
+        io_kwargs = io.BytesIO()
+        self.dump_function(kwargs, io_kwargs)
+        io_kwargs.seek(0)
+
+        io_postrun_args = io.BytesIO()
+        self.dump_function(postrun_args, io_postrun_args)
+        io_postrun_args.seek(0)
+
+        io_postrun_kwargs = io.BytesIO()
+        self.dump_function(postrun_kwargs, io_postrun_kwargs)
+        io_postrun_kwargs.seek(0)
+
+        io_ws_client_id = io.BytesIO()
+        self.dump_function(self.client_id, io_ws_client_id)
+        io_ws_client_id.seek(0)
+
+        response = self._post(path, io_args, io_kwargs, postrun_args=io_postrun_args,
+                              postrun_kwargs=io_postrun_kwargs, ws_client_id=io_ws_client_id)
+
+        return response
 
     def init_websocket(self):
         self.ws = websocket.WebSocketApp(f"{self.ws_application}://{self.ws_host}/",

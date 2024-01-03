@@ -56,7 +56,7 @@ class BeamDispatcher(Processor):
         return res.task_id
 
     def __getattr__(self, item):
-        if item.startswith('_'):
+        if item.startswith('_') or item in ['serve'] or not hasattr(self, 'serve'):
             return super().__getattribute__(item)
         return partial(self.dispatch, item)
 

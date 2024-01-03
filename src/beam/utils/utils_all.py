@@ -190,7 +190,24 @@ def beam_base_port():
     base_range = None
     if 'JUPYTER_PORT' in os.environ:
         base_range = 100 * (int(os.environ['JUPYTER_PORT']) // 100)
+    elif os.path.isfile('/workspace/configuration/config.csv'):
+        try:
+            conf = pd.read_csv('/workspace/configuration/config.csv', index_col=0)
+            base_range = 100 * int(conf.loc['initials'])
+        except:
+            pass
     return base_range
+
+
+def beam_service_port(service):
+    port = None
+    try:
+        conf = pd.read_csv('/workspace/configuration/config.csv', index_col=0)
+        port = int(conf.loc[service.lower()])
+    except:
+        pass
+
+    return port
 
 
 def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):

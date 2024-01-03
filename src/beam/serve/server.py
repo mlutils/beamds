@@ -214,10 +214,17 @@ class BeamServer(Processor):
 
             attributes = self._predefined_attributes.copy()
             for name, attr in inspect.getmembers(self.obj):
-                if inspect.ismethod(attr) or inspect.isfunction(attr):
+                if type(name) is not str:
+                    continue
+                if not name.startswith('_') and (inspect.ismethod(attr) or inspect.isfunction(attr)):
                     attributes[name] = 'method'
-                elif not name.startswith('__') and not inspect.isbuiltin(attr):
+                elif not name.startswith('_') and not inspect.isbuiltin(attr):
                     attributes[name] = 'variable'
+
+            properties = inspect.getmembers(type(self.obj), lambda m: isinstance(m, property))
+            for name, attr in properties:
+                if not name.startswith('_'):
+                    attributes[name] = 'property'
 
             d['attributes'] = attributes
 

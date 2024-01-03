@@ -76,7 +76,7 @@ class BeamClient(Processor):
             self.info = self.get_info()
 
         attribute_type = self.attributes[item]
-        if attribute_type == 'variable':
+        if attribute_type in ['variable', 'property']:
             return self.get(f'getvar/beam/{item}')
         elif attribute_type == 'method':
             return partial(self.post, f'alg/beam/{item}')
@@ -86,4 +86,6 @@ class BeamClient(Processor):
         if key.startswith('_') or not hasattr(self, '_lazy_cache') or 'info' not in self._lazy_cache:
             super().__setattr__(key, value)
         else:
+            if key in self.attributes and self.attributes[key] in ['property', 'method']:
+                raise ValueError(f"Cannot set attribute: {key} (type: {self.attributes[key]})")
             self.post(f'setvar/beam/{key}', value)
