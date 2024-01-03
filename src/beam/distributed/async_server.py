@@ -20,7 +20,7 @@ class AsyncServer(HTTPServer):
                  backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
                  backend_host=None, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
                  tls=False, n_threads=4, application=None, postrun=None, ws_tls=False,
-                 n_workers=1, worker_log_level='INFO', **kwargs):
+                 n_workers=1, broker_log_level='INFO', **kwargs):
 
         if routes is None:
             routes = []
@@ -32,7 +32,7 @@ class AsyncServer(HTTPServer):
                                  backend_username=backend_username, backend_password=backend_password,
                                  backend_port=backend_port,
                                  backend_scheme=backend_scheme,
-                                 backend_host=backend_host, log_level=worker_log_level)
+                                 backend_host=backend_host, log_level=broker_log_level)
 
         predefined_attributes = {k: 'method' for k in self.worker.routes}
         self.dispatcher = BeamDispatcher(name=self.worker.name, broker=broker, backend=backend,
@@ -40,7 +40,7 @@ class AsyncServer(HTTPServer):
                                          broker_port=broker_port, broker_scheme=broker_scheme, broker_host=broker_host,
                                          backend_username=backend_username, backend_password=backend_password,
                                          backend_port=backend_port, backend_scheme=backend_scheme,
-                                         backend_host=backend_host, serve='remote')
+                                         backend_host=backend_host, serve='remote', log_level=broker_log_level)
 
         application = application or 'distributed_async'
         super().__init__(obj=self.dispatcher, name=name, use_torch=use_torch, batch=batch,
@@ -69,36 +69,36 @@ class AsyncServer(HTTPServer):
 
     async def websocket_handler(self, ws):
         # Wait for the client to send its client_id
+
         client_id = await ws.recv()
         logger.info(f"New WebSocket client connected: {client_id}")
         self.ws_clients[client_id] = ws
         await ws.wait_closed()
         # self.ws_clients.pop(client_id)
 
-    @staticmethod
-    def run_ws_server(ws_server):
+    def run_ws_server(self, host, port):
+
+        logger.info("Starting...")
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(ws_server)
+
+        start_server = websockets.serve(self.websocket_handler, host, port, ssl=self.ssl_context)
+        loop.run_until_complete(start_server)
         loop.run_forever()
 
-        # Close the loop when done
-        loop.close()
-
-        # asyncio.new_event_loop().run_until_complete(ws_server)
-        # asyncio.get_event_loop().run_forever()
-
-    def run(self, ws_host=None, ws_port=None, **kwargs):
+    def run(self, ws_host=None, ws_port=None, enable_websocket=False, **kwargs):
 
         self.worker.run()
 
-        if ws_host is None:
-            ws_host = "0.0.0.0"
-        ws_port = find_port(port=ws_port, get_port_from_beam_port_range=True, application=self.ws_application)
-        logger.info(f"Opening a Websocket ({self.ws_application}) serve on port: {ws_port}")
-        ws = websockets.serve(self.websocket_handler, ws_host, ws_port, ssl=self.ssl_context)
-        Thread(target=self.run_ws_server, args=(ws,)).start()
+        if enable_websocket:
+            if ws_host is None:
+                ws_host = "0.0.0.0"
+            ws_port = find_port(port=ws_port, get_port_from_beam_port_range=True, application=self.ws_application)
+            logger.info(f"Opening a Websocket ({self.ws_application}) serve on port: {ws_port}")
+
+            # Run the WebSocket server as an asyncio task
+            Thread(target=self.run_ws_server, args=(ws_host, ws_port)).start()
 
         super().run(**kwargs)
 
@@ -138,7 +138,11 @@ class AsyncServer(HTTPServer):
     def postprocess(self, sender=None, task_id=None, task=None, args=None, kwargs=None, retval=None, state=None,
                     **other_kwargs):
         logger.info(f"Task {task_id} finished with state {state} (sender: {sender}).")
-        task_inf = self.tasks[task_id]
+        task_inf = self.tasks.pop(task_id, None)
+
+        if task_inf is None:
+            logger.warning(f"Task {task_id} not found in tasks dict")
+            return
 
         # Send notification to the client via WebSocket
         if task_inf['ws_client_id'] is not None:

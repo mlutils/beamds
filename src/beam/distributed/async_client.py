@@ -12,9 +12,10 @@ from ..serve.http_client import HTTPClient
 class AsyncClient(HTTPClient):
 
     def __init__(self, *args, ws_port=None, ws_tls=False, hostname=None,
-                 postrun=None,  **kwargs):
+                 postrun=None, enable_websocket=False,  **kwargs):
         super().__init__(*args, hostname=hostname, **kwargs)
-        websocket.enableTrace(True)
+
+        # websocket.enableTrace(True)
         self.ws_application = 'ws' if not ws_tls else 'wss'
         self.ws_host = normalize_host(hostname, ws_port)
         if postrun is None:
@@ -23,7 +24,9 @@ class AsyncClient(HTTPClient):
             self.postrun_callback = postrun
 
         self.client_id = f"ws-client-{uuid()}"
-        self.init_websocket()
+
+        if enable_websocket:
+            self.init_websocket()
 
         self.ws = None
         self.wst = None

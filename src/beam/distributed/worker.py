@@ -70,6 +70,7 @@ class BeamWorker(Processor):
 
         app.conf.update(
             worker_log_level=self.log_level,
+            broker_connection_retry_on_startup=True
         )
 
         return app
