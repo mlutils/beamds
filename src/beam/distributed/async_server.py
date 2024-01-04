@@ -65,6 +65,7 @@ class AsyncServer(HTTPServer):
             self.ssl_context = None
 
         self.ws_application = 'ws' if not ws_tls else 'wss'
+        self.ws_port = None
 
         if postrun is None:
             self.postrun_callback = self.postrun
@@ -112,6 +113,7 @@ class AsyncServer(HTTPServer):
             if ws_host is None:
                 ws_host = "0.0.0.0"
             ws_port = find_port(port=ws_port, get_port_from_beam_port_range=True, application=self.ws_application)
+            self.ws_port = ws_port
             logger.info(f"Opening a Websocket ({self.ws_application}) serve on port: {ws_port}")
 
             # Run the WebSocket server as an asyncio task
@@ -133,6 +135,10 @@ class AsyncServer(HTTPServer):
             except KeyboardInterrupt:
                 logger.info("Keyboard interrupt, exiting...")
                 break
+
+    @property
+    def metadata(self):
+        return {'ws_application': self.ws_application, 'ws_port': self.ws_port}
 
     def query_algorithm(self, client, method, *args, **kwargs):
 
@@ -174,7 +180,6 @@ class AsyncServer(HTTPServer):
 
         else:
             return BeamServer.query_algorithm(self, client, method, args, kwargs)
-
 
     def postprocess(self, task_id=None, task_inf=None, task=None):
 

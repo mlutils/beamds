@@ -207,6 +207,10 @@ class BeamServer(Processor):
                         logger.info(f"Putting result for task: {req_id}")
                         self.response_queue[req_id].put(result)
 
+    @property
+    def metadata(self):
+        return None
+
     def get_info(self):
 
         d = {'name': None, 'obj': self.type, 'serialization': self.serialization_method}
@@ -237,6 +241,11 @@ class BeamServer(Processor):
 
         if hasattr(self.obj, 'name'):
             d['name'] = self.obj.name
+
+        if hasattr(self, 'metadata'):
+            metadata = self.metadata
+            if metadata is not None:
+                d['metadata'] = self.metadata
 
         return d
 

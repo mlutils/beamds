@@ -1462,6 +1462,10 @@ class Algorithm(Processor):
         '''
 
         if self.hpo == 'tune':
+
+            if self.best_objective is not None:
+                objective = self.best_objective
+
             if self.get_hparam('objective') is not None:
                 metrics = {self.get_hparam('objective'): objective}
             else:

@@ -15,8 +15,13 @@ class AsyncClient(HTTPClient):
                  postrun=None, enable_websocket=True,  **kwargs):
         super().__init__(*args, hostname=hostname, **kwargs)
 
-        # websocket.enableTrace(True)
-        self.ws_application = 'ws' if not ws_tls else 'wss'
+        metadata = self.info.get('metadata', {})
+        if ws_port is None and 'ws_port' in metadata:
+            ws_port = metadata['ws_port']
+            self.ws_application = metadata['ws_application']
+        else:
+            self.ws_application = 'ws' if not ws_tls else 'wss'
+
         self.ws_host = normalize_host(hostname, ws_port)
         if postrun is None:
             self.postrun_callback = self.postrun

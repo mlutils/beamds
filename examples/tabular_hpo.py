@@ -1,5 +1,7 @@
 import os
 
+from ray.tune.schedulers import ASHAScheduler
+
 available_devices = [0, 1, 2, 3]
 os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
 n_jobs = len(available_devices)
@@ -29,10 +31,10 @@ if __name__ == '__main__':
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
     #                             label_smoothing=.25, n_quantiles=6, dynamic_masking=False)
     # kwargs_all['jannis'] = dict(batch_size=256)
-    kwargs_all['higgs_small'] = dict(batch_size=256)
+    # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
-    # kwargs_all['covtype'] = dict(batch_size=1024, n_quantiles=10)
+    kwargs_all['covtype'] = dict(batch_size=1024, n_quantiles=10)
 
     for k in kwargs_all.keys():
 
@@ -44,6 +46,7 @@ if __name__ == '__main__':
         hparams = TabularConfig(hparams)
 
         dataset = TabularDataset(hparams)
+        # dataset = TabularDataset
 
         logger.info(f"Training a RuleNet predictor")
         # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
@@ -54,7 +57,7 @@ if __name__ == '__main__':
         #                 alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
         #                                           'cat_mask': dataset.cat_mask, }})
         cwd = beam_path(os.getcwd())
-        study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
+        study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=TabularDataset, print_results=False,
                          hpo_config=hpo_config,
                          alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
                                                     'cat_mask': dataset.cat_mask, }})
@@ -77,6 +80,7 @@ if __name__ == '__main__':
         study.uniform('transformer_dropout', 0., 0.4)
         study.uniform('label_smoothing', 0., 0.4)
 
+        tune_config_kwargs = dict(scheduler=ASHAScheduler())
         study.run()
 
         logger.info(f"Done HPO for dataset: {k}")

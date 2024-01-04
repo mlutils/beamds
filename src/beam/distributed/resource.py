@@ -1,6 +1,8 @@
 from .worker import BeamWorker
 from .dispatcher import BeamDispatcher
+from ..path import BeamURL
 from ..serve import beam_server
+from .async_client import AsyncClient
 
 
 def beam_worker(obj, *routes, name=None, n_workers=1, daemon=False, broker=None, backend=None,
@@ -54,3 +56,29 @@ def beam_dispatcher_server(*routes, host=None, port=None, protocol='http', serve
     server = beam_server(obj=dispatcher, protocol=protocol, host=host, port=port, backend=server_backend,
                          predefined_attributes=predefined_attributes, non_blocking=non_blocking, **kwargs)
     return server
+
+
+def async_client(uri, hostname=None, port=None, username=None, **kwargs):
+
+    scheme = uri.split(':')[0]
+    uri = uri.removeprefix('async-')
+
+    uri = BeamURL.from_string(uri)
+
+    if uri.hostname is not None:
+        hostname = uri.hostname
+
+    if uri.port is not None:
+        port = uri.port
+
+    if uri.username is not None:
+        username = uri.username
+
+    query = uri.query
+    for k, v in query.items():
+        kwargs[k] = v
+
+    if 'tls' not in kwargs:
+        kwargs['tls'] = True if 'https' in scheme else False
+
+    return AsyncClient(hostname=hostname, port=port, username=username, **kwargs)
