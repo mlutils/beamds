@@ -60,10 +60,6 @@ if __name__ == '__main__':
     #
     # print('done!')
 
-
-
-
-
     # Create a fake algorithm
     fake_alg = BeamFakeAlg(sleep_time=3., variance=0.5, error_rate=0.1)
 

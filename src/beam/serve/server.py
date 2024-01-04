@@ -124,12 +124,19 @@ class BeamServer(Processor):
                                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         return cls(alg)
 
-    def run_non_blocking(self, *args, **kwargs):
-        run_thread = Thread(target=self.run, args=args, kwargs=kwargs)
-        run_thread.daemon = True
-        run_thread.start()
+    def run_non_blocking(self, **kwargs):
+        return self.run(non_blocking=True, **kwargs)
 
-    def run(self, host=None, port=None, **kwargs):
+    def run(self, non_blocking=False, **kwargs):
+        if non_blocking:
+            run_thread = Thread(target=self.run_thread, kwargs=kwargs)
+            run_thread.daemon = True
+            run_thread.start()
+        else:
+            run_thread = self.run_thread(**kwargs)
+        return run_thread
+
+    def run_thread(self, host=None, port=None, **kwargs):
         if host is None:
             host = "0.0.0.0"
         port = find_port(port=port, get_port_from_beam_port_range=True, application=self.application)
@@ -252,7 +259,7 @@ class BeamServer(Processor):
     def call_function(self, client, args, kwargs):
         return self.query_algorithm(client, '__call__', args, kwargs)
 
-    def query_algorithm(self, client, method, args, kwargs):
+    def query_algorithm(self, client, method, args, kwargs, return_raw_results=False):
 
         if client == 'beam':
             args = self.load_function(args)
@@ -264,9 +271,10 @@ class BeamServer(Processor):
             method = getattr(self.obj, method)
             results = method(*args, **kwargs)
 
-        if client == 'beam':
+        if not return_raw_results and client == 'beam':
             io_results = io.BytesIO()
             self.dump_function(results, io_results)
             io_results.seek(0)
             return io_results
+
         return results

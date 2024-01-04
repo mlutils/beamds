@@ -1,5 +1,7 @@
 import json
+import time
 from threading import Thread
+import io
 
 from .dispatcher import BeamDispatcher
 from .worker import BeamWorker
@@ -8,7 +10,7 @@ from ..serve.server import BeamServer
 from ..logger import beam_logger as logger
 import websockets
 import asyncio
-from celery.signals import task_postrun
+from celery.result import AsyncResult
 from flask import request, jsonify, send_file
 from ..utils import ThreadSafeDict, find_port
 
@@ -48,9 +50,11 @@ class AsyncServer(HTTPServer):
                         tls=tls, n_threads=n_threads, application=application,
                         predefined_attributes=predefined_attributes, **kwargs)
 
+        self.app.add_url_rule('/poll/<client>/', view_func=self.poll)
+
         self.tasks = ThreadSafeDict()
         self.ws_clients = ThreadSafeDict()
-        task_postrun.connect(self.postprocess)
+        # task_postrun.connect(self.postprocess)
 
         if ws_tls:
             import ssl
@@ -66,6 +70,19 @@ class AsyncServer(HTTPServer):
             self.postrun_callback = self.postrun
         else:
             self.postrun_callback = postrun
+
+    def poll(self, client):
+
+        task_id = request.args.get('task_id')
+        result = self.dispatcher.poll(task_id)
+
+        if client == 'beam':
+            io_results = io.BytesIO()
+            self.dump_function(result, io_results)
+            io_results.seek(0)
+            return send_file(io_results, mimetype="text/plain")
+        else:
+            return jsonify(result)
 
     async def websocket_handler(self, ws):
         # Wait for the client to send its client_id
@@ -87,7 +104,7 @@ class AsyncServer(HTTPServer):
         loop.run_until_complete(start_server)
         loop.run_forever()
 
-    def run(self, ws_host=None, ws_port=None, enable_websocket=False, **kwargs):
+    def run(self, ws_host=None, ws_port=None, enable_websocket=True, **kwargs):
 
         self.worker.run()
 
@@ -100,7 +117,22 @@ class AsyncServer(HTTPServer):
             # Run the WebSocket server as an asyncio task
             Thread(target=self.run_ws_server, args=(ws_host, ws_port)).start()
 
-        super().run(**kwargs)
+        super().run(non_blocking=True, **kwargs)
+
+        while True:
+            try:
+                sleep = True
+                for task_id in self.tasks.keys():
+                    res = AsyncResult(task_id)
+                    if res.ready():
+                        sleep = False
+                        task_inf = self.tasks.pop(task_id)
+                        self.postprocess(task_id=task_id, task=res, task_inf=task_inf)
+                if sleep:
+                    time.sleep(0.1)
+            except KeyboardInterrupt:
+                logger.info("Keyboard interrupt, exiting...")
+                break
 
     def query_algorithm(self, client, method, *args, **kwargs):
 
@@ -124,21 +156,34 @@ class AsyncServer(HTTPServer):
             args = data.pop('args', [])
             kwargs = data.pop('kwargs', {})
 
-        task_id = BeamServer.query_algorithm(self, client, method, args, kwargs)
+        if method not in ['poll']:
+            task_id = BeamServer.query_algorithm(self, client, method, args, kwargs, return_raw_results=True)
+            if type(task_id) is not str:
+                print(task_id)
+            metadata = self.request_metadata(client=client, method=method)
+            self.tasks[task_id] = {'metadata': metadata, 'postrun_args': postrun_args,
+                                   'postrun_kwargs': postrun_kwargs, 'ws_client_id': ws_client_id}
 
-        metadata = self.request_metadata(client=client, method=method)
-        self.tasks[task_id] = {'metadata': metadata, 'postrun_args': postrun_args,
-                               'postrun_kwargs': postrun_kwargs, 'ws_client_id': ws_client_id}
+            if client == 'beam':
+                io_results = io.BytesIO()
+                self.dump_function(task_id, io_results)
+                io_results.seek(0)
+                return send_file(io_results, mimetype="text/plain")
+            else:
+                return jsonify(task_id)
 
-        if client == 'beam':
-            return send_file(task_id, mimetype="text/plain")
         else:
-            return jsonify(task_id)
+            return BeamServer.query_algorithm(self, client, method, args, kwargs)
 
-    def postprocess(self, sender=None, task_id=None, task=None, args=None, kwargs=None, retval=None, state=None,
-                    **other_kwargs):
-        logger.info(f"Task {task_id} finished with state {state} (sender: {sender}).")
-        task_inf = self.tasks.pop(task_id, None)
+
+    def postprocess(self, task_id=None, task_inf=None, task=None):
+
+        state = task.state
+        args = task.args
+        kwargs = task.kwargs
+        retval = task.result
+
+        logger.info(f"Task {task_id} finished with state {state}.")
 
         if task_inf is None:
             logger.warning(f"Task {task_id} not found in tasks dict")
@@ -151,8 +196,9 @@ class AsyncServer(HTTPServer):
             if ws and ws.open:
                 asyncio.run(ws.send(json.dumps({"task_id": task_id, "state": state})))
             else:
-                asyncio.run(ws.close())
-                self.ws_clients.pop(client_id)
+                if ws:
+                    asyncio.run(ws.close())
+                    self.ws_clients.pop(client_id)
 
         self.postrun_callback(task_args=args, task_kwargs=kwargs, retval=retval, state=state, task=task, **task_inf)
 

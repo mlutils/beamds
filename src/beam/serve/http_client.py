@@ -16,11 +16,11 @@ class HTTPClient(BeamClient):
     def get_info(self):
         return requests.get(f'{self.protocol}://{self.host}/').json()
 
-    def get(self, path):
+    def get(self, path, **kwargs):
 
-        response = requests.get(f'{self.protocol}://{self.host}/{path}')
+        response = requests.get(f'{self.protocol}://{self.host}/{path}', **kwargs)
         if response.status_code == 200:
-            response = self.load_function(io.BytesIO(response.raw.data))
+            response = self.load_function(io.BytesIO(response.content))
 
         return response
 

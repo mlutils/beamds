@@ -87,7 +87,10 @@ class HTTPServer(BeamServer):
 
     def get_variable(self, client, name):
         io_results = super().get_variable(client, name)
-        return send_file(io_results, mimetype="text/plain")
+        if client == 'beam':
+            return send_file(io_results, mimetype="text/plain")
+        else:
+            return jsonify(io_results)
 
     def _run(self, host="0.0.0.0", port=None, server='waitress', use_reloader=True):
 

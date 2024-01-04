@@ -12,7 +12,7 @@ from ..serve.http_client import HTTPClient
 class AsyncClient(HTTPClient):
 
     def __init__(self, *args, ws_port=None, ws_tls=False, hostname=None,
-                 postrun=None, enable_websocket=False,  **kwargs):
+                 postrun=None, enable_websocket=True,  **kwargs):
         super().__init__(*args, hostname=hostname, **kwargs)
 
         # websocket.enableTrace(True)
@@ -71,6 +71,9 @@ class AsyncClient(HTTPClient):
     def postrun(self, result):
         pass
 
+    def poll(self, task_id):
+        return self.get('/poll/beam', params={'task_id': task_id})
+
     def on_message(self, ws, message):
         data = json.loads(message)
 
@@ -80,7 +83,7 @@ class AsyncClient(HTTPClient):
 
         if state == 'SUCCESS':
             result = self.poll(task_id)
-            self.postrun(result)
+            self.postrun_callback(result)
         else:
             metadata = self.metadata(task_id)
             logger.error(f"Task {task_id} failed with state {state} and metadata: {metadata}")
