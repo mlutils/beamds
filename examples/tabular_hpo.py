@@ -20,8 +20,8 @@ if __name__ == '__main__':
                        copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=100,
                        tensorboard=False, stop_at=0.98, n_gpus=1, device=0, n_quantiles=6, label_smoothing=.2)
 
-    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24,
-                           n_jobs=n_jobs, hpo_path=os.path.join(logs_path, 'hpo'))
+    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, gpus_per_trial=1,
+                           cpus_per_trial=10, n_jobs=n_jobs, hpo_path=os.path.join(logs_path, 'hpo'))
 
     kwargs_all = {}
 

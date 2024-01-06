@@ -36,6 +36,9 @@ class AsyncClient(HTTPClient):
         self.ws = None
         self.wst = None
 
+    def set_callback(self, callback):
+        self.postrun_callback = callback
+
     def post(self, path, *args, postrun_args=None, postrun_kwargs=None, **kwargs):
 
         io_args = io.BytesIO()
