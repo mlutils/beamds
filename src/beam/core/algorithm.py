@@ -28,6 +28,7 @@ class Algorithm(Processor):
 
         self.clear_experiment_properties()
         self._experiment = None
+        self._device = None
         if experiment is not None:
             self.experiment = experiment
 
@@ -245,17 +246,14 @@ class Algorithm(Processor):
         #     return None
         if self.in_cache('accelerator') and self.accelerator.device_placement:
             device = self.accelerator.device
+        elif self._device is not None:
+            device = self._device
         elif self.experiment is not None and hasattr(self.experiment, 'device'):
             device = beam_device(self.experiment.device)
         else:
             device = beam_device(self.get_hparam('device'))
 
         return device
-
-    @device.setter
-    def device(self, device):
-        if not self.accelerate or not self.accelerator.device_placement:
-            self._device = beam_device(device)
 
     @lazy_property
     def deepspeed_plugin(self):
@@ -361,7 +359,10 @@ class Algorithm(Processor):
 
         logger.warning("Current implementation transforms only the networks dictionary. Don't use for training.")
         device = torch.device(device)
-        self.device = device
+
+        if not self.accelerate or not self.accelerator.device_placement:
+            self._device = beam_device(device)
+            self.clear_cache('device')
 
         for net in self.networks.values():
             net.to(device)
@@ -643,45 +644,8 @@ class Algorithm(Processor):
         self.refresh_optimizers_and_schedulers_pointers()
 
     def deepspeed_config(self, target='accelerate'):
-
-        if self.get_hparam('deepspeed_config') is not None:
-            config_file = beam_path(self.get_hparam('deepspeed_config'))
-            config = config_file.read()
-            return config
-
-        if target == 'accelerate':
-            offload_optimizer_device = os.environ.get("ACCELERATE_DEEPSPEED_OFFLOAD_OPTIMIZER_DEVICE", "none")
-            offload_param_device = os.environ.get("ACCELERATE_DEEPSPEED_OFFLOAD_PARAM_DEVICE", "none")
-            offload_param_nvme_path = os.environ.get("ACCELERATE_DEEPSPEED_OFFLOAD_OPTIMIZER_NVME_PATH", "none")
-            offload_optimizer_nvme_path = os.environ.get("ACCELERATE_DEEPSPEED_OFFLOAD_PARAM_NVME_PATH", "none")
-            zero3_save_16bit_model = (os.environ.get("ACCELERATE_DEEPSPEED_ZERO3_SAVE_16BIT_MODEL", "false") == "true")
-            config = {
-                "train_batch_size": "auto",
-                "train_micro_batch_size_per_gpu": self.batch_size_train,
-                "gradient_accumulation_steps": self.get_hparam('accumulate'),
-                "zero_optimization": {
-                    "stage": self.get_hparam('zero-stage'),
-                    "offload_optimizer": {
-                        "device": offload_optimizer_device,
-                        "nvme_path": offload_optimizer_nvme_path
-                        if offload_optimizer_device == "nvme"
-                        else None,
-                    },
-                    "offload_param": {
-                        "device": offload_param_device,
-                        "nvme_path": offload_param_nvme_path if offload_param_device == "nvme" else None,
-                    },
-                    "stage3_gather_16bit_weights_on_model_save": zero3_save_16bit_model,
-                },
-            }
-        else:
-            from ..config import deepspeed_config
-            config = copy.deepcopy(deepspeed_config)
-
-            config['train_micro_batch_size_per_gpu'] = self.batch_size_train
-            config['gradient_accumulation_steps'] = self.get_hparam('accumulate')
-
-
+        from ..config import deepspeed_config_generator
+        config = deepspeed_config_generator(self.hparams)
         return config
 
         # params =
@@ -1181,7 +1145,7 @@ class Algorithm(Processor):
 
         # net = BeamNN.from_module(net, name=name)
 
-        if self.device is not None:
+        if self.device is not None and self.training_framework != 'deepspeed':
             # print(f"Moving network to device: {self.device}")
             # print(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES')}")
             # print(f"n-device: {torch.cuda.device_count()}")

@@ -3,6 +3,7 @@ import os
 import math
 from pathlib import Path
 from .core import BeamConfig, BeamParam
+from .deepspeed import DeepspeedConfig
 from .utils import _beam_arguments
 
 
@@ -65,6 +66,7 @@ class SamplerConfig(BeamConfig):
         BeamParam('sample_size', int, 100000, 'Periodic sample size for the dynamic sampler'),
     ]
 
+
 class OptimizerConfig(BeamConfig):
 
     parameters = [
@@ -98,17 +100,7 @@ class DistributedTrainingConfig(BeamConfig):
     ]
 
 
-class DeepspeedConfig(DistributedTrainingConfig):
-
-    parameters = [
-        BeamParam('deepspeed_optimizer', str, 'AdamW', 'Optimizer type (currently used for deepspeed configuration only) '
-                                                       'Supported optimizers: [Adam, AdamW, Lamb, OneBitAdam, OneBitLamb]'),
-        BeamParam('deepspeed_config', str, None, 'Deepspeed configuration JSON object.'),
-        BeamParam('zero_stage', int, 2, 'The ZeRO training stage to use.'),
-    ]
-
-
-class AccelerateConfig(DeepspeedConfig):
+class AccelerateConfig(DeepspeedConfig, DistributedTrainingConfig):
     # accelerate parameters
     # based on https://huggingface.co/docs/accelerate/v0.24.0/en/package_reference/accelerator#accelerate.Accelerator
 

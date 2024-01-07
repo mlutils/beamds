@@ -2,9 +2,7 @@ from peft import LoraConfig, get_peft_model, PeftModel
 
 from ..core import Algorithm
 from ..path import local_copy, in_memory_storage
-from transformers import Trainer, LlamaForCausalLM
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
-import transformers
 
 
 class FineTuneLLM(Algorithm):
