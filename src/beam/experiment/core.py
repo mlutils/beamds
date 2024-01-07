@@ -159,7 +159,8 @@ class Experiment(object):
         self.tensorboard_writer = None
 
         self.rank = 0
-        self.world_size = args.n_gpus if self.training_framework != 'accelerate' else 1
+        # self.world_size = args.n_gpus if self.training_framework != 'accelerate' else 1
+        self.world_size = args.n_gpus
 
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')

@@ -14,7 +14,7 @@ def deepspeed_dtype_mapper(dtype):
 class DeepspeedConfig(BeamConfig):
 
     parameters = [
-        BeamParam('deepspeed_config', str, None, 'Deepspeed configuration JSON object.'),
+        BeamParam('deepspeed_config', str, None, 'Deepspeed configuration JSON file.'),
 
         # Optimizer Parameters
 
@@ -111,21 +111,24 @@ def deepspeed_config_generator(hparams):
             hparams.get('stage3_gather_16bit_weights_on_model_save', False))
 
         if hparams.get('offload_param_device', None) is not None:
+            config['zero_optimization']['offload_param'] = {}
             config['zero_optimization']['offload_param']['device'] = hparams.get('offload_param_device')
             config['zero_optimization']['offload_param']['pin_memory'] = hparams.get('offload_param_pin_memory', False)
 
         if hparams.get('offload_optimizer_device', None) is not None:
+            config['zero_optimization']['offload_optimizer'] = {}
             config['zero_optimization']['offload_optimizer']['device'] = hparams.get('offload_optimizer_device')
             config['zero_optimization']['offload_optimizer']['pin_memory'] = hparams.get('offload_optimizer_pin_memory', False)
 
     # optimizer
-    config['optimizer']['type'] = hparams.get('deepspeed_optimizer', 'AdamW')
-    config['optimizer']['params'] = {'lr': hparams.get('lr-dense')}
-    if hparams.get('weight_decay', None) is not None:
-        config['optimizer']['params']['weight_decay'] = hparams.get('weight_decay')
-    if 'adam' in config['optimizer']['type'].lower():
-        config['optimizer']['params']['betas'] = [hparams.get('momentum', 0.8), hparams.get('beta2', 0.999)]
-        config['optimizer']['params']['eps'] = hparams.get('eps', 1e-8)
+    if target == 'deepspeed':
+        config['optimizer']['type'] = hparams.get('deepspeed_optimizer', 'AdamW')
+        config['optimizer']['params'] = {'lr': hparams.get('lr-dense')}
+        if hparams.get('weight_decay', None) is not None:
+            config['optimizer']['params']['weight_decay'] = hparams.get('weight_decay')
+        if 'adam' in config['optimizer']['type'].lower():
+            config['optimizer']['params']['betas'] = [hparams.get('momentum', 0.8), hparams.get('beta2', 0.999)]
+            config['optimizer']['params']['eps'] = hparams.get('eps', 1e-8)
 
     # activation_checkpointing
     config['activation_checkpointing']['partition_activations'] = (

@@ -16,6 +16,7 @@ def get_paths():
 
     return hf_cache_dir
 
+
 if __name__ == '__main__':
 
     dataset_name = 'iamtarun/python_code_instructions_18k_alpaca'
@@ -25,9 +26,10 @@ if __name__ == '__main__':
     #                        n_gpus=1)
     hf_cache_dir = get_paths()
     hparams = FTLLMConfig(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir=hf_cache_dir,
-                          device=0, algorithm=dataset_name.replace('/', '-'), batch_size=16,
-                          training_framework='deepspeed', device_placement=True, dataset=dataset_name, reload=False, resume=-1,
-                          n_gpus=3, model_dtype='bfloat16')
+                          device=0, algorithm=dataset_name.replace('/', '-'), batch_size=10,
+                          training_framework='accelerate', device_placement=True, dataset=dataset_name, reload=False,
+                          resume=-1, n_gpus=4, model_dtype='bfloat16', distributed_backend='nccl',
+                          zero_stage=2)
 
     experiment = Experiment(hparams)
 

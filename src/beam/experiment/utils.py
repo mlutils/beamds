@@ -32,7 +32,7 @@ def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='
         os.environ['LOCAL_RANK'] = str(rank)
 
         import deepspeed
-        deepspeed.init_distributed(dist_backend=backend, auto_mpi_discovery=False,
+        deepspeed.init_distributed(dist_backend=backend, auto_mpi_discovery=backend == 'mpi',
                                    rank=rank, world_size=world_size, distributed_port=port)
     else:
         raise ValueError(f"Unknown distributed framework: {framework}")

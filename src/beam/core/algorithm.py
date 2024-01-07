@@ -293,6 +293,10 @@ class Algorithm(Processor):
             deepspeed_plugin = self.deepspeed_plugin
             device_placement = None if self.deepspeed else self.get_hparam('device_placement')
 
+            if not self.get_hparam('nvlink'):
+                os.environ['NCCL_P2P_DISABLE'] = '1'
+                os.environ['NCCL_IB_DISABLE'] = '1'
+
             return Accelerator(device_placement=device_placement,
                                split_batches=self.get_hparam('split_batches'),
                                mixed_precision=self.accelerate_dtype_mapper(self.mixed_precision_dtype),
@@ -1069,9 +1073,15 @@ class Algorithm(Processor):
 
             net, opt, _, sch = deepspeed.initialize(model=net, optimizer=opt, lr_scheduler=sch,
                                                     config=self.deepspeed_config(target='deepspeed'))
+
+            if self.get_hparam('compile_network'):
+                net = torch.compile(net)
+
             self.networks[k] = net
+
             self.optimizers[k] = opt
-            self.schedulers[k] = sch
+            if sch is not None:
+                self.schedulers[k] = sch
 
         self.refresh_optimizers_and_schedulers_pointers()
 
@@ -1168,6 +1178,9 @@ class Algorithm(Processor):
                     setattr(net_ddp, a, getattr(net, a))
             net = net_ddp
 
+        if not self.deepspeed and not self.accelerate and self.get_hparam('compile_network'):
+            net = torch.compile(net)
+
         return net
 
     def return_dataset(self, subset):
@@ -1217,6 +1230,11 @@ class Algorithm(Processor):
         return dataloader
 
     def schedulers_step(self, objective=None, step_type=None):
+
+        # when using deepspeed, the scheduler is updated implicitly by the optimizer
+        if self.deepspeed:
+            return
+
         if objective is None:
             objective = self.objective
         for k, scheduler in self.schedulers_flat.items():
@@ -1813,7 +1831,7 @@ class Algorithm(Processor):
         if hparams and 'hparams' in state.keys():
             self.hparams = state['hparams']
 
-        return state['aux']
+        return state.pop('aux', None)
 
     def set_auxiliary_state(self, aux):
         pass

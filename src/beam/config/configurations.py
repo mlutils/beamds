@@ -177,6 +177,8 @@ class DDPConfig(BeamConfig):
 
         BeamParam('broadcast_buffers', bool, True, 'For DDP applications: Flag that enables syncing (broadcasting) '
                                                    'buffers of the module at beginning of the forward function.'),
+
+        BeamParam('nvlink', bool, False, 'For DDP applications: whether nvlink is available for faster communication'),
     ]
 
 
@@ -268,6 +270,8 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
                   'Apply torch.compile to optimize the inner_train function to speed up training. '
                   'To use this feature, you must override and use the alg.inner_train function '
                   'in your alg.train_iteration function'),
+        BeamParam('compile_network', bool, False,
+                  'Apply torch.compile to optimize the network forward function to speed up training.'),
 
         # possible combinations for single gpu:
         # 1. torch
