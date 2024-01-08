@@ -89,6 +89,8 @@ class TabularTransformer(torch.nn.Module):
         # TODO: figure out should we add another dummy token for the case of categorical feature in the last position
         self.emb = nn.Embedding(total_tokens + 1, hparams.emb_dim, sparse=hparams.sparse_embedding)
 
+        self.nnn = total_tokens + 1
+
         self.n_rules = hparams.n_rules
 
         if hparams.feature_bias:
@@ -133,6 +135,12 @@ class TabularTransformer(torch.nn.Module):
 
         x1 = x1 + self.tokens_offset
         x2 = x2 + self.tokens_offset
+
+        if x1.max() > self.nnn:
+            print('x1_max', x1.max())
+            print('self.nnn', self.nnn)
+            print('self.n_tokens', self.n_tokens)
+            print(x1)
 
         x1 = self.emb(x1)
         x2 = self.emb(x2)

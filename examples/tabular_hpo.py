@@ -2,7 +2,8 @@ import os
 
 from ray.tune.schedulers import ASHAScheduler
 
-available_devices = [0, 1, 2, 3]
+# available_devices = [0, 1, 2, 3]
+available_devices = [0]
 os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
 n_jobs = len(available_devices)
 
@@ -33,8 +34,8 @@ if __name__ == '__main__':
     # kwargs_all['jannis'] = dict(batch_size=256)
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
-    # kwargs_all['year'] = dict(batch_size=512)
-    kwargs_all['covtype'] = dict(batch_size=1024, n_quantiles=10)
+    kwargs_all['year'] = dict(batch_size=512)
+    # kwargs_all['covtype'] = dict(batch_size=1024, n_quantiles=10)
 
     for k in kwargs_all.keys():
 

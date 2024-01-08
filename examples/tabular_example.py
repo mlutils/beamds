@@ -107,7 +107,7 @@ if __name__ == '__main__':
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128)
+    # kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
@@ -115,6 +115,10 @@ if __name__ == '__main__':
     # kwargs_all['jannis'] = dict(batch_size=256)
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
+
+    kwargs_all['year'] = dict(batch_size=256, emb_dim=128, n_decoder_layers=4, n_encoder_layers=4,
+                              n_quantiles=7, n_rules=128, n_transformer_head=4, transformer_hidden_dim=256)
+
     # kwargs_all['year'] = dict(batch_size=512)
     # kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=10)
 
