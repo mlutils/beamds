@@ -512,6 +512,9 @@ class PureBeamPath:
 
         return x
 
+    def readlines(self):
+        return self.read(readlines=True, ext='.txt')
+
     def read_text(self):
         return self.read(ext='.txt')
 

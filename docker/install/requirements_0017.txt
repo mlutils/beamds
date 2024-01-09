@@ -21,3 +21,4 @@ websockets
 websocket-client
 coolname
 Faker
+tritonclient[all]
