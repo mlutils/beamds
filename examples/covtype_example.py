@@ -224,7 +224,7 @@ class Head(nn.Module):
         return x
 
 
-class BetterEmbedding(torch.nn.Module):
+class BetterEmbedding(nn.Module):
 
     def __init__(self, n_num, n_categories, emb_dim, n_tables=15, initial_mask=1.,
                  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, flatten=False, kaiming_init=False, sparse=True):

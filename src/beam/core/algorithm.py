@@ -6,8 +6,7 @@ import torch
 import copy
 from ..logger import beam_logger as logger
 import numpy as np
-from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler
-from ..nn.core import BeamNN
+from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN
 from ..utils import (to_device, check_type, recursive_concatenate,
                      beam_device, filter_dict, lazy_property,
                      is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key)
@@ -1153,7 +1152,7 @@ class Algorithm(Processor):
 
     def register_network(self, net, name=None):
 
-        # net = BeamNN.from_module(net, name=name)
+        net = BeamNN.from_module(net, name=name, hparams=self.hparams)
 
         if self.device is not None and self.training_framework != 'deepspeed':
             # print(f"Moving network to device: {self.device}")

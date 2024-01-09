@@ -90,6 +90,12 @@ class Processor:
     def get_hparam(self, hparam, default=None, preferred=None, specific=None):
         return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
 
+    def set_hparam(self, hparam, value, tags=None):
+        self.hparams.set(hparam, value, tags=tags)
+
+    def update_hparams(self, hparams, tags=None):
+        self.hparams.update(hparams, tags=tags)
+
     @classmethod
     def from_path(cls, path):
         path = beam_path(path)

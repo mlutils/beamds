@@ -11,11 +11,12 @@ import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
 import pandas as pd
 from ..logger import beam_logger as logger
+from ..nn import BeamNN
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
 
-class TabularTransformer(torch.nn.Module):
+class TabularTransformer(BeamNN):
     """
     The TabularTransformer class is a PyTorch module that implements a transformer-based model for tabular data classification. It takes as input a set of hyperparameters, the number of classes, the number of tokens, and a categorical mask. The class inherits from the torch.nn.Module class.
 

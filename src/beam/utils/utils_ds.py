@@ -71,7 +71,9 @@ def as_something_recursively(as_something_func):
                     return as_something_func(x, x_type=x_type, **kwargs)
                 except:
                     pass
-            return [as_func_recursively(s, **kwargs) for s in x]
+            if x_type.minor == 'tuple':
+                return tuple(as_func_recursively(xi, **kwargs) for xi in x)
+            return [as_func_recursively(xi, **kwargs) for xi in x]
         elif x is None:
             return None
 

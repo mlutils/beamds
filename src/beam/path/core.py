@@ -41,6 +41,7 @@ class PureBeamPath:
         self.mode = "rb"
         self.file_object = None
         self.client = client
+        self.scheme = self.url.scheme
 
     @property
     def str(self):

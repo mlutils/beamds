@@ -36,7 +36,7 @@ class BeamNN(nn.Module, Processor):
         self._module = _module
 
     @classmethod
-    def from_module(cls, module):
+    def from_module(cls, module, *args, hparams=None, **kwargs):
 
         """
         Class method to create a BeamNN object from an existing nn.Module.
@@ -49,168 +49,104 @@ class BeamNN(nn.Module, Processor):
         """
 
         if isinstance(module, cls):
+            if hparams is not None:
+                module.update_hparams(hparams)
             beam_module = module
         else:
-            beam_module = cls(_module=module)
+            beam_module = cls(*args, _module=module, hparams=hparams, **kwargs)
         return beam_module
 
+    def _mixin_method(self, method_name, *args, **kwargs):
+        if self.module_exists:
+            return getattr(self._module, method_name)(*args, **kwargs)
+        return getattr(nn.Module, method_name)(self, *args, **kwargs)
+
     def parameters(self, *args, **kwargs):
-        if self._module is not None:
-            return self._module.parameters(*args, **kwargs)
-        else:
-            return nn.Module.parameters(self, *args, **kwargs)
+        return self._mixin_method('parameters', *args, **kwargs)
 
     def named_parameters(self, *args, **kwargs):
-        if self._module is not None:
-            return self._module.named_parameters(*args, **kwargs)
-        else:
-            return nn.Module.named_parameters(self, *args, **kwargs)
+        return self._mixin_method('named_parameters', *args, **kwargs)
 
     def state_dict(self, *args, **kwargs):
-        if self._module is not None:
-            return self._module.state_dict(*args, **kwargs)
-        else:
-            return nn.Module.state_dict(self, *args, **kwargs)
+        return self._mixin_method('state_dict', *args, **kwargs)
 
     def load_state_dict(self, state_dict, *args, **kwargs):
-        if self._module is not None:
-            self._module.load_state_dict(state_dict, *args, **kwargs)
-        else:
-            nn.Module.load_state_dict(self, state_dict, *args, **kwargs)
+        return self._mixin_method('load_state_dict', state_dict, *args, **kwargs)
 
     def apply(self, fn):
-        if self._module is not None:
-            self._module.apply(fn)
-        else:
-            nn.Module.apply(self, fn)
+        return self._mixin_method('apply', fn)
 
     def register_buffer(self, name, tensor, persistent=True):
-        if self._module is not None:
-            self._module.register_buffer(name, tensor, persistent)
-        else:
-            nn.Module.register_buffer(self, name, tensor, persistent)
+        return self._mixin_method('register_buffer', name, tensor, persistent)
 
     def register_parameter(self, name, param):
-        if self._module is not None:
-            self._module.register_parameter(name, param)
-        else:
-            nn.Module.register_parameter(self, name, param)
+        return self._mixin_method('register_parameter', name, param)
 
     def extra_repr(self):
-        if self._module is not None:
-            return self._module.extra_repr()
-        else:
-            return nn.Module.extra_repr(self)
+        return self._mixin_method('extra_repr')
 
     def children(self):
-        if self._module is not None:
-            return self._module.children()
-        else:
-            return nn.Module.children(self)
+        return self._mixin_method('children')
 
     def modules(self):
-        if self._module is not None:
-            for module in self._module.modules():
-                yield module
-        else:
-            for module in nn.Module.modules(self):
-                yield module
+        return self._mixin_method('modules')
 
     def named_modules(self, *args, **kwargs):
-        if self._module is not None:
-            for name, module in self._module.named_modules(*args, **kwargs):
-                yield name, module
-        else:
-            for name, module in nn.Module.named_modules(self, *args, **kwargs):
-                yield name, module
+        return self._mixin_method('named_modules', *args, **kwargs)
 
     def named_children(self) -> Iterator[Tuple[str, nn.Module]]:
-        if self._module is not None:
-            for name, module in self._module.named_children():
-                yield name, module
-        else:
-            for name, module in nn.Module.named_children(self):
-                yield name, module
+        return self._mixin_method('named_children')
 
     def get_parameter(self, target: str) -> nn.Parameter:
-        if self._module is not None:
-            return self._module.get_parameter(target)
-        else:
-            return nn.Module.get_parameter(self, target)
+        return self._mixin_method('get_parameter', target)
 
     def get_buffer(self, target: str) -> torch.Tensor:
-        if self._module is not None:
-            return self._module.get_buffer(target)
-        else:
-            return nn.Module.get_buffer(self, target)
+        return self._mixin_method('get_buffer', target)
 
     def get_submodule(self, target: str) -> nn.Module:
-        if self._module is not None:
-            return self._module.get_submodule(target)
-        else:
-            return nn.Module.get_submodule(self, target)
+        return self._mixin_method('get_submodule', target)
 
     def buffers(self, recurse: bool = True) -> Iterator[Tensor]:
-        if self._module is not None:
-            return self._module.buffers(recurse)
-        else:
-            return nn.Module.buffers(self, recurse)
+        return self._mixin_method('buffers', recurse)
 
     def named_buffers(self, *arg, **kwargs) -> Iterator[Tuple[str, Tensor]]:
-        if self._module is not None:
-            return self._module.named_buffers(*arg, **kwargs)
-        else:
-            return nn.Module.named_buffers(self, *arg, **kwargs)
+        return self._mixin_method('named_buffers', *arg, **kwargs)
 
     def register_module(self, *args, **kwargs) -> None:
-        if self._module is not None:
-            self._module.register_module(*args, **kwargs)
-        else:
-            nn.Module.register_module(self, *args, **kwargs)
-
-    def get_extra_state(self, *args, **kwargs):
-        if self._module is not None:
-            return self._module.get_extra_state(*args, **kwargs)
-        else:
-            return nn.Module.get_extra_state(self, *args, **kwargs)
-
-    def set_extra_state(self, *args, **kwargs):
-        if self._module is not None:
-            return self._module.set_extra_state(*args, **kwargs)
-        else:
-            return nn.Module.set_extra_state(self, *args, **kwargs)
+        return self._mixin_method('register_module', *args, **kwargs)
 
     def to_empty(self, *args, **kwargs):
-        if self._module is not None:
-            return self._module.to_empty(*args, **kwargs)
-        else:
-            return nn.Module.to_empty(self, *args, **kwargs)
+        return self._mixin_method('to_empty')(self, *args, **kwargs)
 
-    def add_module(self, name: str, module: Optional['Module']) -> None:
-        if self._module is not None:
-            self._module.add_module(name, module)
-        else:
-            nn.Module.add_module(self, name, module)
+    def add_module(self, name: str, module: Optional[nn.Module]) -> None:
+        return self._mixin_method('add_module', name, module)
 
     def __repr__(self):
-        module_repr = repr(self._module) if self._module is not None else nn.Module.__repr__(self)
-        return f"BeamNN({module_repr})"
+        if self.module_exists:
+            module_repr = repr(self._module)
+            return f"BeamNN(wrapper)(\n{module_repr})"
+        return nn.Module.__repr__(self)
+
+    @property
+    def module_exists(self):
+        if not hasattr(self, '_module') or self._module is None:
+            return False
+        return True
 
     def forward(self, *args, **kwargs):
-        if self._module is not None:
+        if self.module_exists:
             return self._module.forward(*args, **kwargs)
-        else:
-            raise NotImplementedError("Implement forward method in your BeamNN subclass")
+        raise NotImplementedError("Implement forward method in your BeamNN subclass")
 
     def __getattr__(self, item):
-        if self._module is None:
-            return nn.Module.__getattr__(self, item)
-        return getattr(self._module, item)
+        if item != '_module' and self.module_exists:
+            return getattr(self._module, item)
+        return nn.Module.__getattr__(self, item)
 
     def __setattr__(self, key, value):
-        if self._module is None:
-            return nn.Module.__setattr__(self, key, value)
-        return setattr(self._module, key, value)
+        if self.module_exists and not hasattr(self, key):
+            return setattr(self._module, key, value)
+        return nn.Module.__setattr__(self, key, value)
 
     def __call__(self, *args, **kwargs):
 
@@ -218,19 +154,19 @@ class BeamNN(nn.Module, Processor):
             self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')),
                                   'kwargs': recursive_clone(to_device(kwargs, device='cpu'))}
 
-        if self._module is None:
-            return nn.Module.__call__(self, *args, **kwargs)
-        return self._module(*args, **kwargs)
+        if self.module_exists:
+            return self._module(*args, **kwargs)
+        return nn.Module.__call__(self, *args, **kwargs)
 
-    def optimize(self, method='compile', **kwargs):
+    def optimize(self, method='compile', *args, **kwargs):
         if method == 'compile':
-            return self._compile(**kwargs)
+            return self._compile(*args, **kwargs)
         elif method == 'jit_trace':
-            return self._jit_trace(**kwargs)
+            return self._jit_trace(*args, **kwargs)
         elif method == 'jit_script':
-            return self._jit_script(**kwargs)
+            return self._jit_script(*args, **kwargs)
         elif method == 'onnx':
-            return self._onnx(**kwargs)
+            return self._onnx(*args, **kwargs)
         else:
             raise ValueError(f'Invalid optimization method: {method}, must be one of "compile", "jit_trace", '
                              f'"jit_script", or "onnx"')
@@ -239,14 +175,15 @@ class BeamNN(nn.Module, Processor):
     def sample_input(self):
         return self._sample_input
 
-    def _jit_trace(self, optimize=None, check_trace=True, check_inputs=None, check_tolerance=1e-5, strict=True):
-        return torch.jit.trace(self, example_inputs=self.sample_input['args'], optimize=optimize,
+    def _jit_trace(self, check_trace=True, check_inputs=None, check_tolerance=1e-5, strict=True):
+        return torch.jit.trace(self, example_inputs=self.sample_input['args'],
                                check_trace=check_trace, check_inputs=check_inputs, check_tolerance=check_tolerance,
                                strict=strict, example_kwarg_inputs=self.sample_input['kwargs'])
 
-    def _jit_script(self, optimize=None):
-        return torch.jit.script(self, optimize=optimize,
-                                example_inputs=(self.sample_input['args'], self.sample_input['kwargs']))
+    def _jit_script(self):
+        if self.sample_input['kwargs']:
+            raise NotImplementedError("JIT script does not support keyword arguments")
+        return torch.jit.script(self, example_inputs=[self.sample_input['args']])
 
     def _compile(self, fullgraph=False, dynamic=False, backend="inductor",
                  mode=None, options=None, disable=False):
@@ -277,9 +214,7 @@ class BeamNN(nn.Module, Processor):
                              f'must be one of "ONNX", "ONNX_ATEN", or "ONNX_FALLTHROUGH"')
 
         path = beam_path(path)
-        disable = path.scheme == 'file'
-
-        with local_copy(path, disable=disable) as tmp_path:
+        with local_copy(path, as_beam_path=False) as tmp_path:
             torch.onnx.export(self, self.sample_input['args'], tmp_path, export_params=export_params,
                                      verbose=verbose, training=training, input_names=input_names,
                                      output_names=output_names, operator_export_type=operator_export_type,

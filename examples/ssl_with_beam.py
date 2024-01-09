@@ -17,8 +17,11 @@ from examples.example_utils import add_beam_to_path
 
 from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
 from src.beam import tqdm, beam_logger, basic_beam_parser, beam_boolean_feature, BeamOptimizer
-from src.beam import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
+from src.beam.ssl.models import BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
+from src.beam.ssl.beam_ssl import BeamSimilarity
+from src.beam.ssl.beam_similarity import BeamSimilarity
 from src.beam.ssl import get_ssl_parser
+from src.beam import beam_logger as logger
 
 import requests
 from collections import namedtuple
