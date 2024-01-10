@@ -101,13 +101,13 @@ if __name__ == '__main__':
     kwargs_base = dict(algorithm='debug_reporter', data_path=data_path, logs_path=logs_path,
                        scheduler='one_cycle', device_placement=True, device=0, n_gpus=1,
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=100,
-                       stop_at=-.57, n_quantiles=6, label_smoothing=.2,
+                       n_quantiles=6, label_smoothing=.2,
                        model_dtype='float32', training_framework='torch',
                        compile_train=False, sparse_embedding=False)
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128)
+    # kwargs_all['california_housing'] = dict(batch_size=128, stop_at=-.43)
     # kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     #                           n_quantiles=7, n_rules=128, n_transformer_head=4, transformer_hidden_dim=256)
 
     # kwargs_all['year'] = dict(batch_size=512)
-    # kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=10)
+    kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=10)
 
     for k in kwargs_all.keys():
 

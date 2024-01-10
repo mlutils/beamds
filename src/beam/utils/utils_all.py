@@ -430,14 +430,14 @@ def check_type(x, check_minor=True, check_element=True):
 
     major type: container, array, scalar, none, other
     minor type: dict, list, tuple, set, tensor, numpy, pandas, scipy_sparse, native, none
-    elements type: array, int, float, complex, str, object, empty, none, unknown
+    elements type: array, int, float, complex, bool, str, object, empty, none, unknown
 
     '''
 
     if np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape))):
         mjt = 'scalar'
         if check_minor:
-            if type(x) in [int, float, str]:
+            if type(x) in [int, float, str, complex, bool]:
                 mit = 'native'
             else:
                 mit = check_minor_type(x)

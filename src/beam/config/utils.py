@@ -57,19 +57,20 @@ def normalize_value(v):
     return v
 
 
-def add_unknown_arguments(args, unknown):
+def add_unknown_arguments(args, unknown, silent=False):
     args = copy.deepcopy(args)
 
     i = 0
 
-    if len(unknown) > 0:
+    if len(unknown) > 0 and not silent:
         logger.warning(f"Parsing unkown arguments: {unknown}. Please check for typos")
 
     while i < len(unknown):
 
         arg = unknown[i]
         if not arg.startswith("-"):
-            logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it as it does not start with \'-\' sign")
+            if not silent:
+                logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it as it does not start with \'-\' sign")
             i += 1
             continue
         if arg.startswith("--"):
@@ -86,7 +87,8 @@ def add_unknown_arguments(args, unknown):
         if '=' in arg:
             arg = arg.split('=')
             if len(arg) != 2:
-                logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it contains more than one \'=\' sign")
+                if not silent:
+                    logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it contains more than one \'=\' sign")
                 i += 1
                 continue
             k, v = arg
@@ -106,7 +108,7 @@ def add_unknown_arguments(args, unknown):
     return args
 
 
-def _beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
+def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=False, strict=False, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
@@ -160,7 +162,8 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
         args = pr.parse_args([])
     else:
         args, unknown = pr.parse_known_args()
-        args = add_unknown_arguments(args, unknown)
+        if not strict:
+            args = add_unknown_arguments(args, unknown, silent=silent)
 
     for k, v in kwargs.items():
         if k not in args:

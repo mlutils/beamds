@@ -1,5 +1,6 @@
 import math
 import os
+from argparse import Namespace
 from collections import defaultdict
 from torch import nn
 import torch
@@ -9,7 +10,8 @@ import numpy as np
 from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN
 from ..utils import (to_device, check_type, recursive_concatenate,
                      beam_device, filter_dict, lazy_property,
-                     is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key)
+                     is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key,
+                     check_nvlink)
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
@@ -241,8 +243,6 @@ class Algorithm(Processor):
 
     @lazy_property
     def device(self):
-        # if self.deepspeed:
-        #     return None
         if self.in_cache('accelerator') and self.accelerator.device_placement:
             device = self.accelerator.device
         elif self._device is not None:
@@ -286,17 +286,19 @@ class Algorithm(Processor):
 
     @lazy_property
     def accelerator(self):
+
+        acc = None
         if self.accelerate:
             from accelerate import Accelerator
 
             deepspeed_plugin = self.deepspeed_plugin
             device_placement = None if self.deepspeed else self.get_hparam('device_placement')
 
-            if not self.get_hparam('nvlink'):
+            if not check_nvlink():
                 os.environ['NCCL_P2P_DISABLE'] = '1'
                 os.environ['NCCL_IB_DISABLE'] = '1'
 
-            return Accelerator(device_placement=device_placement,
+            acc = Accelerator(device_placement=device_placement,
                                split_batches=self.get_hparam('split_batches'),
                                mixed_precision=self.accelerate_dtype_mapper(self.mixed_precision_dtype),
                                gradient_accumulation_steps=self.get_hparam('accumulate'),
@@ -312,7 +314,8 @@ class Algorithm(Processor):
                                dynamo_backend=self.get_hparam('dynamo_backend'),
                                gradient_accumulation_plugin=self.gradient_accumulation_plugin,
                                )
-        return None
+            self.clear_cache('device')
+        return acc
 
     @property
     def state_attributes(self):
@@ -650,21 +653,6 @@ class Algorithm(Processor):
         from ..config import deepspeed_config_generator
         config = deepspeed_config_generator(self.hparams)
         return config
-
-        # params =
-        # lr = self.get_hparam('lr'),
-        # weight_decay = self.get_hparam('weight_decay'),
-        # eps = self.get_hparam('eps'),
-        # optimizer_config = dict(type=self.hparams.get('deepspeed-optimizer'),
-        #                         params=params)
-        #
-        # config = dict(train_micro_batch_size_per_gpu=self.batch_size_train,
-        #               gradient_accumulation_steps=self.get_hparam('accumulate'),
-        #               optimizer=optimizer_config, scheduler=scheduler_config,
-        #               )
-        #
-        #
-        # return config
 
     def reset_optimizers_and_schedulers(self):
 
@@ -1019,41 +1007,6 @@ class Algorithm(Processor):
 
         self.refresh_optimizers_and_schedulers_pointers()
 
-        # print('distributed type:')
-        # print(self.accelerator.distributed_type)
-        # print('deepspeed_engine_wrapped')
-        # print(type(self.accelerator.deepspeed_engine_wrapped))
-
-        # if self.accelerator is not None:
-        #     self.persistent_dataloaders[k][s]['dataloader'] = self.accelerator.prepare_data_loader(
-        #         self.persistent_dataloaders[k][s]['dataloader'])
-        #
-        # if self.accelerator is not None:
-        #     for k, scheduler in self.schedulers.items():
-        #
-        #         if isinstance(scheduler, MultipleScheduler):
-        #             scheduler.prepare(self.accelerator)
-        #         elif isinstance(scheduler, BeamScheduler):
-        #             scheduler.prepare(self.accelerator)
-        #         else:
-        #             self.schedulers[k] = self.accelerator.prepare_scheduler(scheduler)
-        #
-        # if self.accelerator:
-        #     if self.accelerator.device_placement:
-        #         # let accelerate handle the device placement but provide accelerator with the correct dtype
-        #         net = net.to('cpu', dtype=self.model_dtype)
-        #     else:
-        #         net = net.to(self.device, dtype=self.model_dtype)
-        #
-        #     if not self.multip_procees_accelerate:
-        #         net = self.accelerator.prepare(net)
-        #
-        # if self.accelerator is not None:
-        #     if isinstance(opt, BeamOptimizer):
-        #         opt.prepare(self.accelerator)
-        #     else:
-        #         opt = self.accelerator.prepare_optimizer(opt)
-
     def prepare_deepspeed(self):
 
         import deepspeed
@@ -1061,20 +1014,10 @@ class Algorithm(Processor):
             opt = self.optimizers[k] if k in self.optimizers else None
             sch = self.schedulers[k] if k in self.schedulers else None
 
-            # if self.hparams.get('deepspeed-dataloader', False):
-            #
-            #     if len(self.persistent_dataloaders) > 1:
-            #         logger.warning("DeepSpeed dataloader is not supported for multiple datasets. "
-            #                        "Defaulting to PyTorch dataloader.")
-            #     else:
-            #         dataset_name = list(self.datasets)[0]
-            #         dataloader = self.persistent_dataloaders[dataset_name]['train']['dataloader']
+            deepspeed_config = Namespace(local_rank=self.rank, device_rank=int(self.device.index),
+                                         deepspeed_config=self.deepspeed_config(target='deepspeed'))
 
-            net, opt, _, sch = deepspeed.initialize(model=net, optimizer=opt, lr_scheduler=sch,
-                                                    config=self.deepspeed_config(target='deepspeed'))
-
-            if self.get_hparam('compile_network'):
-                net = torch.compile(net)
+            net, opt, _, sch = deepspeed.initialize(deepspeed_config, model=net, optimizer=opt, lr_scheduler=sch)
 
             self.networks[k] = net
 
@@ -1083,10 +1026,6 @@ class Algorithm(Processor):
                 self.schedulers[k] = sch
 
         self.refresh_optimizers_and_schedulers_pointers()
-
-        from deepspeed import DeepSpeedEngine
-        # net = DeepSpeedEngine(net, config=self.experiment.ds_config_file)
-
 
     def get_optimizer_name(self, opt):
         i = id(opt)
@@ -1154,10 +1093,7 @@ class Algorithm(Processor):
 
         net = BeamNN.from_module(net, name=name, hparams=self.hparams)
 
-        if self.device is not None and self.training_framework != 'deepspeed':
-            # print(f"Moving network to device: {self.device}")
-            # print(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES')}")
-            # print(f"n-device: {torch.cuda.device_count()}")
+        if self.device is not None:
             net = net.to(self.device, dtype=self.model_dtype)
 
         if self.ddp:
@@ -1177,8 +1113,8 @@ class Algorithm(Processor):
                     setattr(net_ddp, a, getattr(net, a))
             net = net_ddp
 
-        if not self.deepspeed and not self.accelerate and self.get_hparam('compile_network'):
-            net = torch.compile(net)
+        if not self.accelerate and self.get_hparam('compile_network'):
+            net = net.optimize('compile')
 
         return net
 

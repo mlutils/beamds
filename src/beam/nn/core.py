@@ -150,9 +150,9 @@ class BeamNN(nn.Module, Processor):
 
     def __call__(self, *args, **kwargs):
 
-        if self._sample_input is None:
-            self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')),
-                                  'kwargs': recursive_clone(to_device(kwargs, device='cpu'))}
+        # if self._sample_input is None:
+        #     self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')),
+        #                           'kwargs': recursive_clone(to_device(kwargs, device='cpu'))}
 
         if self.module_exists:
             return self._module(*args, **kwargs)
@@ -175,7 +175,13 @@ class BeamNN(nn.Module, Processor):
     def sample_input(self):
         return self._sample_input
 
-    def _jit_trace(self, check_trace=True, check_inputs=None, check_tolerance=1e-5, strict=True):
+    def _jit_trace(self, check_trace=None, check_inputs=None, check_tolerance=None, strict=None):
+
+        check_trace = check_trace or self.get_hparam('jit_check_trace', True)
+        check_inputs = check_inputs or self.get_hparam('jit_check_inputs', None)
+        check_tolerance = check_tolerance or self.get_hparam('jit_check_tolerance', 1e-5)
+        strict = strict or self.get_hparam('jit_strict', True)
+
         return torch.jit.trace(self, example_inputs=self.sample_input['args'],
                                check_trace=check_trace, check_inputs=check_inputs, check_tolerance=check_tolerance,
                                strict=strict, example_kwarg_inputs=self.sample_input['kwargs'])
@@ -185,8 +191,15 @@ class BeamNN(nn.Module, Processor):
             raise NotImplementedError("JIT script does not support keyword arguments")
         return torch.jit.script(self, example_inputs=[self.sample_input['args']])
 
-    def _compile(self, fullgraph=False, dynamic=False, backend="inductor",
+    def _compile(self, fullgraph=None, dynamic=None, backend=None,
                  mode=None, options=None, disable=False):
+
+        fullgraph = fullgraph or self.get_hparam('compile_fullgraph', None)
+        dynamic = dynamic or self.get_hparam('compile_dynamic', False)
+        backend = backend or self.get_hparam('compile_backend', 'inductor')
+        mode = mode or self.get_hparam('compile_mode', None)
+        options = options or self.get_hparam('compile_options', None)
+
         return torch.compile(self, fullgraph=fullgraph, dynamic=dynamic, backend=backend,
                              mode=mode, options=options, disable=disable)
 
@@ -194,6 +207,10 @@ class BeamNN(nn.Module, Processor):
               input_names=None, output_names=None, operator_export_type='ONNX', opset_version=None,
               do_constant_folding=True, dynamic_axes=None, keep_initializers_as_inputs=None, custom_opsets=None,
               export_modules_as_functions=False):
+
+
+
+
         import torch.onnx
 
         if training == 'eval':

@@ -114,8 +114,40 @@ class AccelerateConfig(DeepspeedConfig, DistributedTrainingConfig):
     ]
 
 
+class NNCompilerConfig(BeamConfig):
+
+    """
+    For torch compile see:
+    https://pytorch.org/docs/stable/generated/torch.compile.html
+
+    For torch jit see:
+    https://pytorch.org/docs/stable/generated/torch.jit.trace.html
+    """
+
+    parameters = [
+        BeamParam('compile_fullgraph', bool, False, 'Whether it is ok to break model into several subgraphs'),
+        BeamParam('compile_dynamic', bool, None, 'Use dynamic shape tracing. When this is True, '
+                                                  'we will up-front attempt to generate a kernel that is as dynamic as '
+                                                  'possible to avoid recompilations when sizes change.'),
+        BeamParam('compile_backend', str, 'inductor', 'The backend to use for compilation [inductor|torch]'),
+        BeamParam('compile_mode', str, 'default', '[default|reduce-overhead|max-autotune|max-autotune-no-cudagraphs],'
+                                                  ' see https://pytorch.org/docs/stable/generated/torch.compile.html'),
+        BeamParam('compile_options', dict, None, 'Additional options for the compiler'),
+
+
+        BeamParam('jit_check_trace', bool, True, 'Check if the same inputs run through traced code produce the same '
+                                                 'outputs'),
+        BeamParam('jit_check_inputs', list, None, 'A list of tuples of input arguments that should be used to check the '
+                                                  'trace against what is expected.'),
+        BeamParam('jit_check_tolerance', float, 1e-5, 'Floating-point comparison tolerance to use in the checker '
+                                                      'procedure.'),
+        BeamParam('jit_strict', bool, True, 'Only turn this off when you want the tracer to record your mutable container '
+                                            'types'),
+    ]
+
+
 class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
-                       SWAConfig, OptimizerConfig, DatasetConfig, SamplerConfig):
+                       SWAConfig, OptimizerConfig, DatasetConfig, SamplerConfig, NNCompilerConfig):
 
     parameters = [
         BeamParam('objective', str, 'objective', 'A single objective to apply hyperparameter optimization or '
@@ -149,7 +181,7 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
                     tags='tune'),
         BeamParam('lr_dense', float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
         BeamParam('lr_sparse', float, 1e-2, 'learning rate for sparse optimizers', tags='tune'),
-        BeamParam('stop_at', float, 0., 'Early stopping when objective >= stop_at', tags='tune'),
+        BeamParam('stop_at', float, None, 'Early stopping when objective >= stop_at', tags='tune'),
         BeamParam('early_stopping_patience', int, 0, 'Early stopping patience in epochs, '
                                                      'stop when current_epoch - best_epoch >= early_stopping_patience',
                     tags='tune'),

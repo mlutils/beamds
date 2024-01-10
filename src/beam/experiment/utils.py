@@ -132,10 +132,10 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     except KeyboardInterrupt as e:
 
-        tb = traceback.format_exc()
+        # tb = traceback.format_exc()
         logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
         logger.debug(f"KeyboardInterrupt: {e}")
-        logger.debug(f"KeyboardInterrupt: {tb}")
+        # logger.debug(f"KeyboardInterrupt: {tb}")
 
         if rank == 0:
             checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')

@@ -76,8 +76,9 @@ class TabularTransformer(BeamNN):
         """
         super().__init__()
 
-        n_tokens = as_tensor(n_tokens)
-        cat_mask = as_tensor(cat_mask)
+        # n_tokens = as_tensor(n_tokens)
+        # cat_mask = as_tensor(cat_mask)
+
         self.register_buffer('n_tokens', n_tokens.unsqueeze(0))
         n_tokens = n_tokens + 1  # add masking token
         tokens_offset = n_tokens.cumsum(0) - n_tokens
@@ -127,6 +128,9 @@ class TabularTransformer(BeamNN):
         x, x_frac = sample['x'], sample['x_frac']
 
         x1 = (x + 1)
+
+        # logger.critical(f"self.n_tokens.device: {self.n_tokens.device}, x.device: {x.device}")
+
         x2 = torch.minimum(x + 2, self.n_tokens)
 
         if self.training:
@@ -169,6 +173,7 @@ class DeepTabularAlg(Algorithm):
         if networks is None:
             if net_kwargs is None:
                 net_kwargs = dict()
+            net_kwargs = as_tensor(net_kwargs)
             net = TabularTransformer(hparams, **net_kwargs)
             networks = {'net': net}
 
@@ -178,6 +183,8 @@ class DeepTabularAlg(Algorithm):
         self.train_acc = None
         self.previous_masking = 1 - self.get_hparam('mask_rate')
         self.best_masking = 1 - self.get_hparam('mask_rate')
+
+        # logger.critical(f"The device of n_tokens is: {self.networks['net'].n_tokens.device}")
 
     @property
     def task_type(self):

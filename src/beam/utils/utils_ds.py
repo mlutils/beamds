@@ -1,5 +1,6 @@
 import copy
 import os, sys
+import subprocess
 from collections import defaultdict
 import numpy as np
 
@@ -84,12 +85,15 @@ def as_something_recursively(as_something_func):
 
 @as_something_recursively
 def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
-              half=False, return_vector=False, convert_to_tensor=True, copy=False, **kwargs):
+              half=False, return_vector=False, convert_to_tensor=True, copy=False,
+              convert_scalar=False, **kwargs):
 
     if x_type is None:
         x_type = check_type(x, check_element=False)
 
     if not convert_to_tensor and x_type.minor in ['numpy', 'pandas', 'scipy_sparse', 'native', 'modin']:
+        return x
+    if not convert_scalar and x_type.minor == 'native':
         return x
 
     device = beam_device(device)
@@ -927,3 +931,18 @@ def recursive_flat_array(x, x_type=None, tolist=True):
 
     else:
         return [x]
+
+
+def check_nvlink():
+    try:
+        # Running the nvidia-smi command
+        result = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Parsing the output
+        output = result.stdout
+        # Check for NVLink in the output
+        if "NVLink" in output:
+            return True
+        else:
+            return False
+    except FileNotFoundError:
+        return False
