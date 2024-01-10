@@ -4,7 +4,8 @@ import re
 from dataclasses import dataclass, field
 
 from ..core import Processor
-from ..path import beam_path, local_copy
+from ..path import beam_path, local_copy, BeamURL
+from ..utils import lazy_property
 
 
 @dataclass
@@ -40,48 +41,6 @@ class TritonConfig:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write(self._serialize_config(), ext='bin')
 
-    @staticmethod
-    def _parse_config(lines):
-        config_data = {'input': [], 'output': [], 'instance_groups': []}
-        current_section = None
-        section_lines = []
-
-        for line in lines:
-            line = line.strip()
-            if ':' in line and not line.endswith('['):
-                key, value = line.split(':', 1)
-                key = key.strip()
-                value = value.strip().strip('"')
-                if key in ['name', 'platform']:
-                    config_data[key] = value
-                elif key == 'max_batch_size':
-                    config_data[key] = int(value)
-            elif line.endswith('['):
-                current_section = line.split('[')[0].strip()
-                section_lines = []
-            elif line.endswith(']'):
-                if current_section in config_data:
-                    parsed_section = TritonConfig._parse_section(section_lines)
-                    config_data[current_section].append(parsed_section)
-                current_section = None
-                section_lines = []
-            elif current_section:
-                section_lines.append(line)
-
-        return config_data
-
-    @staticmethod
-    def _parse_section(lines):
-        section = {}
-        for line in lines:
-            if ':' in line:
-                key, value = line.split(':', 1)
-                key, value = key.strip(), value.strip().strip('"')
-                if key in ['dims', 'shape']:
-                    value = tuple(map(int, value.strip('[]').split(',')))
-                section[key] = value
-        return section
-
     def _serialize_config(self):
         config_str = f'name: "{self.name}"\n'
         config_str += f'platform: "{self.platform}"\n'
@@ -104,4 +63,42 @@ class TritonConfig:
 
 
 class TritonClient(Processor):
-    pass
+    def __init__(self, url=None, scheme='http', host='localhost', port=8000, model_name=None, model_version=None,
+                 verbose=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        path = None
+        if model_name is not None:
+            model_version = model_version or ''
+            path = f"{model_name}/{model_version}"
+
+        self.url = BeamURL(url=url, scheme=scheme, host=host, port=port, path=path)
+
+        self.model_name = self.url.path.split('/')[0]
+        self.model_version = self.url.path.split('/')[1] if len(self.url.path.split('/')) > 1 else ''
+        self.host = f"{self.url.hostname}:{self.url.port}"
+
+    @lazy_property
+    def client(self):
+        if self.url.scheme == 'http':
+            from tritonclient.http import InferenceServerClient
+        elif self.url.scheme == 'grpc':
+            from tritonclient.grpc import InferenceServerClient
+        else:
+            raise ValueError(f"Invalid scheme: {self.url.scheme}")
+
+        return InferenceServerClient(url=self.host, verbose=self.verbose,
+                                     model_version=self.model_version)
+
+    def __call__(self, *args, **kwargs):
+        # Create inputs for the inference request
+        inputs = [self.client.InferInput("data_0", input_data.shape, "FP32")]
+        inputs[0].set_data_from_numpy(input_data)
+
+        # Send the inference request
+        response = self.client.infer(self.model_name, inputs,)
+
+        # Process the response
+        output_data = response.as_numpy("fc6_1")
+
+        return output_data
