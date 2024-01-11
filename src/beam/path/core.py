@@ -10,7 +10,8 @@ import re
 class PureBeamPath:
     feather_index_mark = "feather_index:"
 
-    text_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css', '.html']
+    text_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css', '.html',
+                       '.yaml', '.yml']
     textual_extensions = text_extensions + ['.json', '.orc', '.ndjson']
 
     def __init__(self, *pathsegments, url=None, scheme=None, hostname=None, port=None, username=None, password=None,
