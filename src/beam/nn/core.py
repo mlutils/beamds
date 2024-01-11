@@ -2,7 +2,7 @@ from typing import Iterator, Tuple, Optional, Union
 
 import torch
 from torch import nn, Tensor, device
-from torch.nn.modules.module import T
+import torch._dynamo as dynamo
 
 from ..core import Processor
 from ..utils import recursive_clone, to_device
@@ -148,11 +148,15 @@ class BeamNN(nn.Module, Processor):
             return setattr(self._module, key, value)
         return nn.Module.__setattr__(self, key, value)
 
+    @dynamo.disable
+    def save_sample_input(self, *args, **kwargs):
+        self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')),
+                              'kwargs': recursive_clone(to_device(kwargs, device='cpu'))}
+
     def __call__(self, *args, **kwargs):
 
         if self._sample_input is None:
-            self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')),
-                                  'kwargs': recursive_clone(to_device(kwargs, device='cpu'))}
+            self.save_sample_input(*args, **kwargs)
 
         if self.module_exists:
             return self._module(*args, **kwargs)
@@ -207,9 +211,6 @@ class BeamNN(nn.Module, Processor):
               input_names=None, output_names=None, operator_export_type='ONNX', opset_version=None,
               do_constant_folding=True, dynamic_axes=None, keep_initializers_as_inputs=None, custom_opsets=None,
               export_modules_as_functions=False):
-
-
-
 
         import torch.onnx
 

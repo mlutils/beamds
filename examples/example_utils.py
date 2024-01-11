@@ -6,7 +6,7 @@ from src.beam import resource
 
 
 def load_algorithm():
-    path = '/home/shared/results/deep_tabular/debug_reporter/covtype/0035_20240111_133254'
+    path = '/dsi/shared/elads/elads/data/tabular/results/deep_tabular/debug_reporter/covtype/0000_20240111_200041'
     from src.beam.tabular import DeepTabularAlg
     alg = DeepTabularAlg.from_pretrained(path)
     print(alg)

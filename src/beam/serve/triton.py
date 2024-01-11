@@ -63,32 +63,44 @@ class TritonConfig:
 
 
 class TritonClient(Processor):
-    def __init__(self, url=None, scheme='http', host='localhost', port=8000, model_name=None, model_version=None,
-                 verbose=False, *args, **kwargs):
+
+    def __init__(self, scheme='http', host='localhost', port=8000, model_name=None, model_version=None,
+                 verbose=False, concurrency=1, connection_timeout=60.0, network_timeout=60.,
+                 max_greenlets=None, ssl_options=None, *args, ssl_context_factory=None,
+                 insecure=False, config=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        path = None
-        if model_name is not None:
-            model_version = model_version or ''
-            path = f"{model_name}/{model_version}"
-
-        self.url = BeamURL(url=url, scheme=scheme, host=host, port=port, path=path)
-
-        self.model_name = self.url.path.split('/')[0]
-        self.model_version = self.url.path.split('/')[1] if len(self.url.path.split('/')) > 1 else ''
-        self.host = f"{self.url.hostname}:{self.url.port}"
+        self.scheme = scheme
+        self.host = host
+        self.port = port
+        self.model_name = model_name
+        self.model_version = model_version
+        self.verbose = verbose
+        self.concurrency = concurrency
+        self.connection_timeout = connection_timeout
+        self.network_timeout = network_timeout
+        self.max_greenlets = max_greenlets
+        self.ssl_options = ssl_options
+        self.ssl_context_factory = ssl_context_factory
+        self.insecure = insecure
+        self.ssl = scheme == 'https' or scheme == 'grpcs'
+        self.config = config
 
     @lazy_property
     def client(self):
-        if self.url.scheme == 'http':
+        if 'http' in self.scheme:
             from tritonclient.http import InferenceServerClient
-        elif self.url.scheme == 'grpc':
+        elif 'grpc' in self.scheme:
             from tritonclient.grpc import InferenceServerClient
         else:
-            raise ValueError(f"Invalid scheme: {self.url.scheme}")
+            raise ValueError(f"Invalid scheme: {self.scheme}")
 
-        return InferenceServerClient(url=self.host, verbose=self.verbose,
-                                     model_version=self.model_version)
+        url = f'{self.host}:{self.port}'
+
+        return InferenceServerClient(url, concurrency=self.concurrency, connection_timeout=self.connection_timeout,
+                                     network_timeout=self.network_timeout, max_greenlets=self.max_greenlets,
+                                     ssl_options=self.ssl_options, ssl_context_factory=self.ssl_context_factory,
+                                     verbose=self.verbose, insecure=self.insecure, ssl=self.ssl)
 
     def __call__(self, *args, **kwargs):
         # Create inputs for the inference request
