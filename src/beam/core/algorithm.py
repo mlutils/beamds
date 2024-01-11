@@ -20,7 +20,22 @@ from ..logger import beam_kpi, BeamResult
 from timeit import default_timer as timer
 
 
-class Algorithm(Processor):
+class MetaInit(type):
+    def __call__(cls, *args, store_init_path=None, **kwargs):
+        init_args = {'args': args, 'kwargs': kwargs}
+        if store_init_path:
+            cls._pre_init(store_init_path, init_args)
+        instance = super().__call__(*args, **kwargs)
+        instance.init_args = init_args
+        return instance
+
+    def _pre_init(cls, store_init_path, init_args):
+        # Process or store arguments
+        store_init_path = beam_path(store_init_path)
+        store_init_path.write(init_args, ext='.pkl')
+
+
+class Algorithm(Processor, metaclass=MetaInit):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
                  name=None, experiment=None, **kwargs):
@@ -329,9 +344,8 @@ class Algorithm(Processor):
                           objective_mode=self.optimization_mode)
 
     def __getattr__(self, item):
-        if item in self.__dict__:
-            return self.__dict__[item]
-        elif hasattr(self, 'networks') and item in self.networks:
+        assert item != 'networks', 'Networks are not initialized yet'
+        if item in self.networks:
             return self.networks[item]
         else:
             raise AttributeError(f"Algorithm has no attribute {item}")
@@ -386,8 +400,19 @@ class Algorithm(Processor):
         experiment = Experiment.reload_from_path(path, override_hparams=override_hparams, reload_iloc=reload_iloc,
                                                  reload_loc=reload_loc, reload_name=reload_name, **kwargs)
 
+        if alg_args is None and alg_kwargs is None:
+            alg_args, alg_kwargs = experiment.get_alg_init_args()
+
+            alg_kwargs.pop('experiment', None)
+            dataset_e = alg_kwargs.pop('dataset', None)
+            dataset = dataset or dataset_e
+
+            # remove the hparams from the args list
+            alg_args = alg_args[1:]
+
         alg = experiment.algorithm_generator(cls, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                                       dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+                                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
+                                             store_init_path=False)
 
         if hparams is not None:
             experiment = Experiment(hparams)

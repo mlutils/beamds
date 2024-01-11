@@ -68,7 +68,7 @@ def path_depth(path):
 
 
 def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None):
+                             dataset_args=None, dataset_kwargs=None, store_init_path=None, rank=0):
 
     if alg_args is None:
         alg_args = tuple()
@@ -92,8 +92,9 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
                 datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
 
     if inspect.isclass(alg):
-
-        alg = alg(experiment.hparams, experiment=experiment, *alg_args, **alg_kwargs)
+        if rank:
+            store_init_path = None
+        alg = alg(experiment.hparams, experiment=experiment, *alg_args, store_init_path=store_init_path, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
@@ -107,7 +108,8 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
 
 
 def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
-    alg = algorithm_generator(*args, **kwargs)
+
+    alg = algorithm_generator(*args, rank=rank, **kwargs)
 
     experiment.writer_control(enable=not (bool(rank)))
     results = {}
@@ -132,12 +134,12 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     except KeyboardInterrupt as e:
 
-        # tb = traceback.format_exc()
-        logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
-        logger.debug(f"KeyboardInterrupt: {e}")
-        # logger.debug(f"KeyboardInterrupt: {tb}")
-
         if rank == 0:
+            # tb = traceback.format_exc()
+            logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
+            logger.debug(f"KeyboardInterrupt: {e}")
+            # logger.debug(f"KeyboardInterrupt: {tb}")
+
             checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
             alg.save_checkpoint(checkpoint_file)
 

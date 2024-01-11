@@ -150,9 +150,9 @@ class BeamNN(nn.Module, Processor):
 
     def __call__(self, *args, **kwargs):
 
-        # if self._sample_input is None:
-        #     self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')),
-        #                           'kwargs': recursive_clone(to_device(kwargs, device='cpu'))}
+        if self._sample_input is None:
+            self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')),
+                                  'kwargs': recursive_clone(to_device(kwargs, device='cpu'))}
 
         if self.module_exists:
             return self._module(*args, **kwargs)

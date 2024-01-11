@@ -151,6 +151,8 @@ class Experiment(object):
         self.results_dir = self.experiment_dir.joinpath('results')
         self.code_dir = self.experiment_dir.joinpath('code')
 
+        self.store_init_path = self.experiment_dir.joinpath('init_alg_args.pkl')
+
         if self.load_model:
             logger.cleanup()
             logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
@@ -237,11 +239,6 @@ class Experiment(object):
         args.override = False
         args.reload = True
 
-        path, d = path.parent, path.name
-        if not d:
-            path, d = path.parent, path.name
-        args.resume = d
-
         if override_hparams is not None:
             for k, v in override_hparams.items():
                 if k in ['reload', 'resume', 'override', 'project', 'algorithm', 'identifier', 'logs_path']:
@@ -292,6 +289,15 @@ class Experiment(object):
 
         else:
             return path
+
+    def get_alg_init_args(self):
+
+        try:
+            init_args = self.store_init_path.read(ext='.pkl')
+        except FileNotFoundError:
+            return [], {}
+
+        return init_args['args'], init_args['kwargs']
 
     def set_rank(self, rank, world_size):
 
@@ -613,9 +619,13 @@ class Experiment(object):
                           base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
     def algorithm_generator(self, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None):
+                             dataset_args=None, dataset_kwargs=None, store_init_path=None):
+
+        if store_init_path is None:
+            store_init_path = self.store_init_path
         return beam_algorithm_generator(self, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                                        dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+                                        dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
+                                        store_init_path=store_init_path)
 
     def fit(self, alg=None, dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
@@ -623,12 +633,14 @@ class Experiment(object):
 
         if algorithm_generator is None:
             ag = partial(beam_algorithm_generator, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                         dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+                         dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
+                         store_init_path=self.store_init_path)
         else:
 
             if alg is not None:
                 ag = partial(algorithm_generator, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
+                             store_init_path=self.store_init_path)
             else:
                 ag = algorithm_generator
 

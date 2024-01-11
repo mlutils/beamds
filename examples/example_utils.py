@@ -5,6 +5,13 @@ import numpy as np
 from src.beam import resource
 
 
+def load_algorithm():
+    path = '/home/shared/results/deep_tabular/debug_reporter/covtype/0035_20240111_133254'
+    from src.beam.tabular import DeepTabularAlg
+    alg = DeepTabularAlg.from_pretrained(path)
+    print(alg)
+
+
 def load_model():
 
     from src.beam.auto import AutoBeam
@@ -191,7 +198,7 @@ def test_data_apply():
 
     from src.beam import BeamData
     from uuid import uuid4 as uuid
-    from beam.server.beam_client import BeamClient
+    from beam.serve.client import BeamClient
 
     # sparse_sim = SparseSimilarity(metric='cosine', format='coo', vec_size=10000, device='cuda', k=10)
     sparse_sim = BeamClient('localhost:27451')
@@ -239,6 +246,8 @@ if __name__ == '__main__':
 
     # parallel_treading()
 
-    load_model()
+    # load_model()
+
+    load_algorithm()
 
     print('done')
