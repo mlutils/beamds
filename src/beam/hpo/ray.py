@@ -166,7 +166,7 @@ class RayHPO(BeamHPO):
         if 'search_alg' not in tune_config_kwargs.keys():
             metric = tune_config_kwargs['metric']
             mode = tune_config_kwargs['mode']
-            tune_config_kwargs['search_alg'] = OptunaSearch(search_space, metric=metric, mode=mode)
+            tune_config_kwargs['search_alg'] = OptunaSearch(space=None, metric=metric, mode=mode)
             # tune_config_kwargs['search_alg'] = OptunaSearch()
 
         tune_config = TuneConfig(**tune_config_kwargs)
@@ -178,7 +178,7 @@ class RayHPO(BeamHPO):
         logger.info(f"Starting ray-tune hyperparameter optimization process. "
                     f"Results and logs will be stored at {local_dir}")
 
-        tuner = tune.Tuner(runner_tune, param_space=None, tune_config=tune_config, run_config=run_config)
+        tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()
 
         return analysis

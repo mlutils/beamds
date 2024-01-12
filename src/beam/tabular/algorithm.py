@@ -127,6 +127,10 @@ class TabularTransformer(BeamNN):
 
         x, x_frac = sample['x'], sample['x_frac']
 
+        # logger.critical("Check x-max consistency at net:")
+        # logger.critical(f"n-tokens: {self.n_tokens}")
+        # logger.critical(self.n_tokens < x.max(dim=0).values)
+
         x1 = (x + 1)
 
         # logger.critical(f"self.n_tokens.device: {self.n_tokens.device}, x.device: {x.device}")
@@ -141,11 +145,11 @@ class TabularTransformer(BeamNN):
         x1 = x1 + self.tokens_offset
         x2 = x2 + self.tokens_offset
 
-        if x1.max() > self.nnn:
-            print('x1_max', x1.max())
-            print('self.nnn', self.nnn)
-            print('self.n_tokens', self.n_tokens)
-            print(x1)
+        # if x1.max() > self.nnn:
+        #     print('x1_max', x1.max())
+        #     print('self.nnn', self.nnn)
+        #     print('self.n_tokens', self.n_tokens)
+        #     print(x1)
 
         x1 = self.emb(x1)
         x2 = self.emb(x2)
