@@ -159,6 +159,8 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
                                                'By default objectives that contain the words "loss/error/mse" a are minimized and '
                                                'other objectives are maximized. You can override this behavior by setting this flag.'),
 
+        BeamParam('objective_to_report', str, 'best', 'Which objective to report in HPO run [best|last]'),
+
         BeamParam('scale_epoch_by_batch_size', bool, True,
                   'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch '
                   'When False: epoch length corresponds to the number of forward passes in each epoch'),
@@ -285,9 +287,12 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
                                                 'set 0 to ignore and determine tqdm bar with tqdm-enable flag'),
         BeamParam('tqdm_stats', float, 1., 'Take this period to calculate the expected epoch time'),
 
-        BeamParam('visualize_results', str, 'yes', 'when to visualize results on tensorboard [yes|no|logscale]'),
-        BeamParam('store_results', str, 'logscale', 'when to store results to pickle files'),
-        BeamParam('store_networks', str, 'logscale', 'when to store network weights to the log directory'),
+        BeamParam('visualize_results', str, 'yes', 'when to visualize results on tensorboard '
+                                                   '[yes|no|logscale|best|never|final]'),
+        BeamParam('store_results', str, 'logscale', 'when to store results to pickle files '
+                                                    '[yes|no|logscale|best|never|final]'),
+        BeamParam('store_networks', str, 'best', 'when to store network weights to the log directory '
+                                                 '[yes|no|logscale|best|all_bests|never|final]'),
 
         BeamParam('comet', bool, False, 'Whether to use comet.ml for logging'),
         BeamParam('git_directory', str, None, 'The git directory to use for comet.ml logging'),

@@ -26,6 +26,9 @@ if __name__ == '__main__':
     hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, gpus_per_trial=1,
                            cpus_per_trial=10, n_jobs=n_jobs, hpo_path=os.path.join(logs_path, 'hpo'))
 
+    run_names = {}
+    # run_names = dict(aloi='/dsi/shared/elads/elads/data/tabular/results/hpo/aloi_hp_optimization_20240113_172324')
+
     kwargs_all = {}
 
     kwargs_all['california_housing'] = dict(batch_size=128)
@@ -60,8 +63,15 @@ if __name__ == '__main__':
         #                 alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
         #                                           'cat_mask': dataset.cat_mask, }})
 
+        def post_train_hook(alg=None, report=None, hparams=None, suggestion=None, experiment=None, **kwargs):
+            experiment.reload_best_checkpoint(alg)
+            predictions = alg.evaluate('validation')
+            objective = predictions.statistics.data['objective']
+            logger.info(f"Post-train validation objective: {objective}")
+            alg.report(objective=float(objective), epoch=alg.epoch+1)
+
         study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=TabularDataset, print_results=False,
-                         hpo_config=hpo_config,
+                         hpo_config=hpo_config, post_train_hook=post_train_hook,
                          alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
                                                     'cat_mask': dataset.cat_mask, }})
 
@@ -83,7 +93,13 @@ if __name__ == '__main__':
         study.uniform('transformer_dropout', 0., 0.4)
         study.uniform('label_smoothing', 0., 0.4)
 
-        tune_config_kwargs = dict(scheduler=ASHAScheduler())
-        study.run()
+        # start pruning after max_t epochs
+        tune_config_kwargs = dict(scheduler=ASHAScheduler(max_t=10))
+
+        other_kwargs = {}
+        if k in run_names.keys():
+            other_kwargs['restore_path'] = run_names[k]
+
+        study.run(**other_kwargs)
 
         logger.info(f"Done HPO for dataset: {k}")

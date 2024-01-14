@@ -1405,9 +1405,6 @@ class Algorithm(Processor, metaclass=MetaInit):
 
         if self.hpo == 'tune':
 
-            if self.best_objective is not None:
-                objective = self.best_objective
-
             if self.get_hparam('objective') is not None:
                 metrics = {self.get_hparam('objective'): objective}
             else:
@@ -1579,7 +1576,15 @@ class Algorithm(Processor, metaclass=MetaInit):
             self.epoch += 1
             
             objective = self.calculate_objective()
-            self.report(objective, i)
+
+            if self.get_hparam('objective_to_report') == 'last':
+                report_objective = objective
+            elif self.get_hparam('objective_to_report') == 'best':
+                report_objective = self.best_objective
+            else:
+                raise Exception(f"Unknown objective_to_report: {self.get_hparam('objective_to_report')} "
+                                f"should be [last|best]")
+            self.report(report_objective, i)
 
             if i+1 == self.n_epochs and self.swa_epochs > 0:
                 logger.warning("Switching to SWA training")

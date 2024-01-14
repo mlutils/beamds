@@ -10,9 +10,10 @@ import re
 class PureBeamPath:
     feather_index_mark = "feather_index:"
 
-    text_with_line_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css',
-                                 '.html', '.yaml', '.yml', '.ndjson', '.csv', '.md']
-    textual_extensions = text_with_line_extensions + ['.json', '.orc']
+    # all the extensions that are considered textual (should be read as .txt)
+    textual_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css',
+                          '.html', '.md']
+    text_based_extensions = textual_extensions + ['.json', '.orc', '.yaml', '.yml', '.ndjson', '.csv']
 
     def __init__(self, *pathsegments, url=None, scheme=None, hostname=None, port=None, username=None, password=None,
                  fragment=None, params=None, client=None, **kwargs):
@@ -47,6 +48,10 @@ class PureBeamPath:
     @property
     def str(self):
         return str(self.path)
+
+    @property
+    def list(self):
+        return list(self)
 
     def __getstate__(self):
         return self.as_uri()
@@ -406,7 +411,7 @@ class PureBeamPath:
                 x = pd.read_pickle(fo, **kwargs)
             elif ext in ['.npy', '.npz']:
                 x = np.load(fo, allow_pickle=True, **kwargs)
-            elif ext in PureBeamPath.text_with_line_extensions:
+            elif ext in PureBeamPath.textual_extensions:
                 if 'readlines' in kwargs and kwargs['readlines']:
                     x = fo.readlines()
                 else:
@@ -529,7 +534,7 @@ class PureBeamPath:
         else:
             m = 'r'
 
-        if ext not in PureBeamPath.textual_extensions:
+        if ext not in PureBeamPath.text_based_extensions:
             m = f"{m}b"
 
         return m

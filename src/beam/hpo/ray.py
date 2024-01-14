@@ -100,11 +100,13 @@ class RayHPO(BeamHPO):
         experiment = Experiment(hparams, hpo='tune', print_hyperparameters=False)
         alg, report = experiment(self.ag, return_results=True)
         train.report({report.objective_name: report.best_objective})
+        if self.post_train_hook is not None:
+            self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=report)
 
         self.tracker(algorithm=alg, results=report.data, hparams=hparams, suggestion=config)
 
     def run(self, *args, runtime_env=None, tune_config_kwargs=None, run_config_kwargs=None,
-            init_config_kwargs=None, **kwargs):
+            init_config_kwargs=None, restore_path=None, restore_config=None, **kwargs):
 
         hparams = copy.deepcopy(self.hparams)
         hparams.update(kwargs)
@@ -173,12 +175,24 @@ class RayHPO(BeamHPO):
 
         # the ray run configuration
         local_dir = self.hparams.get('hpo_path')
-        run_config = RunConfig(stop=stop, storage_path=local_dir, name=self.identifier)
+
+        run_config_kwargs = run_config_kwargs or {}
+        if 'name' not in run_config_kwargs.keys():
+            run_config_kwargs['name'] = self.identifier
+        if 'stop' not in run_config_kwargs.keys():
+            run_config_kwargs['stop'] = stop
+        if 'storage_path' not in run_config_kwargs.keys():
+            run_config_kwargs['storage_path'] = local_dir
+        run_config = RunConfig(**run_config_kwargs)
 
         logger.info(f"Starting ray-tune hyperparameter optimization process. "
                     f"Results and logs will be stored at {local_dir}")
 
-        tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
+        if restore_path:
+            restore_config = restore_config or {}
+            tuner = tune.Tuner.restore(restore_path, runner_tune, **restore_config)
+        else:
+            tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()
 
         return analysis

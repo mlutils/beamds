@@ -58,6 +58,8 @@ class OptunaHPO(BeamHPO, OptunaBase):
 
         experiment = Experiment(hparams, hpo='optuna', trial=trial, print_hyperparameters=False)
         alg, results = experiment(self.ag, return_results=True)
+        if self.post_train_hook is not None:
+            self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=results)
 
         self.tracker(algorithm=alg, results=results, hparams=hparams, suggestion=config)
 

@@ -17,7 +17,7 @@ class BeamHPO(Processor):
 
     def __init__(self, hparams, *args, hpo_config=None,
                  alg=None, dataset=None, algorithm_generator=None, alg_args=None,
-                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, **kwargs):
+                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, post_train_hook=None, **kwargs):
 
         if hpo_config is None:
             hpo_config = HPOConfig(**kwargs)
@@ -68,6 +68,7 @@ class BeamHPO(Processor):
         self.hpo_path = hpo_path
         self.experiments_tracker = []
         self.suggestions = {}
+        self.post_train_hook = post_train_hook
 
     @staticmethod
     def get_optimization_mode(mode, objective_name):

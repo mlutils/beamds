@@ -6,8 +6,6 @@ import os
 import warnings
 
 from .utils import path_depth, gen_hparams_string, beam_algorithm_generator, default_runner, run_worker
-
-warnings.filterwarnings('ignore', category=FutureWarning)
 import torch
 import copy
 import pandas as pd
@@ -17,10 +15,12 @@ from functools import partial
 
 
 from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_notebook,
-                    find_port, as_numpy, lazy_property, check_type, beam_device)
+                     find_port, as_numpy, lazy_property, check_type, beam_device)
 from ..path import beam_path, BeamPath, beam_key
 from ..logger import beam_logger as logger
 from ..config import print_beam_hyperparameters, BeamConfig, UniversalConfig
+
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 
 class Experiment(object):
@@ -286,7 +286,7 @@ class Experiment(object):
 
         if alg is not None:
             alg.load_checkpoint(path, hparams=False)
-
+            return alg
         else:
             return path
 
@@ -323,9 +323,6 @@ class Experiment(object):
                 logger.warning(f"Tensorboard directory is not a BeamPath object. Tensorboard will not be enabled.")
 
         if self.hparams.comet:
-
-            import comet_ml
-            # from comet_ml.integration.pytorch import log_model
 
             api_key = self.hparams.COMET_API_KEY
             if api_key is None:
@@ -399,19 +396,24 @@ class Experiment(object):
             decade = int(np.log10(epoch) + 1)
             logscale = not (epoch - 1) % (self.hparams.visualize_results_log_base ** (decade - 1))
 
-            if store_results == 'yes' or store_results == 'logscale' and logscale:
-
+            if ((iteration+1 == algorithm.n_epochs and visualize_results != 'never') or
+                    store_results == 'yes' or (store_results == 'logscale' and logscale) or
+                (store_results == 'best' and algorithm.best_state)):
                 reporter.write_to_path(self.results_dir.joinpath(f'results_{epoch:06d}'))
 
             alg = algorithm if visualize_weights else None
 
-            if iteration+1 == algorithm.n_epochs or visualize_results == 'yes' or visualize_results == 'logscale' and logscale:
+            if ((iteration+1 == algorithm.n_epochs and visualize_results != 'never') or visualize_results == 'yes' or
+                    (visualize_results == 'logscale' and logscale) or
+                    (visualize_results == 'best' and algorithm.best_state)):
                 self.log_data(reporter, epoch, print_log=print_results, alg=alg, argv=argv)
 
-            checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
-            algorithm.save_checkpoint(checkpoint_file)
+            if (store_networks in ['yes', 'logscale'] or (store_networks == 'all_bests' and logscale) or
+                (iteration+1 == algorithm.n_epochs and store_networks == 'final')):
+                checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
+                algorithm.save_checkpoint(checkpoint_file)
 
-            if algorithm.best_state:
+            if algorithm.best_state and store_networks != 'never':
                 checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_best')
                 algorithm.save_checkpoint(checkpoint_file)
 
@@ -577,7 +579,6 @@ class Experiment(object):
             base_dir = self.experiment_dir
             depth = 0
 
-        #TODO: add support for beampath
         base_dir = str(base_dir)
         experiments = [d[0] for d in list(os.walk(base_dir)) if (path_depth(d[0]) - path_depth(base_dir)) == depth]
 
@@ -723,6 +724,7 @@ class Experiment(object):
         # take care of what is done after training ends
         if res is None or self.world_size > 1:
             alg = algorithm_generator(self, *args, **kwargs)
+            results = None
             self.reload_checkpoint(alg)
 
             if reload_results:
