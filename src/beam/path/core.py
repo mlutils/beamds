@@ -7,6 +7,12 @@ import numpy as np
 import re
 
 
+def strip_prefix(text, prefix):
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text
+
+
 class PureBeamPath:
     feather_index_mark = "feather_index:"
 
@@ -400,7 +406,7 @@ class PureBeamPath:
                 c = x.columns
                 for ci in c:
                     if PureBeamPath.feather_index_mark in ci:
-                        index_name = ci.lstrip(PureBeamPath.feather_index_mark)
+                        index_name = strip_prefix(ci, PureBeamPath.feather_index_mark)
                         x = x.rename(columns={ci: index_name})
                         x = x.set_index(index_name)
                         break

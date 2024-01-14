@@ -1,17 +1,3 @@
-# from examples.example_utils import add_beam_to_path
-import os
-# os.environ['PATH'] = f"/usr/local/mpi/bin:{os.environ['PATH']}"
-# os.environ['LD_LIBRARY_PATH'] = f"/usr/local/mpi/lib:{os.environ['PATH']}"
-
-# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-
-
-import torch
-from torch import distributions
-import torchvision
-import torch.nn.functional as F
-from torch import nn
-from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 import pandas as pd
 
@@ -103,7 +89,7 @@ if __name__ == '__main__':
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=4,
                        n_quantiles=6, label_smoothing=.2,
                        model_dtype='float32', training_framework='torch',
-                       compile_train=False, sparse_embedding=False, compile_network=True)
+                       compile_train=False, sparse_embedding=False, compile_network=False)
 
     kwargs_all = {}
 
@@ -142,7 +128,10 @@ if __name__ == '__main__':
 
             alg = exp.fit(alg=DeepTabularAlg, dataset=TabularDataset,
                           alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
-                                                                                  'cat_mask': dataset.cat_mask}})
+                                                                                  'cat_mask': dataset.cat_mask},
+                                      'task_type': dataset.task_type,
+                                      'y_sigma': dataset.y_sigma},)
+
             logger.info(f"Training finished, reloading best model")
             exp.reload_checkpoint(alg)
             alg.set_best_masking()

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 from ..path import beam_key, normalize_host
 
 from .utils import get_conversation_template
-from ..utils import lazy_property
+from ..utils import lazy_property, strip_suffix
 from .openai import OpenAIBase
 
 
@@ -181,7 +181,7 @@ class TGILLM(FCConversationLLM):
 
         res = res.response
         text = res.generated_text
-        text = text.rstrip(self.stop_sequence)
+        text = strip_suffix(text, self.stop_sequence)
         return text
 
 

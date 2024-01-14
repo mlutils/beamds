@@ -1,5 +1,5 @@
 import copy
-import os, sys
+import sys
 import subprocess
 from collections import defaultdict
 import numpy as np
@@ -9,14 +9,13 @@ import torch
 import pandas as pd
 
 import pickle
-from .utils_all import check_element_type
 from torchvision import transforms
 import hashlib
 from functools import partial
 import itertools
 import scipy
 import re
-from .utils_all import check_type, check_minor_type, slice_array, is_arange, DataObject
+from .utils_all import check_type, check_minor_type, slice_array, is_arange, DataObject, check_element_type
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -725,7 +724,7 @@ def recursive_device(x):
             except AttributeError:
                 # case of None
                 pass
-    elif isinstance(x, list):
+    elif isinstance(x, list) or isinstance(x, tuple):
         for xi in x:
             try:
                 return recursive_device(xi)

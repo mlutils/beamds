@@ -5,7 +5,7 @@ from torch import nn, Tensor, device
 import torch._dynamo as dynamo
 
 from ..core import Processor
-from ..utils import recursive_clone, to_device
+from ..utils import recursive_clone, to_device, recursive_device
 from ..path import beam_path, local_copy
 
 
@@ -20,7 +20,7 @@ class BeamNN(nn.Module, Processor):
         _module: The wrapped nn.Module instance.
     """
 
-    def __init__(self, *args, _module=None, **kwargs):
+    def __init__(self, *args, _module=None, _model_type=None, **kwargs):
 
         """
         Initialize the BeamNN wrapper.
@@ -34,6 +34,7 @@ class BeamNN(nn.Module, Processor):
         Processor.__init__(self, *args, **kwargs)
         self._sample_input = None
         self._module = _module
+        self._model_type = _model_type or 'torch'
 
     @classmethod
     def from_module(cls, module, *args, hparams=None, **kwargs):
@@ -116,16 +117,72 @@ class BeamNN(nn.Module, Processor):
         return self._mixin_method('register_module', *args, **kwargs)
 
     def to_empty(self, *args, **kwargs):
-        return self._mixin_method('to_empty')(self, *args, **kwargs)
+        return self._mixin_method('to_empty', *args, **kwargs)
 
     def add_module(self, name: str, module: Optional[nn.Module]) -> None:
         return self._mixin_method('add_module', name, module)
+
+    def to(self, *args, **kwargs):
+        if self.module_exists:
+            self._module = self._module.to(*args, **kwargs)
+        else:
+            nn.Module.to(self, *args, **kwargs)
+        return self
+
+    def cuda(self, device: Optional[Union[int, device]] = None) -> nn.Module:
+        if self.module_exists:
+            self._module = self._module.cuda(device)
+        else:
+            nn.Module.cuda(self, device)
+        return self
+
+    def cpu(self) -> nn.Module:
+        if self.module_exists:
+            self._module = self._module.cpu()
+        else:
+            nn.Module.cpu(self)
+        return self
+
+    def type(self, dst_type: Optional[Union[str, device]] = None, *args, **kwargs) -> nn.Module:
+        if self.module_exists:
+            self._module = self._module.type(dst_type, *args, **kwargs)
+        else:
+            nn.Module.type(self, dst_type, *args, **kwargs)
+        return self
+
+    def float(self) -> nn.Module:
+        if self.module_exists:
+            self._module = self._module.float()
+        else:
+            nn.Module.float(self)
+        return self
+
+    def double(self) -> nn.Module:
+        if self.module_exists:
+            self._module = self._module.double()
+        else:
+            nn.Module.double(self)
+        return self
+
+    def half(self) -> nn.Module:
+        if self.module_exists:
+            self._module = self._module.half()
+        else:
+            nn.Module.half(self)
+        return self
+
+    def bfloat16(self) -> nn.Module:
+        if self.module_exists:
+            self._module = self._module.bfloat16()
+        else:
+            nn.Module.bfloat16(self)
+        return self
 
     def __repr__(self):
         if self.module_exists:
             module_repr = repr(self._module)
             return f"BeamNN(wrapper)(\n{module_repr})"
-        return nn.Module.__repr__(self)
+        return f"BeamNN:{nn.Module.__repr__(self)}"
 
     @property
     def module_exists(self):
@@ -150,8 +207,11 @@ class BeamNN(nn.Module, Processor):
 
     @dynamo.disable
     def save_sample_input(self, *args, **kwargs):
-        self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')),
-                              'kwargs': recursive_clone(to_device(kwargs, device='cpu'))}
+
+        self._sample_input = {'args': recursive_clone(to_device(args, device='cpu')) if args else None,
+                              'kwargs': recursive_clone(to_device(kwargs, device='cpu')) if kwargs else None,
+                              'args_device': recursive_device(args) if args else None,
+                              'kwargs_device': recursive_device(kwargs) if kwargs else None}
 
     def __call__(self, *args, **kwargs):
 
@@ -162,40 +222,79 @@ class BeamNN(nn.Module, Processor):
             return self._module(*args, **kwargs)
         return nn.Module.__call__(self, *args, **kwargs)
 
-    def optimize(self, method='compile', *args, **kwargs):
+    def optimize(self, method='compile', **kwargs):
         if method == 'compile':
-            return self._compile(*args, **kwargs)
+            return BeamNN._compile(self, **kwargs)
         elif method == 'jit_trace':
-            return self._jit_trace(*args, **kwargs)
+            return BeamNN._jit_trace(self, **kwargs)
         elif method == 'jit_script':
-            return self._jit_script(*args, **kwargs)
-        elif method == 'onnx':
-            return self._onnx(*args, **kwargs)
+            return BeamNN._jit_script(self)
         else:
-            raise ValueError(f'Invalid optimization method: {method}, must be one of "compile", "jit_trace", '
-                             f'"jit_script", or "onnx"')
+            raise ValueError(f'Invalid optimization method: {method}, must be one of [compile|jit_trace|jit_script]')
+
+    def export(self, method, path, **kwargs):
+        if method == 'onnx':
+            self._export_onnx(path, **kwargs)
+        elif method == 'torchscript':
+            self._export_jit_script(self)
+        elif method == 'tensorrt':
+            self._export_trt(path, **kwargs)
+        else:
+            raise ValueError(f'Invalid export method: {method}, must be one of [onnx]')
 
     @property
     def sample_input(self):
         return self._sample_input
 
-    def _jit_trace(self, check_trace=None, check_inputs=None, check_tolerance=None, strict=None):
+    @property
+    def example_input(self):
+
+        if self.sample_input is None:
+            raise ValueError("No sample input was provided. Please call the save_sample_input method first.")
+
+        if self.sample_input['args'] is not None:
+            example_inputs = recursive_clone(to_device(self.sample_input['args'],
+                                                       device=self.sample_input['args_device']))
+        else:
+            example_inputs = None
+        if self.sample_input['kwargs'] is not None:
+            example_kwarg_inputs = recursive_clone(to_device(self.sample_input['kwargs'],
+                                                         device=self.sample_input['kwargs_device']))
+        else:
+            example_kwarg_inputs = None
+        return example_inputs, example_kwarg_inputs
+
+    @classmethod
+    def _jit_trace(cls, self, check_trace=None, check_inputs=None, check_tolerance=None, strict=None):
 
         check_trace = check_trace or self.get_hparam('jit_check_trace', True)
         check_inputs = check_inputs or self.get_hparam('jit_check_inputs', None)
         check_tolerance = check_tolerance or self.get_hparam('jit_check_tolerance', 1e-5)
         strict = strict or self.get_hparam('jit_strict', True)
 
-        return torch.jit.trace(self, example_inputs=self.sample_input['args'],
+        module = self._module or self
+
+        example_inputs, example_kwarg_inputs = self.example_input
+        optimized = torch.jit.trace(module, example_inputs=example_inputs,
                                check_trace=check_trace, check_inputs=check_inputs, check_tolerance=check_tolerance,
-                               strict=strict, example_kwarg_inputs=self.sample_input['kwargs'])
+                               strict=strict, example_kwarg_inputs=example_kwarg_inputs)
 
-    def _jit_script(self):
-        if self.sample_input['kwargs']:
+        return cls(_module=optimized, hparams=self.hparams, _model_type='torchscript')
+
+    @classmethod
+    def _jit_script(cls, self):
+
+        example_inputs, example_kwarg_inputs = self.example_input
+        if example_kwarg_inputs:
             raise NotImplementedError("JIT script does not support keyword arguments")
-        return torch.jit.script(self, example_inputs=[self.sample_input['args']])
 
-    def _compile(self, fullgraph=None, dynamic=None, backend=None,
+        module = self._module or self
+        optimized = torch.jit.script(module, example_inputs=[example_inputs])
+
+        return cls(_module=optimized, hparams=self.hparams, _model_type='torchscript')
+
+    @classmethod
+    def _compile(cls, self, fullgraph=None, dynamic=None, backend=None,
                  mode=None, options=None, disable=False):
 
         fullgraph = fullgraph or self.get_hparam('compile_fullgraph', None)
@@ -204,13 +303,57 @@ class BeamNN(nn.Module, Processor):
         mode = mode or self.get_hparam('compile_mode', None)
         options = options or self.get_hparam('compile_options', None)
 
-        return torch.compile(self, fullgraph=fullgraph, dynamic=dynamic, backend=backend,
+        module = self._module or self
+        optimized = torch.compile(module, fullgraph=fullgraph, dynamic=dynamic, backend=backend,
                              mode=mode, options=options, disable=disable)
 
-    def _onnx(self, path, export_params=True, verbose=False, training='eval',
-              input_names=None, output_names=None, operator_export_type='ONNX', opset_version=None,
-              do_constant_folding=True, dynamic_axes=None, keep_initializers_as_inputs=None, custom_opsets=None,
-              export_modules_as_functions=False):
+        return cls(_module=optimized, hparams=self.hparams, _model_type='compiled')
+
+    def _export_jit_script(self, path):
+
+        path = beam_path(path)
+        with local_copy(path, as_beam_path=False) as tmp_path:
+            if self._model_type == 'torchscript':
+                self.module.save_torchscript(tmp_path)
+            elif self._model_type == 'torch':
+                model = self._jit_script(self).save(tmp_path)
+                model.save_torchscript(tmp_path)
+            else:
+                raise NotImplementedError("Only TorchScript or native pytorch models can be exported with this method")
+
+    def save_torchscript(self):
+        if self.module_exists and self._model_type == 'torchscript':
+            return self._module.save()
+        raise NotImplementedError("Only TorchScript models can be saved with this method")
+
+    def _export_trt(self, path,**kwargs):
+
+        self._export_onnx(path, **kwargs)
+
+        import tensorrt as trt
+        TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
+
+        # Create a builder
+        builder = trt.Builder(TRT_LOGGER)
+        # Specify the builder configurations
+        network = builder.create_network()
+        parser = trt.OnnxParser(network, TRT_LOGGER)
+
+        with local_copy(path, as_beam_path=False) as tmp_path:
+            # Parse the model to create a network.
+            with open(tmp_path, 'rb') as model_file:
+                parser.parse(model_file.read())
+
+            # Build the engine
+            engine = builder.build_cuda_engine(network)
+
+            with open(tmp_path, "wb") as engine_file:
+                engine_file.write(engine.serialize())
+
+    def _export_onnx(self, path, export_params=True, verbose=False, training='eval',
+                     input_names=None, output_names=None, operator_export_type='ONNX', opset_version=None,
+                     do_constant_folding=True, dynamic_axes=None, keep_initializers_as_inputs=None, custom_opsets=None,
+                     export_modules_as_functions=False):
 
         import torch.onnx
 
@@ -232,8 +375,9 @@ class BeamNN(nn.Module, Processor):
                              f'must be one of "ONNX", "ONNX_ATEN", or "ONNX_FALLTHROUGH"')
 
         path = beam_path(path)
+        module = self._module or self
         with local_copy(path, as_beam_path=False) as tmp_path:
-            torch.onnx.export(self, self.sample_input['args'], tmp_path, export_params=export_params,
+            torch.onnx.export(module, self.sample_input['args'], tmp_path, export_params=export_params,
                                      verbose=verbose, training=training, input_names=input_names,
                                      output_names=output_names, operator_export_type=operator_export_type,
                                      opset_version=opset_version, do_constant_folding=do_constant_folding,

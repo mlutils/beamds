@@ -10,7 +10,8 @@ from timeit import default_timer as timer
 import threading
 
 from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format,
-                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type,  lazy_property)
+                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type,  lazy_property,
+                     strip_prefix)
 
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
@@ -271,7 +272,7 @@ class BeamReport(object):
             name = k
         else:
             subset = k.split('/')[0]
-            name = k.lstrip(f"{subset}/")
+            name = strip_prefix(k, f"{subset}/")
         return subset, name
 
     @lazy_property

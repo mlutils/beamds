@@ -292,7 +292,7 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
         BeamParam('store_results', str, 'logscale', 'when to store results to pickle files '
                                                     '[yes|no|logscale|best|never|final]'),
         BeamParam('store_networks', str, 'best', 'when to store network weights to the log directory '
-                                                 '[yes|no|logscale|best|all_bests|never|final]'),
+                                                 '[yes|no|logscale|best|all_bests|never|final|last]'),
 
         BeamParam('comet', bool, False, 'Whether to use comet.ml for logging'),
         BeamParam('git_directory', str, None, 'The git directory to use for comet.ml logging'),

@@ -125,6 +125,18 @@ def retrieve_name(var):
             return names[0]
 
 
+def strip_prefix(text, prefix):
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text
+
+
+def strip_suffix(text, suffix):
+    if text.endswith(suffix):
+        return text[:-len(suffix)]
+    return text
+
+
 class nested_defaultdict(defaultdict):
 
     @staticmethod

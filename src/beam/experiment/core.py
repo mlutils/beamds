@@ -230,7 +230,7 @@ class Experiment(object):
         return None
 
     @staticmethod
-    def reload_from_path(path, override_hparams=None, reload_iloc=-1, reload_loc=None, reload_name=None, **argv):
+    def reload_from_path(path, override_hparams=None, reload_iloc=None, reload_loc=None, reload_name=None, **argv):
 
         path = beam_path(path)
         logger.info(f"Reload experiment from path: {path}")
@@ -282,7 +282,7 @@ class Experiment(object):
                 chp = str(checkpoints.iloc[iloc]['name'])
                 path = self.checkpoints_dir.joinpath(chp)
 
-        logger.info(f"Reload experiment from checkpoint: {path}")
+        logger.info(f"Reload experiment from checkpoint: {path.name}")
 
         if alg is not None:
             alg.load_checkpoint(path, hparams=False)
@@ -408,7 +408,7 @@ class Experiment(object):
                     (visualize_results == 'best' and algorithm.best_state)):
                 self.log_data(reporter, epoch, print_log=print_results, alg=alg, argv=argv)
 
-            if (store_networks in ['yes', 'logscale'] or (store_networks == 'all_bests' and logscale) or
+            if (store_networks in ['yes', 'logscale', 'last'] or (store_networks == 'all_bests' and logscale) or
                 (iteration+1 == algorithm.n_epochs and store_networks == 'final')):
                 checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
                 algorithm.save_checkpoint(checkpoint_file)
@@ -417,7 +417,7 @@ class Experiment(object):
                 checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_best')
                 algorithm.save_checkpoint(checkpoint_file)
 
-            if store_networks == 'no' or store_networks == 'logscale' and not logscale:
+            if store_networks == 'last' or store_networks == 'logscale' and not logscale:
                 try:
                     self.checkpoints_dir.joinpath(f'checkpoint_{epoch - 1:06d}').unlink()
                 except OSError:

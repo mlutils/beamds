@@ -73,7 +73,9 @@ if __name__ == '__main__':
         study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=TabularDataset, print_results=False,
                          hpo_config=hpo_config, post_train_hook=post_train_hook,
                          alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
-                                                    'cat_mask': dataset.cat_mask, }})
+                                                    'cat_mask': dataset.cat_mask, },
+                                     'task_type': dataset.task_type,
+                                     'y_sigma': dataset.y_sigma})
 
         study.uniform('lr-dense', 1e-4, 1e-2)
         study.uniform('lr-sparse', 1e-3, 1e-1)

@@ -60,7 +60,6 @@ class Algorithm(Processor, metaclass=MetaInit):
         self.networks = {}
         self.processors = {}
         self.swa_networks = {}
-        self.inference_networks = {}
 
         self.optimizers = {}
         self.schedulers = {}
@@ -334,7 +333,7 @@ class Algorithm(Processor, metaclass=MetaInit):
 
     @property
     def state_attributes(self):
-        return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler', 'inference_networks',
+        return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
                 'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']
 
@@ -391,11 +390,15 @@ class Algorithm(Processor, metaclass=MetaInit):
 
     @classmethod
     def from_pretrained(cls, path, override_hparams=None, hparams=None, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None, reload_iloc=-1, reload_loc=None, reload_name=None,
-                             **kwargs):
+                        dataset_args=None, dataset_kwargs=None, reload_iloc=None, reload_loc=None, reload_name=None,
+                        device=None, **kwargs):
 
         if hparams is not None:
             override_hparams = hparams
+
+        if device is not None:
+            override_hparams = override_hparams or {}
+            override_hparams['device'] = device
 
         experiment = Experiment.reload_from_path(path, override_hparams=override_hparams, reload_iloc=reload_iloc,
                                                  reload_loc=reload_loc, reload_name=reload_name, **kwargs)
@@ -560,7 +563,6 @@ class Algorithm(Processor, metaclass=MetaInit):
             for k, net in networks.items():
                 if k in self.networks:
                     self.networks.pop(k)
-                    self.inference_networks.pop(k)
                     logger.warning(f"Found network with identical keys: {k}. Overriding previous network.")
                     if k in self.optimizers:
                         self.optimizers.pop(k)
@@ -568,7 +570,6 @@ class Algorithm(Processor, metaclass=MetaInit):
                 net = self.register_network(networks[k], name=k)
 
                 self.networks[k] = net
-                self.inference_networks[k] = self.networks[k]
 
                 if self.get_hparam('swa') is not None:
                     self.swa_networks[k] = torch.optim.swa_utils.AveragedModel(net)
@@ -1801,17 +1802,16 @@ class Algorithm(Processor, metaclass=MetaInit):
     def set_auxiliary_state(self, aux):
         pass
 
-    def compile(self, networks=True, **kwargs):
-
-        self.inference_networks = {}
+    def optimize(self, method='compile', networks=True, **kwargs):
 
         for k, net in filter_dict(self.networks, networks).items():
 
             logger.warning(f"Optimizing model: {k} with torch compile")
             if self.accelerator is None:
-                self.inference_networks[k] = torch.compile(net, **kwargs)
+                self.networks[k] = net.optimize(method, **kwargs)
             else:
-                self.inference_networks[k] = self.accelerator.prepare_model(net, evaluate=True)
+                assert method=='compile', "Accelerate does not support other optimization methods than compile"
+                self.networks[k] = self.accelerator.prepare_model(net, evaluate=True)
 
     def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, **kwargs):

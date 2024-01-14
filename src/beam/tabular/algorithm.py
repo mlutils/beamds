@@ -16,7 +16,7 @@ import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
 
-class TabularTransformer(BeamNN):
+class TabularTransformer(nn.Module):
     """
     The TabularTransformer class is a PyTorch module that implements a transformer-based model for tabular data classification. It takes as input a set of hyperparameters, the number of classes, the number of tokens, and a categorical mask. The class inherits from the torch.nn.Module class.
 
@@ -82,7 +82,7 @@ class TabularTransformer(BeamNN):
         self.register_buffer('n_tokens', n_tokens.unsqueeze(0))
         n_tokens = n_tokens + 1  # add masking token
         tokens_offset = n_tokens.cumsum(0) - n_tokens
-        total_tokens = n_tokens.sum()
+        total_tokens = int(n_tokens.sum())
 
         self.register_buffer('tokens_offset', tokens_offset.unsqueeze(0))
         self.register_buffer('cat_mask', cat_mask.unsqueeze(0))
@@ -90,8 +90,6 @@ class TabularTransformer(BeamNN):
         # self.emb = nn.Embedding(total_tokens, hparams.emb_dim, sparse=True)
         # TODO: figure out should we add another dummy token for the case of categorical feature in the last position
         self.emb = nn.Embedding(total_tokens + 1, hparams.emb_dim, sparse=hparams.sparse_embedding)
-
-        self.nnn = total_tokens + 1
 
         self.n_rules = hparams.n_rules
 
@@ -123,20 +121,12 @@ class TabularTransformer(BeamNN):
         else:
             self.lin = nn.Linear(hparams.emb_dim, n_classes, bias=False)
 
-    def forward(self, sample):
-
-        x, x_frac = sample['x'], sample['x_frac']
-
-        # logger.critical("Check x-max consistency at net:")
-        # logger.critical(f"n-tokens: {self.n_tokens}")
-        # logger.critical(self.n_tokens < x.max(dim=0).values)
+    def forward(self, x, x_frac):
 
         x1 = (x + 1)
-
-        # logger.critical(f"self.n_tokens.device: {self.n_tokens.device}, x.device: {x.device}")
-
         x2 = torch.minimum(x + 2, self.n_tokens)
 
+        self.to()
         if self.training:
             mask = self.mask.sample(x.shape).to(x.device).long()
             x1 = x1 * mask
@@ -144,12 +134,6 @@ class TabularTransformer(BeamNN):
 
         x1 = x1 + self.tokens_offset
         x2 = x2 + self.tokens_offset
-
-        # if x1.max() > self.nnn:
-        #     print('x1_max', x1.max())
-        #     print('self.nnn', self.nnn)
-        #     print('self.n_tokens', self.n_tokens)
-        #     print(x1)
 
         x1 = self.emb(x1)
         x2 = self.emb(x2)
@@ -171,7 +155,7 @@ class TabularTransformer(BeamNN):
 
 class DeepTabularAlg(Algorithm):
 
-    def __init__(self, hparams, networks=None, net_kwargs=None,  **kwargs):
+    def __init__(self, hparams, networks=None, net_kwargs=None, task_type=None, y_sigma=None,  **kwargs):
         # choose your network
 
         if networks is None:
@@ -185,14 +169,10 @@ class DeepTabularAlg(Algorithm):
         self.loss_function = None
         self.loss_kwargs = None
         self.train_acc = None
+        self.task_type = task_type
+        self.y_sigma = y_sigma
         self.previous_masking = 1 - self.get_hparam('mask_rate')
         self.best_masking = 1 - self.get_hparam('mask_rate')
-
-        # logger.critical(f"The device of n_tokens is: {self.networks['net'].n_tokens.device}")
-
-    @property
-    def task_type(self):
-        return self.dataset.task_type
 
     def preprocess_epoch(self, epoch=None, subset=None, training=True, **kwargs):
         if epoch == 0:
@@ -233,14 +213,14 @@ class DeepTabularAlg(Algorithm):
 
             self.report_scalar('mask_rate', 1 - self.net.mask.probs)
 
-    def inner_train(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
-        y = label
-        net = self.net
-
-        y_hat = net(sample)
-        loss = self.loss_function(y_hat, y, **self.loss_kwargs)
-        self.apply(loss, training=training)
-        return loss, y_hat, y
+    # def inner_train(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
+    #     y = label
+    #     net = self.net
+    #
+    #     y_hat = net(sample)
+    #     loss = self.loss_function(y_hat, y, **self.loss_kwargs)
+    #     self.apply(loss, training=training)
+    #     return loss, y_hat, y
 
     def train_iteration(self, sample=None, label=None, subset=None, counter=None, index=None,
                         training=True, **kwargs):
@@ -251,13 +231,14 @@ class DeepTabularAlg(Algorithm):
         y = label
         net = self.net
 
-        y_hat = net(sample)
+        x, x_frac = sample['x'], sample['x_frac']
+        y_hat = net(x, x_frac)
         loss = self.loss_function(y_hat, y, **self.loss_kwargs)
         self.apply(loss, training=training)
 
         # add scalar measurements
         if self.task_type == 'regression':
-            self.report_scalar('mse', loss.mean() * self.dataset.y_sigma ** 2)
+            self.report_scalar('mse', loss.mean() * self.y_sigma ** 2)
         else:
             self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
@@ -270,17 +251,18 @@ class DeepTabularAlg(Algorithm):
         y = label
         net = self.net
         n_ensembles = self.get_hparam('n_ensembles')
+        x, x_frac = sample['x'], sample['x_frac']
 
         if n_ensembles > 1:
             net.train()
             y_hat = []
             for _ in range(n_ensembles):
-                y_hat.append(net(sample))
+                y_hat.append(net(x, x_frac))
             y_hat = torch.stack(y_hat, dim=0)
             self.report_scalar('y_pred_std', y_hat.std(dim=0))
             y_hat = y_hat.mean(dim=0)
         else:
-            y_hat = net(sample)
+            y_hat = net(x, x_frac)
 
         # add scalar measurements
         self.report_scalar('y_pred', y_hat)
@@ -288,7 +270,7 @@ class DeepTabularAlg(Algorithm):
         if not predicting:
 
             if self.task_type == 'regression':
-                self.report_scalar('mse', F.mse_loss(y_hat, y, reduction='mean') * self.dataset.y_sigma ** 2)
+                self.report_scalar('mse', F.mse_loss(y_hat, y, reduction='mean') * self.y_sigma ** 2)
             else:
                 self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
@@ -321,14 +303,14 @@ class DeepTabularAlg(Algorithm):
 
                 self.report_scalar('objective', self.get_scalar('acc', aggregate=True))
 
-    def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
-                        processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,
-                        hparams=True, aux=None, pickle_model=False):
-        aux = {'kwargs': {'net_kwargs': {'n_classes': self.dataset.n_classes,
-                              'n_tokens': self.dataset.n_tokens,
-                              'cat_mask': self.dataset.cat_mask}}}
-
-        return super().save_checkpoint(path=path, networks=networks, optimizers=optimizers, schedulers=schedulers,
-                                processors=processors, scaler=scaler, scalers=scalers,
-                                swa_schedulers=swa_schedulers, swa_networks=swa_networks, hparams=hparams,
-                                aux=aux, pickle_model=pickle_model)
+    # def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
+    #                     processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,
+    #                     hparams=True, aux=None, pickle_model=False):
+    #     aux = {'kwargs': {'net_kwargs': {'n_classes': self.dataset.n_classes,
+    #                           'n_tokens': self.dataset.n_tokens,
+    #                           'cat_mask': self.dataset.cat_mask}}}
+    #
+    #     return super().save_checkpoint(path=path, networks=networks, optimizers=optimizers, schedulers=schedulers,
+    #                             processors=processors, scaler=scaler, scalers=scalers,
+    #                             swa_schedulers=swa_schedulers, swa_networks=swa_networks, hparams=hparams,
+    #                             aux=aux, pickle_model=pickle_model)

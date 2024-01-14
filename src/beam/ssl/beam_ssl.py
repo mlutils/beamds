@@ -180,8 +180,8 @@ class BeamSSL(Algorithm):
         return self.sim
 
     def inference_iteration(self, sample=None, results=None, subset=None, predicting=True, similarity=0,
-                            projection=True, prediction=True, augmentations=0, inference_networks=True,
-                            add_to_sim=False, latent_variable='h', **kwargs):
+                            projection=True, prediction=True, augmentations=0, add_to_sim=False, latent_variable='h',
+                            **kwargs):
 
         data = {}
         if isinstance(sample, dict):
@@ -191,7 +191,7 @@ class BeamSSL(Algorithm):
         else:
             x = sample
 
-        networks = self.inference_networks if inference_networks else self.networks
+        networks = self.networks
 
         # b = len(x)
         # if b < self.batch_size_eval:
