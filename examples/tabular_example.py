@@ -89,7 +89,7 @@ if __name__ == '__main__':
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=4,
                        n_quantiles=6, label_smoothing=.2,
                        model_dtype='float32', training_framework='torch',
-                       compile_train=False, sparse_embedding=False, compile_network=False)
+                       compile_train=False, sparse_embedding=False, compile_network=False, mlflow=True)
 
     kwargs_all = {}
 
