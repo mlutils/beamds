@@ -33,6 +33,7 @@ class BeamNN(nn.Module, Processor):
         nn.Module.__init__(self)
         Processor.__init__(self, *args, **kwargs)
         self._sample_input = None
+        self._sample_output = None
         self._module = _module
         self._model_type = _model_type or 'torch'
 
@@ -213,14 +214,25 @@ class BeamNN(nn.Module, Processor):
                               'args_device': recursive_device(args) if args else None,
                               'kwargs_device': recursive_device(kwargs) if kwargs else None}
 
+    @dynamo.disable
+    def save_sample_output(self, output):
+        self._sample_output = {'output': recursive_clone(to_device(output, device='cpu')),
+                               'output_device': recursive_device(output)}
+
     def __call__(self, *args, **kwargs):
 
         if self._sample_input is None:
             self.save_sample_input(*args, **kwargs)
 
         if self.module_exists:
-            return self._module(*args, **kwargs)
-        return nn.Module.__call__(self, *args, **kwargs)
+            output = self._module(*args, **kwargs)
+        else:
+            output = nn.Module.__call__(self, *args, **kwargs)
+
+        if self._sample_output is None:
+            self.save_sample_output(output)
+
+        return output
 
     def optimize(self, method='compile', **kwargs):
         if method == 'compile':

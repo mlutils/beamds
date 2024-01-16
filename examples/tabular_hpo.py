@@ -10,7 +10,7 @@ n_jobs = len(available_devices)
 
 
 from examples.tabular_example import get_paths
-from src.beam.hpo import beam_hpo, HPOConfig
+from src.beam.hpo import HPOConfig, RayHPO
 from src.beam.tabular import TabularDataset, TabularTransformer, TabularConfig, DeepTabularAlg
 from src.beam import beam_logger as logger, beam_path
 
@@ -31,8 +31,8 @@ if __name__ == '__main__':
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128)
-    # kwargs_all['adult'] = dict(batch_size=128)
+    # kwargs_all['california_housing'] = dict(batch_size=128)
+    kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
     #                             label_smoothing=.25, n_quantiles=6, dynamic_masking=False)
@@ -70,7 +70,7 @@ if __name__ == '__main__':
             logger.info(f"Post-train validation objective: {objective}")
             alg.report(objective=float(objective), epoch=alg.epoch+1)
 
-        study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=TabularDataset, print_results=False,
+        study = RayHPO(hparams, alg=DeepTabularAlg, dataset=TabularDataset, print_results=False,
                          hpo_config=hpo_config, post_train_hook=post_train_hook,
                          alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
                                                     'cat_mask': dataset.cat_mask, },
@@ -95,13 +95,22 @@ if __name__ == '__main__':
         study.uniform('transformer_dropout', 0., 0.4)
         study.uniform('label_smoothing', 0., 0.4)
 
+        scheduler = ASHAScheduler(
+            # metric="objective",  # Replace with your objective metric
+            # mode="max",  # Use "max" or "min" depending on your objective
+            max_t=kwargs_base['n_epochs']+2,  # Adjust this based on your maximum iterations
+            grace_period=20,  # The minimum number of iterations for a trial
+            reduction_factor=2,  # Factor for reducing the number of trials each round
+            time_attr="iter"  # Set to 'iter' to match your progress tracking
+        )
+
         # start pruning after max_t epochs
-        tune_config_kwargs = dict(scheduler=ASHAScheduler(max_t=10))
+        tune_config_kwargs = dict(scheduler=scheduler)
 
         other_kwargs = {}
         if k in run_names.keys():
             other_kwargs['restore_path'] = run_names[k]
 
-        study.run(**other_kwargs)
+        study.run(tune_config_kwargs=tune_config_kwargs, **other_kwargs)
 
         logger.info(f"Done HPO for dataset: {k}")

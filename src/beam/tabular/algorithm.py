@@ -126,7 +126,6 @@ class TabularTransformer(nn.Module):
         x1 = (x + 1)
         x2 = torch.minimum(x + 2, self.n_tokens)
 
-        self.to()
         if self.training:
             mask = self.mask.sample(x.shape).to(x.device).long()
             x1 = x1 * mask

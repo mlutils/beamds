@@ -15,7 +15,7 @@ from functools import partial
 
 
 from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_notebook,
-                     find_port, as_numpy, lazy_property, check_type, beam_device)
+                     find_port, as_numpy, lazy_property, check_type, beam_device, beam_service_port)
 from ..path import beam_path, BeamPath, beam_key
 from ..logger import beam_logger as logger
 from ..config import print_beam_hyperparameters, BeamConfig, UniversalConfig
@@ -355,7 +355,11 @@ class Experiment(object):
         if self.hparams.mlflow:
 
             from .beam_mlflow import MLflowSummaryWriter
-            self.mlflow_writer = MLflowSummaryWriter(self.exp_name, self.tensorboard_hparams, self.hparams.mlflow_url)
+            mlflow_url = self.hparams.mlflow_url
+            if mlflow_url is None:
+                mlflow_url = f"http://localhost:{beam_service_port('MLFLOW_PORT')}"
+            mlflow_exp_name = '-'.join(self.experiment_dir.parts[-4:])
+            self.mlflow_writer = MLflowSummaryWriter(mlflow_exp_name, self.tensorboard_hparams, mlflow_url)
 
         if networks is not None and enable:
             if self.tensorboard_writer is not None:
