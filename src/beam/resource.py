@@ -19,5 +19,8 @@ def resource(uri, **kwargs):
     elif scheme in ['openai', 'tgi', 'fastchat', 'huggingface', 'fastapi', 'fastapi-dp']:
         from .llm import beam_llm
         return beam_llm(uri, **kwargs)
+    elif scheme in ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs']:
+        from .serve import triton_client
+        return triton_client(uri, **kwargs)
     else:
         raise Exception(f'Unknown resource scheme: {scheme}')

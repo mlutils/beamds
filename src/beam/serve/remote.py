@@ -1,3 +1,5 @@
+from pathlib import PurePath
+
 from ..path import BeamURL
 
 
@@ -58,4 +60,33 @@ def beam_client(uri, hostname=None, port=None, username=None, api_key=None, **kw
         return GRPCClient(hostname=hostname, port=port, username=username, api_key=api_key, **kwargs)
     else:
         raise ValueError(f"Unknown protocol: {scheme}")
+
+
+def triton_client(uri, hostname=None, port=None, model_name=None, model_version=None, **kwargs):
+
+    uri = uri.removeprefix('triton-')
+
+    uri = BeamURL.from_string(uri)
+
+    if uri.hostname is not None:
+        hostname = uri.hostname
+
+    if uri.port is not None:
+        port = uri.port
+
+    if uri.path is not None:
+        path = uri.path
+        parts = PurePath(path).parts
+        if len(parts) > 0:
+            model_name = parts[0]
+        if len(parts) > 1:
+            model_version = parts[1]
+
+    query = uri.query
+    for k, v in query.items():
+        kwargs[k] = v
+
+    from .triton import TritonClient
+    return TritonClient(scheme=uri.scheme, hostname=hostname, port=port, model_name=model_name,
+                        model_version=model_version, **kwargs)
 

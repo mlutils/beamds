@@ -1,68 +1,28 @@
-import json
-import re
-
-from dataclasses import dataclass, field
+from functools import partial
 
 from ..core import Processor
-from ..path import beam_path, local_copy, BeamURL
-from ..utils import lazy_property
+from ..utils import lazy_property, as_numpy, check_type, as_tensor, MetaInitIsDoneVerifier
+
+triton_to_numpy_dtype_dict = {
+    'BOOL': 'bool',
+    'INT8': 'int8',
+    'INT16': 'int16',
+    'INT32': 'int32',
+    'INT64': 'int64',
+    'UINT8': 'uint8',
+    'UINT16': 'uint16',
+    'UINT32': 'uint32',
+    'UINT64': 'uint64',
+    'FP16': 'float16',
+    'FP32': 'float32',
+    'FP64': 'float64',
+    'BYTES': 'bytes',
+    'STRING': 'string',
+    'UNDEFINED': 'undefined',
+}
 
 
-@dataclass
-class TritonConfig:
-    name: str = ''
-    platform: str = ''
-    max_batch_size: int = 0
-    input: list = field(default_factory=list)
-    output: list = field(default_factory=list)
-    instance_groups: list = field(default_factory=list)
-
-    @staticmethod
-    def transform_to_json_like(s):
-        s = re.sub(r'(\w+)\s*:', r'"\1":', s)  # add quotes for keys
-        s = re.sub(r'(\w+)\s+\[', r'"\1": [', s)  # add quotes for keys
-        s = re.sub(r'(\w+)\s+{', r'"\1": {', s)  # add quotes for keys
-        s = re.sub(r':\s*(?![\["\d])(\w+)', r': "\1"', s)  # add quotes to values
-        s = re.sub(r'([}\]"])\s+("\w)', r'\1,\n\2', s)  # Add commas between elements
-        s = re.sub(r'(\s+\d+)\s+("\w)', r'\1,\n\2', s)  # Add commas between elements
-        s = f"{{{s}}}"
-        return s
-
-    @classmethod
-    def load_from_file(cls, path):
-        path = beam_path(path)
-        s = path.read_text()
-        s = cls.transform_to_json_like(s)
-        parsed_config = json.loads(s)
-        return cls(**parsed_config)
-
-    def save_to_file(self, path):
-        path = beam_path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write(self._serialize_config(), ext='bin')
-
-    def _serialize_config(self):
-        config_str = f'name: "{self.name}"\n'
-        config_str += f'platform: "{self.platform}"\n'
-        for section_name in ['  input', '  output', 'instance_groups']:
-            for section in getattr(self, section_name):
-                config_str += f'{section_name} [\n'
-                config_str += self._serialize_section(section)
-                config_str += ']\n'
-        return config_str
-
-    @staticmethod
-    def _serialize_section(section):
-        return '\n'.join([f'  {key}: "{TritonConfig._serialize_value(key, value)}"' for key, value in section.items()])
-
-    @staticmethod
-    def _serialize_value(key, value):
-        if key == 'dims':
-            return '[' + ', '.join(map(str, value)) + ']'
-        return value
-
-
-class TritonClient(Processor):
+class TritonClient(Processor, metaclass=MetaInitIsDoneVerifier):
 
     def __init__(self, scheme='http', host='localhost', port=8000, model_name=None, model_version=None,
                  verbose=False, concurrency=1, connection_timeout=60.0, network_timeout=60.,
@@ -86,6 +46,39 @@ class TritonClient(Processor):
         self.ssl = scheme == 'https' or scheme == 'grpcs'
         self.config = config
 
+    def get_metadata(self, model_name=None, model_version=None):
+        model_name = model_name or self.model_name
+        model_version = model_version or self.model_version or ''
+        return self.client.get_model_metadata(model_name, model_version=model_version)
+
+    @lazy_property
+    def metadata(self):
+        return self.get_metadata(self.model_name, self.model_version)
+
+    @property
+    def is_alive(self):
+        return self.client.is_server_live()
+
+    @lazy_property
+    def infer_input(self):
+        if 'http' in self.scheme:
+            from tritonclient.http import InferInput
+        elif 'grpc' in self.scheme:
+            from tritonclient.grpc import InferInput
+        else:
+            raise ValueError(f"Invalid scheme: {self.scheme}")
+        return InferInput
+
+    @lazy_property
+    def infer_requested_output(self):
+        if 'http' in self.scheme:
+            from tritonclient.http import InferRequestedOutput
+        elif 'grpc' in self.scheme:
+            from tritonclient.grpc import InferRequestedOutput
+        else:
+            raise ValueError(f"Invalid scheme: {self.scheme}")
+        return InferRequestedOutput
+
     @lazy_property
     def client(self):
         if 'http' in self.scheme:
@@ -102,15 +95,59 @@ class TritonClient(Processor):
                                      ssl_options=self.ssl_options, ssl_context_factory=self.ssl_context_factory,
                                      verbose=self.verbose, insecure=self.insecure, ssl=self.ssl)
 
-    def __call__(self, *args, **kwargs):
-        # Create inputs for the inference request
-        inputs = [self.client.InferInput("data_0", input_data.shape, "FP32")]
-        inputs[0].set_data_from_numpy(input_data)
+    def call_model(self, *args, model_name=None, model_version=None):
+        model_name = model_name or self.model_name
+        model_version = model_version or self.model_version or ''
+        inputs_metadata = []
+        org_type = check_type(args[0])
+        org_device = args[0].device if org_type.minor == 'tensor' else None
+        inputs = []
+        metadata = self.get_metadata(model_name, model_version)
+        for i, input_metadata in enumerate(metadata['inputs']):
+            # input_shape = [1] + input_shape
+            input_metadata = self.infer_input(input_metadata['name'], input_metadata['shape'],
+                                              input_metadata['datatype'])
+            input = args[i]
+            input = input_metadata.set_data_from_numpy(
+                    as_numpy(input, dtype=triton_to_numpy_dtype_dict[input_metadata.datatype()]))
+            inputs_metadata.append(input_metadata)
+            inputs.append(input)
 
-        # Send the inference request
-        response = self.client.infer(self.model_name, inputs,)
+        outputs_metadata = []
+        for output_metadata in metadata['outputs']:
+            output_metadata = self.infer_requested_output(output_metadata['name'])
+            outputs_metadata.append(output_metadata)
 
-        # Process the response
-        output_data = response.as_numpy("fc6_1")
+        response = self.client.infer(model_name=model_name, inputs=inputs, outputs=outputs_metadata)
+        outputs = []
+        for output_metadata in outputs_metadata:
+            out = response.as_numpy(output_metadata.name())
+            if org_type.minor == 'tensor':
+                out = as_tensor(out, device=org_device)
+            outputs.append(out)
+            
+        if len(outputs) == 1:
+            outputs = outputs[0]
 
-        return output_data
+        return outputs
+
+    def __call__(self, *args):
+        return self.call_model(*args)
+
+    def __getattr__(self, item):
+
+        if item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+            return super().__getattr__(item)
+
+        if self.model_name is None:
+            func = partial(self.call_model, model_name=item)
+        else:
+            func = partial(self.call_model, model_name=self.model_name, model_version=item)
+        return func
+
+    def __getitem__(self, item):
+        parts = item.split('/')
+        model_name = parts[0]
+        model_version = parts[1] if len(parts) > 1 else None
+        func = partial(self.call_model, model_name=model_name, model_version=model_version)
+        return func

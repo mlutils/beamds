@@ -1163,3 +1163,10 @@ class ThreadSafeDict(dict):
     def items(self):
         with self.lock:
             return list(super().items())
+
+
+class MetaInitIsDoneVerifier(type):
+    def __call__(cls, *args, **kwargs):
+        instance = super().__call__(*args, **kwargs)
+        instance.init_is_done = True
+        return instance

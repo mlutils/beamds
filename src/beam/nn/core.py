@@ -259,10 +259,11 @@ class BeamNN(nn.Module, Processor):
         return self._sample_input
 
     @property
-    def example_input(self):
+    def sample_output(self):
+        return self._sample_output
 
-        if self.sample_input is None:
-            raise ValueError("No sample input was provided. Please call the save_sample_input method first.")
+    @property
+    def example_input(self):
 
         if self.sample_input['args'] is not None:
             example_inputs = recursive_clone(to_device(self.sample_input['args'],
@@ -279,6 +280,7 @@ class BeamNN(nn.Module, Processor):
     @classmethod
     def _jit_trace(cls, self, check_trace=None, check_inputs=None, check_tolerance=None, strict=None):
 
+        self.assert_forward_was_executed('jit_trace')
         check_trace = check_trace or self.get_hparam('jit_check_trace', True)
         check_inputs = check_inputs or self.get_hparam('jit_check_inputs', None)
         check_tolerance = check_tolerance or self.get_hparam('jit_check_tolerance', 1e-5)
@@ -296,6 +298,7 @@ class BeamNN(nn.Module, Processor):
     @classmethod
     def _jit_script(cls, self):
 
+        self.assert_forward_was_executed('jit_script')
         example_inputs, example_kwarg_inputs = self.example_input
         if example_kwarg_inputs:
             raise NotImplementedError("JIT script does not support keyword arguments")
@@ -304,6 +307,10 @@ class BeamNN(nn.Module, Processor):
         optimized = torch.jit.script(module, example_inputs=[example_inputs])
 
         return cls(_module=optimized, hparams=self.hparams, _model_type='torchscript')
+
+    def assert_forward_was_executed(self, method_name):
+        if self.sample_output is None or self.sample_input is None:
+            raise ValueError(f"Please call the forward method at least once before calling {method_name}")
 
     @classmethod
     def _compile(cls, self, fullgraph=None, dynamic=None, backend=None,
@@ -363,6 +370,9 @@ class BeamNN(nn.Module, Processor):
                      do_constant_folding=True, dynamic_axes=None, keep_initializers_as_inputs=None, custom_opsets=None,
                      export_modules_as_functions=False):
 
+        self.assert_forward_was_executed('export(\'onnx\')')
+        example_inputs, _ = self.example_input
+
         import torch.onnx
 
         if training == 'eval':
@@ -385,7 +395,7 @@ class BeamNN(nn.Module, Processor):
         path = beam_path(path)
         module = self._module or self
         with local_copy(path, as_beam_path=False) as tmp_path:
-            torch.onnx.export(module, self.sample_input['args'], tmp_path, export_params=export_params,
+            torch.onnx.export(module, example_inputs, tmp_path, export_params=export_params,
                                      verbose=verbose, training=training, input_names=input_names,
                                      output_names=output_names, operator_export_type=operator_export_type,
                                      opset_version=opset_version, do_constant_folding=do_constant_folding,

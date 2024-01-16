@@ -121,11 +121,11 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
 
 
 @as_something_recursively
-def as_numpy(x, **kwargs):
+def as_numpy(x, dtype=None, **kwargs):
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
     else:
-        x = np.array(x)
+        x = np.array(x, dtype=dtype)
 
     if x.size == 1:
         str_type = str(x.dtype)
