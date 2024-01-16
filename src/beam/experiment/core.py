@@ -84,7 +84,7 @@ class Experiment(object):
             root_path = beam_path(self.hparams.logs_path)
             base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
 
-            pattern = re.compile("\A\d{4}_\d{8}_\d{6}\Z")
+            pattern = re.compile("\A\d{6}_\d{8}_\d{6}\Z")
 
             if base_dir.exists():
                 assert base_dir.is_dir(), f"Experiment directory contains an existing file: {base_dir}"
@@ -133,7 +133,7 @@ class Experiment(object):
 
             if self.exp_name is None:
                 exp_num = np.max(exp_indices) + 1 if len(exp_indices) else 0
-                self.exp_name = "%04d_%s" % (exp_num, self.exptime)
+                self.exp_name = "%06d_%s" % (exp_num, self.exptime)
 
             self.exp_num = exp_num
             # init experiment parameters
@@ -624,13 +624,11 @@ class Experiment(object):
                           base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
     def algorithm_generator(self, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None, store_init_path=None):
+                             dataset_args=None, dataset_kwargs=None, store_init_args=True):
 
-        if store_init_path is None:
-            store_init_path = self.store_init_path
         return beam_algorithm_generator(self, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                         dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
-                                        store_init_path=store_init_path)
+                                        store_init_args=store_init_args)
 
     def fit(self, alg=None, dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
@@ -638,14 +636,12 @@ class Experiment(object):
 
         if algorithm_generator is None:
             ag = partial(beam_algorithm_generator, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                         dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
-                         store_init_path=self.store_init_path)
+                         dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
         else:
 
             if alg is not None:
                 ag = partial(algorithm_generator, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
-                             store_init_path=self.store_init_path)
+                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
             else:
                 ag = algorithm_generator
 

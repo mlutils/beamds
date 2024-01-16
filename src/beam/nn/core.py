@@ -244,7 +244,7 @@ class BeamNN(nn.Module, Processor):
         else:
             raise ValueError(f'Invalid optimization method: {method}, must be one of [compile|jit_trace|jit_script]')
 
-    def export(self, method, path, **kwargs):
+    def export(self, path, method='onnx', **kwargs):
         if method == 'onnx':
             self._export_onnx(path, **kwargs)
         elif method == 'torchscript':
@@ -253,6 +253,31 @@ class BeamNN(nn.Module, Processor):
             self._export_trt(path, **kwargs)
         else:
             raise ValueError(f'Invalid export method: {method}, must be one of [onnx]')
+
+    def export_triton_server(self, path, method='onnx', model_name=None, model_version=None, **kwargs):
+
+        from .triton import TritonConfig
+
+        if model_version is None:
+            model_version = '1'
+        path = beam_path(path)
+        if model_name is not None:
+            path = path.joinpath(model_name)
+        model_name = path.name
+        path = path.joinpath(model_version)
+        path.mkdir(parents=True, exist_ok=True)
+        self.export(path.joinpath('model.onnx'), method=method, **kwargs)
+
+        example_inputs, example_kwarg_inputs = self.example_input
+        if example_inputs:
+            max_batch_size = example_inputs[0].shape[0]
+        elif example_kwarg_inputs:
+            max_batch_size = next(example_kwarg_inputs.values()).shape[0]
+        else:
+            max_batch_size = 1
+
+        config = TritonConfig(name=model_name, platform='pytorch_libtorch', max_batch_size=max_batch_size)
+        config.save_to_file(path.joinpath('config.pbtxt'))
 
     @property
     def sample_input(self):

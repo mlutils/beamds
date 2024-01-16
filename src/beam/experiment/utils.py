@@ -68,7 +68,7 @@ def path_depth(path):
 
 
 def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None, store_init_path=None, rank=0):
+                             dataset_args=None, dataset_kwargs=None, store_init_args=True, rank=0):
 
     if alg_args is None:
         alg_args = tuple()
@@ -92,8 +92,10 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
                 datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
 
     if inspect.isclass(alg):
-        if rank:
-            store_init_path = None
+        store_init_path = None
+        if store_init_args and rank == 0:
+            store_init_path = experiment.store_init_path
+
         alg = alg(experiment.hparams, experiment=experiment, *alg_args, store_init_path=store_init_path, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap

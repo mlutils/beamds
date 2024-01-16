@@ -415,7 +415,7 @@ class Algorithm(Processor, metaclass=MetaInit):
 
         alg = experiment.algorithm_generator(cls, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                              dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
-                                             store_init_path=False)
+                                             store_init_args=False)
 
         if hparams is not None:
             experiment = Experiment(hparams)

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from functools import partial
 
 from ..core import Processor
@@ -45,11 +46,19 @@ class TritonClient(Processor, metaclass=MetaInitIsDoneVerifier):
         self.insecure = insecure
         self.ssl = scheme == 'https' or scheme == 'grpcs'
         self.config = config
+        self.metadata_cache = defaultdict(dict)
 
     def get_metadata(self, model_name=None, model_version=None):
+
+        if model_name in self.metadata_cache and model_version in self.metadata_cache[model_name]:
+            return self.metadata_cache[model_name][model_version]
+
         model_name = model_name or self.model_name
         model_version = model_version or self.model_version or ''
-        return self.client.get_model_metadata(model_name, model_version=model_version)
+        metadata = self.client.get_model_metadata(model_name, model_version=model_version)
+
+        self.metadata_cache[model_name][model_version] = metadata
+        return metadata
 
     @lazy_property
     def metadata(self):
