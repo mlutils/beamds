@@ -1,5 +1,5 @@
 # Description: Beam version file
-__version__ = '2.4.0b1'
+__version__ = '2.4.1'
 
 if __name__ == '__main__':
     print(__version__)

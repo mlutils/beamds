@@ -50,6 +50,8 @@ class PureBeamPath:
         self.file_object = None
         self.client = client
         self.scheme = self.url.scheme
+        self.open_kwargs = dict(mode="rb", buffering=- 1, encoding=None, errors=None,
+                                newline=None, closefd=True, opener=None)
 
     @property
     def str(self):
@@ -80,7 +82,7 @@ class PureBeamPath:
         p = self.joinpath(key)
         p.write(value)
 
-    def touch(self):
+    def touch(self, mode=0o666, exist_ok=True):
         self.write(b'', ext='.bin')
 
     def not_empty(self, filter_pattern=None):
@@ -199,12 +201,13 @@ class PureBeamPath:
         return str(self)
         # raise TypeError("For BeamPath (named bp), use bp.open(mode) instead of open(bp, mode)")
 
-    def __call__(self, mode="rb"):
-        self.mode = mode
-        return self
+    def __call__(self, *args, **kwargs):
+        return self.open(*args, **kwargs)
 
     def open(self, mode="rb", buffering=- 1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
         self.mode = mode
+        self.open_kwargs = dict(mode=mode, buffering=buffering, encoding=encoding, errors=errors, newline=newline,
+                                closefd=closefd, opener=opener)
         return self
 
     def close(self):
@@ -545,6 +548,12 @@ class PureBeamPath:
 
         return m
 
+    def write_text(self, x, encoding=None, errors=None, newline=None):
+        return self.write(x, ext='.txt')
+
+    def write_bytes(self, x):
+        return self.write(x, ext='.bin')
+
     def write(self, x, ext=None, **kwargs):
 
         if ext is None:
@@ -671,8 +680,19 @@ class PureBeamPath:
                 raw_data = save(x, **kwargs)
                 fo.write(raw_data)
 
+            elif ext in PureBeamPath.textual_extensions:
+                assert isinstance(x, str), f"Expected str, got {type(x)}"
+                fo.write(x)
+
+            elif ext == '.bin':
+                assert isinstance(x, bytes), f"Expected bytes, got {type(x)}"
+                fo.write(x)
+
             else:
-                raise ValueError(f"Unsupported extension type: {ext} for file {x}.")
+                raise ValueError(f"Unsupported extension type: {ext} for file {x}.\n"
+                                 f"Use write_bytes or write_text instead,  \n"
+                                 f"or use one of the existing extensions by explicitly setting the ext argument,\n"
+                                 f"e.g. path.write(content, ext=.pkl).")
 
         return self
 

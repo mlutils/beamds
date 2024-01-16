@@ -122,7 +122,7 @@ class BeamPath(PureBeamPath):
         self.path.symlink_to(str(target), target_is_directory=target_is_directory)
 
     def hardlink_to(self, target):
-        self.path.link_to(str(target))
+        self.path.hardlink_to(str(target))
 
     def link_to(self, target):
         self.path.link_to(str(target))
@@ -219,7 +219,7 @@ class SFTPPath(PureBeamPath):
         elif self.mode == 'wb':
             self.file_object = BytesIO()
         elif self.mode == 'w':
-            self.file_object = StringIO()
+            self.file_object = StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
         return self.file_object
@@ -469,7 +469,7 @@ class S3Path(PureBeamPath):
         elif self.mode == 'wb':
             self.file_object = BytesIO()
         elif self.mode == 'w':
-            self.file_object = StringIO()
+            self.file_object = StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
 
@@ -559,9 +559,11 @@ class PyArrowPath(PureBeamPath):
             with self.client.open_input_file(self.str_path) as f:
                 content = f.read()
             # io_obj = StringIO if 'r' else BytesIO
-            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                  newline=self.open_kwargs['newline'])
         elif self.mode in ['wb', 'w']:
-            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError("Invalid mode")
 
@@ -730,10 +732,12 @@ class HDFSPath(PureBeamPath):
             with self.client.read(str(self), chunk_size=chunk_size) as reader:
                 content = reader.read()
 
-            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                  newline=self.open_kwargs['newline'])
 
         elif self.mode in ['wb', 'w']:
-            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
 
@@ -974,10 +978,12 @@ class CometAsset(PureBeamPath):
         if self.mode in ["rb", "r"]:
 
             content = self.experiment.get_asset(self.assets_map[self.name]['assetId'])
-            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                  newline=self.open_kwargs['newline'])
 
         elif self.mode in ['wb', 'w']:
-            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
 
@@ -1143,7 +1149,7 @@ class IOPath(DictBasedPath):
         if self.mode in ["rb", "r"]:
             self.file_object = BytesIO(self._obj)
         elif self.mode in ['wb', 'w']:
-            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
 
@@ -1323,9 +1329,11 @@ class RedisPath(PureBeamPath):
     def __enter__(self):
         if self.mode in ["rb", "r"]:
             content = self._obj
-            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode('utf-8'))
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                  newline=self.open_kwargs['newline'])
         elif self.mode in ['wb', 'w']:
-            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
 

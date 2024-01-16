@@ -339,16 +339,12 @@ class BeamNN(nn.Module, Processor):
         network = builder.create_network()
         parser = trt.OnnxParser(network, TRT_LOGGER)
 
-        with local_copy(path, as_beam_path=False) as tmp_path:
+        with local_copy(path) as tmp_path:
             # Parse the model to create a network.
-            with open(tmp_path, 'rb') as model_file:
-                parser.parse(model_file.read())
-
+            parser.parse(tmp_path.read())
             # Build the engine
             engine = builder.build_cuda_engine(network)
-
-            with open(tmp_path, "wb") as engine_file:
-                engine_file.write(engine.serialize())
+            tmp_path.write_bin(engine.serialize())
 
     def _export_onnx(self, path, export_params=True, verbose=False, training='eval',
                      input_names=None, output_names=None, operator_export_type='ONNX', opset_version=None,
