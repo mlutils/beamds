@@ -2,7 +2,7 @@ import inspect
 
 from ..core import Processor
 from ..path import BeamURL
-from ..utils import lazy_property, mixin_dictionaries
+from ..utils import lazy_property
 import ray
 
 
@@ -73,7 +73,7 @@ class RayDispatcher(Processor, RayCluster):
         self._routes = routes
         remote_kwargs = remote_kwargs if remote_kwargs is not None else {}
         ray_kwargs = ray_kwargs if ray_kwargs is not None else {}
-        self.init_ray(address=address, **ray_kwargs)
+        self.init_ray(address=address, ignore_reinit_error=True, **ray_kwargs)
         self.asynchronous = asynchronous
 
         self.call_function = None
