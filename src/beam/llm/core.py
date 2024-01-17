@@ -1,10 +1,8 @@
 import json
-import time
 from collections import namedtuple
 from functools import partial
 from typing import Optional, Any, Dict, List, Mapping
 from uuid import uuid4 as uuid
-import numpy as np
 import pandas as pd
 
 from ..logger import beam_logger as logger
@@ -458,15 +456,19 @@ class BeamLLM(LLM, Processor):
         if reset_chat:
             self.reset_chat()
 
-        messages = []
+        if type(message) is list:
+            self.reset_chat()
+            messages = message
+        else:
+            messages = []
 
-        if system is not None:
-            system = {'role': 'system', 'content': system}
-            if system_name is not None:
-                system['system_name'] = system_name
-            messages.append(system)
+            if system is not None:
+                system = {'role': 'system', 'content': system}
+                if system_name is not None:
+                    system['system_name'] = system_name
+                messages.append(system)
 
-        messages.extend(self.chat_history)
+            messages.extend(self.chat_history)
 
         self.add_to_chat(message, is_user=True)
         message = {'role': 'user', 'content': message}

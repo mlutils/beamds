@@ -9,8 +9,8 @@ from .utils import TimeoutStopper
 from ..utils import find_port, check_type, is_notebook, beam_device
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
+from ..distributed.ray_dispatcher import RayCluster
 
-import ray
 from ray.tune import JupyterNotebookReporter, TuneConfig
 from ray import tune, train
 from functools import partial
@@ -20,7 +20,7 @@ import numpy as np
 from .core import BeamHPO
 
 
-class RayHPO(BeamHPO):
+class RayHPO(BeamHPO, RayCluster):
 
     @staticmethod
     def _categorical(param, choices):
@@ -71,27 +71,6 @@ class RayHPO(BeamHPO):
     @staticmethod
     def _randn(param, mu, sigma):
         return tune.qrandn(mu, sigma)
-
-    @staticmethod
-    def init_ray(address=None, num_cpus=None, num_gpus=None, resources=None, labels=None, object_store_memory=None,
-                 ignore_reinit_error=False, include_dashboard=True, dashboard_host='0.0.0.0',
-                 dashboard_port=None, job_config=None, configure_logging=True, logging_level=None, logging_format=None,
-                 log_to_driver=True, namespace=None, runtime_env=None, storage=None):
-
-        kwargs = {}
-        if logging_level is not None:
-            kwargs['logging_level'] = logging_level
-
-        ray.init(address=address, num_cpus=num_cpus, num_gpus=num_gpus, resources=resources, labels=labels,
-                 object_store_memory=object_store_memory, ignore_reinit_error=ignore_reinit_error,
-                 job_config=job_config, configure_logging=configure_logging, logging_format=logging_format,
-                 log_to_driver=log_to_driver, namespace=namespace, storage=storage,
-                 runtime_env=runtime_env, dashboard_port=dashboard_port,
-                 include_dashboard=include_dashboard, dashboard_host=dashboard_host, **kwargs)
-
-    @staticmethod
-    def shutdown_ray():
-        ray.shutdown()
 
     def runner(self, config):
 

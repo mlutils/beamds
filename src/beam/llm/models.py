@@ -56,13 +56,18 @@ class TGILLM(FCConversationLLM):
 
     _info: Any = PrivateAttr()
     _client: Any = PrivateAttr()
+    timeout: Optional[float] = Field(None)
 
-    def __init__(self, hostname=None, port=None, *args, model_adapter=None, **kwargs):
+    def __init__(self, hostname=None, port=None, *args, model_adapter=None, timeout=None, **kwargs):
 
         api_base = f"http://{normalize_host(hostname, port)}"
 
+        client_kwargs = {}
+        if timeout is not None:
+            client_kwargs['timeout'] = timeout
+
         from text_generation import Client
-        self._client = Client(api_base)
+        self._client = Client(api_base, **client_kwargs)
 
         req = requests.get(f"{api_base}/info")
         self._info = json.loads(req.text)

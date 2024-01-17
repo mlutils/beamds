@@ -1170,3 +1170,11 @@ class MetaInitIsDoneVerifier(type):
         instance = super().__call__(*args, **kwargs)
         instance.init_is_done = True
         return instance
+
+
+def mixin_dictionaries(*dicts):
+    res = {}
+    for d in dicts[::-1]:
+        if d is not None:
+            res.update(d)
+    return res

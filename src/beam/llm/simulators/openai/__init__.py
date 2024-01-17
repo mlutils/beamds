@@ -1,6 +1,6 @@
 from argparse import Namespace
 
-from .resource import beam_llm
+from ...resource import beam_llm
 
 
 def simulate_openai_chat(model=None, **kwargs):
@@ -13,5 +13,10 @@ def simulate_openai_completion(model=None, **kwargs):
     return llm.completion(**kwargs).openai_format
 
 
-openai_simulator = Namespace(ChatCompletion=Namespace(create=simulate_openai_chat),
-                             Completion=Namespace(create=simulate_openai_completion))
+class OpenAI:
+
+    chat = Namespace(completion=Namespace(create=simulate_openai_chat))
+    completion = Namespace(create=simulate_openai_completion)
+
+    def __init__(self, **kwargs):
+       pass

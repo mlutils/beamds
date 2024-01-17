@@ -105,7 +105,8 @@ bash /workspace/install/run_mongo.sh $MONGODB_PORT
 #iptables -t nat -A PREROUTING -p tcp --dport 5000 -j REDIRECT --to-port $MLFLOW_PORT
 #iptables -t nat -A PREROUTING -p tcp --dport 27017 -j REDIRECT --to-port $MONGODB_PORT
 
-
+service start avahi-daemon
+service enable avahi-daemon
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
     # If OPTIONAL_COMMAND is empty, run bash
