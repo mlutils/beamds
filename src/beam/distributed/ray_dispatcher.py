@@ -29,10 +29,36 @@ class RayCluster:
         ray.shutdown()
 
 
+class RemoteClass:
+
+    def __init__(self, remote_class, asynchronous=True):
+        self.remote_class = remote_class
+        self.asynchronous = asynchronous
+
+    def remote_wrapper(self, method):
+        def wrapper(*args, **kwargs):
+            res = method.remote(*args, **kwargs)
+            if self.asynchronous:
+                return res
+            else:
+                return ray.get(res)
+        return wrapper
+
+    def __getattr__(self, item):
+        return self.remote_wrapper(getattr(self.remote_class, item))
+
+    def __call__(self, *args, **kwargs):
+        res = self.remote_class.remote(*args, **kwargs)
+        if self.asynchronous:
+            return res
+        else:
+            return ray.get(res)
+
+
 class RayDispatcher(Processor, RayCluster):
 
     def __init__(self, obj, *routes, name=None, address=None, host=None, port=None,
-                 username=None, password=None, remote_kwargs=None, ray_kwargs=None, **kwargs):
+                 username=None, password=None, remote_kwargs=None, ray_kwargs=None, asynchronous=True, **kwargs):
 
         if address is None:
             if host is None and port is None:
@@ -43,14 +69,40 @@ class RayDispatcher(Processor, RayCluster):
                 address = BeamURL(host=host, port=port, username=username, password=password)
                 address = address.url
 
-        self.address = address
         self.obj = obj
-        self.remote_kwargs = remote_kwargs if remote_kwargs is not None else {}
-        self.ray_kwargs = ray_kwargs if ray_kwargs is not None else {}
-        self.routes = routes
-        self._ray_initialized = False
+        self._routes = routes
+        remote_kwargs = remote_kwargs if remote_kwargs is not None else {}
+        ray_kwargs = ray_kwargs if ray_kwargs is not None else {}
+        self.init_ray(address=address, **ray_kwargs)
+        self.asynchronous = asynchronous
+
+        self.call_function = None
+        self.routes_methods = {}
+        if self.type == 'function':
+            self.call_function = self.remote_wrapper(ray.remote(**remote_kwargs)(self.obj))
+        elif self.type == 'instance':
+            if hasattr(self.obj, '__call__'):
+                self.call_function = self.remote_wrapper(ray.remote(**remote_kwargs)(self.obj.__call__))
+            for route in self.routes:
+                if hasattr(self.obj, route):
+                    self.routes_methods[route] = self.remote_wrapper(ray.remote(**remote_kwargs)(getattr(self.obj, route)))
+
+        elif self.type == 'class':
+            self.call_function = self.remote_wrapper(ray.remote(**remote_kwargs)(self.obj))
+        else:
+            raise ValueError(f"Unknown type: {self.type}")
 
         super().__init__(name=name, **kwargs)
+
+    @property
+    def routes(self):
+        routes = self._routes
+        if routes is None or len(routes) == 0:
+            routes = [name for name, attr in inspect.getmembers(self.obj)
+                      if type(name) is str and not name.startswith('_') and
+                      (inspect.ismethod(attr) or inspect.isfunction(attr))]
+
+        return routes
 
     @lazy_property
     def type(self):
@@ -63,33 +115,25 @@ class RayDispatcher(Processor, RayCluster):
         else:
             return "instance" if isinstance(self.obj, object) else "unknown"
 
-    @staticmethod
-    def remote_wrapper(obj):
+    def remote_wrapper(self, method):
         def wrapper(*args, **kwargs):
-            return obj.remote(*args, **kwargs)
+            res = method.remote(*args, **kwargs)
+            if self.asynchronous:
+                return res
+            else:
+                return ray.get(res)
         return wrapper
 
-    def run(self, *routes, remote_kwargs=None):
-
-        remote_kwargs = mixin_dictionaries(remote_kwargs, self.remote_kwargs)
-
-        if not self._ray_initialized:
-            self.init_ray(address=self.address, **self.ray_kwargs)
-
-        if self.type == 'function':
-            obj = ray.remote(**remote_kwargs)(self.obj)
-            obj = self.remote_wrapper(obj)
-        elif self.type == 'instance':
-            if len(routes) == 0:
-                routes = self.routes
-            for route in routes:
-                self.broker.task(name=route)(getattr(self.obj, route))
-
-        if self.n_workers == 1 and not self.daemon:
-            # Run in the main process
-            self.start_worker()
+    def __getattr__(self, item):
+        if item in self.routes_methods:
+            return self.routes_methods[item]
         else:
-            # Start multiple workers in separate processes
-            processes = [Process(target=self.start_worker, daemon=self.daemon) for _ in range(self.n_workers)]
-            for p in processes:
-                p.start()
+            raise AttributeError(f"Attribute {item} not served with ray")
+
+    def __call__(self, *args, **kwargs):
+        assert self.call_function is not None, "No function to call"
+        res = self.call_function(*args, **kwargs)
+        if self.type == 'class':
+            return RemoteClass(res, asynchronous=self.asynchronous)
+        else:
+            return res
