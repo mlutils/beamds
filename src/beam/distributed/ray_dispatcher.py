@@ -2,11 +2,28 @@ import inspect
 
 from ..core import Processor
 from ..path import BeamURL
-from ..utils import lazy_property
+from ..utils import lazy_property, MetaInitIsDoneVerifier
 import ray
 
 
-class RayCluster:
+class RayCluster(Processor):
+
+    def __init__(self, *args, name=None, address=None, host=None, port=None,
+                    username=None, password=None, ray_kwargs=None, **kwargs):
+
+        super().__init__(*args, name=name, **kwargs)
+
+        if address is None:
+            if host is None and port is None:
+                address = 'auto'
+            else:
+                if host is None:
+                    host = 'localhost'
+                address = BeamURL(host=host, port=port, username=username, password=password)
+                address = address.url
+
+        ray_kwargs = ray_kwargs if ray_kwargs is not None else {}
+        self.init_ray(address=address, ignore_reinit_error=True, **ray_kwargs)
 
     @staticmethod
     def init_ray(address=None, num_cpus=None, num_gpus=None, resources=None, labels=None, object_store_memory=None,
@@ -17,12 +34,13 @@ class RayCluster:
         if logging_level is not None:
             kwargs['logging_level'] = logging_level
 
-        ray.init(address=address, num_cpus=num_cpus, num_gpus=num_gpus, resources=resources, labels=labels,
-                 object_store_memory=object_store_memory, ignore_reinit_error=ignore_reinit_error,
-                 job_config=job_config, configure_logging=configure_logging, logging_format=logging_format,
-                 log_to_driver=log_to_driver, namespace=namespace, storage=storage,
-                 runtime_env=runtime_env, dashboard_port=dashboard_port,
-                 include_dashboard=include_dashboard, dashboard_host=dashboard_host, **kwargs)
+        if not ray.is_initialized():
+            ray.init(address=address, num_cpus=num_cpus, num_gpus=num_gpus, resources=resources, labels=labels,
+                     object_store_memory=object_store_memory, ignore_reinit_error=ignore_reinit_error,
+                     job_config=job_config, configure_logging=configure_logging, logging_format=logging_format,
+                     log_to_driver=log_to_driver, namespace=namespace, storage=storage,
+                     runtime_env=runtime_env, dashboard_port=dashboard_port,
+                     include_dashboard=include_dashboard, dashboard_host=dashboard_host, **kwargs)
 
     @staticmethod
     def shutdown_ray():
@@ -31,7 +49,7 @@ class RayCluster:
 
 class RemoteClass:
 
-    def __init__(self, remote_class, asynchronous=True):
+    def __init__(self, remote_class, asynchronous=False):
         self.remote_class = remote_class
         self.asynchronous = asynchronous
 
@@ -55,40 +73,34 @@ class RemoteClass:
             return ray.get(res)
 
 
-class RayDispatcher(Processor, RayCluster):
+class RayDispatcher(RayCluster, metaclass=MetaInitIsDoneVerifier):
 
     def __init__(self, obj, *routes, name=None, address=None, host=None, port=None,
-                 username=None, password=None, remote_kwargs=None, ray_kwargs=None, asynchronous=True, **kwargs):
+                 username=None, password=None, remote_kwargs=None, ray_kwargs=None, asynchronous=False, **kwargs):
 
-        if address is None:
-            if host is None and port is None:
-                address = 'auto'
-            else:
-                if host is None:
-                    host = 'localhost'
-                address = BeamURL(host=host, port=port, username=username, password=password)
-                address = address.url
+        super().__init__(name=name, address=address, host=host, port=port, username=username, password=password,
+                         ray_kwargs=ray_kwargs, **kwargs)
 
         self.obj = obj
         self._routes = routes
-        remote_kwargs = remote_kwargs if remote_kwargs is not None else {}
-        ray_kwargs = ray_kwargs if ray_kwargs is not None else {}
-        self.init_ray(address=address, ignore_reinit_error=True, **ray_kwargs)
+        self.remote_kwargs = remote_kwargs if remote_kwargs is not None else {}
         self.asynchronous = asynchronous
 
         self.call_function = None
         self.routes_methods = {}
+
         if self.type == 'function':
-            self.call_function = self.remote_wrapper(ray.remote(**remote_kwargs)(self.obj))
+            self.call_function = self.remote_function_wrapper(self.obj)
         elif self.type == 'instance':
             if hasattr(self.obj, '__call__'):
-                self.call_function = self.remote_wrapper(ray.remote(**remote_kwargs)(self.obj.__call__))
+                self.call_function = self.remote_method_wrapper(self.obj, '__call__')
             for route in self.routes:
                 if hasattr(self.obj, route):
-                    self.routes_methods[route] = self.remote_wrapper(ray.remote(**remote_kwargs)(getattr(self.obj, route)))
+                    self.routes_methods[route] = self.remote_function_wrapper(
+                        self.remote_method_wrapper(self.obj, route))
 
         elif self.type == 'class':
-            self.call_function = self.remote_wrapper(ray.remote(**remote_kwargs)(self.obj))
+            self.call_function = self.remote_class_wrapper(self.obj)
         else:
             raise ValueError(f"Unknown type: {self.type}")
 
@@ -101,7 +113,6 @@ class RayDispatcher(Processor, RayCluster):
             routes = [name for name, attr in inspect.getmembers(self.obj)
                       if type(name) is str and not name.startswith('_') and
                       (inspect.ismethod(attr) or inspect.isfunction(attr))]
-
         return routes
 
     @lazy_property
@@ -115,9 +126,35 @@ class RayDispatcher(Processor, RayCluster):
         else:
             return "instance" if isinstance(self.obj, object) else "unknown"
 
-    def remote_wrapper(self, method):
+    @property
+    def ray_remote(self):
+        return ray.remote(**self.remote_kwargs) if len(self.remote_kwargs) else ray.remote
+
+    def remote_method_wrapper(self, obj, method_name):
+        method = getattr(obj, method_name)
         def wrapper(*args, **kwargs):
-            res = method.remote(*args, **kwargs)
+            res = method(*args, **kwargs)
+            return res
+
+        return wrapper
+
+    def remote_class_wrapper(self, cls):
+
+        @self.ray_remote
+        class RemoteClassWrapper(cls):
+            pass
+
+        def wrapper(*args, **kwargs):
+            res = RemoteClassWrapper.remote(*args, **kwargs)
+            return res
+
+        return wrapper
+
+    def remote_function_wrapper(self, func):
+
+        func = self.ray_remote(func)
+        def wrapper(*args, **kwargs):
+            res = func.remote(*args, **kwargs)
             if self.asynchronous:
                 return res
             else:
@@ -125,6 +162,8 @@ class RayDispatcher(Processor, RayCluster):
         return wrapper
 
     def __getattr__(self, item):
+        if item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+            return super().__getattr__(item)
         if item in self.routes_methods:
             return self.routes_methods[item]
         else:
