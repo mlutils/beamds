@@ -5,6 +5,7 @@ from .core import PureBeamPath, normalize_host
 from io import StringIO, BytesIO
 import os
 import urllib3
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 import warnings
@@ -165,6 +166,40 @@ class BeamPath(PureBeamPath):
             return pd.read_parquet(str(self), **kwargs)
 
         return super().read(ext=ext, **kwargs)
+
+
+class SMBPath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, hostname=None, username=None, password=None, port=None,
+                 connection_timeout=60, **kwargs):
+
+        super().__init__(*pathsegments, scheme='smb', client=client, hostname=hostname, username=username,
+                         password=password, port=port, **kwargs)
+        self.connection_timeout = connection_timeout
+
+        # at exit, unregister the smb session
+        import atexit
+        atexit.register(self.unregister_smb_session)
+
+    @staticmethod
+    def _smb_path(server, path):
+        path = path.replace('/', '\\')
+        return fr"\\{server}\{path}"
+
+    @property
+    def smb_path(self):
+        return SMBPath._smb_path(self.hostname, str(self.path))
+
+    def register_smb_session(self):
+        import smbclient
+        smbclient.register_session(self.hostname, username=self.username, password=self.password, port=self.port,
+                                   connection_timeout=self.connection_timeout)
+
+    def unregister_smb_session(self):
+        import smbclient
+        smbclient.delete_session(self.hostname, port=self.port)
+
+
 
 
 class SFTPPath(PureBeamPath):
