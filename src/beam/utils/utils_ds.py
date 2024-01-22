@@ -833,6 +833,25 @@ def recursive_size_summary(x, mode='sum'):
         else:
             return sys.getsizeof(x)
 
+@recursive
+def recursive_squeeze(x):
+    x_type = check_type(x, check_element=False)
+    if x_type.minor == 'tensor':
+        return x.squeeze(0)
+    elif x_type.minor == 'numpy':
+        return np.squeeze(x, axis=0)
+    elif x_type.minor == 'pandas':
+        if isinstance(x, pd.Index) and len(x) == 1:
+            return x[0]
+        return x.squeeze('index')
+    elif x_type.minor == 'scipy_sparse':
+        ValueError("Cannot squeeze scipy sparse matrix")
+    elif x_type.minor == 'list' and len(x) == 1:
+        return x[0]
+    else:
+        return x
+
+
 
 @recursive
 def empty_elements(x):
@@ -894,7 +913,6 @@ def recursive_flatten_with_keys(x):
         return d
     else:
         return {tuple(): x}
-
 
 
 def recursive_flat_array(x, x_type=None, tolist=True):

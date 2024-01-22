@@ -17,7 +17,7 @@ from ..utils import (is_container, lazy_property, Slicer, recursive, iter_contai
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
-                     DataBatch)
+                     DataBatch, recursive_squeeze)
 
 
 class BeamData(object):
@@ -1440,10 +1440,6 @@ class BeamData(object):
     def _iloc(self, ind):
 
         ind = slice_to_index(ind, l=len(self), sliced=self.index)
-        index_type = check_type(ind)
-        if index_type.major == 'scalar':
-            ind = [ind]
-
         return self.slice_index(ind)
 
     def slice_data(self, index):
@@ -1646,7 +1642,15 @@ class BeamData(object):
 
         return DataBatch(data=d, index=i, label=l)
 
-    def slice_index(self, index):
+    def slice_index(self, index, index_type=None):
+
+        if index_type is None:
+            index_type = check_type(index, check_minor=False, check_element=False)
+        if index_type.major == 'scalar':
+            index = [index]
+        #     squeeze = True
+        # else:
+        #     squeeze = False
 
         if not self.is_cached:
             raise LookupError(f"Cannot slice by index as data is not cached")
@@ -1705,10 +1709,19 @@ class BeamData(object):
                 orientation = 'simple'
 
                 if self.quick_getitem:
+                    # if squeeze:
+                    #     data = recursive_squeeze(data)
+                    #     label = recursive_squeeze(label)
+                    #     index = recursive_squeeze(index)
                     return DataBatch(data=data, index=index, label=label)
 
         else:
             raise ValueError(f"Cannot fetch batch for BeamData with orientation={self.orientation}")
+
+        # if squeeze:
+        #     data = recursive_squeeze(data)
+        #     label = recursive_squeeze(label)
+        #     index = recursive_squeeze(index)
 
         if self.quick_getitem:
             return BeamData.data_batch(data, index=index, label=label, orientation=self.orientation, info=info,

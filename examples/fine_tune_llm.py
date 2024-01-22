@@ -11,24 +11,28 @@ def get_paths():
 
     if ip.startswith('199'):
         hf_cache_dir = '/mnt/data/models/'
+        n_gpus = 3
     else:
         hf_cache_dir = '/dsi/shared/elads/elads/data/models/'
+        n_gpus = 4
 
-    return hf_cache_dir
+    return hf_cache_dir, n_gpus
 
 
 if __name__ == '__main__':
 
     dataset_name = 'iamtarun/python_code_instructions_18k_alpaca'
-    # hparams = FTLLMHparams(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir='/mnt/data/models',
-    #                        device=0, algorithm=dataset_name.replace('/', '-'), batch_size=6, training_framework='accelerate',
-    #                        device_placement=True, dataset=dataset_name, reload=False, resume=-1,
-    #                        n_gpus=1)
-    hf_cache_dir = get_paths()
-    hparams = FTLLMConfig(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir=hf_cache_dir,
-                          device=0, algorithm=dataset_name.replace('/', '-'), batch_size=10,
+    hf_cache_dir, n_gpus = get_paths()
+
+    # hparams = FTLLMConfig(model='codellama/CodeLlama-7b-hf', identifier='debug', hf_cache_dir=hf_cache_dir,
+    #                       device=0, algorithm=dataset_name.replace('/', '-'), batch_size=10,
+    #                       training_framework='accelerate', device_placement=True, dataset=dataset_name, reload=False,
+    #                       resume=-1, n_gpus=n_gpus, model_dtype='bfloat16', distributed_backend='nccl',
+    #                       zero_stage=2)
+
+    hparams = FTLLMConfig(identifier='debug', hf_cache_dir=hf_cache_dir, batch_size=10,
                           training_framework='accelerate', device_placement=True, dataset=dataset_name, reload=False,
-                          resume=-1, n_gpus=4, model_dtype='bfloat16', distributed_backend='nccl',
+                          resume=-1, n_gpus=n_gpus, model_dtype='bfloat16', distributed_backend='nccl',
                           zero_stage=2)
 
     experiment = Experiment(hparams)
