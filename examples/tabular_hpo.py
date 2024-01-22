@@ -33,9 +33,9 @@ if __name__ == '__main__':
 
     # kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
-    kwargs_all['helena'] = dict(batch_size=256)
+    # kwargs_all['helena'] = dict(batch_size=256)
     # kwargs_all['jannis'] = dict(batch_size=256)
-    # kwargs_all['higgs_small'] = dict(batch_size=256)
+    kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
     # kwargs_all['covtype'] = dict(batch_size=1024)
@@ -99,7 +99,7 @@ if __name__ == '__main__':
             max_t=kwargs_base['n_epochs']+2,  # Adjust this based on your maximum iterations
             grace_period=20,  # The minimum number of iterations for a trial
             reduction_factor=2,  # Factor for reducing the number of trials each round
-            time_attr="iter"  # Set to 'iter' to match your progress tracking
+            # time_attr="iter"  # Set to 'iter' to match your progress tracking
         )
 
         # start pruning after max_t epochs
