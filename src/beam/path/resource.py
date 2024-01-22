@@ -1,4 +1,5 @@
-from .models import BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset, IOPath, DictPath, RedisPath
+from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset, IOPath, DictPath,
+                     RedisPath, SMBPath)
 from .core import BeamKey, BeamURL
 
 
@@ -27,7 +28,7 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     elif path[1] == ':':  # windows path
         path = path.replace('\\', '/')
         path = path.lstrip('/')
-        return BeamPath(path, scheme='windows')
+        return BeamPath(path, scheme='nt')
 
     url = BeamURL.from_string(path)
 
@@ -80,6 +81,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     elif url.protocol == 'redis':
         return RedisPath(path, hostname=hostname, port=port, username=username, **kwargs)
 
+    elif url.protocol == 'smb':
+        return SMBPath(path, hostname=hostname, port=port, username=username, **kwargs)
+
     elif url.protocol == 'comet':
 
         access_key = beam_key('COMET_API_KEY', access_key)
@@ -101,7 +105,7 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
         raise NotImplementedError
     elif url.protocol == 'ftps':
         raise NotImplementedError
-    elif url.protocol == 'windows':
+    elif url.protocol == 'nt':
         path = path.replace('\\', '/')
         return BeamPath(path)
     elif url.protocol == 'sftp':
