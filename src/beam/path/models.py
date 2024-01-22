@@ -5,6 +5,8 @@ from .core import PureBeamPath, normalize_host
 from io import StringIO, BytesIO
 import os
 import urllib3
+import stat
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 import warnings
@@ -165,6 +167,156 @@ class BeamPath(PureBeamPath):
             return pd.read_parquet(str(self), **kwargs)
 
         return super().read(ext=ext, **kwargs)
+
+
+'''
+from smbclient._os import (
+    XATTR_CREATE,
+    XATTR_REPLACE,
+    SMBDirEntry,
+    SMBStatResult,
+    SMBStatVolumeResult,
+    copyfile,
+    getxattr,
+    link,
+    listdir,
+    listxattr,
+    lstat,
+    makedirs,
+    mkdir,
+    open_file,
+    readlink,
+    remove,
+    removedirs,
+    removexattr,
+    rename,
+    renames,
+    replace,
+    rmdir,
+    scandir,
+    setxattr,
+    stat,
+    stat_volume,
+    symlink,
+    truncate,
+    unlink,
+    utime,
+    walk,
+)
+
+'''
+
+
+class SMBPath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, hostname=None, username=None, password=None, port=None,
+                 connection_timeout=60, **kwargs):
+
+        if port is None:
+            port = 445
+        super().__init__(*pathsegments, scheme='smb', client=client, hostname=hostname, username=username,
+                         password=password, port=port, **kwargs)
+        self.connection_timeout = connection_timeout
+        if self.client is None:
+            import smbclient
+            self.client = smbclient
+        self.credentials = {'username': self.username, 'password': self.password, 'port': self.port}
+        self.register_smb_session()
+
+    @staticmethod
+    def _smb_path(server, path):
+        path = path.replace('/', '\\')
+        return fr"\\{server.upper()}\{path}"
+
+    @property
+    def smb_path(self):
+        return SMBPath._smb_path(self.hostname, str(self.path))
+
+    def register_smb_session(self):
+        self.client.register_session(self.hostname.upper(), connection_timeout=self.connection_timeout,
+                                     **self.credentials)
+
+    def exists(self):
+        try:
+            self.client.stat(self.smb_path)
+            return True
+        except FileNotFoundError:
+            # The path does not exist
+            return False
+        except Exception as e:
+            # Other exceptions might indicate a problem with the network, permissions, etc.
+            # Depending on your application, you might want to handle these differently.
+            return False
+
+    def is_file(self):
+        try:
+            file_attributes = self.client.stat(self.smb_path).st_file_attributes
+            # Check if the directory attribute is not set
+            return not file_attributes & stat.FILE_ATTRIBUTE_DIRECTORY
+        except Exception as e:
+            # Handle exceptions, possibly returning False or re-raising
+            return False
+
+    def is_dir(self):
+        try:
+            file_attributes = self.client.stat(self.smb_path).st_file_attributes
+            # Check if the directory attribute is set
+            return bool(file_attributes & stat.FILE_ATTRIBUTE_DIRECTORY)
+        except Exception as e:
+            # Handle exceptions
+            return False
+
+    def mkdir(self, parents=True, exist_ok=True, **kwargs):
+
+        if self.is_root():
+            return
+
+        if not exist_ok:
+            if self.exists():
+                raise FileExistsError(f"File already exists: {self.smb_path}")
+
+        if parents and not self.parent.exists():
+            self.parent.mkdir(parents=True, exist_ok=True, **kwargs)
+
+        self.client.mkdir(self.smb_path, **{**self.credentials, **kwargs})
+
+    def rmdir(self):
+        self.client.rmdir(self.smb_path, **self.credentials)
+
+    def unlink(self, missing_ok=False):
+        self.client.unlink(self.smb_path, **self.credentials)
+
+    def iterdir(self):
+        for p in self.client.listdir(self.smb_path, **self.credentials):
+            yield self.gen(f"{self.path}/{p}")
+
+    def replace(self, target):
+        self.rename(target)
+
+    def rename(self, target):
+        self.client.rename(self.smb_path, target.smb_path, **self.credentials)
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            self.file_object = self.client.open_file(self.smb_path, mode=self.mode, **self.credentials,
+                                                     encoding=self.open_kwargs['encoding'],
+                                                     newline=self.open_kwargs['newline'],
+                                                     errors=self.open_kwargs['errors'])
+        elif self.mode == 'wb':
+            self.file_object = BytesIO()
+        elif self.mode == 'w':
+            self.file_object = StringIO(newline=self.open_kwargs['newline'])
+        else:
+            raise ValueError
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.mode in ["rb", "r"]:
+            self.file_object.close()
+        else:
+            self.file_object.seek(0)
+            self.client.open_file(self.smb_path, mode=self.mode, **self.credentials).write(self.file_object.getvalue())
+            self.file_object.close()
 
 
 class SFTPPath(PureBeamPath):

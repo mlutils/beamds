@@ -1,4 +1,6 @@
 import torchvision
+
+from ..path import beam_path
 from ..dataset import UniversalDataset
 from ..data import BeamData
 from ..utils import DataBatch, as_tensor
@@ -16,7 +18,11 @@ class FineTuneHFDataset(UniversalDataset):
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
         super().__init__(hparams)
-        dataset = datasets.load_dataset(hparams.dataset)
+
+        if beam_path(hparams.dataset).is_dir():
+            dataset = datasets.load_from_disk(hparams.dataset)
+        else:
+            dataset = datasets.load_dataset(hparams.dataset, cache_dir=hparams.hf_data_dir)
 
         self.truncation = False
         self.max_length = None
@@ -24,6 +30,7 @@ class FineTuneHFDataset(UniversalDataset):
             self.max_length = self.hparams.get('context_length')
             self.truncation = True
 
+        self.prompt_key = hparams.get('prompt_key', default='prompt')
         self.return_overflowing_tokens = hparams.get('return_overflowing_tokens', default=False)
 
         self.data = BeamData({**dataset}, quick_getitem=True)
@@ -41,7 +48,7 @@ class FineTuneHFDataset(UniversalDataset):
     def getitem(self, index):
         sample = self.data[index].data
         # return self.tokenizer(sample['prompt'], padding=True, truncation=True, return_tensors='pt')
-        prompts = [f"{s} {self.tokenizer.eos_token}" for s in sample['prompt']]
+        prompts = [f"{s} {self.tokenizer.eos_token}" for s in sample[self.prompt_key]]
         data = self.tokenizer(prompts, padding=True, truncation=self.truncation,
                               max_length=self.max_length, return_tensors='pt',
                               return_overflowing_tokens=self.return_overflowing_tokens).data

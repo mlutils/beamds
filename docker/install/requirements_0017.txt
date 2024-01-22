@@ -22,3 +22,4 @@ websocket-client
 coolname
 Faker
 tritonclient[all]
+smbprotocol[smb2]

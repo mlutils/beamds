@@ -28,7 +28,7 @@ class PureBeamPath:
         if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
             pathsegments = pathsegments[0].parts
 
-        if scheme == 'windows':
+        if scheme == 'nt':
             self.path = PureWindowsPath(*pathsegments)
         else:
             self.path = PurePosixPath(*pathsegments)

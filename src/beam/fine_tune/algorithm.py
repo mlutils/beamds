@@ -1,5 +1,3 @@
-from peft import LoraConfig, get_peft_model, PeftModel
-
 from ..core import Algorithm
 from ..path import local_copy, in_memory_storage
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
@@ -44,6 +42,7 @@ class FineTuneLLM(Algorithm):
         if model is None:
             model = FineTuneLLM.load_model(hparams, config=config)
 
+        from peft import LoraConfig, get_peft_model
         lora_config = LoraConfig(r=hparams.lora_r, lora_alpha=hparams.lora_alpha,
                                  target_modules=hparams.target_modules, lora_dropout=hparams.lora_dropout,
                                  bias=hparams.lora_bias, fan_in_fan_out=hparams.lora_fan_in_fan_out,
@@ -84,6 +83,8 @@ class FineTuneLLM(Algorithm):
         aux = super().load_checkpoint(path_or_state, networks=False, optimizers=optimizers, schedulers=schedulers,
                         processors=processors, scaler=scaler, scalers=scalers, swa_schedulers=swa_schedulers, swa_networks=swa_networks,
                         hparams=hparams)
+
+        from peft import PeftModel
 
         in_memory_path = in_memory_storage(mode='file', data=aux.pop('lora'))
         with local_copy(in_memory_path, as_beam_path=False) as local_path:
