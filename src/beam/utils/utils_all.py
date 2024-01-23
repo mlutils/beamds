@@ -624,9 +624,8 @@ def dictionary_iterator(d):
     for _ in itertools.count():
         try:
             yield {k: next(v) for k, v in d.items()}
-        except KeyError:
+        except StopIteration:
             return
-
 
 
 def get_item_with_tuple_key(x, key):

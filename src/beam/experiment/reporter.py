@@ -20,7 +20,7 @@ from ..data import BeamData
 
 class BeamReport(object):
 
-    def __init__(self, objective=None, objective_mode='max'):
+    def __init__(self, objective=None, objective_mode='max', aux_objectives=None, aux_objectives_modes=None):
 
         self.scalar = None
         self.aux = None
@@ -35,8 +35,20 @@ class BeamReport(object):
         self.scalar_aggregation = None
         self.scalars_aggregation = None
 
-        self.objective_name = objective
-        self.objective_mode = objective_mode
+        if aux_objectives is None:
+            aux_objectives = []
+        if aux_objectives_modes is None:
+            aux_objectives_modes = []
+
+        if objective is not None:
+            aux_objectives.insert(0, objective)
+            aux_objectives_modes.insert(0, objective_mode)
+
+        self.objective_names = aux_objectives
+        self.objectives_modes = aux_objectives_modes
+
+        self.objective_name = None
+        self.objective_mode = None
 
         self.epoch = None
         self.best_epoch = None
@@ -291,6 +303,14 @@ class BeamReport(object):
         else:
             self.best_state = False
 
+    def set_objective_name(self, keys):
+
+        for i, o in enumerate(self.objective_names):
+            if o is not None and o in keys:
+                self.objective_name = o
+                self.objective_mode = self.objectives_modes[i]
+                return
+
     @contextmanager
     def track_epoch(self, subset, batch_size=None, training=True):
         self.subset_context = subset
@@ -321,12 +341,16 @@ class BeamReport(object):
 
         agg = None
 
+        if self.objective_name is None:
+            self.set_objective_name(list(self.subsets_keys[subset]['scalar']))
+
         for name in self.subsets_keys[subset]['scalar']:
 
             k = f'{subset}/{name}' if subset is not None else name
             v = self.scalar[k]
 
             self.scalar[k] = self.stack_scalar(v, batch_size=batch_size)
+
             if name == self.objective_name and track_objective:
                 agg = self.scalar_aggregation.get(k, None)
                 self.set_objective(self.aggregate_scalar(self.scalar[k], agg))

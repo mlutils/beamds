@@ -1,6 +1,33 @@
 from ..core import Algorithm
 from ..path import local_copy, in_memory_storage
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
+import torch
+
+
+# class FineTuneLLM(Algorithm):
+#
+#     def __init__(self, hparams, **kwargs):
+#
+#         config = None
+#         if hparams.get('reload_path', None) is None:
+#             config = self.load_configuration(hparams)
+#
+#         self.tokenizer = self.load_tokenizer(hparams, config=config)
+#         super().__init__(hparams,  **kwargs)
+#
+#     @staticmethod
+#     def load_configuration(hparams):
+#         return AutoConfig.from_pretrained(hparams.model, cache_dir=hparams.hf_cache_dir)
+#
+#     @staticmethod
+#     def load_tokenizer(hparams, config=None):
+#         if config is None:
+#             config = FineTuneLLM.load_configuration(hparams)
+#         return AutoTokenizer.from_pretrained(hparams.model, config=config)
+#
+#     def train_iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
+#         print(sample)
+#         print('iteration')
 
 
 class FineTuneLLM(Algorithm):
@@ -13,6 +40,13 @@ class FineTuneLLM(Algorithm):
             config = self.load_configuration(hparams)
             model = self.load_lora_model(hparams, config=config)
             networks = {'llm': model}
+
+        # dtype = hparams.get('model_dtype', 'float16')
+        # if dtype != 'float32':
+        #     dtype = getattr(torch, dtype)
+        #     for n, v in networks['llm'].named_parameters():
+        #         if not v.requires_grad:
+        #             v.to(dtype=dtype)
 
         self.tokenizer = self.load_tokenizer(hparams, config=config)
         super().__init__(hparams, networks=networks, **kwargs)

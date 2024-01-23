@@ -231,9 +231,13 @@ class Algorithm(Processor, metaclass=MetaInit):
     def amp(self):
         return self.training_framework == 'amp' if self.is_cuda else False
 
+    # @lazy_property
+    # def deepspeed(self):
+    #     return self.training_framework == 'deepspeed' and self.get_hparam('n_gpus') > 1
+
     @lazy_property
     def deepspeed(self):
-        return self.training_framework == 'deepspeed' and self.get_hparam('n_gpus') > 1
+        return self.training_framework == 'deepspeed'
 
     @lazy_property
     def scaler(self):
@@ -339,8 +343,8 @@ class Algorithm(Processor, metaclass=MetaInit):
 
     @lazy_property
     def train_reporter(self):
-        return BeamReport(objective=self.get_hparam('objective'),
-                          objective_mode=self.optimization_mode)
+        return BeamReport(objective=self.get_hparam('objective'), objective_mode=self.optimization_mode,
+                          aux_objectives=['loss'], aux_objectives_modes=['min'])
 
     def __getattr__(self, item):
         assert item != 'networks', 'Networks are not initialized yet'
@@ -989,6 +993,9 @@ class Algorithm(Processor, metaclass=MetaInit):
         if self.n_epochs is None:
             self.n_epochs = self.get_hparam('total_steps') // self.epoch_length['train']
 
+        self.set_hparam('epoch_length_train', self.epoch_length['train'])
+        self.set_hparam('epoch_length_eval', self.epoch_length[self.eval_subset])
+
         for k, scheduler in self.schedulers_flat.items():
             if type(scheduler) is BeamScheduler:
 
@@ -1117,10 +1124,14 @@ class Algorithm(Processor, metaclass=MetaInit):
 
     def register_network(self, net, name=None):
 
-        net = BeamNN.from_module(net, name=name, hparams=self.hparams)
+        # TODO: make this work with deepspeed
+        # net = BeamNN.from_module(net, name=name, hparams=self.hparams)
 
         if self.device is not None:
-            net = net.to(self.device, dtype=self.model_dtype)
+            if self.accelerate:
+                net = net.to(self.device)
+            else:
+                net = net.to(self.device, dtype=self.model_dtype)
 
         if self.ddp:
 
@@ -1453,10 +1464,14 @@ class Algorithm(Processor, metaclass=MetaInit):
 
         stop_at = self.get_hparam('stop_at')
         early_stopping_patience = self.get_hparam('early_stopping_patience')
-        if stop_at is not None or early_stopping_patience is not None:
-            if self.objective is None:
-                logger.warning("Early stopping is enabled but no objective is defined. set objective in the hparams")
-                return False
+        if self.objective is None and stop_at is not None:
+            logger.warning("Early stopping is enabled (stop_at is not None) but no objective is defined. "
+                           "set objective in the hparams")
+            return False
+        if self.objective is None and early_stopping_patience is not None:
+            logger.warning("Early stopping is enabled (early_stopping_patience is not None) "
+                           "but no objective is defined. set objective in the hparams")
+            return False
 
         if stop_at is not None:
             if self.best_objective is not None:
@@ -1538,6 +1553,9 @@ class Algorithm(Processor, metaclass=MetaInit):
                 dataset = DataBatch(index=index, data=transforms, label=None)
 
         return dataset
+
+    def training_closure(self, *args, **kwargs):
+        pass
 
     def __iter__(self):
 
