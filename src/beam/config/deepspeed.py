@@ -150,6 +150,13 @@ def deepspeed_config_generator(hparams):
     config['fp16']['enabled'] = model_dtype == 'fp16'
     config['bf16']['enabled'] = model_dtype == 'bf16'
 
+    # steps_per_print
+    if target != 'accelerate':
+        epoch_length_train = hparams.get('epoch_length_train', None)
+        epoch_length_eval = hparams.get('epoch_length_eval', None)
+        if epoch_length_train is not None and epoch_length_eval is not None:
+            config['steps_per_print'] = epoch_length_train + epoch_length_eval
+
     # update config with deepspeed_config (deepspeed_config overrides all other parameters)
     hparams_dict = recursive_to_dict(config)
 

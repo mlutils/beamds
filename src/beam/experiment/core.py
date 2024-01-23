@@ -368,9 +368,9 @@ class Experiment(object):
             if self.comet_exp is not None:
                 self.comet_exp.set_model_graph(str(networks))
 
-    def save_model_results(self, reporter, algorithm, iteration, visualize_results='yes',
-                           store_results='logscale', store_networks='logscale', print_results=True,
-                           visualize_weights=False, argv=None, total_time=None, estimated_time=None):
+    def save_model_results(self, reporter, algorithm, iteration, visualize_results=None,
+                           store_results=None, store_networks=None, print_results=None,
+                           visualize_weights=None, argv=None):
 
         '''
 
@@ -390,6 +390,12 @@ class Experiment(object):
         :param print_results: whether to print the results to stdout when saving results to tensorboard.
         :return:
         '''
+
+        visualize_weights = self.hparams.get('visualize_weights', preferred=visualize_weights, default=False)
+        visualize_results = self.hparams.get('visualize_results', preferred=visualize_results, default='yes')
+        store_results = self.hparams.get('store_results', preferred=store_results, default='logscale')
+        store_networks = self.hparams.get('store_networks', preferred=store_networks, default='logscale')
+        print_results = self.hparams.get('print_results', preferred=print_results, default=True)
 
         epoch = algorithm.epoch
         if not self.rank:
@@ -412,7 +418,7 @@ class Experiment(object):
                     (visualize_results == 'best' and algorithm.best_state)):
                 self.log_data(reporter, epoch, print_log=print_results, alg=alg, argv=argv)
 
-            if (store_networks in ['yes', 'logscale', 'last'] or (store_networks == 'all_bests' and logscale) or
+            if (any([v in store_networks for v in ['yes', 'logscale', 'last']]) or (store_networks == 'all_bests' and logscale) or
                 (iteration+1 == algorithm.n_epochs and store_networks == 'final')):
                 checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
                 algorithm.save_checkpoint(checkpoint_file)
@@ -421,7 +427,7 @@ class Experiment(object):
                 checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_best')
                 algorithm.save_checkpoint(checkpoint_file)
 
-            if store_networks == 'last' or store_networks == 'logscale' and not logscale:
+            if 'last' in store_networks or ('logscale' in store_networks and not logscale):
                 try:
                     self.checkpoints_dir.joinpath(f'checkpoint_{epoch - 1:06d}').unlink()
                 except OSError:

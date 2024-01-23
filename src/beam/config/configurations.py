@@ -184,7 +184,7 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
         BeamParam('lr_dense', float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
         BeamParam('lr_sparse', float, 1e-2, 'learning rate for sparse optimizers', tags='tune'),
         BeamParam('stop_at', float, None, 'Early stopping when objective >= stop_at', tags='tune'),
-        BeamParam('early_stopping_patience', int, 0, 'Early stopping patience in epochs, '
+        BeamParam('early_stopping_patience', int, None, 'Early stopping patience in epochs, '
                                                      'stop when current_epoch - best_epoch >= early_stopping_patience',
                     tags='tune'),
     ]
@@ -280,7 +280,7 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
         # results printing and visualization
 
         BeamParam('print_results', bool, True, 'Print results after each epoch to screen'),
-        BeamParam('visualize_weights', bool, True, 'Visualize network weights on tensorboard'),
+        BeamParam('visualize_weights', bool, False, 'Visualize network weights on tensorboard'),
         BeamParam('enable_tqdm', bool, True, 'Print tqdm progress bar when training'),
         BeamParam('visualize_results_log_base', int, 10, 'log base for the logarithmic based results visualization'),
         BeamParam('tqdm_threshold', float, 10., 'Minimal expected epoch time to print tqdm bar '
@@ -291,8 +291,8 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
                                                    '[yes|no|logscale|best|never|final]'),
         BeamParam('store_results', str, 'logscale', 'when to store results to pickle files '
                                                     '[yes|no|logscale|best|never|final]'),
-        BeamParam('store_networks', str, 'best', 'when to store network weights to the log directory '
-                                                 '[yes|no|logscale|best|all_bests|never|final|last]'),
+        BeamParam('store_networks', str, 'best/last', 'when to store network weights to the log directory '
+                                         '[yes|no|logscale|best|all_bests|never|final|last|best/last]'),
 
         BeamParam('comet', bool, False, 'Whether to use comet.ml for logging'),
         BeamParam('git_directory', str, None, 'The git directory to use for comet.ml logging'),

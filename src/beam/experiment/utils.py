@@ -109,6 +109,14 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
     return alg
 
 
+def training_closure(rank, world_size, experiment, alg, *args, **kwargs):
+
+    if not rank:
+        alg.training_closure(*args, **kwargs)
+        checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
+        alg.save_checkpoint(checkpoint_file)
+
+
 def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
 
     alg = algorithm_generator(*args, rank=rank, **kwargs)
@@ -116,34 +124,23 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
     experiment.writer_control(enable=not (bool(rank)))
     results = {}
 
-    t0 = time.time()
-
     try:
         for i, results in enumerate(iter(alg)):
 
             if done_training.is_set():
                 break
 
-            total_time = time.time() - t0
-            estimated_time = total_time * (alg.n_epochs - i - 1) / (i + 1)
+            experiment.save_model_results(copy.deepcopy(results), alg, i, argv=tensorboard_arguments)
 
-            experiment.save_model_results(copy.deepcopy(results), alg, i,
-                                          print_results=experiment.hparams.print_results,
-                                          visualize_results=experiment.hparams.visualize_results,
-                                          store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
-                                          visualize_weights=experiment.hparams.visualize_weights,
-                                          argv=tensorboard_arguments, total_time=total_time, estimated_time=estimated_time)
+        if rank == 0:
+            logger.info(f"Training is done, Worker terminates.")
 
     except KeyboardInterrupt as e:
 
         if rank == 0:
-            # tb = traceback.format_exc()
             logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
             logger.debug(f"KeyboardInterrupt: {e}")
-            # logger.debug(f"KeyboardInterrupt: {tb}")
-
-            checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
-            alg.save_checkpoint(checkpoint_file)
+            training_closure(rank, world_size, experiment, alg, *args, **kwargs)
 
     except Exception as e:
 
@@ -155,16 +152,15 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
             explain = llm.explain_traceback(tb)
             logger.error(f"LLM Message: {explain}")
 
+        if rank == 0:
+
+            logger.error(f"Exception: {e}")
+            logger.error(f"Exception: {tb}")
+            logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
+            training_closure(rank, world_size, experiment, alg, *args, **kwargs)
+
         if not is_notebook():
             raise e
-
-        logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
-        logger.error(f"Exception: {e}")
-        logger.error(f"Exception: {tb}")
-
-        if rank == 0:
-            checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
-            alg.save_checkpoint(checkpoint_file)
 
     experiment.writer_cleanup()
 
