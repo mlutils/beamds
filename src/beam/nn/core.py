@@ -58,6 +58,12 @@ class BeamNN(nn.Module, Processor):
             beam_module = cls(*args, _module=module, hparams=hparams, **kwargs)
         return beam_module
 
+    def __dir__(self):
+        d = super().__dir__()
+        if self.module_exists:
+            d.extend(self._module.__dir__())
+        return d
+
     def _mixin_method(self, method_name, *args, **kwargs):
         if self.module_exists:
             return getattr(self._module, method_name)(*args, **kwargs)

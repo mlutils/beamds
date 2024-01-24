@@ -760,6 +760,27 @@ class Experiment(object):
 
         arguments = (job, self, *args)
 
+        def _run_mpi(demo_fn, world_size):
+            from mpi4py import MPI
+            comm = MPI.COMM_WORLD
+            rank = comm.Get_rank()
+            assert rank == 0, "The main process should be rank 0."
+
+            spawned_comm = []
+            for i in range(1, world_size):
+                # This does not work as it requires the same executable to be run (not a function)
+                spawned_comm.append(MPI.COMM_SELF.Spawn(demo_fn, args=(rank, world_size, kwargs, *arguments),
+                                                        maxprocs=world_size))
+
+            # Receive results from child processes
+            res = [demo_fn(0, world_size, kwargs, *arguments)]
+            for i in range(world_size-1):
+                result = spawned_comm[i].recv(source=MPI.ANY_SOURCE)
+                res.append(result)
+                spawned_comm[i].Disconnect()
+
+            return res
+
         def _run(demo_fn, world_size):
 
             ctx = mp.get_context(self.hparams.mp_context)
@@ -786,7 +807,10 @@ class Experiment(object):
 
             logger.info(f'Multiprocessing port is: {self.hparams.mp_port}')
 
-            return _run(run_worker, self.world_size)
+            if self.hparams.get('distributed_backend') == 'mpi':
+                return _run_mpi(run_worker, self.world_size)
+            else:
+                return _run(run_worker, self.world_size)
         else:
             logger.info(f'Single worker mode')
             return run_worker(0, 1, None, *arguments, **kwargs)

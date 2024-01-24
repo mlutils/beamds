@@ -1047,6 +1047,14 @@ class Algorithm(Processor, metaclass=MetaInit):
             opt = self.optimizers[k] if k in self.optimizers else None
             sch = self.schedulers[k] if k in self.schedulers else None
 
+            # os.environ['LOCAL_RANK'] = str(self.rank)
+            # # OMPI_COMM_WORLD_LOCAL_RANK
+            # os.environ['OMPI_COMM_WORLD_RANK'] = str(self.rank)
+            # # OMPI_COMM_WORLD_RANK
+            # os.environ['OMPI_COMM_WORLD_SIZE'] = str(self.world_size)
+
+            logger.critical(f"LOCAL_RANK: {os.environ['LOCAL_RANK']}")
+            logger.critical(f"self.rank: {self.rank}")
             deepspeed_config = Namespace(local_rank=self.rank, device_rank=int(self.device.index),
                                          deepspeed_config=self.deepspeed_config(target='deepspeed'))
 
@@ -1124,8 +1132,7 @@ class Algorithm(Processor, metaclass=MetaInit):
 
     def register_network(self, net, name=None):
 
-        # TODO: make this work with deepspeed
-        # net = BeamNN.from_module(net, name=name, hparams=self.hparams)
+        net = BeamNN.from_module(net, name=name, hparams=self.hparams)
 
         if self.device is not None:
             if self.accelerate:

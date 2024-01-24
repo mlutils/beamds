@@ -14,9 +14,9 @@ from ..config import get_beam_llm, BeamConfig
 done_training = mp.Event()
 
 
-def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='ddp'):
+def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='ddp', master_addr='localhost'):
 
-    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_ADDR'] = master_addr
     os.environ['MASTER_PORT'] = port
     logger.info(f"Initializing distributed training with backend={backend} and framework={framework}")
     if framework == 'ddp':
@@ -30,10 +30,17 @@ def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='
         # os.environ['LD_LIBRARY_PATH'] = f"/usr/local/mpi/lib:{os.environ['PATH']}"
 
         os.environ['LOCAL_RANK'] = str(rank)
+        os.environ['RANK'] = str(rank)
+        os.environ['WORLD_SIZE'] = str(world_size)
+        os.environ['OMPI_COMM_WORLD_SIZE'] = str(world_size)
+        os.environ['OMPI_COMM_WORLD_RANK'] = str(rank)
 
         import deepspeed
-        deepspeed.init_distributed(dist_backend=backend, auto_mpi_discovery=backend == 'mpi',
+        # deepspeed.init_distributed(dist_backend=backend, auto_mpi_discovery=backend == 'mpi',
+        #                            rank=rank, world_size=world_size, distributed_port=port)
+        deepspeed.init_distributed(dist_backend=backend, auto_mpi_discovery=False,
                                    rank=rank, world_size=world_size, distributed_port=port)
+
     else:
         raise ValueError(f"Unknown distributed framework: {framework}")
 
@@ -171,7 +178,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
         return alg, results
 
 
-def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
+def run_worker(rank, world_size, results_queue_or_kwargs, job, experiment, *args, **kwargs):
 
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
@@ -183,6 +190,12 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
         setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend,
                           framework=experiment.distributed_training_framework)
 
+    if world_size > 1 and backend == 'mpi':
+        results_queue = None
+        kwargs = results_queue_or_kwargs
+    else:
+        results_queue = results_queue_or_kwargs
+
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.hparams.seed, constant=rank+1, increment=False, deterministic=experiment.hparams.deterministic)
 
@@ -191,7 +204,14 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     if world_size > 1:
 
         cleanup(rank, world_size, experiment.distributed_training_framework)
-        results_queue.put({'rank': rank, 'results': res})
+
+        if results_queue is not None:
+            results_queue.put({'rank': rank, 'results': res})
+
+        elif backend == 'mpi' and rank != 0:
+            from mpi4py import MPI
+            comm = MPI.COMM_WORLD
+            comm.send({'rank': rank, 'results': res}, dest=0)
 
         done_training.wait()
 
