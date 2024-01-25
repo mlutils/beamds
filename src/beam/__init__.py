@@ -18,6 +18,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            '__version__',
            'resource',
            'KeysConfig',
+           'tqdm',
            ]
 
 
