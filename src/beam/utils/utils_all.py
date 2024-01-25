@@ -14,6 +14,8 @@ import time
 import re
 import threading
 
+import traceback
+import linecache
 
 try:
     import modin.pandas as mpd
@@ -832,8 +834,8 @@ class NoneClass:
         return none_function
 
 
-import traceback
-import linecache
+class NullClass:
+    pass
 
 
 def beam_traceback(exc_type=None, exc_value=None, tb=None, context=3):

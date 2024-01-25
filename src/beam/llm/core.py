@@ -9,15 +9,16 @@ from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
 from ..core.processor import Processor
-from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict
+from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass
 from ..path import BeamURL
 
 try:
     from langchain.llms.base import LLM
     from langchain.callbacks.manager import CallbackManagerForLLMRun
 except ImportError:
-    LLM = object
-    CallbackManagerForLLMRun = object
+    LLM = NullClass
+    CallbackManagerForLLMRun = NullClass
+
 
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
@@ -982,7 +983,7 @@ class BeamLLM(LLM, Processor):
         pass
 
     def stem_message(self, message, n_tokens, skip_special_tokens=True):
-        if self.tokenizer is not None:
+        if self.tokenizer is not None and hasattr(self.tokenizer, 'decode'):
             tokens = self.tokenizer(message)['input_ids'][:n_tokens+1]  # +1 for the start token
             return self.tokenizer.decode(tokens, skip_special_tokens=skip_special_tokens)
         else:
