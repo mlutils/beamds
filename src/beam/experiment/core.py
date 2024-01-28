@@ -418,8 +418,9 @@ class Experiment(object):
                     (visualize_results == 'best' and algorithm.best_state)):
                 self.log_data(reporter, epoch, print_log=print_results, alg=alg, argv=argv)
 
-            if (any([v in store_networks for v in ['yes', 'logscale', 'last']]) or (store_networks == 'all_bests' and logscale) or
-                (iteration+1 == algorithm.n_epochs and store_networks == 'final')):
+            if (any([v in store_networks for v in ['yes', 'last', 'logscale']]) or
+                (iteration+1 == algorithm.n_epochs and store_networks == 'final') or
+                (store_networks == 'all_bests' and algorithm.best_state)):
                 checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
                 algorithm.save_checkpoint(checkpoint_file)
 

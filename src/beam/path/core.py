@@ -19,7 +19,7 @@ class PureBeamPath:
     # all the extensions that are considered textual (should be read as .txt)
     textual_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css',
                           '.html', '.md']
-    text_based_extensions = textual_extensions + ['.json', '.orc', '.yaml', '.yml', '.ndjson', '.csv']
+    text_based_extensions = textual_extensions + ['.json', '.orc', '.yaml', '.yml', '.ndjson', '.csv', '.ini']
 
     def __init__(self, *pathsegments, url=None, scheme=None, hostname=None, port=None, username=None, password=None,
                  fragment=None, params=None, client=None, **kwargs):
@@ -448,6 +448,12 @@ class PureBeamPath:
                 read = getattr(nx, f'read_{ext[1:]}')
                 x = read(fo, **kwargs)
 
+            elif ext == '.ini':
+                import configparser
+                x = configparser.ConfigParser()
+                x.read_file(fo)
+                x = {section: dict(x.items(section)) for section in x.sections()}
+
             elif ext in ['.json', '.ndjson']:
 
                 # TODO: add json read with fastavro and shcema
@@ -679,6 +685,12 @@ class PureBeamPath:
                 from safetensors.torch import save
                 raw_data = save(x, **kwargs)
                 fo.write(raw_data)
+
+            elif ext == '.ini':
+                import configparser
+                x = configparser.ConfigParser()
+                x.read_dict(x)
+                x.write(fo)
 
             elif ext in PureBeamPath.textual_extensions:
                 assert isinstance(x, str), f"Expected str, got {type(x)}"
