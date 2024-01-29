@@ -92,11 +92,11 @@ class SWAConfig(BeamConfig):
 class DistributedTrainingConfig(BeamConfig):
 
     parameters = [
+        BeamParam('mp_ip', str, 'localhost', 'IP to be used for multiprocessing'),
         BeamParam('mp_port', str, 'random', 'Port to be used for multiprocessing'),
         BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
         BeamParam('distributed_backend', str, None, 'The distributed backend to use. Supported backends: [nccl, gloo, mpi]'),
         BeamParam('mp_context', str, 'spawn', 'The multiprocessing context to use'),
-        BeamParam('mp_backend', str, None, 'The multiprocessing backend to use'),
     ]
 
 
