@@ -8,6 +8,7 @@ class FTLLMConfig(UniversalConfig):
                     scale_epoch_by_batch_size=False, lr_dense=1e-5, lr_sparse=1e-4, reduction='mean_batch')
     parameters = [BeamParam('model', str, None, 'Model to use for fine-tuning'),
                   BeamParam('prompt_key', str, 'prompt', 'Key to use for the prompt'),
+                  BeamParam('completion_key', str, None, 'Key to use for the completion'),
                   BeamParam('lora_alpha', float, 16, 'Lora alpha parameter', tags=['tune']),
                   BeamParam('lora_dropout', float, 0.05, 'Lora dropout', tags=['tune']),
                   BeamParam('lora_r', int, 16, 'Lora r parameter', tags=['tune']),

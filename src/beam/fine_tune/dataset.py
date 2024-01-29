@@ -1,4 +1,5 @@
 import torchvision
+from cugraph_dgl.cugraph_storage import torch
 
 from ..path import beam_path
 from ..dataset import UniversalDataset
@@ -31,6 +32,7 @@ class FineTuneHFDataset(UniversalDataset):
             self.truncation = True
 
         self.prompt_key = hparams.get('prompt_key', default='prompt')
+        self.completion_key = hparams.get('completion_key', default=None)
         self.return_overflowing_tokens = hparams.get('return_overflowing_tokens', default=False)
 
         self.data = BeamData({**dataset}, quick_getitem=True)
@@ -48,8 +50,22 @@ class FineTuneHFDataset(UniversalDataset):
     def getitem(self, index):
         sample = self.data[index].data
         # return self.tokenizer(sample['prompt'], padding=True, truncation=True, return_tensors='pt')
-        prompts = [f"{s} {self.tokenizer.eos_token}" for s in sample[self.prompt_key]]
+        prompts = [f"{self.tokenizer.bos_token}{s}{self.tokenizer.eos_token}" for s in sample]
+        if self.completion_key is not None:
+            prompts = [f"{s}{self.tokenizer.bos_token}{c}{self.tokenizer.eos_token}"
+                       for s, c in zip(prompts, sample[self.completion_key])]
+
         data = self.tokenizer(prompts, padding=True, truncation=self.truncation,
                               max_length=self.max_length, return_tensors='pt',
                               return_overflowing_tokens=self.return_overflowing_tokens).data
+
+        x = data['input_ids'].clone()
+        if self.completion_key is not None:
+            mask = (x == self.tokenizer.bos_token_id).int()
+            first_occurrences = mask.argmax(dim=1)
+            contains = mask.any(dim=1)
+            result = torch.where(contains, first_occurrences, torch.tensor(x.size(1))).unsqueeze(1)
+            x[torch.arange(x.size(1)).unsqueeze(0) <= result] = -100  # -100 is a special token for the loss function
+            data['labels'] = x
+
         return as_tensor(data, device=self.target_device)

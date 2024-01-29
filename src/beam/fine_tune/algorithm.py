@@ -1,33 +1,6 @@
 from ..core import Algorithm
 from ..path import local_copy, in_memory_storage
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
-import torch
-
-
-# class FineTuneLLM(Algorithm):
-#
-#     def __init__(self, hparams, **kwargs):
-#
-#         config = None
-#         if hparams.get('reload_path', None) is None:
-#             config = self.load_configuration(hparams)
-#
-#         self.tokenizer = self.load_tokenizer(hparams, config=config)
-#         super().__init__(hparams,  **kwargs)
-#
-#     @staticmethod
-#     def load_configuration(hparams):
-#         return AutoConfig.from_pretrained(hparams.model, cache_dir=hparams.hf_cache_dir)
-#
-#     @staticmethod
-#     def load_tokenizer(hparams, config=None):
-#         if config is None:
-#             config = FineTuneLLM.load_configuration(hparams)
-#         return AutoTokenizer.from_pretrained(hparams.model, config=config)
-#
-#     def train_iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
-#         print(sample)
-#         print('iteration')
 
 
 class FineTuneLLM(Algorithm):
@@ -90,7 +63,12 @@ class FineTuneLLM(Algorithm):
     def train_iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
         net = self.networks['llm']
 
-        res = net(input_ids=sample['input_ids'], attention_mask=sample['attention_mask'], labels=sample['input_ids'])
+        # labels are shifted inside the model forward pass
+        # (see https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L1106)
+
+        labels = sample['labels'] if 'labels' in sample else sample['input_ids']
+
+        res = net(input_ids=sample['input_ids'], attention_mask=sample['attention_mask'], labels=labels)
         self.apply(res.loss)
 
     def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
