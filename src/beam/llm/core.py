@@ -952,7 +952,7 @@ class BeamLLM(LLM, Processor):
 
     def is_keyword_found(self, text, keywords, **kwargs):
         """
-        chek if one or more key words found in given text
+        check if one or more key words found in given text
         :param text: text to looks for
         :param keywords:  key words list
         :param kwargs: additional arguments for the ask function
@@ -968,7 +968,7 @@ class BeamLLM(LLM, Processor):
 
     def get_similar_terms(self, keywords, **kwargs):
         """
-        chek if one or more key words found in given text
+        check if one or more key words found in given text
         :param keywords:  key words list
         :param kwargs: additional arguments for the ask function
         :return: similar terms
