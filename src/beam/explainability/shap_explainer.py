@@ -3,11 +3,59 @@ from abc import ABC, abstractmethod
 import traceback
 import pandas as pd
 import numpy as np
+from catboost import CatBoostClassifier, CatBoostRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from xgboost import XGBRegressor, XGBClassifier
+from lightgbm import LGBMClassifier, LGBMRegressor
+import keras
+from torch import nn
+from collections import namedtuple
+
+def get_shap_explainer(algorithm=None, model=None, data=None):
+    """
+
+    Args:
+        algorithm: str, options are 'tree', 'kernel' or 'deep'
+        model: a class that has a predict method.
+
+    Returns:
+
+    """
+
+
+    if algorithm is None and model is None:
+        raise ValueError('either algorithm or model should be specified')
+
+    if algorithm is not None:
+        if algorithm == 'tree':
+            return ShapTreeExplainer(model)
+        elif algorithm == 'kernel':
+            return ShapKernelExplainer(model, data)
+        elif algorithm == 'deep':
+            return ShapDeepExplainer(model, data)
+        else:
+            raise ValueError('Unsupported algorithm')
+
+    elif model is not None:
+        tree_models = (CatBoostRegressor, CatBoostClassifier, RandomForestRegressor, RandomForestClassifier,
+                       DecisionTreeRegressor, DecisionTreeClassifier, XGBClassifier, XGBRegressor,
+                       LGBMRegressor, LGBMClassifier)
+        nn_models = (nn.Module, keras.Model)
+        if isinstance(model, tree_models):
+            return ShapTreeExplainer(model)
+
+        elif isinstance(model, nn_models):
+            return ShapDeepExplainer(model, data)
+        else:
+            return ShapKernelExplainer(model, data)
+
 class ShapExplainer(ABC):
 
+    SHAP_OUTPUT = namedtuple('explanation','values data base_values')
     @staticmethod
     def abs_shap(df_shap, df):
-            # import matplotlib as plt
+            # import matplolib as plt
             # Make a copy of the input data
             shap_v = pd.DataFrame(df_shap)
             feature_list = df.columns
@@ -65,8 +113,10 @@ class ShapTreeExplainer(ShapExplainer):
         self.model = model
         self.explainer = shap.TreeExplainer(model, **kwargs)
 
-    def explain(self, X):
+    def explain(self, X, as_array=False):
         shap_values = self.explainer(X)
+        if as_array:
+            return ShapExplainer.SHAP_OUTPUT(shap_values.values, shap_values.data, shap_values.base_values)
         return shap_values
 
 
@@ -154,10 +204,15 @@ class ShapKernelExplainer(ShapExplainer):
 
   def __init__(self, model, data, **kwargs):
       self.model = model
+      k = kwargs.get('k')
+      if k is not None:
+          data = shap.kmeans(data, k)
       self.explainer = shap.KernelExplainer(model.predict, data, **kwargs)
 
-  def explain(self, X):
+  def explain(self, X, as_array=False):
       shap_values = self.explainer(X)
+      if as_array:
+          return ShapExplainer.SHAP_OUTPUT(shap_values.values, shap_values.data, shap_values.base_values)
       return shap_values
 
   def waterfall(self, shap_values, max_display=10, show=True, multiclass=False):
