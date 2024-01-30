@@ -4,18 +4,50 @@ from ..utils import lazy_property
 from kubernetes import client, config
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
+from openshift.dynamic import DynamicClient
 from ..logger import beam_logger as logger
 import json
 
 
-class BeamK8S(Processor):  # processor is a another class and the BeamK8S inherits the method of processor
-    """BeamK8S is a class that provides a simple interface to the Kubernetes API."""
+class BeamPod(Processor):
+    pass
 
-    def __init__(self, api_url=None, api_token=None, project_name=None, namespace=None, replicas=None, labels=None,
-                 image_name=None, deployment_name=None, ports=None, env=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.env = env
-        self.args = args
+
+# #!/bin/bash
+#
+# IMAGE=$1
+# NAME=$2
+# INITIALS=$3
+# INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
+# HOME_DIR=$4
+# MORE_ARGS=${@:5}
+#
+# echo "Running a new container named: $NAME, Based on image: $IMAGE"
+# echo "Jupyter port will be available at: ${INITIALS}88"
+#
+# echo $MORE_ARGS
+#
+# # Get total system memory in kilobytes (kB)
+# total_memory_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+# # Calculate 90% backoff of total memory
+# backoff_memory_kb=$(awk -v x=$total_memory_kb 'BEGIN {printf "%.0f", x * 0.9}')
+# # Convert to megabytes for Docker
+# backoff_memory_mb=$(awk -v x=$backoff_memory_kb 'BEGIN {printf "%.0f", x / 1024}')
+#
+# # -e USER_HOME=${HOME}
+# echo "Home directory: ${HOME_DIR}"
+# docker run -p ${INITIALS}00-${INITIALS}99:${INITIALS}00-${INITIALS}99 --cap-add=NET_ADMIN --gpus=all --shm-size=8g --memory=${backoff_memory_mb}m --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v ${HOME_DIR}:${HOME_DIR} -v /mnt/:/mnt/ ${MORE_ARGS} --name ${NAME} --hostname ${NAME} ${IMAGE} ${INITIALS}
+# # docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 28
+
+
+class BeamDeploy(Processor):
+
+    def __init__(self, k8s=None, project_name=None, namespace=None, replicas=None, labels=None, image_name=None,
+                 deployment_name=None, ports=None, service_type=None, *entrypoint_args, **entrypoint_envs):
+        super().__init__()
+        self.k8s = k8s
+        self.entrypoint_args = entrypoint_args
+        self.entrypoint_envs = entrypoint_envs
         self.project_name = project_name
         self.namespace = namespace
         self.replicas = replicas
@@ -23,8 +55,43 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         self.image_name = image_name
         self.deployment_name = deployment_name
         self.ports = ports
+        self.service_type = service_type
+        self.service_account_name = f"svc{deployment_name}"
+
+    def launch(self, replicas=None):
+        if replicas is None:
+            replicas = self.replicas
+
+        self.k8s.create_service_account(self.service_account_name, self.namespace)
+
+        self.k8s.create_service(
+            name=self.deployment_name,
+            namespace=self.namespace,
+            ports=self.ports,
+            labels=self.labels,
+            service_type=self.service_type
+        )
+
+        deployment = self.k8s.create_deployment(image_name=self.image_name, labels=self.labels,
+                                                deployment_name=self.deployment_name, namespace=self.namespace,
+                                                project_name=self.project_name, replicas=replicas, ports=self.ports,
+                                                service_account_name=self.service_account_name, *self.entrypoint_args,
+                                                **self.entrypoint_envs)
+
+        pod = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+        return BeamPod(pod)
+
+
+class BeamK8S(Processor):  # processor is a another class and the BeamK8S inherits the method of processor
+    """BeamK8S is a class that provides a simple interface to the Kubernetes API."""
+
+    def __init__(self, api_url=None, api_token=None, namespace=None,
+                 project_name=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.api_token = api_token
         self.api_url = api_url
+        self.project_name = project_name
+        self.namespace = namespace
 
     @lazy_property
     def core_v1_api(self):
@@ -33,6 +100,10 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
     @lazy_property
     def api_client(self):
         return client.ApiClient(self.configuration)
+
+    @lazy_property
+    def apps_v1_api(self):
+        return client.AppsV1Api(self.api_client)
 
     @lazy_property
     def configuration(self):
@@ -45,15 +116,32 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         }
         return configuration
 
-    def create_container_ports(self):
+    @staticmethod
+    def create_container(image_name, deployment_name=None, project_name=None, ports=None, *entrypoint_args,
+                         **envs):
+
+        container_name = f"{project_name}-{deployment_name}-container"
+        if ports is None:
+            ports = []
+        return client.V1Container(
+            name=container_name,
+            image=image_name,
+            ports=BeamK8S.create_container_ports(ports),
+            args=entrypoint_args,
+            env=BeamK8S.create_environment_variables(**envs)
+        )
+
+    @staticmethod
+    def create_container_ports(ports):
         # Check if self.ports is a single integer and convert it to a list if so
-        ports = [self.ports] if isinstance(self.ports, int) else self.ports
+        ports = [ports] if isinstance(ports, int) else ports
         return [client.V1ContainerPort(container_port=port) for port in ports]
 
-    def create_environment_variables(self):
+    @staticmethod
+    def create_environment_variables(**envs):
         env_vars = []
-        if self.env:
-            for env_var in self.env:
+        if envs:
+            for env_var in envs:
                 if isinstance(env_var, dict) and 'name' in env_var and 'value' in env_var:
                     # Ensure value is a string, convert if necessary
                     value = str(env_var['value']) if not isinstance(env_var['value'], str) else env_var['value']
@@ -73,37 +161,63 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
                     raise TypeError(f"Unsupported environment variable type: {type(env_var)}")
         return env_vars
 
-    def create_container(self):
-        container_name = f"{self.project_name}-{self.deployment_name}-container"
-        return client.V1Container(
-            name=container_name,
-            image=self.image_name,
-            ports=self.create_container_ports(),
-            args=self.args,
-            env=self.create_environment_variables()
-        )
+    @staticmethod
+    def create_pod_template(image_name, labels=None, deployment_name=None, project_name=None,
+                            ports=None, service_account_name=None, *entrypoint_args, **envs):
 
-    def create_pod_template(self):
-        container = self.create_container()
+        if labels is None:
+            labels = {}
+        if project_name is not None:
+            labels['project'] = project_name
+
+        container = BeamK8S.create_container(image_name, deployment_name=deployment_name,
+                                             project_name=project_name, ports=ports, *entrypoint_args, **envs)
+
+        pod_spec = client.V1PodSpec(containers=[container], service_account_name=service_account_name)
+
         return client.V1PodTemplateSpec(
-            metadata=client.V1ObjectMeta(labels=self.labels),
-            spec=client.V1PodSpec(containers=[container])
+            metadata=client.V1ObjectMeta(labels=labels),
+            spec=pod_spec
         )
+    def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
+                               ports=None, *entrypoint_args, **envs):
 
-    def create_deployment_spec(self):
-        pod_template = self.create_pod_template()
+        if replicas is None:
+            replicas = 1
+
+        pod_template = self.create_pod_template(image_name, labels=labels, deployment_name=deployment_name,
+                                                project_name=project_name, ports=ports,
+                                                *entrypoint_args, **envs)
         return client.V1DeploymentSpec(
-            print(f"Replicas before conversion: {self.replicas}"),
-            replicas=int(self.replicas),  # Cast replicas to int
+            logger.info(f"Replicas before conversion: {replicas}"),
+            replicas=int(replicas),  # Cast replicas to int
             template=pod_template,
-            selector={'matchLabels': self.labels}
+            selector={'matchLabels': pod_template.metadata.labels}
         )
 
-    def create_deployment(self):
-        deployment_spec = self.create_deployment_spec()
+    def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
+                          replicas=None,
+                          ports=None, *entrypoint_args, **envs):
+        if namespace is None:
+            namespace = self.namespace
+
+        if project_name is None:
+            project_name = self.project_name
+
+        if deployment_name is None:
+            import coolname
+            name = coolname.generate_slug(2)
+            deployment_name = f"{image_name.split(':')[0]}-{name}"
+
+        deployment_spec = self.create_deployment_spec(image_name, labels=labels, deployment_name=deployment_name,
+                                                      project_name=project_name, replicas=replicas, ports=ports,
+                                                      *entrypoint_args, **envs)
+
         # Optionally add the project name to the deployment's metadata
-        deployment_metadata = client.V1ObjectMeta(name=self.deployment_name, namespace=self.namespace,
-                                                  labels={"project": self.project_name})
+        deployment_metadata = client.V1ObjectMeta(name=deployment_name, namespace=namespace,
+                                                  labels={"project": project_name})
+
+        logger.info(f"Deployment {deployment_name} created in namespace {namespace}.")
         deployment = client.V1Deployment(
             api_version="apps/v1",
             kind="Deployment",
@@ -112,15 +226,45 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         )
         return deployment
 
-    def apply_deployment(self):
-        deployment = self.create_deployment()
-        logger.debug(f"Deployment object to be created: {deployment}")  # Adjust logging level/method as needed
+    def apply_deployment(self, deployment, namespace=None):
+        logger.info(f"Deployment object to be created: {deployment}")  # Adjust logging level/method as needed
+
+        if namespace is None:
+            namespace = self.namespace
+        if namespace is None:
+            namespace = self.project_name
+
         try:
-            apps_v1_api = client.AppsV1Api(self.api_client)
-            apps_v1_api.create_namespaced_deployment(body=deployment, namespace=self.namespace)
-            logger.info(f"Deployment {self.deployment_name} created in namespace {self.namespace}.")
+            self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
         except ApiException as e:
             logger.exception(f"Exception when applying the deployment: {e}")
+
+    def create_service(self, name, namespace, ports, labels, service_type='ClusterIP'):
+        metadata = client.V1ObjectMeta(name=name, labels=labels)
+        # Update here to include port names
+        port_specs = [client.V1ServicePort(name=f"port-{p}", port=p, target_port=p) for p in ports]
+        spec = client.V1ServiceSpec(ports=port_specs, selector=labels, type=service_type)
+        service = client.V1Service(api_version="v1", kind="Service", metadata=metadata, spec=spec)
+        try:
+            response = self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
+            logger.info(f"Service {name} created in namespace {namespace}. Response: {response}")
+        except ApiException as e:
+            logger.error(f"Failed to create service {name} in namespace {namespace}: {e}")
+            raise
+
+    def create_service_account(self, name, namespace):
+        try:
+            self.core_v1_api.read_namespaced_service_account(name, namespace)
+            logger.info(f"Service Account {name} already exists in namespace {namespace}.")
+        except ApiException as e:
+            if e.status == 404:  # Not Found
+                metadata = client.V1ObjectMeta(name=name)
+                service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount", metadata=metadata)
+                self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
+                logger.info(f"Service Account {name} created in namespace {namespace}.")
+            else:
+                logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
+                raise
 
     @property
     def namespaces(self):
@@ -218,10 +362,6 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
     #     return config
     #
     # deploy = client.V1Container
-
-
-
-
 
     # def get_cpu_resources(self, namespace, deployment_name):
     #     try:

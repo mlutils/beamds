@@ -4,17 +4,20 @@ from src.beam import beam_logger as logger
 from src.beam.orchestration import BeamK8S
 from kubernetes import client, config
 
+from src.beam.orchestration.k8s import BeamDeploy
+
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~rcBAFKblEq83dkshTqhMeCa8Gl2kUSHP4QunM8ukxJI"
+api_token = "sha256~W08TOowATVE83lG5yQBEi9ZJfDMW-k-Rl5G4AJP6i-o"
 project_name = "kleiner"
-image_name = "harbor.dt.local/public/beam:20231221"
+image_name = "harbor.dt.local/public/beam:openshift"
 ports: list[int] = [80, 22,]
 labels = {"app": "beamds"}
 deployment_name = "beamds"
 namespace = "kleiner"
 replicas = 1
-args = ["63"]  # Container arguments
-env = {"TEST": "test"}  # Container environment variables
+entrypoint_args = ["63"]  # Container arguments
+entrypoint_envs = {"TEST": "test"}  # Container environment variables
+service_type = "LoadBalancer"
 
 print('hello world')
 
@@ -27,15 +30,61 @@ k8s = BeamK8S(
     api_token=api_token,
     project_name=project_name,
     namespace=namespace,
-    replicas=1,  # Ensure this is an integer
+)
+
+deployment = BeamDeploy(
+    k8s=k8s,
+    project_name=project_name,
+    namespace=namespace,
+    replicas=replicas,
     labels=labels,
     image_name=image_name,
     deployment_name=deployment_name,
     ports=ports,
-    env=env
+    entrypoint_args=entrypoint_args,
+    entrypoint_envs=entrypoint_envs,
+    service_type=service_type,
 )
-#k8s = k8s.create_deployment()
-k8s = k8s.apply_deployment()
+
+deployment.launch(replicas=1)
+
+
+
+
+
+
+
+
+
+# deployment = BeamDeploy(
+#     k8s=k8s,
+#     labels=labels,
+#     image_name=image_name,
+#     deployment_name=deployment_name,
+#     ports=ports,
+#     entrypoint_envs=entrypoint_envs
+# )
+#
+# deployment.launch(replicas=1)
+
+
+# k8s = BeamK8S(
+#     api_url=api_url,
+#     api_token=api_token,
+# )
+#
+# pod = BeamPod(
+#     k8s=k8s,
+#     project_name=project_name,
+#     namespace=namespace,
+#     replicas=1,  # Ensure this is an integer
+#     labels=labels,
+#     image_name=image_name,
+#     deployment_name=deployment_name,
+#     ports=ports,
+#     env=env)
+
+
 
 # k8s.get_pods(namespace="kleiner")
 # for ns in k8s.namespaces.items:
