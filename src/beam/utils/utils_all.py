@@ -127,6 +127,10 @@ def retrieve_name(var):
             return names[0]
 
 
+def has_kwargs(func):
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in inspect.signature(func).parameters.values())
+
+
 def strip_prefix(text, prefix):
     if text.startswith(prefix):
         return text[len(prefix):]
@@ -224,7 +228,7 @@ def beam_service_port(service):
     return port
 
 
-def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
+def find_port(port=None, get_port_from_beam_port_range=True, application='none'):
     from ..logger import beam_logger as logger
 
     if application == 'tensorboard':
@@ -236,6 +240,9 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
     elif application == 'ray':
         first_beam_range = 65
         first_global_range = 28265
+    elif application == 'distributed':
+        first_beam_range = 64
+        first_global_range = 28264
     else:
         first_beam_range = 2
         first_global_range = 30000

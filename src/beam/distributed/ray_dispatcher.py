@@ -6,6 +6,62 @@ from ..utils import lazy_property, MetaInitIsDoneVerifier
 import ray
 
 
+class AsyncResult:
+
+    def __init__(self, obj):
+        self.obj = obj
+        self._value = None
+        self._is_ready = None
+        self._is_success = None
+
+    @property
+    def value(self):
+        if self._value is None:
+            self._value = ray.get(self.obj)
+        return self._value
+
+    @property
+    def get(self):
+        return self.value
+
+    def wait(self, timeout=None):
+        ready, not_ready = ray.wait([self.obj], num_returns=1, timeout=timeout)
+        return ready, not_ready
+
+    @property
+    def hex(self):
+        return self.obj.hex()
+
+    @property
+    def str(self):
+        return self.hex
+
+    @property
+    def is_ready(self):
+        if not self._is_ready:
+            ready, _ = self.wait(timeout=0)
+            self._is_ready = len(ready) == 1
+        return self._is_ready
+
+    @property
+    def is_success(self):
+        if self._is_success is None:
+            try:
+                if not self.is_ready:
+                    return None
+                _ = self.value
+                self._is_success = True
+            except Exception:
+                self._is_success = False
+        return self._is_success
+
+    def __str__(self):
+        return self.str
+
+    def __repr__(self):
+        return f"AsyncResult({self.str}, is_ready={self.is_ready}, is_success={self.is_success})"
+
+
 class RayCluster(Processor):
 
     def __init__(self, *args, name=None, address=None, host=None, port=None,
@@ -25,6 +81,10 @@ class RayCluster(Processor):
         ray_kwargs = ray_kwargs if ray_kwargs is not None else {}
         self.init_ray(address=address, ignore_reinit_error=True, **ray_kwargs)
 
+    def wait(self, results, num_returns=1, timeout=None):
+        results = [r.result if isinstance(r, AsyncResult) else r for r in results]
+        return ray.wait(results, num_returns=num_returns, timeout=timeout)
+
     @staticmethod
     def init_ray(address=None, num_cpus=None, num_gpus=None, resources=None, labels=None, object_store_memory=None,
                  ignore_reinit_error=False, include_dashboard=True, dashboard_host='0.0.0.0',
@@ -43,7 +103,7 @@ class RayCluster(Processor):
                      include_dashboard=include_dashboard, dashboard_host=dashboard_host, **kwargs)
 
     @staticmethod
-    def shutdown_ray():
+    def shutdown():
         ray.shutdown()
 
 
@@ -57,18 +117,21 @@ class RemoteClass:
         def wrapper(*args, **kwargs):
             res = method.remote(*args, **kwargs)
             if self.asynchronous:
-                return res
+                return AsyncResult(res)
             else:
                 return ray.get(res)
         return wrapper
+
+    def kill(self, no_restart=False):
+        ray.kill(self.remote_class, no_restart=no_restart)
 
     def __getattr__(self, item):
         return self.remote_wrapper(getattr(self.remote_class, item))
 
     def __call__(self, *args, **kwargs):
-        res = self.remote_class.remote(*args, **kwargs)
+        res = self.remote_class.__call__.remote(*args, **kwargs)
         if self.asynchronous:
-            return res
+            return AsyncResult(res)
         else:
             return ray.get(res)
 
@@ -156,7 +219,7 @@ class RayDispatcher(RayCluster, metaclass=MetaInitIsDoneVerifier):
         def wrapper(*args, **kwargs):
             res = func.remote(*args, **kwargs)
             if self.asynchronous:
-                return res
+                return AsyncResult(res)
             else:
                 return ray.get(res)
         return wrapper

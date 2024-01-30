@@ -4,6 +4,8 @@ from ..core import Processor
 
 import ray
 
+from ..utils import has_kwargs
+
 
 class BeamCoalition(Processor):
     def __init__(self, *args, func=None, rank=0, world_size=1, framework='ddp', distributed_backend='nccl', host=None,
@@ -14,7 +16,7 @@ class BeamCoalition(Processor):
 
         self.rank = rank
         self.world_size = world_size
-        self.host = self.get_hparam('mp_ip')
+        self.host = self.get_hparam('mp_ip') or 'localhost'
         self.port = str(self.get_hparam('mp_port'))
         self.backend = self.get_hparam('distributed_backend')
         self.framework = self.get_hparam('training_framework')
@@ -86,4 +88,11 @@ class BeamCoalition(Processor):
         args = list(args) + self.func_args
         kwargs = {**kwargs, **self.func_kwargs}
 
-        return func(self, *args, **kwargs)
+        if has_kwargs(func):
+            kwargs['manager'] = self
+
+        return func(*args, **kwargs)
+
+
+# For MPI use the spinningup resource:
+# https://github.com/openai/spinningup/blob/038665d62d569055401d91856abb287263096178/spinup/utils/mpi_tools.py#L4
