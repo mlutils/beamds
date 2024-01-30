@@ -3,8 +3,8 @@ import time
 from threading import Thread
 import io
 
-from .dispatcher import BeamDispatcher
-from .worker import BeamWorker
+from .celery_dispatcher import CeleryDispatcher
+from .celery_worker import CeleryWorker
 from ..serve.http_server import HTTPServer
 from ..serve.server import BeamServer
 from ..logger import beam_logger as logger
@@ -26,23 +26,23 @@ class AsyncServer(HTTPServer):
 
         if routes is None:
             routes = []
-        self.worker = BeamWorker(obj, *routes, name=name, n_workers=n_workers, daemon=True,
-                                 broker=broker, backend=backend,
-                                 broker_username=broker_username, broker_password=broker_password,
-                                 broker_port=broker_port,
-                                 broker_scheme=broker_scheme, broker_host=broker_host,
-                                 backend_username=backend_username, backend_password=backend_password,
-                                 backend_port=backend_port,
-                                 backend_scheme=backend_scheme,
-                                 backend_host=backend_host, log_level=broker_log_level)
+        self.worker = CeleryWorker(obj, *routes, name=name, n_workers=n_workers, daemon=True,
+                                   broker=broker, backend=backend,
+                                   broker_username=broker_username, broker_password=broker_password,
+                                   broker_port=broker_port,
+                                   broker_scheme=broker_scheme, broker_host=broker_host,
+                                   backend_username=backend_username, backend_password=backend_password,
+                                   backend_port=backend_port,
+                                   backend_scheme=backend_scheme,
+                                   backend_host=backend_host, log_level=broker_log_level)
 
         predefined_attributes = {k: 'method' for k in self.worker.routes}
-        self.dispatcher = BeamDispatcher(name=self.worker.name, broker=broker, backend=backend,
-                                         broker_username=broker_username, broker_password=broker_password,
-                                         broker_port=broker_port, broker_scheme=broker_scheme, broker_host=broker_host,
-                                         backend_username=backend_username, backend_password=backend_password,
-                                         backend_port=backend_port, backend_scheme=backend_scheme,
-                                         backend_host=backend_host, serve='remote', log_level=broker_log_level)
+        self.dispatcher = CeleryDispatcher(name=self.worker.name, broker=broker, backend=backend,
+                                           broker_username=broker_username, broker_password=broker_password,
+                                           broker_port=broker_port, broker_scheme=broker_scheme, broker_host=broker_host,
+                                           backend_username=backend_username, backend_password=backend_password,
+                                           backend_port=backend_port, backend_scheme=backend_scheme,
+                                           backend_host=backend_host, serve='remote', log_level=broker_log_level)
 
         application = application or 'distributed_async'
         super().__init__(obj=self.dispatcher, name=name, use_torch=use_torch, batch=batch,

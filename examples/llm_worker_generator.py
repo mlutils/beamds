@@ -4,7 +4,7 @@ from uuid import uuid4 as uuid
 
 from src.beam.config import BeamConfig, BeamParam
 from src.beam import beam_logger as logger
-from src.beam.distributed.worker import BeamWorker, BatchExecutor
+from src.beam.distributed.celery_worker import CeleryWorker, BatchExecutor
 from src.beam.core import Processor
 from src.beam.utils import lazy_property
 from collections import defaultdict
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     hparams = LLMServeConfig()
     llm_worker = VLLMGenerator(hparams)
 
-    celery_worker = BeamWorker(llm_worker, name='llm_worker', broker=hparams.broker, backend=hparams.backend)
+    celery_worker = CeleryWorker(llm_worker, name='llm_worker', broker=hparams.broker, backend=hparams.backend)
     # add a centralized thread that run the actual generation
     celery_worker.run('generate')
     logger.info(f"Starting celery worker: {celery_worker.name}")

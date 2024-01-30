@@ -5,7 +5,7 @@ from ..core import Processor
 from ..utils import lazy_property
 
 
-class BeamDispatcher(Processor):
+class CeleryDispatcher(Processor):
 
     def __init__(self, *args, name=None, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,

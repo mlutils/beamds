@@ -1,7 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor, Future
+from functools import wraps
+from .meta_dispatcher import AsyncResult, MetaDispatcher
 
-class ThreadAsyncResult:
+
+class ThreadAsyncResult(AsyncResult):
     def __init__(self, future: Future):
+        super().__init__(future)
         self.future = future
 
     @property
@@ -11,22 +15,16 @@ class ThreadAsyncResult:
     def wait(self, timeout=None):
         return self.future.result(timeout=timeout)
 
+    def kill(self, no_restart=False):
+        self.future.cancel()
+
     @property
     def is_ready(self):
         return self.future.done()
 
     @property
-    def is_success(self):
-        if not self.is_ready:
-            return None
-        try:
-            _ = self.value
-            return True
-        except Exception:
-            return False
-
-    def __str__(self):
-        return self.str
+    def hex(self):
+        return hex(id(self.future))
 
     def __repr__(self):
         return f"AsyncResult({self.str}, is_ready={self.is_ready}, is_success={self.is_success})"
@@ -38,7 +36,7 @@ class ThreadedCluster:
 
     def submit(self, fn, *args, **kwargs):
         future = self.executor.submit(fn, *args, **kwargs)
-        return ThreadAsyncResult(future)
+        return future
 
     def map(self, fn, *iterables):
         return self.executor.map(fn, *iterables)
@@ -48,10 +46,19 @@ class ThreadedCluster:
 
 
 class ThreadedRemoteClass:
-    def __init__(self, target_class, asynchronous=False):
-        self.target_class = target_class
+    def __init__(self, target_class, asynchronous=False, executor=None):
+        self._target_class = target_class
         self.asynchronous = asynchronous
-        self.executor = ThreadPoolExecutor()
+        if executor is None:
+            self.executor = ThreadedCluster()
+        else:
+            self.executor = executor
+
+    @property
+    def target_class(self):
+        if isinstance(self._target_class, ThreadAsyncResult):
+            self._target_class = self._target_class.value
+        return self._target_class
 
     def method_wrapper(self, method):
         def wrapper(*args, **kwargs):
@@ -70,3 +77,56 @@ class ThreadedRemoteClass:
 
     def __call__(self, *args, **kwargs):
         return self.method_wrapper(self.target_class.__call__)(*args, **kwargs)
+
+
+class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
+    def __init__(self, obj, *routes, max_workers=None, asynchronous=True, **kwargs):
+        MetaDispatcher.__init__(self, obj, *routes, asynchronous=asynchronous, **kwargs)
+        ThreadedCluster.__init__(self, max_workers=max_workers)
+
+        self.routes_methods = {}
+
+        if self.type == 'function':
+            self.call_function = self.threaded_function_wrapper(self.obj)
+        elif self.type == 'instance':
+            if hasattr(self.obj, '__call__'):
+                self.call_function = self.threaded_function_wrapper(self.obj.__call__)
+            for route in self.routes:
+                if hasattr(self.obj, route):
+                    method = getattr(self.obj, route)
+                    self.routes_methods[route] = self.threaded_function_wrapper(method)
+        elif self.type == 'class':
+            self.call_function = self.threaded_function_wrapper(self.factory_class_wrapper(self.obj))
+        else:
+            raise ValueError(f"Unknown type: {self.type}")
+
+    @staticmethod
+    def factory_class_wrapper(cls):
+
+        def wrapper(*args, **kwargs):
+            res = cls(*args, **kwargs)
+            return res
+
+        return wrapper
+
+    def threaded_function_wrapper(self, func, asynchronous=None, bypass=False):
+
+        if asynchronous is None:
+            asynchronous = self.asynchronous
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            future = self.executor.submit(func, *args, **kwargs)
+            if bypass:
+                return future
+            elif asynchronous:
+                return ThreadAsyncResult(future)
+            else:
+                return future.result()
+        return wrapper
+
+    def __call__(self, *args, **kwargs):
+        res = self.call_function(*args, **kwargs)
+        if self.type == 'class':
+            return ThreadedRemoteClass(res, asynchronous=self.asynchronous)
+        else:
+            return res
