@@ -89,18 +89,23 @@ class SWAConfig(BeamConfig):
     ]
 
 
-class DistributedTrainingConfig(BeamConfig):
+class FederatedTrainingConfig(BeamConfig):
 
     parameters = [
         BeamParam('mp_ip', str, 'localhost', 'IP to be used for multiprocessing'),
-        BeamParam('mp_port', str, 'random', 'Port to be used for multiprocessing'),
+        BeamParam('mp_port', str, None, 'Port to be used for multiprocessing'),
         BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
         BeamParam('distributed_backend', str, None, 'The distributed backend to use. Supported backends: [nccl, gloo, mpi]'),
         BeamParam('mp_context', str, 'spawn', 'The multiprocessing context to use'),
+        BeamParam('kv_store', str, 'tcp', 'The key-value store to use [tcp|file|hash]'),
+        BeamParam('kv_store_path', str, None, 'The path to the key-value store file'),
+        BeamParam('kv_store_timeout', float, 300., 'The timeout for the key-value store'),
+        BeamParam('kv_store_port', str, None, 'The port to use for the key-value store'),
+
     ]
 
 
-class AccelerateConfig(DeepspeedConfig, DistributedTrainingConfig):
+class AccelerateConfig(DeepspeedConfig, FederatedTrainingConfig):
     # accelerate parameters
     # based on https://huggingface.co/docs/accelerate/v0.24.0/en/package_reference/accelerator#accelerate.Accelerator
 

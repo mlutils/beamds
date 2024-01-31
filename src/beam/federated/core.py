@@ -1,18 +1,23 @@
 import os
+import torch.distributed as dist
+
 from ..logger import beam_logger as logger
 from ..core import Processor
-
-import ray
-
 from ..utils import has_kwargs
 
 
-class BeamCoalition(Processor):
+import os
+
+
+
+class BeamFederated(Processor):
     def __init__(self, *args, func=None, rank=0, world_size=1, framework='ddp', distributed_backend='nccl', host=None,
-                 port=None, func_args=None, func_kwargs=None, done_event=None, **kwargs):
+                 port=None, func_args=None, func_kwargs=None, done_event=None, kv_store='tcp', kv_store_path=None,
+                 kv_store_timeout=300, kv_store_port=None, **kwargs):
 
         super().__init__(*args, training_framework=framework, mp_port=port, mp_ip=host,
-                         distributed_backend=distributed_backend, **kwargs)
+                         kv_store_path=kv_store_path, kv_store_timeout=kv_store_timeout, kv_store_port=kv_store_port,
+                         distributed_backend=distributed_backend, kv_store=kv_store, **kwargs)
 
         self.rank = rank
         self.world_size = world_size
@@ -28,6 +33,21 @@ class BeamCoalition(Processor):
 
         self._init_distributed()
 
+        self.kv_store = self.get_hparam('kv_store')
+        self.kv_store_path = self.get_hparam('kv_store_path')
+        self.kv_store_timeout = self.get_hparam('kv_store_timeout')
+        self.kv_store_port = self.get_hparam('kv_store_port')
+
+        if self.kv_store == 'tcp':
+            self.store = dist.TCPStore(host_name=self.host, port=self.kv_store_port, world_size=self.world_size,
+                                       is_master=(self.rank == 0), timeout=self.kv_store_timeout)
+        elif self.kv_store == 'hash':
+            self.store = dist.HashStore()
+        elif self.kv_store == 'file':
+            self.store = dist.FileStore(self.kv_store_path, self.world_size)
+        else:
+            raise ValueError(f"Unknown kv_store: {self.kv_store}")
+
     def _init_distributed(self):
         os.environ['MASTER_ADDR'] = self.host
         os.environ['MASTER_PORT'] = self.port
@@ -35,7 +55,6 @@ class BeamCoalition(Processor):
         logger.info(f"Initializing distributed training with backend={self.backend} and framework={self.framework}")
         if self.framework == 'ddp':
             # initialize the process group
-            import torch.distributed as dist
             dist.init_process_group(self.backend, rank=self.rank, world_size=self.world_size)
         elif self.framework == 'deepspeed':
 
@@ -73,13 +92,25 @@ class BeamCoalition(Processor):
         else:
             raise ValueError(f"Unknown distributed framework: {self.framework}")
 
-    @property
-    def is_done(self):
-        return ray.get(self.done_event)
+    def __getitem__(self, item):
+        return self.store.get(item)
 
-    def set_done(self):
-        if self.rank == 0:
-            ray.put(True, self.done_event)
+    def __setitem__(self, key, value):
+        return self.store.set(key, value)
+
+    def __delitem__(self, key):
+        return self.store.delete_key(key)
+
+    def add_to_key(self, key, value):
+        return self.store.add(key, value)
+
+    def num_keys(self):
+        return self.store.num_keys()
+
+    def wait(self, keys):
+        if isinstance(keys, str):
+            keys = [keys]
+        self.store.wait(keys)
 
     def __call__(self, *args, func=None, **kwargs):
         if func is None:
@@ -87,9 +118,7 @@ class BeamCoalition(Processor):
 
         args = list(args) + self.func_args
         kwargs = {**kwargs, **self.func_kwargs}
-
-        if has_kwargs(func):
-            kwargs['manager'] = self
+        kwargs['manager'] = self
 
         return func(*args, **kwargs)
 
