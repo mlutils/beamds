@@ -37,8 +37,8 @@ class CeleryWorker(Processor):
                                            backend_scheme=backend_scheme, backend_host=backend_host)
 
         self.obj = obj
-        self.n_workers = self.hparams.get('n_workers')
-        self.daemon = self.hparams.get('daemon')
+        self.n_workers = self.get_hparam('n_workers')
+        self.daemon = self.get_hparam('daemon')
         self._routes = routes
         self.log_level = log_level
 

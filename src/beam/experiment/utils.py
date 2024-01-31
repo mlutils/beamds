@@ -52,7 +52,7 @@ def cleanup(rank, world_size, framework='ddp'):
         dist.destroy_process_group()
     elif framework == 'deepspeed':
         pass
-    elif framework == 'horovbod':
+    elif framework == 'horovod':
         import horovod.torch as hvd
         hvd.shutdown()
     else:
