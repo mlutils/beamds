@@ -228,8 +228,17 @@ def beam_service_port(service):
     return port
 
 
-def find_port(port=None, get_port_from_beam_port_range=True, application='none'):
+def find_port(port=None, get_port_from_beam_port_range=True, application='none', blacklist=None, whitelist=None):
     from ..logger import beam_logger as logger
+
+    if blacklist is None:
+        blacklist = []
+
+    if whitelist is None:
+        whitelist = []
+
+    blacklist = [int(p) for p in blacklist]
+    whitelist = [int(p) for p in whitelist]
 
     if application == 'tensorboard':
         first_beam_range = 66
@@ -272,6 +281,13 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='none')
             port_range = np.roll(np.array(range(10000, 2 ** 16)), -first_global_range)
 
         for p in port_range:
+
+            if p in blacklist:
+                continue
+
+            if whitelist and p not in whitelist:
+                continue
+
             if check_if_port_is_available(p):
                 port = str(p)
                 break

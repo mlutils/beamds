@@ -1,19 +1,35 @@
-import os
+from datetime import timedelta
+
 import torch.distributed as dist
+import torch
+import os
 
 from ..logger import beam_logger as logger
 from ..core import Processor
 from ..utils import has_kwargs
 
 
-import os
-
+# class BeamNonFederated(Processor):
+#     def __init__(self, *args, func=None, rank=0, world_size=1, framework='ddp', distributed_backend='nccl', host=None,
+#                  port=None, func_args=None, func_kwargs=None, kv_store='tcp', kv_store_path=None,
+#                  kv_store_timeout=300, kv_store_port=None, devices=None, **kwargs):
+#
+#         super().__init__(*args, training_framework=framework, mp_port=port, mp_ip=host,
+#                          kv_store_path=kv_store_path, kv_store_timeout=kv_store_timeout, kv_store_port=kv_store_port,
+#                          distributed_backend=distributed_backend, kv_store=kv_store, **kwargs)
+#
+#         self.rank = rank
+#         self.world_size = world_size
+#
+#         self.func = func
+#         self.func_args = func_args if func_args is not None else []
+#         self.func_kwargs = func_kwargs if func_kwargs is not None else {}
 
 
 class BeamFederated(Processor):
     def __init__(self, *args, func=None, rank=0, world_size=1, framework='ddp', distributed_backend='nccl', host=None,
-                 port=None, func_args=None, func_kwargs=None, done_event=None, kv_store='tcp', kv_store_path=None,
-                 kv_store_timeout=300, kv_store_port=None, **kwargs):
+                 port=None, func_args=None, func_kwargs=None, kv_store='tcp', kv_store_path=None,
+                 kv_store_timeout=300, kv_store_port=None, devices=None, **kwargs):
 
         super().__init__(*args, training_framework=framework, mp_port=port, mp_ip=host,
                          kv_store_path=kv_store_path, kv_store_timeout=kv_store_timeout, kv_store_port=kv_store_port,
@@ -21,15 +37,24 @@ class BeamFederated(Processor):
 
         self.rank = rank
         self.world_size = world_size
+
+        self.func = func
+        self.func_args = func_args if func_args is not None else []
+        self.func_kwargs = func_kwargs if func_kwargs is not None else {}
+
         self.host = self.get_hparam('mp_ip') or 'localhost'
         self.port = str(self.get_hparam('mp_port'))
         self.backend = self.get_hparam('distributed_backend')
         self.framework = self.get_hparam('training_framework')
 
-        self.func = func
-        self.func_args = func_args if func_args is not None else []
-        self.func_kwargs = func_kwargs if func_kwargs is not None else {}
-        self.done_event = done_event
+        if devices is None:
+            devices = list(range(torch.cuda.device_count()))
+        else:
+            if not isinstance(devices, list):
+                devices = [int(devices)]
+            else:
+                devices = [int(d) for d in devices]
+        self.devices = devices
 
         self._init_distributed()
 
@@ -39,8 +64,8 @@ class BeamFederated(Processor):
         self.kv_store_port = self.get_hparam('kv_store_port')
 
         if self.kv_store == 'tcp':
-            self.store = dist.TCPStore(host_name=self.host, port=self.kv_store_port, world_size=self.world_size,
-                                       is_master=(self.rank == 0), timeout=self.kv_store_timeout)
+            self.store = dist.TCPStore(host_name=self.host, port=int(self.kv_store_port), world_size=self.world_size,
+                                       is_master=(self.rank == 0), timeout=timedelta(seconds=self.kv_store_timeout))
         elif self.kv_store == 'hash':
             self.store = dist.HashStore()
         elif self.kv_store == 'file':

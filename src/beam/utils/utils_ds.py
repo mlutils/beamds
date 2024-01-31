@@ -1,4 +1,5 @@
 import copy
+import os
 import sys
 import subprocess
 from collections import defaultdict
@@ -963,3 +964,22 @@ def check_nvlink():
             return False
     except FileNotFoundError:
         return False
+
+
+class GPUManager:
+    @staticmethod
+    def physical_devices(logical_devices=None):
+        if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+            devices = list(range(torch.cuda.device_count()))
+        else:
+            devices = [int(i) for i in os.environ['CUDA_VISIBLE_DEVICES'].split(',')]
+        if logical_devices is None:
+            return devices
+        else:
+            return [devices[i] for i in logical_devices]
+
+    @staticmethod
+    def logical_devices(physical_devices):
+        local_physical_devices = GPUManager.physical_devices()
+        return [local_physical_devices.index(d) for d in physical_devices]
+

@@ -1,1 +1,1 @@
-from .resource import federated_learner
+from .resource import federated_executor
