@@ -9,7 +9,6 @@ from threading import Thread
 from uuid import uuid4 as uuid
 
 from ..logger import beam_logger as logger
-from ..experiment import Experiment
 from ..utils import find_port
 from ..config import to_dict
 from ..core import Processor
@@ -119,6 +118,7 @@ class BeamServer(Processor):
     def build_algorithm_from_path(cls, path, alg, override_hparams=None, dataset=None, alg_args=None, alg_kwargs=None,
                              dataset_args=None, dataset_kwargs=None, **argv):
 
+        from ..experiment import Experiment
         experiment = Experiment.reload_from_path(path, override_hparams=override_hparams, **argv)
         alg = experiment.algorithm_generator(alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)

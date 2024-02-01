@@ -3,9 +3,10 @@ from typing import Iterator, Tuple, Optional, Union
 import torch
 from torch import nn, Tensor, device
 import torch._dynamo as dynamo
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from ..core import Processor
-from ..utils import recursive_clone, to_device, recursive_device
+from ..utils import recursive_clone, to_device, recursive_device, MetaInitIsDoneVerifier
 from ..path import beam_path, local_copy
 
 
@@ -436,3 +437,16 @@ class BeamNN(nn.Module, Processor):
 
     # add pruning and quantization methods
     # add methods for converting to other frameworks?
+
+
+class BeamDDP(DDP):
+
+    def __init__(self, module, *args, **kwargs):
+        super().__init__(module, *args, **kwargs)
+        self.init_is_done = True
+
+    def __getattr__(self, item):
+        if item.startswith('_') or item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+            return super().__getattr__(item)
+        return getattr(self.module, item)
+

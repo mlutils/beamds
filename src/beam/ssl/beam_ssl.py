@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from ..core import Algorithm
+from ..algorithm import Algorithm
 from ..logger import beam_logger as logger
 from ..utils import as_numpy
 from .beam_similarity import BeamSimilarity

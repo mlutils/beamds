@@ -9,49 +9,6 @@ from ..utils import (set_seed, is_notebook,)
 from ..path import beam_path
 from ..logger import beam_logger as logger
 from ..config import get_beam_llm, BeamConfig
-from .resource import federated_executor
-
-
-def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None, store_init_args=True, rank=0):
-
-    if alg_args is None:
-        alg_args = tuple()
-    if alg_kwargs is None:
-        alg_kwargs = dict()
-    if dataset_args is None:
-        dataset_args = tuple()
-    if dataset_kwargs is None:
-        dataset_kwargs = dict()
-
-    if dataset is not None and not isinstance(dataset, dict):
-        datasets = {'dataset': dataset}
-    else:
-        datasets = dataset
-
-    if datasets is not None:
-        for k, v in datasets.items():
-            if inspect.isclass(v):
-                datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
-            elif inspect.isfunction(v):
-                datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
-
-    if inspect.isclass(alg):
-        store_init_path = None
-        if store_init_args and rank == 0:
-            store_init_path = experiment.store_init_path
-
-        alg = alg(experiment.hparams, experiment=experiment, *alg_args, store_init_path=store_init_path, **alg_kwargs)
-        # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
-        # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
-        experiment.writer_cleanup()
-    else:
-        alg.experiment = experiment
-
-    if datasets is not None:
-        alg.load_datasets(datasets)
-
-    return alg
 
 
 def training_closure(rank, world_size, experiment, alg, **kwargs):
@@ -62,8 +19,8 @@ def training_closure(rank, world_size, experiment, alg, **kwargs):
         alg.save_checkpoint(checkpoint_file)
 
 
-def beam_train_worker(experiment, alg, manager=None, dataset=None, alg_args=None, alg_kwargs=None,
-                      dataset_args=None, dataset_kwargs=None, store_init_args=True, **kwargs):
+def worker_executor(experiment, alg, algorithm_generator, manager=None, dataset=None, alg_args=None, alg_kwargs=None,
+                    dataset_args=None, dataset_kwargs=None, **kwargs):
 
     if manager is None:
         rank = 0
@@ -80,11 +37,11 @@ def beam_train_worker(experiment, alg, manager=None, dataset=None, alg_args=None
     set_seed(seed=experiment.hparams.seed, constant=rank + 1, increment=False,
              deterministic=experiment.hparams.deterministic)
 
-    alg = beam_algorithm_generator(experiment, alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
-                                   store_init_args=store_init_args, rank=rank)
+    alg = algorithm_generator(experiment, alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs, rank=rank)
 
-    experiment.writer_control(enable=not (bool(rank)))
+    if rank == 0:
+        experiment.writer_control()
     results = {}
 
     try:
@@ -131,8 +88,3 @@ def beam_train_worker(experiment, alg, manager=None, dataset=None, alg_args=None
     manager['is_done'] = True
 
     return alg, results
-
-
-# def beam_train(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None,
-#
-#     workers = federated_executor()

@@ -10,7 +10,6 @@ from ..serve.server import BeamServer
 from ..logger import beam_logger as logger
 import websockets
 import asyncio
-from celery.result import AsyncResult
 from flask import request, jsonify, send_file
 from ..utils import ThreadSafeDict, find_port
 

@@ -1,4 +1,4 @@
-from ..core import Algorithm
+from ..algorithm import Algorithm
 from ..path import local_copy, in_memory_storage
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 

@@ -3,7 +3,7 @@ import mlflow
 from mlflow import log_params, log_metric
 import os
 from ..path import beam_path
-from ..core import Algorithm
+from ..algorithm import Algorithm
 
 
 class MLflowSummaryWriter:

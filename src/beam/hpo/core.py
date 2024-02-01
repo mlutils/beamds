@@ -6,7 +6,8 @@ from ..utils import find_port, check_type, is_notebook, beam_device
 from ..config import print_beam_hyperparameters
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
-from ..core import Processor, Algorithm
+from ..core import Processor
+from ..algorithm import Algorithm
 from functools import partial
 from ..experiment import beam_algorithm_generator
 

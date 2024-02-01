@@ -74,8 +74,8 @@ def path_depth(path):
     return len(str(path.resolve()).split(os.sep))
 
 
-def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None, store_init_args=True, rank=0):
+def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None, dataset_args=None,
+                             dataset_kwargs=None, rank=0):
 
     if alg_args is None:
         alg_args = tuple()
@@ -100,7 +100,7 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
 
     if inspect.isclass(alg):
         store_init_path = None
-        if store_init_args and rank == 0:
+        if rank == 0:
             store_init_path = experiment.store_init_path
 
         alg = alg(experiment.hparams, experiment=experiment, *alg_args, store_init_path=store_init_path, **alg_kwargs)
@@ -128,8 +128,13 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     alg = algorithm_generator(*args, rank=rank, **kwargs)
 
-    experiment.writer_control(enable=not (bool(rank)))
+    if rank == 0:
+        experiment.writer_control()
     results = {}
+
+    if world_size > 1:
+        import torch.distributed as dist
+        dist.barrier()
 
     try:
         for i, results in enumerate(iter(alg)):
@@ -138,6 +143,10 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
                 break
 
             experiment.save_model_results(copy.deepcopy(results), alg, i, argv=tensorboard_arguments)
+
+            if world_size > 1:
+                logger.info(f"Worker {rank + 1}/{world_size} finished epoch {i + 1}/{alg.n_epochs}. Waiting for others.")
+                dist.barrier()
 
         if rank == 0:
             logger.info(f"Training is done, Worker terminates.")

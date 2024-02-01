@@ -7,7 +7,7 @@ import torch
 import copy
 from ..logger import beam_logger as logger
 import numpy as np
-from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN
+from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN, BeamDDP
 from ..utils import (to_device, check_type, recursive_concatenate,
                      beam_device, filter_dict, lazy_property,
                      is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key,
@@ -15,7 +15,7 @@ from ..utils import (to_device, check_type, recursive_concatenate,
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
-from .processor import Processor
+from ..core import Processor
 from ..logger import beam_kpi, BeamResult
 from timeit import default_timer as timer
 
@@ -1148,14 +1148,28 @@ class Algorithm(Processor, metaclass=MetaInit):
                 device_ids = None
 
             from torch.nn.parallel import DistributedDataParallel as DDP
+            from types import FunctionType, MethodType
+
             net_ddp = DDP(net, device_ids=device_ids,
                       find_unused_parameters=self.get_hparam('find_unused_parameters', specific=name),
                       broadcast_buffers=self.get_hparam('broadcast_buffers', specific=name))
 
-            for a in dir(net):
-                if a not in dir(net_ddp) and not a.startswith('_'):
-                    setattr(net_ddp, a, getattr(net, a))
+            for attr_name in dir(net):
+                if attr_name not in dir(net_ddp) and not attr_name.startswith('_'):
+                    # setattr(net_ddp, a, getattr(net, a))
+                    attr = getattr(net.__class__, attr_name, None)
+                    if isinstance(attr, property):
+                        # It's a property, copy it as a property
+                        setattr(net_ddp.__class__, attr_name, attr)
+                    elif attr_name not in dir(net_ddp) or isinstance(getattr(net, attr_name),
+                                                                     (FunctionType, MethodType)):
+                        # It's not a property, but a regular attribute or a function/method; copy it directly
+                        setattr(net_ddp, attr_name, getattr(net, attr_name))
             net = net_ddp
+
+            # net = BeamDDP(net, device_ids=device_ids,
+            #               find_unused_parameters=self.get_hparam('find_unused_parameters', specific=name),
+            #               broadcast_buffers=self.get_hparam('broadcast_buffers', specific=name))
 
         if not self.accelerate and self.get_hparam('compile_network'):
             net = net.optimize('compile')

@@ -31,7 +31,7 @@ except ImportError:
 if has_torch:
     from .dataset import UniversalBatchSampler, UniversalDataset
     from .experiment import Experiment, beam_algorithm_generator
-    from .core import Algorithm
+    from .algorithm import Algorithm
     from .nn import LinearNet, PackedSet, copy_network, reset_network, DataTensor, BeamOptimizer, BeamScheduler, BeamNN
     from .data import BeamData
     from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch, beam_hash

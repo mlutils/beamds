@@ -95,12 +95,16 @@ class FederatedTrainingConfig(BeamConfig):
         BeamParam('mp_ip', str, 'localhost', 'IP to be used for multiprocessing'),
         BeamParam('mp_port', str, None, 'Port to be used for multiprocessing'),
         BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
-        BeamParam('distributed_backend', str, None, 'The distributed backend to use. Supported backends: [nccl, gloo, mpi]'),
+        BeamParam('n_cpus_per_worker', int, None, 'Number of cpus to use in each worker'),
+        BeamParam('n_gpus_per_worker', int, 1, 'Number of gpus to use in each worker'),
+        BeamParam('distributed_backend', str, None, 'The distributed backend to use. '
+                                                    'Supported backends: [nccl, gloo, mpi]'),
         BeamParam('mp_context', str, 'spawn', 'The multiprocessing context to use'),
         BeamParam('kv_store', str, 'tcp', 'The key-value store to use [tcp|file|hash]'),
         BeamParam('kv_store_path', str, None, 'The path to the key-value store file'),
         BeamParam('kv_store_timeout', float, 300., 'The timeout for the key-value store'),
         BeamParam('kv_store_port', str, None, 'The port to use for the key-value store'),
+        BeamParam('federated_runner', bool, False, 'Use the new federated runner for distributed training'),
 
     ]
 
@@ -275,6 +279,7 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
         BeamParam('scalene', bool, False, 'Profile the experiment with the Scalene python profiler'),
         BeamParam('safetensors', bool, False, 'Save tensors in safetensors format instead of native torch'),
         BeamParam('store_initial_weights', bool, False, 'Store the network\'s initial weights'),
+        BeamParam('store_init_args', bool, True, 'Store the algorithm init args/kwargs for better reloading'),
         BeamParam('copy_code', bool, True, 'Copy the code directory into the experiment directory'),
         BeamParam('restart_epochs_count', bool, True, 'When reloading an algorithm, restart counting epochs from zero '
                                                       '(with respect to schedulers and swa training)', tags='tune'),

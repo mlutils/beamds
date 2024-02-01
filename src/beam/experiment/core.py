@@ -10,7 +10,6 @@ import torch
 import copy
 import pandas as pd
 import torch.multiprocessing as mp
-import torch.distributed as dist
 from functools import partial
 
 
@@ -151,7 +150,9 @@ class Experiment(object):
         self.results_dir = self.experiment_dir.joinpath('results')
         self.code_dir = self.experiment_dir.joinpath('code')
 
-        self.store_init_path = self.experiment_dir.joinpath('init_alg_args.pkl')
+        self.store_init_path = None
+        if self.hparams.get('store_init_args', default=True):
+            self.store_init_path = self.experiment_dir.joinpath('init_alg_args.pkl')
 
         if self.load_model:
             logger.cleanup()
@@ -162,6 +163,11 @@ class Experiment(object):
 
         self.rank = 0
         self.world_size = args.n_gpus
+        if hasattr(args, 'n_gpus_per_worker') and args.n_gpus_per_worker is not None:
+            self.world_size = self.world_size // args.n_gpus_per_worker
+            assert self.world_size * args.n_gpus_per_worker == args.n_gpus, \
+                (f"Total number of gpus ({args.n_gpus}) is not divisible by number of gpus per worker "
+                 f"({args.n_gpus_per_worker})")
 
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
@@ -312,9 +318,9 @@ class Experiment(object):
 
         logger.info(f'Worker {rank + 1} will be running on device={str(self.device)}')
 
-    def writer_control(self, enable=True, networks=None, inputs=None):
+    def writer_control(self, networks=None, inputs=None):
 
-        if enable and self.tensorboard_writer is None and self.hparams.tensorboard:
+        if self.tensorboard_writer is None and self.hparams.tensorboard:
             if isinstance(self.tensorboard_dir, BeamPath):
                 from tensorboardX import SummaryWriter
                 self.tensorboard_writer = SummaryWriter(log_dir=str(self.tensorboard_dir.joinpath('logs')),
@@ -361,7 +367,7 @@ class Experiment(object):
             mlflow_exp_name = '-'.join(self.experiment_dir.parts[-4:])
             self.mlflow_writer = MLflowSummaryWriter(mlflow_exp_name, self.tensorboard_hparams, mlflow_url)
 
-        if networks is not None and enable:
+        if networks is not None:
             if self.tensorboard_writer is not None:
                 for k, net in networks.items():
                     self.tensorboard_writer.add_graph(net, inputs[k])
@@ -433,9 +439,6 @@ class Experiment(object):
                     self.checkpoints_dir.joinpath(f'checkpoint_{epoch - 1:06d}').unlink()
                 except OSError:
                     pass
-
-        if self.world_size > 1:
-            dist.barrier()
 
     def log_data(self, reporter, n, print_log=True, alg=None, argv=None):
 
@@ -630,12 +633,11 @@ class Experiment(object):
         self._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
                           base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
-    def algorithm_generator(self, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None, store_init_args=True):
+    def algorithm_generator(self, alg, dataset=None, alg_args=None, alg_kwargs=None, dataset_args=None,
+                            dataset_kwargs=None):
 
         return beam_algorithm_generator(self, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                                        dataset_args=dataset_args, dataset_kwargs=dataset_kwargs,
-                                        store_init_args=store_init_args)
+                                        dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
 
     def fit(self, alg=None, dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
@@ -654,6 +656,40 @@ class Experiment(object):
 
         return self(ag, *args, return_results=return_results, reload_results=reload_results,
                     tensorboard_arguments=tensorboard_arguments, **kwargs)
+
+    def federated_training(self, alg, algorithm_generator=None, dataset=None, alg_args=None, alg_kwargs=None,
+                           dataset_args=None, dataset_kwargs=None,
+                           ray_kwargs=None, remote_kwargs=None, **kwargs):
+
+        from ..federated import federated_executor, worker_executor
+
+        if algorithm_generator is None:
+            algorithm_generator = self.algorithm_generator
+
+        workers = federated_executor(func=worker_executor, world_size=self.world_size,
+                                     framework=self.distributed_training_framework,
+                                     distributed_backend=self.hparams.get('distributed_backend'),
+                                     host=self.hparams.get('mp_ip'), port=self.hparams.get('mp_port'),
+                                     kv_store=self.hparams.get('kv_store'),
+                                     kv_store_path=self.hparams.get('kv_store_path'),
+                                     kv_store_timeout=self.hparams.get('kv_store_timeout'),
+                                     kv_store_port=self.hparams.get('kv_store_port'), ray_address=None,
+                                     ray_kwargs=ray_kwargs,
+                                     num_gpus=self.hparams.get('n_gpus_per_worker'),
+                                     num_cpus=self.hparams.get('n_cpus_per_worker'), remote_kwargs=remote_kwargs, **kwargs)
+
+        if self.world_size > 1:
+            logger.info(f'Initializing {self.world_size} parallel workers')
+        else:
+            logger.info(f'Single worker mode')
+
+        results = []
+        for i, we in enumerate(workers):
+            logger.info(f"Starting worker {i+1}/{len(workers)} on host: {we.hostname} with gpus: {we.physical_devices}")
+            results.append(we(self, alg, algorithm_generator, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
+                              dataset_args=dataset_args, dataset_kwargs=dataset_kwargs))
+
+        return results[0].wait()
 
     @lazy_property
     def distributed_training_framework(self):
@@ -720,8 +756,12 @@ class Experiment(object):
             self.build_experiment_dir()
 
         try:
-            res = self.run(default_runner, *(algorithm_generator, self, *args),
-                           tensorboard_arguments=tensorboard_arguments, **kwargs)
+
+            if self.hparams.get('federated_runner'):
+                self.federated_training(algorithm_generator=algorithm_generator, *args, **kwargs)
+            else:
+                res = self.run(default_runner, *(algorithm_generator, self, *args),
+                               tensorboard_arguments=tensorboard_arguments, **kwargs)
 
         except KeyboardInterrupt:
 
@@ -803,7 +843,10 @@ class Experiment(object):
                                f"Specifically, if in_place error set --no-broadcast-buffer flag and for subgraph issues"
                                f"set --find-unused-parameters")
 
-            if self.hparams.mp_port == 'random' or check_if_port_is_available(self.hparams.mp_port):
+            if self.hparams.mp_port is None:
+                self.hparams.set('mp_port', find_free_port())
+            elif not check_if_port_is_available(self.hparams.mp_port):
+                logger.warning(f"Port {self.hparams.mp_port} is not available. Using random port")
                 self.hparams.set('mp_port', find_free_port())
 
             logger.info(f'Multiprocessing port is: {self.hparams.mp_port}')
