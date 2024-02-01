@@ -42,7 +42,7 @@ class AsyncServer(HTTPServer):
                                            broker_port=broker_port, broker_scheme=broker_scheme, broker_host=broker_host,
                                            backend_username=backend_username, backend_password=backend_password,
                                            backend_port=backend_port, backend_scheme=backend_scheme,
-                                           backend_host=backend_host, serve='remote', log_level=broker_log_level)
+                                           backend_host=backend_host, log_level=broker_log_level)
 
         application = application or 'distributed_async'
         super().__init__(obj=self.dispatcher, name=name, use_torch=use_torch, batch=batch,
@@ -105,7 +105,10 @@ class AsyncServer(HTTPServer):
         loop.run_until_complete(start_server)
         loop.run_forever()
 
-    def run(self, ws_host=None, ws_port=None, enable_websocket=True, **kwargs):
+    def run_non_blocking(self, **kwargs):
+        self.run(non_blocking=True, **kwargs)
+
+    def run(self, ws_host=None, ws_port=None, enable_websocket=True, non_blocking=False, **kwargs):
 
         self.worker.run()
 
@@ -121,15 +124,22 @@ class AsyncServer(HTTPServer):
 
         super().run(non_blocking=True, **kwargs)
 
+        if not non_blocking:
+            self.routine()
+        else:
+            Thread(target=self.routine).start()
+
+    def routine(self):
+
         while True:
             try:
                 sleep = True
-                for task_id in self.tasks.keys():
-                    res = AsyncResult(task_id)
-                    if res.ready():
+                for task_id, task in self.tasks.items():
+                    res = task['async_result']
+                    if res.is_ready:
                         sleep = False
                         task_inf = self.tasks.pop(task_id)
-                        self.postprocess(task_id=task_id, task=res, task_inf=task_inf)
+                        self.postprocess(task_id=task_id, async_result=res, task_inf=task_inf)
                 if sleep:
                     time.sleep(0.1)
             except KeyboardInterrupt:
@@ -163,12 +173,12 @@ class AsyncServer(HTTPServer):
             kwargs = data.pop('kwargs', {})
 
         if method not in ['poll']:
-            task_id = BeamServer.query_algorithm(self, client, method, args, kwargs, return_raw_results=True)
-            if type(task_id) is not str:
-                print(task_id)
+            async_result = BeamServer.query_algorithm(self, client, method, args, kwargs, return_raw_results=True)
+            task_id = async_result.hex
             metadata = self.request_metadata(client=client, method=method)
             self.tasks[task_id] = {'metadata': metadata, 'postrun_args': postrun_args,
-                                   'postrun_kwargs': postrun_kwargs, 'ws_client_id': ws_client_id}
+                                            'postrun_kwargs': postrun_kwargs, 'ws_client_id': ws_client_id,
+                                            'async_result': async_result}
 
             if client == 'beam':
                 io_results = io.BytesIO()
@@ -181,12 +191,12 @@ class AsyncServer(HTTPServer):
         else:
             return BeamServer.query_algorithm(self, client, method, args, kwargs)
 
-    def postprocess(self, task_id=None, task_inf=None, task=None):
+    def postprocess(self, task_id=None, task_inf=None, async_result=None):
 
-        state = task.state
-        args = task.args
-        kwargs = task.kwargs
-        retval = task.result
+        state = async_result.state
+        args = async_result.args
+        kwargs = async_result.kwargs
+        retval = async_result.value
 
         logger.info(f"Task {task_id} finished with state {state}.")
 
@@ -205,7 +215,7 @@ class AsyncServer(HTTPServer):
                     asyncio.run(ws.close())
                     self.ws_clients.pop(client_id)
 
-        self.postrun_callback(task_args=args, task_kwargs=kwargs, retval=retval, state=state, task=task, **task_inf)
+        self.postrun_callback(task_args=args, task_kwargs=kwargs, retval=retval, state=state, task=async_result, **task_inf)
 
     def postrun(self, task_args=None, task_kwargs=None, retval=None, state=None, task=None, metadata=None,
                 postrun_args=None, postrun_kwargs=None, **kwargs):

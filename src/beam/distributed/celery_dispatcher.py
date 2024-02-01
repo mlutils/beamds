@@ -3,10 +3,10 @@ from functools import partial
 from .utils import get_broker_url, get_backend_url
 from ..core import Processor
 from ..utils import lazy_property
-from .meta_dispatcher import AsyncResult, MetaDispatcher
+from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
 
 
-class CeleryAsyncResult(AsyncResult):
+class CeleryAsyncResult(MetaAsyncResult):
 
     @property
     def value(self):
@@ -31,6 +31,18 @@ class CeleryAsyncResult(AsyncResult):
     def is_success(self):
         return self.obj.successful()
 
+    @property
+    def state(self):
+        return self.obj.state
+
+    @property
+    def args(self):
+        return self.obj.args
+
+    @property
+    def kwargs(self):
+        return self.obj.kwargs
+
     def __repr__(self):
         return f"CeleryAsyncResult({self.hex}, is_ready={self.is_ready}, is_success={self.is_success})"
 
@@ -40,9 +52,10 @@ class CeleryDispatcher(MetaDispatcher):
     def __init__(self, *args, name=None, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
                  backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
-                 backend_host=None, asynchronous=True, log_level='INFO', serve='local', **kwargs):
+                 backend_host=None, asynchronous=True, log_level='INFO', **kwargs):
 
-        super().__init__(*args, name=name, asynchronous=asynchronous, **kwargs)
+        # in celery obj is not used
+        super().__init__(None, *args, name=name, asynchronous=asynchronous, **kwargs)
 
         self.broker_url = get_broker_url(broker=broker, broker_username=broker_username,
                                          broker_password=broker_password, broker_port=broker_port,
@@ -53,7 +66,6 @@ class CeleryDispatcher(MetaDispatcher):
                                            backend_scheme=backend_scheme, backend_host=backend_host)
 
         self.log_level = log_level
-        self.serve = serve
 
     @lazy_property
     def broker(self):
@@ -87,8 +99,6 @@ class CeleryDispatcher(MetaDispatcher):
 
     def dispatch(self, attribute, *args, **kwargs):
         res = self.broker.send_task(attribute, args=args, kwargs=kwargs)
-        if self.serve == 'remote':
-            return res.task_id
         res = CeleryAsyncResult(res)
         if self.asynchronous:
             return res
@@ -96,7 +106,7 @@ class CeleryDispatcher(MetaDispatcher):
             return res.value
 
     def __getattr__(self, item):
-        if item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+        if item.startswith('_') or item == 'init_is_done' or not hasattr(self, 'init_is_done'):
             return object.__getattribute__(self, item)
         return partial(self.dispatch, item)
 

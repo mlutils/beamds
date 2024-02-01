@@ -4,7 +4,7 @@ from ..core import Processor
 from ..utils import MetaInitIsDoneVerifier, lazy_property
 
 
-class AsyncResult:
+class MetaAsyncResult:
 
     def __init__(self, obj):
         self.obj = obj
@@ -53,6 +53,18 @@ class AsyncResult:
     def __repr__(self):
         raise NotImplementedError
 
+    @property
+    def state(self):
+        raise NotImplementedError
+
+    @property
+    def args(self):
+        return None
+
+    @property
+    def kwargs(self):
+        return None
+
 
 class MetaDispatcher(Processor, metaclass=MetaInitIsDoneVerifier):
 
@@ -88,7 +100,7 @@ class MetaDispatcher(Processor, metaclass=MetaInitIsDoneVerifier):
             return "instance" if isinstance(self.obj, object) else "unknown"
 
     def __getattr__(self, item):
-        if item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+        if item.startswith('_') or item == 'init_is_done' or not hasattr(self, 'init_is_done'):
             return super().__getattribute__(item)
         if item in self.routes_methods:
             return self.routes_methods[item]

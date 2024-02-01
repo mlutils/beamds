@@ -11,9 +11,8 @@ from ..serve.http_client import HTTPClient
 
 class AsyncClient(HTTPClient):
 
-    def __init__(self, *args, ws_port=None, ws_tls=False, hostname=None,
-                 postrun=None, enable_websocket=True,  **kwargs):
-        super().__init__(*args, hostname=hostname, **kwargs)
+    def __init__(self, hostname=None, ws_port=None, ws_tls=False, postrun=None, enable_websocket=True,  **kwargs):
+        super().__init__(hostname=hostname, **kwargs)
 
         metadata = self.info.get('metadata', {})
         if ws_port is None and 'ws_port' in metadata:

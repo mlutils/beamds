@@ -1,11 +1,11 @@
 
 from ..core import Processor
 from ..path import BeamURL
-from .meta_dispatcher import AsyncResult, MetaDispatcher
+from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
 import ray
 
 
-class RayAsyncResult(AsyncResult):
+class RayAsyncResult(MetaAsyncResult):
 
     @property
     def value(self):
@@ -30,6 +30,13 @@ class RayAsyncResult(AsyncResult):
 
     def __repr__(self):
         return f"AsyncResult({self.str}, is_ready={self.is_ready}, is_success={self.is_success})"
+
+    @property
+    def state(self):
+        if self.is_ready:
+            return "READY"
+        else:
+            return "PENDING"
 
 
 class RayCluster(Processor):

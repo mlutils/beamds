@@ -1,9 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor, Future
 from functools import wraps
-from .meta_dispatcher import AsyncResult, MetaDispatcher
+from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
 
 
-class ThreadAsyncResult(AsyncResult):
+class ThreadAsyncResult(MetaAsyncResult):
     def __init__(self, future: Future):
         super().__init__(future)
         self.future = future
@@ -28,6 +28,17 @@ class ThreadAsyncResult(AsyncResult):
 
     def __repr__(self):
         return f"AsyncResult({self.str}, is_ready={self.is_ready}, is_success={self.is_success})"
+
+    @property
+    def state(self):
+        if self.future.running():
+            return "RUNNING"
+        elif self.future.done():
+            return "FINISHED"
+        elif self.future.cancelled():
+            return "CANCELLED"
+        else:
+            return "PENDING"
 
 
 class ThreadedCluster:
