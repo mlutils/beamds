@@ -3,16 +3,46 @@ from functools import partial
 from .utils import get_broker_url, get_backend_url
 from ..core import Processor
 from ..utils import lazy_property
+from .meta_dispatcher import AsyncResult, MetaDispatcher
 
 
-class CeleryDispatcher(Processor):
+class CeleryAsyncResult(AsyncResult):
+
+    @property
+    def value(self):
+        if self._value is None and self.is_ready:
+            self._value = self.obj.get()  # Timeout can be adjusted
+        return self._value
+
+    def wait(self, timeout=None):
+        return self.obj.get(timeout=timeout)
+
+    @property
+    def hex(self):
+        return self.obj.task_id
+
+    @property
+    def is_ready(self):
+        if self._is_ready is None:
+            self._is_ready = self.obj.ready()
+        return self._is_ready
+
+    @property
+    def is_success(self):
+        return self.obj.successful()
+
+    def __repr__(self):
+        return f"CeleryAsyncResult({self.hex}, is_ready={self.is_ready}, is_success={self.is_success})"
+
+
+class CeleryDispatcher(MetaDispatcher):
 
     def __init__(self, *args, name=None, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
                  backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
-                 backend_host=None, serve='local', log_level='INFO', **kwargs):
+                 backend_host=None, asynchronous=True, log_level='INFO', serve='local', **kwargs):
 
-        super().__init__(*args, name=name, **kwargs)
+        super().__init__(*args, name=name, asynchronous=asynchronous, **kwargs)
 
         self.broker_url = get_broker_url(broker=broker, broker_username=broker_username,
                                          broker_password=broker_password, broker_port=broker_port,
@@ -57,12 +87,16 @@ class CeleryDispatcher(Processor):
 
     def dispatch(self, attribute, *args, **kwargs):
         res = self.broker.send_task(attribute, args=args, kwargs=kwargs)
-        if self.serve == 'local':
+        if self.serve == 'remote':
+            return res.task_id
+        res = CeleryAsyncResult(res)
+        if self.asynchronous:
             return res
-        return res.task_id
+        else:
+            return res.value
 
     def __getattr__(self, item):
-        if item.startswith('_') or item in ['serve'] or not hasattr(self, 'serve'):
-            return super().__getattribute__(item)
+        if item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+            return object.__getattribute__(self, item)
         return partial(self.dispatch, item)
 

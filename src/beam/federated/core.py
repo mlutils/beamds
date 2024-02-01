@@ -1,3 +1,4 @@
+import socket
 from datetime import timedelta
 
 import torch.distributed as dist
@@ -6,24 +7,8 @@ import os
 
 from ..logger import beam_logger as logger
 from ..core import Processor
-from ..utils import has_kwargs
+from ..utils import has_kwargs, GPUManager
 
-
-# class BeamNonFederated(Processor):
-#     def __init__(self, *args, func=None, rank=0, world_size=1, framework='ddp', distributed_backend='nccl', host=None,
-#                  port=None, func_args=None, func_kwargs=None, kv_store='tcp', kv_store_path=None,
-#                  kv_store_timeout=300, kv_store_port=None, devices=None, **kwargs):
-#
-#         super().__init__(*args, training_framework=framework, mp_port=port, mp_ip=host,
-#                          kv_store_path=kv_store_path, kv_store_timeout=kv_store_timeout, kv_store_port=kv_store_port,
-#                          distributed_backend=distributed_backend, kv_store=kv_store, **kwargs)
-#
-#         self.rank = rank
-#         self.world_size = world_size
-#
-#         self.func = func
-#         self.func_args = func_args if func_args is not None else []
-#         self.func_kwargs = func_kwargs if func_kwargs is not None else {}
 
 
 class BeamFederated(Processor):
@@ -56,7 +41,8 @@ class BeamFederated(Processor):
                 devices = [int(d) for d in devices]
         self.devices = devices
 
-        self._init_distributed()
+        if self.world_size > 1:
+            self._init_distributed()
 
         self.kv_store = self.get_hparam('kv_store')
         self.kv_store_path = self.get_hparam('kv_store_path')
@@ -72,6 +58,14 @@ class BeamFederated(Processor):
             self.store = dist.FileStore(self.kv_store_path, self.world_size)
         else:
             raise ValueError(f"Unknown kv_store: {self.kv_store}")
+
+    @property
+    def physical_devices(self):
+        return GPUManager.physical_devices(self.devices)
+
+    @property
+    def hostname(self):
+        return socket.gethostname()
 
     def _init_distributed(self):
         os.environ['MASTER_ADDR'] = self.host
@@ -146,6 +140,15 @@ class BeamFederated(Processor):
         kwargs['manager'] = self
 
         return func(*args, **kwargs)
+
+    def cleanup(self):
+        if self.world_size > 1:
+            if self.framework == 'ddp':
+                dist.destroy_process_group()
+            elif self.framework == 'deepspeed':
+                pass
+            else:
+                raise ValueError(f"Unknown distributed framework: {self.framework}")
 
 
 # For MPI use the spinningup resource:

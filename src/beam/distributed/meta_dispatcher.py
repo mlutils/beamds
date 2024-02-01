@@ -1,5 +1,6 @@
 import inspect
 
+from ..core import Processor
 from ..utils import MetaInitIsDoneVerifier, lazy_property
 
 
@@ -53,16 +54,18 @@ class AsyncResult:
         raise NotImplementedError
 
 
-class MetaDispatcher(metaclass=MetaInitIsDoneVerifier):
+class MetaDispatcher(Processor, metaclass=MetaInitIsDoneVerifier):
 
     def __init__(self, obj, *routes, name=None, asynchronous=True, **kwargs):
+
+        super().__init__(name=name, **kwargs)
         self.obj = obj
         self._routes = routes
         self.asynchronous = asynchronous
 
         self.call_function = None
         self.routes_methods = {}
-        self.name = name
+
 
     @property
     def routes(self):
