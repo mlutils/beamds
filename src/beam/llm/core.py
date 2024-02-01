@@ -4,6 +4,7 @@ from functools import partial
 from typing import Optional, Any, Dict, List, Mapping
 from uuid import uuid4 as uuid
 import pandas as pd
+from pydantic import BaseModel
 
 from ..logger import beam_logger as logger
 from .response import LLMResponse
@@ -16,7 +17,7 @@ try:
     from langchain.llms.base import LLM
     from langchain.callbacks.manager import CallbackManagerForLLMRun
 except ImportError:
-    LLM = NullClass
+    LLM = BaseModel
     CallbackManagerForLLMRun = NullClass
 
 

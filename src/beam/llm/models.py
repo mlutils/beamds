@@ -210,7 +210,6 @@ class FastChatLLM(OpenAIBase):
 
 class FastAPILLM(FCConversationLLM):
 
-    model: Optional[str] = Field(None)
     hostname: Optional[str] = Field(None)
     headers: Optional[dict] = Field(None)
     consumer: Optional[str] = Field(None)
