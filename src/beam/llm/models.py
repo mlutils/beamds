@@ -267,6 +267,8 @@ class FastAPILLM(FCConversationLLM):
         if 'stop_criteria' in kwargs:
             kwargs_processed['stop_criteria'] = kwargs.pop('stop_criteria')
 
+        kwargs_processed['stream'] = kwargs.pop('stream', False)
+
         return kwargs_processed
 
     def _chat_completion(self, messages=None, **kwargs):
@@ -279,16 +281,32 @@ class FastAPILLM(FCConversationLLM):
         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         return self._completion_internal(prompt, **kwargs)
 
-    def _completion_internal(self, prompt, **kwargs):
+    def _stream_generator(self, d):
+
+        with requests.post(f"{self.protocol}://{self.hostname}/predict/stream", headers=self.headers, json=d,
+                           stream=True, verify=False) as response:
+            for chunk in response.iter_content(chunk_size=1024):
+                yield json.loads(chunk[:-1].decode())
+
+    def _completion_internal(self, prompt, stream=False, **kwargs):
 
         d = dict(model_name=self.model, consumer=self.consumer, input=prompt,
                  hyper_params=self.process_kwargs(prompt, **kwargs))
 
-        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
+        if stream:
+            res = self._stream_generator(d)
+            return CompletionObject(prompt=d['input'], kwargs=d, response=res)
+
+        else:
+            res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
                             verify=False)
-        return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
+            return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
     def verify_response(self, res):
+
+        if res.stream:
+            return True
+
         try:
 
             if not res.response['is_done']:

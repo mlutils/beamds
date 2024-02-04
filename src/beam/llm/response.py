@@ -1,6 +1,8 @@
+import inspect
 import re
 import time
 import uuid
+from collections.abc import Iterator
 
 from ..logger import beam_logger as logger
 from ..utils import parse_text_to_protocol, retry
@@ -24,7 +26,9 @@ class LLMResponse:
         self.prompt_type = prompt_type
         self._task_result = None
         self._task_success = None
-        assert self.verify(), "Response is not valid"
+
+        if not inspect.isgenerator(self.response) and not isinstance(self.response, Iterator):
+            assert self.verify(), "Response is not valid"
 
     def __str__(self):
         return self.text

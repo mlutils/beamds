@@ -341,7 +341,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.statistics = stats
 
     def build_sampler(self, batch_size, subset=None, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
-                       dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
+                       dynamic=False, buffer_size=None, probs_normalization='sum', tail=True, sample_size=100000):
 
         from sklearn.utils.class_weight import compute_sample_weight
 
@@ -355,7 +355,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if not persistent:
             return UniversalBatchSampler(indices, batch_size, shuffle=False,
-                                         tail=True, once=True, dynamic=False)
+                                         tail=tail, once=True, dynamic=False)
 
         probs = None
         if oversample and subset in self.labels_split and self.labels_split[subset] is not None:
@@ -367,7 +367,7 @@ class UniversalDataset(torch.utils.data.Dataset):
             probs = self.probs[subset]
 
         return UniversalBatchSampler(indices,
-                                     batch_size, probs=probs, shuffle=True, tail=True,
+                                     batch_size, probs=probs, shuffle=True, tail=tail,
                                      once=False, expansion_size=expansion_size,
                                      dynamic=dynamic, buffer_size=buffer_size,
                                      probs_normalization=probs_normalization,

@@ -5,8 +5,12 @@ from src.beam.llm import beam_llm
 
 llm = beam_llm('openai:///gpt-4')
 
-res = llm.chat("hi how are you?", system="you had a bad day")
-print(res)
+# res = llm.chat("hi how are you?", system="you had a bad day")
+# print(res)
+
+gen = llm.ask('how are you?', stream=True)
+
+r = next(gen)
 
 
 # from src.beam.llm import text_splitter

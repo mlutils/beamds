@@ -84,6 +84,10 @@ class RayCluster(Processor):
     def shutdown():
         ray.shutdown()
 
+    @property
+    def head_node_ip(self):
+        return ray.util.get_node_ip_address()
+
 
 class RayRemoteClass:
 
