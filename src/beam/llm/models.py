@@ -284,7 +284,7 @@ class FastAPILLM(FCConversationLLM):
     def _stream_generator(self, d):
 
         with requests.post(f"{self.protocol}://{self.hostname}/predict/stream", headers=self.headers, json=d,
-                            verify=False) as response:
+                           stream=True, verify=False) as response:
             for chunk in response.iter_content(chunk_size=1024):
                 yield json.loads(chunk[:-1].decode())
 
@@ -303,6 +303,10 @@ class FastAPILLM(FCConversationLLM):
             return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
     def verify_response(self, res):
+
+        if res.stream:
+            return True
+
         try:
 
             if not res.response['is_done']:
