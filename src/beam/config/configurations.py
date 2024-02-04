@@ -180,6 +180,8 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
         BeamParam('epoch_length', int, None, 'Length of train+eval epochs '
                                              '(if None - it is taken from epoch_length_train/epoch_length_eval arguments)',
                   tags='tune'),
+        BeamParam('train_on_tail', bool, False, 'Should the last (incomplete) batch be included in the training epoch '
+                                                '(useful for small datasets but not time efficient)'),
         BeamParam('epoch_length_train', int, None, 'Length of each epoch (if None - it is the dataset[train] size)', tags='tune'),
         BeamParam('epoch_length_eval', int, None, 'Length of each evaluation epoch (if None - it is the dataset[validation] size)',
                     tags='tune'),

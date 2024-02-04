@@ -1,7 +1,7 @@
 import socket
 
 from ..distributed import ThreadedDispatcher
-from ..distributed import RayDispatcher
+from ..distributed import RayDispatcher, RayCluster
 from .core import BeamFederated
 from ..utils import find_port, GPUManager
 from ..logger import beam_logger as logger
@@ -12,8 +12,11 @@ def federated_executor(func=None, world_size=1, framework='ddp', distributed_bac
                        kv_store_timeout=300, kv_store_port=None, ray_address=None, ray_kwargs=None, num_gpus=1,
                        num_cpus=4, remote_kwargs=None, **kwargs):
 
+    ray_cluster = RayCluster(address=ray_address, ray_kwargs=ray_kwargs)
+
     if host is None:
-        host = 'localhost'
+        host = ray_cluster.head_node_ip
+        logger.info(f'Host is not specified, using the head node IP: {host}')
 
     if port is None:
         port = find_port(application='distributed')

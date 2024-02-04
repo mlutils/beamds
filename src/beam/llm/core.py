@@ -340,9 +340,8 @@ class BeamLLM(LLM, Processor):
             # add tools message
             self.add_tool_message_to_chat(kwargs.pop('messages', None))
 
+        kwargs['stream'] = stream
         completion_object = chat_completion_function(**kwargs)
-        self.update_usage(completion_object.response)
-
         response = LLMResponse(completion_object.response, self, chat=True, stream=stream,
                                parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
@@ -353,7 +352,7 @@ class BeamLLM(LLM, Processor):
 
         return response
 
-    def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', **kwargs):
+    def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', stream=False, **kwargs):
 
         completion_function = self._completion
         if ask_retrials > 1:
@@ -361,10 +360,9 @@ class BeamLLM(LLM, Processor):
                                         sleep=sleep, logger=logger,
                                         name=f"LLM completion with model: {self.model}")
 
+        kwargs['stream'] = stream
         completion_object = completion_function(**kwargs)
-        self.update_usage(completion_object.response)
-
-        response = LLMResponse(completion_object.response, self, chat=False,
+        response = LLMResponse(completion_object.response, self, chat=False, stream=stream,
                                parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
         return response
@@ -483,9 +481,26 @@ class BeamLLM(LLM, Processor):
             self.add_tool_message_to_chat(messages)
 
         response = self.chat_completion(messages=messages, prompt_type=prompt_type, **default_params)
-        self.add_to_chat(response.text, is_user=False)
 
-        return response
+        if stream:
+            def gen():
+
+                generated_text = []
+                for res in response:
+                    if res.text is not None:
+                        generated_text.append(res.text)
+                    yield res
+
+                generated_text = "".join(generated_text)
+                self.update_usage(res.response)
+                self.add_to_chat(generated_text, is_user=False)
+
+            return gen()
+
+        else:
+            self.update_usage(response.response)
+            self.add_to_chat(response.text, is_user=False)
+            return response
 
     def chat_with_assistant(self, message=None, docstrings=None, budget=3, **kwargs):
 
@@ -740,9 +755,22 @@ class BeamLLM(LLM, Processor):
             response = self.completion(prompt=question, logprobs=logprobs, echo=echo,
                                        prompt_type=prompt_type, **default_params)
 
-        self.instruction_history.append({'question': question, 'response': response.text, 'type': 'ask'})
+        if stream:
+            def gen():
+                for res in response:
+                    yield res
 
-        return response
+                if not self.is_completions:
+                    # currently openai stream does not support update usage
+                    self.update_usage(res.response)
+                    self.instruction_history.append({'question': question, 'response': res.response, 'type': 'ask'})
+
+            return gen()
+
+        else:
+            self.update_usage(response.response)
+            self.instruction_history.append({'question': question, 'response': response, 'type': 'ask'})
+            return response
 
     def reset_instruction_history(self):
         self.instruction_history = []

@@ -886,7 +886,7 @@ class Algorithm(Processor, metaclass=MetaInit):
     def load_datasets(self, datasets, set_epoch_length='first', batch_size_train=None, batch_size_eval=None,
                      oversample=None, weight_factor=None, expansion_size=None,timeout=0, collate_fn=None,
                      worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2,
-                     dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
+                     dynamic=False, buffer_size=None, train_on_tail=True, probs_normalization='sum', sample_size=100000):
 
         batch_size_train = self.get_hparam('batch_size_train') if batch_size_train is None else batch_size_train
         batch_size_eval = self.get_hparam('batch_size_eval') if batch_size_eval is None else batch_size_eval
@@ -898,6 +898,7 @@ class Algorithm(Processor, metaclass=MetaInit):
         probs_normalization = self.get_hparam('probs_normalization') if probs_normalization is None else probs_normalization
         sample_size = self.get_hparam('sample_size') if sample_size is None else sample_size
         timeout = self.get_hparam('data_fetch_timeout') if timeout is None else timeout
+        train_on_tail = self.get_hparam('train_on_tail') if train_on_tail is None else train_on_tail
 
         for i, (k, dataset) in enumerate(datasets.items()):
 
@@ -932,6 +933,7 @@ class Algorithm(Processor, metaclass=MetaInit):
                                                     weight_factor=weight_factor, expansion_size=expansion_size,
                                                     dynamic=dynamic, buffer_size=buffer_size,
                                                     probs_normalization=probs_normalization,
+                                                    tail=train_on_tail,
                                                     sample_size=sample_size)
                     d = dataset
                 else:
@@ -940,6 +942,7 @@ class Algorithm(Processor, metaclass=MetaInit):
                                                        expansion_size=expansion_size,
                                                        dynamic=dynamic, buffer_size=buffer_size,
                                                        probs_normalization=probs_normalization,
+                                                       tail=train_on_tail,
                                                        sample_size=sample_size)
                     d = dataset[s]
 

@@ -54,10 +54,16 @@ class OpenAIBase(BeamLLM):
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 
     def verify_response(self, res):
+        stream = res.stream
         res = res.response
+
+        if not hasattr(res.choices[0], 'finish_reason'):
+            return False
+
         finish_reason = res.choices[0].finish_reason
-        if finish_reason != 'stop':
+        if finish_reason != 'stop' and not stream:
             logger.warning(f"finish_reason is {finish_reason}")
+
         return True
 
     def extract_text(self, res):
