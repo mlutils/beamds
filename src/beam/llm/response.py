@@ -21,7 +21,14 @@ class LLMResponse:
         self.model = llm.model
         self.created = int(time.time())
         self.chat = chat
-        self.object = "chat.completion" if chat else "text_completion"
+
+        if stream:
+            self.object = "chat.completion.chunk"
+        elif chat:
+            self.object = "chat.completion"
+        else:
+            self.object = "text.completion"
+
         self.stream = stream
         self.prompt_type = prompt_type
         self._task_result = None

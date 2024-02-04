@@ -11,7 +11,6 @@ from ..core import Processor
 from ..utils import has_kwargs, GPUManager
 
 
-
 class BeamFederated(Processor):
     def __init__(self, *args, func=None, rank=0, world_size=1, framework='ddp', distributed_backend='nccl', host=None,
                  port=None, func_args=None, func_kwargs=None, kv_store='tcp', kv_store_path=None,
@@ -29,6 +28,7 @@ class BeamFederated(Processor):
         self.func_kwargs = func_kwargs if func_kwargs is not None else {}
 
         self.host = self.get_hparam('mp_ip') or 'localhost'
+
         self.port = str(self.get_hparam('mp_port'))
         self.backend = self.get_hparam('distributed_backend')
         self.framework = self.get_hparam('training_framework')

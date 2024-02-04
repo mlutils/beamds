@@ -3,9 +3,18 @@ from argparse import Namespace
 from ...resource import beam_llm
 
 
-def simulate_openai_chat(model=None, **kwargs):
+def stream_openai_generator(response):
+    for res in response:
+        yield res.openai_format
+
+
+def simulate_openai_chat(model=None, stream=False, **kwargs):
     llm = beam_llm(model) if type(model) == str else model
-    return llm.chat_completion(**kwargs).openai_format
+    res = llm.chat_completion(**kwargs)
+    if stream:
+        return stream_openai_generator(res)
+    else:
+        return res.openai_format
 
 
 def simulate_openai_completion(model=None, **kwargs):

@@ -638,9 +638,18 @@ class BeamLLM(LLM, Processor):
 
     def openai_format(self, res, finish_reason="stop", tokens=None, completion_tokens=0, prompt_tokens=0, total_tokens=0):
 
+        stream = res.stream
         text = self.extract_text(res)
 
-        if res.chat:
+        if stream:
+            choice = {
+                "index": 0,
+                "delta": {"content": text} if text is not None else {},
+                "logprobs": None,
+                "finish_reason": finish_reason,
+            }
+
+        elif res.chat:
 
             if len(self.tools):
 
