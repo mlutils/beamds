@@ -1,3 +1,4 @@
+import json
 import socket
 from datetime import timedelta
 
@@ -112,9 +113,11 @@ class BeamFederated(Processor):
             raise ValueError(f"Unknown distributed framework: {self.framework}")
 
     def __getitem__(self, item):
-        return self.store.get(item)
+        value = self.store.get(item)
+        return json.loads(value)
 
     def __setitem__(self, key, value):
+        value = json.dumps(value)
         return self.store.set(key, value)
 
     def __delitem__(self, key):

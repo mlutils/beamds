@@ -305,7 +305,7 @@ class Experiment(object):
 
         return init_args['args'], init_args['kwargs']
 
-    def set_rank(self, rank, world_size):
+    def set_rank(self, rank, world_size, devices=None):
 
         self.rank = rank
         self.world_size = world_size
@@ -314,7 +314,11 @@ class Experiment(object):
         self.hparams.set('enable_tqdm', self.hparams.enable_tqdm and (rank == 0))
 
         if self.device.type != 'cpu' and world_size > 1:
-            self.device = beam_device(self.device_list[rank])
+            if devices is None:
+                self.device = beam_device(self.device_list[rank])
+            else:
+                self.device = beam_device(devices[0])
+                self.device_list = devices
 
         logger.info(f'Worker {rank + 1} will be running on device={str(self.device)}')
 
@@ -633,29 +637,59 @@ class Experiment(object):
         self._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
                           base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
-    def algorithm_generator(self, alg, dataset=None, alg_args=None, alg_kwargs=None, dataset_args=None,
-                            dataset_kwargs=None):
-
-        return beam_algorithm_generator(self, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                                        dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
-
     def fit(self, alg=None, dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
             dataset_kwargs=None, **kwargs):
 
+        if not self.load_model and not self.logs_path_is_built:
+            self.build_experiment_dir()
+
         if algorithm_generator is None:
-            ag = partial(beam_algorithm_generator, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                         dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
-        else:
+            algorithm_generator = beam_algorithm_generator
 
-            if alg is not None:
-                ag = partial(algorithm_generator, alg=alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
-                             dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
+        try:
+
+            kwargs = {**kwargs, 'dataset': dataset,
+                      'alg_args': alg_args, 'alg_kwargs': alg_kwargs, 'dataset_args': dataset_args,
+                      'dataset_kwargs': dataset_kwargs, 'tensorboard_arguments': tensorboard_arguments}
+
+            if self.hparams.get('federated_runner'):
+                self.federated_training(alg=alg, algorithm_generator=algorithm_generator, **kwargs)
             else:
-                ag = algorithm_generator
+                res = self.run(default_runner, *(algorithm_generator, self, alg, *args), **kwargs)
 
-        return self(ag, *args, return_results=return_results, reload_results=reload_results,
-                    tensorboard_arguments=tensorboard_arguments, **kwargs)
+        except KeyboardInterrupt:
+
+            res = None
+            logger.warning(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
+
+        # take care of what is done after training ends
+        if res is None or self.world_size > 1:
+            alg = algorithm_generator(self, alg, *args, **kwargs)
+            results = None
+            self.reload_checkpoint(alg)
+
+            if reload_results:
+                results = {}
+                for subset in alg.results_dir.iterdir():
+                    res = list(subset.iterdir())
+                    res = pd.DataFrame({'name': res, 'index': [int(c.name.split('_')[-1]) for c in res]})
+                    res = res.sort_values('index')
+
+                    res = res.iloc['name']
+                    path = alg.results_dir.joinpath(subset, res)
+                    results[subset] = path
+
+                if reload_results:
+                    results = {subset: path.read() for subset, path in results.items()}
+
+        else:
+            alg, results = res
+
+        if return_results:
+            return alg, results
+        else:
+            return alg
 
     def federated_training(self, alg, algorithm_generator=None, dataset=None, alg_args=None, alg_kwargs=None,
                            dataset_args=None, dataset_kwargs=None,
@@ -664,7 +698,7 @@ class Experiment(object):
         from ..federated import federated_executor, worker_executor
 
         if algorithm_generator is None:
-            algorithm_generator = self.algorithm_generator
+            algorithm_generator = beam_algorithm_generator
 
         workers = federated_executor(func=worker_executor, world_size=self.world_size,
                                      framework=self.distributed_training_framework,
@@ -685,7 +719,8 @@ class Experiment(object):
 
         results = []
         for i, we in enumerate(workers):
-            logger.info(f"Starting worker {i+1}/{len(workers)} on host: {we.hostname} with gpus: {we.physical_devices}")
+            logger.info(f"Starting worker {i+1}/{len(workers)} on host: {we.hostname.value} "
+                        f"with gpus: {we.physical_devices.value}")
             results.append(we(self, alg, algorithm_generator, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                               dataset_args=dataset_args, dataset_kwargs=dataset_kwargs))
 
@@ -748,54 +783,6 @@ class Experiment(object):
 
         self.experiment_dir.joinpath('args.pkl').write(self.vars_args)
         self.logs_path_is_built = True
-
-    def __call__(self, algorithm_generator, *args, return_results=False, reload_results=False,
-                  tensorboard_arguments=None, **kwargs):
-
-        if not self.load_model and not self.logs_path_is_built:
-            self.build_experiment_dir()
-
-        try:
-
-            if self.hparams.get('federated_runner'):
-                self.federated_training(algorithm_generator=algorithm_generator, *args, **kwargs)
-            else:
-                res = self.run(default_runner, *(algorithm_generator, self, *args),
-                               tensorboard_arguments=tensorboard_arguments, **kwargs)
-
-        except KeyboardInterrupt:
-
-            res = None
-            logger.warning(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
-
-        # take care of what is done after training ends
-        if res is None or self.world_size > 1:
-            alg = algorithm_generator(self, *args, **kwargs)
-            results = None
-            self.reload_checkpoint(alg)
-
-            if reload_results:
-                results = {}
-                for subset in alg.results_dir.iterdir():
-
-                    res = list(subset.iterdir())
-                    res = pd.DataFrame({'name': res, 'index': [int(c.name.split('_')[-1]) for c in res]})
-                    res = res.sort_values('index')
-
-                    res = res.iloc['name']
-                    path = alg.results_dir.joinpath(subset, res)
-                    results[subset] = path
-
-                if reload_results:
-                    results = {subset: path.read() for subset, path in results.items()}
-
-        else:
-            alg, results = res
-
-        if return_results:
-            return alg, results
-        else:
-            return alg
 
     def run(self, job, *args, **kwargs):
 

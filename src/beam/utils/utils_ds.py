@@ -632,6 +632,38 @@ def recursive_clone(x):
         return copy.deepcopy(x)
 
 
+@recursive
+def recursive_devices(x):
+    x_minor = check_minor_type(x)
+    if x_minor == 'tensor':
+        return str(x.device)
+    else:
+        return 'none'
+
+
+def recursive_same_device(x):
+    devices = recursive_devices(x)
+    devices = recursive_flatten(devices)
+    devices = set(devices)
+    return len(devices) == 1 and 'none' not in devices
+
+
+@recursive
+def recursive_detach(x):
+    x_minor = check_minor_type(x)
+    if x_minor == 'tensor':
+        return x.detach()
+    return x
+
+
+@recursive
+def recursive_to_cpu(x):
+    x_minor = check_minor_type(x)
+    if x_minor == 'tensor':
+        return x.cpu()
+    return x
+
+
 def beam_hash(x, bytes_threshold=int(1e6), fast=True):
     h = hashlib.sha1()
     _beam_hash(x, h, bytes_threshold=bytes_threshold, fast=fast)

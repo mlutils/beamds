@@ -10,8 +10,8 @@ from timeit import default_timer as timer
 import threading
 
 from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format,
-                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type,  lazy_property,
-                     strip_prefix)
+                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type, lazy_property,
+                     strip_prefix, recursive_detach, recursive_to_cpu)
 
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
@@ -355,6 +355,14 @@ class BeamReport(object):
                 agg = self.scalar_aggregation.get(k, None)
                 self.set_objective(self.aggregate_scalar(self.scalar[k], agg))
 
+        for data_type in self.subsets_keys[subset]:
+            if data_type in ['scalar', 'scalars', 'stats']:
+                continue
+            for name in self.subsets_keys[subset][data_type]:
+                k = f'{subset}/{name}' if subset is not None else name
+                v = self.aux[data_type][k]
+                self.aux[data_type][k] = recursive_to_cpu(v)
+
         if self.objective_name and track_objective and agg is None:
             logger.warning(f"The objective {self.objective_name} is missing from the validation results")
 
@@ -374,18 +382,24 @@ class BeamReport(object):
 
     @staticmethod
     def detach_scalar(val):
-        val_type = check_type(val)
-        if val_type.major == 'scalar':
-            if val_type.element == 'float':
-                val = float(val)
-            elif val_type.element == 'int':
-                val = int(val)
-        elif val_type.minor == 'tensor':
-            val = val.detach().cpu()
-        elif val_type.major == 'container':
-            val = as_tensor(val, device='cpu')
-
+        recursive_detach(val)
         return val
+
+    # @staticmethod
+    # def detach_scalar(val):
+    #     val_type = check_type(val)
+    #     if val_type.major == 'scalar':
+    #         if val_type.element == 'float':
+    #             val = float(val)
+    #             pass
+    #         elif val_type.element == 'int':
+    #             val = int(val)
+    #     elif val_type.minor == 'tensor':
+    #         val = val.detach().cpu()
+    #     elif val_type.major == 'container':
+    #         val = as_tensor(val, device='cpu')
+    #
+    #     return val
 
     @staticmethod
     def stack_scalar(val, batch_size=None):

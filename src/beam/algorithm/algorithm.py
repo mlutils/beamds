@@ -1331,8 +1331,8 @@ class Algorithm(Processor, metaclass=MetaInit):
 
     def iterate_epoch(self, subset, training, n):
 
-        if not training and self.rank > 0:
-            return
+        # if not training and self.rank > 0:
+        #     return
 
         objective_name = self.get_hparam('objective')
         batch_size = self.batch_size_train if training else self.batch_size_eval
@@ -1350,12 +1350,14 @@ class Algorithm(Processor, metaclass=MetaInit):
                 self.set_mode(training=training)
 
             self.preprocess_epoch(epoch=n, training=training)
+            desc = f"{subset} (epoch {n+1}/{self.n_epochs + self.swa_epochs})"
+
 
             data_generator = self.finite_data_generator(subset, self.epoch_length[subset])
             for i, samples in self.reporter.iterate(data_generator,
                                   enable=self.enable_tqdm, notebook=(not self.ddp and self.is_notebook),
                                   threshold=self.get_hparam('tqdm_threshold'), stats_period=self.get_hparam('tqdm_stats'),
-                                  desc=subset, total=self.epoch_length[subset]):
+                                  desc=desc, total=self.epoch_length[subset]):
 
                 if type(samples) is DataBatch:
                     ind = samples.index

@@ -75,7 +75,7 @@ def path_depth(path):
 
 
 def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None, dataset_args=None,
-                             dataset_kwargs=None, rank=0):
+                             dataset_kwargs=None, rank=0, **kwargs):
 
     if alg_args is None:
         alg_args = tuple()
@@ -147,6 +147,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
             if world_size > 1:
                 logger.info(f"Worker {rank + 1}/{world_size} finished epoch {i + 1}/{alg.n_epochs}. Waiting for others.")
                 dist.barrier()
+                logger.info(f"Worker {rank + 1}/{world_size} is continuing.")
 
         if rank == 0:
             logger.info(f"Training is done, Worker terminates.")

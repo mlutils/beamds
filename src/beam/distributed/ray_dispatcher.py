@@ -1,4 +1,5 @@
 
+from ..utils import get_class_properties
 from ..core import Processor
 from ..path import BeamURL
 from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
@@ -86,9 +87,10 @@ class RayCluster(Processor):
 
 class RayRemoteClass:
 
-    def __init__(self, remote_class, asynchronous=False):
+    def __init__(self, remote_class, asynchronous=False, properties=None):
         self.remote_class = remote_class
         self.asynchronous = asynchronous
+        self.properties = properties if properties is not None else []
 
     def remote_wrapper(self, method):
         def wrapper(*args, **kwargs):
@@ -103,6 +105,14 @@ class RayRemoteClass:
         ray.kill(self.remote_class, no_restart=no_restart)
 
     def __getattr__(self, item):
+
+        if item in self.properties:
+            res = self.remote_class._get_property.remote(item)
+            if self.asynchronous:
+                return RayAsyncResult(res)
+            else:
+                return ray.get(res)
+
         return self.remote_wrapper(getattr(self.remote_class, item))
 
     def __call__(self, *args, **kwargs):
@@ -158,7 +168,8 @@ class RayDispatcher(MetaDispatcher, RayCluster):
 
         @self.ray_remote
         class RemoteClassWrapper(cls):
-            pass
+            def _get_property(self, prop):
+                return getattr(self, prop)
 
         def wrapper(*args, **kwargs):
             res = RemoteClassWrapper.remote(*args, **kwargs)
@@ -187,6 +198,7 @@ class RayDispatcher(MetaDispatcher, RayCluster):
         assert self.call_function is not None, "No function to call"
         res = self.call_function(*args, **kwargs)
         if self.type == 'class':
-            return RayRemoteClass(res, asynchronous=self.asynchronous)
+            properties = get_class_properties(self.obj)
+            return RayRemoteClass(res, asynchronous=self.asynchronous, properties=properties)
         else:
             return res

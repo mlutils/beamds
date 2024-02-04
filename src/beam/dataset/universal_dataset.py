@@ -36,7 +36,6 @@ class UniversalDataset(torch.utils.data.Dataset):
         target_device = beam_device(target_device)
 
         self.index = None
-        self.label = label
         self.set_index(index, mapping=index_mapping)
 
         if not hasattr(self, 'indices_split'):
@@ -78,6 +77,8 @@ class UniversalDataset(torch.utils.data.Dataset):
                 self.data_type = 'dict'
             else:
                 self.data = None
+
+        self.label = as_tensor(label, device=self.device)
 
     @lazy_property
     def target_device(self):
@@ -370,7 +371,7 @@ class UniversalDataset(torch.utils.data.Dataset):
                                      once=False, expansion_size=expansion_size,
                                      dynamic=dynamic, buffer_size=buffer_size,
                                      probs_normalization=probs_normalization,
-                                     sample_size=sample_size)
+                                     sample_size=sample_size, device=self.device)
 
     def build_dataloader(self, sampler, num_workers=0, pin_memory=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):

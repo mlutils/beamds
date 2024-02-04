@@ -33,7 +33,7 @@ def worker_executor(experiment, alg, algorithm_generator, manager=None, dataset=
     if rank == 0:
         manager['is_done'] = False
 
-    experiment.set_rank(rank, world_size)
+    experiment.set_rank(rank, world_size, devices=manager.devices)
     set_seed(seed=experiment.hparams.seed, constant=rank + 1, increment=False,
              deterministic=experiment.hparams.deterministic)
 

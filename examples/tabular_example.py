@@ -85,10 +85,10 @@ if __name__ == '__main__':
     #                    rulenet=False)
 
     kwargs_base = dict(algorithm='debug_reporter', data_path=data_path, logs_path=logs_path,
-                       scheduler='one_cycle', device_placement=True, device=0, n_gpus=1,
-                       copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=4,
+                       scheduler='one_cycle', device_placement=True, device=0, n_gpus=4,
+                       copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=2,
                        n_quantiles=6, label_smoothing=.2,
-                       model_dtype='float32', training_framework='torch',
+                       model_dtype='float32', training_framework='torch', federated_runner=True,
                        compile_train=False, sparse_embedding=False, compile_network=False, mlflow=False)
 
     kwargs_all = {}
@@ -132,7 +132,20 @@ if __name__ == '__main__':
                                       'task_type': dataset.task_type,
                                       'y_sigma': dataset.y_sigma},)
 
+            # @profile
+            # def profile_scalene(func, *args, **kwargs):
+            #     return func(*args, **kwargs)
+            #
+            # alg = profile_scalene(exp.fit, alg=DeepTabularAlg, dataset=TabularDataset,
+            #                             alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+            #                                                                                     'cat_mask': dataset.cat_mask},
+            #                                         'task_type': dataset.task_type,
+            #                                         'y_sigma': dataset.y_sigma},)
+
             logger.info(f"Training finished, reloading best model")
+
+            # exit(0)
+
             exp.reload_checkpoint(alg)
             alg.set_best_masking()
 

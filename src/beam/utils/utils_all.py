@@ -1202,3 +1202,12 @@ def mixin_dictionaries(*dicts):
         if d is not None:
             res.update(d)
     return res
+
+
+def get_class_properties(cls):
+    properties = []
+    for attr_name in dir(cls):
+        attr_value = getattr(cls, attr_name)
+        if isinstance(attr_value, property):
+            properties.append(attr_name)
+    return properties

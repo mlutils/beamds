@@ -17,7 +17,7 @@ from ..utils import (is_container, lazy_property, Slicer, recursive, iter_contai
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
-                     DataBatch, recursive_squeeze)
+                     DataBatch, recursive_squeeze, recursive_same_device)
 
 
 class BeamData(object):
@@ -123,6 +123,8 @@ class BeamData(object):
         self._all_paths = None
         self._root_path = None
         self._metadata_paths = None
+        self._has_index = None
+        self._has_label = None
         self._metadata_path_exists = {}
         self.groups = Groups(self.get_info_groups)
 
@@ -254,6 +256,20 @@ class BeamData(object):
         return self._info_groupby
 
     @property
+    def has_index(self):
+        if self._has_index is None:
+            _ = self.index
+        self._has_index = self._index is not None
+        return self._has_index
+
+    @property
+    def has_label(self):
+        if self._has_label is None:
+            _ = self.label
+        self._has_label = self._label is not None
+        return self._has_label
+
+    @property
     def index(self):
         if self._index is not None:
             return self._index
@@ -269,7 +285,7 @@ class BeamData(object):
         if self.is_cached:
             info = self.info
             if self.orientation is None:
-                self._index = None
+                self.clear_index()
             elif self.orientation in ['columns', 'simple']:
                 self._index = info.index.values
             elif self.orientation == 'index':
@@ -279,9 +295,12 @@ class BeamData(object):
                 self._index = replace_key_map_with_index(deepcopy(self.key_map))
             elif self.orientation == 'packed':
                 # no consistent definition of index for packed case
-                self._index = None
+                self.clear_index()
             else:
                 raise ValueError(f"Unknown orientation: {self.orientation}")
+
+        if self._index is not None and self.objects_type == 'tensor':
+            self._index = as_tensor(self._index, device=self.device)
 
         return self._index
 
@@ -299,6 +318,9 @@ class BeamData(object):
                         logger.debug(f"Reading label file: {path}")
                         self._label = path.read()
                         return self._label
+
+        if self._label is not None and self.objects_type == 'tensor':
+            self._label = as_tensor(self._label, device=self.device)
 
         return self._label
 
@@ -540,8 +562,8 @@ class BeamData(object):
             else:
                 index = np.arange(len(self))
 
-            if self.label is not None:
-                label = np.concatenate([as_numpy(l) for l in recursive_flatten([self.label])])
+            if self._label is not None:
+                label = np.concatenate([as_numpy(l) for l in recursive_flatten([self._label])])
             else:
                 label = None
 
@@ -550,7 +572,7 @@ class BeamData(object):
                     'offset': offset,
                     'map': np.arange(len(index))}
 
-            if self.label is not None:
+            if self._label is not None:
                 info['label'] = label
 
             self._info = pd.DataFrame(info, index=index)
@@ -623,6 +645,7 @@ class BeamData(object):
             return self._device
 
         if self.objects_type == 'tensor':
+            assert recursive_same_device(self.data), "All tensors should be on the same device"
             self._device = recursive_device(self.data)
         else:
             self._device = None
@@ -674,7 +697,7 @@ class BeamData(object):
                 self._orientation = 'simple'
                 if hasattr(self.data, 'columns') and self.columns is None:
                     self.columns = self.data.columns
-                if hasattr(self.data, 'index') and self.index is None:
+                if hasattr(self.data, 'index') and self._index is None:
                     self._index = self.data.index
 
             else:
@@ -894,8 +917,8 @@ class BeamData(object):
 
         func = partial(as_tensor, device=device, dtype=dtype, return_vector=return_vector)
         self.data = recursive(func)(self.data)
-        self._index = func(self.index)
-        self._label = func(self.label)
+        self._index = func(self._index)
+        self._label = func(self._label)
         self._objects_type = 'tensor'
 
         return self
@@ -909,8 +932,8 @@ class BeamData(object):
 
         func = partial(as_numpy)
         self.data = recursive(func)(self.data)
-        self._index = func(self.index)
-        self._label = func(self.label)
+        self._index = func(self._index)
+        self._label = func(self._label)
         self._objects_type = 'numpy'
 
         return self
@@ -1290,10 +1313,10 @@ class BeamData(object):
             BeamData.write_object({**self.conf}, conf_path, archive=True)
 
         # store index and label
-        if self.index is not None:
+        if self.has_index:
             index_path = self.metadata_paths['index']
             BeamData.write_object(self.index, index_path)
-        if self.label is not None:
+        if self.has_label:
             label_path = self.metadata_paths['label']
             BeamData.write_object(self.label, label_path)
 
@@ -1544,9 +1567,9 @@ class BeamData(object):
         index = None
         label = None
         data = collate_chunks(*self.flatten_data, dim=dim)
-        if self.index is not None:
+        if self.has_index:
             index = collate_chunks(*recursive_flatten(self.index), dim=dim)
-        if self.label is not None:
+        if self.has_label:
             label = collate_chunks(*recursive_flatten(self.label), dim=dim)
         if self._info is not None:
             info = self.info
@@ -1567,9 +1590,9 @@ class BeamData(object):
         label = self.label
         if self.orientation == 'index':
 
-            if index is not None:
+            if self.has_index:
                 index = self.concatenate_values(recursive_flatten(index), orientation=self.orientation)
-            if label is not None:
+            if self.has_label:
                 label = self.concatenate_values(recursive_flatten(label), orientation=self.orientation)
 
         if self.quick_getitem:
@@ -1660,7 +1683,7 @@ class BeamData(object):
 
             info = None
             key_fold_map = self.key_fold_map
-            if self.label is not None:
+            if self.has_label:
                 if hasattr(self.label, 'loc'):
                     label = self.label.loc[index]
                 else:
@@ -1673,7 +1696,7 @@ class BeamData(object):
 
             else:
 
-                if self.index is not None:
+                if self.has_index:
                     iloc = self.info['map'].loc[index]
                 else:
                     iloc = index
@@ -1883,9 +1906,9 @@ class BeamData(object):
         key_fold_map = self.key_fold_map
 
         if self.orientation in ['index', 'packed']:
-            if index is not None:
+            if self.has_index:
                 index = BeamData.slice_scalar_or_list(index, keys, keys_type=keys_type, data_type=self.data_type)
-            if label is not None:
+            if self.has_label:
                 label = BeamData.slice_scalar_or_list(label, keys, keys_type=keys_type, data_type=self.data_type)
             info = None
             key_fold_map = None
@@ -1967,8 +1990,8 @@ class BeamData(object):
 
         params = {'orientation': self.orientation, 'lazy': self.lazy, 'stored': self.is_stored,
                   'cached': self.is_cached, 'device': self.device, 'objects_type': self.objects_type,
-                  'quick_getitem': self.quick_getitem, 'has_index': self.index is not None,
-                  'has_label': self.label is not None}
+                  'quick_getitem': self.quick_getitem, 'has_index': self.has_index,
+                  'has_label': self.has_label}
         params_line = ' | '.join([f"{k}: {v}" for k, v in params.items()])
 
         s = f"BeamData: {self.name}\n"
@@ -2001,6 +2024,10 @@ class BeamData(object):
         else:
             data[key] = value
         return data
+
+    def clear_index(self):
+        self._index = None
+        self._has_index = None
 
     def __setitem__(self, key, value):
         """
@@ -2066,13 +2093,13 @@ class BeamData(object):
                     set_item_with_tuple_key(self.data, key, value)
 
             if self.orientation == 'index':
-                if self.index is not None:
+                if self.has_index:
                     logger.warning("Previous index value conflicts with new item. Setting index to None.")
-                self._index = None
-                if self.label is not None:
+                self.clear_index()
+                if self.has_label:
                     logger.warning("Previous label value conflicts with new item. Setting index to None.")
 
-            self._label = None
+            self.clear_label()
             self.reset_metadata('_all_paths')
 
         if not self.is_stored and self.data is None:
@@ -2084,6 +2111,10 @@ class BeamData(object):
         data = recursive(func)(self.data,  *args, **kwargs)
         return self.clone(data, index=self.index, label=self.label, info=self.info, key_fold_map=self.key_fold_map,
                           preferred_orientation=preferred_orientation)
+
+    def clear_label(self):
+        self._label = None
+        self._has_label = None
 
     def reset_index(self):
         return self.clone(self.data, index=None, label=self.label, schema=self.schema)
@@ -2131,10 +2162,10 @@ class BeamData(object):
 
                     s = BeamData.get_schema_from_tupled_key(self.schema, k)
                     index = None
-                    if self.index is not None:
+                    if self.has_index:
                         index = get_item_with_tuple_key(self.index, k)
                     label = None
-                    if self.label is not None:
+                    if self.has_label:
                         label = get_item_with_tuple_key(self.label, k)
 
                     info = None

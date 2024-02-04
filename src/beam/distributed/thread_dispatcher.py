@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, Future
 from functools import wraps
 from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
+from ..utils import get_class_properties
 
 
 class ThreadAsyncResult(MetaAsyncResult):
@@ -57,8 +58,9 @@ class ThreadedCluster:
 
 
 class ThreadedRemoteClass:
-    def __init__(self, target_class, asynchronous=False, executor=None):
+    def __init__(self, target_class, asynchronous=False, executor=None, properties=None):
         self._target_class = target_class
+        self.properties = properties if properties is not None else []
         self.asynchronous = asynchronous
         if executor is None:
             self.executor = ThreadedCluster()
@@ -81,6 +83,14 @@ class ThreadedRemoteClass:
         return wrapper
 
     def __getattr__(self, item):
+
+        if item in self.properties:
+            future = self.executor.submit(self.target_class._get_property, item)
+            if self.asynchronous:
+                return ThreadAsyncResult(future)
+            else:
+                return future.result()
+
         attr = getattr(self.target_class, item)
         if callable(attr):
             return self.method_wrapper(attr)
@@ -114,8 +124,12 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
     @staticmethod
     def factory_class_wrapper(cls):
 
+        class RemoteClassWrapper(cls):
+            def _get_property(self, prop):
+                return getattr(self, prop)
+
         def wrapper(*args, **kwargs):
-            res = cls(*args, **kwargs)
+            res = RemoteClassWrapper(*args, **kwargs)
             return res
 
         return wrapper
@@ -138,6 +152,7 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
     def __call__(self, *args, **kwargs):
         res = self.call_function(*args, **kwargs)
         if self.type == 'class':
-            return ThreadedRemoteClass(res, asynchronous=self.asynchronous)
+            properties = get_class_properties(self.obj)
+            return ThreadedRemoteClass(res, asynchronous=self.asynchronous, properties=properties)
         else:
             return res
