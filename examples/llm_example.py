@@ -3,15 +3,30 @@ add_beam_to_path()
 
 from src.beam.llm import beam_llm
 
-llm = beam_llm('openai:///gpt-4')
+# llm = beam_llm('openai:///gpt-4')
 
 # res = llm.chat("hi how are you?", system="you had a bad day")
 # print(res)
 
-gen = llm.ask('how are you?', stream=True)
+# gen = llm.ask('how are you?', stream=True)
+#
+# r = next(gen)
 
-r = next(gen)
+from src.beam.llm.simulators.openai import OpenAI
 
+client = OpenAI()
+
+completion = client.chat.completions.create(
+  model='openai:///gpt-4',
+  messages=[
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Hello!, count to 3:"}
+  ],
+  stream=True
+)
+
+for chunk in completion:
+  print(chunk)
 
 # from src.beam.llm import text_splitter
 #

@@ -30,6 +30,18 @@ from .tools import LLMTool
 CompletionObject = namedtuple("CompletionObject", "prompt kwargs response")
 
 
+class ChatCompletionChunk(BeamDict):
+    pass
+
+
+class ChatCompletion(BeamDict):
+    pass
+
+
+class Completion(BeamDict):
+    pass
+
+
 class BeamLLM(LLM, Processor):
 
     model: Optional[str] = Field(None)
@@ -641,15 +653,33 @@ class BeamLLM(LLM, Processor):
         stream = res.stream
         text = self.extract_text(res)
 
+        # an example of openai format:
+        # ChatCompletionChunk(id='chatcmpl-8ooipEUzmkwlqMVnUJHZzWQ4uKyKj', choices=[
+        #     Choice(delta=ChoiceDelta(content=None, function_call=None, role=None, tool_calls=None),
+        #            finish_reason='stop', index=0, logprobs=None)], created=1707122067, model='gpt-4-0613',
+        #                     object='chat.completion.chunk', system_fingerprint=None)
+        #
+        # Completion(id='cmpl-8op1yf5pOL7oEd7EXulOFbODmRSFp', choices=[
+        #     CompletionChoice(finish_reason='length', index=0, logprobs=None,
+        #                      text='\n\nI am an AI and do not have emotions, but thank you for asking')],
+        #            created=1707123254, model='gpt-3.5-turbo-instruct', object='text_completion',
+        #            system_fingerprint=None,
+        #            usage=CompletionUsage(completion_tokens=16, prompt_tokens=4, total_tokens=20))
+
         if stream:
+            Class = ChatCompletionChunk
             choice = {
                 "index": 0,
-                "delta": {"content": text} if text is not None else {},
+                "delta": {"content": text,
+                          "function_call": None,
+                          "role": None,
+                          "tool_calls": None},
                 "logprobs": None,
                 "finish_reason": finish_reason,
             }
 
         elif res.chat:
+            Class = ChatCompletion
 
             if len(self.tools):
 
@@ -684,6 +714,7 @@ class BeamLLM(LLM, Processor):
                     }
                 }
             else:
+
                 choice = {
                           "finish_reason": finish_reason,
                           "index": 0,
@@ -693,6 +724,8 @@ class BeamLLM(LLM, Processor):
                           }
                         }
         else:
+
+            Class = Completion
             choice = {
                 "finish_reason": finish_reason,
                 "index": 0,
@@ -708,6 +741,7 @@ class BeamLLM(LLM, Processor):
                   "id": res.id,
                   "model": res.model,
                   "object": res.object,
+                  "system_fingerprint": None,
                   "usage": {
                     "completion_tokens": completion_tokens,
                     "prompt_tokens": prompt_tokens,
@@ -715,7 +749,7 @@ class BeamLLM(LLM, Processor):
                   }
                 }
 
-        return BeamDict(**res)
+        return Class(**res)
 
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
