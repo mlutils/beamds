@@ -1,5 +1,6 @@
 import json
 import math
+from json import JSONDecodeError
 from typing import Optional, Any
 import requests
 import pandas as pd
@@ -286,7 +287,16 @@ class FastAPILLM(FCConversationLLM):
         with requests.post(f"{self.protocol}://{self.hostname}/predict/stream", headers=self.headers, json=d,
                            stream=True, verify=False) as response:
             for chunk in response.iter_content(chunk_size=1024):
-                yield json.loads(chunk[:-1].decode())
+
+                chunks = chunk.split("\0")
+                for c in chunks:
+                    if not len(c):
+                        continue
+                    try:
+                        yield json.loads(c.decode())
+                    except JSONDecodeError:
+                        logger.error(f"Bad chunk: {c}")
+                        yield c
 
     def _completion_internal(self, prompt, stream=False, **kwargs):
 

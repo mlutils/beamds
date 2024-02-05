@@ -1211,3 +1211,13 @@ def get_class_properties(cls):
         if isinstance(attr_value, property):
             properties.append(attr_name)
     return properties
+
+
+def pretty_print_dict(d, name):
+
+    # Convert each key-value pair to 'k=v' format and join them with commas
+    formatted_str = ", ".join(f"{k}={v}" for k, v in d.items())
+
+    # Enclose in parentheses
+    formatted_str = f"{name}({formatted_str})"
+    return formatted_str

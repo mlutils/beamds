@@ -10,7 +10,7 @@ from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
 from ..core.processor import Processor
-from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass
+from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass, pretty_print_dict
 from ..path import BeamURL
 
 try:
@@ -31,15 +31,18 @@ CompletionObject = namedtuple("CompletionObject", "prompt kwargs response")
 
 
 class ChatCompletionChunk(BeamDict):
-    pass
+    def __repr__(self):
+        return pretty_print_dict(self, 'ChatCompletionChunk')
 
 
 class ChatCompletion(BeamDict):
-    pass
+    def __repr__(self):
+        return pretty_print_dict(self, 'ChatCompletion')
 
 
 class Completion(BeamDict):
-    pass
+    def __repr__(self):
+        return pretty_print_dict(self, 'Completion')
 
 
 class BeamLLM(LLM, Processor):
