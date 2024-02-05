@@ -42,9 +42,6 @@ class BeamFederated(Processor):
                 devices = [int(d) for d in devices]
         self.devices = devices
 
-        if self.world_size > 1:
-            self._init_distributed()
-
         self.kv_store = self.get_hparam('kv_store')
         self.kv_store_path = self.get_hparam('kv_store_path')
         self.kv_store_timeout = self.get_hparam('kv_store_timeout')
@@ -59,6 +56,9 @@ class BeamFederated(Processor):
             self.store = dist.FileStore(self.kv_store_path, self.world_size)
         else:
             raise ValueError(f"Unknown kv_store: {self.kv_store}")
+
+        if self.world_size > 1:
+            self._init_distributed()
 
     @property
     def physical_devices(self):
@@ -75,7 +75,7 @@ class BeamFederated(Processor):
         logger.info(f"Initializing distributed training with backend={self.backend} and framework={self.framework}")
         if self.framework == 'ddp':
             # initialize the process group
-            dist.init_process_group(self.backend, rank=self.rank, world_size=self.world_size)
+            dist.init_process_group(self.backend, rank=self.rank, world_size=self.world_size, store=self.store)
         elif self.framework == 'deepspeed':
 
             # make sure that mpi path is in the path variable

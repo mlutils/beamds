@@ -654,7 +654,7 @@ class Experiment(object):
                       'dataset_kwargs': dataset_kwargs, 'tensorboard_arguments': tensorboard_arguments}
 
             if self.hparams.get('federated_runner'):
-                self.federated_training(alg=alg, algorithm_generator=algorithm_generator, **kwargs)
+                res = self.federated_training(alg=alg, algorithm_generator=algorithm_generator, **kwargs)
             else:
                 res = self.run(default_runner, *(algorithm_generator, self, alg, *args), **kwargs)
 
