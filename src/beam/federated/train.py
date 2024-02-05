@@ -87,4 +87,6 @@ def worker_executor(experiment, alg, algorithm_generator, manager=None, dataset=
     experiment.writer_cleanup()
     manager['is_done'] = True
 
-    return alg, results
+    if rank == 0:
+        return alg, results
+    return None, None

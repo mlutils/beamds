@@ -47,6 +47,7 @@ class BeamFederated(Processor):
         self.kv_store_timeout = self.get_hparam('kv_store_timeout')
         self.kv_store_port = self.get_hparam('kv_store_port')
 
+        logger.info(f"Rank {self.rank}/{self.world_size} connects to the KV store: {self.kv_store}")
         if self.kv_store == 'tcp':
             self.store = dist.TCPStore(host_name=self.host, port=int(self.kv_store_port), world_size=self.world_size,
                                        is_master=(self.rank == 0), timeout=timedelta(seconds=self.kv_store_timeout))
@@ -72,6 +73,7 @@ class BeamFederated(Processor):
         os.environ['MASTER_ADDR'] = self.host
         os.environ['MASTER_PORT'] = self.port
 
+        logger.info(f"Rank {self.rank}/{self.world_size} is initializing distributed training (host={self.host}, port={self.port})")
         logger.info(f"Initializing distributed training with backend={self.backend} and framework={self.framework}")
         if self.framework == 'ddp':
             # initialize the process group

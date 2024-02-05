@@ -82,6 +82,11 @@ class BeamNN(nn.Module, Processor):
     def load_state_dict(self, state_dict, *args, **kwargs):
         return self._mixin_method('load_state_dict', state_dict, *args, **kwargs)
 
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        return self._mixin_method('_load_from_state_dict', state_dict, prefix, local_metadata, strict,
+                                  missing_keys, unexpected_keys, error_msgs)
+
     def apply(self, fn):
         return self._mixin_method('apply', fn)
 
@@ -99,6 +104,21 @@ class BeamNN(nn.Module, Processor):
 
     def modules(self):
         return self._mixin_method('modules')
+
+    def _modules(self):
+        return self._mixin_method('_modules')
+
+    def _load_state_dict_post_hooks(self):
+        hook_dict = self._mixin_method('_load_state_dict_post_hooks')
+        if self.module_exists:
+
+            for k, fn in hook_dict.items():
+                def wrapper(module, *args, **kwargs):
+                    return fn(module._module, *args, **kwargs)
+
+                hook_dict[k] = wrapper
+
+        return hook_dict
 
     def named_modules(self, *args, **kwargs):
         return self._mixin_method('named_modules', *args, **kwargs)

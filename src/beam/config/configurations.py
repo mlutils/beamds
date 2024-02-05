@@ -95,9 +95,9 @@ class FederatedTrainingConfig(BeamConfig):
         BeamParam('mp_ip', str, 'localhost', 'IP to be used for multiprocessing'),
         BeamParam('mp_port', str, None, 'Port to be used for multiprocessing'),
         BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
-        BeamParam('n_cpus_per_worker', int, None, 'Number of cpus to use in each worker'),
+        BeamParam('n_cpus_per_worker', int, 6, 'Number of cpus to use in each worker'),
         BeamParam('n_gpus_per_worker', int, 1, 'Number of gpus to use in each worker'),
-        BeamParam('distributed_backend', str, None, 'The distributed backend to use. '
+        BeamParam('distributed_backend', str, 'nccl', 'The distributed backend to use. '
                                                     'Supported backends: [nccl, gloo, mpi]'),
         BeamParam('mp_context', str, 'spawn', 'The multiprocessing context to use'),
         BeamParam('kv_store', str, 'tcp', 'The key-value store to use [tcp|file|hash]'),

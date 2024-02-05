@@ -664,7 +664,7 @@ class Experiment(object):
             logger.warning(f"KeyboardInterrupt: Training was interrupted, reloads last checkpoint")
 
         # take care of what is done after training ends
-        if res is None or self.world_size > 1:
+        if res is None or (self.world_size > 1 and not self.hparams.get('federated_runner')):
             alg = algorithm_generator(self, alg, *args, **kwargs)
             results = None
             self.reload_checkpoint(alg)
