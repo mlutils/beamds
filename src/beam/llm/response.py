@@ -2,7 +2,12 @@ import inspect
 import re
 import time
 import uuid
-from collections.abc import Iterator
+
+try:
+    from collections.abc import Iterator
+except ImportError:
+    # assume python < 3.10
+    from collections import Iterator
 
 from ..logger import beam_logger as logger
 from ..utils import parse_text_to_protocol, retry
