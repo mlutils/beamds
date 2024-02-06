@@ -395,6 +395,45 @@ class PureBeamPath:
 
     def read(self, ext=None, **kwargs):
 
+        """
+
+        @param ext:
+        @param kwargs:
+        @return:
+
+        Supports the following formats:
+        - .fea: Feather
+        - .csv: CSV
+        - .pkl, .pickle: Pickle
+        - .npy: Numpy
+        - .json: JSON
+        - .ndjson: Newline delimited JSON
+        - .orc: ORC
+        - .txt, '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css',
+                          '.html', '.md': Text
+        - .npz: Numpy zip
+        - .scipy_npz: Scipy sparse matrix
+        - .flac: Soundfile
+        - .parquet: Parquet
+        - .pt: PyTorch
+        - .xls, .xlsx, .xlsm, .xlsb, .odf, .ods, .odt: Excel
+        - .avro: Avro
+        - .adjlist, .gexf, .gml, .pajek, .graphml: NetworkX
+        - .ini: ConfigParser
+        - .h5, .hdf5: HDF5
+        - .yaml, .yml: YAML
+        - .xml: XML
+        - .mat: MAT
+        - .zip: ZIP
+        - .msgpack: MessagePack
+        - .geojson: GeoJSON
+        - .wav: Soundfile
+        - .joblib, .z, .gz, .bz2, .xz, .lzma: Joblib
+        - .safetensors: SafeTensors
+        - .bin: Bytes
+
+        """
+
         if ext is None:
             ext = self.suffix
 

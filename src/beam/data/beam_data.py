@@ -300,7 +300,7 @@ class BeamData(object):
                 raise ValueError(f"Unknown orientation: {self.orientation}")
 
         if self._index is not None and self.objects_type == 'tensor':
-            self._index = as_tensor(self._index, device=self.device)
+            self._index = as_tensor(self._index, device=self.device or 'cpu')
 
         return self._index
 
@@ -320,7 +320,7 @@ class BeamData(object):
                         return self._label
 
         if self._label is not None and self.objects_type == 'tensor':
-            self._label = as_tensor(self._label, device=self.device)
+            self._label = as_tensor(self._label, device=self.device or 'cpu')
 
         return self._label
 
@@ -645,10 +645,9 @@ class BeamData(object):
             return self._device
 
         if self.objects_type == 'tensor':
-            assert recursive_same_device(self.data), "All tensors should be on the same device"
-            self._device = recursive_device(self.data)
-        else:
-            self._device = None
+            # "All tensors should be on the same device"
+            if recursive_same_device(self.data):
+                self._device = recursive_device(self.data)
 
         return self._device
 
