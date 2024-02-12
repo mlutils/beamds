@@ -48,6 +48,7 @@ class PureBeamPath:
 
         self.mode = "rb"
         self.file_object = None
+        self.close_fo_after_read = None
         self.client = client
         self.scheme = self.url.scheme
         self.open_kwargs = dict(mode="rb", buffering=- 1, encoding=None, errors=None,
@@ -209,6 +210,10 @@ class PureBeamPath:
         self.open_kwargs = dict(mode=mode, buffering=buffering, encoding=encoding, errors=errors, newline=newline,
                                 closefd=closefd, opener=opener)
         return self
+
+    def close_at_exit(self):
+        if self.close_fo_after_read or self.mode in ['wb', 'w']:
+            self.close()
 
     def close(self):
         if self.file_object is not None:
@@ -434,6 +439,7 @@ class PureBeamPath:
 
         """
 
+        self.close_fo_after_read = True
         if ext is None:
             ext = self.suffix
 
@@ -457,7 +463,10 @@ class PureBeamPath:
                 x = pd.read_csv(fo, **kwargs)
             elif ext in ['.pkl', '.pickle']:
                 x = pd.read_pickle(fo, **kwargs)
-            elif ext in ['.npy', '.npz']:
+            elif ext in ['.npy', '.npz', '.npzc']:
+                if ext in ['.npz', '.npzc']:
+                    self.close_fo_after_read = False
+
                 x = np.load(fo, allow_pickle=True, **kwargs)
             elif ext in PureBeamPath.textual_extensions:
                 if 'readlines' in kwargs and kwargs['readlines']:
@@ -599,7 +608,11 @@ class PureBeamPath:
     def write_bytes(self, x):
         return self.write(x, ext='.bin')
 
-    def write(self, x, ext=None, **kwargs):
+    def write(self, *args, ext=None, **kwargs):
+
+        x = None
+        if len(args) >= 1:
+            x = args[0]
 
         if ext is None:
             ext = self.suffix
@@ -646,7 +659,9 @@ class PureBeamPath:
             elif ext == '.txt':
                 fo.write(str(x))
             elif ext == '.npz':
-                np.savez(fo, x, **kwargs)
+                np.savez(fo, *args, **kwargs)
+            elif ext == '.npzc':
+                np.savez_compressed(fo, *args, **kwargs)
             elif ext in ['.adjlist', '.gexf', '.gml', '.pajek', '.graphml']:
                 import networkx as nx
                 write = getattr(nx, f'write_{ext[1:]}')

@@ -146,17 +146,20 @@ class BeamPath(PureBeamPath):
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.file_object.close()
+        self.close_at_exit()
 
-    def write(self, x, ext=None, **kwargs):
+    def write(self, *args, ext=None, **kwargs):
 
         if ext is None:
             ext = self.suffix
 
         if ext == '.parquet' and kwargs.get('partition_cols', None) is not None:
-            x.to_parquet(str(self), **kwargs)
 
-        return super().write(x, ext=ext, **kwargs)
+            assert len(args) == 1, "Only one argument is allowed for parquet writing with partition_cols"
+            df = args[0]
+            df.to_parquet(str(self), **kwargs)
+
+        return super().write(*args, ext=ext, **kwargs)
 
     def read(self, ext=None, **kwargs):
 
@@ -311,12 +314,10 @@ class SMBPath(PureBeamPath):
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             self.client.open_file(self.smb_path, mode=self.mode, **self.credentials).write(self.file_object.getvalue())
-            self.file_object.close()
+        self.close_at_exit()
 
 
 class SFTPPath(PureBeamPath):
@@ -378,12 +379,11 @@ class SFTPPath(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             self.client.putfo(self.file_object, remotepath=str(self.path))
-            self.file_object.close()
+
+        self.close_at_exit()
 
     def rmdir(self):
         self.client.rmdir(str(self.path))
@@ -629,12 +629,11 @@ class S3Path(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue())
-            self.file_object.close()
+
+        self.close_at_exit()
 
 
 class PyArrowPath(PureBeamPath):
@@ -722,16 +721,20 @@ class PyArrowPath(PureBeamPath):
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             content = self.file_object.getvalue()
             with self.client.open_output_stream(self.str_path) as f:
                 f.write(content if 'b' in self.mode else content.encode())
-            self.file_object.close()
 
-    def write(self, x, ext=None, **kwargs):
+        self.close_at_exit()
+
+    def write(self, *args, ext=None, **kwargs):
+
+        x = None
+        if len(args) >= 1:
+            x = args[0]
 
         if ext is None:
             ext = self.suffix
@@ -744,7 +747,7 @@ class PyArrowPath(PureBeamPath):
             import pyarrow.orc as orc
             orc.write_table(x, self.str_path, filesystem=self.client)
 
-        return super().write(x, ext=ext, **kwargs)
+        return super().write(*args, ext=ext, **kwargs)
 
     def read(self, ext=None, **kwargs):
 
@@ -853,7 +856,11 @@ class HDFSPath(PureBeamPath):
 
         return super().read(ext=ext, **kwargs)
 
-    def write(self, x, ext=None,  **kwargs):
+    def write(self, *args, ext=None,  **kwargs):
+
+        x = None
+        if len(args) >= 1:
+            x = args[0]
 
         if ext is None:
             ext = self.suffix
@@ -869,7 +876,7 @@ class HDFSPath(PureBeamPath):
             write_dataframe(self.client, str(self), x, **kwargs)
 
         else:
-            super().write(x, ext=ext, **kwargs)
+            super().write(*args, ext=ext, **kwargs)
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
@@ -897,14 +904,14 @@ class HDFSPath(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
+
             self.file_object.seek(0)
             content = self.file_object.getvalue()
             with self.client.write(str(self)) as writer:
                 writer.write(content if 'b' in self.mode else content.encode())
-            self.file_object.close()
+
+        self.close_at_exit()
 
 
 class S3PAPath(PyArrowPath):
@@ -1143,9 +1150,7 @@ class CometAsset(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             content = self.file_object.getvalue()
             with temp_local_file(content, name=self.name, as_beam_path=True, binary='b' in self.mode) as tmp_path:
@@ -1155,7 +1160,7 @@ class CometAsset(PureBeamPath):
                     self.experiment.log_asset(tmp_path.name)
                 finally:
                     os.chdir(cwd)
-            self.file_object.close()
+        self.close_at_exit()
 
 
 class DictBasedPath(PureBeamPath):
@@ -1316,7 +1321,7 @@ class IOPath(DictBasedPath):
             content = self.file_object.getvalue()
             parent[name] = content
 
-        self.file_object.close()
+        self.close_at_exit()
 
 
 class DictPath(DictBasedPath):
@@ -1336,7 +1341,9 @@ class DictPath(DictBasedPath):
             client = client[p]
         return isinstance(client, BeamFile)
 
-    def write(self, x, ext=None, **kwargs):
+    def write(self, *args, ext=None, **kwargs):
+        assert len(args) == 1, "DictPath.write takes exactly one argument"
+        x = args[0]
         self._parent[self.parts[-1]] = BeamFile(x, timestamp=datetime.now())
 
     def read(self, ext=None, **kwargs):
@@ -1505,7 +1512,7 @@ class RedisPath(PureBeamPath):
             content = self.file_object.getvalue()
             self.write_to_redis(self.client, self.key, content)
 
-        self.file_object.close()
+        self.close_at_exit()
 
     def glob(self, pattern):
         full_pattern = f'{self.directory_key}{pattern}'
