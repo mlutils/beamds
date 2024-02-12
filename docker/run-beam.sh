@@ -31,7 +31,8 @@ if echo "$output" | grep -q "rootless"; then
   root_args=" "
 else
   # If "rootless" is not found, set the flag to false
-  root_args=" --cap-add=NET_ADMIN --ipc=host --ulimit memlock=-1"
+#  root_args=" --cap-add=NET_ADMIN --ipc=host --ulimit memlock=-1"
+  root_args=" --ipc=host --ulimit memlock=-1"
 fi
 
 if echo ${MORE_ARGS} | grep "network=host"; then
