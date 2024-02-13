@@ -649,9 +649,18 @@ class Experiment(object):
 
         try:
 
-            kwargs = {**kwargs, 'dataset': dataset,
-                      'alg_args': alg_args, 'alg_kwargs': alg_kwargs, 'dataset_args': dataset_args,
-                      'dataset_kwargs': dataset_kwargs, 'tensorboard_arguments': tensorboard_arguments}
+            if dataset is not None:
+                kwargs['dataset'] = dataset
+            if alg_args is not None:
+                kwargs['alg_args'] = alg_args
+            if alg_kwargs is not None:
+                kwargs['alg_kwargs'] = alg_kwargs
+            if dataset_args is not None:
+                kwargs['dataset_args'] = dataset_args
+            if dataset_kwargs is not None:
+                kwargs['dataset_kwargs'] = dataset_kwargs
+            if tensorboard_arguments is not None:
+                kwargs['tensorboard_arguments'] = tensorboard_arguments
 
             if self.hparams.get('federated_runner'):
                 res = self.federated_training(alg=alg, algorithm_generator=algorithm_generator, **kwargs)

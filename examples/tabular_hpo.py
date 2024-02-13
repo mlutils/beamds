@@ -4,9 +4,10 @@ import torch
 from ray.tune.schedulers import ASHAScheduler
 
 available_devices = [0, 1, 2, 3]
+n_jobs = len(available_devices)
 # available_devices = [0]
 # os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
-n_jobs = len(available_devices)
+# n_jobs = 1
 
 
 from examples.tabular_example import get_paths

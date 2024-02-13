@@ -77,7 +77,13 @@ class RayHPO(BeamHPO, RayCluster):
         hparams = self.generate_hparams(config)
 
         experiment = Experiment(hparams, hpo='tune', print_hyperparameters=False)
-        alg, report = experiment(self.ag, return_results=True)
+
+        trial_dir = beam_path(train.get_context().get_trial_dir())
+        logger.info(f"Experiment directory is: {experiment.experiment_dir}, see experiment_dir at beam_configuration.pkl"
+                    f" in trial directory ({trial_dir})")
+        trial_dir.joinpath('beam_configuration.pkl').write({'experiment_dir': experiment.experiment_dir})
+
+        alg, report = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True)
         train.report({report.objective_name: report.best_objective})
         if self.post_train_hook is not None:
             self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=report)

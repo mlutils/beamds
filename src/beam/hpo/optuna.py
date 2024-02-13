@@ -57,7 +57,11 @@ class OptunaHPO(BeamHPO, OptunaBase):
         hparams = self.generate_hparams(config)
 
         experiment = Experiment(hparams, hpo='optuna', trial=trial, print_hyperparameters=False)
-        alg, results = experiment(self.ag, return_results=True)
+
+        logger.info(f"Experiment directory is: {experiment.experiment_dir}, see experiment_dir attr in trial logs")
+        trial.set_user_attr("experiment_dir", experiment.experiment_dir)
+
+        alg, results = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True)
         if self.post_train_hook is not None:
             self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=results)
 
