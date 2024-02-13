@@ -15,6 +15,9 @@ except ImportError:
 
 class Processor:
 
+    skeleton_file = 'skeleton.pkl'
+    state_file = 'state'
+
     def __init__(self, *args, name=None, hparams=None, override=True, remote=None, **kwargs):
 
         self._name = name
@@ -55,7 +58,7 @@ class Processor:
     @property
     def state_attributes(self):
         '''
-        return of list of class attributes that are used to save the state and the are not part of the
+        return of list of class attributes that are used to save the state and are not part of the
         skeleton of the instance. override this function to add more attributes to the state and avoid pickling a large
         skeleton.
         @return:
@@ -99,6 +102,13 @@ class Processor:
     @classmethod
     def from_path(cls, path):
         path = beam_path(path)
+        obj = path.joinpath(Processor.skeleton_file).read()
+        obj.load_state(path.joinpath(Processor.state_file))
+        return obj
+
+    @classmethod
+    def from_state_path(cls, path):
+        path = beam_path(path)
         state = path.read()
         kwargs = dict()
         args = tuple()
@@ -136,6 +146,13 @@ class Processor:
         else:
             path.write(state, ext=ext)
 
+    def to_path(self, path):
+        path = beam_path(path)
+        path.clean()
+        path.mkdir()
+        path.joinpath('skeleton.pkl').write(self)
+        self.save_state(path.joinpath('state'))
+
     def load_state(self, path):
 
         path = beam_path(path)
@@ -149,6 +166,7 @@ class Processor:
             raise NotImplementedError
 
         self.load_state_dict(state)
+
 
 class Pipeline(Processor):
 

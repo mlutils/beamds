@@ -2,16 +2,16 @@
 import numpy as np
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
 
+from ..utils import beam_device
 from ..core import Processor
-from ..llm import beam_llm
+from ..llm import beam_llm, default_tokenizer
 
 
 class TextSimilarity(Processor):
-    def __init__(self, *args, data_train, alfa=0.5, embedding_model="BAAI/bge-base-en-v1.5",
-                 embedding_calc=False, device="cuda:1", **kwargs):
+    def __init__(self, *args, alpha=0.5, dense_model_path="BAAI/bge-base-en-v1.5", tokenizer_path=None,
+                 use_dense_model_tokenizer=True, dense_model=None, tokenizer=None,
+                 device="cuda",  **kwargs):
         """
         Initialize the RAG (Retrieval-Augmented Generation) retriever.
 
@@ -20,50 +20,53 @@ class TextSimilarity(Processor):
         alfa (float): Weighting factor for combining dense and sparse retrieval scores.
         embedding_model (str): The name of the sentence transformer model used for embedding.
         model (str): The name of the transformer model used for causal language modeling.
-        embedding_calc (bool): Flag to determine if embeddings should be calculated at initialization.
         device (str): The device to run the models on (e.g., 'cuda:1' for GPU).
         """
 
-        super().__init__(device=device)
+        super().__init__(*args, device=device, alpha=alpha, tokenizer_path=tokenizer_path,
+                         dense_model_path=dense_model_path, use_dense_model_tokenizer=use_dense_model_tokenizer,
+                         **kwargs)
 
         # Device to run the model
-        self.device = device
-        # Dataframe containing training data
-        self.data_train = data_train
+        self.device = beam_device(self.get_hparam('device'))
         # Weighting factor for score combination
-        self.alfa = alfa
-        # Initialize embedding matrix with zeros
-        self.embedding_mat = np.zeros((data_train.shape[0], 768))
+        self.alpha = self.get_hparam('alpha')
         # Load the sentence transformer model for embeddings
-        self.embedding_model = SentenceTransformer(embedding_model)
+        if dense_model is None:
+            self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'), device=str(self.device))
+        else:
+            self.dense_model = dense_model
+            self.dense_model.to(self.device)
 
-        # Calculate embeddings if required
-        if embedding_calc:
-            self.calc_embedding()
+        if tokenizer is None:
+            if self.get_hparam('tokenizer_path') is not None:
+                from transformers import PreTrainedTokenizerFast
+                self.tokenizer = PreTrainedTokenizerFast(tokenizer_file=self.get_hparam('tokenizer_path'))
+            elif self.get_hparam('use_dense_model_tokenizer'):
+                self.tokenizer = self.dense_model.tokenize
+            else:
+                self.tokenizer = default_tokenizer
+        else:
+            self.tokenizer = tokenizer
 
-        # Store embeddings in the embedding matrix
-        for i in range(data_train.shape[0]):
-            self.embedding_mat[i, :] = self.data_train['embedding'][i]
+        self.bm25 = None
+        self.dense_vectors = None
+        self.sparse_vectors = None
+        self.tokens = []
+        self.corpus = []
 
-        # Train the BM25 model for sparse retrieval
-        self.train_bm25()
+    def add(self, x):
 
-    def fit(self, *args, **kwargs):
-        pass
+        self.corpus.extend(x)
+        dense_vectors = self.dense_model.encode(x)
+        if self.dense_vectors is None:
+            self.dense_vectors = dense_vectors
+        else:
+            self.dense_vectors = np.concatenate((self.dense_vectors, dense_vectors))
 
-    def train_bm25(self):
-        """
-        Train the BM25 model using the text data.
-        """
-        self.corpus = [i for i in self.data_train['text'].values]
-        tokenized_corpus = [doc.split(" ") for doc in self.corpus]
-        self.bm25 = BM25Okapi(tokenized_corpus)
-
-    def calc_embedding(self):
-        """
-        Calculate embeddings for each text in the data_train dataframe.
-        """
-        self.data_train['embedding'] = self.data_train['text'].apply(lambda x: self.embedding_model.encode(x))
+        tokens = self.tokenizer(x)['input_ids']
+        self.tokens.extend(tokens)
+        self.bm25 = BM25Okapi(self.tokens)
 
     def retrieve_dense(self, question, n_return=10):
         """
@@ -76,7 +79,7 @@ class TextSimilarity(Processor):
         Returns:
         np.ndarray: Indices of the top retrieved results based on dense retrieval.
         """
-        question_embedding = self.embedding_model.encode(question)
+        question_embedding = self.dense_model.encode(question)
         self.score_dense = question_embedding @ self.embedding_mat.T
         max_score_dense = np.argsort(self.score_dense)[::-1][:n_return]
         return max_score_dense
@@ -111,7 +114,7 @@ class TextSimilarity(Processor):
         max_scores_sparse = self.retrieve_sparse(question, n_return=n_return)
         max_score_dense = self.retrieve_dense(question, n_return=n_return)
 
-        self.score_combine = self.alfa * (self.score_dense / self.score_dense.max()) + (1 - self.alfa) * (
+        self.score_combine = self.alpha * (self.score_dense / self.score_dense.max()) + (1 - self.alpha) * (
                     self.score_sparse / self.score_sparse.max())
         max_scores_combine = np.argsort(self.score_combine)[::-1][:n_return]
         return max_scores_combine, max_score_dense, max_scores_sparse
@@ -124,7 +127,7 @@ class TextSimilarity(Processor):
         text (str): The text to be added.
         title (list): Optional title for the text.
         """
-        embed = self.embedding_model.encode(text)
+        embed = self.dense_model.encode(text)
         L = self.data_train.shape[0]
         self.data_train.loc[L] = [title, L, text, embed]
         self.embedding_mat = np.concatenate((self.embedding_mat, embed.reshape(1, -1)))

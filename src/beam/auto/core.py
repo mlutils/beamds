@@ -260,13 +260,13 @@ class AutoBeam(Processor):
         ab = AutoBeam(obj)
         path.clean()
         path.mkdir()
-        logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state.pt, requierements.txt]")
+        logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
         path.joinpath('requirements.json').write(ab.requirements)
         ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'))
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
         if hasattr(obj, 'save_state'):
-            obj.save_state(path.joinpath('state.pt'))
+            obj.save_state(path.joinpath('state'))
         else:
             logger.warning(f"Object {obj} does not have a save_state method.")
         try:
@@ -276,7 +276,7 @@ class AutoBeam(Processor):
             logger.warning(f"Could not pickle object: {obj} ({e}), saving only the state.")
 
         if not path.joinpath('skeleton.pkl').is_file() and \
-                not path.joinpath('state.pt').is_file():
+                not path.joinpath('state').exists():
             logger.error(f"Could not save object {obj} to path {path}. "
                          f"Make sure the object has a save_state method and/or "
                          f"it is pickleable.")
@@ -298,7 +298,7 @@ class AutoBeam(Processor):
         # 1. Check necessary files
         req_file = path.joinpath('requirements.json')
         modules_tar = path.joinpath('modules.tar.gz')
-        state_file = path.joinpath('state.pt')
+        state_file = path.joinpath('state')
         skeleton_file = path.joinpath('skeleton.pkl')
         metadata_file = path.joinpath('metadata.json')
 
@@ -334,9 +334,9 @@ class AutoBeam(Processor):
                     if state_file.exists:
                         obj.load_state(state_file)
                 except:
-                    obj = cls_obj.from_path(state_file)
+                    obj = cls_obj.from_state_path(state_file)
             else:
-                obj = cls_obj.from_path(state_file)
+                obj = cls_obj.from_state_path(state_file)
 
             return obj
 
