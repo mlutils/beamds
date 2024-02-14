@@ -39,7 +39,6 @@ class TFIDF(Processor):
         pass
 
     def transform(self, x):
-
         return x * self.idf
 
 

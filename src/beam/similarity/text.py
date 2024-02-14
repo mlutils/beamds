@@ -7,9 +7,10 @@ from ..utils import beam_device
 from .core import BeamSimilarity
 from ..core import Processor
 from ..llm import beam_llm, default_tokenizer
+from .dense import DenseSimilarity
 
 
-class TextSimilarity(BeamSimilarity):
+class TextSimilarity(DenseSimilarity):
     def __init__(self, *args, alpha=0.5, dense_model_path="BAAI/bge-base-en-v1.5", tokenizer_path=None,
                  use_dense_model_tokenizer=True, dense_model=None, tokenizer=None,
                  device="cuda",  **kwargs):
@@ -51,23 +52,32 @@ class TextSimilarity(BeamSimilarity):
             self.tokenizer = tokenizer
 
         self.bm25 = None
-        self.dense_vectors = None
-        self.sparse_vectors = None
         self.tokens = []
-        self.corpus = []
 
-    def add(self, x):
+    def add(self, x, index=None):
 
-        self.corpus.extend(x)
+        x, index = self.extract_data_and_index(x, index)
+        x = list(x)
+
         dense_vectors = self.dense_model.encode(x)
-        if self.dense_vectors is None:
-            self.dense_vectors = dense_vectors
-        else:
-            self.dense_vectors = np.concatenate((self.dense_vectors, dense_vectors))
+        super().add(dense_vectors, index)
 
         tokens = self.tokenizer(x)['input_ids']
         self.tokens.extend(tokens)
         self.bm25 = BM25Okapi(self.tokens)
+
+    def search(self, x, k=1):
+
+        x, index = self.extract_data_and_index(x)
+        dense_vectors = self.dense_model.encode(x)
+        similarities = super().search(dense_vectors, k)
+
+        tokens = self.tokenizer(x)['input_ids']
+        sparse_scores = self.bm25.get_scores(tokens)
+        similarities.sparse_scores = sparse_scores
+
+        return similarities
+
 
     def retrieve_dense(self, question, n_return=10):
         """
@@ -119,26 +129,6 @@ class TextSimilarity(BeamSimilarity):
                     self.score_sparse / self.score_sparse.max())
         max_scores_combine = np.argsort(self.score_combine)[::-1][:n_return]
         return max_scores_combine, max_score_dense, max_scores_sparse
-
-    def add(self, text, title=[]):
-        """
-        Add new text data to the training data.
-
-        Parameters:
-        text (str): The text to be added.
-        title (list): Optional title for the text.
-        """
-        embed = self.dense_model.encode(text)
-        L = self.data_train.shape[0]
-        self.data_train.loc[L] = [title, L, text, embed]
-        self.embedding_mat = np.concatenate((self.embedding_mat, embed.reshape(1, -1)))
-        self.train_bm25()
-
-    def predict(self, question, n_retrieve=10, skip=5):
-        pass
-
-    def search(self, question, n_retrieve=10, skip=5):
-        return self.predict(question, n_retrieve=n_retrieve, skip=skip)
 
 
 class RAG(Processor):
