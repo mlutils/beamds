@@ -11,16 +11,17 @@ from ..logger import beam_logger as logger
 from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
+from ..core import BeamBase
 from ..utils import (is_container, lazy_property, Slicer, recursive, iter_container, recursive_collate_chunks,
                      collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device,
                      container_len, recursive_len, is_arange, recursive_size, divide_chunks, recursive_keys,
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
-                     DataBatch, recursive_squeeze, recursive_same_device)
+                     DataBatch, recursive_squeeze, recursive_same_device, recursive_concatenate)
 
 
-class BeamData(object):
+class BeamData(BeamBase):
 
     # metadata files
     metadata_files = {'conf': '.conf.pkl', 'schema': '.schema.pkl',
@@ -76,6 +77,7 @@ class BeamData(object):
         '''
 
         #todo: add support for target device+to_tensor when returning DataBatch
+        super().__init__(name=name)
 
         if synced and path is None:
             raise ValueError("Synced mode requires a path")
@@ -603,6 +605,15 @@ class BeamData(object):
         self._metadata_paths = None
         self.is_stored = False
 
+
+    @lazy_property
+    def index_type(self):
+        return check_type(self.index)
+
+    @lazy_property
+    def label_type(self):
+        return check_type(self.label)
+
     @property
     def index_mapper(self):
 
@@ -694,9 +705,9 @@ class BeamData(object):
 
             if not is_container(self.data):
                 self._orientation = 'simple'
-                if hasattr(self.data, 'columns') and self.columns is None:
+                if self.data_type.minor == 'pandas' and self.columns is None:
                     self.columns = self.data.columns
-                if hasattr(self.data, 'index') and self._index is None:
+                if self.data_type.minor == 'pandas' and self._index is None:
                     self._index = self.data.index
 
             else:
@@ -1172,7 +1183,7 @@ class BeamData(object):
                 if recursive:
                     keys = recursive_keys(self.data)
                 else:
-                    if hasattr(self.data, 'keys'):
+                    if isinstance(self.data, dict):
                         keys = self.data.keys()
                     elif self.data is None:
                         return []
@@ -1182,7 +1193,7 @@ class BeamData(object):
                 if recursive:
                     keys = recursive_keys(self.all_paths)
                 else:
-                    if hasattr(self.all_paths, 'keys'):
+                    if isinstance(self.all_paths, dict):
                         keys = self.all_paths.keys()
                     else:
                         keys = range(len(self.all_paths))
@@ -1251,6 +1262,18 @@ class BeamData(object):
             objects_type = self.objects_type
 
         return BeamData._concatenate_values(data, orientation=orientation, objects_type=objects_type)
+
+    @staticmethod
+    def concat(bds, dim=0):
+
+        if len(bds) == 1:
+            return bds[0]
+
+        data = recursive_concatenate([d.data for d in bds], dim=dim)
+        index = recursive_concatenate([d.index for d in bds], dim=0)
+        label = recursive_concatenate([d.label for d in bds], dim=0)
+
+        return bds[0].clone(data, index=index, label=label)
 
     def get_default_params(self, *args, **kwargs):
         """
@@ -1690,16 +1713,14 @@ class BeamData(object):
             else:
                 label = None
 
-            if self.orientation == 'simple':
-                data = self.data_slicer[index]
-
+            if self.has_index:
+                iloc = self.info['map'].loc[index].values
             else:
+                iloc = index
 
-                if self.has_index:
-                    iloc = self.info['map'].loc[index]
-                else:
-                    iloc = index
-
+            if self.orientation == 'simple':
+                data = self.data_slicer[iloc]
+            else:
                 data = recursive_batch(self.data, iloc)
 
         elif self.orientation in ['index', 'packed']:
@@ -2277,8 +2298,8 @@ class BeamData(object):
             if (axes[0] == 'keys' and (i_type.major == 'scalar' and i_type.element == 'int')
                     and check_type(list(self.keys()), check_minor=False).element == 'str'):
                 axes.pop(0)
-            # for orientation == 'simple' we skip the first axis if we slice over columns
-            if short_list and axes[0] == 'index' and i_type.element == 'str':
+            # for orientation == 'simple' we skip the first axis if we slice over columns and index_type is not str
+            if short_list and axes[0] == 'index' and i_type.element == 'str' and self.index_type.element != 'str':
                 axes.pop(0)
 
             a = axes.pop(0)

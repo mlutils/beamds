@@ -4,11 +4,12 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
 from ..utils import beam_device
+from .core import BeamSimilarity
 from ..core import Processor
 from ..llm import beam_llm, default_tokenizer
 
 
-class TextSimilarity(Processor):
+class TextSimilarity(BeamSimilarity):
     def __init__(self, *args, alpha=0.5, dense_model_path="BAAI/bge-base-en-v1.5", tokenizer_path=None,
                  use_dense_model_tokenizer=True, dense_model=None, tokenizer=None,
                  device="cuda",  **kwargs):

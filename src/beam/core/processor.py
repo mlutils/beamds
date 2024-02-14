@@ -13,30 +13,12 @@ except ImportError:
     has_beam_ds = False
 
 
-class Processor:
+class BeamBase:
 
-    skeleton_file = 'skeleton.pkl'
-    state_file = 'state'
-
-    def __init__(self, *args, name=None, hparams=None, override=True, remote=None, **kwargs):
+    def __init__(self, *args, name=None, **kwargs):
 
         self._name = name
-        self.remote = remote
         self._lazy_cache = {}
-
-        if len(args) > 0:
-            self.hparams = args[0]
-        elif hparams is not None:
-            self.hparams = hparams
-        else:
-            if not hasattr(self, 'hparams'):
-                self.hparams = BeamConfig(config=Namespace())
-
-        for k, v in kwargs.items():
-            v_type = check_type(v)
-            if v_type.major in ['scalar', 'none']:
-                if k not in self.hparams or override:
-                    self.hparams[k] = v
 
     def clear_cache(self, *args):
         if len(args) == 0:
@@ -54,6 +36,34 @@ class Processor:
         if self._name is None:
             self._name = retrieve_name(self)
         return self._name
+
+    def beam_class(self):
+        return self.__class__.__name__
+
+
+class Processor(BeamBase):
+
+    skeleton_file = 'skeleton.pkl'
+    state_file = 'state'
+
+    def __init__(self, *args, name=None, hparams=None, override=True, remote=None, **kwargs):
+
+        super().__init__(name=name)
+        self.remote = remote
+
+        if len(args) > 0:
+            self.hparams = args[0]
+        elif hparams is not None:
+            self.hparams = hparams
+        else:
+            if not hasattr(self, 'hparams'):
+                self.hparams = BeamConfig(config=Namespace())
+
+        for k, v in kwargs.items():
+            v_type = check_type(v)
+            if v_type.major in ['scalar', 'none']:
+                if k not in self.hparams or override:
+                    self.hparams[k] = v
 
     @property
     def state_attributes(self):

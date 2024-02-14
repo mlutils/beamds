@@ -233,7 +233,7 @@ class BeamSSL(Algorithm):
 
         if similarity > 0:
             if self.sim is not None:
-                similarities = self.sim.most_similar(data[latent_variable], n=similarity)
+                similarities = self.sim.search(data[latent_variable], k=similarity)
 
                 data['similarities_index'] = similarities.index
                 data['similarities_distance'] = similarities.distance

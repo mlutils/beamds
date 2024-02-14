@@ -1,29 +1,27 @@
 import math
 from collections import namedtuple
 
+import torch
 import faiss
 import numpy as np
 
-from .. import beam_path
+from .. import beam_path, as_numpy, check_type, as_tensor, beam_device, BeamData
 from ..logger import beam_logger as logger
 from ..path import local_copy
 from ..utils import pretty_format_number
-from ..core import Processor
-
-# working with faiss and torch
-Similarities = namedtuple("Similarities", "index distance")
+from .core import BeamSimilarity, Similarities
 
 
-class BeamSimilarity(Processor):
+class DenseSimilarity(BeamSimilarity):
 
-    def __init__(self, *args, index=None, faiss_d=None, expected_population=int(1e6),
+    def __init__(self, *args, vector_store=None, d=None, expected_population=int(1e6),
                  metric='l2', training_device='cpu', inference_device='cpu', ram_footprint=2**8*int(1e9),
                  gpu_footprint=24*int(1e9), exact=False, nlists=None, faiss_M=None,
                  reducer='umap', **kwargs):
 
         '''
         To Choose an index, follow https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index
-        @param faiss_d:
+        @param d:
         @param expected_population:
         @param metric:
         @param ram_size:
@@ -32,17 +30,23 @@ class BeamSimilarity(Processor):
         @param reducer:
         '''
 
-        super().__init__(*args, faiss_d=faiss_d, expected_population=expected_population,
+        super().__init__(*args, vector_dimension=d, expected_population=expected_population,
                          metric=metric, training_device=training_device,
                          inference_device=inference_device, ram_footprint=ram_footprint,
                          gpu_footprint=gpu_footprint, exact=exact, nlists=nlists, M=faiss_M,
                          reducer=reducer, **kwargs)
 
-        faiss_d = self.get_hparam('faiss_d', faiss_d)
+        d = self.get_hparam('vector_dimension', d)
         expected_population = self.get_hparam('expected_population', expected_population)
         metric = self.get_hparam('metric', metric)
-        training_device = self.get_hparam('training_device', training_device)
-        inference_device = self.get_hparam('inference_device', inference_device)
+        training_device = str(beam_device(self.get_hparam('training_device', training_device)))
+        inference_device = beam_device(self.get_hparam('inference_device', inference_device))
+
+        if inference_device.type == 'cpu':
+            inference_device = inference_device.type
+        else:
+            inference_device = inference_device.index
+
         ram_footprint = self.get_hparam('ram_footprint', ram_footprint)
         gpu_footprint = self.get_hparam('gpu_footprint', gpu_footprint)
         exact = self.get_hparam('exact', exact)
@@ -71,27 +75,27 @@ class BeamSimilarity(Processor):
             else:
                 nlists = 2 ** 20
 
-        if index is None:
+        if vector_store is None:
             if inference_device == 'cpu':
 
                 if exact:
                     logger.info(f"Using Flat Index. Expected RAM footprint is "
-                                f"{pretty_format_number(4 * faiss_d * expected_population / int(1e6))} MB")
-                    index = faiss.IndexFlat(faiss_d, metric)
+                                f"{pretty_format_number(4 * d * expected_population / int(1e6))} MB")
+                    vector_store = faiss.IndexFlat(d, metric)
                 else:
                     if faiss_M is None:
                         faiss_M = 2 ** np.arange(2, 7)[::-1]
-                        footprints = (faiss_d * 4 + faiss_M * 8) * expected_population
+                        footprints = (d * 4 + faiss_M * 8) * expected_population
                         M_ind = np.where(footprints < ram_footprint)[0]
                         if len(M_ind):
                             faiss_M = int(faiss_M[M_ind[0]])
                     if faiss_M is not None:
                         logger.info(f"Using HNSW{faiss_M}. Expected RAM footprint is "
                                     f"{pretty_format_number(footprints[M_ind[0]] / int(1e6))} MB")
-                        index = faiss.IndexHNSWFlat(faiss_d, faiss_M, metric)
+                        vector_store = faiss.IndexHNSWFlat(d, faiss_M, metric)
                     else:
                         logger.info(f"Using OPQ16_64,IVF{nlists},PQ8 Index")
-                        index = faiss.index_factory(faiss_d, f'OPQ16_64,IVF{nlists},PQ8')
+                        vector_store = faiss.index_factory(d, f'OPQ16_64,IVF{nlists},PQ8')
 
             else:
 
@@ -100,17 +104,17 @@ class BeamSimilarity(Processor):
                     config = faiss.GpuIndexFlatConfig()
                     config.device = inference_device
                     logger.info(f"Using GPUFlat Index. Expected GPU-RAM footprint is "
-                                f"{pretty_format_number(4 * faiss_d * expected_population / int(1e6))} MB")
+                                f"{pretty_format_number(4 * d * expected_population / int(1e6))} MB")
 
-                    index = faiss.GpuIndexFlat(res, faiss_d, metric, config)
+                    vector_store = faiss.GpuIndexFlat(res, d, metric, config)
                 else:
 
-                    if (4 * faiss_d + 8) * expected_population <= gpu_footprint:
+                    if (4 * d + 8) * expected_population <= gpu_footprint:
                         logger.info(f"Using GPUIndexIVFFlat Index. Expected GPU-RAM footprint is "
-                                    f"{pretty_format_number((4 * faiss_d + 8) * expected_population / int(1e6))} MB")
+                                    f"{pretty_format_number((4 * d + 8) * expected_population / int(1e6))} MB")
                         config = faiss.GpuIndexIVFFlatConfig()
                         config.device = inference_device
-                        index = faiss.GpuIndexIVFFlat(res, faiss_d, nlists, faiss.METRIC_L2, config)
+                        vector_store = faiss.GpuIndexIVFFlat(res, d, nlists, faiss.METRIC_L2, config)
                     else:
 
                         if faiss_M is None:
@@ -125,23 +129,27 @@ class BeamSimilarity(Processor):
 
                             config = faiss.GpuIndexIVFPQConfig()
                             config.device = inference_device
-                            index = faiss.GpuIndexIVFPQ(res, faiss_d, nlists, faiss_M, 8, faiss.METRIC_L2, config)
+                            vector_store = faiss.GpuIndexIVFPQ(res, d, nlists, faiss_M, 8, faiss.METRIC_L2, config)
                         else:
                             logger.info(f"Using OPQ16_64,IVF{nlists},PQ8 Index")
-                            index = faiss.index_factory(faiss_d, f'OPQ16_64,IVF{nlists},PQ8')
-                            index = faiss.index_cpu_to_gpu(res, inference_device, index)
+                            vector_store = faiss.index_factory(d, f'OPQ16_64,IVF{nlists},PQ8')
+                            vector_store = faiss.index_cpu_to_gpu(res, inference_device, vector_store)
 
-        if index is None:
+        if vector_store is None:
             logger.error("Cannot find suitable index type")
             raise Exception
 
-        self.index = index
+        self.vector_store = vector_store
+        self.index = None
+        if vector_store.ntotal and self.index is None:
+            self.index = BeamData(data=torch.arange(vector_store.ntotal, device=inference_device))
+
         self.inference_device = inference_device
 
         self.training_index = None
         res = faiss.StandardGpuResources()
         if training_device != 'cpu' and inference_device == 'cpu':
-            self.training_index = faiss.index_cpu_to_gpu(res, training_device, index)
+            self.training_index = faiss.index_cpu_to_gpu(res, training_device, vector_store)
 
         self.training_device = training_device
 
@@ -156,25 +164,44 @@ class BeamSimilarity(Processor):
 
     def train(self, x):
 
-        x = x.to(self.training_device)
-        self.index.train(x)
+        x = as_numpy(x)
+        self.vector_store.train(x)
 
-    def add(self, x, train=False):
+    @property
+    def is_trained(self):
+        return self.vector_store.is_trained
 
-        x = x.to(self.inference_device)
-        self.index.add(x)
+    def add(self, x, train=False, index=None):
 
-        if (train is None and not self.index.is_trained) or train:
+        if isinstance(x, BeamData) or hasattr(x, 'beam_class') and x.beam_class == 'BeamData':
+            x = x.values
+            index = x.index
+
+        bd_index = BeamData(data=index)
+
+
+        x = as_numpy(x)
+        if (not self.is_trained) or train:
             self.train(x)
 
-    def most_similar(self, x, n=1):
+        self.vector_store.add(x)
 
-        x = x.to(self.inference_device)
-        D, I = self.index.search(x, n)
+    def search(self, x, k=1):
+
+        x_type = check_type(x)
+        device = x.device if x_type.minor == 'tensor' else None
+
+        x = as_numpy(x)
+        D, I = self.vector_store.search(x, k)
+
+        if x_type.minor == 'tensor':
+            I = as_tensor(I, device=device)
+            D = as_tensor(D, device=device)
+
         return Similarities(index=I, distance=D)
 
     def __len__(self):
-        return self.index.ntotal
+        return self.vector_store.ntotal
 
     def reduce(self, z):
         return self.reducer.fit_transform(z)
@@ -187,7 +214,7 @@ class BeamSimilarity(Processor):
         path = beam_path(path)
         path.mkdir()
         with local_copy(path.joinpath('index.bin'), as_beam_path=False) as p:
-            faiss.write_index(self.index, p)
+            faiss.write_index(self.vector_store, p)
         if self.training_index:
             with local_copy(path.joinpath('training_index.bin'), as_beam_path=False) as p:
                 faiss.write_index(self.training_index, p)
@@ -197,7 +224,7 @@ class BeamSimilarity(Processor):
         path = beam_path(path)
 
         with local_copy(path.joinpath('index.bin'), as_beam_path=False) as p:
-            self.index = faiss.read_index(p)
+            self.vector_store = faiss.read_index(p)
         if path.joinpath('training_index.bin').is_file():
             with local_copy(path.joinpath('training_index.bin'), as_beam_path=False) as p:
                 self.training_index = faiss.read_index(p)

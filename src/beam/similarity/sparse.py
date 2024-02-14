@@ -1,6 +1,7 @@
 import torch
 
-from ..core.processor import Processor
+from .core import BeamSimilarity
+from ..core import Processor
 from ..utils import check_type, as_tensor, beam_device
 from collections import Counter
 
@@ -42,7 +43,7 @@ class TFIDF(Processor):
         return x * self.idf
 
 
-class SparseSimilarity(Processor):
+class SparseSimilarity(BeamSimilarity):
     """
     The `SparseSimilarity` class is a processor that computes similarity between sparse vectors.
 

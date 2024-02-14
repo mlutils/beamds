@@ -5,7 +5,7 @@ from ..config import BeamConfig, BeamParam
 class SimilarityConfig(BeamConfig):
 
     parameters = [
-        BeamParam('faiss_d', int, None, 'dimension of the vectors'),
+        BeamParam('vector_dimension', int, None, 'dimension of the vectors'),
         BeamParam('expected_population', int, int(1e6), 'expected population of the index'),
         BeamParam('metric', str, 'l2', 'distance metric'),
         BeamParam('training_device', str, 'cpu', 'device for training'),

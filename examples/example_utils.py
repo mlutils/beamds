@@ -5,6 +5,18 @@ import numpy as np
 from src.beam import resource
 
 
+def beam_data_slice():
+
+    from src.beam import BeamData
+    # bd = BeamData(['hi how are you?', 'I am fine, thank you very much', 'the yellow submarine is here'],
+    #               index=['a', 'b', 'c'])
+
+    # print(bd[['a']])
+
+    bd = BeamData(['hi how are you?', 'I am fine, thank you very much', 'the yellow submarine is here'])
+    print(bd[[0, 0, 1]])
+
+
 def load_algorithm():
     path = '/dsi/shared/elads/elads/data/tabular/results/deep_tabular/debug_reporter/covtype/0000_20240111_200041'
     from src.beam.tabular import DeepTabularAlg
@@ -248,6 +260,8 @@ if __name__ == '__main__':
 
     # load_model()
 
-    load_algorithm()
+    # load_algorithm()
+
+    beam_data_slice()
 
     print('done')
