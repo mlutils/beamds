@@ -176,6 +176,7 @@ class DenseSimilarity(BeamSimilarity):
         if isinstance(x, BeamData) or hasattr(x, 'beam_class') and x.beam_class == 'BeamData':
             index = x.index
             x = x.values
+
         return as_numpy(x), as_numpy(index)
 
     def add(self, x, train=False, index=None):
@@ -197,10 +198,11 @@ class DenseSimilarity(BeamSimilarity):
         x_type = check_type(x)
         device = x.device if x_type.minor == 'tensor' else None
 
-        x = self.extract_data_and_index(x)
+        x, _ = self.extract_data_and_index(x)
         D, I = self.vector_store.search(x, k)
 
-        I = self.index[I]
+        if self.index is not None:
+            I = self.index[I]
         if x_type.minor == 'tensor':
             I = as_tensor(I, device=device)
             D = as_tensor(D, device=device)

@@ -3,6 +3,7 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
+from .. import as_numpy
 from ..utils import beam_device
 from .core import BeamSimilarity
 from ..core import Processor
@@ -25,7 +26,7 @@ class TextSimilarity(DenseSimilarity):
         device (str): The device to run the models on (e.g., 'cuda:1' for GPU).
         """
 
-        super().__init__(*args, device=device, alpha=alpha, tokenizer_path=tokenizer_path,
+        Processor.__init__(self, *args, device=device, alpha=alpha, tokenizer_path=tokenizer_path,
                          dense_model_path=dense_model_path, use_dense_model_tokenizer=use_dense_model_tokenizer,
                          **kwargs)
 
@@ -39,6 +40,12 @@ class TextSimilarity(DenseSimilarity):
         else:
             self.dense_model = dense_model
             self.dense_model.to(self.device)
+
+        d = self.dense_model.get_sentence_embedding_dimension()
+
+        super().__init__(*args, device=device, alpha=alpha, tokenizer_path=tokenizer_path,
+                         dense_model_path=dense_model_path, use_dense_model_tokenizer=use_dense_model_tokenizer,
+                         d=d, **kwargs)
 
         if tokenizer is None:
             if self.get_hparam('tokenizer_path') is not None:
@@ -64,16 +71,19 @@ class TextSimilarity(DenseSimilarity):
 
         tokens = self.tokenizer(x)['input_ids']
         self.tokens.extend(tokens)
-        self.bm25 = BM25Okapi(self.tokens)
+        self.bm25 = BM25Okapi([as_numpy(v).tolist() for v in self.tokens])
 
     def search(self, x, k=1):
 
-        x, index = self.extract_data_and_index(x)
+        x, _ = self.extract_data_and_index(x)
+        x = list(x)
         dense_vectors = self.dense_model.encode(x)
         similarities = super().search(dense_vectors, k)
 
         tokens = self.tokenizer(x)['input_ids']
-        sparse_scores = self.bm25.get_scores(tokens)
+        sparse_scores = []
+        for t in tokens:
+            sparse_scores.append(self.bm25.get_scores(as_numpy(t).tolist()))
         similarities.sparse_scores = sparse_scores
 
         return similarities
