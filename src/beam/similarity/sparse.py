@@ -1,45 +1,63 @@
+from typing import List, Union
+
 import torch
 
 from .core import BeamSimilarity
+from .. import as_numpy
 from ..core import Processor
-from ..utils import check_type, as_tensor, beam_device
+from ..utils import check_type, as_tensor, beam_device, tqdm_beam as tqdm
 from collections import Counter
 
 
 class TFIDF(Processor):
 
-    def __init__(self, *args, separator=None, **kwargs):
+    def __init__(self, *args, tokenizer=None, min_df=None, max_df=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.separator = separator
-        self.state = {'idf_counter': Counter()}
+        self.df = Counter()
+        self.tfs = []
+        self.index = None
 
     def add_single(self, x, x_type=None):
 
         if x_type is None:
             x_type = check_type(x)
 
-        if x_type.major == 'scalar' and x_type.element == 'str':
-            x = x.split(self.separator)
-        elif x_type.minor == 'dict':
-            x = x.keys()
+        if x_type.minor == 'torch':
+            x = as_numpy(x).tolist()
+        elif x_type.minor == 'numpy':
+            x = x.tolist()
+        else:
+            x = list(x)
 
-        self.state['idf_counter'].update(set(x))
+        self.df.update(set(x))
+        self.tfs.append(Counter(x))
 
-    def add(self, x):
+    def add(self, x: List, index: Union[List, None, str, int] = None):
+
+        if index is not None and self.index is None:
+            self.index = []
+        elif index is None and self.index is not None:
+            raise ValueError("Index is not None, but current index is None")
 
         x_type = check_type(x)
-        if not (x_type.major == 'container' and x_type.minor != 'dict'):
+        if not x_type.major == 'container':
             self.add_single(x, x_type)
-
+            if index is not None:
+                self.index.append(index)
         else:
-            for xi in x:
+            for xi in tqdm(x):
                 self.add_single(xi)
+            if index is not None:
+                self.index.extend(index)
 
-    def train(self):
+    def idf(self, x):
         pass
 
     def transform(self, x):
         return x * self.idf
+
+    def __getitem__(self, item):
+        return self.transform(self.tfs[item])
 
 
 class SparseSimilarity(BeamSimilarity):

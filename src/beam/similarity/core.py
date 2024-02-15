@@ -9,6 +9,7 @@ class Similarities:
     index: Any
     distance: Any
     values: Any = None
+    sparse_scores: Any = None
 
 
 class BeamSimilarity(Processor):
