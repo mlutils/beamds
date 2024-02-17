@@ -13,37 +13,10 @@ class BeamPod(Processor):
     pass
 
 
-# #!/bin/bash
-#
-# IMAGE=$1
-# NAME=$2
-# INITIALS=$3
-# INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
-# HOME_DIR=$4
-# MORE_ARGS=${@:5}
-#
-# echo "Running a new container named: $NAME, Based on image: $IMAGE"
-# echo "Jupyter port will be available at: ${INITIALS}88"
-#
-# echo $MORE_ARGS
-#
-# # Get total system memory in kilobytes (kB)
-# total_memory_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-# # Calculate 90% backoff of total memory
-# backoff_memory_kb=$(awk -v x=$total_memory_kb 'BEGIN {printf "%.0f", x * 0.9}')
-# # Convert to megabytes for Docker
-# backoff_memory_mb=$(awk -v x=$backoff_memory_kb 'BEGIN {printf "%.0f", x / 1024}')
-#
-# # -e USER_HOME=${HOME}
-# echo "Home directory: ${HOME_DIR}"
-# docker run -p ${INITIALS}00-${INITIALS}99:${INITIALS}00-${INITIALS}99 --cap-add=NET_ADMIN --gpus=all --shm-size=8g --memory=${backoff_memory_mb}m --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v ${HOME_DIR}:${HOME_DIR} -v /mnt/:/mnt/ ${MORE_ARGS} --name ${NAME} --hostname ${NAME} ${IMAGE} ${INITIALS}
-# # docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 28
-
-
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None, replicas=None, labels=None, image_name=None,
-                 deployment_name=None, ports=None, service_type=None, *entrypoint_args, **entrypoint_envs):
+                 deployment_name=None, ports=None, use_scc=False, scc_name='anyuid', service_type=None, *entrypoint_args, **entrypoint_envs):
         super().__init__()
         self.k8s = k8s
         self.entrypoint_args = entrypoint_args
@@ -57,15 +30,23 @@ class BeamDeploy(Processor):
         self.ports = ports
         self.service_type = service_type
         self.service_account_name = f"svc{deployment_name}"
+        self.use_scc = use_scc
+        self.scc_name = scc_name if use_scc else None
 
     def launch(self, replicas=None):
         if replicas is None:
             replicas = self.replicas
 
+        if self.use_scc:
+            # Ensure the Service Account exists or create it
+            self.k8s.create_service_account(self.service_account_name, self.namespace)
+            # Add the Service Account to the specified SCC
+            self.k8s.add_scc_to_service_account(self.service_account_name, self.namespace, self.scc_name)
+
         self.k8s.create_service_account(self.service_account_name, self.namespace)
 
         self.k8s.create_service(
-            name=self.deployment_name,
+            base_name=self.deployment_name,
             namespace=self.namespace,
             ports=self.ports,
             labels=self.labels,
@@ -83,7 +64,7 @@ class BeamDeploy(Processor):
 
 
 class BeamK8S(Processor):  # processor is a another class and the BeamK8S inherits the method of processor
-    """BeamK8S is a class that provides a simple interface to the Kubernetes API."""
+    """BeamK8S is a class  that  provides a simple interface to the Kubernetes API."""
 
     def __init__(self, api_url=None, api_token=None, namespace=None,
                  project_name=None, *args, **kwargs):
@@ -116,7 +97,21 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         }
         return configuration
 
-    @staticmethod
+    @lazy_property
+    def dyn_client(self):
+        # Ensure the api_client is initialized before creating the DynamicClient
+        return DynamicClient(self.api_client)
+
+    def add_scc_to_service_account(self, service_account_name, namespace, scc_name='anyuid'):
+        scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
+        scc_obj = scc.get(name=scc_name)
+        user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
+        if user_name not in scc_obj.users:
+            scc_obj.users.append(user_name)
+            scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
+
+
+    #@staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, *entrypoint_args,
                          **envs):
 
@@ -179,6 +174,7 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             metadata=client.V1ObjectMeta(labels=labels),
             spec=pod_spec
         )
+
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
                                ports=None, *entrypoint_args, **envs):
 
@@ -196,18 +192,23 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         )
 
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
-                          replicas=None,
-                          ports=None, *entrypoint_args, **envs):
+                          replicas=None, ports=None, *entrypoint_args, **envs):
         if namespace is None:
             namespace = self.namespace
 
         if project_name is None:
             project_name = self.project_name
 
+        # Generate a unique name for the deployment if it's not provided
         if deployment_name is None:
-            import coolname
-            name = coolname.generate_slug(2)
-            deployment_name = f"{image_name.split(':')[0]}-{name}"
+            deployment_name = self.generate_unique_deployment_name(base_name=image_name.split(':')[0],
+                                                                   namespace=namespace)
+            # Include the 'app' label set to the unique deployment name
+            if labels is None:
+                labels = {}
+            labels['app'] = deployment_name  # Set the 'app' label to the unique deployment name
+
+        deployment_name = self.generate_unique_deployment_name(deployment_name, namespace)
 
         deployment_spec = self.create_deployment_spec(image_name, labels=labels, deployment_name=deployment_name,
                                                       project_name=project_name, replicas=replicas, ports=ports,
@@ -226,6 +227,20 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         )
         return deployment
 
+    def generate_unique_deployment_name(self, base_name, namespace):
+        unique_name = base_name
+        suffix = 1
+        while True:
+            try:
+                self.apps_v1_api.read_namespaced_deployment(name=unique_name, namespace=namespace)
+                # If the deployment exists, append/increment the suffix and try again
+                unique_name = f"{base_name}-{suffix}"
+                suffix += 1
+            except ApiException as e:
+                if e.status == 404:  # Not Found, the name is unique
+                    return unique_name
+                raise  # Reraise exceptions that are not related to the deployment not existing
+
     def apply_deployment(self, deployment, namespace=None):
         logger.info(f"Deployment object to be created: {deployment}")  # Adjust logging level/method as needed
 
@@ -239,18 +254,71 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         except ApiException as e:
             logger.exception(f"Exception when applying the deployment: {e}")
 
-    def create_service(self, name, namespace, ports, labels, service_type='ClusterIP'):
-        metadata = client.V1ObjectMeta(name=name, labels=labels)
-        # Update here to include port names
-        port_specs = [client.V1ServicePort(name=f"port-{p}", port=p, target_port=p) for p in ports]
-        spec = client.V1ServiceSpec(ports=port_specs, selector=labels, type=service_type)
-        service = client.V1Service(api_version="v1", kind="Service", metadata=metadata, spec=spec)
+    def create_service(self, base_name, namespace, ports, labels, service_type):
+        # Initialize the service name with the base name
+        service_name = base_name
+
+        # Check if the service already exists
         try:
-            response = self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
-            logger.info(f"Service {name} created in namespace {namespace}. Response: {response}")
-        except ApiException as e:
-            logger.error(f"Failed to create service {name} in namespace {namespace}: {e}")
-            raise
+            existing_service = self.core_v1_api.read_namespaced_service(name=base_name, namespace=namespace)
+            if existing_service:
+                print(f"Service '{base_name}' already exists in namespace '{namespace}'. Generating a unique name.")
+                # Generate a unique name for the service
+                service_name = self.generate_unique_service_name(base_name, namespace)
+        except client.exceptions.ApiException as e:
+            if e.status != 404:  # If the error is not 'Not Found', raise it
+                raise
+
+        # Ensure the 'app' label is set dynamically based on the unique service name
+        if labels is None:
+            labels = {}
+        labels['app'] = service_name
+
+        # Define service metadata with the unique name
+        metadata = client.V1ObjectMeta(name=service_name, labels=labels)
+
+        # Dynamically create service ports from the ports list, including unique names for each
+        service_ports = []
+        for idx, port in enumerate(ports):
+            # Construct a unique port name using the service name, port index, and port number
+            port_name = f"{service_name}-port-{idx}-{port}"
+            service_ports.append(client.V1ServicePort(name=port_name, port=port, target_port=port))
+
+        # Define service spec with dynamically set ports
+        service_spec = client.V1ServiceSpec(
+            ports=service_ports,
+            selector=labels,
+            type=service_type
+        )
+
+        # Create the Service object with the unique name
+        service = client.V1Service(
+            api_version="v1",
+            kind="Service",
+            metadata=metadata,
+            spec=service_spec
+        )
+
+        # Create the service in the specified namespace
+        try:
+            created_service = self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
+            print(f"Service '{service_name}' created successfully in namespace '{namespace}'.")
+        except client.exceptions.ApiException as e:
+            print(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
+
+    def generate_unique_service_name(self, base_name, namespace):
+        unique_name = base_name
+        suffix = 1
+        while True:
+            try:
+                self.core_v1_api.read_namespaced_service(name=unique_name, namespace=namespace)
+                # If the service exists, append/increment the suffix and try again
+                unique_name = f"{base_name}-{suffix}"
+                suffix += 1
+            except client.exceptions.ApiException as e:
+                if e.status == 404:  # Not Found, the name is unique
+                    return unique_name
+                raise  # Reraise exceptions that are not related to the service not existing
 
     def create_service_account(self, name, namespace):
         try:
@@ -265,6 +333,31 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             else:
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
+
+    def get_internal_endpoints_with_nodeport(self, namespace):
+        endpoints = []
+        try:
+            # Retrieve all services in the namespace
+            services = self.core_v1_api.list_namespaced_service(namespace=namespace)
+
+            # Retrieve all nodes to get their internal IPs
+            nodes = self.core_v1_api.list_node()
+            node_ips = []
+            for node in nodes.items:
+                for address in node.status.addresses:
+                    if address.type == "InternalIP":
+                        node_ips.append(address.address)
+
+            for service in services.items:
+                if service.spec.type == "NodePort":
+                    for port in service.spec.ports:
+                        for node_ip in node_ips:
+                            endpoints.append({'node_ip': node_ip, 'node_port': port.node_port})
+
+        except client.exceptions.ApiException as e:
+            print(f"Failed to retrieve services or nodes in namespace '{namespace}': {e}")
+
+        return endpoints
 
     @property
     def namespaces(self):

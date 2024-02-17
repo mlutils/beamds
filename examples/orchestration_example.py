@@ -7,20 +7,20 @@ from kubernetes import client, config
 from src.beam.orchestration.k8s import BeamDeploy
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~W08TOowATVE83lG5yQBEi9ZJfDMW-k-Rl5G4AJP6i-o"
+api_token = "sha256~gR0VNyktEMXaxUz8HNiL4HqlBpxYKZ6vVf4tjqEoTHI"
 project_name = "kleiner"
-image_name = "harbor.dt.local/public/beam:openshift"
-ports: list[int] = [80, 22,]
+image_name = "harbor.dt.local/public/beam:openshift-17.02.2"
+ports: list[int] = [80, 22, 88, 79, 72]
 labels = {"app": "beamds"}
 deployment_name = "beamds"
 namespace = "kleiner"
 replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variables
-service_type = "LoadBalancer"
+service_type = "NodePort" # Service types are: ClusterIP, NodePort, LoadBalancer, ExternalName
+use_scc = True  # Pass the SCC control parameter
 
 print('hello world')
-
 print("API URL:", api_url)
 print("API Token:", api_token)
 
@@ -41,6 +41,8 @@ deployment = BeamDeploy(
     image_name=image_name,
     deployment_name=deployment_name,
     ports=ports,
+    use_scc=use_scc,  # Pass the SCC control parameter
+    scc_name="anyuid",
     entrypoint_args=entrypoint_args,
     entrypoint_envs=entrypoint_envs,
     service_type=service_type,
@@ -48,10 +50,13 @@ deployment = BeamDeploy(
 
 deployment.launch(replicas=1)
 
-
-
-
-
+print("Fetching external endpoints...")
+# external_endpoints = k8s.get_external_endpoints(namespace=namespace)
+# for endpoint in external_endpoints:
+#     print(f"External Access: {endpoint['ip']}:{endpoint['port']}")
+internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
+for endpoint in internal_endpoints:
+    print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 
 
 
