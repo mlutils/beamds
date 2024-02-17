@@ -4,7 +4,6 @@ from ..utils import lazy_property
 from kubernetes import client, config
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
-from openshift.dynamic import DynamicClient
 from ..logger import beam_logger as logger
 import json
 
@@ -37,13 +36,13 @@ class BeamDeploy(Processor):
         if replicas is None:
             replicas = self.replicas
 
+        self.k8s.create_service_account(self.service_account_name, self.namespace)
+
         if self.use_scc:
             # Ensure the Service Account exists or create it
             self.k8s.create_service_account(self.service_account_name, self.namespace)
             # Add the Service Account to the specified SCC
             self.k8s.add_scc_to_service_account(self.service_account_name, self.namespace, self.scc_name)
-
-        self.k8s.create_service_account(self.service_account_name, self.namespace)
 
         self.k8s.create_service(
             base_name=self.deployment_name,
@@ -99,6 +98,7 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
 
     @lazy_property
     def dyn_client(self):
+        from openshift.dynamic import DynamicClient
         # Ensure the api_client is initialized before creating the DynamicClient
         return DynamicClient(self.api_client)
 
@@ -109,7 +109,6 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         if user_name not in scc_obj.users:
             scc_obj.users.append(user_name)
             scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
-
 
     #@staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, *entrypoint_args,
