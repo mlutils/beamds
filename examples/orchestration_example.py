@@ -51,9 +51,6 @@ deployment = BeamDeploy(
 deployment.launch(replicas=1)
 
 print("Fetching external endpoints...")
-# external_endpoints = k8s.get_external_endpoints(namespace=namespace)
-# for endpoint in external_endpoints:
-#     print(f"External Access: {endpoint['ip']}:{endpoint['port']}")
 internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
