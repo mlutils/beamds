@@ -3,24 +3,77 @@ from typing import List, Union
 import torch
 
 from .core import BeamSimilarity
-from .. import as_numpy
+from .. import as_numpy, BeamData
 from ..core import Processor
+from ..transformer import Transformer
 from ..utils import check_type, as_tensor, beam_device, tqdm_beam as tqdm
 from collections import Counter
 
 
+class ChunkTF(Transformer):
+
+    def __init__(self, *args, preprocessor=None, **kwargs):
+        self.preprocessor = preprocessor or TFIDF.default_preprocessor
+        super().__init__(*args, **kwargs)
+
+    def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
+
+        y = []
+
+        for xi in x:
+            xi = self.preprocessor(xi)
+            y.append(Counter(xi))
+
+        return y
+
+
+class ChunkDF(Transformer):
+
+        def __init__(self, *args, preprocessor=None, **kwargs):
+            self.preprocessor = preprocessor or TFIDF.default_preprocessor
+            super().__init__(*args, **kwargs)
+
+        def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
+            y = Counter()
+            for xi in x:
+                xi = self.preprocessor(xi)
+                y.update(set(xi))
+            return y
+
+
 class TFIDF(Processor):
 
-    def __init__(self, *args, tokenizer=None, min_df=None, max_df=None, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, preprocessor=None, min_df=None, max_df=None, max_features=None, use_idf=True,
+                 smooth_idf=True, sublinear_tf=False, n_workers=0, n_chunks=None, chunksize=None, mp_method='joblib',
+                 sparse_framework='torch', **kwargs):
+
+        super().__init__(*args, min_df=min_df, max_df=max_df, max_features=max_features, use_idf=use_idf,
+                         sparse_framework=sparse_framework, smooth_idf=smooth_idf, sublinear_tf=sublinear_tf, **kwargs)
         self.df = Counter()
-        self.tfs = []
-        self.index = None
+        self.preprocessor = preprocessor or TFIDF.default_preprocessor
 
-    def add_single(self, x, x_type=None):
+        self.min_df = self.get_hparam('min_df', min_df)
+        self.max_df = self.get_hparam('max_df', max_df)
+        self.max_features = self.get_hparam('max_features', max_features)
+        self.use_idf = self.get_hparam('use_idf', use_idf)
+        self.smooth_idf = self.get_hparam('smooth_idf', smooth_idf)
+        self.sublinear_tf = self.get_hparam('sublinear_tf', sublinear_tf)
+        self.sparse_framework = self.get_hparam('sparse_framework', sparse_framework)
 
-        if x_type is None:
-            x_type = check_type(x)
+        n_workers = self.get_hparam('n_workers', n_workers)
+        n_chunks = self.get_hparam('n_chunks', n_chunks)
+        chunksize = self.get_hparam('chunksize', chunksize)
+        mp_method = self.get_hparam('mp_method', mp_method)
+
+        self.chunk_tf = ChunkTF(n_workers=n_workers, n_chunks=n_chunks, chunksize=chunksize,
+                                             mp_method=mp_method, squeeze=False)
+        self.chunk_df = ChunkDF(n_workers=n_workers, n_chunks=n_chunks, chunksize=chunksize,
+                                        mp_method=mp_method, squeeze=False)
+
+    @staticmethod
+    def default_preprocessor(x):
+
+        x_type = check_type(x)
 
         if x_type.minor == 'torch':
             x = as_numpy(x).tolist()
@@ -29,32 +82,58 @@ class TFIDF(Processor):
         else:
             x = list(x)
 
-        self.df.update(set(x))
-        self.tfs.append(Counter(x))
+        return x
 
-    def add(self, x: List, index: Union[List, None, str, int] = None):
-
-        if index is not None and self.index is None:
-            self.index = []
-        elif index is None and self.index is not None:
-            raise ValueError("Index is not None, but current index is None")
+    def transform(self, x: List, index: Union[List, None, str, int] = None):
 
         x_type = check_type(x)
         if not x_type.major == 'container':
-            self.add_single(x, x_type)
-            if index is not None:
-                self.index.append(index)
-        else:
-            for xi in tqdm(x):
-                self.add_single(xi)
-            if index is not None:
-                self.index.extend(index)
+            x = [x]
+
+        if not type(x) is BeamData:
+            x = BeamData(data=x, index=index)
+
+        tfs = self.chunk_tf.transform(x)
+
+    def reset(self):
+        self.df = Counter()
+        self.tfs = []
+        self.index = None
 
     def idf(self, x):
         pass
 
-    def transform(self, x):
-        return x * self.idf
+    def fit(self, x, **kwargs):
+        self.reset()
+        dfs = self.chunk_df.transform(x, **kwargs)
+        for df in dfs:
+            self.df.update(df)
+        self.filter_tokens(len(x))
+
+    def add(self, x, **kwargs):
+        dfs = self.chunk_df.transform(x, **kwargs)
+        for df in dfs:
+            self.df.update(df)
+
+    def fit_termination(self):
+        self.filter_tokens(len(self.tfs))
+
+    def filter_tokens(self, n):
+
+        if self.min_df is not None:
+            min_df = self.min_df
+            if self.min_df < 1:
+                min_df = int(self.min_df * n)
+            self.df = {k: v for k, v in self.df.items() if v >= min_df}
+
+        if self.max_df is not None:
+            max_df = self.max_df
+            if self.max_df < 1:
+                max_df = int(self.max_df * n)
+            self.df = {k: v for k, v in self.df.items() if v <= max_df}
+
+        if self.max_features is not None:
+            self.df = Counter(dict(sorted(self.df.items(), key=lambda x: x[1], reverse=True)[:self.max_features]))
 
     def __getitem__(self, item):
         return self.transform(self.tfs[item])
