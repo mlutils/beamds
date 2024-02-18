@@ -224,6 +224,9 @@ class Experiment(object):
         self.logs_path_is_built = False
         self.source_dir = None
 
+    def algorithm_generator(self, *args, **kwargs):
+        return beam_algorithm_generator(self, *args, **kwargs)
+
     @lazy_property
     def training_framework(self):
         return self.hparams.get('training_framework', 'torch')
@@ -645,7 +648,7 @@ class Experiment(object):
             self.build_experiment_dir()
 
         if algorithm_generator is None:
-            algorithm_generator = beam_algorithm_generator
+            algorithm_generator = self.algorithm_generator
 
         try:
 
@@ -707,7 +710,7 @@ class Experiment(object):
         from ..federated import federated_executor, worker_executor
 
         if algorithm_generator is None:
-            algorithm_generator = beam_algorithm_generator
+            algorithm_generator = self.algorithm_generator
 
         workers = federated_executor(func=worker_executor, world_size=self.world_size,
                                      framework=self.distributed_training_framework,

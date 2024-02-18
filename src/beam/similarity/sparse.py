@@ -1,12 +1,14 @@
 from typing import List, Union
 
+import numpy as np
 import torch
 
 from .core import BeamSimilarity
 from .. import as_numpy, BeamData
 from ..core import Processor
 from ..transformer import Transformer
-from ..utils import check_type, as_tensor, beam_device, tqdm_beam as tqdm
+from ..utils import check_type, as_tensor, beam_device, tqdm_beam as tqdm, lazy_property
+from ..parallel import BeamParallel
 from collections import Counter
 
 
@@ -45,11 +47,13 @@ class TFIDF(Processor):
 
     def __init__(self, *args, preprocessor=None, min_df=None, max_df=None, max_features=None, use_idf=True,
                  smooth_idf=True, sublinear_tf=False, n_workers=0, n_chunks=None, chunksize=None, mp_method='joblib',
-                 sparse_framework='torch', **kwargs):
+                 sparse_framework='torch', sparse_layout='coo', device='cpu', **kwargs):
 
         super().__init__(*args, min_df=min_df, max_df=max_df, max_features=max_features, use_idf=use_idf,
-                         sparse_framework=sparse_framework, smooth_idf=smooth_idf, sublinear_tf=sublinear_tf, **kwargs)
+                         sparse_framework=sparse_framework, smooth_idf=smooth_idf, sublinear_tf=sublinear_tf,
+                         sparse_layout=sparse_layout, device=device, **kwargs)
         self.df = Counter()
+        self.n_docs = 0
         self.preprocessor = preprocessor or TFIDF.default_preprocessor
 
         self.min_df = self.get_hparam('min_df', min_df)
@@ -59,16 +63,18 @@ class TFIDF(Processor):
         self.smooth_idf = self.get_hparam('smooth_idf', smooth_idf)
         self.sublinear_tf = self.get_hparam('sublinear_tf', sublinear_tf)
         self.sparse_framework = self.get_hparam('sparse_framework', sparse_framework)
+        self.sparse_layout = self.get_hparam('sparse_layout', sparse_layout)
+        self.device = self.get_hparam('device', device)
 
-        n_workers = self.get_hparam('n_workers', n_workers)
+        self.n_workers = self.get_hparam('n_workers', n_workers)
         n_chunks = self.get_hparam('n_chunks', n_chunks)
         chunksize = self.get_hparam('chunksize', chunksize)
         mp_method = self.get_hparam('mp_method', mp_method)
 
-        self.chunk_tf = ChunkTF(n_workers=n_workers, n_chunks=n_chunks, chunksize=chunksize,
-                                             mp_method=mp_method, squeeze=False)
-        self.chunk_df = ChunkDF(n_workers=n_workers, n_chunks=n_chunks, chunksize=chunksize,
-                                        mp_method=mp_method, squeeze=False)
+        self.chunk_tf = ChunkTF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
+                                squeeze=False)
+        self.chunk_df = ChunkDF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
+                                squeeze=False)
 
     @staticmethod
     def default_preprocessor(x):
@@ -84,31 +90,86 @@ class TFIDF(Processor):
 
         return x
 
-    def transform(self, x: List, index: Union[List, None, str, int] = None):
+    def transform(self, x: Union[List, List[List], BeamData]):
 
         x_type = check_type(x)
         if not x_type.major == 'container':
             x = [x]
 
-        if not type(x) is BeamData:
-            x = BeamData(data=x, index=index)
-
         tfs = self.chunk_tf.transform(x)
+        idfs = self.idf
+
+        # Prepare data structures for building sparse matrices
+        cols = []
+        values = []
+        rows = []
+
+        def get_indices_values(doc):
+            doc_indices = []
+            doc_values = []
+            for word, count in doc.items():
+                if word in self.token_to_idx:
+                    tf = 1 + np.log(count) if self.sublinear_tf else count
+                    idx = self.token_to_idx[word]
+                    doc_indices.append(idx)
+                    doc_values.append(tf * idfs[word])
+            cols.extend(doc_indices)
+            values.extend(doc_values)
+            rows.extend(np.ones_like(doc_indices) * len(rows))
+
+        bp = BeamParallel(n_workers=self.n_workers, func=get_indices_values, method='threading')
+        bp.run(tfs)
+
+        # Convert to the desired sparse matrix format
+        if self.sparse_framework == 'torch':
+            import torch
+            values_tensor = torch.FloatTensor(values)
+            indices_tensor = torch.LongTensor([cols, list(range(len(values)))])
+            size_tensor = torch.Size([len(tfs), len(self.token_to_idx)])
+            vectors = torch.sparse.FloatTensor(indices_tensor, values_tensor, size_tensor)
+
+            if self.layout == 'coo':
+                vectors = torch.sparse_coo_tensor(torch.stack([r, c]), v, size=size, device=device)
+
+            elif self.layout == 'csr':
+                vectors = torch.sparse_csr_tensor(r, c, v, size=size, device=device)
+
+        elif self.sparse_framework == 'scipy':
+            from scipy.sparse import csr_matrix
+            vectors = csr_matrix((values, cols, indptr), shape=(len(tfs), len(self.token_to_idx)))
+        else:
+            raise ValueError("Unsupported sparse framework.")
+
+        return vectors
 
     def reset(self):
         self.df = Counter()
-        self.tfs = []
-        self.index = None
+        self.n_docs = 0
+        self.clear_cache('idf', 'tokens')
 
-    def idf(self, x):
-        pass
+    @lazy_property
+    def tokens(self):
+        """Build a mapping from tokens to indices based on filtered tokens."""
+        return {token: idx for idx, token in enumerate(self.df.keys())}
+
+    @lazy_property
+    def idf(self):
+        """Calculate the inverse document frequency (IDF) vector."""
+        n_docs = self.n_docs
+        smooth = int(self.smooth_idf)
+        if self.use_idf:
+            idf = {token: np.log(n_docs / (smooth + df)) + smooth for token, df in self.df.items()}
+        else:
+            idf = {token: 1 for token in self.df.keys()}
+        return idf
 
     def fit(self, x, **kwargs):
         self.reset()
         dfs = self.chunk_df.transform(x, **kwargs)
+        self.n_docs = len(dfs)
         for df in dfs:
             self.df.update(df)
-        self.filter_tokens(len(x))
+        self.filter_tokens()
 
     def add(self, x, **kwargs):
         dfs = self.chunk_df.transform(x, **kwargs)
@@ -118,8 +179,9 @@ class TFIDF(Processor):
     def fit_termination(self):
         self.filter_tokens(len(self.tfs))
 
-    def filter_tokens(self, n):
+    def filter_tokens(self):
 
+        n = self.n_docs
         if self.min_df is not None:
             min_df = self.min_df
             if self.min_df < 1:
@@ -135,8 +197,7 @@ class TFIDF(Processor):
         if self.max_features is not None:
             self.df = Counter(dict(sorted(self.df.items(), key=lambda x: x[1], reverse=True)[:self.max_features]))
 
-    def __getitem__(self, item):
-        return self.transform(self.tfs[item])
+
 
 
 class SparseSimilarity(BeamSimilarity):
