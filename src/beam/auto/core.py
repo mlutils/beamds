@@ -372,17 +372,29 @@ class AutoBeam(Processor):
         for module_name in self.module_dependencies:
             pip_package = self.get_pip_package(module_name)
             if pip_package is not None:
-                requirements.append({'pip_package': pip_package.project_name, 'module_name': module_name,
-                                     'version': pip_package.version
-                                     })
+                if type(pip_package) is not list:
+                    pip_package = [pip_package]
+                for pp in pip_package:
+                    requirements.append({'pip_package': pp.project_name, 'module_name': module_name,
+                                         'version': pp.version
+                                         })
             else:
                 logger.warning(f"Could not find pip package for module: {module_name}")
         return requirements
 
     @staticmethod
-    def write_requirements(requirements, path):
+    def write_requirements(requirements, path, relation='=='):
+        '''
+
+        @param requirements:
+        @param path:
+        @param relation: can be '==' or '>='
+        @return:
+        '''
+
+        assert relation in ['==', '>='], "relation can be '==' or '>='"
         path = beam_path(path)
-        content = '\n'.join([f"{r['pip_package']}=={r['version']}" for r in requirements])
+        content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements])
         content = f"{content}\n"
         path.write(content, ext='.txt')
 
