@@ -5,8 +5,17 @@ from kubernetes import client, config
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
+from dataclasses import dataclass
 import json
 
+@dataclass
+class ServiceConfig:
+    port: int
+    service_name: str
+    service_type: str
+    port_name: str
+    create_route: bool = False  # Indicates whether to create a route for this service
+    route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
 
 class BeamPod(Processor):
     pass
@@ -15,7 +24,7 @@ class BeamPod(Processor):
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None, replicas=None, labels=None, image_name=None,
-                 deployment_name=None, ports=None, use_scc=False, scc_name='anyuid', service_type=None, *entrypoint_args, **entrypoint_envs):
+                 deployment_name=None, ports=None, use_scc=False,service_configs=None, scc_name='anyuid', service_type=None, *entrypoint_args, **entrypoint_envs):
         super().__init__()
         self.k8s = k8s
         self.entrypoint_args = entrypoint_args
@@ -31,6 +40,7 @@ class BeamDeploy(Processor):
         self.service_account_name = f"svc{deployment_name}"
         self.use_scc = use_scc
         self.scc_name = scc_name if use_scc else None
+        self.service_configs = service_configs
 
     def launch(self, replicas=None):
         if replicas is None:
@@ -51,6 +61,16 @@ class BeamDeploy(Processor):
             labels=self.labels,
             service_type=self.service_type
         )
+
+        for svc_config in self.service_configs:
+            service_name = f"{svc_config.service_name}-{svc_config.port}"  # Unique name based on service name and port
+            self.k8s.create_service(
+                base_name=service_name,
+                namespace=self.namespace,
+                ports=[svc_config.port],  # Wrap the port in a list
+                labels=self.labels,
+                service_type=svc_config.service_type
+            )
 
         deployment = self.k8s.create_deployment(image_name=self.image_name, labels=self.labels,
                                                 deployment_name=self.deployment_name, namespace=self.namespace,
@@ -110,18 +130,16 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             scc_obj.users.append(user_name)
             scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
 
-    #@staticmethod
-    def create_container(image_name, deployment_name=None, project_name=None, ports=None, *entrypoint_args,
-                         **envs):
-
-        container_name = f"{project_name}-{deployment_name}-container"
+    @staticmethod
+    def create_container(image_name, deployment_name=None, project_name=None, ports=None, *entrypoint_args, **envs):
+        container_name = f"{project_name}-{deployment_name}-container" if project_name and deployment_name else "container"
         if ports is None:
             ports = []
         return client.V1Container(
             name=container_name,
             image=image_name,
             ports=BeamK8S.create_container_ports(ports),
-            args=entrypoint_args,
+            args=list(entrypoint_args),
             env=BeamK8S.create_environment_variables(**envs)
         )
 
@@ -257,6 +275,10 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         # Initialize the service name with the base name
         service_name = base_name
 
+        # Ensure ports is a list, even if it's None or empty
+        if ports is None:
+            ports = []
+
         # Check if the service already exists
         try:
             existing_service = self.core_v1_api.read_namespaced_service(name=base_name, namespace=namespace)
@@ -279,7 +301,6 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         # Dynamically create service ports from the ports list, including unique names for each
         service_ports = []
         for idx, port in enumerate(ports):
-            # Construct a unique port name using the service name, port index, and port number
             port_name = f"{service_name}-port-{idx}-{port}"
             service_ports.append(client.V1ServicePort(name=port_name, port=port, target_port=port))
 
@@ -298,9 +319,9 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             spec=service_spec
         )
 
-        # Create the service in the specified namespace.
+        # Create the service in the specified namespace
         try:
-            created_service = self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
+            self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
             print(f"Service '{service_name}' created successfully in namespace '{namespace}'.")
         except client.exceptions.ApiException as e:
             print(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
@@ -333,25 +354,48 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
 
+    def create_route(self, service_name, namespace, protocol, port_name):
+        from openshift.dynamic import DynamicClient
+        dyn_client = DynamicClient(self.api_client)
+
+        route_resource = dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
+
+        route_manifest = {
+            "apiVersion": "route.openshift.io/v1",
+            "kind": "Route",
+            "metadata": {"name": service_name, "namespace": namespace},
+            "spec": {
+                "to": {"kind": "Service", "name": service_name},
+                "port": {"targetPort": port_name},
+                "tls": {"termination": "edge"} if protocol == 'https' else None
+            }
+        }
+
+        try:
+            route_resource.create(body=route_manifest, namespace=namespace)
+            logger.info(f"Route for service {service_name} created successfully in namespace {namespace}.")
+        except Exception as e:
+            logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
+
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []
         try:
-            # Retrieve all services in the namespace
             services = self.core_v1_api.list_namespaced_service(namespace=namespace)
-
-            # Retrieve all nodes to get their internal IPs
             nodes = self.core_v1_api.list_node()
-            node_ips = []
-            for node in nodes.items:
-                for address in node.status.addresses:
-                    if address.type == "InternalIP":
-                        node_ips.append(address.address)
+            node_ips = {node.metadata.name:
+                            [address.address for address in node.status.addresses if address.type == "InternalIP"][0]
+                        for node in nodes.items}
 
             for service in services.items:
                 if service.spec.type == "NodePort":
                     for port in service.spec.ports:
-                        for node_ip in node_ips:
-                            endpoints.append({'node_ip': node_ip, 'node_port': port.node_port})
+                        for node_name, node_ip in node_ips.items():
+                            endpoint = {'node_ip': node_ip, 'node_port': port.node_port,
+                                        'service_name': service.metadata.name}
+                            if endpoint not in endpoints:  # Check for uniqueness
+                                endpoints.append(endpoint)
+                                print(
+                                    f"Debug: Adding endpoint for service {service.metadata.name} on node {node_name} - {endpoint}")
 
         except client.exceptions.ApiException as e:
             print(f"Failed to retrieve services or nodes in namespace '{namespace}': {e}")

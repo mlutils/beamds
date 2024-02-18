@@ -1,24 +1,26 @@
 from typing import List
-
 from src.beam import beam_logger as logger
 from src.beam.orchestration import BeamK8S
 from kubernetes import client, config
-
-from src.beam.orchestration.k8s import BeamDeploy
+from src.beam.orchestration.k8s import BeamDeploy, ServiceConfig
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~gR0VNyktEMXaxUz8HNiL4HqlBpxYKZ6vVf4tjqEoTHI"
-project_name = "kleiner"
-image_name = "harbor.dt.local/public/beam:openshift-17.02.2"
-ports: list[int] = [80, 22, 88, 79, 72]
-labels = {"app": "beamds"}
-deployment_name = "beamds"
-namespace = "kleiner"
+api_token = "sha256~6fzKeFQhEO2I4skt5Bj07epEiYsZclZIvXsrD0TiwRk"
+project_name = "ben-guryon"
+image_name = "harbor.dt.local/public/jup:02"
+#ports: list[int] = [22, 8888]
+labels = {"app": "bgu"}
+deployment_name = "bgu"
+namespace = "ben-guryon"
 replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variables
-service_type = "NodePort" # Service types are: ClusterIP, NodePort, LoadBalancer, ExternalName
+#service_type = "NodePort" # Service types are: ClusterIP, NodePort, LoadBalancer, ExternalName
 use_scc = True  # Pass the SCC control parameter
+service_configs = [ # Service types are: ClusterIP, NodePort, LoadBalancer, ExternalName
+    ServiceConfig(port=22, service_name="ssh", service_type="NodePort", port_name="ssh-port"),
+    ServiceConfig(port=8888, service_name="jupyter", service_type="LoadBalancer", port_name="jupyter-port", create_route=True, route_protocol='http'),
+]
 
 print('hello world')
 print("API URL:", api_url)
@@ -40,12 +42,13 @@ deployment = BeamDeploy(
     labels=labels,
     image_name=image_name,
     deployment_name=deployment_name,
-    ports=ports,
+    service_configs=service_configs,
+    #ports=ports,
     use_scc=use_scc,  # Pass the SCC control parameter
     scc_name="anyuid",
     entrypoint_args=entrypoint_args,
     entrypoint_envs=entrypoint_envs,
-    service_type=service_type,
+    #service_type=service_type,
 )
 
 deployment.launch(replicas=1)
