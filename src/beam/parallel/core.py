@@ -1,5 +1,7 @@
 from tqdm import tqdm
 import random
+
+from ..distributed import RayCluster, RayDispatcher
 from ..utils import tqdm_beam
 from ..utils import collate_chunks, retrieve_name, lazy_property, dict_to_list
 from ..logger import beam_logger as logger
@@ -128,6 +130,9 @@ class BeamParallel(object):
 
     def __len__(self):
         return len(self.queue)
+
+    def reset(self):
+        self.queue = []
 
     def add(self, *args, **kwargs):
 
@@ -336,31 +341,15 @@ class BeamParallel(object):
         if n_workers is None:
             n_workers = self.n_workers
 
-        import ray
+        address = self.kwargs.get('address', None)
+        ray_kwargs = self.kwargs.get('ray_kwargs', {})
+        ray_kwargs['num_cpus'] = n_workers
+        remote_kwargs = self.kwargs.get('remote_kwargs', {})
 
-        def func_wrapper(t):
-            return t.run()
+        RayCluster(address=address, ray_kwargs=ray_kwargs)
 
-        if 'runtime_env' in self.kwargs:
-            runtime_env = self.kwargs.pop('runtime_env')
-        else:
-            runtime_env = {}
-
-        if 'dashboard_port' in self.kwargs:
-            dashboard_port = self.kwargs.pop('dashboard_port')
-        else:
-            dashboard_port = None
-
-        if 'include_dashboard' in self.kwargs:
-            include_dashboard = self.kwargs.pop('include_dashboard')
-        else:
-            include_dashboard = True
-
-        ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
-                 include_dashboard=include_dashboard, dashboard_host="0.0.0.0", ignore_reinit_error=True)
-
-        tasks = [ray.remote(num_cpus=n_workers)(func_wrapper).remote(t) for t in self.queue]
-        results = ray.get(tasks)
+        tasks = [RayDispatcher(t, remote_kwargs=remote_kwargs, asynchronous=False) for t in self.queue]
+        results = [t.run() for t in self.progressbar(tasks)]
 
         return results
 

@@ -5,22 +5,29 @@ import torch
 from .core import BeamSimilarity
 from .. import as_numpy
 from ..core import Processor
+from ..parallel import BeamParallel
 from ..utils import check_type, as_tensor, beam_device, tqdm_beam as tqdm
 from collections import Counter
 
 
 class TFIDF(Processor):
 
-    def __init__(self, *args, tokenizer=None, min_df=None, max_df=None, **kwargs):
+    def __init__(self, *args, preprocess_func=None, tokenizer=None, min_df=None, max_df=None, n_workers=0,
+                 method='joblib', progressbar='beam',
+                 reduce=False, reduce_dim=0, name=None, shuffle=False,
+                 parallel_kwargs, **kwargs):
         super().__init__(*args, **kwargs)
         self.df = Counter()
         self.tfs = []
         self.index = None
+        self.preprocess = preprocess_func or self._preproocess
+        self.parallel = BeamParallel(n_workers=n_workers, func=func, method=method, progressbar=progressbar,
+                                     reduce=reduce, reduce_dim=reduce_dim, name=name, shuffle=shuffle,
+                                     **parallel_kwargs)
 
-    def add_single(self, x, x_type=None):
+    def _preproocess(self, x):
 
-        if x_type is None:
-            x_type = check_type(x)
+        x_type = check_type(x)
 
         if x_type.minor == 'torch':
             x = as_numpy(x).tolist()
@@ -28,6 +35,12 @@ class TFIDF(Processor):
             x = x.tolist()
         else:
             x = list(x)
+
+        return x
+
+    def add_single(self, x):
+
+        x = self.preprocess(x)
 
         self.df.update(set(x))
         self.tfs.append(Counter(x))
@@ -45,16 +58,23 @@ class TFIDF(Processor):
             if index is not None:
                 self.index.append(index)
         else:
+
+            self.parallel.reset()
+
             for xi in tqdm(x):
                 self.add_single(xi)
             if index is not None:
                 self.index.extend(index)
 
-    def idf(self, x):
+    def fit(self, x):
         pass
 
     def transform(self, x):
         return x * self.idf
+
+    def fit_transform(self, x):
+        self.fit(x)
+        return self.transform(x)
 
     def __getitem__(self, item):
         return self.transform(self.tfs[item])
