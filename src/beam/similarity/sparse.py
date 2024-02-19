@@ -14,18 +14,31 @@ from collections import Counter
 
 class ChunkTF(Transformer):
 
-    def __init__(self, *args, preprocessor=None, **kwargs):
+    def __init__(self, *args, sparse_framework='torch', device='cpu', preprocessor=None, **kwargs):
         self.preprocessor = preprocessor or TFIDF.default_preprocessor
+        self.sparse_framework = sparse_framework
+        self._device = device
         super().__init__(*args, **kwargs)
 
-    def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
+    @lazy_property
+    def device(self):
+        from ..utils import beam_device
+        return beam_device(self._device)
+
+    def transform_callback(self, x, tokens=None, **kwargs):
 
         y = []
 
         for xi in x:
             xi = self.preprocessor(xi)
-            y.append(Counter(xi))
+            c = Counter(xi)
+            c = Counter({k: v for k, v in c.items() if k in tokens})
 
+            if self.sparse_framework == 'torch':
+                y.append((torch.LongTensor(list(c.keys()), device=self.device),
+                          torch.FloatTensor(list(c.values()), device=self.device)))
+            else:
+                y.append((np.array(list(c.keys())), np.array(list(c.values()))))
         return y
 
 
@@ -47,11 +60,11 @@ class TFIDF(Processor):
 
     def __init__(self, *args, preprocessor=None, min_df=None, max_df=None, max_features=None, use_idf=True,
                  smooth_idf=True, sublinear_tf=False, n_workers=0, n_chunks=None, chunksize=None, mp_method='joblib',
-                 sparse_framework='torch', sparse_layout='coo', device='cpu', **kwargs):
+                 sparse_framework='torch', device='cpu', **kwargs):
 
         super().__init__(*args, min_df=min_df, max_df=max_df, max_features=max_features, use_idf=use_idf,
                          sparse_framework=sparse_framework, smooth_idf=smooth_idf, sublinear_tf=sublinear_tf,
-                         sparse_layout=sparse_layout, device=device, **kwargs)
+                         device=device, **kwargs)
         self.df = Counter()
         self.n_docs = 0
         self.preprocessor = preprocessor or TFIDF.default_preprocessor
@@ -63,7 +76,11 @@ class TFIDF(Processor):
         self.smooth_idf = self.get_hparam('smooth_idf', smooth_idf)
         self.sublinear_tf = self.get_hparam('sublinear_tf', sublinear_tf)
         self.sparse_framework = self.get_hparam('sparse_framework', sparse_framework)
-        self.sparse_layout = self.get_hparam('sparse_layout', sparse_layout)
+
+        # we choose the csr layout for the sparse matrix
+        # according to chatgpt it has some advantages over coo:
+        # see https://chat.openai.com/share/9028c9f3-9695-4914-a15c-89902efa8837
+
         self.device = self.get_hparam('device', device)
 
         self.n_workers = self.get_hparam('n_workers', n_workers)
@@ -96,7 +113,7 @@ class TFIDF(Processor):
         if not x_type.major == 'container':
             x = [x]
 
-        tfs = self.chunk_tf.transform(x)
+        tfs = self.chunk_tf.transform(x, tokens=self.tokens)
         idfs = self.idf
 
         # Prepare data structures for building sparse matrices
@@ -113,6 +130,8 @@ class TFIDF(Processor):
                     idx = self.token_to_idx[word]
                     doc_indices.append(idx)
                     doc_values.append(tf * idfs[word])
+
+            return doc_indices, doc_values
             cols.extend(doc_indices)
             values.extend(doc_values)
             rows.extend(np.ones_like(doc_indices) * len(rows))
@@ -145,12 +164,16 @@ class TFIDF(Processor):
     def reset(self):
         self.df = Counter()
         self.n_docs = 0
-        self.clear_cache('idf', 'tokens')
+        self.clear_cache('idf', 'tokens', 'n_tokens')
 
     @lazy_property
     def tokens(self):
         """Build a mapping from tokens to indices based on filtered tokens."""
-        return {token: idx for idx, token in enumerate(self.df.keys())}
+        return set(self.df.keys())
+
+    @lazy_property
+    def n_tokens(self):
+        return max(list(self.tokens))
 
     @lazy_property
     def idf(self):
