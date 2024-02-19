@@ -15,11 +15,11 @@ namespace = "ben-guryon"
 replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variables
-# service_type = "NodePort" # Service types are: ClusterIP, NodePort, LoadBalancer, ExternalName
 use_scc = True  # Pass the SCC control parameter
+# service_type = "NodePort" # Service types are: ClusterIP, NodePort, LoadBalancer, ExternalName
 service_configs = [
     ServiceConfig(port=22, service_name="ssh", service_type="NodePort", port_name="ssh-port",
-                  create_route=False, create_ingress=True, ingress_host="ssh.example.com"),
+                  create_route=False, create_ingress=False, ingress_host="ssh.example.com"),
     ServiceConfig(port=88, service_name="jupyter", service_type="LoadBalancer", port_name="jupyter-port",
                   create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
 ]

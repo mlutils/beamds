@@ -308,10 +308,9 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             if e.status != 404:  # If the error is not 'Not Found', raise it
                 raise
 
-        # Ensure the 'app' label is set dynamically based on the unique service name
-        if labels is None:
-            labels = {}
-        labels['app'] = service_name
+        # Do not override 'app' label if it's already set in the labels dictionary
+        if 'app' not in labels:
+            labels['app'] = service_name
 
         # Define service metadata with the unique name
         metadata = client.V1ObjectMeta(name=service_name, labels=labels)
