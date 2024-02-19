@@ -3,10 +3,12 @@ from ..core import Processor
 from ..utils import lazy_property
 from kubernetes import client, config
 from kubernetes.client import Configuration
+from kubernetes.client import V1Ingress, V1IngressSpec, V1IngressRule, V1HTTPIngressRuleValue, V1HTTPIngressPath, V1IngressBackend, V1ServiceBackendPort, V1IngressTLS, V1ObjectMeta
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
 from dataclasses import dataclass
 import json
+
 
 @dataclass
 class ServiceConfig:
@@ -16,6 +18,11 @@ class ServiceConfig:
     port_name: str
     create_route: bool = False  # Indicates whether to create a route for this service
     route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
+    create_ingress: bool = False  # Indicates whether to create an ingress for this service
+    ingress_host: str = None  # Optional: specify a host for the ingress
+    ingress_path: str = '/'  # Default path for ingress, can be overridden
+    ingress_tls_secret: str = None  # Optional: specify a TLS secret for ingress TLS
+
 
 class BeamPod(Processor):
     pass
@@ -24,7 +31,8 @@ class BeamPod(Processor):
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None, replicas=None, labels=None, image_name=None,
-                 deployment_name=None, ports=None, use_scc=False,service_configs=None, scc_name='anyuid', service_type=None, *entrypoint_args, **entrypoint_envs):
+                 deployment_name=None, use_scc=False, service_configs=None, scc_name='anyuid',
+                 service_type=None, *entrypoint_args, **entrypoint_envs):
         super().__init__()
         self.k8s = k8s
         self.entrypoint_args = entrypoint_args
@@ -35,7 +43,6 @@ class BeamDeploy(Processor):
         self.labels = labels
         self.image_name = image_name
         self.deployment_name = deployment_name
-        self.ports = ports
         self.service_type = service_type
         self.service_account_name = f"svc{deployment_name}"
         self.use_scc = use_scc
@@ -54,14 +61,6 @@ class BeamDeploy(Processor):
             # Add the Service Account to the specified SCC
             self.k8s.add_scc_to_service_account(self.service_account_name, self.namespace, self.scc_name)
 
-        self.k8s.create_service(
-            base_name=self.deployment_name,
-            namespace=self.namespace,
-            ports=self.ports,
-            labels=self.labels,
-            service_type=self.service_type
-        )
-
         for svc_config in self.service_configs:
             service_name = f"{svc_config.service_name}-{svc_config.port}"  # Unique name based on service name and port
             self.k8s.create_service(
@@ -72,9 +71,27 @@ class BeamDeploy(Processor):
                 service_type=svc_config.service_type
             )
 
+            # Check if a route needs to be created for this service
+            if svc_config.create_route:
+                self.k8s.create_route(
+                    service_name=service_name,
+                    namespace=self.namespace,
+                    protocol=svc_config.route_protocol,
+                    port_name=svc_config.port_name
+                )
+
+            # Check if an ingress needs to be created for this service
+            if svc_config.create_ingress:
+                self.k8s.create_ingress(
+                    service_configs=[svc_config],  # Pass only the current ServiceConfig
+                )
+
+        extracted_ports = [svc_config.port for svc_config in self.service_configs]
+
         deployment = self.k8s.create_deployment(image_name=self.image_name, labels=self.labels,
                                                 deployment_name=self.deployment_name, namespace=self.namespace,
-                                                project_name=self.project_name, replicas=replicas, ports=self.ports,
+                                                project_name=self.project_name, replicas=replicas,
+                                                ports=extracted_ports,
                                                 service_account_name=self.service_account_name, *self.entrypoint_args,
                                                 **self.entrypoint_envs)
 
@@ -132,7 +149,8 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
 
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, *entrypoint_args, **envs):
-        container_name = f"{project_name}-{deployment_name}-container" if project_name and deployment_name else "container"
+        container_name = f"{project_name}-{deployment_name}-container" \
+            if project_name and deployment_name else "container"
         if ports is None:
             ports = []
         return client.V1Container(
@@ -358,24 +376,124 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
         from openshift.dynamic import DynamicClient
         dyn_client = DynamicClient(self.api_client)
 
+        # Get the Route resource from the OpenShift API
         route_resource = dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
 
+        # Check if the route already exists
+        try:
+            existing_route = route_resource.get(name=service_name, namespace=namespace)
+            # If the route exists, log the information and skip creation
+            logger.info(f"Route {service_name} already exists in namespace {namespace}. Skipping creation.")
+            return
+        except Exception as e:
+            if e.status != 404:  # If the error is not 'Not Found', raise it
+                logger.error(f"Failed to check existence of route {service_name} in namespace {namespace}: {e}")
+                raise
+
+        # Define the route manifest for creation if it does not exist
         route_manifest = {
             "apiVersion": "route.openshift.io/v1",
             "kind": "Route",
-            "metadata": {"name": service_name, "namespace": namespace},
+            "metadata": {
+                "name": service_name,
+                "namespace": namespace
+            },
             "spec": {
-                "to": {"kind": "Service", "name": service_name},
-                "port": {"targetPort": port_name},
-                "tls": {"termination": "edge"} if protocol == 'https' else None
+                "to": {
+                    "kind": "Service",
+                    "name": service_name
+                },
+                "port": {
+                    "targetPort": port_name
+                }
             }
         }
 
+        # Add TLS termination if protocol is 'https'
+        if protocol.lower() == 'https':
+            route_manifest["spec"]["tls"] = {
+                "termination": "edge"
+            }
+
+        # Attempt to create the route
         try:
             route_resource.create(body=route_manifest, namespace=namespace)
             logger.info(f"Route for service {service_name} created successfully in namespace {namespace}.")
         except Exception as e:
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
+
+    def create_ingress(self, service_configs, default_host=None, default_path="/", default_tls_secret=None):
+        # Initialize the NetworkingV1Api
+        networking_v1_api = client.NetworkingV1Api()
+
+        for svc_config in service_configs:
+            if not svc_config.create_ingress:
+                continue  # Skip if create_ingress is False for this service config
+
+            # Use specific values from svc_config or fall back to default parameters
+            host = svc_config.ingress_host if svc_config.ingress_host else f"{svc_config.service_name}.example.com"
+            path = svc_config.ingress_path if svc_config.ingress_path else default_path
+            tls_secret = svc_config.ingress_tls_secret if svc_config.ingress_tls_secret else default_tls_secret
+
+            # Define Ingress metadata
+            metadata = V1ObjectMeta(
+                name=f"{svc_config.service_name}-ingress",
+                namespace=self.namespace,
+                annotations={
+                    "kubernetes.io/ingress.class": "nginx",
+                    "nginx.ingress.kubernetes.io/ssl-redirect": "true",
+                    "nginx.ingress.kubernetes.io/force-ssl-redirect": "true",
+                }
+            )
+
+            # Define the backend service
+            backend = V1IngressBackend(
+                service=V1ServiceBackendPort(
+                    name=svc_config.port_name,
+                    number=svc_config.port
+                )
+            )
+
+            # Define the Ingress rule
+            rule = V1IngressRule(
+                host=host,
+                http=V1HTTPIngressRuleValue(
+                    paths=[
+                        V1HTTPIngressPath(
+                            path=path,
+                            path_type="Prefix",
+                            backend=backend
+                        )
+                    ]
+                )
+            )
+
+            # Define Ingress Spec with optional TLS configuration
+            spec = V1IngressSpec(rules=[rule])
+            if tls_secret:
+                spec.tls = [
+                    V1IngressTLS(
+                        hosts=[host],
+                        secret_name=tls_secret
+                    )
+                ]
+
+            # Create the Ingress object
+            ingress = V1Ingress(
+                api_version="networking.k8s.io/v1",
+                kind="Ingress",
+                metadata=metadata,
+                spec=spec
+            )
+
+            # Use the NetworkingV1Api to create the Ingress
+            try:
+                networking_v1_api.create_namespaced_ingress(namespace=self.namespace, body=ingress)
+                logger.info(
+                    f"Ingress for service {svc_config.service_name} created successfully in namespace {self.namespace}.")
+            except Exception as e:
+                logger.error(
+                    f"Failed to create Ingress for service {svc_config.service_name} in namespace {self.namespace}: {e}")
 
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []
@@ -395,7 +513,8 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
                             if endpoint not in endpoints:  # Check for uniqueness
                                 endpoints.append(endpoint)
                                 print(
-                                    f"Debug: Adding endpoint for service {service.metadata.name} on node {node_name} - {endpoint}")
+                                    f"Debug: Adding endpoint for service {service.metadata.name} "
+                                    f"on node {node_name} - {endpoint}")
 
         except client.exceptions.ApiException as e:
             print(f"Failed to retrieve services or nodes in namespace '{namespace}': {e}")
