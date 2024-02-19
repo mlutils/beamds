@@ -27,18 +27,28 @@ class ChunkTF(Transformer):
 
     def transform_callback(self, x, tokens=None, **kwargs):
 
-        y = []
+        values = []
+        ind_ptrs = []
+        cols = []
 
         for xi in x:
             xi = self.preprocessor(xi)
             c = Counter(xi)
             c = Counter({k: v for k, v in c.items() if k in tokens})
 
+            ind_ptrs.append(len(c))
             if self.sparse_framework == 'torch':
+
+                values.append(torch.FloatTensor(list(c.values()), device=self.device))
+                cols.append(torch.LongTensor(list(c.keys()), device=self.device))
+
+
+
                 y.append((torch.LongTensor(list(c.keys()), device=self.device),
-                          torch.FloatTensor(list(c.values()), device=self.device)))
+                          torch.FloatTensor(list(c.values()), device=self.device), len(c)))
             else:
-                y.append((np.array(list(c.keys())), np.array(list(c.values()))))
+                y.append((np.array(list(c.keys())), np.array(list(c.values())), len(c)))
+
         return y
 
 
@@ -114,7 +124,8 @@ class TFIDF(Processor):
             x = [x]
 
         tfs = self.chunk_tf.transform(x, tokens=self.tokens)
-        idfs = self.idf
+
+        idf = self.idf
 
         # Prepare data structures for building sparse matrices
         cols = []
@@ -180,10 +191,25 @@ class TFIDF(Processor):
         """Calculate the inverse document frequency (IDF) vector."""
         n_docs = self.n_docs
         smooth = int(self.smooth_idf)
-        if self.use_idf:
-            idf = {token: np.log(n_docs / (smooth + df)) + smooth for token, df in self.df.items()}
+        indptr = [0, len(self.df)]
+
+        if self.sparse_framework == 'torch':
+            col_indices = torch.LongTensor(list(self.df.keys()), device=self.device)
+            if self.use_idf:
+                values = torch.log(n_docs / (smooth + torch.FloatTensor(list(self.df.values()), device=self.device))) + smooth
+            else:
+                values = torch.ones_like(col_indices, device=self.device)
+
+            idf = torch.sparse_csr_tensor(indptr, col_indices, values, size=(1, self.n_tokens), device=self.device)
         else:
-            idf = {token: 1 for token in self.df.keys()}
+            col_indices = np.array(list(self.df.keys()))
+            if self.use_idf:
+                values = np.log(n_docs / (smooth + np.array(list(self.df.values())))) + smooth
+            else:
+                values = np.ones_like(col_indices)
+            from scipy.sparse import csr_matrix
+            idf = csr_matrix((values, col_indices, indptr), shape=(1, self.n_tokens))
+
         return idf
 
     def fit(self, x, **kwargs):
@@ -219,8 +245,6 @@ class TFIDF(Processor):
 
         if self.max_features is not None:
             self.df = Counter(dict(sorted(self.df.items(), key=lambda x: x[1], reverse=True)[:self.max_features]))
-
-
 
 
 class SparseSimilarity(BeamSimilarity):
