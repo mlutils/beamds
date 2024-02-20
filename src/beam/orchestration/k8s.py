@@ -77,7 +77,7 @@ class BeamDeploy(Processor):
                     service_name=service_name,
                     namespace=self.namespace,
                     protocol=svc_config.route_protocol,
-                    port_name=svc_config.port_name
+                    port_name=svc_config.port
                 )
 
             # Check if an ingress needs to be created for this service
@@ -371,25 +371,14 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
 
-    def create_route(self, service_name, namespace, protocol, port_name):
+    def create_route(self, service_name, namespace, protocol, port):
         from openshift.dynamic import DynamicClient
         dyn_client = DynamicClient(self.api_client)
 
         # Get the Route resource from the OpenShift API
         route_resource = dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
 
-        # Check if the route already exists
-        try:
-            existing_route = route_resource.get(name=service_name, namespace=namespace)
-            # If the route exists, log the information and skip creation
-            logger.info(f"Route {service_name} already exists in namespace {namespace}. Skipping creation.")
-            return
-        except Exception as e:
-            if e.status != 404:  # If the error is not 'Not Found', raise it
-                logger.error(f"Failed to check existence of route {service_name} in namespace {namespace}: {e}")
-                raise
-
-        # Define the route manifest for creation if it does not exist
+        # Define the route manifest for creation
         route_manifest = {
             "apiVersion": "route.openshift.io/v1",
             "kind": "Route",
@@ -403,7 +392,7 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
                     "name": service_name
                 },
                 "port": {
-                    "targetPort": port_name
+                    "targetPort": port  # Use numeric port
                 }
             }
         }

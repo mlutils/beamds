@@ -5,7 +5,7 @@ from kubernetes import client, config
 from src.beam.orchestration.k8s import BeamDeploy, ServiceConfig
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~6fzKeFQhEO2I4skt5Bj07epEiYsZclZIvXsrD0TiwRk"
+api_token = "sha256~Sm4u3dI6tw7f-VIukUHQUN_2SmsfBocYjfNk93hzlY4"
 project_name = "ben-guryon"
 image_name = "harbor.dt.local/public/beam:openshift-17.02.2"
 # ports: list[int] = [22, 8888]
