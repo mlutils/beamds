@@ -26,3 +26,4 @@ smbprotocol[smb2]
 # fastchat
 sentence_transformers
 polars
+rho-pysparnn
