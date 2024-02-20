@@ -62,7 +62,7 @@ class BeamDeploy(Processor):
             self.k8s.add_scc_to_service_account(self.service_account_name, self.namespace, self.scc_name)
 
         for svc_config in self.service_configs:
-            service_name = f"{svc_config.service_name}-{svc_config.port}"  # Unique name based on service name and port
+            service_name = f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}"  # Unique name based on service name and port
             self.k8s.create_service(
                 base_name=service_name,
                 namespace=self.namespace,
@@ -77,7 +77,7 @@ class BeamDeploy(Processor):
                     service_name=service_name,
                     namespace=self.namespace,
                     protocol=svc_config.route_protocol,
-                    port_name=svc_config.port
+                    port=svc_config.port  # Corrected from port_name to port, passing the numeric port value
                 )
 
             # Check if an ingress needs to be created for this service

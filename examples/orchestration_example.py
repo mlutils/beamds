@@ -7,10 +7,10 @@ from src.beam.orchestration.k8s import BeamDeploy, ServiceConfig
 api_url = "https://api.kh-dev.dt.local:6443"
 api_token = "sha256~Sm4u3dI6tw7f-VIukUHQUN_2SmsfBocYjfNk93hzlY4"
 project_name = "ben-guryon"
-image_name = "harbor.dt.local/public/beam:openshift-17.02.2"
+image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
 # ports: list[int] = [22, 8888]
 labels = {"app": "bgu"}
-deployment_name = "bgu"
+deployment_name = "bgu1"
 namespace = "ben-guryon"
 replicas = 1
 entrypoint_args = ["63"]  # Container arguments
@@ -20,7 +20,7 @@ use_scc = True  # Pass the SCC control parameter
 service_configs = [
     ServiceConfig(port=22, service_name="ssh", service_type="NodePort", port_name="ssh-port",
                   create_route=False, create_ingress=False, ingress_host="ssh.example.com"),
-    ServiceConfig(port=88, service_name="jupyter", service_type="LoadBalancer", port_name="jupyter-port",
+    ServiceConfig(port=88, service_name="jupyter", service_type="ClusterIP", port_name="jupyter-port",
                   create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
 ]
 
