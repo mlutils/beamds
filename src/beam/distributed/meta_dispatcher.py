@@ -1,7 +1,7 @@
 import inspect
 
 from ..core import Processor
-from ..utils import MetaInitIsDoneVerifier, lazy_property
+from ..utils import lazy_property
 
 
 class MetaAsyncResult:
@@ -66,7 +66,7 @@ class MetaAsyncResult:
         return None
 
 
-class MetaDispatcher(Processor, metaclass=MetaInitIsDoneVerifier):
+class MetaDispatcher(Processor):
 
     def __init__(self, obj, *routes, name=None, asynchronous=True, **kwargs):
 
@@ -100,7 +100,7 @@ class MetaDispatcher(Processor, metaclass=MetaInitIsDoneVerifier):
             return "instance" if isinstance(self.obj, object) else "unknown"
 
     def __getattr__(self, item):
-        if item.startswith('_') or item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+        if item.startswith('_') or item == '_init_is_done' or not hasattr(self, '_init_is_done'):
             return super().__getattribute__(item)
         if item in self.routes_methods:
             return self.routes_methods[item]

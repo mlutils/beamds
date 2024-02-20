@@ -25,3 +25,4 @@ tritonclient[all]
 smbprotocol[smb2]
 # fastchat
 sentence_transformers
+polars

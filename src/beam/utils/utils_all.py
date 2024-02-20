@@ -126,6 +126,25 @@ def retrieve_name(var):
         if len(names) > 0:
             return names[0]
 
+# def retrieve_name(var):
+#     name = None
+#     # Start by checking the global scope of the caller.
+#     for fi in reversed(inspect.stack()):
+#         names = [var_name for var_name, var_val in fi.frame.f_globals.items() if var_val is var]
+#         if names:
+#             name = names[0]
+#             break  # Exit on the first match in global scope.
+#
+#     # If not found in global scope, check the local scope from inner to outer.
+#     if not name:
+#         for fi in inspect.stack():
+#             names = [var_name for var_name, var_val in fi.frame.f_locals.items() if var_val is var]
+#             if names:
+#                 name = names[0]
+#                 break  # Exit on the first match in local scope.
+#
+#     return name
+
 
 def has_kwargs(func):
     return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in inspect.signature(func).parameters.values())
@@ -1065,10 +1084,13 @@ def is_arange(x, convert_str=True):
 def dict_to_list(x, convert_str=True):
     x_type = check_type(x)
 
+    if not x:
+        return x
+
     if x_type.minor != 'dict':
         return x
 
-    keys = list(x.keys())
+    keys = np.array(list(x.keys()))
     argsort, isa = is_arange(keys, convert_str=convert_str)
 
     if isa:
@@ -1186,7 +1208,7 @@ class ThreadSafeDict(dict):
 class MetaInitIsDoneVerifier(type):
     def __call__(cls, *args, **kwargs):
         instance = super().__call__(*args, **kwargs)
-        instance.init_is_done = True
+        instance._init_is_done = True
         return instance
 
 

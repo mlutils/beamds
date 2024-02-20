@@ -14,11 +14,13 @@ from .elements import Groups, Iloc, Loc, Key, return_none
 from ..core import BeamBase
 from ..utils import (is_container, lazy_property, Slicer, recursive, iter_container, recursive_collate_chunks,
                      collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device,
-                     container_len, recursive_len, is_arange, recursive_size, divide_chunks, recursive_keys,
+                     container_len, recursive_len, is_arange, recursive_size, divide_chunks,
+                     recursive_hierarchical_keys,
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
-                     DataBatch, recursive_squeeze, recursive_same_device, recursive_concatenate)
+                     DataBatch, recursive_squeeze, recursive_same_device, recursive_concatenate, recursive_items,
+                     recursive_keys)
 
 
 class BeamData(BeamBase):
@@ -1173,7 +1175,11 @@ class BeamData(BeamBase):
         self._columns_map = None
         return self._columns_map
 
-    def keys(self, recursive=False):
+    def keys(self):
+        for k in recursive_keys(self.data):
+            yield k
+
+    def hierarchical_keys(self, recursive=False):
         if self.orientation is None:
             keys = []
         elif self.orientation == 'simple':
@@ -1181,7 +1187,7 @@ class BeamData(BeamBase):
         else:
             if self.is_cached:
                 if recursive:
-                    keys = recursive_keys(self.data)
+                    keys = recursive_hierarchical_keys(self.data)
                 else:
                     if isinstance(self.data, dict):
                         keys = self.data.keys()
@@ -1191,7 +1197,7 @@ class BeamData(BeamBase):
                         keys = range(len(self.data))
             else:
                 if recursive:
-                    keys = recursive_keys(self.all_paths)
+                    keys = recursive_hierarchical_keys(self.all_paths)
                 else:
                     if isinstance(self.all_paths, dict):
                         keys = self.all_paths.keys()
@@ -1199,9 +1205,9 @@ class BeamData(BeamBase):
                         keys = range(len(self.all_paths))
         return keys
 
-    def items(self, recursive=False):
-        for k in self.keys(recursive=recursive):
-            yield k, self[k]
+    def items(self):
+        for k, v in recursive_items(self.data):
+            yield k, v
 
     @property
     def dtypes(self):
@@ -2020,7 +2026,7 @@ class BeamData(BeamBase):
         s += f"  params: \n"
         s += f"  {params_line} \n"
         s += f"  keys: \n"
-        s += f"  {self.keys()} \n"
+        s += f"  {self.hierarchical_keys()} \n"
         s += f"  sizes:\n"
         s += f"  {self.size} \n"
         s += f"  shapes:\n"
@@ -2296,7 +2302,7 @@ class BeamData(BeamBase):
             if axes[0] == 'keys' and (i_type.minor == 'list' and i_type.element == 'int'):
                 axes.pop(0)
             if (axes[0] == 'keys' and (i_type.major == 'scalar' and i_type.element == 'int')
-                    and check_type(list(self.keys()), check_minor=False).element == 'str'):
+                    and check_type(list(self.hierarchical_keys()), check_minor=False).element == 'str'):
                 axes.pop(0)
             # for orientation == 'simple' we skip the first axis if we slice over columns and index_type is not str
             if short_list and axes[0] == 'index' and i_type.element == 'str' and self.index_type.element != 'str':

@@ -20,6 +20,9 @@ from uuid import uuid4 as uuid
 
 class AutoBeam(Processor):
 
+    # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
+    blacklisted_pip_package = ['sklearn']
+
     def __init__(self, obj):
         self._private_modules = None
         self._visited_modules = None
@@ -375,6 +378,8 @@ class AutoBeam(Processor):
                 if type(pip_package) is not list:
                     pip_package = [pip_package]
                 for pp in pip_package:
+                    if pp.project_name is AutoBeam.blacklisted_pip_package:
+                        continue
                     requirements.append({'pip_package': pp.project_name, 'module_name': module_name,
                                          'version': pp.version
                                          })
@@ -388,13 +393,16 @@ class AutoBeam(Processor):
 
         @param requirements:
         @param path:
-        @param relation: can be '==' or '>='
+        @param relation: can be '==' or '>=' or 'all'
         @return:
         '''
 
         assert relation in ['==', '>='], "relation can be '==' or '>='"
         path = beam_path(path)
-        content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements])
+        if relation == 'all':
+            content = '\n'.join([f"{r['pip_package']}" for r in requirements])
+        else:
+            content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements])
         content = f"{content}\n"
         path.write(content, ext='.txt')
 

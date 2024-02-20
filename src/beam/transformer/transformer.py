@@ -165,7 +165,7 @@ class Transformer(Processor):
         # self.fit(x, **kwargs)
         # return self.transform(x, **kwargs)
 
-    def reduce(self, x, reduce_dim=None, split_by=None, **kwargs):
+    def reduce(self, x, reduce_dim=None, split_by=None, squeeze=True, **kwargs):
 
         if isinstance(next(iter_container(x))[1], BeamData):
             x = BeamData.collate(x, split_by=split_by, **kwargs)
@@ -174,13 +174,13 @@ class Transformer(Processor):
             if reduce_dim is None:
                 reduce_dim = self.reduce_dim
 
-            x = collate_chunks(*x, dim=reduce_dim, **kwargs)
+            x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze, **kwargs)
 
         return x
 
     def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, mp_method=None,
-                  fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=False,
-                  reduce=True, store_suffix=None, shuffle=False, **kwargs):
+                  fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=None,
+                  reduce=None, store_suffix=None, shuffle=None, **kwargs):
         """
 
         @param x:
@@ -232,6 +232,9 @@ class Transformer(Processor):
 
         if path is None:
             path = self.store_path
+
+        if store is None:
+            store = path is not None
 
         logger.info(f"Starting transformer process: {self.name}")
 
@@ -317,21 +320,21 @@ class Transformer(Processor):
                     # chunk_path = chunk_path.as_uri()
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,
-                                   cache=cache, store=store_chunk, name=f"{self.name}/{k}", **kwargs))
+                                   cache=cache, store=store_chunk, name=k, metadata=f"{self.name}",
+                                   **kwargs))
 
         else:
             queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, fit=fit, cache=cache,
-                               store=store_chunk, name=f"{self.name}", **kwargs))
+                               store=store_chunk, name=self.name, **kwargs))
 
         logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "
                     f"Number of queued tasks is {len(queue)}.")
 
-        x_with_keys = queue.run(n_workers=n_workers, method=mp_method, shuffle=shuffle)
+        synced_results = queue.run(n_workers=n_workers, method=mp_method, shuffle=shuffle)
 
         #TODO: refactor from this part and on to match the new SyncedResults object
-        x_with_keys = x_with_keys.values
 
-        exceptions = [{'exception': xi, 'task': queue.queue[i]} for i, xi in enumerate(x_with_keys)
+        exceptions = [{'exception': xi, 'task': queue.queue[i]} for i, (_, xi) in enumerate(synced_results.exceptions)
                       if isinstance(xi, Exception)]
 
         if len(exceptions) > 0:
@@ -339,11 +342,15 @@ class Transformer(Processor):
             logger.info("Failed tasks can be obtained in self.exceptions")
             self.exceptions = exceptions
 
-        x_with_keys = [xi for xi in x_with_keys if not isinstance(xi, Exception)]
+        if isinstance(synced_results.values, dict):
+            results = [synced_results.values[k] for k in sorted(synced_results.values.keys())]
+            results = [xi for xi in results if not isinstance(xi, Exception)]
+        else:
+            results = [xi for xi in synced_results.values if not isinstance(xi, Exception)]
 
         if is_chunk:
-            values = [xi[1] for xi in x_with_keys]
-            keys = [xi[0] for xi in x_with_keys]
+            values = [xi[1] for xi in results]
+            keys = [xi[0] for xi in results]
             keys = [ki if type(ki) is tuple else (ki,) for ki in keys]
 
             if len(exceptions) == 0:
@@ -363,9 +370,9 @@ class Transformer(Processor):
         else:
             if len(exceptions) > 0:
                 logger.warning("Exception occurred, the exception object and the task are returned.")
-                return x_with_keys
+                return results
             logger.info(f"Finished transformer process: {self.name}.")
-            x = x_with_keys[0][1]
+            x = results[0][1]
 
         if store:
 

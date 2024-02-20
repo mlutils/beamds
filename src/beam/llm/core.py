@@ -10,8 +10,20 @@ from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
 from ..core.processor import Processor
-from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass, pretty_print_dict
+from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass, \
+    pretty_print_dict, MetaInitIsDoneVerifier
 from ..path import BeamURL
+
+# Assuming you've found that LLM's metaclass is pydantic.main.ModelMetaclass
+from pydantic.main import ModelMetaclass
+
+
+class CombinedMeta(ModelMetaclass, MetaInitIsDoneVerifier):
+    def __call__(cls, *args, **kwargs):
+        instance = ModelMetaclass.__call__(cls, *args, **kwargs)
+        instance._init_is_done = True
+        return instance
+
 
 try:
     from langchain.llms.base import LLM
@@ -19,6 +31,7 @@ try:
 except ImportError:
     LLM = BaseModel
     CallbackManagerForLLMRun = NullClass
+    CombinedMeta = MetaInitIsDoneVerifier
 
 
 from pydantic import Field, PrivateAttr
@@ -45,7 +58,7 @@ class Completion(BeamDict):
         return pretty_print_dict(self, 'Completion')
 
 
-class BeamLLM(LLM, Processor):
+class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
 
     model: Optional[str] = Field(None)
     scheme: Optional[str] = Field(None)

@@ -5,7 +5,7 @@ from ..distributed import RayCluster, RayDispatcher
 from ..utils import tqdm_beam
 from ..utils import collate_chunks, retrieve_name, lazy_property, dict_to_list
 from ..logger import beam_logger as logger
-from .task import BeamTask, TaskResult
+from .task import BeamTask, TaskResult, SyncedResults
 
 
 class BeamAsync(object):
@@ -65,33 +65,6 @@ class BeamAsync(object):
             async_result = self.celery_task.delay(func, *args, **kwargs)
 
         return TaskResult(async_result)
-
-
-class SyncedResults:
-
-    def __init__(self, results):
-
-        # results is a list of dicts with keys: name, result, exception
-        self.results = results
-
-    @lazy_property
-    def results_map(self):
-        return {r['name']: r for r in self.results}
-
-    @lazy_property
-    def failed(self):
-        failed = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
-        return dict_to_list(failed, convert_str=False)
-
-    @lazy_property
-    def succeeded(self):
-        succeeded = {r['name']: r['result'] for r in self.results if r['exception'] is None}
-        return dict_to_list(succeeded, convert_str=False)
-
-    @lazy_property
-    def values(self):
-        vals = {r['name']: r['result'] if r['exception'] is None else r['exception'] for r in self.results}
-        return dict_to_list(vals, convert_str=False)
 
 
 class BeamParallel(object):
@@ -391,33 +364,34 @@ class BeamParallel(object):
             logger.info(f"Queue {self.name} is empty, returning empty list.")
             return []
 
-        logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {n_workers} workers,"
-                    f" method: {method}")
-
         if shuffle:
             random.shuffle(self.queue)
 
         if n_workers <= 1 or len(self.queue) == 1:
             results = [t.run() for t in self.progressbar(self.queue)]
-        elif method == 'joblib':
-            results = self._run_joblib(n_workers=n_workers)
-        elif method == 'process_map':
-            results = self._run_process_map(n_workers=n_workers)
-        elif method == 'apply_async':
-            results = self._run_apply_async(n_workers=n_workers)
-        elif method == 'thread_map':
-            results = self._run_thread_map(n_workers=n_workers)
-        elif method in ['starmap', 'map']:
-            results = self._run_starmap(n_workers=n_workers)
-        elif method == 'ray':
-            results = self._run_ray(n_workers=n_workers)
-        elif method == 'threading':
-            results = self._run_threading(n_workers=n_workers)
-        elif method == 'dask':
-            results = self._run_dask(n_workers=n_workers)
-
+            logger.info(f"Running queue (length={len(self.queue)}) on the main thread: {self.name} with 1 worker")
         else:
-            raise ValueError(f"Unknown method: {method}")
+            logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {n_workers} workers,"
+                        f" method: {method}")
+            if method == 'joblib':
+                results = self._run_joblib(n_workers=n_workers)
+            elif method == 'process_map':
+                results = self._run_process_map(n_workers=n_workers)
+            elif method == 'apply_async':
+                results = self._run_apply_async(n_workers=n_workers)
+            elif method == 'thread_map':
+                results = self._run_thread_map(n_workers=n_workers)
+            elif method in ['starmap', 'map']:
+                results = self._run_starmap(n_workers=n_workers)
+            elif method == 'ray':
+                results = self._run_ray(n_workers=n_workers)
+            elif method == 'threading':
+                results = self._run_threading(n_workers=n_workers)
+            elif method == 'dask':
+                results = self._run_dask(n_workers=n_workers)
+
+            else:
+                raise ValueError(f"Unknown method: {method}")
 
         logger.info(f"Finish running queue: {self.name}.")
         return SyncedResults(results)

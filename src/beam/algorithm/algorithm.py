@@ -11,7 +11,7 @@ from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN, BeamDD
 from ..utils import (to_device, check_type, recursive_concatenate,
                      beam_device, filter_dict, lazy_property,
                      is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key,
-                     check_nvlink)
+                     check_nvlink, MetaInitIsDoneVerifier)
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
@@ -20,7 +20,7 @@ from ..logger import beam_kpi, BeamResult
 from timeit import default_timer as timer
 
 
-class MetaInit(type):
+class MetaInit(MetaInitIsDoneVerifier):
     def __call__(cls, *args, store_init_path=None, **kwargs):
         init_args = {'args': args, 'kwargs': kwargs}
         if store_init_path:

@@ -434,12 +434,14 @@ def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree')
         return collate_chunks(*xs, dim=dim, on=on, how=how, method=method)
 
 
-def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'):
+def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree', squeeze=True):
     if len(xs) == 0:
         return []
 
     if len(xs) == 1:
-        return xs[0]
+        if squeeze:
+            return xs[0]
+        return [xs[0]]
 
     x = list(xs)
 
@@ -617,6 +619,46 @@ def recursive(func):
     return apply_recursively
 
 
+def recursive_yield(func, keys=True, values=True):
+    def apply_recursively(x, *args, _keys=True, _values=True, **kwargs):
+
+        if is_container(x):
+
+            for k, v in iter_container(x):
+
+                for kk, vv in apply_recursively(v, *args, **kwargs):
+                    kk = (k,) + kk
+                    if _keys and _values:
+                        yield kk, vv
+                    elif _keys:
+                        yield kk
+                    else:
+                        yield vv
+
+        else:
+
+            if _keys and _values:
+                yield tuple(), func(x, *args, **kwargs)
+            elif _keys:
+                yield tuple()
+            else:
+                yield func(x, *args, **kwargs)
+
+    return partial(apply_recursively, _keys=keys, _values=values)
+
+
+def recursive_values(x):
+    return recursive_yield(lambda y: y, keys=False, values=True)(x)
+
+
+def recursive_items(x):
+    return recursive_yield(lambda y: y, keys=True, values=True)(x)
+
+
+def recursive_keys(x):
+    return recursive_yield(lambda y: y, keys=True, values=False)(x)
+
+
 @recursive
 def recursive_clone(x):
     x_minor = check_minor_type(x)
@@ -787,7 +829,6 @@ def container_len(x):
     return len(x)
 
 
-
 def big_array_representation(x):
     n = 100
     nl = 1000
@@ -806,7 +847,7 @@ def big_array_representation(x):
     return str((minor_type, metadata, x)).encode('utf-8')
 
 
-def recursive_keys(x):
+def recursive_hierarchical_keys(x):
     x_type = check_type(x)
     if x_type.major == 'container':
 
@@ -815,7 +856,7 @@ def recursive_keys(x):
 
         for k, v in iter_container(x):
             keys.append(k)
-            values.append(recursive_keys(v))
+            values.append(recursive_hierarchical_keys(v))
 
         if all([v is None for v in values]):
             return keys
@@ -831,7 +872,6 @@ def recursive_keys(x):
         return values
 
     return None
-
 
 def recursive_size_summary(x, mode='sum'):
     x_type = check_type(x)
@@ -885,9 +925,7 @@ def recursive_squeeze(x):
         return x
 
 
-
-@recursive
-def empty_elements(x):
+def empty_element(x):
     x_type = check_type(x)
     if x_type.minor in ['numpy', 'pandas', 'tensor', 'scipy_sparse']:
         return x.size == 0
@@ -904,17 +942,23 @@ def empty_elements(x):
     return False
 
 
+@recursive
+def recursive_empty_elements(x):
+    return empty_element(x)
+
+
 def is_empty(x):
-    x = empty_elements(x)
-    x = recursive_flatten(x)
-    return all(x)
+    for v in recursive_values(x):
+        if not empty_element(v):
+            return False
+    return True
 
 
 def is_chunk(path, chunk_pattern='_chunk'):
     return path.is_file() and bool(re.search(rf'\d{6}{chunk_pattern}\.', str(path.name)))
 
 
-def recursive_flatten(x, flat_array=False, x_type=None, tolist=True):
+def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True):
 
     if x_type is None:
         x_type = check_type(x)
@@ -922,10 +966,14 @@ def recursive_flatten(x, flat_array=False, x_type=None, tolist=True):
     if x_type.major == 'container':
         l = []
         for i, xi in iter_container(x):
-            l.extend(recursive_flatten(xi, flat_array=flat_array))
+            l.extend(recursive_flatten(xi, flat_array=flat_array, _root=False))
         return l
     else:
-
+        if _root:
+            if flat_array and x_type.major == 'array':
+                return recursive_flat_array(x, x_type=x_type, tolist=tolist)
+            else:
+                return x
         if isinstance(x, DataObject):
             return [x.data]
         elif not flat_array or x_type.major == 'scalar':

@@ -5,6 +5,14 @@ import numpy as np
 from src.beam import resource
 
 
+def get_name():
+    from beam.core import Processor
+
+    abcd = Processor()
+
+    print(abcd.name)
+
+
 def beam_data_slice():
 
     from src.beam import BeamData
@@ -262,6 +270,8 @@ if __name__ == '__main__':
 
     # load_algorithm()
 
-    beam_data_slice()
+    # beam_data_slice()
+
+    get_name()
 
     print('done')

@@ -3,7 +3,7 @@ import pickle
 from argparse import Namespace
 import io
 from ..path import beam_path, normalize_host
-from ..utils import retrieve_name, lazy_property, check_type
+from ..utils import retrieve_name, lazy_property, check_type, MetaInitIsDoneVerifier
 from ..config import BeamConfig
 
 try:
@@ -13,7 +13,7 @@ except ImportError:
     has_beam_ds = False
 
 
-class BeamBase:
+class BeamBase(metaclass=MetaInitIsDoneVerifier):
 
     def __init__(self, *args, name=None, **kwargs):
 
@@ -33,7 +33,7 @@ class BeamBase:
 
     @lazy_property
     def name(self):
-        if self._name is None:
+        if self._name is None and hasattr(self, '_init_is_done'):
             self._name = retrieve_name(self)
         return self._name
 

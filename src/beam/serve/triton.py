@@ -2,7 +2,7 @@ from collections import defaultdict
 from functools import partial
 
 from ..core import Processor
-from ..utils import lazy_property, as_numpy, check_type, as_tensor, MetaInitIsDoneVerifier
+from ..utils import lazy_property, as_numpy, check_type, as_tensor
 
 triton_to_numpy_dtype_dict = {
     'BOOL': 'bool',
@@ -23,7 +23,7 @@ triton_to_numpy_dtype_dict = {
 }
 
 
-class TritonClient(Processor, metaclass=MetaInitIsDoneVerifier):
+class TritonClient(Processor):
 
     def __init__(self, scheme='http', host='localhost', port=8000, model_name=None, model_version=None,
                  verbose=False, concurrency=1, connection_timeout=60.0, network_timeout=60.,
@@ -145,7 +145,7 @@ class TritonClient(Processor, metaclass=MetaInitIsDoneVerifier):
 
     def __getattr__(self, item):
 
-        if item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+        if item == '_init_is_done' or not hasattr(self, '_init_is_done'):
             return super().__getattr__(item)
 
         if self.model_name is None:

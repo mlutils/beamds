@@ -106,7 +106,7 @@ class CeleryDispatcher(MetaDispatcher):
             return res.value
 
     def __getattr__(self, item):
-        if item.startswith('_') or item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+        if item.startswith('_') or item == '_init_is_done' or not hasattr(self, '_init_is_done'):
             return object.__getattribute__(self, item)
         return partial(self.dispatch, item)
 

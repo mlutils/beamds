@@ -463,10 +463,10 @@ class BeamDDP(DDP):
 
     def __init__(self, module, *args, **kwargs):
         super().__init__(module, *args, **kwargs)
-        self.init_is_done = True
+        self._init_is_done = True
 
     def __getattr__(self, item):
-        if item.startswith('_') or item == 'init_is_done' or not hasattr(self, 'init_is_done'):
+        if item.startswith('_') or item == '_init_is_done' or not hasattr(self, '_init_is_done'):
             return super().__getattr__(item)
         return getattr(self.module, item)
 
