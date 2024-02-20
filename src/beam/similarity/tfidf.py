@@ -25,7 +25,10 @@ class ChunkTF(Transformer):
         from ..utils import beam_device
         return beam_device(self._device)
 
-    def transform_callback(self, x, tokens=None, binary=False, **kwargs):
+    def transform_callback(self, x, tokens=None, binary=False, max_token=None, **kwargs):
+
+        if max_token is None:
+            max_token = np.max(list(tokens))
 
         values = []
         ind_ptrs = [0]
@@ -51,11 +54,11 @@ class ChunkTF(Transformer):
         if self.sparse_framework == 'torch':
             ind_ptrs = torch.cumsum(torch.tensor(ind_ptrs, device=self.device), dim=0)
             y = torch.sparse_csr_tensor(ind_ptrs, torch.cat(cols), torch.cat(values), device=self.device,
-                                        size=(len(x), len(tokens)))
+                                        size=(len(x), max_token + 1))
         else:
             ind_ptrs = np.cumsum(ind_ptrs)
             y = sp.csr_matrix((np.concatenate(values), np.concatenate(cols), ind_ptrs),
-                              shape=(len(x), len(tokens)))
+                              shape=(len(x), max_token + 1))
 
         return y
 
@@ -114,9 +117,10 @@ class TFIDF(Processor):
         mp_method = self.get_hparam('mp_method', mp_method)
 
         self.chunk_tf = ChunkTF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
-                                squeeze=False, reduce=False)
+                                squeeze=False, reduce=False, sparse_framework=self.sparse_framework, device=self.device,
+                                preprocessor=self.preprocessor)
         self.chunk_df = ChunkDF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
-                                squeeze=False, reduce=False)
+                                squeeze=False, reduce=False, preprocessor=self.preprocessor)
 
     @staticmethod
     def default_preprocessor(x):
@@ -136,6 +140,7 @@ class TFIDF(Processor):
         crow_indices = []
         col_indices = []
         values = []
+        n = 0
         for xi in x:
             indptr = xi.crow_indices()
             if len(crow_indices) > 0:
@@ -144,13 +149,15 @@ class TFIDF(Processor):
                 crow_indices.append(indptr)
             col_indices.append(xi.col_indices())
             values.append(xi.values())
+            n += len(xi)
             
-        return torch.sparse_csr_tensor(torch.cat(crow_indices), torch.cat(col_indices), torch.cat(values))
+        return torch.sparse_csr_tensor(torch.cat(crow_indices), torch.cat(col_indices), torch.cat(values),
+                                       size=(n, xi.shape[-1]), device=self.device)
 
     def term_frequencies(self, x, tokens=None, **kwargs):
         if tokens is None:
             tokens = self.tokens
-        chunks = self.chunk_tf.transform(x, tokens=tokens, **kwargs)
+        chunks = self.chunk_tf.transform(x, tokens=tokens, max_token=self.max_token, **kwargs)
         if self.sparse_framework == 'torch':
             return self.vstack_csr_tensors(chunks)
         else:
@@ -158,19 +165,28 @@ class TFIDF(Processor):
 
     def bm25(self, q, k1=1.5, b=0.75):
         q_tf = self.term_frequencies(q, binary=True)
-        len_norm = (1 - b) + b * self.doc_len / self.avg_doc_len
-        bm25_tf = self.tf * (k1 + 1) / (self.tf + k1 * len_norm.unsqueeze(1))
+        len_norm_values = (1 - b) + (b / self.avg_doc_len) * self.doc_len_sparse.values()
+        if self.sparse_framework == 'torch':
+            bm25_tf_values = self.tf.values() * (k1 + 1) / (self.tf.values() + k1 * len_norm_values)
+            bm25_tf = torch.sparse_csr_tensor(self.tf.crow_indices(), self.tf.col_indices(), bm25_tf_values,
+                                              size=self.tf.shape, device=self.device)
+        else:
+            bm25_tf = self.tf.multiply((k1 + 1) / (self.tf + k1 * len_norm_values))
 
         idf = self.idf_bm25
 
         if self.sparse_framework == 'torch':
-            idf = torch.cat([idf] * len(q_tf))
+            idf = self.vstack_csr_tensors([idf] * len(q_tf))
         else:
             idf = sp.vstack([idf] * len(q_tf))
 
         q_idf = q_tf * idf
 
-        scores = q_idf.multiply(bm25_tf)
+        if self.sparse_framework == 'torch':
+            scores = torch.matmul(bm25_tf, q_idf.to_dense().T).T
+        else:
+            scores = q_idf.multiply(bm25_tf)
+
         return scores
 
     def transform(self, x: Union[List, List[List], BeamData], index=Union[None, List[int]]):
@@ -214,7 +230,8 @@ class TFIDF(Processor):
         self.cf = Counter()
         self.n_docs = 0
         self.tf = None
-        self.clear_cache('idf', 'tokens', 'n_tokens', 'avg_doc_len', 'idf_bm25', 'doc_len')
+        self.clear_cache('idf', 'tokens', 'n_tokens', 'avg_doc_len', 'idf_bm25', 'doc_len', 'doc_len_sparse',
+                         'max_token')
 
     @lazy_property
     def tokens(self):
@@ -247,13 +264,29 @@ class TFIDF(Processor):
         return self.calculate_idf(version='bm25')
 
     @lazy_property
+    def max_token(self):
+        return max(list(self.df.keys()))
+
+    @lazy_property
     def doc_len(self):
         if self.sparse_framework == 'torch':
-            doc_lengths = self.tf.sum(dim=1, keepdim=True).values()
+            doc_lengths = self.tf.sum(dim=1, keepdim=True).to_dense().squeeze(-1)
         else:
             doc_lengths = self.tf.sum(axis=1).toarray()
 
         return doc_lengths
+
+    @lazy_property
+    def doc_len_sparse(self):
+        if self.sparse_framework == 'torch':
+            repeats = self.tf.crow_indices().diff()
+            values = torch.repeat_interleave(self.doc_len, repeats, dim=0)
+            return torch.sparse_csr_tensor(self.tf.crow_indices(), self.tf.col_indices(), values,
+                                           size=self.tf.shape, device=self.device)
+        else:
+            repeats = np.diff(self.tf.indptr)
+            values = np.repeat(self.doc_len, repeats)
+            return sp.csr_matrix((values, self.tf.indices, self.tf.indptr))
 
     def calculate_idf(self, version='standard'):
         """Calculate the inverse document frequency (IDF) vector.
@@ -288,9 +321,9 @@ class TFIDF(Processor):
             raise ValueError(f"Unknown version: {version}")
 
         if self.sparse_framework == 'torch':
-            idf = torch.sparse_csr_tensor(indptr, col_indices, values, size=(1, self.n_tokens), device=self.device)
+            idf = torch.sparse_csr_tensor(indptr, col_indices, values, size=(1, self.max_token+1), device=self.device)
         else:
-            idf = sp.csr_matrix((values, col_indices, indptr), shape=(1, self.n_tokens))
+            idf = sp.csr_matrix((values, col_indices, indptr), shape=(1, self.max_token+1))
 
         return idf
 
