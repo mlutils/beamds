@@ -1,3 +1,4 @@
+from functools import partial
 from typing import List, Union
 
 import numpy as np
@@ -25,8 +26,20 @@ class ChunkTF(Transformer):
         from ..utils import beam_device
         return beam_device(self._device)
 
-    def transform_callback(self, x, tokens=None, binary=False, max_token=None, **kwargs):
+    def transform_callback(self, x, tokens=None, scheme='term_frequency', max_token=None, k=0.5, **kwargs):
+        """
 
+        Args:
+            k:
+            x:
+            tokens:
+            scheme: can be ['binary', 'term_frequencies', 'log_normalization', 'raw_count', 'double_normalization']
+            max_token:
+            **kwargs:
+
+        Returns:
+
+        """
         if max_token is None:
             max_token = np.max(list(tokens))
 
@@ -36,7 +49,7 @@ class ChunkTF(Transformer):
 
         for xi in x:
             xi = self.preprocessor(xi)
-            if binary:
+            if scheme == 'binary':
                 xi = list(set(xi))
             c = Counter(xi)
             c = Counter({k: v for k, v in c.items() if k in tokens})
@@ -44,20 +57,39 @@ class ChunkTF(Transformer):
             ind_ptrs.append(len(c))
             if self.sparse_framework == 'torch':
 
-                values.append(torch.tensor(list(c.values()), dtype=torch.float32, device=self.device))
+                v = torch.tensor(list(c.values()), dtype=torch.float32, device=self.device)
+                if scheme in ['term_frequencies', 'log_normalization']:
+                    v = v / v.sum()
+                elif scheme == 'double_normalization':
+                    v = k + (1 - k) * v / v.max()
+
+                values.append(v)
                 cols.append(torch.tensor(list(c.keys()), dtype=torch.int64, device=self.device))
 
             else:
                 cols.append(np.array(list(c.keys())))
-                values.append(np.array(list(c.values())))
+
+                v = np.array(list(c.values()))
+                if scheme in ['term_frequencies', 'log_normalization']:
+                    v = v / v.sum()
+                elif scheme == 'double_normalization':
+                    v = k + (1 - k) * v / v.max()
+
+                values.append(v)
 
         if self.sparse_framework == 'torch':
             ind_ptrs = torch.cumsum(torch.tensor(ind_ptrs, dtype=torch.int64, device=self.device), dim=0)
-            y = torch.sparse_csr_tensor(ind_ptrs, torch.cat(cols), torch.cat(values), device=self.device,
+            values = torch.cat(values)
+            if scheme == 'log_normalization':
+                values = torch.log1p(values)
+            y = torch.sparse_csr_tensor(ind_ptrs, torch.cat(cols), values, device=self.device,
                                         size=(len(x), max_token + 1))
         else:
             ind_ptrs = np.cumsum(ind_ptrs)
-            y = sp.csr_matrix((np.concatenate(values), np.concatenate(cols), ind_ptrs),
+            values = np.concatenate(values)
+            if scheme == 'log_normalization':
+                values = np.log1p(values)
+            y = sp.csr_matrix((values, np.concatenate(cols), ind_ptrs),
                               shape=(len(x), max_token + 1))
 
         return y
@@ -154,25 +186,23 @@ class TFIDF(Processor):
         return torch.sparse_csr_tensor(torch.cat(crow_indices), torch.cat(col_indices), torch.cat(values),
                                        size=(n, xi.shape[-1]), device=self.device)
 
-    def term_frequencies(self, x, tokens=None, binary=False, sublinear_tf=None, **kwargs):
+    def term_frequencies(self, x, tokens=None, scheme=None, **kwargs):
         if tokens is None:
             tokens = self.tokens
-        if sublinear_tf is None:
-            sublinear_tf = self.sublinear_tf
-        if binary:
-            sublinear_tf = False
-        chunks = self.chunk_tf.transform(x, tokens=tokens, max_token=self.max_token, binary=binary, **kwargs)
+
+        if scheme is None:
+            scheme = 'term_frequencies' if not self.sublinear_tf else 'log_normalization'
+
+        chunks = self.chunk_tf.transform(x, tokens=tokens, max_token=self.max_token, scheme=scheme, **kwargs)
         if self.sparse_framework == 'torch':
             vectors = self.vstack_csr_tensors(chunks)
-            vectors = torch.log1p(vectors) if sublinear_tf else vectors
         else:
             vectors = sp.vstack(chunks)
-            vectors = sp.csr_matrix((np.log1p(vectors.data),
-                                     vectors.indices, vectors.indptr), shape=vectors.shape) if sublinear_tf else vectors
+
         return vectors
 
     def bm25(self, q, k1=1.5, b=0.75, epsilon=.25):
-        q_tf = self.term_frequencies(q, binary=False)
+        q_tf = self.term_frequencies(q, scheme='raw_counts')
         if self.sparse_framework == 'torch':
             len_norm_values = (1 - b) + (b / self.avg_doc_len) * self.doc_len_sparse.values()
             bm25_tf_values = self.tf.values() * (k1 + 1) / (self.tf.values() + k1 * len_norm_values)
@@ -268,10 +298,10 @@ class TFIDF(Processor):
         else:
             idf_version = 'unary'
 
-        return self.calculate_idf(version=idf_version)
+        return self.calculate_idf(scheme=idf_version)
 
     def idf_bm25(self, epsilon=.25):
-        return self.calculate_idf(version='bm25', epsilon=epsilon)
+        return self.calculate_idf(scheme='bm25', epsilon=epsilon)
 
     @lazy_property
     def max_token(self):
@@ -298,7 +328,7 @@ class TFIDF(Processor):
             values = np.repeat(self.doc_len, repeats)
             return sp.csr_matrix((values, self.tf.indices, self.tf.indptr), shape=self.tf.shape)
 
-    def calculate_idf(self, version='standard', epsilon=.25, okapi=True):
+    def calculate_idf(self, scheme='standard', epsilon=.25, okapi=True):
         """Calculate the inverse document frequency (IDF) vector.
         version: str, default='standard' [standard, smooth, unary, bm25]
         """
@@ -311,27 +341,27 @@ class TFIDF(Processor):
             ones_like = torch.ones_like
             framework_kwargs = {'device': self.device, 'dtype': torch.float32}
             array = torch.tensor
-            clamp = torch.clamp
+            clamp = partial(torch.clamp, max=None)
         else:
             col_indices = np.array(list(self.df.keys()))
             log = np.log
             ones_like = np.ones_like
             framework_kwargs = {}
             array = np.array
-            clamp = np.clip
+            clamp = partial(np.clip, a_max=None)
 
         nq = array(list(self.df.values()), **framework_kwargs)
-        if version == 'standard':
+        if scheme == 'standard':
             values = log(n_docs / nq)
-        elif version == 'smooth':
+        elif scheme == 'smooth':
             values = log(n_docs / (nq + 1)) + 1
-        elif version == 'unary':
+        elif scheme == 'unary':
             values = ones_like(col_indices, **framework_kwargs)
-        elif version == 'bm25':
+        elif scheme == 'bm25':
             idf = log((n_docs - nq + .5) / (nq + .5) + (1 - int(okapi)))
             values = clamp(idf, epsilon * idf.mean())
         else:
-            raise ValueError(f"Unknown version: {version}")
+            raise ValueError(f"Unknown version: {scheme}")
 
         if self.sparse_framework == 'torch':
             idf = torch.sparse_csr_tensor(indptr, col_indices, values, size=(1, self.max_token+1), device=self.device)

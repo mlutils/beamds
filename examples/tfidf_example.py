@@ -26,20 +26,26 @@ if __name__ == '__main__':
 
     x_str = [' '.join([str(i) for i in xi]) for xi in x]
 
-    # with Timer(name='TfidfVectorizer.fit_transform', logger=logger) as t:
-    #     tfidf = TfidfVectorizer()
-    #     vectors = tfidf.fit_transform(x_str)
-    #
-    #     logger.info(f"Transformed data: {vectors.shape}")
+    with Timer(name='TfidfVectorizer.fit_transform', logger=logger) as t:
+        tfidf = TfidfVectorizer()
+        vectors = tfidf.fit_transform(x_str)
+
+        logger.info(f"Transformed data: {vectors.shape}")
+        logger.critical(f"1x2: {(vectors[0].toarray() * vectors[1].toarray()).sum()}")
 
     with Timer(name='BeamTFIDF.fit_transform', logger=logger) as t:
         # Create a TFIDF model
-        tfidf = TFIDF(sparse_framework='torch', device=0)
+        tfidf = TFIDF(sparse_framework='scipy', device=0)
 
         # Fit the model
         vectors = tfidf.fit_transform(x, index)
 
         logger.info(f"Transformed data: {vectors.shape}")
+
+        try:
+            logger.critical(f"1x2: {(vectors[0].to_dense() * vectors[1].to_dense()).sum()}")
+        except AttributeError:
+            logger.critical(f"1x2: {(vectors[0].toarray() * vectors[1].toarray()).sum()}")
 
     with Timer(name='BeamTFIDF.bm25', logger=logger) as t:
         # Transform the test data
