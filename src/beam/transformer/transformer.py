@@ -334,19 +334,19 @@ class Transformer(Processor):
 
         #TODO: refactor from this part and on to match the new SyncedResults object
 
-        exceptions = [{'exception': xi, 'task': queue.queue[i]} for i, (_, xi) in enumerate(synced_results.exceptions)
-                      if isinstance(xi, Exception)]
+        exceptions = []
+        for i, (_, v) in enumerate(iter_container(synced_results.exceptions)):
+            exceptions.append({'exception': v, 'task': queue.queue[i]})
 
         if len(exceptions) > 0:
             logger.error(f"Transformer {self.name} had {len(exceptions)} exceptions during operation.")
             logger.info("Failed tasks can be obtained in self.exceptions")
             self.exceptions = exceptions
 
-        if isinstance(synced_results.values, dict):
-            results = [synced_results.values[k] for k in sorted(synced_results.values.keys())]
-            results = [xi for xi in results if not isinstance(xi, Exception)]
-        else:
-            results = [xi for xi in synced_results.values if not isinstance(xi, Exception)]
+        results = []
+        for _, v in iter_container(synced_results.values):
+            if not isinstance(v, Exception):
+                results.append(v)
 
         if is_chunk:
             values = [xi[1] for xi in results]

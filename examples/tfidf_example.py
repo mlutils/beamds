@@ -26,15 +26,15 @@ if __name__ == '__main__':
 
     x_str = [' '.join([str(i) for i in xi]) for xi in x]
 
-    with Timer(name='TfidfVectorizer.fit_transform', logger=logger) as t:
-        tfidf = TfidfVectorizer()
-        vectors = tfidf.fit_transform(x_str)
-
-        logger.info(f"Transformed data: {vectors.shape}")
+    # with Timer(name='TfidfVectorizer.fit_transform', logger=logger) as t:
+    #     tfidf = TfidfVectorizer()
+    #     vectors = tfidf.fit_transform(x_str)
+    #
+    #     logger.info(f"Transformed data: {vectors.shape}")
 
     with Timer(name='BeamTFIDF.fit_transform', logger=logger) as t:
         # Create a TFIDF model
-        tfidf = TFIDF()
+        tfidf = TFIDF(sparse_framework='torch', device=0)
 
         # Fit the model
         vectors = tfidf.fit_transform(x, index)

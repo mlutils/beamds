@@ -27,3 +27,4 @@ smbprotocol[smb2]
 sentence_transformers
 polars
 rho-pysparnn
+fastbm25

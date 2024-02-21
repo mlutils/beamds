@@ -44,15 +44,15 @@ class ChunkTF(Transformer):
             ind_ptrs.append(len(c))
             if self.sparse_framework == 'torch':
 
-                values.append(torch.FloatTensor(list(c.values()), device=self.device))
-                cols.append(torch.LongTensor(list(c.keys()), device=self.device))
+                values.append(torch.tensor(list(c.values()), dtype=torch.float32, device=self.device))
+                cols.append(torch.tensor(list(c.keys()), dtype=torch.int64, device=self.device))
 
             else:
                 cols.append(np.array(list(c.keys())))
                 values.append(np.array(list(c.values())))
 
         if self.sparse_framework == 'torch':
-            ind_ptrs = torch.cumsum(torch.tensor(ind_ptrs, device=self.device), dim=0)
+            ind_ptrs = torch.cumsum(torch.tensor(ind_ptrs, dtype=torch.int64, device=self.device), dim=0)
             y = torch.sparse_csr_tensor(ind_ptrs, torch.cat(cols), torch.cat(values), device=self.device,
                                         size=(len(x), max_token + 1))
         else:
@@ -154,38 +154,48 @@ class TFIDF(Processor):
         return torch.sparse_csr_tensor(torch.cat(crow_indices), torch.cat(col_indices), torch.cat(values),
                                        size=(n, xi.shape[-1]), device=self.device)
 
-    def term_frequencies(self, x, tokens=None, **kwargs):
+    def term_frequencies(self, x, tokens=None, binary=False, sublinear_tf=None, **kwargs):
         if tokens is None:
             tokens = self.tokens
-        chunks = self.chunk_tf.transform(x, tokens=tokens, max_token=self.max_token, **kwargs)
+        if sublinear_tf is None:
+            sublinear_tf = self.sublinear_tf
+        if binary:
+            sublinear_tf = False
+        chunks = self.chunk_tf.transform(x, tokens=tokens, max_token=self.max_token, binary=binary, **kwargs)
         if self.sparse_framework == 'torch':
-            return self.vstack_csr_tensors(chunks)
+            vectors = self.vstack_csr_tensors(chunks)
+            vectors = torch.log1p(vectors) if sublinear_tf else vectors
         else:
-            return sp.vstack(chunks)
+            vectors = sp.vstack(chunks)
+            vectors = sp.csr_matrix((np.log1p(vectors.data),
+                                     vectors.indices, vectors.indptr), shape=vectors.shape) if sublinear_tf else vectors
+        return vectors
 
-    def bm25(self, q, k1=1.5, b=0.75):
-        q_tf = self.term_frequencies(q, binary=True)
-        len_norm_values = (1 - b) + (b / self.avg_doc_len) * self.doc_len_sparse.values()
+    def bm25(self, q, k1=1.5, b=0.75, epsilon=.25):
+        q_tf = self.term_frequencies(q, binary=False)
         if self.sparse_framework == 'torch':
+            len_norm_values = (1 - b) + (b / self.avg_doc_len) * self.doc_len_sparse.values()
             bm25_tf_values = self.tf.values() * (k1 + 1) / (self.tf.values() + k1 * len_norm_values)
             bm25_tf = torch.sparse_csr_tensor(self.tf.crow_indices(), self.tf.col_indices(), bm25_tf_values,
                                               size=self.tf.shape, device=self.device)
         else:
-            bm25_tf = self.tf.multiply((k1 + 1) / (self.tf + k1 * len_norm_values))
+            len_norm_values = (1 - b) + (b / self.avg_doc_len) * self.doc_len_sparse.data
+            bm25_tf_values = self.tf.data * (k1 + 1) / (self.tf.data + k1 * len_norm_values)
+            bm25_tf = sp.csr_matrix((bm25_tf_values, self.tf.indices, self.tf.indptr), shape=self.tf.shape)
 
-        idf = self.idf_bm25
+        idf = self.idf_bm25(epsilon=epsilon)
 
         if self.sparse_framework == 'torch':
             idf = self.vstack_csr_tensors([idf] * len(q_tf))
         else:
-            idf = sp.vstack([idf] * len(q_tf))
-
-        q_idf = q_tf * idf
+            idf = sp.vstack([idf] * q_tf.shape[0])
 
         if self.sparse_framework == 'torch':
+            q_idf = q_tf * idf
             scores = torch.matmul(bm25_tf, q_idf.to_dense().T).T
         else:
-            scores = q_idf.multiply(bm25_tf)
+            q_idf = q_tf.multiply(idf)
+            scores = q_idf @ bm25_tf.T
 
         return scores
 
@@ -219,10 +229,11 @@ class TFIDF(Processor):
 
         if self.sparse_framework == 'torch':
             idf = self.vstack_csr_tensors([self.idf] * len(tfs))
+            tfidf = tfs * idf
         else:
-            idf = sp.vstack([self.idf] * len(tfs))
+            idf = sp.vstack([self.idf] * tfs.shape[0])
+            tfidf = tfs.multiply(idf)
 
-        tfidf = tfs * idf
         return tfidf
 
     def reset(self):
@@ -259,9 +270,8 @@ class TFIDF(Processor):
 
         return self.calculate_idf(version=idf_version)
 
-    @lazy_property
-    def idf_bm25(self):
-        return self.calculate_idf(version='bm25')
+    def idf_bm25(self, epsilon=.25):
+        return self.calculate_idf(version='bm25', epsilon=epsilon)
 
     @lazy_property
     def max_token(self):
@@ -272,7 +282,7 @@ class TFIDF(Processor):
         if self.sparse_framework == 'torch':
             doc_lengths = self.tf.sum(dim=1, keepdim=True).to_dense().squeeze(-1)
         else:
-            doc_lengths = self.tf.sum(axis=1).toarray()
+            doc_lengths = np.array(self.tf.sum(axis=1))
 
         return doc_lengths
 
@@ -286,9 +296,9 @@ class TFIDF(Processor):
         else:
             repeats = np.diff(self.tf.indptr)
             values = np.repeat(self.doc_len, repeats)
-            return sp.csr_matrix((values, self.tf.indices, self.tf.indptr))
+            return sp.csr_matrix((values, self.tf.indices, self.tf.indptr), shape=self.tf.shape)
 
-    def calculate_idf(self, version='standard'):
+    def calculate_idf(self, version='standard', epsilon=.25, okapi=True):
         """Calculate the inverse document frequency (IDF) vector.
         version: str, default='standard' [standard, smooth, unary, bm25]
         """
@@ -296,17 +306,19 @@ class TFIDF(Processor):
         indptr = [0, len(self.df)]
 
         if self.sparse_framework == 'torch':
-            col_indices = torch.LongTensor(list(self.df.keys()), device=self.device)
+            col_indices = torch.tensor(list(self.df.keys()), dtype=torch.int64, device=self.device)
             log = torch.log
             ones_like = torch.ones_like
-            framework_kwargs = {'device': self.device}
-            array = torch.FloatTensor
+            framework_kwargs = {'device': self.device, 'dtype': torch.float32}
+            array = torch.tensor
+            clamp = torch.clamp
         else:
             col_indices = np.array(list(self.df.keys()))
             log = np.log
             ones_like = np.ones_like
             framework_kwargs = {}
             array = np.array
+            clamp = np.clip
 
         nq = array(list(self.df.values()), **framework_kwargs)
         if version == 'standard':
@@ -316,7 +328,8 @@ class TFIDF(Processor):
         elif version == 'unary':
             values = ones_like(col_indices, **framework_kwargs)
         elif version == 'bm25':
-            values = log((n_docs - nq + .5) / (nq + .5)) + 1
+            idf = log((n_docs - nq + .5) / (nq + .5) + (1 - int(okapi)))
+            values = clamp(idf, epsilon * idf.mean())
         else:
             raise ValueError(f"Unknown version: {version}")
 
