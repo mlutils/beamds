@@ -1,7 +1,9 @@
 from src.beam.similarity import TFIDF
 from sklearn.datasets import fetch_20newsgroups
+from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers import AutoTokenizer
-from beam import beam_logger as logger
+from src.beam import beam_logger as logger
+from src.beam.utils import Timer
 
 
 if __name__ == '__main__':
@@ -22,14 +24,26 @@ if __name__ == '__main__':
     q = tokenizer(newsgroups_test.data)["input_ids"]
     index = newsgroups_train['target_names']
 
-    # Create a TFIDF model
-    tfidf = TFIDF()
+    x_str = [' '.join([str(i) for i in xi]) for xi in x]
 
-    # Fit the model
-    vectors = tfidf.fit_transform(x, index)
+    with Timer(name='TfidfVectorizer.fit_transform', logger=logger) as t:
+        tfidf = TfidfVectorizer()
+        vectors = tfidf.fit_transform(x_str)
 
-    # Transform the test data
-    scores = tfidf.bm25(q)
+        logger.info(f"Transformed data: {vectors.shape}")
+
+    with Timer(name='BeamTFIDF.fit_transform', logger=logger) as t:
+        # Create a TFIDF model
+        tfidf = TFIDF()
+
+        # Fit the model
+        vectors = tfidf.fit_transform(x, index)
+
+        logger.info(f"Transformed data: {vectors.shape}")
+
+    with Timer(name='BeamTFIDF.bm25', logger=logger) as t:
+        # Transform the test data
+        scores = tfidf.bm25(q)
 
     # Print the shape of the transformed data
     print(scores)
