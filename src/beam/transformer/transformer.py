@@ -175,35 +175,19 @@ class Transformer(Processor):
 
         return x
 
-    def transform(self, x, chunksize=None, n_chunks=None, n_workers=None, squeeze=None, mp_method=None,
-                  fit=False, path=None, split_by=None, partition=None, transform_strategy=None, cache=True, store=None,
-                  reduce=None, store_suffix=None, shuffle=None, **kwargs):
-        """
+    def transform(self, x, transform_kwargs=None, parallel_kwargs=None, **kwargs):
 
-        @param x:
-        @param chunksize:
-        @param n_chunks:
-        @param n_workers:
-        @param squeeze:
-        @param mp_method:
-        @param fit:
-        @param path:
-        @param split_by:
-        @param partition:
-        @param transform_strategy: see BeamTransformer.transform_strategy
-        @param cache: default True, cache the data before transformation if it is not cached.
-        @param store: default False, store the data after transformation if it is not stored.
-        @param kwargs:
-        @return:
-        """
-        split_by = split_by or self.split_by
-        partition = partition or self.partition
-        mp_method = mp_method or self.mp_method
-        shuffle = shuffle or self.shuffle
-        n_workers = n_workers or self.n_workers
-        store_suffix = store_suffix or self.store_suffix
-        transform_strategy = transform_strategy or self.transform_strategy
-        reduce = reduce or self.to_reduce
+        transform_kwargs = transform_kwargs or {}
+
+        split_by = transform_kwargs.pop('split_by', self.split_by)
+        partition = transform_kwargs.pop('partition', self.partition)
+        mp_method = transform_kwargs.pop('mp_method', self.mp_method)
+        shuffle = transform_kwargs.pop('shuffle', self.shuffle)
+        n_workers = transform_kwargs.pop('n_workers', self.n_workers)
+        store_suffix = transform_kwargs.pop('store_suffix', self.store_suffix)
+        transform_strategy = transform_kwargs.pop('transform_strategy', self.transform_strategy)
+        reduce = transform_kwargs.pop('reduce', self.to_reduce)
+        parallel_kwargs = parallel_kwargs or {}
 
         reduce_dim = self.reduce_dim
 
@@ -212,14 +196,17 @@ class Transformer(Processor):
                            f'The split_by is set to "key".')
             split_by = 'keys'
 
-        path = path or self.store_path
-        store = store or (path is not None)
+        path = transform_kwargs.pop('path', self.store_path)
+        store = transform_kwargs.pop('store', (path is not None))
 
         logger.info(f"Starting transformer process: {self.name}")
 
         if is_empty(x):
             return x
 
+        chunksize = transform_kwargs.pop('chunksize', self.chunksize)
+        n_chunks = transform_kwargs.pop('n_chunks', self.n_chunks)
+        squeeze = transform_kwargs.pop('squeeze', self.squeeze)
         if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
             n_chunks = self.n_chunks
@@ -276,7 +263,7 @@ class Transformer(Processor):
             logger.info(f"Storing transformed chunks of data in: {path}")
 
         queue = BeamParallel(n_workers=n_workers, func=None, method=mp_method, name=self.name,
-                             progressbar='beam', reduce=False, reduce_dim=reduce_dim, **kwargs)
+                             progressbar='beam', reduce=False, reduce_dim=reduce_dim, **parallel_kwargs)
 
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")
@@ -298,12 +285,11 @@ class Transformer(Processor):
                         chunk_path = f"{chunk_path}{store_suffix}"
                     # chunk_path = chunk_path.as_uri()
 
-                queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, fit=fit, store_path=chunk_path,
-                                   cache=cache, store=store_chunk, name=k, metadata=f"{self.name}",
-                                   **kwargs))
+                queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
+                                   store=store_chunk, name=k, metadata=f"{self.name}", **kwargs))
 
         else:
-            queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, fit=fit, cache=cache,
+            queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk,
                                store=store_chunk, name=self.name, **kwargs))
 
         logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "

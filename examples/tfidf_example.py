@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     with Timer(name='BeamTFIDF.fit_transform', logger=logger) as t:
         # Create a TFIDF model
-        tfidf = TFIDF(sparse_framework='torch', device=0, n_workers=10, n_chunks=10)
+        tfidf = TFIDF(sparse_framework='torch', device=0, n_workers=1)
 
         # Fit the model
         vectors = tfidf.fit_transform(x, index)
