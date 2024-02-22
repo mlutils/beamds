@@ -18,10 +18,10 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
     logger.info(f"Tokenizing data: newsgroups_train")
-    x = tokenizer(newsgroups_train.data)["input_ids"]
+    x = tokenizer(newsgroups_train.data, add_special_tokens=False)["input_ids"]
 
     logger.info(f"Tokenizing data: newsgroups_test")
-    q = tokenizer(newsgroups_test.data)["input_ids"]
+    q = tokenizer(newsgroups_test.data, add_special_tokens=False)["input_ids"]
     index = newsgroups_train['target_names']
 
     x_str = [' '.join([str(i) for i in xi]) for xi in x]
@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     with Timer(name='BeamTFIDF.fit_transform', logger=logger) as t:
         # Create a TFIDF model
-        tfidf = TFIDF(sparse_framework='scipy', device=0)
+        tfidf = TFIDF(sparse_framework='torch', device=0, n_workers=10, n_chunks=10)
 
         # Fit the model
         vectors = tfidf.fit_transform(x, index)

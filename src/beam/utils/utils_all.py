@@ -1085,7 +1085,7 @@ def dict_to_list(x, convert_str=True):
     x_type = check_type(x)
 
     if not x:
-        return x
+        return []
 
     if x_type.minor != 'dict':
         return x

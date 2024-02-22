@@ -247,6 +247,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
     if n_chunks is not None and hasattr(x, '__len__'):
         n_chunks = min(len(x), n_chunks)
+        chunksize = len(x) // n_chunks
 
     if x_type.major == 'array':
 

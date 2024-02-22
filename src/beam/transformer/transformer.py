@@ -104,11 +104,8 @@ class Transformer(Processor):
 
     def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None, split_by=None, partition=None):
 
-        if split_by is None:
-            split_by = self.split_by
-
-        if partition is None:
-            partition = self.partition
+        split_by = split_by or self.split_by
+        partition = partition or self.partition
 
         if (chunksize is None) and (n_chunks is None):
             chunksize = self.chunksize
@@ -199,29 +196,14 @@ class Transformer(Processor):
         @param kwargs:
         @return:
         """
-        if split_by is None:
-            split_by = self.split_by
-
-        if partition is None:
-            partition = self.partition
-
-        if mp_method is None:
-            mp_method = self.mp_method
-
-        if shuffle is None:
-            shuffle = self.shuffle
-
-        if n_workers is None:
-            n_workers = self.n_workers
-
-        if store_suffix is None:
-            store_suffix = self.store_suffix
-
-        if transform_strategy is None:
-            transform_strategy = self.transform_strategy
-
-        if reduce is None:
-            reduce = self.to_reduce
+        split_by = split_by or self.split_by
+        partition = partition or self.partition
+        mp_method = mp_method or self.mp_method
+        shuffle = shuffle or self.shuffle
+        n_workers = n_workers or self.n_workers
+        store_suffix = store_suffix or self.store_suffix
+        transform_strategy = transform_strategy or self.transform_strategy
+        reduce = reduce or self.to_reduce
 
         reduce_dim = self.reduce_dim
 
@@ -230,11 +212,8 @@ class Transformer(Processor):
                            f'The split_by is set to "key".')
             split_by = 'keys'
 
-        if path is None:
-            path = self.store_path
-
-        if store is None:
-            store = path is not None
+        path = path or self.store_path
+        store = store or (path is not None)
 
         logger.info(f"Starting transformer process: {self.name}")
 
@@ -331,8 +310,6 @@ class Transformer(Processor):
                     f"Number of queued tasks is {len(queue)}.")
 
         synced_results = queue.run(n_workers=n_workers, method=mp_method, shuffle=shuffle)
-
-        #TODO: refactor from this part and on to match the new SyncedResults object
 
         exceptions = []
         for i, (_, v) in enumerate(iter_container(synced_results.exceptions)):

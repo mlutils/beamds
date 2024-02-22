@@ -4,7 +4,7 @@ from .resource import beam_path
 
 
 @contextmanager
-def local_copy(path, tmp_path='/tmp', as_beam_path=True, copy_changes=False, disable=None):
+def local_copy(path, tmp_path='/tmp', as_beam_path=False, copy_changes=False, disable=None):
 
     if disable is None:
         disable = path.scheme == 'file'

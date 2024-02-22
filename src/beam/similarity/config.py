@@ -29,6 +29,7 @@ class TFIDFConfig(TransformerConfig):
         BeamParam('smooth_idf', bool, True, 'smooth inverse document frequency'),
         BeamParam('sublinear_tf', bool, False, 'apply sublinear term frequency scaling'),
         BeamParam('sparse_framework', str, 'torch', 'sparse framework, can be "torch" or "scipy"'),
-        BeamParam('sparse_layout', str, 'coo', 'sparse layout, can be "coo" or "csr"')
+        BeamParam('sparse_layout', str, 'coo', 'sparse layout, can be "coo" or "csr"'),
+        BeamParam('norm', str, 'l2', 'Each output row will have unit norm, either [l1, l2, none]'),
     ]
 

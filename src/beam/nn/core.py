@@ -410,7 +410,7 @@ class BeamNN(nn.Module, Processor):
         network = builder.create_network()
         parser = trt.OnnxParser(network, TRT_LOGGER)
 
-        with local_copy(path) as tmp_path:
+        with local_copy(path, as_beam_path=True) as tmp_path:
             # Parse the model to create a network.
             parser.parse(tmp_path.read())
             # Build the engine
