@@ -3,7 +3,6 @@ from ..core import Processor
 from ..utils import lazy_property
 from kubernetes import client, config
 from kubernetes.client import Configuration
-from kubernetes.client import V1Ingress, V1IngressSpec, V1IngressRule, V1HTTPIngressRuleValue, V1HTTPIngressPath, V1IngressBackend, V1ServiceBackendPort, V1IngressTLS, V1ObjectMeta
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
 from dataclasses import dataclass
@@ -24,6 +23,15 @@ class ServiceConfig:
     ingress_tls_secret: str = None  # Optional: specify a TLS secret for ingress TLS
 
 
+@dataclass
+class StorageConfig:
+    pvc_name: str
+    pvc_mount_path: str
+    create_pvc: bool = False  # Indicates whether to create a route for this service
+    pvc_size: str = '1Gi'
+    pvc_access_mode: str = 'ReadWriteMany'
+
+
 class BeamPod(Processor):
     pass
 
@@ -31,7 +39,7 @@ class BeamPod(Processor):
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None, replicas=None, labels=None, image_name=None,
-                 deployment_name=None, use_scc=False, service_configs=None, scc_name='anyuid',
+                 deployment_name=None, use_scc=False, storage_configs=None, service_configs=None, scc_name='anyuid',
                  service_type=None, *entrypoint_args, **entrypoint_envs):
         super().__init__()
         self.k8s = k8s
@@ -48,6 +56,7 @@ class BeamDeploy(Processor):
         self.use_scc = use_scc
         self.scc_name = scc_name if use_scc else None
         self.service_configs = service_configs
+        self.storage_configs = storage_configs
 
     def launch(self, replicas=None):
         if replicas is None:
@@ -55,14 +64,27 @@ class BeamDeploy(Processor):
 
         self.k8s.create_service_account(self.service_account_name, self.namespace)
 
-        if self.use_scc:
-            # Ensure the Service Account exists or create it
-            self.k8s.create_service_account(self.service_account_name, self.namespace)
-            # Add the Service Account to the specified SCC
-            self.k8s.add_scc_to_service_account(self.service_account_name, self.namespace, self.scc_name)
+        if self.storage_configs:
+            for storage_config in self.storage_configs:
+                try:
+                    self.k8s.core_v1_api.read_namespaced_persistent_volume_claim(name=storage_config.pvc_name,
+                                                                                 namespace=self.namespace)
+                    logger.info(f"PVC '{storage_config.pvc_name}' already exists in namespace '{self.namespace}'.")
+                except ApiException as e:
+                    if e.status == 404 and storage_config.create_pvc:
+                        logger.info(f"Creating PVC for storage config: {storage_config.pvc_name}")
+                        self.k8s.create_pvc(
+                            pvc_name=storage_config.pvc_name,
+                            pvc_size=storage_config.pvc_size,
+                            pvc_access_mode=storage_config.pvc_access_mode,
+                            namespace=self.namespace
+                        )
+                    else:
+                        logger.info(f"Skipping PVC creation for: {storage_config.pvc_name} as create_pvc is False")
 
         for svc_config in self.service_configs:
-            service_name = f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}"  # Unique name based on service name and port
+            # Unique name based on service name and port
+            service_name = f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}"
             self.k8s.create_service(
                 base_name=service_name,
                 namespace=self.namespace,
@@ -88,27 +110,35 @@ class BeamDeploy(Processor):
 
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 
-        deployment = self.k8s.create_deployment(image_name=self.image_name, labels=self.labels,
-                                                deployment_name=self.deployment_name, namespace=self.namespace,
-                                                project_name=self.project_name, replicas=replicas,
-                                                ports=extracted_ports,
-                                                service_account_name=self.service_account_name, *self.entrypoint_args,
-                                                **self.entrypoint_envs)
+        deployment = self.k8s.create_deployment(
+            image_name=self.image_name,
+            labels=self.labels,
+            deployment_name=self.deployment_name,
+            namespace=self.namespace,
+            project_name=self.project_name,
+            replicas=replicas,
+            ports=extracted_ports,
+            service_account_name=self.service_account_name,  # Pass this
+            storage_configs=self.storage_configs,
+            *self.entrypoint_args, **self.entrypoint_envs
+        )
 
         pod = self.k8s.apply_deployment(deployment, namespace=self.namespace)
         return BeamPod(pod)
 
 
-class BeamK8S(Processor):  # processor is a another class and the BeamK8S inherits the method of processor
+class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits the method of processor
     """BeamK8S is a class  that  provides a simple interface to the Kubernetes API."""
 
     def __init__(self, api_url=None, api_token=None, namespace=None,
-                 project_name=None, *args, **kwargs):
+                 project_name=None, use_scc=True, scc_name="anyuid", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.api_token = api_token
         self.api_url = api_url
         self.project_name = project_name
         self.namespace = namespace
+        self.use_scc = use_scc
+        self.scc_name = scc_name
 
     @lazy_property
     def core_v1_api(self):
@@ -147,18 +177,33 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             scc_obj.users.append(user_name)
             scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
 
-    @staticmethod
-    def create_container(image_name, deployment_name=None, project_name=None, ports=None, *entrypoint_args, **envs):
+    def create_container(self, image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
+                         *entrypoint_args, **envs):
         container_name = f"{project_name}-{deployment_name}-container" \
-            if project_name and deployment_name else "container"
-        if ports is None:
-            ports = []
+            if project_name and deployment_name else "default-container"
+
+        # Preparing environment variables from entrypoint_args and envs
+        env_vars = []
+        for arg in entrypoint_args:
+            env_vars.append(client.V1EnvVar(name=f"ARG_{arg}", value=str(arg)))
+        for key, value in envs.items():
+            env_vars.append(client.V1EnvVar(name=key, value=str(value)))
+
+        # Preparing volume mounts
+        volume_mounts = []
+        if pvc_mounts:
+            for mount in pvc_mounts:
+                volume_mounts.append(client.V1VolumeMount(
+                    name=mount['pvc_name'],  # Using PVC name as the volume name
+                    mount_path=mount['mount_path']  # Mount path specified in pvc_mounts
+                ))
+
         return client.V1Container(
             name=container_name,
             image=image_name,
-            ports=BeamK8S.create_container_ports(ports),
-            args=list(entrypoint_args),
-            env=BeamK8S.create_environment_variables(**envs)
+            ports=[client.V1ContainerPort(container_port=port) for port in ports] if ports else [],
+            env=env_vars,
+            volume_mounts=volume_mounts
         )
 
     @staticmethod
@@ -191,43 +236,89 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
                     raise TypeError(f"Unsupported environment variable type: {type(env_var)}")
         return env_vars
 
-    @staticmethod
-    def create_pod_template(image_name, labels=None, deployment_name=None, project_name=None,
-                            ports=None, service_account_name=None, *entrypoint_args, **envs):
-
+    def create_pod_template(self, image_name, labels=None, deployment_name=None, project_name=None,
+                            ports=None, service_account_name=None, pvc_mounts=None, entrypoint_args=None, envs=None):
         if labels is None:
             labels = {}
-        if project_name is not None:
+        if project_name:
             labels['project'] = project_name
 
-        container = BeamK8S.create_container(image_name, deployment_name=deployment_name,
-                                             project_name=project_name, ports=ports, *entrypoint_args, **envs)
+        # Ensure image_name is not included in entrypoint_args or envs
+        container = self.create_container(
+            image_name=image_name,  # Ensure this is the only place where image_name is provided
+            deployment_name=deployment_name,
+            project_name=project_name,
+            ports=ports,
+            pvc_mounts=pvc_mounts,
+            entrypoint_args=entrypoint_args,
+            envs=envs
+        )
 
-        pod_spec = client.V1PodSpec(containers=[container], service_account_name=service_account_name)
+        # Defining volumes for the pod spec based on PVC mounts
+        volumes = []
+        if pvc_mounts:
+            for mount in pvc_mounts:
+                volumes.append(client.V1Volume(
+                    name=mount['pvc_name'],  # Volume name matches the PVC name
+                    persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=mount['pvc_name'])
+                ))
+
+        pod_spec = client.V1PodSpec(
+            containers=[container],
+            service_account_name=service_account_name,
+            volumes=volumes  # Including PVC volumes here
+        )
 
         return client.V1PodTemplateSpec(
             metadata=client.V1ObjectMeta(labels=labels),
             spec=pod_spec
         )
 
+    def create_pvc(self, pvc_name, pvc_size, pvc_access_mode, namespace):
+        logger.info(f"Attempting to create PVC: {pvc_name} in namespace: {namespace}")
+        pvc_manifest = {
+            "apiVersion": "v1",
+            "kind": "PersistentVolumeClaim",
+            "metadata": {"name": pvc_name},
+            "spec": {
+                "accessModes": [pvc_access_mode],
+                "resources": {"requests": {"storage": pvc_size}}
+            }
+        }
+        self.core_v1_api.create_namespaced_persistent_volume_claim(namespace=namespace, body=pvc_manifest)
+        logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
+
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
-                               ports=None, *entrypoint_args, **envs):
+                               ports=None, service_account_name=None, storage_configs=None, *entrypoint_args, **envs):
+        # Ensure pvc_mounts are prepared correctly from storage_configs if needed
+        pvc_mounts = [{
+            'pvc_name': sc.pvc_name,
+            'mount_path': sc.pvc_mount_path
+        } for sc in storage_configs if sc.create_pvc] if storage_configs else []
 
-        if replicas is None:
-            replicas = 1
+        # Create the pod template with correct arguments
+        pod_template = self.create_pod_template(
+            image_name=image_name,
+            labels=labels,
+            deployment_name=deployment_name,
+            project_name=project_name,
+            ports=ports,
+            service_account_name=service_account_name,  # Use it here
+            pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
+            entrypoint_args=entrypoint_args,
+            envs=envs
+        )
 
-        pod_template = self.create_pod_template(image_name, labels=labels, deployment_name=deployment_name,
-                                                project_name=project_name, ports=ports,
-                                                *entrypoint_args, **envs)
+        # Create and return the deployment spec
         return client.V1DeploymentSpec(
-            logger.info(f"Replicas before conversion: {replicas}"),
-            replicas=int(replicas),  # Cast replicas to int
+            replicas=int(replicas),  # Ensure replicas is an int
             template=pod_template,
             selector={'matchLabels': pod_template.metadata.labels}
         )
 
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
-                          replicas=None, ports=None, *entrypoint_args, **envs):
+                          replicas=None, ports=None, service_account_name=None, storage_configs=None, *entrypoint_args,
+                          **envs):
         if namespace is None:
             namespace = self.namespace
 
@@ -245,9 +336,13 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
 
         deployment_name = self.generate_unique_deployment_name(deployment_name, namespace)
 
-        deployment_spec = self.create_deployment_spec(image_name, labels=labels, deployment_name=deployment_name,
-                                                      project_name=project_name, replicas=replicas, ports=ports,
-                                                      *entrypoint_args, **envs)
+        deployment_spec = self.create_deployment_spec(
+            image_name, labels=labels, deployment_name=deployment_name,
+            project_name=project_name, replicas=replicas, ports=ports,
+            service_account_name=service_account_name,  # Pass this
+            storage_configs=storage_configs,
+            *entrypoint_args, **envs
+        )
 
         # Optionally add the project name to the deployment's metadata
         deployment_metadata = client.V1ObjectMeta(name=deployment_name, namespace=namespace,
@@ -277,6 +372,8 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
                 raise  # Reraise exceptions that are not related to the deployment not existing
 
     def apply_deployment(self, deployment, namespace=None):
+        import json
+        logger.debug(json.dumps(client.ApiClient().sanitize_for_serialization(deployment), indent=2))
         logger.info(f"Deployment object to be created: {deployment}")  # Adjust logging level/method as needed
 
         if namespace is None:
@@ -357,7 +454,14 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
                     return unique_name
                 raise  # Reraise exceptions that are not related to the service not existing
 
-    def create_service_account(self, name, namespace):
+    def create_service_account(self, name, service_account_name, namespace=None):
+
+        namespace = namespace or self.namespace
+
+        if self.use_scc:
+            # Ensure the Service Account exists or create it
+            self.create_service_account(service_account_name, namespace)
+
         try:
             self.core_v1_api.read_namespaced_service_account(name, namespace)
             logger.info(f"Service Account {name} already exists in namespace {namespace}.")
@@ -411,6 +515,9 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
 
     def create_ingress(self, service_configs, default_host=None, default_path="/", default_tls_secret=None):
+        from kubernetes.client import (V1Ingress, V1IngressSpec, V1IngressRule, V1HTTPIngressRuleValue,
+                                       V1HTTPIngressPath,
+                                       V1IngressBackend, V1ServiceBackendPort, V1IngressTLS, V1ObjectMeta)
         # Initialize the NetworkingV1Api
         networking_v1_api = client.NetworkingV1Api()
 
@@ -478,10 +585,12 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             try:
                 networking_v1_api.create_namespaced_ingress(namespace=self.namespace, body=ingress)
                 logger.info(
-                    f"Ingress for service {svc_config.service_name} created successfully in namespace {self.namespace}.")
+                    f"Ingress for service {svc_config.service_name} "
+                    f"created successfully in namespace {self.namespace}.")
             except Exception as e:
                 logger.error(
-                    f"Failed to create Ingress for service {svc_config.service_name} in namespace {self.namespace}: {e}")
+                    f"Failed to create Ingress for service {svc_config.service_name} "
+                    f"in namespace {self.namespace}: {e}")
 
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []
@@ -489,7 +598,7 @@ class BeamK8S(Processor):  # processor is a another class and the BeamK8S inheri
             services = self.core_v1_api.list_namespaced_service(namespace=namespace)
             nodes = self.core_v1_api.list_node()
             node_ips = {node.metadata.name:
-                            [address.address for address in node.status.addresses if address.type == "InternalIP"][0]
+                        [address.address for address in node.status.addresses if address.type == "InternalIP"][0]
                         for node in nodes.items}
 
             for service in services.items:
