@@ -15,7 +15,7 @@ class ServiceConfig:
     service_name: str
     service_type: str
     port_name: str
-    create_route: bool = False  # Indicates whether to create a route for this service
+    create_route: bool = False  # Indicates whether to create a route for this serviceץ
     route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
     create_ingress: bool = False  # Indicates whether to create an ingress for this service
     ingress_host: str = None  # Optional: specify a host for the ingress

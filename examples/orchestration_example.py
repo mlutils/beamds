@@ -13,7 +13,7 @@ deployment_name = "bgu"
 namespace = "ben-guryon"
 replicas = 1
 entrypoint_args = ["63"]  # Container arguments
-entrypoint_envs = {"TEST": "test"}  # Container environment variables
+entrypoint_envs = {"TEST": "test"}  # Container environment variablesץ
 use_scc = True  # Pass the SCC control parameter
 storage_configs = [
     StorageConfig(pvc_name="data-pvc", pvc_mount_path="/data-pvc",
