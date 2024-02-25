@@ -1,6 +1,7 @@
 from typing import Any
 from dataclasses import dataclass
 
+from .. import BeamData
 from ..core import Processor
 
 
@@ -51,4 +52,16 @@ class BeamSimilarity(Processor):
 
     def __len__(self):
         return self.ntotal
+
+    def save_state(self, path, ext=None, **kwargs):
+        state = {attr: getattr(self, attr) for attr in self.state_attributes}
+        state['hparams'] = self.hparams
+        bd = BeamData(state, path=path)
+        bd.store(**kwargs)
+
+    def load_state(self, path, ext=None, **kwargs):
+        bd = BeamData(path=path)
+        state = bd.cache(**kwargs).values
+        for attr in self.state_attributes:
+            setattr(self, attr, state[attr])
 

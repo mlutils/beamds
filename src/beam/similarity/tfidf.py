@@ -5,10 +5,11 @@ import numpy as np
 import pandas as pd
 import torch
 
-from .. import as_numpy, BeamData
+from .. import as_numpy, BeamData, beam_path
 from ..core import Processor
 from ..transformer import Transformer
 from ..utils import check_type, as_tensor, beam_device, tqdm_beam as tqdm, lazy_property
+from .core import Similarities, BeamSimilarity
 from collections import Counter
 import scipy.sparse as sp
 
@@ -144,15 +145,19 @@ class ChunkDF(Transformer):
             return y, y_sum
 
 
-class TFIDF(Processor):
+class TFIDF(BeamSimilarity):
 
     def __init__(self, *args, preprocessor=None, min_df=None, max_df=None, max_features=None, use_idf=True,
                  smooth_idf=True, sublinear_tf=False, n_workers=0, mp_method='joblib', chunksize=None,
-                 n_chunks=None, sparse_framework='torch', device='cpu', norm='l2', **kwargs):
+                 n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
+                 metric='bm25', bm25_k1=1.5, bm25_b=0.75, bm25_epsilon=0.25, **kwargs):
 
         super().__init__(*args, min_df=min_df, max_df=max_df, max_features=max_features, use_idf=use_idf,
                          sparse_framework=sparse_framework, smooth_idf=smooth_idf, sublinear_tf=sublinear_tf,
-                         chunksize=chunksize, n_chunks=n_chunks, device=device, **kwargs)
+                         chunksize=chunksize, n_chunks=n_chunks, device=device, metric=metric,
+                         bm25_k1=bm25_k1, bm25_b=bm25_b, bm25_epsilon=bm25_epsilon, norm=norm,
+                         n_workers=n_workers, mp_method=mp_method,
+                         **kwargs)
         self.df = None
         self.cf = None  # corpus frequency
         self.n_docs = None
@@ -170,6 +175,9 @@ class TFIDF(Processor):
         self.sublinear_tf = self.get_hparam('sublinear_tf', sublinear_tf)
         self.sparse_framework = self.get_hparam('sparse_framework', sparse_framework)
         self.norm = self.get_hparam('norm', norm)
+        self.bm25_k1 = self.get_hparam('bm25_k1', bm25_k1)
+        self.bm25_b = self.get_hparam('bm25_b', bm25_b)
+        self.bm25_epsilon = self.get_hparam('bm25_epsilon', bm25_epsilon)
 
         # we choose the csr layout for the sparse matrix
         # according to chatgpt it has some advantages over coo:
@@ -399,13 +407,14 @@ class TFIDF(Processor):
 
         return idf
 
-    def fit(self, x, **kwargs):
-        self.reset()
-        self.n_docs = len(x)
-        chunks = self.chunk_df.transform(x, **kwargs)
-        for df, cf in chunks:
-            self.df.update(df)
-            self.cf.update(cf)
+    def fit(self, x=None, **kwargs):
+        if x is not None:
+            self.reset()
+            self.n_docs = len(x)
+            chunks = self.chunk_df.transform(x, **kwargs)
+            for df, cf in chunks:
+                self.df.update(df)
+                self.cf.update(cf)
         self.filter_tokens()
 
     def fit_transform(self, x, index=Union[None, List[int]]):
@@ -415,12 +424,11 @@ class TFIDF(Processor):
 
     def add(self, x, **kwargs):
         dfs = self.chunk_df.transform(x, **kwargs)
-        for df in dfs:
+        chunks = self.chunk_df.transform(x, **kwargs)
+        for df, cf in chunks:
             self.df.update(df)
+            self.cf.update(cf)
         self.n_docs += len(dfs)
-
-    def fit_termination(self):
-        self.filter_tokens(len(self.tfs))
 
     def filter_tokens(self):
 
@@ -441,3 +449,27 @@ class TFIDF(Processor):
             self.df = Counter(dict(sorted(self.df.items(), key=lambda x: x[1], reverse=True)[:self.max_features]))
 
         self.cf = {k: v for k, v in self.cf.items() if k in self.df}
+
+    def train(self, x):
+        self.fit(x)
+
+    def search(self, q, k=1, **kwargs):
+
+        if self.metric == 'bm25':
+            scores = self.bm25(q, **kwargs)
+            if self.sparse_framework == 'torch':
+                topk = torch.topk(scores, k=k, dim=1)
+                I = topk.indices
+                D = topk.values
+            else:
+                I = scores.argsort(axis=1)[:, -k:]
+                D = scores[np.arange(len(scores)), I]
+        else:
+            raise ValueError(f"Unknown metric: {self.metric}")
+
+        return Similarities(index=self.index[I], distance=D)
+
+    @property
+    def state_attributes(self):
+        return ['df', 'cf', 'n_docs', 'tf', 'index']
+
