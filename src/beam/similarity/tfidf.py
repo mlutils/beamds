@@ -467,7 +467,7 @@ class TFIDF(BeamSimilarity):
         else:
             raise ValueError(f"Unknown metric: {self.metric}")
 
-        return Similarities(index=self.index[I], distance=D)
+        return Similarities(index=self.index[I], distance=D, metric=self.metric, model='tfidf')
 
     @property
     def state_attributes(self):

@@ -388,21 +388,30 @@ class AutoBeam(Processor):
         return requirements
 
     @staticmethod
-    def write_requirements(requirements, path, relation='=='):
+    def write_requirements(requirements, path, relation='~=', sim_type='major'):
         '''
 
         @param requirements:
         @param path:
-        @param relation: can be '==' or '>=' or 'all'
+        @param relation: can be '~=', '==' or '>=' or 'all'
         @return:
         '''
 
-        assert relation in ['==', '>='], "relation can be '==' or '>='"
         path = beam_path(path)
         if relation == 'all':
             content = '\n'.join([f"{r['pip_package']}" for r in requirements])
-        else:
+        elif relation in ['==', '>=']:
             content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements])
+        elif relation == '~=':
+            if sim_type == 'major':
+                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.'))[:2]}" for r in requirements])
+            elif sim_type == 'minor':
+                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.'))[:3]}" for r in requirements])
+            else:
+                raise ValueError(f"sim_type can be 'major' or 'minor'")
+        else:
+            raise ValueError(f"relation can be '~=', '==' or '>=' or 'all'")
+
         content = f"{content}\n"
         path.write(content, ext='.txt')
 

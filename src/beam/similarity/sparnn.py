@@ -1,11 +1,10 @@
 import numpy as np
-import pysparnn.cluster_index as ci
 
 import scipy.sparse as sp
 from scipy.sparse import csr_matrix
 
 from .. import as_numpy, check_type
-from ..similarity.core import BeamSimilarity
+from .core import BeamSimilarity, Similarities
 
 
 class SparnnSimilarity(BeamSimilarity):
@@ -24,6 +23,10 @@ class SparnnSimilarity(BeamSimilarity):
         self.index = None
         self.vectors = None
         self.cluster = None
+
+    @property
+    def state_attributes(self):
+        return ['index', 'vectors', 'cluster']
 
     def to_sparse(self, x):
         x_type = check_type(x)
@@ -52,13 +55,35 @@ class SparnnSimilarity(BeamSimilarity):
             self.vectors = sp.vstack([self.vectors, x])
 
         if index is not None:
+            index = as_numpy(index)
             if self.index is None:
                 self.index = index
             else:
                 self.index = np.concatenate([self.index, index])
         else:
             if self.index is None:
-                self.index = np.arange(len(x), device=self.device)
+                self.index = np.arange(len(x))
             else:
-                index = np.arange(len(x), device=self.device) + self.index.max() + 1
+                index = np.arange(len(x)) + self.index.max() + 1
                 self.index = np.concatenate([self.index, index])
+
+    def fit(self, x=None, index=None, **kwargs):
+
+        if x is not None:
+            self.add(x, index)
+
+        if self.vectors is None:
+            raise ValueError('No vectors to fit')
+
+        import pysparnn.cluster_index as ci
+        self.cluster = ci.MultiClusterIndex(self.vectors, np.arange(len(self.index)), num_indexes=self.num_indexes,
+                                            matrix_size=self.matrix_size)
+
+    def search(self, x, k=1):
+        x = self.to_sparse(x)
+        res = self.cluster.search(x, k=k, k_clusters=self.k_clusters, return_distance=True)
+        res = np.array(res).transpose(2, 0, 1)
+        I = res[1].astype(np.int64)
+        D = res[0]
+
+        return Similarities(index=self.index[I], distance=D, metric='cosine', model='sparnn')

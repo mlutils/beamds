@@ -216,4 +216,4 @@ class SparseSimilarity(BeamSimilarity):
         I = topk.indices.T
         D = topk.values.T
 
-        return Similarities(index=self.index[I], distance=D)
+        return Similarities(index=self.index[I], distance=D, metric=self.metric, model='sparse')

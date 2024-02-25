@@ -40,6 +40,12 @@ class BeamPath(PureBeamPath):
     def getmtime(self):
         return os.path.getmtime(str(self.path))
 
+    def getctime(self):
+        return os.path.getctime(str(self.path))
+
+    def getatime(self):
+        return os.path.getatime(str(self.path))
+
     def chmod(self, mode):
         return self.path.chmod(mode)
 
@@ -535,8 +541,9 @@ class S3Path(PureBeamPath):
         if not self._check_if_bucket_exists():
             self.bucket.create()
 
-        key = self.normalize_directory_key()
-        self.bucket.put_object(Key=key)
+        if self.key is not None:
+            key = self.normalize_directory_key()
+            self.bucket.put_object(Key=key)
 
     def _is_empty_bucket(self):
         for _ in self.bucket.objects.all():
@@ -634,6 +641,10 @@ class S3Path(PureBeamPath):
             self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue())
 
         self.close_at_exit()
+
+    def getmtime(self):
+        d = self.object.get()["LastModified"]
+        return d.timestamp()
 
 
 class PyArrowPath(PureBeamPath):

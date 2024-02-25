@@ -11,6 +11,8 @@ class Similarities:
     distance: Any
     values: Any = None
     sparse_scores: Any = None
+    metric: str = None
+    model: str = None
 
 
 class BeamSimilarity(Processor):

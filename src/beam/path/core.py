@@ -186,6 +186,12 @@ class PureBeamPath:
     def getmtime(self):
         return None
 
+    def getctime(self):
+        return None
+
+    def getatime(self):
+        return None
+
     def stat(self):
         raise NotImplementedError
 

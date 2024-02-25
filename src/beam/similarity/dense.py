@@ -207,7 +207,7 @@ class DenseSimilarity(BeamSimilarity):
             I = as_tensor(I, device=device)
             D = as_tensor(D, device=device)
 
-        return Similarities(index=I, distance=D)
+        return Similarities(index=I, distance=D, model='faiss', metric=self.metric)
 
     def __len__(self):
         return self.vector_store.ntotal

@@ -5,6 +5,21 @@ import numpy as np
 from src.beam import resource
 
 
+def sparnn_example():
+    from scipy.sparse import csr_matrix
+    from src.beam.similarity import SparnnSimilarity
+
+    features = np.random.binomial(1, 0.01, size=(1000, 20000))
+    features = csr_matrix(features)
+
+    # build the search index!
+    data_to_return = range(1000)
+
+    sim = SparnnSimilarity()
+    sim.fit(features, index=data_to_return)
+    print(sim.search(features[:5], k=3))
+
+
 def get_name():
     from beam.core import Processor
 
@@ -272,6 +287,8 @@ if __name__ == '__main__':
 
     # beam_data_slice()
 
-    get_name()
+    # get_name()
+
+    sparnn_example()
 
     print('done')
