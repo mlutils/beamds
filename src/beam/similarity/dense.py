@@ -123,6 +123,7 @@ class DenseSimilarity(BeamSimilarity):
                             M_ind = np.where(footprints < gpu_footprint)[0]
                             if len(M_ind):
                                 faiss_M = faiss_M[M_ind[0]]
+                                faiss_M = faiss_M[M_ind[0]]
                         if faiss_M is not None:
                             logger.info(f"Using GPUIndexIVFFlat Index. Expected GPU-RAM footprint is "
                                         f"{pretty_format_number((faiss_M + 8) * expected_population / int(1e6))} MB")
@@ -171,22 +172,10 @@ class DenseSimilarity(BeamSimilarity):
     def is_trained(self):
         return self.vector_store.is_trained
 
-    @staticmethod
-    def extract_data_and_index(x, index=None):
-        if isinstance(x, BeamData) or hasattr(x, 'beam_class') and x.beam_class == 'BeamData':
-            index = x.index
-            x = x.values
-
-        return as_numpy(x), as_numpy(index)
-
-    def add(self, x, train=False, index=None):
+    def add(self, x, index=None, train=False):
 
         x, index = self.extract_data_and_index(x, index)
-
-        if self.index is None:
-            self.index = index
-        else:
-            self.index = np.concatenate([self.index, index])
+        self.add_index(x, index)
 
         if (not self.is_trained) or train:
             self.train(x)

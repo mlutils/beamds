@@ -407,7 +407,7 @@ class S3Path(PureBeamPath):
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
                  secret_key=None, tls=True, storage_class=None, **kwargs):
         super().__init__(*pathsegments, scheme='s3', client=client, hostname=hostname, port=port,
-                         access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+                         access_key=access_key, secret_key=secret_key, tls=tls, storage_class=storage_class, **kwargs)
 
         if not self.is_absolute():
             self.path = PurePath('/').joinpath(self.path)
@@ -444,7 +444,7 @@ class S3Path(PureBeamPath):
         self.client = client
         self._bucket = None
         self._object = None
-        self.storage_class = 'STANDARD' or storage_class
+        self.storage_class = storage_class or 'STANDARD'
 
     @property
     def bucket(self):

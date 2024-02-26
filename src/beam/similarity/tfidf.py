@@ -1,8 +1,7 @@
 from functools import partial
-from typing import List, Union
+from typing import List, Union, Any
 
 import numpy as np
-import pandas as pd
 import torch
 
 from .. import as_numpy, BeamData, beam_path
@@ -163,6 +162,7 @@ class TFIDF(BeamSimilarity):
         self.n_docs = None
         self.tf = None
         self.index = None
+        self.is_trained = None
         self.reset()
 
         self.preprocessor = preprocessor or TFIDF.default_preprocessor
@@ -258,7 +258,7 @@ class TFIDF(BeamSimilarity):
         _, q_tfidf = self.tf_and_tfidf(q, scheme='counts_times_idf', idf=idf, norm='none', log_normalization=False)
 
         if self.sparse_framework == 'torch':
-            len_norm_values = (1 - b)  + (b / self.avg_doc_len) * self.doc_len_sparse.values()
+            len_norm_values = (1 - b) + (b / self.avg_doc_len) * self.doc_len_sparse.values()
             bm25_tf_values = self.tf.values() * (k1 + 1) / (self.tf.values() + k1 * len_norm_values)
             bm25_tf = torch.sparse_csr_tensor(self.tf.crow_indices(), self.tf.col_indices(), bm25_tf_values,
                                               size=self.tf.shape, device=self.device)
@@ -275,20 +275,11 @@ class TFIDF(BeamSimilarity):
 
         return scores
 
-    def transform(self, x: Union[List, List[List], BeamData], index=Union[None, List[int]]):
+    def transform(self, x: Union[List, List[List], BeamData], index=Union[None, Any], add_to_index=False):
 
-        if self.index is None:
-            if index is None:
-                index = pd.Series(range(len(x)))
-            else:
-                index = pd.Series(index)
-            self.index = index
-        else:
-            if index is None:
-                index = pd.Series(range(len(x))) + self.index.max() + 1
-            else:
-                index = pd.Series(index)
-            self.index = pd.concat([self.index, index])
+        x, index = self.extract_data_and_index(x, index)
+        if add_to_index or self.index is None:
+            self.add_index(x, index)
 
         x_type = check_type(x)
         if not x_type.major == 'container':
@@ -310,6 +301,8 @@ class TFIDF(BeamSimilarity):
         self.cf = Counter()
         self.n_docs = 0
         self.tf = None
+        self.index = None
+        self.is_trained = False
         self.clear_cache('idf', 'tokens', 'n_tokens', 'avg_doc_len', 'idf_bm25', 'doc_len', 'doc_len_sparse',
                          'max_token')
 
@@ -410,25 +403,21 @@ class TFIDF(BeamSimilarity):
     def fit(self, x=None, **kwargs):
         if x is not None:
             self.reset()
-            self.n_docs = len(x)
-            chunks = self.chunk_df.transform(x, **kwargs)
-            for df, cf in chunks:
-                self.df.update(df)
-                self.cf.update(cf)
+            self.add(x, **kwargs)
         self.filter_tokens()
+        self.is_trained = True
 
-    def fit_transform(self, x, index=Union[None, List[int]]):
+    def fit_transform(self, x, index=None, **kwargs):
 
-        self.fit(x)
-        return self.transform(x, index=index)
+        self.fit(x, **kwargs)
+        return self.transform(x, index=index, add_to_index=True)
 
     def add(self, x, **kwargs):
-        dfs = self.chunk_df.transform(x, **kwargs)
+        self.n_docs += len(x)
         chunks = self.chunk_df.transform(x, **kwargs)
         for df, cf in chunks:
             self.df.update(df)
             self.cf.update(cf)
-        self.n_docs += len(dfs)
 
     def filter_tokens(self):
 
@@ -467,7 +456,7 @@ class TFIDF(BeamSimilarity):
         else:
             raise ValueError(f"Unknown metric: {self.metric}")
 
-        return Similarities(index=self.index[I], distance=D, metric=self.metric, model='tfidf')
+        return Similarities(index=self.get_index(I), distance=D, metric=self.metric, model='tfidf')
 
     @property
     def state_attributes(self):
