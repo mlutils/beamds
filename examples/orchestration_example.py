@@ -1,8 +1,8 @@
-from typing import List
-from src.beam import beam_logger as logger
+# This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
+from src.beam.orchestration import BeamDeploy, ServiceConfig, StorageConfig
+from src.beam.orchestration import BeamNetwork
 from src.beam.orchestration import BeamK8S
-from kubernetes import client, config
-from src.beam.orchestration.k8s import BeamDeploy, ServiceConfig, StorageConfig
+
 
 api_url = "https://api.kh-dev.dt.local:6443"
 api_token = "sha256~szW2nZ6g9cJlvN1gaXYuLouE50pgJDbfO9ty2PIzEzg"
@@ -44,8 +44,16 @@ k8s = BeamK8S(
     namespace=namespace,
 )
 
+beam_network = BeamNetwork(
+    api_url=api_url,
+    api_token=api_token,
+    project_name=project_name,
+    namespace=namespace,
+)
+
 deployment = BeamDeploy(
     k8s=k8s,
+    beam_network=beam_network,
     project_name=project_name,
     namespace=namespace,
     replicas=replicas,

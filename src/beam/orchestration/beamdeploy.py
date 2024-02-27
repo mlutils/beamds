@@ -1,0 +1,134 @@
+from .beamk8s import *
+from .beampod import BeamPod
+from .beamnetwork import BeamNetwork
+from dataclasses import dataclass
+
+
+@dataclass
+class ServiceConfig:
+    port: int
+    service_name: str
+    service_type: str
+    port_name: str
+    create_route: bool = False  # Indicates whether to create a route for this service
+    route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
+    create_ingress: bool = False  # Indicates whether to create an ingress for this service
+    ingress_host: str = None  # Optional: specify a host for the ingress
+    ingress_path: str = '/'  # Default path for ingress, can be overridden
+    ingress_tls_secret: str = None  # Optional: specify a TLS secret for ingress TLS
+
+
+@dataclass
+class StorageConfig:
+    pvc_name: str
+    pvc_mount_path: str
+    create_pvc: bool = False  # Indicates whether to create a route for this service
+    pvc_size: str = '1Gi'
+    pvc_access_mode: str = 'ReadWriteMany'
+
+
+class BeamDeploy(Processor):
+
+    def __init__(self, k8s=None, project_name=None, namespace=None,
+                 beam_network=None, replicas=None, labels=None, image_name=None,
+                 deployment_name=None, use_scc=False, cpu_requests=None, cpu_limits=None, memory_requests=None,
+                 gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
+                 service_configs=None, scc_name='anyuid',
+                 service_type=None, *entrypoint_args, **entrypoint_envs):
+        super().__init__()
+        self.k8s = k8s
+        self.beam_network = beam_network
+        self.entrypoint_args = entrypoint_args
+        self.entrypoint_envs = entrypoint_envs
+        self.project_name = project_name
+        self.namespace = namespace
+        self.replicas = replicas
+        self.labels = labels
+        self.image_name = image_name
+        self.deployment_name = deployment_name
+        self.service_type = service_type
+        self.service_account_name = f"svc{deployment_name}"
+        self.use_scc = use_scc
+        self.scc_name = scc_name if use_scc else None
+        self.cpu_requests = cpu_requests
+        self.cpu_limits = cpu_limits
+        self.memory_requests = memory_requests
+        self.memory_limits = memory_limits
+        self.gpu_requests = gpu_requests
+        self.gpu_limits = gpu_limits
+        self.service_configs = service_configs
+        self.storage_configs = storage_configs
+
+    def launch(self, replicas=None):
+        if replicas is None:
+            replicas = self.replicas
+
+        self.k8s.create_service_account(self.service_account_name, self.namespace)
+
+        if self.storage_configs:
+            for storage_config in self.storage_configs:
+                try:
+                    self.k8s.core_v1_api.read_namespaced_persistent_volume_claim(name=storage_config.pvc_name,
+                                                                                     namespace=self.namespace)
+                    logger.info(f"PVC '{storage_config.pvc_name}' already exists in namespace '{self.namespace}'.")
+                except ApiException as e:
+                    if e.status == 404 and storage_config.create_pvc:
+                        logger.info(f"Creating PVC for storage config: {storage_config.pvc_name}")
+                        self.k8s.create_pvc(
+                            pvc_name=storage_config.pvc_name,
+                            pvc_size=storage_config.pvc_size,
+                            pvc_access_mode=storage_config.pvc_access_mode,
+                            namespace=self.namespace
+                        )
+                    else:
+                        logger.info(f"Skipping PVC creation for: {storage_config.pvc_name} as create_pvc is False")
+
+        for svc_config in self.service_configs:
+            service_name = f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}"
+            # Unique name based on service name and port
+            self.beam_network.create_service(
+                base_name=f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}",
+                namespace=self.namespace,
+                ports=[svc_config.port],
+                labels=self.labels,
+                service_type=svc_config.service_type
+            )
+
+            # Check if a route needs to be created for this service
+            if svc_config.create_route:
+                self.beam_network.create_route(
+                    service_name=service_name,
+                    namespace=self.namespace,
+                    protocol=svc_config.route_protocol,
+                    port=svc_config.port  # Corrected from port_name to port, passing the numeric port value
+                )
+
+            # Check if an ingress needs to be created for this service
+            if svc_config.create_ingress:
+                self.beam_network.create_ingress(
+                    service_configs=[svc_config],  # Pass only the current ServiceConfig
+                )
+
+        extracted_ports = [svc_config.port for svc_config in self.service_configs]
+
+        deployment = self.k8s.create_deployment(
+            image_name=self.image_name,
+            labels=self.labels,
+            deployment_name=self.deployment_name,
+            namespace=self.namespace,
+            project_name=self.project_name,
+            replicas=replicas,
+            ports=extracted_ports,
+            service_account_name=self.service_account_name,  # Pass this
+            storage_configs=self.storage_configs,
+            cpu_requests=self.cpu_requests,
+            cpu_limits=self.cpu_limits,
+            memory_requests=self.memory_requests,
+            memory_limits=self.memory_limits,
+            gpu_requests=self.gpu_requests,
+            gpu_limits=self.gpu_limits,
+            *self.entrypoint_args, **self.entrypoint_envs
+        )
+
+        pod = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+        return BeamPod(pod)
