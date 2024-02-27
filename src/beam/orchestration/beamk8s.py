@@ -5,6 +5,7 @@ from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
 
+
 class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits the method of processor
     """BeamK8S is a class  that  provides a simple interface to the Kubernetes API."""
 
