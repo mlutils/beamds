@@ -5,7 +5,7 @@ from kubernetes import client, config
 from src.beam.orchestration.k8s import BeamDeploy, ServiceConfig, StorageConfig
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~jEJTYBKldDOcyhMU3BscwKDCQITQCrCdzckW4drilhA"
+api_token = "sha256~szW2nZ6g9cJlvN1gaXYuLouE50pgJDbfO9ty2PIzEzg"
 project_name = "ben-guryon"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
 labels = {"app": "bgu"}
@@ -15,10 +15,10 @@ replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variablesץ
 use_scc = True  # Pass the SCC control parameter
-cpu_requests = "500m"  # 0.5 CPU
-cpu_limits = "1"       # 1 CPU
-memory_requests = "1Gi"
-memory_limits = "2Gi"
+cpu_requests = "4"  # 0.5 CPU
+cpu_limits = "4"       # 1 CPU
+memory_requests = "24Gi"
+memory_limits = "24Gi"
 gpu_requests = "1"
 gpu_limits = "1"
 storage_configs = [
