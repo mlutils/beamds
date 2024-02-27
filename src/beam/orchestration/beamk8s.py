@@ -1,4 +1,3 @@
-from ..path import beam_path
 from ..core import Processor
 from ..utils import lazy_property
 from kubernetes import client

@@ -1,6 +1,5 @@
 from .beamk8s import *
 from .beampod import BeamPod
-from .beamnetwork import BeamNetwork
 from dataclasses import dataclass
 
 

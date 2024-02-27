@@ -36,7 +36,7 @@ print('hello world')
 print("API URL:", api_url)
 print("API Token:", api_token)
 
-# the order of the VARS is important!!! (see BeamK8S class)
+# the order of the VARS is important!! (see BeamK8S class)
 k8s = BeamK8S(
     api_url=api_url,
     api_token=api_token,

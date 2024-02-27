@@ -1,7 +1,7 @@
 from .beamk8s import *
 from kubernetes import client
 from kubernetes.client import Configuration
-from kubernetes.client.rest import ApiException
+
 
 
 class BeamNetwork(Processor):
