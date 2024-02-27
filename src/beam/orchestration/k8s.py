@@ -128,6 +128,12 @@ class BeamDeploy(Processor):
             ports=extracted_ports,
             service_account_name=self.service_account_name,  # Pass this
             storage_configs=self.storage_configs,
+            cpu_requests=self.cpu_requests,
+            cpu_limits=self.cpu_limits,
+            memory_requests=self.memory_requests,
+            memory_limits=self.memory_limits,
+            gpu_requests=self.gpu_requests,
+            gpu_limits=self.gpu_limits,
             *self.entrypoint_args, **self.entrypoint_envs
         )
 
@@ -186,7 +192,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
 
     def create_container(self, image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
-                         *entrypoint_args, **envs):
+                         cpu_requests=None, cpu_limits=None, memory_requests=None, memory_limits=None, gpu_requests=None,
+                         gpu_limits=None, *entrypoint_args, **envs):
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
 
@@ -206,12 +213,28 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     mount_path=mount['mount_path']  # Mount path specified in pvc_mounts
                 ))
 
+        resources = {
+            'requests': {},
+            'limits': {}
+        }
+
+        if cpu_requests and cpu_limits:
+            resources['requests']['cpu'] = cpu_requests
+            resources['limits']['cpu'] = cpu_limits
+        if memory_requests and memory_limits:
+            resources['requests']['memory'] = memory_requests
+            resources['limits']['memory'] = memory_limits
+        if gpu_requests and gpu_limits:
+            resources['limits']['nvidia.com/gpu'] = gpu_requests
+            resources['requests']['nvidia.com/gpu'] = gpu_limits
+
         return client.V1Container(
             name=container_name,
             image=image_name,
             ports=[client.V1ContainerPort(container_port=port) for port in ports] if ports else [],
             env=env_vars,
-            volume_mounts=volume_mounts
+            volume_mounts=volume_mounts,
+            resources=client.V1ResourceRequirements(requests=resources['requests'], limits=resources['limits'])
         )
 
     @staticmethod
