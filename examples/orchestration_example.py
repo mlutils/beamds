@@ -15,6 +15,12 @@ replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variablesץ
 use_scc = True  # Pass the SCC control parameter
+cpu_requests = "500m"  # 0.5 CPU
+cpu_limits = "1"       # 1 CPU
+memory_requests = "1Gi"
+memory_limits = "2Gi"
+gpu_requests = "1"
+gpu_limits = "1"
 storage_configs = [
     StorageConfig(pvc_name="data-pvc", pvc_mount_path="/data-pvc",
                   pvc_size="500Gi", pvc_access_mode="ReadWriteMany", create_pvc=True),
@@ -46,6 +52,12 @@ deployment = BeamDeploy(
     labels=labels,
     image_name=image_name,
     deployment_name=deployment_name,
+    cpu_requests=cpu_requests,
+    cpu_limits=cpu_limits,
+    memory_requests=memory_requests,
+    memory_limits=memory_limits,
+    gpu_requests=gpu_requests,
+    gpu_limits=gpu_limits,
     service_configs=service_configs,
     storage_configs=storage_configs,
     entrypoint_args=entrypoint_args,

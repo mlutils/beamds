@@ -39,7 +39,9 @@ class BeamPod(Processor):
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None, replicas=None, labels=None, image_name=None,
-                 deployment_name=None, use_scc=False, storage_configs=None, service_configs=None, scc_name='anyuid',
+                 deployment_name=None, use_scc=False, cpu_requests=None, cpu_limits=None,  memory_requests=None,
+                 gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
+                 service_configs=None, scc_name='anyuid',
                  service_type=None, *entrypoint_args, **entrypoint_envs):
         super().__init__()
         self.k8s = k8s
@@ -55,6 +57,12 @@ class BeamDeploy(Processor):
         self.service_account_name = f"svc{deployment_name}"
         self.use_scc = use_scc
         self.scc_name = scc_name if use_scc else None
+        self.cpu_requests = cpu_requests
+        self.cpu_limits = cpu_limits
+        self.memory_requests = memory_requests
+        self.memory_limits = memory_limits
+        self.gpu_requests = gpu_requests
+        self.gpu_limits = gpu_limits
         self.service_configs = service_configs
         self.storage_configs = storage_configs
 
