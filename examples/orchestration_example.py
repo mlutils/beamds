@@ -52,6 +52,7 @@ deployment = BeamDeploy(
     labels=labels,
     image_name=image_name,
     deployment_name=deployment_name,
+    use_scc=use_scc,
     cpu_requests=cpu_requests,
     cpu_limits=cpu_limits,
     memory_requests=memory_requests,
