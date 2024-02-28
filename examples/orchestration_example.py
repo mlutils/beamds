@@ -1,11 +1,11 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
-from src.beam.orchestration import BeamDeploy, ServiceConfig, StorageConfig
+from src.beam.orchestration import BeamDeploy, ServiceConfig, StorageConfig, UserIdmConfig
 from src.beam.orchestration import BeamNetwork
 from src.beam.orchestration import BeamK8S
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~szW2nZ6g9cJlvN1gaXYuLouE50pgJDbfO9ty2PIzEzg"
+api_token = "sha256~s4PDg5Cvk6pm15E8q--Kt0KT2WmzVj83wvrSgWVRhO4"
 project_name = "ben-guryon"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
 labels = {"app": "bgu"}
@@ -13,7 +13,7 @@ deployment_name = "bgu"
 namespace = "ben-guryon"
 replicas = 1
 entrypoint_args = ["63"]  # Container arguments
-entrypoint_envs = {"TEST": "test"}  # Container environment variablesץ
+entrypoint_envs = {"TEST": "test"}  # Container environment variables
 use_scc = True  # Pass the SCC control parameter
 cpu_requests = "4"  # 0.5 CPU
 cpu_limits = "4"       # 1 CPU
@@ -31,6 +31,13 @@ service_configs = [
     ServiceConfig(port=88, service_name="jupyter", service_type="ClusterIP", port_name="jupyter-port",
                   create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
 ]
+user_idm_configs = [
+    UserIdmConfig(user_name="yos", role_name="admin", role_binding_name="yos",
+                  create_role_binding=True, project_name="ben-guryon"),
+    UserIdmConfig(user_name="asafe", role_name="admin", role_binding_name="asafe",
+                  create_role_binding=True, project_name="ben-guryon"),
+]
+
 
 print('hello world')
 print("API URL:", api_url)
@@ -71,6 +78,7 @@ deployment = BeamDeploy(
     storage_configs=storage_configs,
     entrypoint_args=entrypoint_args,
     entrypoint_envs=entrypoint_envs,
+    user_idm_configs=user_idm_configs,
 )
 
 deployment.launch(replicas=1)

@@ -26,13 +26,23 @@ class StorageConfig:
     pvc_access_mode: str = 'ReadWriteMany'
 
 
+@dataclass
+class UserIdmConfig:
+    user_name: str
+    role_name: str
+    role_binding_name: str
+    project_name: str
+    role_namespace: str = 'default'  # Default to 'default' namespace
+    create_role_binding: bool = False  # Indicates whether to create a role_binding this project
+
+
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None,
                  beam_network=None, replicas=None, labels=None, image_name=None,
                  deployment_name=None, use_scc=False, cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
-                 service_configs=None, scc_name='anyuid',
+                 service_configs=None, user_idm_configs=None, scc_name='anyuid',
                  service_type=None, *entrypoint_args, **entrypoint_envs):
         super().__init__()
         self.k8s = k8s
@@ -57,6 +67,7 @@ class BeamDeploy(Processor):
         self.gpu_limits = gpu_limits
         self.service_configs = service_configs
         self.storage_configs = storage_configs
+        self.user_idm_configs = user_idm_configs or []
 
     def launch(self, replicas=None):
         if replicas is None:
@@ -68,7 +79,7 @@ class BeamDeploy(Processor):
             for storage_config in self.storage_configs:
                 try:
                     self.k8s.core_v1_api.read_namespaced_persistent_volume_claim(name=storage_config.pvc_name,
-                                                                                     namespace=self.namespace)
+                                                                                 namespace=self.namespace)
                     logger.info(f"PVC '{storage_config.pvc_name}' already exists in namespace '{self.namespace}'.")
                 except ApiException as e:
                     if e.status == 404 and storage_config.create_pvc:
@@ -107,6 +118,8 @@ class BeamDeploy(Processor):
                 self.beam_network.create_ingress(
                     service_configs=[svc_config],  # Pass only the current ServiceConfig
                 )
+        if self.user_idm_configs:
+            self.k8s.create_role_bindings(self.user_idm_configs)
 
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 

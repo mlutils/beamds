@@ -3,7 +3,6 @@ from kubernetes import client
 from kubernetes.client import Configuration
 
 
-
 class BeamNetwork(Processor):
 
     def __init__(self, api_url=None, api_token=None, namespace=None,

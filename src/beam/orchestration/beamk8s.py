@@ -3,6 +3,7 @@ from ..utils import lazy_property
 from kubernetes import client
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
+from kubernetes.client import RbacAuthorizationV1Api
 from ..logger import beam_logger as logger
 
 
@@ -47,6 +48,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         from openshift.dynamic import DynamicClient
         # Ensure the api_client is initialized before creating the DynamicClient
         return DynamicClient(self.api_client)
+
+    @lazy_property
+    def rbac_api(self):
+        return RbacAuthorizationV1Api(self.api_client)
 
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name='anyuid'):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
@@ -298,6 +303,46 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
         except ApiException as e:
             logger.exception(f"Exception when applying the deployment: {e}")
+
+    def create_role_bindings(self, user_idm_configs):
+        for config in user_idm_configs:
+            if config.create_role_binding:
+                role_binding = {
+                    "apiVersion": "rbac.authorization.k8s.io/v1",
+                    "kind": "RoleBinding",
+                    "metadata": {
+                        "name": config.role_binding_name,
+                        "namespace": config.project_name  # Namespace is derived from project_name
+                    },
+                    "subjects": [{
+                        "kind": "User",
+                        "name": config.user_name,
+                        "apiGroup": "rbac.authorization.k8s.io"
+                    }],
+                    "roleRef": {
+                        "kind": "ClusterRole",
+                        "name": config.role_name,
+                        # Assuming 'admin' or equivalent ClusterRole that provides namespace-level admin access
+                        "apiGroup": "rbac.authorization.k8s.io"
+                    }
+                }
+
+                try:
+                    self.dyn_client.resources.get(api_version='rbac.authorization.k8s.io/v1',
+                                                  kind='RoleBinding').create(body=role_binding,
+                                                                             namespace=config.project_name)
+                    logger.info(
+                        f"Admin role binding '{config.role_binding_name}' for user "
+                        f"'{config.user_name}' created in namespace '{config.project_name}'.")
+                except ApiException as e:
+                    if e.status == 409:  # Conflict error - RoleBinding already exists
+                        logger.info(
+                            f"Role binding '{config.role_binding_name}' "
+                            f"already exists in namespace '{config.project_name}', skipping.")
+                    else:
+                        logger.error(
+                            f"Failed to create admin role binding for '{config.user_name}' "
+                            f"in namespace '{config.project_name}': {e}")
 
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []
