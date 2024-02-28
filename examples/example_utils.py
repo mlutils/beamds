@@ -5,6 +5,20 @@ import numpy as np
 from src.beam import resource
 
 
+def nlp_example():
+    from src.beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
+    from sklearn.datasets import fetch_20newsgroups
+    from beam import beam_logger as logger
+
+    logger.info(f"Loaded dataset: newsgroups_train")
+    newsgroups_train = fetch_20newsgroups(subset='train')
+    # newsgroups_test = fetch_20newsgroups(subset='test')
+
+    text_sim = TextSimilarity()
+    text_sim.add(newsgroups_train.data[:100])
+    print(text_sim.nlp("Find the two closest sentences to the sentence \"it is a beautiful day\"", llm='openai:///gpt-4'))
+
+
 def sparnn_example():
     from scipy.sparse import csr_matrix
     from src.beam.similarity import SparnnSimilarity
@@ -289,6 +303,8 @@ if __name__ == '__main__':
 
     # get_name()
 
-    sparnn_example()
+    # sparnn_example()
+
+    nlp_example()
 
     print('done')
