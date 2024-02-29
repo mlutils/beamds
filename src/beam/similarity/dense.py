@@ -198,9 +198,6 @@ class DenseSimilarity(BeamSimilarity):
 
         return Similarities(index=I, distance=D, model='faiss', metric=self.metric)
 
-    def __len__(self):
-        return self.vector_store.ntotal
-
     def reduce(self, z):
         return self.reducer.fit_transform(z)
 

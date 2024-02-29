@@ -434,10 +434,6 @@ def check_minor_type(x):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
-    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
-        return 'modin'
-    if has_scipy and scipy.sparse.issparse(x):
-        return 'scipy_sparse'
     if isinstance(x, dict):
         return 'dict'
     if isinstance(x, list):
@@ -446,11 +442,14 @@ def check_minor_type(x):
         return 'tuple'
     if isinstance(x, set):
         return 'set'
+    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
+        return 'modin'
+    if has_scipy and scipy.sparse.issparse(x):
+        return 'scipy_sparse'
     if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
         return 'path'
     else:
         return 'other'
-
 
 def elt_of_list(x):
     if len(x) < 100:

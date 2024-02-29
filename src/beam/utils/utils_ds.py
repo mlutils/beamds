@@ -66,6 +66,10 @@ def as_something_recursively(as_something_func):
         x_type = check_type(x)
         if x_type.major == 'container' and x_type.minor == 'dict':
             return {k: as_func_recursively(v, **kwargs) for k, v in x.items()}
+        elif x_type.major == 'other':
+            for k, v in x.__dict__.items():
+                setattr(x, k, as_func_recursively(v, **kwargs))
+            return x
         elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
             if x_type.element not in ['object', 'unknown']:
                 try:
@@ -586,12 +590,10 @@ def recursive_merge(dfs, method='tree', **kwargs):
     raise ValueError('Unknown method type')
 
 
-
 def iter_container(x):
     if hasattr(x, 'items'):
         return iter(x.items())
     return enumerate(x)
-
 
 
 def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
@@ -681,7 +683,7 @@ def is_container(x):
 
 
 def recursive(func):
-    def apply_recursively(x, *args, **kwargs):
+    def apply_recursively(x, *args, in_place=False, **kwargs):
 
         if is_container(x):
 
@@ -700,8 +702,11 @@ def recursive(func):
 
             return values
 
+        elif in_place and check_minor_type(x) == 'other':
+            for k, v in x.__dict__.items():
+                setattr(x, k, apply_recursively(v, *args, **kwargs))
+            return x
         else:
-
             return func(x, *args, **kwargs)
 
     return apply_recursively
@@ -714,6 +719,17 @@ def recursive_yield(func, keys=True, values=True):
 
             for k, v in iter_container(x):
 
+                for kk, vv in apply_recursively(v, *args, **kwargs):
+                    kk = (k,) + kk
+                    if _keys and _values:
+                        yield kk, vv
+                    elif _keys:
+                        yield kk
+                    else:
+                        yield vv
+
+        elif check_minor_type(x) == 'other':
+            for k, v in x.__dict__.items():
                 for kk, vv in apply_recursively(v, *args, **kwargs):
                     kk = (k,) + kk
                     if _keys and _values:
@@ -812,16 +828,6 @@ def _beam_hash(x, h, bytes_threshold=int(1e6), fast=True):
 def recursive_batch(x, index):
     return slice_array(x, index, x_type=None, indices_type=None)
 
-    # # TODO: use slice_array
-    # if hasattr(index, 'values'):
-    #     index = index.values
-    #
-    # if x is None:
-    #     return None
-    # elif hasattr(x, 'iloc'):
-    #     return x.iloc[index]
-    # else:
-    #     return x[index]
 
 @recursive
 def recursive_len(x):
@@ -894,6 +900,15 @@ def recursive_device(x):
             except AttributeError:
                 # case of None
                 pass
+
+    elif check_minor_type(x) == 'other':
+        for k, v in x.__dict__.items():
+            try:
+                return recursive_device(v)
+            except AttributeError:
+                # case of None
+                pass
+
     return x.device
 
 
@@ -961,6 +976,7 @@ def recursive_hierarchical_keys(x):
 
     return None
 
+
 def recursive_size_summary(x, mode='sum'):
     x_type = check_type(x)
 
@@ -993,6 +1009,7 @@ def recursive_size_summary(x, mode='sum'):
             return np.sum(x.memory_usage(index=True, deep=True))
         else:
             return sys.getsizeof(x)
+
 
 @recursive
 def recursive_squeeze(x):

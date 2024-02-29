@@ -78,7 +78,9 @@ class BeamSimilarity(Processor):
 
     @property
     def ntotal(self):
-        raise NotImplementedError
+        if self.index is not None:
+            return len(self.index)
+        return 0
 
     def __len__(self):
         return self.ntotal
