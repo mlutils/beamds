@@ -415,8 +415,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 raise  # Reraise exceptions that are not related to the service not existing
 
     def create_route(self, service_name, namespace, protocol, port):
-        from openshift.dynamic import DynamicClient
         from openshift.dynamic.exceptions import NotFoundError
+        from openshift.dynamic import DynamicClient
 
         dyn_client = DynamicClient(self.api_client)
 
