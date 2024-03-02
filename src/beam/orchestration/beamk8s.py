@@ -1,9 +1,8 @@
 from ..core import Processor
 from ..utils import lazy_property
 from kubernetes import client
-from kubernetes.client import Configuration
+from kubernetes.client import Configuration, RbacAuthorizationV1Api
 from kubernetes.client.rest import ApiException
-from kubernetes.client import RbacAuthorizationV1Api
 from ..logger import beam_logger as logger
 
 
@@ -52,6 +51,24 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     @lazy_property
     def rbac_api(self):
         return RbacAuthorizationV1Api(self.api_client)
+
+    def create_project(self, project_name):
+        try:
+            # Attempt to get the project to see if it already exists
+            self.dyn_client.resources.get(api_version='project.openshift.io/v1', kind='Project').get(name=project_name)
+            logger.info(f"Project '{project_name}' already exists.")
+        except ApiException as e:
+            if e.status == 404:  # Project does not exist, create it
+                project_request = {
+                    "kind": "ProjectRequest",
+                    "apiVersion": "project.openshift.io/v1",
+                    "metadata": {"name": project_name}
+                }
+                self.dyn_client.resources.get(api_version='project.openshift.io/v1',
+                                              kind='ProjectRequest').create(body=project_request)
+                logger.info(f"Project '{project_name}' created successfully.")
+            else:
+                logger.error(f"Failed to check or create project '{project_name}': {e}")
 
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name='anyuid'):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
@@ -302,9 +319,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             namespace = self.project_name
 
         try:
-            self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
+            # Apply the deployment and get the response (the applied deployment object)
+            applied_deployment = self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
+            logger.info(f"Successfully applied deployment in namespace '{namespace}'")
+            return applied_deployment  # Return the applied deployment object
         except ApiException as e:
             logger.exception(f"Exception when applying the deployment: {e}")
+            return None  # Return None or handle the exception as needed
 
     def create_role_bindings(self, user_idm_configs):
         for config in user_idm_configs:

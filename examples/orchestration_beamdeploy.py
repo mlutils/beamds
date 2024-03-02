@@ -1,15 +1,15 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
-from src.beam.orchestration import BeamDeploy, ServiceConfig, StorageConfig, UserIdmConfig
-from src.beam.orchestration import BeamK8S
+from src.beam.orchestration import BeamK8S, BeamDeploy, ServiceConfig, StorageConfig, UserIdmConfig, BeamPod
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~8vcDV8ltdAG4nepbeUo6X7O9xxN7VjVL7T9cQmZTLLc"
+api_token = "sha256~TpT3aNQgxwikdkzDBke0_v6265Kw8snnXt87-BkWIxA"
 project_name = "ben-guryon"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
 labels = {"app": "bgu"}
 deployment_name = "bgu"
-namespace = "ben-guryon"
+# namespace = "ben-guryon"
+namespace = project_name
 replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variables
@@ -47,13 +47,13 @@ k8s = BeamK8S(
     api_url=api_url,
     api_token=api_token,
     project_name=project_name,
-    namespace=namespace,
+    namespace=project_name,
 )
 
 deployment = BeamDeploy(
     k8s=k8s,
     project_name=project_name,
-    namespace=namespace,
+    namespace=project_name,
     replicas=replicas,
     labels=labels,
     image_name=image_name,
@@ -79,4 +79,6 @@ internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespac
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 
-
+beam_pod_instance = deployment.launch(replicas=1)
+available_resources = beam_pod_instance.query_available_resources()
+print("Available Resources:", available_resources)

@@ -74,6 +74,8 @@ class BeamDeploy(Processor):
         if replicas is None:
             replicas = self.replicas
 
+        self.k8s.create_project(self.namespace)
+
         self.k8s.create_service_account(self.service_account_name, self.namespace)
 
         if self.storage_configs:
@@ -143,5 +145,14 @@ class BeamDeploy(Processor):
             *self.entrypoint_args, **self.entrypoint_envs
         )
 
-        pod = self.k8s.apply_deployment(deployment, namespace=self.namespace)
-        return BeamPod(pod)
+        applied_deployment = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+
+        if applied_deployment is not None:
+            # If the deployment was successfully applied, create and return a BeamPod instance
+            return BeamPod(applied_deployment, api_url=self.k8s.api_url, api_token=self.k8s.api_token,
+                           namespace=self.namespace, project_name=self.project_name)  # Pass the applied deployment
+            # and any other required arguments
+        else:
+            # Handle the case where the deployment application failed
+            logger.error("Failed to apply deployment")
+            return None
