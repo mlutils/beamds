@@ -1,11 +1,10 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
 from src.beam.orchestration import BeamDeploy, ServiceConfig, StorageConfig, UserIdmConfig
-from src.beam.orchestration import BeamNetwork
 from src.beam.orchestration import BeamK8S
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~s4PDg5Cvk6pm15E8q--Kt0KT2WmzVj83wvrSgWVRhO4"
+api_token = "sha256~8vcDV8ltdAG4nepbeUo6X7O9xxN7VjVL7T9cQmZTLLc"
 project_name = "ben-guryon"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
 labels = {"app": "bgu"}
@@ -51,16 +50,8 @@ k8s = BeamK8S(
     namespace=namespace,
 )
 
-beam_network = BeamNetwork(
-    api_url=api_url,
-    api_token=api_token,
-    project_name=project_name,
-    namespace=namespace,
-)
-
 deployment = BeamDeploy(
     k8s=k8s,
-    beam_network=beam_network,
     project_name=project_name,
     namespace=namespace,
     replicas=replicas,
@@ -87,3 +78,5 @@ print("Fetching external endpoints...")
 internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
+
+

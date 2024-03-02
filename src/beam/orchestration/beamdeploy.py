@@ -1,6 +1,8 @@
-from .beamk8s import *
+from ..core import Processor
 from .beampod import BeamPod
 from dataclasses import dataclass
+from kubernetes.client.rest import ApiException
+from ..logger import beam_logger as logger
 
 
 @dataclass
@@ -39,14 +41,13 @@ class UserIdmConfig:
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None,
-                 beam_network=None, replicas=None, labels=None, image_name=None,
+                 replicas=None, labels=None, image_name=None,
                  deployment_name=None, use_scc=False, cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
                  service_configs=None, user_idm_configs=None, scc_name='anyuid',
                  service_type=None, *entrypoint_args, **entrypoint_envs):
         super().__init__()
         self.k8s = k8s
-        self.beam_network = beam_network
         self.entrypoint_args = entrypoint_args
         self.entrypoint_envs = entrypoint_envs
         self.project_name = project_name
@@ -96,7 +97,7 @@ class BeamDeploy(Processor):
         for svc_config in self.service_configs:
             service_name = f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}"
             # Unique name based on service name and port
-            self.beam_network.create_service(
+            self.k8s.create_service(
                 base_name=f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}",
                 namespace=self.namespace,
                 ports=[svc_config.port],
@@ -106,7 +107,7 @@ class BeamDeploy(Processor):
 
             # Check if a route needs to be created for this service
             if svc_config.create_route:
-                self.beam_network.create_route(
+                self.k8s.create_route(
                     service_name=service_name,
                     namespace=self.namespace,
                     protocol=svc_config.route_protocol,
@@ -115,7 +116,7 @@ class BeamDeploy(Processor):
 
             # Check if an ingress needs to be created for this service
             if svc_config.create_ingress:
-                self.beam_network.create_ingress(
+                self.k8s.create_ingress(
                     service_configs=[svc_config],  # Pass only the current ServiceConfig
                 )
         if self.user_idm_configs:

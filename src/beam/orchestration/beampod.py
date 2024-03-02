@@ -4,40 +4,6 @@ from kubernetes import config
 
 
 class BeamPod(Processor):
-    def __init__(self, api_url=None, api_token=None, namespace=None,
-                 project_name=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.api_token = api_token
-        self.api_url = api_url
-        self.project_name = project_name
-        self.namespace = namespace
-
-    @lazy_property
-    def core_v1_api(self):
-        return client.CoreV1Api(self.api_client)
-
-    @lazy_property
-    def api_client(self):
-        return client.ApiClient(self.configuration)
-
-    @lazy_property
-    def api_client(self):
-        return client.ApiClient(self.configuration)
-
-    @lazy_property
-    def apps_v1_api(self):
-        return client.AppsV1Api(self.api_client)
-
-    @lazy_property
-    def configuration(self):
-        configuration = Configuration()
-        configuration.host = self.api_url
-        configuration.verify_ssl = False  # Depends on your SSL setup
-        configuration.debug = False
-        configuration.api_key = {
-            'authorization': f"Bearer {self.api_token}"
-        }
-        return configuration
 
     def list_pods(self):
         label_selector = f"app={self.deployment_name}"
