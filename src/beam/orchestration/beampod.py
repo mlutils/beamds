@@ -11,17 +11,40 @@ class BeamPod(BeamK8S):
         self.deployment_name = deployment.metadata.name
 
     def delete_deployment(self):
-        # Use the inherited apps_v1_api to delete the deployment
+        # Delete deployment
         try:
             self.apps_v1_api.delete_namespaced_deployment(
-                name=self.deployment['metadata']['name'],
-                namespace=self.deployment['metadata']['namespace'],
+                name=self.deployment.metadata.name,
+                namespace=self.deployment.metadata.namespace,
                 body=client.V1DeleteOptions()
             )
-            logger.info(f"Deleted deployment '{self.deployment['metadata']['name']}' "
-                        f"from namespace '{self.deployment['metadata']['namespace']}'.")
+            logger.info(f"Deleted deployment '{self.deployment.metadata.name}' "
+                        f"from namespace '{self.deployment.metadata.namespace}'.")
         except ApiException as e:
-            logger.error(f"Error deleting deployment '{self.deployment['metadata']['name']}': {e}")
+            logger.error(f"Error deleting deployment '{self.deployment.metadata.name}': {e}")
+
+        # Delete related services
+        try:
+            self.delete_service(deployment_name=self.deployment_name)
+        except ApiException as e:
+            logger.error(f"Error deleting service '{self.deployment_name}: {e}")
+
+        # Delete related routes
+        try:
+            self.delete_route(
+                route_name=f"{self.deployment.metadata.name}-route",
+                namespace=self.deployment.metadata.namespace,
+            )
+            logger.info(f"Deleted route '{self.deployment.metadata.name}-route' "
+                        f"from namespace '{self.deployment.metadata.namespace}'.")
+        except ApiException as e:
+            logger.error(f"Error deleting route '{self.deployment.metadata.name}-route': {e}")
+
+        # Delete related ingress
+        try:
+            self.delete_service(deployment_name=self.deployment_name)
+        except ApiException as e:
+            logger.error(f"Error deleting service for deployment '{self.deployment_name}': {e}")
 
     def list_pods(self):
         label_selector = f"app={self.deployment_name}"

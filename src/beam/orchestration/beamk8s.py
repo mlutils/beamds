@@ -1,7 +1,7 @@
 from ..core import Processor
 from ..utils import lazy_property
 from kubernetes import client
-from kubernetes.client import Configuration, RbacAuthorizationV1Api
+from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
 
@@ -435,6 +435,47 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     return unique_name
                 raise  # Reraise exceptions that are not related to the service not existing
 
+    def delete_service(self, deployment_name, namespace=None):
+        from kubernetes.client import V1DeleteOptions
+
+        if namespace is None:
+            namespace = self.namespace
+
+        try:
+            # Get the service associated with the deployment
+            service_list = self.core_v1_api.list_namespaced_service(namespace=namespace)
+            for service in service_list.items:
+                if service.metadata.labels.get("app") == deployment_name:
+                    service_name = service.metadata.name
+                    # Use the core_v1_api to delete the Service
+                    self.core_v1_api.delete_namespaced_service(
+                        name=service_name,
+                        namespace=namespace,
+                        body=V1DeleteOptions()
+                    )
+                    logger.info(f"Deleted service '{service_name}' from namespace '{namespace}'.")
+                    return  # Exit the loop once the service is deleted
+        except ApiException as e:
+            logger.error(f"Error deleting service for deployment '{deployment_name}': {e}")
+
+    def delete_services_by_label_selector(self, label_selector, namespace=None):
+        if namespace is None:
+            namespace = self.namespace
+
+        try:
+            services = self.core_v1_api.list_namespaced_service(namespace=namespace, label_selector=label_selector)
+            for service in services.items:
+                service_name = service.metadata.name
+                self.core_v1_api.delete_namespaced_service(
+                    name=service_name,
+                    namespace=namespace,
+                    body=V1DeleteOptions()
+                )
+                logger.info(f"Deleted service '{service_name}' in namespace '{namespace}'")
+        except Exception as e:
+            logger.error(
+                f"Error deleting services with label selector '{label_selector}' in namespace '{namespace}': {e}")
+
     def create_route(self, service_name, namespace, protocol, port):
         from openshift.dynamic.exceptions import NotFoundError
         from openshift.dynamic import DynamicClient
@@ -489,6 +530,28 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.info(f"Route for service {service_name} created successfully in namespace {namespace}.")
         except Exception as e:
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
+
+    def delete_route(self, route_name, namespace):
+        from openshift.dynamic.exceptions import NotFoundError
+        from openshift.dynamic import DynamicClient
+
+        dyn_client = DynamicClient(self.api_client)
+
+        # Get the Route resource from the OpenShift API
+        route_resource = dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
+
+        try:
+            # Try to get the existing route
+            existing_route = route_resource.get(name=route_name, namespace=namespace)
+            # If the route exists, delete it
+            existing_route.delete()
+            logger.info(f"Deleted route '{route_name}' from namespace '{namespace}'.")
+        except NotFoundError:
+            # If the route doesn't exist, log a message
+            logger.info(f"Route '{route_name}' does not exist in namespace '{namespace}'.")
+        except Exception as e:
+            # Handle other exceptions
+            logger.error(f"Error deleting route '{route_name}' in namespace '{namespace}': {e}")
 
     def create_ingress(self, service_configs, default_host=None, default_path="/", default_tls_secret=None):
         from kubernetes.client import (V1Ingress, V1IngressSpec, V1IngressRule, V1HTTPIngressRuleValue,
@@ -567,6 +630,23 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 logger.error(
                     f"Failed to create Ingress for service {svc_config.service_name} "
                     f"in namespace {self.namespace}: {e}")
+
+    def delete_ingress(self, service_name):
+        from kubernetes.client import NetworkingV1Api, V1DeleteOptions
+
+        try:
+            # Initialize the NetworkingV1Api
+            networking_v1_api = NetworkingV1Api(self.api_client)
+
+            # Use the NetworkingV1Api to delete the Ingress
+            networking_v1_api.delete_namespaced_ingress(
+                name=f"{service_name}-ingress",
+                namespace=self.namespace,
+                body=V1DeleteOptions()
+            )
+            logger.info(f"Ingress for service {service_name} deleted successfully.")
+        except Exception as e:
+            logger.error(f"Failed to delete Ingress for service {service_name}: {e}")
 
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []
