@@ -18,13 +18,15 @@ from src.beam import beam_logger as logger, beam_path
 if __name__ == '__main__':
 
     data_path, logs_path = get_paths()
-    max_quantiles = 100
-    kwargs_base = dict(algorithm='hpo_debug', data_path=data_path, logs_path=logs_path,
+    # max_quantiles = 100
+    max_quantiles = 2
+    kwargs_base = dict(algorithm='hpo_no_quantiles', data_path=data_path, logs_path=logs_path,
                        copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=100,
                        n_quantiles=max_quantiles,
-                       tensorboard=False, stop_at=0.98, n_gpus=1, device=0, label_smoothing=.2)
+                       tensorboard=False, stop_at=0.98, n_gpus=1, device=0, label_smoothing=.2,
+                       n_decoder_layers=4)
 
-    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, gpus_per_trial=1,
+    hpo_config = HPOConfig(n_trials=200, train_timeout=60 * 60 * 24, gpus_per_trial=1,
                            cpus_per_trial=10, n_jobs=n_jobs, hpo_path=os.path.join(logs_path, 'hpo'))
 
     run_names = {}
@@ -38,8 +40,8 @@ if __name__ == '__main__':
     # kwargs_all['jannis'] = dict(batch_size=256)
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
-    kwargs_all['year'] = dict(batch_size=512)
-    # kwargs_all['covtype'] = dict(batch_size=1024)
+    # kwargs_all['year'] = dict(batch_size=512)
+    kwargs_all['covtype'] = dict(batch_size=512)
 
     for k in kwargs_all.keys():
 
@@ -83,7 +85,7 @@ if __name__ == '__main__':
         study.uniform('dropout', 0., 0.5)
         study.categorical('emb_dim', [64, 128, 256])
         study.categorical('n_rules', [64, 128, 256])
-        study.categorical('n_quantiles', [2, 6, 10, 16, 20, 40, max_quantiles])
+        # study.categorical('n_quantiles', [2, 6, 10, 16, 20, 40, max_quantiles])
         study.categorical('n_encoder_layers', [1, 2, 4, 8])
         study.categorical('n_decoder_layers', [1, 2, 4, 8])
         study.categorical('n_transformer_head', [1, 2, 4, 8])

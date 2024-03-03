@@ -224,8 +224,9 @@ class Experiment(object):
         self.logs_path_is_built = False
         self.source_dir = None
 
-    def algorithm_generator(self, *args, **kwargs):
-        return beam_algorithm_generator(self, *args, **kwargs)
+    @staticmethod
+    def algorithm_generator(*args, **kwargs):
+        return beam_algorithm_generator(*args, **kwargs)
 
     @lazy_property
     def training_framework(self):
@@ -640,7 +641,7 @@ class Experiment(object):
         self._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
                           base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
-    def fit(self, alg=None, dataset=None, *args, algorithm_generator=None, return_results=False, reload_results=False,
+    def fit(self, alg=None, dataset=None, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
             dataset_kwargs=None, **kwargs):
 
@@ -668,7 +669,7 @@ class Experiment(object):
             if self.hparams.get('federated_runner'):
                 res = self.federated_training(alg=alg, algorithm_generator=algorithm_generator, **kwargs)
             else:
-                res = self.run(default_runner, *(algorithm_generator, self, alg, *args), **kwargs)
+                res = self.run(default_runner, *(algorithm_generator, self, alg), **kwargs)
 
         except KeyboardInterrupt:
 

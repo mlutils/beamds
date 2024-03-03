@@ -974,7 +974,7 @@ def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True)
             if flat_array and x_type.major == 'array':
                 return recursive_flat_array(x, x_type=x_type, tolist=tolist)
             else:
-                return x
+                return [x]
         if isinstance(x, DataObject):
             return [x.data]
         elif not flat_array or x_type.major == 'scalar':

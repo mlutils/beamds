@@ -103,17 +103,29 @@ class TabularTransformer(nn.Module):
         else:
             self.register_buffer('rule_bias', torch.zeros(1, 1, hparams.emb_dim))
 
-        self.rules = nn.Parameter(torch.randn(1, self.n_rules, hparams.emb_dim))
         self.mask = distributions.Bernoulli(1 - hparams.mask_rate)
-        self.rule_mask = distributions.Bernoulli(1 - hparams.rule_mask_rate)
 
-        self.transformer = nn.Transformer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
-                                          num_encoder_layers=hparams.n_encoder_layers,
-                                          num_decoder_layers=hparams.n_decoder_layers,
-                                          dim_feedforward=hparams.transformer_hidden_dim,
-                                          dropout=hparams.transformer_dropout,
-                                          activation=hparams.activation, layer_norm_eps=1e-05,
-                                          batch_first=True, norm_first=True)
+        self.rules = None
+        self.rule_mask = None
+        if hparams.n_decoder_layers > 0:
+            self.rules = nn.Parameter(torch.randn(1, self.n_rules, hparams.emb_dim))
+            self.rule_mask = distributions.Bernoulli(1 - hparams.rule_mask_rate)
+
+            self.transformer = nn.Transformer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
+                                              num_encoder_layers=hparams.n_encoder_layers,
+                                              num_decoder_layers=hparams.n_decoder_layers,
+                                              dim_feedforward=hparams.transformer_hidden_dim,
+                                              dropout=hparams.transformer_dropout,
+                                              activation=hparams.activation, layer_norm_eps=1e-05,
+                                              batch_first=True, norm_first=True)
+        else:
+
+            self.transformer = nn.TransformerEncoder(
+                nn.TransformerEncoderLayer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
+                                           dim_feedforward=hparams.transformer_hidden_dim,
+                                           dropout=hparams.transformer_dropout, activation=hparams.activation,
+                                           layer_norm_eps=1e-05, norm_first=True, batch_first=True),
+                num_layers=hparams.n_encoder_layers)
 
         if hparams.lin_version > 0:
             self.lin = nn.Sequential(nn.ReLU(), nn.Dropout(hparams.dropout), nn.LayerNorm(hparams.emb_dim),
@@ -139,13 +151,17 @@ class TabularTransformer(nn.Module):
         x_frac = x_frac.unsqueeze(-1)
         x = (1 - x_frac) * x1 + x_frac * x2 + self.feature_bias
 
-        if self.training:
-            rules = self.rule_mask.sample(torch.Size((len(x), self.n_rules, 1))).to(x.device) * self.rules
-        else:
-            rules = torch.repeat_interleave(self.rules, len(x), dim=0)
+        if self.rules is not None:
+            if self.training:
+                rules = self.rule_mask.sample(torch.Size((len(x), self.n_rules, 1))).to(x.device) * self.rules
+            else:
+                rules = torch.repeat_interleave(self.rules, len(x), dim=0)
 
-        rules = rules + self.rule_bias
-        x = self.transformer(x, rules)
+            rules = rules + self.rule_bias
+            x = self.transformer(x, rules)
+        else:
+            x = self.transformer(x)
+
         x = self.lin(x.max(dim=1).values)
 
         x = x.squeeze(-1)

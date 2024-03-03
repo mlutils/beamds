@@ -36,7 +36,6 @@ class SparnnSimilarity(BeamSimilarity):
 
         elif x_type.minor in ['tensor', 'numpy']:
             x = as_numpy(x)
-
             x = csr_matrix(x)
 
         elif x_type.minor == 'dict':
