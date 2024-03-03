@@ -3,12 +3,51 @@ import sys
 import torch
 import numpy as np
 from src.beam import resource
+from beam import beam_logger as logger
+
+
+def load_index():
+    from src.beam.similarity import TextSimilarity
+    from sklearn.datasets import fetch_20newsgroups
+
+    logger.info(f"Loaded dataset: newsgroups_train")
+    newsgroups_train = fetch_20newsgroups(subset='train')
+
+    path = resource('/tmp/news-sim-cpu')
+    text_sim = TextSimilarity.from_path(path)
+
+    res = text_sim.nlp("Find the two closest sentences to the sentence \"It is best to estimate your loss and use it to "
+                       "set your price structure\"", llm='openai:///gpt-4')
+
+    print(res)
+    # print(newsgroups_train.data[res.index[0]])
+    # print(newsgroups_train.data[res.index[1]])
+
+
+def save_index():
+    from src.beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
+    from sklearn.datasets import fetch_20newsgroups
+
+    logger.info(f"Loaded dataset: newsgroups_train")
+    newsgroups_train = fetch_20newsgroups(subset='train')
+    # newsgroups_test = fetch_20newsgroups(subset='test')
+
+    x = newsgroups_train.data
+
+    sim = TextSimilarity(expected_population=len(x), device=1,
+                         metric='cosine', training_device='cpu', inference_device='cpu',
+                         ram_footprint=2 ** 8 * int(1e9),
+                         gpu_footprint=24 * int(1e9), exact=False, nlists=None, faiss_M=None,
+                         reducer='umap')
+
+    sim.add(x)
+
+    sim.to_path('/tmp/news-sim-cpu')
 
 
 def nlp_example():
     from src.beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
     from sklearn.datasets import fetch_20newsgroups
-    from beam import beam_logger as logger
 
     logger.info(f"Loaded dataset: newsgroups_train")
     newsgroups_train = fetch_20newsgroups(subset='train')
@@ -305,6 +344,10 @@ if __name__ == '__main__':
 
     # sparnn_example()
 
-    nlp_example()
+    # nlp_example()
+
+    # save_index()
+
+    load_index()
 
     print('done')

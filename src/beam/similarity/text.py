@@ -1,3 +1,4 @@
+from typing import List
 
 import numpy as np
 from rank_bm25 import BM25Okapi
@@ -9,6 +10,7 @@ from .core import BeamSimilarity
 from ..core import Processor
 from ..llm import beam_llm, default_tokenizer
 from .dense import DenseSimilarity
+from ..path import local_copy
 
 
 class TextSimilarity(DenseSimilarity):
@@ -50,16 +52,24 @@ class TextSimilarity(DenseSimilarity):
                          dense_model_path=dense_model_path, use_dense_model_tokenizer=use_dense_model_tokenizer,
                          d=d, **kwargs)
 
+        self._tokenizer = None
         if tokenizer is None:
             if self.get_hparam('tokenizer_path') is not None:
                 from transformers import PreTrainedTokenizerFast
-                self.tokenizer = PreTrainedTokenizerFast(tokenizer_file=self.get_hparam('tokenizer_path'))
-            elif self.get_hparam('use_dense_model_tokenizer'):
-                self.tokenizer = self.dense_model.tokenize
-            else:
-                self.tokenizer = default_tokenizer
+                self._tokenizer = PreTrainedTokenizerFast(tokenizer_file=self.get_hparam('tokenizer_path'))
         else:
-            self.tokenizer = tokenizer
+            self._tokenizer = tokenizer
+
+    @property
+    def tokenizer(self):
+
+        tokenizer = self._tokenizer
+        if self._tokenizer is None:
+            tokenizer = default_tokenizer
+            if self.get_hparam('use_dense_model_tokenizer'):
+                tokenizer = self.dense_model.tokenize
+
+        return tokenizer
 
     def add(self, x, index=None, **kwargs):
 
@@ -67,13 +77,42 @@ class TextSimilarity(DenseSimilarity):
         dense_vectors = self.encode(x)
         super().add(dense_vectors, index)
 
-    def encode(self, x):
+    def encode(self, x: List[str]):
         x = list(x)
         return self.dense_model.encode(x, batch_size=self.batch_size, show_progress_bar=True, convert_to_tensor=True)
 
-    def search(self, x, k=1):
+    def search(self, x: List[str], k=1):
 
         x, _ = self.extract_data_and_index(x)
         dense_vectors = self.encode(x)
         similarities = super().search(dense_vectors, k)
         return similarities
+
+    @property
+    def state_attributes(self):
+        return super().state_attributes + ['dense_model', '_tokenizer']
+
+    def save_state(self, path, ext=None):
+
+        super().save_state(path, ext)
+
+        if self._tokenizer is not None:
+            if hasattr(self._tokenizer, 'save_pretrained'):
+                tokenizer_path = path.joinpath('tokenizer.hf')
+                with local_copy(tokenizer_path) as p:
+                    self._tokenizer.save_pretrained(p)
+            else:
+                tokenizer_path = path.joinpath('tokenizer.pkl')
+                tokenizer_path.write(self._tokenizer)
+
+    def load_state(self, path):
+
+        super().load_state(path)
+        self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'), device=str(self.device))
+        if path.joinpath('tokenizer.hf').exists():
+            from transformers import PreTrainedTokenizerFast
+            with local_copy(path.joinpath('tokenizer.hf')) as p:
+                self._tokenizer = PreTrainedTokenizerFast(tokenizer_file=p)
+        elif path.joinpath('tokenizer.pkl').exists():
+            self._tokenizer = path.joinpath('tokenizer.pkl').read()
+
