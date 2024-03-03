@@ -85,3 +85,41 @@ class BeamPod(Processor):
         logger.info(f"Total Available Resources in the Namespace '{self.namespace}': {total_resources}")
         return total_resources
 
+    def execute(self, command, **kwargs):
+        # Execute a command in the pod
+        pass
+
+    def get_logs(self, **kwargs):
+        # Get logs from the pod
+        pass
+
+    @property
+    def pod_status(self):
+        # Get pod status
+        return self.deployment.status
+
+    @property
+    def pod_info(self):
+        # Get pod info
+        return self.deployment.metadata
+
+    def get_pod_resources(self, **kwargs):
+        # Get pod resources
+        pass
+
+    def stop(self, **kwargs):
+        # Stop the pod
+        pass
+
+    def start(self, **kwargs):
+        # Start the pod
+        pass
+
+    def restart(self, **kwargs):
+        # Restart the pod
+        pass
+
+
+
+
+

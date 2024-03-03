@@ -3,7 +3,7 @@ from src.beam.orchestration import BeamK8S, BeamDeploy, ServiceConfig, StorageCo
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~TpT3aNQgxwikdkzDBke0_v6265Kw8snnXt87-BkWIxA"
+api_token = "sha256~rHmkoXNPZu0QSeskFrTvJgMnWBPHP2N4SBFeeSeuH08"
 project_name = "ben-guryon"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
 labels = {"app": "bgu"}
