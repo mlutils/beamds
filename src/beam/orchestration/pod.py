@@ -1,19 +1,21 @@
-from .beamk8s import BeamK8S
+from .k8s import BeamK8S
+from ..core import Processor
 from ..logger import beam_logger as logger
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 
 
-class BeamPod(BeamK8S):
-    def __init__(self, deployment, api_url, api_token, *args, **kwargs):
-        super().__init__(api_url=api_url, api_token=api_token, *args, **kwargs)  # Initialize BeamK8S part of BeamPod
+class BeamPod(Processor):
+    def __init__(self, pod_info, deployment, k8s, *args, **kwargs):
+        super().__init__(*args, **kwargs)  # Initialize BeamK8S part of BeamPod
         self.deployment = deployment  # Store deployment info
-        self.deployment_name = deployment.metadata.name
+        self.k8s = k8s
+        self.pod_info = pod_info
 
     def delete_deployment(self):
         # Delete deployment
         try:
-            self.apps_v1_api.delete_namespaced_deployment(
+            self.k8s.apps_v1_api.delete_namespaced_deployment(
                 name=self.deployment.metadata.name,
                 namespace=self.deployment.metadata.namespace,
                 body=client.V1DeleteOptions()
@@ -25,13 +27,13 @@ class BeamPod(BeamK8S):
 
         # Delete related services
         try:
-            self.delete_service(deployment_name=self.deployment_name)
+            self.k8s.delete_service(deployment_name=self.deployment_name)
         except ApiException as e:
             logger.error(f"Error deleting service '{self.deployment_name}: {e}")
 
         # Delete related routes
         try:
-            self.delete_route(
+            self.k8s.delete_route(
                 route_name=f"{self.deployment.metadata.name}-route",
                 namespace=self.deployment.metadata.namespace,
             )
@@ -42,16 +44,18 @@ class BeamPod(BeamK8S):
 
         # Delete related ingress
         try:
-            self.delete_service(deployment_name=self.deployment_name)
+            self.k8s.delete_service(deployment_name=self.deployment_name)
         except ApiException as e:
             logger.error(f"Error deleting service for deployment '{self.deployment_name}': {e}")
 
+    # move to BeamDeploy
     def list_pods(self):
         label_selector = f"app={self.deployment_name}"
         pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)
         for pod in pods.items:
             print(f"Pod Name: {pod.metadata.name}, Pod Status: {pod.status.phase}")
 
+    # move to BeamK8s
     def query_available_resources(self):
         total_resources = {'cpu': '0', 'memory': '0', 'nvidia.com/gpu': '0', 'amd.com/gpu': '0', 'storage': '0Gi'}
         node_list = self.core_v1_api.list_node()

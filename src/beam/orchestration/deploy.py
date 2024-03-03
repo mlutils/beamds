@@ -1,5 +1,5 @@
 from ..core import Processor
-from .beampod import BeamPod
+from .pod import BeamPod
 from dataclasses import dataclass
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
@@ -145,14 +145,29 @@ class BeamDeploy(Processor):
             *self.entrypoint_args, **self.entrypoint_envs
         )
 
-        applied_deployment = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+        pod_info = self.k8s.apply_deployment(deployment, namespace=self.namespace)
 
-        if applied_deployment is not None:
+        if pod_info is list:
             # If the deployment was successfully applied, create and return a BeamPod instance
-            return BeamPod(applied_deployment, api_url=self.k8s.api_url, api_token=self.k8s.api_token,
-                           namespace=self.namespace, project_name=self.project_name)  # Pass the applied deployment
-            # and any other required arguments
+            return [self.generate_beam_pod(pod) for pod in pod_info]
+        elif pod_info is not None:
+            # If the deployment was successfully applied, create and return a BeamPod instance
+            return self.generate_beam_pod(pod_info)
         else:
             # Handle the case where the deployment application failed
             logger.error("Failed to apply deployment")
             return None
+
+        #
+        # if pod_info is not None:
+        #     # If the deployment was successfully applied, create and return a BeamPod instance
+        #     return BeamPod(pod_info, deployment=self, k8s=self.k8s)  # Pass the applied deployment
+        #     # and any other required arguments
+        # else:
+        #     # Handle the case where the deployment application failed
+        #     logger.error("Failed to apply deployment")
+        #     return None
+        #
+
+    def generate_beam_pod(self, pod_info):
+        return BeamPod(pod_info, deployment=self, k8s=self.k8s)

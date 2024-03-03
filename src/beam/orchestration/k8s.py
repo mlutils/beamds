@@ -327,6 +327,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.exception(f"Exception when applying the deployment: {e}")
             return None  # Return None or handle the exception as needed
 
+        # TODO: return pod info
+
     def create_role_bindings(self, user_idm_configs):
         for config in user_idm_configs:
             if config.create_role_binding:
