@@ -8,7 +8,7 @@ import numpy as np
 from .. import beam_path, as_numpy, check_type, as_tensor, beam_device, BeamData
 from ..logger import beam_logger as logger
 from ..path import local_copy
-from ..utils import pretty_format_number
+from ..utils import pretty_format_number, lazy_property
 from .core import BeamSimilarity, Similarities
 
 
@@ -123,6 +123,7 @@ class DenseSimilarity(BeamSimilarity):
                             M_ind = np.where(footprints < gpu_footprint)[0]
                             if len(M_ind):
                                 faiss_M = faiss_M[M_ind[0]]
+                                faiss_M = faiss_M[M_ind[0]]
                         if faiss_M is not None:
                             logger.info(f"Using GPUIndexIVFFlat Index. Expected GPU-RAM footprint is "
                                         f"{pretty_format_number((faiss_M + 8) * expected_population / int(1e6))} MB")
@@ -146,21 +147,25 @@ class DenseSimilarity(BeamSimilarity):
 
         self.inference_device = inference_device
 
-        self.training_index = None
+        self.training_vs = None
         res = faiss.StandardGpuResources()
         if training_device != 'cpu' and inference_device == 'cpu':
-            self.training_index = faiss.index_cpu_to_gpu(res, training_device, vector_store)
+            self.training_vs = faiss.index_cpu_to_gpu(res, training_device, vector_store)
 
         self.training_device = training_device
+        self.reducer_type = reducer
 
-        if reducer == 'umap':
+    @lazy_property
+    def reducer(self):
+        if self.reducer_type == 'umap':
             import umap
-            self.reducer = umap.UMAP()
-        elif reducer == 'tsne':
+            reducer = umap.UMAP()
+        elif self.reducer_type == 'tsne':
             from sklearn.manifold import TSNE
-            self.reducer = TSNE()
+            reducer = TSNE()
         else:
             raise NotImplementedError
+        return reducer
 
     def train(self, x):
 
@@ -171,22 +176,10 @@ class DenseSimilarity(BeamSimilarity):
     def is_trained(self):
         return self.vector_store.is_trained
 
-    @staticmethod
-    def extract_data_and_index(x, index=None):
-        if isinstance(x, BeamData) or hasattr(x, 'beam_class') and x.beam_class == 'BeamData':
-            index = x.index
-            x = x.values
-
-        return as_numpy(x), as_numpy(index)
-
-    def add(self, x, train=False, index=None):
+    def add(self, x, index=None, train=False):
 
         x, index = self.extract_data_and_index(x, index)
-
-        if self.index is None:
-            self.index = index
-        else:
-            self.index = np.concatenate([self.index, index])
+        self.add_index(x, index)
 
         if (not self.is_trained) or train:
             self.train(x)
@@ -209,32 +202,32 @@ class DenseSimilarity(BeamSimilarity):
 
         return Similarities(index=I, distance=D, model='faiss', metric=self.metric)
 
-    def __len__(self):
-        return self.vector_store.ntotal
-
     def reduce(self, z):
         return self.reducer.fit_transform(z)
 
     @property
     def state_attributes(self):
-        return ['index', 'training_index']
+        return ['index', 'vector_store', 'training_vs']
 
     def save_state(self, path, ext=None):
 
         path = beam_path(path)
         path.mkdir()
-        with local_copy(path.joinpath('index.bin'), as_beam_path=False) as p:
+
+        path.joinpath('index.npy').write(self.index)
+        with local_copy(path.joinpath('vectore_store.bin'), as_beam_path=False) as p:
             faiss.write_index(self.vector_store, p)
-        if self.training_index:
-            with local_copy(path.joinpath('training_index.bin'), as_beam_path=False) as p:
-                faiss.write_index(self.training_index, p)
+        if self.training_vs:
+            with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
+                faiss.write_index(self.training_vs, p)
 
     def load_state(self, path):
 
         path = beam_path(path)
 
-        with local_copy(path.joinpath('index.bin'), as_beam_path=False) as p:
+        self.index = path.joinpath('index.npy').read()
+        with local_copy(path.joinpath('vectore_store.bin'), as_beam_path=False) as p:
             self.vector_store = faiss.read_index(p)
-        if path.joinpath('training_index.bin').is_file():
-            with local_copy(path.joinpath('training_index.bin'), as_beam_path=False) as p:
-                self.training_index = faiss.read_index(p)
+        if path.joinpath('training_vs.bin').is_file():
+            with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
+                self.training_vs = faiss.read_index(p)

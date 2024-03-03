@@ -66,6 +66,10 @@ def as_something_recursively(as_something_func):
         x_type = check_type(x)
         if x_type.major == 'container' and x_type.minor == 'dict':
             return {k: as_func_recursively(v, **kwargs) for k, v in x.items()}
+        elif x_type.major == 'other':
+            for k, v in x.__dict__.items():
+                setattr(x, k, as_func_recursively(v, **kwargs))
+            return x
         elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
             if x_type.element not in ['object', 'unknown']:
                 try:
@@ -138,6 +142,93 @@ def as_numpy(x, dtype=None, **kwargs):
             x = complex(x)
 
     return x
+
+
+def as_scipy_csr(x):
+    # Handle PyTorch Tensors
+    if isinstance(x, torch.Tensor):
+        x = x.cpu()  # Ensure the tensor is on CPU
+        if x.layout == torch.sparse_coo:
+            # Convert sparse COO tensor to CSR
+            ind = x.indices().numpy()
+            val = x.values().numpy()
+            coo = scipy.sparse.coo_matrix((val, ind), shape=x.shape)
+            return coo.tocsr()
+        elif x.layout == torch.sparse_csr:
+            # Directly create sparse CSR matrix from CSR components
+            crow_indices = x.crow_indices().numpy()
+            col_indices = x.col_indices().numpy()
+            values = x.values().numpy()
+            return scipy.sparse.csr_matrix((values, col_indices, crow_indices), shape=x.shape)
+        else:
+            # Convert dense tensor to CSR matrix
+            return scipy.sparse.csr_matrix(x.numpy())
+
+    # Handle NumPy arrays directly
+    elif isinstance(x, np.ndarray):
+        return scipy.sparse.csr_matrix(x)
+
+    elif isinstance(x, scipy.sparse.coo_matrix):
+        return x.tocsr()
+
+    elif isinstance(x, scipy.sparse.csr_matrix):
+        return x
+
+    # Handle tuple input as (rows, cols, data) assuming it's in COO format
+    elif isinstance(x, tuple) and len(x) == 3:
+        coo = scipy.sparse.coo_matrix((x[2], (x[0], x[1])))
+        return coo.tocsr()
+
+    # Handle dictionary input with keys 'row', 'col', and 'val' assuming it's in COO format
+    elif isinstance(x, dict) and {'row', 'col', 'val'}.issubset(x.keys()):
+        coo = scipy.sparse.coo_matrix((x['val'], (x['row'], x['col'])))
+        return coo.tocsr()
+
+    else:
+        raise ValueError("Unsupported input type for conversion to scipy.sparse.csr_matrix")
+
+
+def as_scipy_coo(x):
+    # Handle PyTorch Tensors
+    if isinstance(x, torch.Tensor):
+        x = x.cpu()  # Ensure the tensor is on CPU
+        if x.layout == torch.sparse_coo:
+            # Extract indices and values for sparse COO tensor
+            ind = x.indices().numpy()
+            val = x.values().numpy()
+            return scipy.sparse.coo_matrix((val, ind), shape=x.shape)
+        elif x.layout == torch.sparse_csr:
+            # Convert sparse CSR tensor to COO
+            crow_indices = x.crow_indices().numpy()
+            col_indices = x.col_indices().numpy()
+            values = x.values().numpy()
+            # Convert CSR components to COO format
+            row_indices = np.repeat(np.arange(len(crow_indices) - 1), np.diff(crow_indices))
+            return scipy.sparse.coo_matrix((values, (row_indices, col_indices)), shape=x.shape)
+        else:
+            # Convert dense tensor to COO matrix
+            return scipy.sparse.coo_matrix(x.numpy())
+
+    # Handle NumPy arrays directly
+    elif isinstance(x, np.ndarray):
+        return scipy.sparse.coo_matrix(x)
+
+    elif isinstance(x, scipy.sparse.coo_matrix):
+        return x
+
+    elif isinstance(x, scipy.sparse.csr_matrix):
+        return x.tocoo()
+
+    # Handle tuple input as (rows, cols, data)
+    elif isinstance(x, tuple) and len(x) == 3:
+        return scipy.sparse.coo_matrix((x[2], (x[0], x[1])))
+
+    # Handle dictionary input with keys 'row', 'col', and 'val'
+    elif isinstance(x, dict) and {'row', 'col', 'val'}.issubset(x.keys()):
+        return scipy.sparse.coo_matrix((x['val'], (x['row'], x['col'])))
+
+    else:
+        raise ValueError("Unsupported input type for conversion to scipy.sparse.coo_matrix")
 
 
 def to_device(data, device='cuda', half=False, dtype=None, brain=False):
@@ -499,12 +590,10 @@ def recursive_merge(dfs, method='tree', **kwargs):
     raise ValueError('Unknown method type')
 
 
-
 def iter_container(x):
     if hasattr(x, 'items'):
         return iter(x.items())
     return enumerate(x)
-
 
 
 def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
@@ -594,7 +683,7 @@ def is_container(x):
 
 
 def recursive(func):
-    def apply_recursively(x, *args, **kwargs):
+    def apply_recursively(x, *args, in_place=False, **kwargs):
 
         if is_container(x):
 
@@ -613,8 +702,11 @@ def recursive(func):
 
             return values
 
+        elif in_place and check_minor_type(x) == 'other':
+            for k, v in x.__dict__.items():
+                setattr(x, k, apply_recursively(v, *args, **kwargs))
+            return x
         else:
-
             return func(x, *args, **kwargs)
 
     return apply_recursively
@@ -627,6 +719,17 @@ def recursive_yield(func, keys=True, values=True):
 
             for k, v in iter_container(x):
 
+                for kk, vv in apply_recursively(v, *args, **kwargs):
+                    kk = (k,) + kk
+                    if _keys and _values:
+                        yield kk, vv
+                    elif _keys:
+                        yield kk
+                    else:
+                        yield vv
+
+        elif check_minor_type(x) == 'other':
+            for k, v in x.__dict__.items():
                 for kk, vv in apply_recursively(v, *args, **kwargs):
                     kk = (k,) + kk
                     if _keys and _values:
@@ -725,16 +828,6 @@ def _beam_hash(x, h, bytes_threshold=int(1e6), fast=True):
 def recursive_batch(x, index):
     return slice_array(x, index, x_type=None, indices_type=None)
 
-    # # TODO: use slice_array
-    # if hasattr(index, 'values'):
-    #     index = index.values
-    #
-    # if x is None:
-    #     return None
-    # elif hasattr(x, 'iloc'):
-    #     return x.iloc[index]
-    # else:
-    #     return x[index]
 
 @recursive
 def recursive_len(x):
@@ -807,6 +900,15 @@ def recursive_device(x):
             except AttributeError:
                 # case of None
                 pass
+
+    elif check_minor_type(x) == 'other':
+        for k, v in x.__dict__.items():
+            try:
+                return recursive_device(v)
+            except AttributeError:
+                # case of None
+                pass
+
     return x.device
 
 
@@ -874,6 +976,7 @@ def recursive_hierarchical_keys(x):
 
     return None
 
+
 def recursive_size_summary(x, mode='sum'):
     x_type = check_type(x)
 
@@ -906,6 +1009,7 @@ def recursive_size_summary(x, mode='sum'):
             return np.sum(x.memory_usage(index=True, deep=True))
         else:
             return sys.getsizeof(x)
+
 
 @recursive
 def recursive_squeeze(x):

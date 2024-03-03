@@ -21,6 +21,7 @@ from pydantic.main import ModelMetaclass
 class CombinedMeta(ModelMetaclass, MetaInitIsDoneVerifier):
     def __call__(cls, *args, **kwargs):
         instance = ModelMetaclass.__call__(cls, *args, **kwargs)
+        # instance = super().__call__(*args, **kwargs)
         instance._init_is_done = True
         return instance
 
@@ -92,6 +93,7 @@ class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
     _assistant_docstrings: Any = PrivateAttr()
     _conv: Any = PrivateAttr()
     _tools: Any = PrivateAttr()
+    _init_is_done: Any = PrivateAttr()
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,

@@ -1,10 +1,13 @@
+import json
 from collections import OrderedDict
+import inspect
 import pickle
 from argparse import Namespace
 import io
 from ..path import beam_path, normalize_host
 from ..utils import retrieve_name, lazy_property, check_type, MetaInitIsDoneVerifier
 from ..config import BeamConfig
+
 
 try:
     from src.beam.data import BeamData
@@ -17,6 +20,7 @@ class BeamBase(metaclass=MetaInitIsDoneVerifier):
 
     def __init__(self, *args, name=None, **kwargs):
 
+        self._init_is_done = False
         self._name = name
         self._lazy_cache = {}
 
@@ -46,7 +50,7 @@ class Processor(BeamBase):
     skeleton_file = 'skeleton.pkl'
     state_file = 'state'
 
-    def __init__(self, *args, name=None, hparams=None, override=True, remote=None, **kwargs):
+    def __init__(self, *args, name=None, hparams=None, override=True, remote=None, llm=None, **kwargs):
 
         super().__init__(name=name)
         self.remote = remote
@@ -64,6 +68,15 @@ class Processor(BeamBase):
             if v_type.major in ['scalar', 'none']:
                 if k not in self.hparams or override:
                     self.hparams[k] = v
+
+        self._llm = self.get_hparam('llm', llm)
+
+    @lazy_property
+    def llm(self):
+        if type(self._llm) is str:
+            from ..resource import resource
+            self._llm = resource(self._llm)
+        return self._llm
 
     @property
     def state_attributes(self):
@@ -100,14 +113,9 @@ class Processor(BeamBase):
 
         return self
 
-    def get_hparam(self, hparam, default=None, preferred=None, specific=None):
-        return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
-
-    def set_hparam(self, hparam, value, tags=None):
-        self.hparams.set(hparam, value, tags=tags)
-
-    def update_hparams(self, hparams, tags=None):
-        self.hparams.update(hparams, tags=tags)
+    @classmethod
+    def from_arguments(cls, *args, **kwargs):
+        return cls(*args, **kwargs)
 
     @classmethod
     def from_path(cls, path):
@@ -128,9 +136,80 @@ class Processor(BeamBase):
             if 'args' in state['aux']:
                 args = state['aux']['args']
         hparams = BeamConfig(config=state['hparams'])
-        alg = cls(hparams, *args,  **kwargs)
+        alg = cls(hparams, *args, **kwargs)
         alg.load_state(state)
         return alg
+
+    @classmethod
+    def from_nlp(cls, query, llm=None, ask_kwargs=None, **kwargs):
+        from ..resource import resource
+        from ..logger import beam_logger as logger
+
+        llm = resource(llm)
+
+        def is_class_method(member):
+            # First, ensure that member is a method bound to a class
+            if inspect.ismethod(member) and inspect.isclass(member.__self__):
+                # Now that we've confirmed member is a method, check the name conditions
+                if not member.__name__.startswith('_') and member.__name__ != 'from_nlp':
+                    return True
+            return False
+
+        classmethods = [name for name, member in inspect.getmembers(cls, predicate=is_class_method)]
+
+        example_output = {'method': 'method_name'}
+        prompt = (f"Choose the suitable classmethod that should be used to build a class instance according to the "
+                  f"following query:\n"
+                  f"Query: {query}\n"
+                  f"Class: {cls.__name__}\n"
+                  f"Methods: {classmethods}\n"
+                  f"Return your answer as a JSON object of the following form:\n"
+                  f"{json.dumps(example_output)}\n"
+                  f"Your answer:\n\n")
+
+        ask_kwargs = ask_kwargs or {}
+        response = llm.ask(prompt, **ask_kwargs).json
+
+        print(response)
+        constructor_name = response['method']
+
+        if constructor_name not in classmethods:
+            raise ValueError(f"Constructor {constructor_name} not found in the list of class constructors")
+
+        constructor = getattr(cls, constructor_name)
+        logger.info(f"Using classmethod {constructor_name} to build the class instance")
+
+        constructor_sourcecode = inspect.getsource(constructor)
+        init_sourcecode = inspect.getsource(cls.__init__)
+
+        json_output_example = {"args": ['arg1', 'arg2'], "kwargs": {'kwarg1': 'value1', 'kwarg2': 'value2'}}
+        prompt = (f"Build a suitable dictionary of arguments and keyword arguments to build a class instance according "
+                  f"to the following query:\n"
+                  f"Query: {query}\n"
+                  f"with the classmethod: {constructor_name} (of class {cls.__name__}) with source-code:\n"
+                  f"{constructor_sourcecode}\n"
+                  f"and the class __init__ method source-code:\n"
+                  f"{init_sourcecode}\n"
+                  f"Return your answer as a JSON object of the following form:\n"
+                  f"{json_output_example}\n"
+                  f"Your answer:\n\n")
+
+        d = llm.ask(prompt, **ask_kwargs).json
+        args = d.get('args', [])
+        kwargs = d.get('kwargs', {})
+
+        logger.info(f"Using args: {args} and kwargs: {kwargs} to build the class instance")
+
+        return constructor(*args, **kwargs)
+
+    def get_hparam(self, hparam, default=None, preferred=None, specific=None):
+        return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
+
+    def set_hparam(self, hparam, value, tags=None):
+        self.hparams.set(hparam, value, tags=tags)
+
+    def update_hparams(self, hparams, tags=None):
+        self.hparams.update(hparams, tags=tags)
 
     def to_bundle(self, path):
         from ..auto import AutoBeam
@@ -176,6 +255,63 @@ class Processor(BeamBase):
             raise NotImplementedError
 
         self.load_state_dict(state)
+
+    def nlp(self, query, llm=None, ask_kwargs=None, **kwargs):
+
+        from ..logger import beam_logger as logger
+
+        if llm is None:
+            llm = self.llm
+        elif type(llm) is str:
+            from ..resource import resource
+            llm = resource(llm)
+
+        ask_kwargs = ask_kwargs or {}
+
+        method_list = inspect.getmembers(self, predicate=inspect.isroutine)
+        method_list = [m for m in method_list if not m[0].startswith('_')]
+        json_output_example = json.dumps({'method': 'method_name'})
+        class_doc = inspect.getdoc(self)
+        class_doc = f"{class_doc}\n" if class_doc else ""
+
+        prompt = (f"Choose the suitable method that should be used to answer the following query:\n"
+                  f"Query: {query}\n"
+                  f"Class: {self.__class__.__name__}\n"
+                  f"{class_doc}"
+                  f"Attributes: {method_list}\n"
+                  f"Return your answer as a JSON object of the following form:\n"
+                  f"{json_output_example}\n"
+                  f"Your answer:\n\n")
+
+        response = llm.ask(prompt, **ask_kwargs).json
+        method_name = response['method']
+
+        if method_name not in [m[0] for m in method_list]:
+            raise ValueError(f"Method {method_name} not found in the list of methods")
+
+        logger.info(f"Using method {method_name} to answer the query")
+
+        method = getattr(self, method_name)
+        sourcecode = inspect.getsource(method)
+
+        json_output_example = {"args": ['arg1', 'arg2'], "kwargs": {'kwarg1': 'value1', 'kwarg2': 'value2'}}
+
+        prompt = (f"Build a suitable dictionary of arguments and keyword arguments to answer the following query:\n"
+                  f"Query: {query}\n"
+                  f"with the class method: {method_name} (of class {self.__class__.__name__}) with source-code:\n"
+                  f"{sourcecode}\n"
+                  f"Return your answer as a JSON object of the following form:\n"
+                  f"{json_output_example}\n"
+                  f"Your answer:\n\n")
+
+        d = llm.ask(prompt, **ask_kwargs).json
+
+        args = d.get('args', [])
+        kwargs = d.get('kwargs', {})
+
+        logger.info(f"Using args: {args} and kwargs: {kwargs} to answer the query")
+
+        return method(*args, **kwargs)
 
 
 class Pipeline(Processor):

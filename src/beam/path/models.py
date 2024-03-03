@@ -405,9 +405,9 @@ class SFTPPath(PureBeamPath):
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
-                 secret_key=None, tls=True, **kwargs):
+                 secret_key=None, tls=True, storage_class=None, **kwargs):
         super().__init__(*pathsegments, scheme='s3', client=client, hostname=hostname, port=port,
-                         access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+                         access_key=access_key, secret_key=secret_key, tls=tls, storage_class=storage_class, **kwargs)
 
         if not self.is_absolute():
             self.path = PurePath('/').joinpath(self.path)
@@ -444,6 +444,7 @@ class S3Path(PureBeamPath):
         self.client = client
         self._bucket = None
         self._object = None
+        self.storage_class = storage_class or 'STANDARD'
 
     @property
     def bucket(self):
@@ -543,7 +544,7 @@ class S3Path(PureBeamPath):
 
         if self.key is not None:
             key = self.normalize_directory_key()
-            self.bucket.put_object(Key=key)
+            self.bucket.put_object(Key=key, StorageClass=self.storage_class)
 
     def _is_empty_bucket(self):
         for _ in self.bucket.objects.all():
@@ -638,7 +639,8 @@ class S3Path(PureBeamPath):
 
         if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
-            self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue())
+            self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue(),
+                                                               StorageClass=self.storage_class)
 
         self.close_at_exit()
 
