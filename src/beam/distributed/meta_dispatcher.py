@@ -76,7 +76,7 @@ class MetaDispatcher(Processor):
         self.asynchronous = asynchronous
 
         self.call_function = None
-        self.routes_methods = {}
+        self._routes_methods = {}
 
 
     @property
@@ -102,7 +102,7 @@ class MetaDispatcher(Processor):
     def __getattr__(self, item):
         if item.startswith('_') or item == '_init_is_done' or not hasattr(self, '_init_is_done'):
             return super().__getattribute__(item)
-        if item in self.routes_methods:
-            return self.routes_methods[item]
+        if item in self._routes_methods:
+            return self._routes_methods[item]
         else:
             raise AttributeError(f"Attribute {item} not served with {self.__class__.__name__}")

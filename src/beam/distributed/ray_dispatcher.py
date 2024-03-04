@@ -147,7 +147,7 @@ class RayDispatcher(MetaDispatcher, RayCluster):
                                                                                              '__call__'))
             for route in self.routes:
                 if hasattr(self.obj, route):
-                    self.routes_methods[route] = self.remote_function_wrapper(
+                    self._routes_methods[route] = self.remote_function_wrapper(
                         self.remote_method_wrapper(self.obj, route))
 
         elif self.type == 'class':
