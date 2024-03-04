@@ -1,9 +1,12 @@
+from dataclasses import make_dataclass
 from ..core import Processor
 from ..utils import lazy_property
-from kubernetes import client
+from kubernetes import client, watch
 from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
+import time
+import json
 
 
 class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits the method of processor
@@ -292,6 +295,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             metadata=deployment_metadata,
             spec=deployment_spec
         )
+        logger.info(f"Created deployment object type: {type(deployment)}")
         return deployment
 
     def generate_unique_deployment_name(self, base_name, namespace):
@@ -309,25 +313,62 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 raise  # Reraise exceptions that are not related to the deployment not existing
 
     def apply_deployment(self, deployment, namespace=None):
-        import json
-        logger.debug(json.dumps(client.ApiClient().sanitize_for_serialization(deployment), indent=2))
-        logger.info(f"Deployment object to be created: {deployment}")  # Adjust logging level/method as needed
-
+        logger.info(f"Applying deployment object type: {type(deployment)}")
+        # Determine the namespace
         if namespace is None:
             namespace = self.namespace
-        if namespace is None:
-            namespace = self.project_name
 
         try:
-            # Apply the deployment and get the response (the applied deployment object)
-            applied_deployment = self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
+            # Apply the deployment
+            self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
             logger.info(f"Successfully applied deployment in namespace '{namespace}'")
-            return applied_deployment  # Return the applied deployment object
+
+            # Construct the selector based on the deployment object type
+            if isinstance(deployment, dict):
+                # If deployment is a dictionary, use dictionary access
+                selector = ','.join([f'{k}={v}' for k, v in deployment['spec']['selector']['matchLabels'].items()])
+            else:
+                # If deployment is an object, use attribute access
+                selector = ','.join([f'{k}={v}' for k, v in deployment.spec.selector['matchLabels'].items()])
+
+            w = watch.Watch()
+            timeout = 300  # Define a timeout for the watch (e.g., 300 seconds)
+            start = time.time()
+
+            for event in w.stream(self.core_v1_api.list_namespaced_pod, namespace=namespace, label_selector=selector,
+                                  timeout_seconds=60):
+                pod = event['object']
+                if pod.status.phase == 'Running':
+                    # Extract and return pod info
+                    pod_info = self.extract_pod_info(pod)
+                    logger.info(f"Pod info: '{pod_info}'")
+                    w.stop()
+                    return pod_info
+
+                if time.time() - start > timeout:
+                    logger.error("Timeout waiting for pods to become ready.")
+                    w.stop()
+                    return None
+
         except ApiException as e:
             logger.exception(f"Exception when applying the deployment: {e}")
-            return None  # Return None or handle the exception as needed
+            return None
 
-        # TODO: return pod info
+    @staticmethod
+    def extract_pod_info(pod):
+        # Extract pod name, namespace, ports, and PVCs
+        pod_name = pod.metadata.name
+        namespace = pod.metadata.namespace
+        ports = [container.ports for container in pod.spec.containers]
+        pvcs = [volume.persistent_volume_claim.claim_name for volume
+                in pod.spec.volumes if volume.persistent_volume_claim]
+
+        # Create a dynamic data class for PodInfo
+        podinfo = make_dataclass('PodInfo', [('name', str), ('namespace', str), ('ports', list), ('pvcs', list)])
+        return podinfo(name=pod_name, namespace=namespace, ports=ports, pvcs=pvcs)
+
+        # TODO: return pod info - extract pod name and namespace from the applied_deployment object,
+        # if needed, beam_k8s will query the server to retrieve all the necessary information
 
     def create_role_bindings(self, user_idm_configs):
         for config in user_idm_configs:
@@ -675,3 +716,38 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             print(f"Failed to retrieve services or nodes in namespace '{namespace}': {e}")
 
         return endpoints
+
+    def query_available_resources(self):
+        total_resources = {'cpu': '0', 'memory': '0', 'nvidia.com/gpu': '0', 'amd.com/gpu': '0', 'storage': '0Gi'}
+        node_list = self.core_v1_api.list_node()
+
+        # Summing up the allocatable CPU, memory, and GPU resources from each node
+        for node in node_list.items:
+            for key, quantity in node.status.allocatable.items():
+                if key in ['cpu', 'memory', 'nvidia.com/gpu', 'amd.com/gpu']:
+                    if quantity.endswith('m'):  # Handle milliCPU
+                        total_resources[key] = str(
+                            int(total_resources.get(key, '0')) + int(float(quantity.rstrip('m')) / 1000))
+                    else:
+                        total_resources[key] = str(
+                            int(total_resources.get(key, '0')) + int(quantity.strip('Ki')))
+
+        # Summing up the storage requests for all PVCs in the namespace
+        pvc_list = self.core_v1_api.list_namespaced_persistent_volume_claim(namespace=self.namespace)
+        for pvc in pvc_list.items:
+            for key, quantity in pvc.spec.resources.requests.items():
+                if key == 'storage':
+                    total_resources['storage'] = str(
+                        int(total_resources['storage'].strip('Gi')) + int(quantity.strip('Gi'))) + 'Gi'
+
+        # Remove resources with a count of '0'
+        total_resources = {key: value for key, value in total_resources.items() if value != '0'}
+
+        logger.info(f"Total Available Resources in the Namespace '{self.namespace}': {total_resources}")
+        return total_resources
+
+    # def list_pods(self):
+    #     label_selector = f"app={self.deployment_name}"
+    #     pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)
+    #     for pod in pods.items:
+    #         print(f"Pod Name: {pod.metadata.name}, Pod Status: {pod.status.phase}")

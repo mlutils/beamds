@@ -1,6 +1,7 @@
 from ..core import Processor
 from .pod import BeamPod
 from dataclasses import dataclass
+from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
 
@@ -42,12 +43,14 @@ class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None,
                  replicas=None, labels=None, image_name=None,
-                 deployment_name=None, use_scc=False, cpu_requests=None, cpu_limits=None, memory_requests=None,
+                 deployment_name=None, use_scc=False, deployment=None,
+                 cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
                  service_configs=None, user_idm_configs=None, scc_name='anyuid',
                  service_type=None, *entrypoint_args, **entrypoint_envs):
         super().__init__()
         self.k8s = k8s
+        self.deployment = deployment
         self.entrypoint_args = entrypoint_args
         self.entrypoint_envs = entrypoint_envs
         self.project_name = project_name
@@ -158,16 +161,49 @@ class BeamDeploy(Processor):
             logger.error("Failed to apply deployment")
             return None
 
-        #
-        # if pod_info is not None:
-        #     # If the deployment was successfully applied, create and return a BeamPod instance
-        #     return BeamPod(pod_info, deployment=self, k8s=self.k8s)  # Pass the applied deployment
-        #     # and any other required arguments
-        # else:
-        #     # Handle the case where the deployment application failed
-        #     logger.error("Failed to apply deployment")
-        #     return None
-        #
-
     def generate_beam_pod(self, pod_info):
+        logger.info(f"generate_beam_pod: '{pod_info}' to apply deployment")
         return BeamPod(pod_info, deployment=self, k8s=self.k8s)
+
+    def delete_deployment(self):
+        # Delete deployment
+        try:
+            self.k8s.apps_v1_api.delete_namespaced_deployment(
+                name=self.deployment.metadata.name,
+                namespace=self.deployment.metadata.namespace,
+                body=client.V1DeleteOptions()
+            )
+            logger.info(f"Deleted deployment '{self.deployment.metadata.name}' "
+                        f"from namespace '{self.deployment.metadata.namespace}'.")
+        except ApiException as e:
+            logger.error(f"Error deleting deployment '{self.deployment.metadata.name}': {e}")
+
+        # Delete related services
+        try:
+            self.k8s.delete_service(deployment_name=self.deployment_name)
+        except ApiException as e:
+            logger.error(f"Error deleting service '{self.deployment_name}: {e}")
+
+        # Delete related routes
+        try:
+            self.k8s.delete_route(
+                route_name=f"{self.deployment.metadata.name}-route",
+                namespace=self.deployment.metadata.namespace,
+            )
+            logger.info(f"Deleted route '{self.deployment.metadata.name}-route' "
+                        f"from namespace '{self.deployment.metadata.namespace}'.")
+        except ApiException as e:
+            logger.error(f"Error deleting route '{self.deployment.metadata.name}-route': {e}")
+
+        # Delete related ingress
+        try:
+            self.k8s.delete_service(deployment_name=self.deployment_name)
+        except ApiException as e:
+            logger.error(f"Error deleting service for deployment '{self.deployment_name}': {e}")
+
+    # move to BeamDeploy
+    # def list_pods(self):
+    #     label_selector = f"app={self.deployment_name}"
+    #     pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)
+    #     for pod in pods.items:
+    #         print(f"Pod Name: {pod.metadata.name}, Pod Status: {pod.status.phase}")

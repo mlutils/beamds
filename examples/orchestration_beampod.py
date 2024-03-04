@@ -2,7 +2,7 @@
 from src.beam.orchestration import BeamK8S, BeamPod
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~TpT3aNQgxwikdkzDBke0_v6265Kw8snnXt87-BkWIxA"
+api_token = "sha256~S-Qg-qh_F6gIPWX-V6aM3Wa77xU2Ckkx-KI81QIvogE"
 project_name = "ben-guryon"
 deployment_name = "bgu-4"
 
@@ -28,5 +28,5 @@ pod = BeamPod(
     namespace=project_name,
 )
 
-pod.delete_deployment()
+k8s.delete_service(deployment_name=deployment_name)
 

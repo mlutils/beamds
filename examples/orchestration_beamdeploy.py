@@ -1,9 +1,9 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
-from src.beam.orchestration import BeamK8S, BeamDeploy, ServiceConfig, StorageConfig, UserIdmConfig, BeamPod
+from src.beam.orchestration import BeamK8S, BeamDeploy, ServiceConfig, StorageConfig, UserIdmConfig
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~rHmkoXNPZu0QSeskFrTvJgMnWBPHP2N4SBFeeSeuH08"
+api_token = "sha256~ulN4s8nBCFXWws_LpS64NoqYVafYXEM2mj191sjssH4"
 project_name = "ben-guryon"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
 labels = {"app": "bgu"}
@@ -80,5 +80,5 @@ for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 
 beam_pod_instance = deployment.launch(replicas=1)
-available_resources = beam_pod_instance.query_available_resources()
+available_resources = k8s.query_available_resources()
 print("Available Resources:", available_resources)
