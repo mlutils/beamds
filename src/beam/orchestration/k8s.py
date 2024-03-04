@@ -102,15 +102,18 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None,
                          memory_limits=None, gpu_requests=None,
-                         gpu_limits=None, *entrypoint_args, **envs):
+                         gpu_limits=None, entrypoint_args=None, entrypoint_envs=None):
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
 
         # Preparing environment variables from entrypoint_args and envs
         env_vars = []
+        entrypoint_args = entrypoint_args or []
+        entrypoint_envs = entrypoint_envs or {}
+
         for arg in entrypoint_args:
             env_vars.append(client.V1EnvVar(name=f"ARG_{arg}", value=str(arg)))
-        for key, value in envs.items():
+        for key, value in entrypoint_envs.items():
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
         # Preparing volume mounts
@@ -134,8 +137,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             resources['requests']['memory'] = memory_requests
             resources['limits']['memory'] = memory_limits
         if gpu_requests and gpu_limits:
-            resources['limits']['nvidia.com/gpu'] = gpu_requests
             resources['requests']['nvidia.com/gpu'] = gpu_limits
+            resources['limits']['nvidia.com/gpu'] = gpu_requests
 
         return client.V1Container(
             name=container_name,
@@ -177,7 +180,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return env_vars
 
     def create_pod_template(self, image_name, labels=None, deployment_name=None, project_name=None,
-                            ports=None, service_account_name=None, pvc_mounts=None, entrypoint_args=None, envs=None):
+                            ports=None, service_account_name=None, pvc_mounts=None,
+                            cpu_requests=None, cpu_limits=None, memory_requests=None,
+                            memory_limits=None, gpu_requests=None, gpu_limits=None,
+                            entrypoint_args=None, entrypoint_envs=None, ):
         if labels is None:
             labels = {}
         if project_name:
@@ -190,8 +196,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             project_name=project_name,
             ports=ports,
             pvc_mounts=pvc_mounts,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
             entrypoint_args=entrypoint_args,
-            envs=envs
+            entrypoint_envs=entrypoint_envs
         )
 
         # Defining volumes for the pod spec based on PVC mounts
@@ -229,7 +241,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
-                               ports=None, service_account_name=None, storage_configs=None, *entrypoint_args, **envs):
+                               ports=None, service_account_name=None, storage_configs=None,
+                               cpu_requests=None, cpu_limits=None, memory_requests=None,
+                               memory_limits=None, gpu_requests=None, gpu_limits=None, entrypoint_args=None,
+                               entrypoint_envs=None):
         # Ensure pvc_mounts are prepared correctly from storage_configs if needed
         pvc_mounts = [{
             'pvc_name': sc.pvc_name,
@@ -245,8 +260,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             ports=ports,
             service_account_name=service_account_name,  # Use it here
             pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
             entrypoint_args=entrypoint_args,
-            envs=envs
+            entrypoint_envs=entrypoint_envs
         )
 
         # Create and return the deployment spec
@@ -257,8 +278,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         )
 
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
-                          replicas=None, ports=None, service_account_name=None, storage_configs=None, *entrypoint_args,
-                          **envs):
+                          replicas=None, ports=None, service_account_name=None, storage_configs=None,
+                          cpu_requests=None, cpu_limits=None, memory_requests=None,
+                          memory_limits=None, gpu_requests=None, gpu_limits=None,
+                          entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
 
@@ -280,15 +303,17 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             image_name, labels=labels, deployment_name=deployment_name,
             project_name=project_name, replicas=replicas, ports=ports,
             service_account_name=service_account_name,  # Pass this
-            storage_configs=storage_configs,
-            *entrypoint_args, **envs
+            storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
+            memory_requests=memory_requests, memory_limits=memory_limits,
+            gpu_requests=gpu_requests, gpu_limits=gpu_limits,
+            entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )
 
         # Optionally add the project name to the deployment's metadata
         deployment_metadata = client.V1ObjectMeta(name=deployment_name, namespace=namespace,
                                                   labels={"project": project_name})
 
-        logger.info(f"Deployment {deployment_name} created in namespace {namespace}.")
+        # logger.info(f"Deployment {deployment_name} created in namespace {namespace}.")
         deployment = client.V1Deployment(
             api_version="apps/v1",
             kind="Deployment",
@@ -313,7 +338,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 raise  # Reraise exceptions that are not related to the deployment not existing
 
     def apply_deployment(self, deployment, namespace=None):
-        logger.info(f"Applying deployment object type: {type(deployment)}")
+        # logger.info(f"Applying deployment object type: {type(deployment)}")
         # Determine the namespace
         if namespace is None:
             namespace = self.namespace

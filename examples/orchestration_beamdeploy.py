@@ -14,8 +14,8 @@ replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variables
 use_scc = True  # Pass the SCC control parameter
-cpu_requests = "4"  # 0.5 CPU
-cpu_limits = "4"       # 1 CPU
+cpu_requests = "2m"  # 0.5 CPU
+cpu_limits = "2m"       # 1 CPU
 memory_requests = "24Gi"
 memory_limits = "24Gi"
 gpu_requests = "1"
@@ -27,7 +27,7 @@ storage_configs = [
 service_configs = [
     ServiceConfig(port=22, service_name="ssh", service_type="NodePort", port_name="ssh-port",
                   create_route=False, create_ingress=False, ingress_host="ssh.example.com"),
-    ServiceConfig(port=88, service_name="jupyter", service_type="ClusterIP", port_name="jupyter-port",
+    ServiceConfig(port=88, service_name="jupyter", service_type="LoadBalancer", port_name="jupyter-port",
                   create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
 ]
 user_idm_configs = [
@@ -72,13 +72,13 @@ deployment = BeamDeploy(
     user_idm_configs=user_idm_configs,
 )
 
-deployment.launch(replicas=1)
+#deployment.launch(replicas=1)
+
+beam_pod_instance = deployment.launch(replicas=1)
+available_resources = k8s.query_available_resources()
+print("Available Resources:", available_resources)
 
 print("Fetching external endpoints...")
 internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
-
-beam_pod_instance = deployment.launch(replicas=1)
-available_resources = k8s.query_available_resources()
-print("Available Resources:", available_resources)

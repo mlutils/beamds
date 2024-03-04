@@ -10,7 +10,7 @@ class BeamPod(Processor):
         super().__init__(*args, **kwargs)
 
         self.k8s = k8s
-        self.pod_info = pod_info
+        self._pod_info = pod_info
 
     def execute(self, command, **kwargs):
         # Execute a command in the pod
@@ -28,7 +28,7 @@ class BeamPod(Processor):
     @property
     def pod_info(self):
         # Get pod info
-        return self.deployment.metadata
+        return self._pod_info
 
     def get_pod_resources(self, **kwargs):
         # Get pod resources

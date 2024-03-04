@@ -10,7 +10,7 @@ from ..logger import beam_logger as logger
 class ServiceConfig:
     port: int
     service_name: str
-    service_type: str
+    service_type: str # NodePort, ClusterIP, LoadBalancer
     port_name: str
     create_route: bool = False  # Indicates whether to create a route for this service
     route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
@@ -47,12 +47,12 @@ class BeamDeploy(Processor):
                  cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
                  service_configs=None, user_idm_configs=None, scc_name='anyuid',
-                 service_type=None, *entrypoint_args, **entrypoint_envs):
+                 service_type=None, entrypoint_args=None, entrypoint_envs=None):
         super().__init__()
         self.k8s = k8s
         self.deployment = deployment
-        self.entrypoint_args = entrypoint_args
-        self.entrypoint_envs = entrypoint_envs
+        self.entrypoint_args = entrypoint_args or []
+        self.entrypoint_envs = entrypoint_envs or {}
         self.project_name = project_name
         self.namespace = namespace
         self.replicas = replicas
@@ -145,9 +145,10 @@ class BeamDeploy(Processor):
             memory_limits=self.memory_limits,
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
-            *self.entrypoint_args, **self.entrypoint_envs
+            entrypoint_args=self.entrypoint_args,
+            entrypoint_envs=self.entrypoint_envs,
         )
-
+        # self.k8s.apply_deployment(deployment, namespace=self.namespace)
         pod_info = self.k8s.apply_deployment(deployment, namespace=self.namespace)
 
         if pod_info is list:
