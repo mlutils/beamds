@@ -78,8 +78,11 @@ class AsyncClient(HTTPClient):
     def postrun(self, result):
         pass
 
-    def poll(self, task_id):
-        return self.get('/poll/beam', params={'task_id': task_id})
+    def poll(self, task_id, timeout=None):
+        params = {'task_id': task_id}
+        if timeout is not None:
+            params['timeout'] = timeout
+        return self.get('/poll/beam', params=params)
 
     def on_message(self, ws, message):
         data = json.loads(message)

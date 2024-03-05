@@ -8,6 +8,10 @@ from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
 
 class CeleryAsyncResult(MetaAsyncResult):
 
+    @classmethod
+    def from_str(cls, value, app=None):
+        return cls(app.AsyncResult(value))
+
     @property
     def value(self):
         if self._value is None and self.is_ready:
@@ -15,7 +19,11 @@ class CeleryAsyncResult(MetaAsyncResult):
         return self._value
 
     def wait(self, timeout=None):
-        return self.obj.get(timeout=timeout)
+
+        try:
+            return self.obj.get(timeout=timeout)
+        except self.obj.TimeoutError:
+            return None
 
     @property
     def hex(self):
@@ -80,11 +88,9 @@ class CeleryDispatcher(MetaDispatcher):
     def __call__(self, *args, **kwargs):
         return self.dispatch('function', *args, **kwargs)
 
-    def poll(self, task_id, *args, **kwargs):
-        res = self.broker.AsyncResult(task_id)
-        if res.state == 'SUCCESS':
-            return res.result
-        return None
+    def poll(self, task_id, timeout=0):
+        async_res = CeleryAsyncResult.from_str(task_id, app=self.broker)
+        return async_res.wait(timeout=timeout)
 
     def metadata(self, task_id, *args, **kwargs):
         res = self.broker.AsyncResult(task_id)

@@ -16,6 +16,8 @@ import threading
 
 import traceback
 import linecache
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
 
 try:
     import modin.pandas as mpd
@@ -1099,25 +1101,35 @@ def dict_to_list(x, convert_str=True):
 
 
 class Timer(object):
-
-    def __init__(self, logger, name='', silence=False):
+    def __init__(self, logger, name='', silence=False, timeout=None, task=None, task_args=None, task_kwargs=None):
         self.name = name
         self.logger = logger
         self.silence = silence
+        self.timeout = timeout
+        self.task = task
+        self.task_args = task_args or ()
+        self.task_kwargs = task_kwargs or {}
         self._elapsed = 0
         self.paused = True
         self.t0 = None
-
-    def reset(self):
-        self._elapsed = 0
-        self.paused = True
-        self.t0 = None
-        return self
+        self.executor = None
+        self.future = None
 
     def __enter__(self):
         if not self.silence:
             self.logger.info(f"Starting timer: {self.name}")
         self.run()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        elapsed = self.pause()
+        if not self.silence:
+            self.logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
+
+    def reset(self):
+        self._elapsed = 0
+        self.paused = True
+        self.t0 = None
         return self
 
     @property
@@ -1136,18 +1148,30 @@ class Timer(object):
     def run(self):
         self.paused = False
         self.t0 = time.time()
-        return self
+
+        if self.task is not None:
+
+            self.logger.info(f"Starting task with timeout of {self.timeout} seconds.")
+            self.executor = ThreadPoolExecutor(max_workers=1)
+            self.future = self.executor.submit(self.task, *self.task_args, **self.task_kwargs)
+
+            try:
+                if self.future:
+                    self.future.result(timeout=self.timeout)
+            except TimeoutError:
+                self.logger.info(f"Timer {self.name} exceeded timeout of {self.timeout} seconds.")
+            finally:
+                elapsed = self.pause()
+                if not self.silence:
+                    self.logger.info(f"Timer {self.name} paused. Elapsed time: {elapsed} Sec")
+                if self.executor:
+                    self.executor.shutdown()
 
     def __str__(self):
         return f"Timer {self.name}: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"
 
     def __repr__(self):
         return str(self)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        elapsed = self.pause()
-        if not self.silence:
-            self.logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
 
 
 class ThreadSafeDict(dict):

@@ -8,6 +8,10 @@ import ray
 
 class RayAsyncResult(MetaAsyncResult):
 
+    @classmethod
+    def from_str(cls, value, **kwargs):
+        return cls(ray.ObjectRef(bytes.fromhex(value)))
+
     @property
     def value(self):
         if self._value is None:
@@ -15,8 +19,13 @@ class RayAsyncResult(MetaAsyncResult):
         return self._value
 
     def wait(self, timeout=None):
-        ready, not_ready = ray.wait([self.obj], num_returns=1, timeout=timeout)
-        return ready, not_ready
+        # ready, not_ready = ray.wait([self.obj], num_returns=1, timeout=timeout)
+        # return ready, not_ready
+        try:
+            res = ray.get(self.obj, timeout=timeout)
+            return res
+        except ray.exceptions.RayTaskError:
+            return None
 
     @property
     def hex(self):
@@ -25,8 +34,8 @@ class RayAsyncResult(MetaAsyncResult):
     @property
     def is_ready(self):
         if not self._is_ready:
-            ready, _ = self.wait(timeout=0)
-            self._is_ready = len(ready) == 1
+            ready = self.wait(timeout=0)
+            self._is_ready = ready is not None
         return self._is_ready
 
     def __repr__(self):
@@ -35,7 +44,7 @@ class RayAsyncResult(MetaAsyncResult):
     @property
     def state(self):
         if self.is_ready:
-            return "READY"
+            return "SUCCESS" if self.is_success else "FAILURE"
         else:
             return "PENDING"
 
@@ -147,13 +156,17 @@ class RayDispatcher(MetaDispatcher, RayCluster):
                                                                                              '__call__'))
             for route in self.routes:
                 if hasattr(self.obj, route):
-                    self.routes_methods[route] = self.remote_function_wrapper(
+                    self._routes_methods[route] = self.remote_function_wrapper(
                         self.remote_method_wrapper(self.obj, route))
 
         elif self.type == 'class':
             self.call_function = self.remote_class_wrapper(self.obj)
         else:
             raise ValueError(f"Unknown type: {self.type}")
+
+    def poll(self, task_id, timeout=0):
+        async_res = RayAsyncResult.from_str(task_id)
+        return async_res.wait(timeout=timeout)
 
     @property
     def ray_remote(self):

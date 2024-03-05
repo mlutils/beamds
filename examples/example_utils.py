@@ -6,6 +6,38 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def distributed_ray_server():
+    from src.beam.misc import BeamFakeAlg
+    from src.beam.distributed import AsyncRayServer, AsyncCeleryServer
+
+    fake_alg = BeamFakeAlg(sleep_time=1., variance=0.5, error_rate=0.1)
+
+    def postrun(**kwargs):
+        logger.info(f'Server side callback: Task has completed for {kwargs}')
+
+    # server = AsyncRayServer(fake_alg, postrun=postrun, port=28850, ws_port=28802,)
+    server = AsyncCeleryServer(fake_alg, postrun=postrun, port=28850, ws_port=28802, )
+
+    server.run()
+    print('done!')
+
+    # from src.beam import resource
+    # alg = resource('async-http://localhost:28850')
+    # fake_alg.run(x=2)
+    #
+    # res = alg.run(1)
+    # print(res)
+
+
+def sftp_example():
+    import pysftp
+
+    cnopts = pysftp.CnOpts()
+    cnopts.hostkeys = None  # This disables host key checking
+    path = resource('sftp://root:12345678@localhost:28822/home/elad')
+    print(list(path))
+
+
 def load_index():
     from src.beam.similarity import TextSimilarity
     from sklearn.datasets import fetch_20newsgroups
@@ -348,6 +380,10 @@ if __name__ == '__main__':
 
     # save_index()
 
-    load_index()
+    # load_index()
+
+    # sftp_example()
+
+    distributed_ray_server()
 
     print('done')

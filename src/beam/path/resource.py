@@ -7,7 +7,7 @@ beam_key = BeamKey()
 
 
 def beam_path(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
-              **kwargs):
+              password=None, **kwargs):
     """
 
     @param port:
@@ -40,6 +40,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
     if url.username is not None:
         username = url.username
+
+    if url.password is not None:
+        password = url.password
 
     query = url.query
     for k, v in query.items():
@@ -111,7 +114,8 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     elif url.protocol == 'sftp':
 
         private_key = beam_key('SSH_PRIVATE_KEY', private_key)
-        return SFTPPath(path, hostname=hostname, username=username, port=port, private_key=private_key, **kwargs)
+        return SFTPPath(path, hostname=hostname, username=username, port=port,
+                        private_key=private_key, password=password, **kwargs)
     else:
         raise NotImplementedError
 

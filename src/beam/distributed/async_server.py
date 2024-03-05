@@ -3,8 +3,6 @@ import time
 from threading import Thread
 import io
 
-from .celery_dispatcher import CeleryDispatcher
-from .celery_worker import CeleryWorker
 from ..serve.http_server import HTTPServer
 from ..serve.server import BeamServer
 from ..logger import beam_logger as logger
@@ -12,42 +10,14 @@ import websockets
 import asyncio
 from flask import request, jsonify, send_file
 from ..utils import ThreadSafeDict, find_port
+from .meta_dispatcher import MetaAsyncResult
 
 
 class AsyncServer(HTTPServer):
 
-    def __init__(self, obj, routes=None, name=None, broker=None, backend=None,
-                 broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
-                 backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
-                 backend_host=None, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
-                 tls=False, n_threads=4, application=None, postrun=None, ws_tls=False,
-                 n_workers=1, broker_log_level='INFO', **kwargs):
+    def __init__(self, dispatcher, *args, postrun=None, ws_tls=False, **kwargs):
 
-        if routes is None:
-            routes = []
-        self.worker = CeleryWorker(obj, *routes, name=name, n_workers=n_workers, daemon=True,
-                                   broker=broker, backend=backend,
-                                   broker_username=broker_username, broker_password=broker_password,
-                                   broker_port=broker_port,
-                                   broker_scheme=broker_scheme, broker_host=broker_host,
-                                   backend_username=backend_username, backend_password=backend_password,
-                                   backend_port=backend_port,
-                                   backend_scheme=backend_scheme,
-                                   backend_host=backend_host, log_level=broker_log_level)
-
-        predefined_attributes = {k: 'method' for k in self.worker.routes}
-        self.dispatcher = CeleryDispatcher(name=self.worker.name, broker=broker, backend=backend,
-                                           broker_username=broker_username, broker_password=broker_password,
-                                           broker_port=broker_port, broker_scheme=broker_scheme, broker_host=broker_host,
-                                           backend_username=backend_username, backend_password=backend_password,
-                                           backend_port=backend_port, backend_scheme=backend_scheme,
-                                           backend_host=backend_host, log_level=broker_log_level)
-
-        application = application or 'distributed_async'
-        super().__init__(obj=self.dispatcher, name=name, use_torch=use_torch, batch=batch,
-                        max_wait_time=max_wait_time, max_batch_size=max_batch_size,
-                        tls=tls, n_threads=n_threads, application=application,
-                        predefined_attributes=predefined_attributes, **kwargs)
+        super().__init__(dispatcher, *args, **kwargs)
 
         self.app.add_url_rule('/poll/<client>/', view_func=self.poll)
 
@@ -71,10 +41,14 @@ class AsyncServer(HTTPServer):
         else:
             self.postrun_callback = postrun
 
+    def run_worker(self):
+        pass
+
     def poll(self, client):
 
         task_id = request.args.get('task_id')
-        result = self.dispatcher.poll(task_id)
+        timeout = request.args.get('timeout', 0)
+        result = self.obj.poll(task_id, timeout=timeout)
 
         if client == 'beam':
             io_results = io.BytesIO()
@@ -109,7 +83,7 @@ class AsyncServer(HTTPServer):
 
     def run(self, ws_host=None, ws_port=None, enable_websocket=True, non_blocking=False, **kwargs):
 
-        self.worker.run()
+        self.run_worker()
 
         if enable_websocket:
             if ws_host is None:
@@ -144,6 +118,10 @@ class AsyncServer(HTTPServer):
             except KeyboardInterrupt:
                 logger.info("Keyboard interrupt, exiting...")
                 break
+
+    @property
+    def real_object(self):
+        return self.obj.obj
 
     @property
     def metadata(self):
@@ -219,3 +197,67 @@ class AsyncServer(HTTPServer):
     def postrun(self, task_args=None, task_kwargs=None, retval=None, state=None, task=None, metadata=None,
                 postrun_args=None, postrun_kwargs=None, **kwargs):
         pass
+
+
+class AsyncCeleryServer(AsyncServer):
+
+    def __init__(self, obj, routes=None, name=None, broker=None, backend=None,
+                 broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
+                 backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
+                 backend_host=None, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
+                 tls=False, n_threads=4, application=None, n_workers=1, broker_log_level='INFO', **kwargs):
+
+        from .celery_dispatcher import CeleryDispatcher
+        from .celery_worker import CeleryWorker
+
+        if routes is None:
+            routes = []
+        self.worker = CeleryWorker(obj, *routes, name=name, n_workers=n_workers, daemon=True,
+                                   broker=broker, backend=backend,
+                                   broker_username=broker_username, broker_password=broker_password,
+                                   broker_port=broker_port,
+                                   broker_scheme=broker_scheme, broker_host=broker_host,
+                                   backend_username=backend_username, backend_password=backend_password,
+                                   backend_port=backend_port,
+                                   backend_scheme=backend_scheme,
+                                   backend_host=backend_host, log_level=broker_log_level)
+
+        predefined_attributes = {k: 'method' for k in self.worker.routes}
+        dispatcher = CeleryDispatcher(name=self.worker.name, broker=broker, backend=backend,
+                                           broker_username=broker_username, broker_password=broker_password,
+                                           broker_port=broker_port, broker_scheme=broker_scheme,
+                                           broker_host=broker_host,
+                                           backend_username=backend_username, backend_password=backend_password,
+                                           backend_port=backend_port, backend_scheme=backend_scheme,
+                                           backend_host=backend_host, log_level=broker_log_level)
+
+        application = application or 'distributed_celery_async'
+        super().__init__(dispatcher, name=name, use_torch=use_torch, batch=batch,
+                         max_wait_time=max_wait_time, max_batch_size=max_batch_size,
+                         tls=tls, n_threads=n_threads, application=application,
+                         predefined_attributes=predefined_attributes, **kwargs)
+
+    def run_worker(self):
+        self.worker.run()
+
+
+class AsyncRayServer(AsyncServer):
+
+    def __init__(self, obj, routes=None, name=None, address=None, port=None, use_torch=True, batch=None,
+                 max_wait_time=1.0, max_batch_size=10, tls=False, n_threads=4, application=None, ray_kwargs=None,
+                 **kwargs):
+
+        from .ray_dispatcher import RayDispatcher
+
+        if routes is None:
+            routes = []
+
+        predefined_attributes = {k: 'method' for k in routes}
+        dispatcher = RayDispatcher(obj, *routes, name=name, address=address, port=port,ray_kwargs=ray_kwargs,
+                                   **kwargs)
+
+        application = application or 'distributed_ray_async'
+        super().__init__(dispatcher, name=name, use_torch=use_torch, batch=batch,
+                         max_wait_time=max_wait_time, max_batch_size=max_batch_size,
+                         tls=tls, n_threads=n_threads, application=application,
+                         predefined_attributes=predefined_attributes, **kwargs)

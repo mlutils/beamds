@@ -67,7 +67,7 @@ class BeamServer(Processor):
 
         atexit.register(self._cleanup)
 
-        if inspect.isfunction(obj):
+        if inspect.isfunction(self.real_object):
             self.type = 'function'
         else:
             self.type = 'class'
@@ -211,20 +211,26 @@ class BeamServer(Processor):
     def metadata(self):
         return None
 
+    @property
+    def real_object(self):
+        return self.obj
+
     def get_info(self):
+
+        obj = self.real_object
 
         d = {'name': None, 'obj': self.type, 'serialization': self.serialization_method}
         if self.type == 'function':
-            d['vars_args'] = self.obj.__code__.co_varnames
+            d['vars_args'] = obj.__code__.co_varnames
         else:
-            d['vars_args'] = self.obj.__init__.__code__.co_varnames
-            if hasattr(self.obj, 'hparams'):
-                d['hparams'] = to_dict(self.obj.hparams)
+            d['vars_args'] = obj.__init__.__code__.co_varnames
+            if hasattr(obj, 'hparams'):
+                d['hparams'] = to_dict(obj.hparams)
             else:
                 d['hparams'] = None
 
             attributes = self._predefined_attributes.copy()
-            for name, attr in inspect.getmembers(self.obj):
+            for name, attr in inspect.getmembers(obj):
                 if type(name) is not str:
                     continue
                 if not name.startswith('_') and (inspect.ismethod(attr) or inspect.isfunction(attr)):
@@ -232,15 +238,15 @@ class BeamServer(Processor):
                 elif not name.startswith('_') and not inspect.isbuiltin(attr):
                     attributes[name] = 'variable'
 
-            properties = inspect.getmembers(type(self.obj), lambda m: isinstance(m, property))
+            properties = inspect.getmembers(type(obj), lambda m: isinstance(m, property))
             for name, attr in properties:
                 if not name.startswith('_'):
                     attributes[name] = 'property'
 
             d['attributes'] = attributes
 
-        if hasattr(self.obj, 'name'):
-            d['name'] = self.obj.name
+        if hasattr(obj, 'name'):
+            d['name'] = obj.name
 
         if hasattr(self, 'metadata'):
             metadata = self.metadata
