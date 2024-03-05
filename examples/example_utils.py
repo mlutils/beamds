@@ -6,6 +6,15 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def sftp_example():
+    import pysftp
+
+    cnopts = pysftp.CnOpts()
+    cnopts.hostkeys = None  # This disables host key checking
+    path = resource('sftp://root:12345678@localhost:28822/home/elad')
+    print(list(path))
+
+
 def load_index():
     from src.beam.similarity import TextSimilarity
     from sklearn.datasets import fetch_20newsgroups
@@ -348,6 +357,8 @@ if __name__ == '__main__':
 
     # save_index()
 
-    load_index()
+    # load_index()
+
+    sftp_example()
 
     print('done')

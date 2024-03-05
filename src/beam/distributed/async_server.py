@@ -10,13 +10,16 @@ import websockets
 import asyncio
 from flask import request, jsonify, send_file
 from ..utils import ThreadSafeDict, find_port
+from .ray_dispatcher import RayAsyncResult
+from .celery_dispatcher import CeleryAsyncResult
+from .meta_dispatcher import MetaAsyncResult
 
 
 class AsyncServer(HTTPServer):
 
     def __init__(self, dispatcher, *args, postrun=None, ws_tls=False, **kwargs):
 
-        super().__init__(dispatcher, *args, **kwargs)
+        super().__init__(dispatcher.obj, *args, **kwargs)
 
         self.dispatcher = dispatcher
         self.app.add_url_rule('/poll/<client>/', view_func=self.poll)
@@ -118,6 +121,10 @@ class AsyncServer(HTTPServer):
                 logger.info("Keyboard interrupt, exiting...")
                 break
 
+    @staticmethod
+    def async_result(res):
+        return MetaAsyncResult(res)
+
     @property
     def metadata(self):
         return {'ws_application': self.ws_application, 'ws_port': self.ws_port}
@@ -145,7 +152,7 @@ class AsyncServer(HTTPServer):
             kwargs = data.pop('kwargs', {})
 
         if method not in ['poll']:
-            async_result = BeamServer.query_algorithm(self, client, method, args, kwargs, return_raw_results=True)
+            async_result = self.async_result(BeamServer.query_algorithm(self, client, method, args, kwargs, return_raw_results=True))
             task_id = async_result.hex
             metadata = self.request_metadata(client=client, method=method)
             self.tasks[task_id] = {'metadata': metadata, 'postrun_args': postrun_args,
@@ -256,3 +263,7 @@ class AsyncRayServer(AsyncServer):
                          max_wait_time=max_wait_time, max_batch_size=max_batch_size,
                          tls=tls, n_threads=n_threads, application=application,
                          predefined_attributes=predefined_attributes, **kwargs)
+
+    @staticmethod
+    def async_result(res):
+        return MetaAsyncResult(res)

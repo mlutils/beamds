@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import PurePath, Path
 from .core import PureBeamPath, normalize_host
-from io import StringIO, BytesIO
+from io import StringIO, BytesIO, TextIOWrapper
 import os
 import urllib3
 import stat
@@ -329,7 +329,8 @@ class SMBPath(PureBeamPath):
 class SFTPPath(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, username=None, private_key=None, password=None,
-                 port=None, private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None, **kwargs):
+                 port=None, private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None,
+                 disable_hostkey=True, **kwargs):
 
         super().__init__(*pathsegments, scheme='sftp', client=client, hostname=hostname, username=username,
                          private_key=private_key, password=password, port=port, private_key_pass=private_key_pass,
@@ -342,6 +343,9 @@ class SFTPPath(PureBeamPath):
 
         if client is None:
             import pysftp
+            if disable_hostkey:
+                cnopts = pysftp.CnOpts()
+                cnopts.hostkeys = None  # This disables host key checking
             self.client = pysftp.Connection(host=hostname, username=username, private_key=private_key, password=password,
                                             port=port, private_key_pass=private_key_pass, ciphers=ciphers, log=log,
                                             cnopts=cnopts, default_path=default_path)
@@ -373,8 +377,12 @@ class SFTPPath(PureBeamPath):
         self.client.rename(str(self.path), str(target))
 
     def __enter__(self):
-        if self.mode in ["rb", "r"]:
+        if self.mode == "rb":
             self.file_object = self.client.open(str(self.path), self.mode)
+        elif self.mode == "r":
+            self.file_object = TextIOWrapper(self.client.open(str(self.path), self.mode),
+                                             encoding=self.open_kwargs['encoding'],
+                                            newline=self.open_kwargs['newline'])
         elif self.mode == 'wb':
             self.file_object = BytesIO()
         elif self.mode == 'w':
