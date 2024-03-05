@@ -12,6 +12,10 @@ class MetaAsyncResult:
         self._is_ready = None
         self._is_success = None
 
+    @classmethod
+    def from_str(cls, value, **kwargs):
+        raise NotImplementedError
+
     @property
     def value(self):
         raise NotImplementedError

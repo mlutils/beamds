@@ -10,8 +10,6 @@ import websockets
 import asyncio
 from flask import request, jsonify, send_file
 from ..utils import ThreadSafeDict, find_port
-from .ray_dispatcher import RayAsyncResult
-from .celery_dispatcher import CeleryAsyncResult
 from .meta_dispatcher import MetaAsyncResult
 
 
@@ -19,9 +17,8 @@ class AsyncServer(HTTPServer):
 
     def __init__(self, dispatcher, *args, postrun=None, ws_tls=False, **kwargs):
 
-        super().__init__(dispatcher.obj, *args, **kwargs)
+        super().__init__(dispatcher, *args, **kwargs)
 
-        self.dispatcher = dispatcher
         self.app.add_url_rule('/poll/<client>/', view_func=self.poll)
 
         self.tasks = ThreadSafeDict()
@@ -50,7 +47,8 @@ class AsyncServer(HTTPServer):
     def poll(self, client):
 
         task_id = request.args.get('task_id')
-        result = self.dispatcher.poll(task_id)
+        timeout = request.args.get('timeout', 0)
+        result = self.obj.poll(task_id, timeout=timeout)
 
         if client == 'beam':
             io_results = io.BytesIO()
@@ -121,9 +119,9 @@ class AsyncServer(HTTPServer):
                 logger.info("Keyboard interrupt, exiting...")
                 break
 
-    @staticmethod
-    def async_result(res):
-        return MetaAsyncResult(res)
+    @property
+    def real_object(self):
+        return self.obj.obj
 
     @property
     def metadata(self):
@@ -152,7 +150,7 @@ class AsyncServer(HTTPServer):
             kwargs = data.pop('kwargs', {})
 
         if method not in ['poll']:
-            async_result = self.async_result(BeamServer.query_algorithm(self, client, method, args, kwargs, return_raw_results=True))
+            async_result = BeamServer.query_algorithm(self, client, method, args, kwargs, return_raw_results=True)
             task_id = async_result.hex
             metadata = self.request_metadata(client=client, method=method)
             self.tasks[task_id] = {'metadata': metadata, 'postrun_args': postrun_args,
@@ -263,7 +261,3 @@ class AsyncRayServer(AsyncServer):
                          max_wait_time=max_wait_time, max_batch_size=max_batch_size,
                          tls=tls, n_threads=n_threads, application=application,
                          predefined_attributes=predefined_attributes, **kwargs)
-
-    @staticmethod
-    def async_result(res):
-        return MetaAsyncResult(res)
