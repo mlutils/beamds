@@ -18,15 +18,15 @@ def distributed_ray_server():
     # server = AsyncRayServer(fake_alg, postrun=postrun, port=28850, ws_port=28802,)
     server = AsyncCeleryServer(fake_alg, postrun=postrun, port=28850, ws_port=28802, )
 
-    server.run()
-    print('done!')
+    server.run_non_blocking()
+    # print('done!')
 
-    # from src.beam import resource
-    # alg = resource('async-http://localhost:28850')
-    # fake_alg.run(x=2)
-    #
-    # res = alg.run(1)
-    # print(res)
+    from src.beam import resource
+    alg = resource('async-http://localhost:28450')
+    fake_alg.run(x=2)
+
+    res = alg.run(1)
+    print(res)
 
 
 def sftp_example():

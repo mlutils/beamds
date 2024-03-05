@@ -1,11 +1,7 @@
 import numpy as np
 
 import scipy.sparse as sp
-from scipy.sparse import csr_matrix
-
-from .. import as_numpy, check_type
 from .core import BeamSimilarity, Similarities
-from ..utils import as_scipy_csr
 
 
 class SparnnSimilarity(BeamSimilarity):

@@ -143,10 +143,7 @@ class TritonClient(Processor):
     def __call__(self, *args):
         return self.call_model(*args)
 
-    def __getattr__(self, item):
-
-        if item == '_init_is_done' or not hasattr(self, '_init_is_done'):
-            return super().__getattr__(item)
+    def getattr(self, item):
 
         if self.model_name is None:
             func = partial(self.call_model, model_name=item)

@@ -103,9 +103,7 @@ class MetaDispatcher(Processor):
         else:
             return "instance" if isinstance(self.obj, object) else "unknown"
 
-    def __getattr__(self, item):
-        if item.startswith('_') or item == '_init_is_done' or not hasattr(self, '_init_is_done'):
-            return super().__getattribute__(item)
+    def getattr(self, item):
         if item in self._routes_methods:
             return self._routes_methods[item]
         else:

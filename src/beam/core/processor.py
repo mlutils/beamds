@@ -24,6 +24,15 @@ class BeamBase(metaclass=MetaInitIsDoneVerifier):
         self._name = name
         self._lazy_cache = {}
 
+    def getattr(self, attr):
+        raise AttributeError(f"Attribute {attr} not found")
+
+    def __getattr__(self, item):
+        if (item.startswith('_') or item == '_init_is_done' or not hasattr(self, '_init_is_done')
+                or not self._init_is_done):
+            return object.__getattribute__(self, item)
+        return self.getattr(item)
+
     def clear_cache(self, *args):
         if len(args) == 0:
             self._lazy_cache = {}
@@ -37,7 +46,7 @@ class BeamBase(metaclass=MetaInitIsDoneVerifier):
 
     @lazy_property
     def name(self):
-        if self._name is None and hasattr(self, '_init_is_done'):
+        if self._name is None and hasattr(self, '_init_is_done') and self._init_is_done:
             self._name = retrieve_name(self)
         return self._name
 
