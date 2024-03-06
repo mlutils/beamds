@@ -68,7 +68,7 @@ class BeamClient(Processor):
     def __call__(self, *args, **kwargs):
         return self.post('call/beam', *args, **kwargs)
 
-    def __getattr__(self, item):
+    def getattr(self, item):
         if item.startswith('_') or item in ['info'] or not hasattr(self, 'info'):
             return super().__getattribute__(item)
 
