@@ -90,12 +90,12 @@ class AsyncClient(HTTPClient):
         # Extract task_id and state from the message
         task_id = data.get('task_id')
         state = data.get('state')
+        metadata = data.get('metadata', None)
 
         if state == 'SUCCESS':
             result = self.poll(task_id)
             self.postrun_callback(result)
         else:
-            metadata = self.metadata(task_id)
             logger.error(f"Task {task_id} failed with state {state} and metadata: {metadata}")
 
     def on_error(self, ws, error):

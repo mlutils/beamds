@@ -24,7 +24,7 @@ class RayAsyncResult(MetaAsyncResult):
         try:
             res = ray.get(self.obj, timeout=timeout)
             return res
-        except ray.exceptions.RayTaskError:
+        except ray.exceptions.GetTimeoutError:
             return None
 
     @property

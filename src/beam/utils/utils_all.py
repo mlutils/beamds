@@ -242,7 +242,7 @@ def beam_service_port(service):
     port = None
     try:
         conf = pd.read_csv('/workspace/configuration/config.csv', index_col=0)
-        port = int(conf.loc[service.lower()])
+        port = int(conf.drop_duplicates().loc[service.lower()])
     except:
         pass
 

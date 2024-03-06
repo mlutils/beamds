@@ -86,8 +86,7 @@ mlflow server --host 0.0.0.0 --port "$MLFLOW_PORT" --backend-store-uri /workspac
 export MLFLOW_TRACKING_URI=http://localhost:$MLFLOW_PORT
 
 # run prefect server
-
-prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
+#prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
 
 # run ray serve
 #ray start --head --node-ip-address=0.0.0.0 --port=${RAY_REDIS_PORT} --dashboard-port=${RAY_DASHBOARD_PORT} --dashboard-host=0.0.0.0 &

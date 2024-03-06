@@ -220,7 +220,13 @@ class BeamServer(Processor):
         obj = self.real_object
 
         d = {'name': None, 'obj': self.type, 'serialization': self.serialization_method}
-        if self.type == 'function':
+
+        if obj is None:
+            d['attributes'] = self._predefined_attributes.copy()
+            d['hparams'] = None
+            d['vars_args'] = None
+
+        elif self.type == 'function':
             d['vars_args'] = obj.__code__.co_varnames
         else:
             d['vars_args'] = obj.__init__.__code__.co_varnames

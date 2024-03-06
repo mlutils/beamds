@@ -1,12 +1,24 @@
 import os
 import sys
+import time
+
 import torch
 import numpy as np
 from src.beam import resource
 from beam import beam_logger as logger
 
 
-def distributed_ray_server():
+def distributed_client():
+
+    alg = resource('async-http://localhost:28850')
+
+    res = alg.run(1)
+    time.sleep(3)
+
+    print(alg.poll(res))
+
+
+def distributed_server():
     from src.beam.misc import BeamFakeAlg
     from src.beam.distributed import AsyncRayServer, AsyncCeleryServer
 
@@ -15,18 +27,12 @@ def distributed_ray_server():
     def postrun(**kwargs):
         logger.info(f'Server side callback: Task has completed for {kwargs}')
 
-    # server = AsyncRayServer(fake_alg, postrun=postrun, port=28850, ws_port=28802,)
-    server = AsyncCeleryServer(fake_alg, postrun=postrun, port=28850, ws_port=28802, )
+    server = AsyncRayServer(fake_alg, postrun=postrun, port=28850, ws_port=28802, asynchronous=False)
+    # server = AsyncCeleryServer(fake_alg, postrun=postrun, port=28850, ws_port=28802,)
 
-    server.run_non_blocking()
-    # print('done!')
-
-    from src.beam import resource
-    alg = resource('async-http://localhost:28450')
-    fake_alg.run(x=2)
-
-    res = alg.run(1)
-    print(res)
+    # server.run_non_blocking()
+    server.run()
+    print('done!')
 
 
 def sftp_example():
@@ -384,6 +390,8 @@ if __name__ == '__main__':
 
     # sftp_example()
 
-    distributed_ray_server()
+    distributed_server()
+
+    # distributed_client()
 
     print('done')
