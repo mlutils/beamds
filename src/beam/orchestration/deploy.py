@@ -1,9 +1,10 @@
 from ..core import Processor
 from .pod import BeamPod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
+from typing import List
 
 
 @dataclass
@@ -39,6 +40,12 @@ class UserIdmConfig:
     create_role_binding: bool = False  # Indicates whether to create a role_binding this project
 
 
+@dataclass
+class SecurityContextConfig:
+    add_capabilities: List[str] = field(default_factory=list)
+    enable_security_context: bool = False
+
+
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None,
@@ -46,7 +53,8 @@ class BeamDeploy(Processor):
                  deployment_name=None, use_scc=False, deployment=None,
                  cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
-                 service_configs=None, user_idm_configs=None, scc_name='anyuid',
+                 service_configs=None, user_idm_configs=None,
+                 security_context_config=None, scc_name=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None):
         super().__init__()
         self.k8s = k8s
@@ -72,6 +80,7 @@ class BeamDeploy(Processor):
         self.service_configs = service_configs
         self.storage_configs = storage_configs
         self.user_idm_configs = user_idm_configs or []
+        self.security_context_config = security_context_config or []
 
     def launch(self, replicas=None):
         if replicas is None:
@@ -127,6 +136,9 @@ class BeamDeploy(Processor):
         if self.user_idm_configs:
             self.k8s.create_role_bindings(self.user_idm_configs)
 
+        if self.use_scc is True:
+            self.k8s.add_scc_to_service_account(self.service_account_name, self.namespace, self.scc_name)
+
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 
         deployment = self.k8s.create_deployment(
@@ -145,6 +157,7 @@ class BeamDeploy(Processor):
             memory_limits=self.memory_limits,
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
+            security_context_config=self.security_context_config,
             entrypoint_args=self.entrypoint_args,
             entrypoint_envs=self.entrypoint_envs,
         )

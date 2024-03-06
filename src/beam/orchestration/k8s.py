@@ -13,7 +13,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     """BeamK8S is a class  that  provides a simple interface to the Kubernetes API."""
 
     def __init__(self, api_url=None, api_token=None, namespace=None,
-                 project_name=None, use_scc=True, scc_name="anyuid", *args, **kwargs):
+                 project_name=None, use_scc=None, scc_name=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.api_token = api_token
         self.api_url = api_url
@@ -73,14 +73,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             else:
                 logger.error(f"Failed to check or create project '{project_name}': {e}")
 
-    def add_scc_to_service_account(self, service_account_name, namespace, scc_name='anyuid'):
-        scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
-        scc_obj = scc.get(name=scc_name)
-        user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
-        if user_name not in scc_obj.users:
-            scc_obj.users.append(user_name)
-            scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
-
     def create_service_account(self, name, namespace=None):
         namespace = namespace or self.namespace
 
@@ -98,11 +90,20 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
 
+    def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
+        scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
+        scc_obj = scc.get(name=scc_name)
+        user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
+        if user_name not in scc_obj.users:
+            scc_obj.users.append(user_name)
+            scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
+
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None,
                          memory_limits=None, gpu_requests=None,
-                         gpu_limits=None, entrypoint_args=None, entrypoint_envs=None):
+                         gpu_limits=None, security_context_config=None,  security_context=None,
+                         entrypoint_args=None, entrypoint_envs=None):
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
 
@@ -140,13 +141,21 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             resources['requests']['nvidia.com/gpu'] = gpu_limits
             resources['limits']['nvidia.com/gpu'] = gpu_requests
 
+        if security_context_config and security_context_config.enable_security_context:
+            security_context = {
+                "capabilities": {
+                    "add": security_context_config.add_capabilities
+                }
+            }
+
         return client.V1Container(
             name=container_name,
             image=image_name,
             ports=[client.V1ContainerPort(container_port=port) for port in ports] if ports else [],
             env=env_vars,
             volume_mounts=volume_mounts,
-            resources=client.V1ResourceRequirements(requests=resources['requests'], limits=resources['limits'])
+            resources=client.V1ResourceRequirements(requests=resources['requests'], limits=resources['limits']),
+            security_context=security_context
         )
 
     @staticmethod
@@ -183,7 +192,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                             ports=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None,
                             memory_limits=None, gpu_requests=None, gpu_limits=None,
-                            entrypoint_args=None, entrypoint_envs=None, ):
+                            security_context_config=None, entrypoint_args=None, entrypoint_envs=None, ):
         if labels is None:
             labels = {}
         if project_name:
@@ -202,6 +211,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             memory_limits=memory_limits,
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
@@ -243,7 +253,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
                                ports=None, service_account_name=None, storage_configs=None,
                                cpu_requests=None, cpu_limits=None, memory_requests=None,
-                               memory_limits=None, gpu_requests=None, gpu_limits=None, entrypoint_args=None,
+                               memory_limits=None, gpu_requests=None, gpu_limits=None,
+                               security_context_config=None, entrypoint_args=None,
                                entrypoint_envs=None):
         # Ensure pvc_mounts are prepared correctly from storage_configs if needed
         pvc_mounts = [{
@@ -266,6 +277,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             memory_limits=memory_limits,
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
@@ -281,7 +293,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                           replicas=None, ports=None, service_account_name=None, storage_configs=None,
                           cpu_requests=None, cpu_limits=None, memory_requests=None,
                           memory_limits=None, gpu_requests=None, gpu_limits=None,
-                          entrypoint_args=None, entrypoint_envs=None):
+                          security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
 
@@ -305,7 +317,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             service_account_name=service_account_name,  # Pass this
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
-            gpu_requests=gpu_requests, gpu_limits=gpu_limits,
+            gpu_requests=gpu_requests, gpu_limits=gpu_limits, security_context_config=security_context_config,
             entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )
 
