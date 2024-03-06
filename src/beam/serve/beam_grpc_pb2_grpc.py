@@ -2,13 +2,12 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-# import beam_grpc_pb2 as beam__grpc__pb2
-from .beam_grpc_pb2 import (pickled_response, info_response, set_variable_response,
-                            get_variable_response, method_request, info_request, set_variable_request,
-                            get_variable_request, func_request)
+import beam_grpc_pb2 as beam__grpc__pb2
+
 
 class BeamServiceStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """The Beam service definition.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -16,61 +15,40 @@ class BeamServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.query_algorithm = channel.unary_unary(
-                '/beam_grpc.BeamService/query_algorithm',
-                request_serializer=method_request.SerializeToString,
-                response_deserializer=pickled_response.FromString,
+        self.SetVariable = channel.unary_unary(
+                '/beam.BeamService/SetVariable',
+                request_serializer=beam__grpc__pb2.SetVariableRequest.SerializeToString,
+                response_deserializer=beam__grpc__pb2.SetVariableResponse.FromString,
                 )
-        self.call_function = channel.unary_unary(
-                '/beam_grpc.BeamService/call_function',
-                request_serializer=func_request.SerializeToString,
-                response_deserializer=pickled_response.FromString,
+        self.GetVariable = channel.unary_unary(
+                '/beam.BeamService/GetVariable',
+                request_serializer=beam__grpc__pb2.GetVariableRequest.SerializeToString,
+                response_deserializer=beam__grpc__pb2.GetVariableResponse.FromString,
                 )
-        self.get_info = channel.unary_unary(
-                '/beam_grpc.BeamService/get_info',
-                request_serializer=info_request.SerializeToString,
-                response_deserializer=info_response.FromString,
-                )
-        self.set_variable = channel.unary_unary(
-                '/beam_grpc.BeamService/set_variable',
-                request_serializer=set_variable_request.SerializeToString,
-                response_deserializer=set_variable_response.FromString,
-                )
-        self.get_variable = channel.unary_unary(
-                '/beam_grpc.BeamService/get_variable',
-                request_serializer=get_variable_request.SerializeToString,
-                response_deserializer=get_variable_response.FromString,
+        self.QueryAlgorithm = channel.unary_unary(
+                '/beam.BeamService/QueryAlgorithm',
+                request_serializer=beam__grpc__pb2.QueryAlgorithmRequest.SerializeToString,
+                response_deserializer=beam__grpc__pb2.QueryAlgorithmResponse.FromString,
                 )
 
 
 class BeamServiceServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """The Beam service definition.
+    """
 
-    def query_algorithm(self, request, context):
+    def SetVariable(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def call_function(self, request, context):
+    def GetVariable(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def get_info(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def set_variable(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def get_variable(self, request, context):
+    def QueryAlgorithm(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -79,43 +57,34 @@ class BeamServiceServicer(object):
 
 def add_BeamServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'query_algorithm': grpc.unary_unary_rpc_method_handler(
-                    servicer.query_algorithm,
-                    request_deserializer=method_request.FromString,
-                    response_serializer=pickled_response.SerializeToString,
+            'SetVariable': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetVariable,
+                    request_deserializer=beam__grpc__pb2.SetVariableRequest.FromString,
+                    response_serializer=beam__grpc__pb2.SetVariableResponse.SerializeToString,
             ),
-            'call_function': grpc.unary_unary_rpc_method_handler(
-                    servicer.call_function,
-                    request_deserializer=func_request.FromString,
-                    response_serializer=pickled_response.SerializeToString,
+            'GetVariable': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetVariable,
+                    request_deserializer=beam__grpc__pb2.GetVariableRequest.FromString,
+                    response_serializer=beam__grpc__pb2.GetVariableResponse.SerializeToString,
             ),
-            'get_info': grpc.unary_unary_rpc_method_handler(
-                    servicer.get_info,
-                    request_deserializer=info_request.FromString,
-                    response_serializer=info_response.SerializeToString,
-            ),
-            'set_variable': grpc.unary_unary_rpc_method_handler(
-                    servicer.set_variable,
-                    request_deserializer=set_variable_request.FromString,
-                    response_serializer=set_variable_response.SerializeToString,
-            ),
-            'get_variable': grpc.unary_unary_rpc_method_handler(
-                    servicer.get_variable,
-                    request_deserializer=get_variable_request.FromString,
-                    response_serializer=get_variable_response.SerializeToString,
+            'QueryAlgorithm': grpc.unary_unary_rpc_method_handler(
+                    servicer.QueryAlgorithm,
+                    request_deserializer=beam__grpc__pb2.QueryAlgorithmRequest.FromString,
+                    response_serializer=beam__grpc__pb2.QueryAlgorithmResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'beam_grpc.BeamService', rpc_method_handlers)
+            'beam.BeamService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
  # This class is part of an EXPERIMENTAL API.
 class BeamService(object):
-    """Missing associated documentation comment in .proto file."""
+    """The Beam service definition.
+    """
 
     @staticmethod
-    def query_algorithm(request,
+    def SetVariable(request,
             target,
             options=(),
             channel_credentials=None,
@@ -125,14 +94,14 @@ class BeamService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/query_algorithm',
-            method_request.SerializeToString,
-            pickled_response.FromString,
+        return grpc.experimental.unary_unary(request, target, '/beam.BeamService/SetVariable',
+            beam__grpc__pb2.SetVariableRequest.SerializeToString,
+            beam__grpc__pb2.SetVariableResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def call_function(request,
+    def GetVariable(request,
             target,
             options=(),
             channel_credentials=None,
@@ -142,14 +111,14 @@ class BeamService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/call_function',
-            func_request.SerializeToString,
-            pickled_response.FromString,
+        return grpc.experimental.unary_unary(request, target, '/beam.BeamService/GetVariable',
+            beam__grpc__pb2.GetVariableRequest.SerializeToString,
+            beam__grpc__pb2.GetVariableResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def get_info(request,
+    def QueryAlgorithm(request,
             target,
             options=(),
             channel_credentials=None,
@@ -159,42 +128,8 @@ class BeamService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/get_info',
-            info_request.SerializeToString,
-            info_response.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
-    def set_variable(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/set_variable',
-            set_variable_request.SerializeToString,
-            set_variable_response.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
-    def get_variable(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/beam_grpc.BeamService/get_variable',
-            get_variable_request.SerializeToString,
-            get_variable_response.FromString,
+        return grpc.experimental.unary_unary(request, target, '/beam.BeamService/QueryAlgorithm',
+            beam__grpc__pb2.QueryAlgorithmRequest.SerializeToString,
+            beam__grpc__pb2.QueryAlgorithmResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

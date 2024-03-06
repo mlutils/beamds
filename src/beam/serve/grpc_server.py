@@ -1,52 +1,45 @@
-import json
 import grpc
 from concurrent import futures
-from .beam_grpc_pb2 import pickled_response, info_response, set_variable_response, get_variable_response
-from .beam_grpc_pb2_grpc import BeamServiceServicer, add_BeamServiceServicer_to_server
-import pickle
-from .server import BeamServer  # Import your BeamServer
+from .beam_grpc_pb2 import SetVariableRequest, SetVariableResponse, GetVariableRequest, GetVariableResponse, QueryAlgorithmRequest, QueryAlgorithmResponse
+from .beam_grpc_pb2_grpc import add_BeamServiceServicer_to_server, BeamServiceServicer
+from .server import BeamServer
 
 
 class GRPCServer(BeamServer, BeamServiceServicer):
-
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, application='grpc', **kwargs)
+        super().__init__(*args, **kwargs)
+        self.grpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        add_BeamServiceServicer_to_server(self, self.grpc_server)
 
-    def query_algorithm(self, request, context):
-        method_name = request.method_name
-        args = pickle.loads(request.args)
-        kwargs = pickle.loads(request.kwargs)
-        # Assuming 'query_algorithm' method in BeamServer class
-        result = super().query_algorithm(method_name, args, kwargs)
-        return pickled_response(result=pickle.dumps(result))
+    def SetVariable(self, request, context):
+        # Directly use self to handle the logic
+        try:
+            success = self.set_variable(client=request.client, name=request.name, value=request.value)
+            return SetVariableResponse(success=success)
+        except Exception as e:
+            context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def call_function(self, request, context):
-        args = pickle.loads(request.args)
-        kwargs = pickle.loads(request.kwargs)
-        # Assuming 'call_function' method in BeamServer class
-        result = super().call_function(args, kwargs)
-        return pickled_response(result=pickle.dumps(result))
+    def GetVariable(self, request, context):
+        # Directly use self to handle the logic
+        try:
+            value = self.get_variable(client=request.client, name=request.name)
+            return GetVariableResponse(value=value)
+        except AttributeError:
+            context.abort(grpc.StatusCode.NOT_FOUND, f"Variable {request.name} not found")
+        except Exception as e:
+            context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def get_info(self, request, context):
-        # Assuming 'get_info' method in BeamServer class returns a dictionary
-        info = super().get_info()
-        return info_response(info_json=json.dumps(info))
-
-    def set_variable(self, request, context):
-        name = request.name
-        value = pickle.loads(request.value)
-        success = super().set_variable(name, value)  # Assuming this method exists and returns boolean
-        return set_variable_response(success=success)
-
-    def get_variable(self, request, context):
-        name = request.name
-        value = super().get_variable(name)  # Assuming this method exists and returns the value
-        return get_variable_response(value=pickle.dumps(value))
+    def QueryAlgorithm(self, request, context):
+        # Directly use self to handle the logic
+        try:
+            results = self.query_algorithm(client=request.client, method=request.method, args=request.args, kwargs=request.kwargs)
+            return QueryAlgorithmResponse(results=results)
+        except Exception as e:
+            context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     def _run(self, host="0.0.0.0", port=None, **kwargs):
-        self.grpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=self.n_threads))
-        add_BeamServiceServicer_to_server(self, self.grpc_server)
-        self.grpc_server.add_insecure_port(f"{host}:{port}")
+        address = f'{host}:{port}'
+        self.grpc_server.add_insecure_port(address)
+        print(f"Starting gRPC server on {address}")
         self.grpc_server.start()
         self.grpc_server.wait_for_termination()
-
