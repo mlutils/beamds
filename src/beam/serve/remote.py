@@ -55,7 +55,7 @@ def beam_client(uri, hostname=None, port=None, username=None, api_key=None, **kw
             kwargs['tls'] = True if scheme == 'https' else False
         from .http_client import HTTPClient
         return HTTPClient(hostname=hostname, port=port, username=username, api_key=api_key, **kwargs)
-    elif scheme == 'grpc':
+    elif 'grpc' in scheme:
         from .grpc_client import GRPCClient
         return GRPCClient(hostname=hostname, port=port, username=username, api_key=api_key, **kwargs)
     else:

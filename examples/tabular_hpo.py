@@ -4,8 +4,8 @@ import torch
 from ray.tune.schedulers import ASHAScheduler
 
 available_devices = [0, 1, 2, 3]
-# n_jobs = len(available_devices)
-n_jobs = 8
+n_jobs = len(available_devices)
+# n_jobs = 8
 # available_devices = [0]
 # os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
 # n_jobs = 1
@@ -27,8 +27,9 @@ if __name__ == '__main__':
     transformer_dropout = 0.
 
     # algorithm_name = 'hpo_no_decoder'
-    algorithm_name = 'hpo_no_dropout'
+    # algorithm_name = 'hpo_no_dropout'
     # algorithm_name = 'hpo_no_quantiles'
+    algorithm_name = 'hpo_full'
 
     kwargs_base = dict(algorithm=algorithm_name, data_path=data_path, logs_path=logs_path,
                        copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=100,
@@ -44,14 +45,14 @@ if __name__ == '__main__':
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128)
+    # kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256)
     # kwargs_all['jannis'] = dict(batch_size=256)
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
-    # kwargs_all['covtype'] = dict(batch_size=512)
+    kwargs_all['covtype'] = dict(batch_size=512)
 
     for k in kwargs_all.keys():
 
@@ -92,18 +93,18 @@ if __name__ == '__main__':
         study.uniform('lr-sparse', 1e-3, 1e-1)
         study.categorical('batch_size', [hparams.batch_size // 4, hparams.batch_size // 2, hparams.batch_size,
                                     hparams.batch_size * 2])
-        # study.uniform('dropout', 0., 0.5)
+        study.uniform('dropout', 0., 0.5)
         study.categorical('emb_dim', [64, 128, 256])
         study.categorical('n_rules', [64, 128, 256])
         study.categorical('n_quantiles', [2, 6, 10, 16, 20, 40, max_quantiles])
-        study.categorical('n_encoder_layers', [1, 2, 4, 8])
+        study.categorical('n_encoder_layers ', [1, 2, 4, 8])
         study.categorical('n_decoder_layers', [1, 2, 4, 8])
         study.categorical('n_transformer_head', [1, 2, 4, 8])
         study.categorical('transformer_hidden_dim', [128, 256, 512])
 
         study.uniform('mask_rate', 0., 0.4)
         study.uniform('rule_mask_rate', 0., 0.4)
-        # study.uniform('transformer_dropout', 0., 0.4)
+        study.uniform('transformer_dropout', 0., 0.4)
         study.uniform('label_smoothing', 0., 0.4)
 
         scheduler = ASHAScheduler(

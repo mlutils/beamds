@@ -8,6 +8,7 @@ service BeamService {
   rpc SetVariable(SetVariableRequest) returns (SetVariableResponse) {}
   rpc GetVariable(GetVariableRequest) returns (GetVariableResponse) {}
   rpc QueryAlgorithm(QueryAlgorithmRequest) returns (QueryAlgorithmResponse) {}
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {}
   // Add other methods as needed.
 }
 
@@ -40,4 +41,13 @@ message QueryAlgorithmRequest {
 
 message QueryAlgorithmResponse {
   bytes results = 1;
+}
+
+message GetInfoRequest {
+    // This message might be empty if no parameters are needed
+}
+
+message GetInfoResponse {
+    // Define the response structure
+    string info = 1; // This is simplified; your actual response structure might be more complex
 }

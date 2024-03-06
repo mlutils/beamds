@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import beam_grpc_pb2 as beam__grpc__pb2
+from .beam_grpc_pb2 import *
 
 
 class BeamServiceStub(object):
@@ -17,18 +17,23 @@ class BeamServiceStub(object):
         """
         self.SetVariable = channel.unary_unary(
                 '/beam.BeamService/SetVariable',
-                request_serializer=beam__grpc__pb2.SetVariableRequest.SerializeToString,
-                response_deserializer=beam__grpc__pb2.SetVariableResponse.FromString,
+                request_serializer=SetVariableRequest.SerializeToString,
+                response_deserializer=SetVariableResponse.FromString,
                 )
         self.GetVariable = channel.unary_unary(
                 '/beam.BeamService/GetVariable',
-                request_serializer=beam__grpc__pb2.GetVariableRequest.SerializeToString,
-                response_deserializer=beam__grpc__pb2.GetVariableResponse.FromString,
+                request_serializer=GetVariableRequest.SerializeToString,
+                response_deserializer=GetVariableResponse.FromString,
                 )
         self.QueryAlgorithm = channel.unary_unary(
                 '/beam.BeamService/QueryAlgorithm',
-                request_serializer=beam__grpc__pb2.QueryAlgorithmRequest.SerializeToString,
-                response_deserializer=beam__grpc__pb2.QueryAlgorithmResponse.FromString,
+                request_serializer=QueryAlgorithmRequest.SerializeToString,
+                response_deserializer=QueryAlgorithmResponse.FromString,
+                )
+        self.GetInfo = channel.unary_unary(
+                '/beam.BeamService/GetInfo',
+                request_serializer=GetInfoRequest.SerializeToString,
+                response_deserializer=GetInfoResponse.FromString,
                 )
 
 
@@ -54,23 +59,34 @@ class BeamServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetInfo(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BeamServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'SetVariable': grpc.unary_unary_rpc_method_handler(
                     servicer.SetVariable,
-                    request_deserializer=beam__grpc__pb2.SetVariableRequest.FromString,
-                    response_serializer=beam__grpc__pb2.SetVariableResponse.SerializeToString,
+                    request_deserializer=SetVariableRequest.FromString,
+                    response_serializer=SetVariableResponse.SerializeToString,
             ),
             'GetVariable': grpc.unary_unary_rpc_method_handler(
                     servicer.GetVariable,
-                    request_deserializer=beam__grpc__pb2.GetVariableRequest.FromString,
-                    response_serializer=beam__grpc__pb2.GetVariableResponse.SerializeToString,
+                    request_deserializer=GetVariableRequest.FromString,
+                    response_serializer=GetVariableResponse.SerializeToString,
             ),
             'QueryAlgorithm': grpc.unary_unary_rpc_method_handler(
                     servicer.QueryAlgorithm,
-                    request_deserializer=beam__grpc__pb2.QueryAlgorithmRequest.FromString,
-                    response_serializer=beam__grpc__pb2.QueryAlgorithmResponse.SerializeToString,
+                    request_deserializer=QueryAlgorithmRequest.FromString,
+                    response_serializer=QueryAlgorithmResponse.SerializeToString,
+            ),
+            'GetInfo': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetInfo,
+                    request_deserializer=GetInfoRequest.FromString,
+                    response_serializer=GetInfoResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -95,8 +111,8 @@ class BeamService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/beam.BeamService/SetVariable',
-            beam__grpc__pb2.SetVariableRequest.SerializeToString,
-            beam__grpc__pb2.SetVariableResponse.FromString,
+            SetVariableRequest.SerializeToString,
+            SetVariableResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -112,8 +128,8 @@ class BeamService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/beam.BeamService/GetVariable',
-            beam__grpc__pb2.GetVariableRequest.SerializeToString,
-            beam__grpc__pb2.GetVariableResponse.FromString,
+            GetVariableRequest.SerializeToString,
+            GetVariableResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -129,7 +145,24 @@ class BeamService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/beam.BeamService/QueryAlgorithm',
-            beam__grpc__pb2.QueryAlgorithmRequest.SerializeToString,
-            beam__grpc__pb2.QueryAlgorithmResponse.FromString,
+            QueryAlgorithmRequest.SerializeToString,
+            QueryAlgorithmResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetInfo(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/beam.BeamService/GetInfo',
+            GetInfoRequest.SerializeToString,
+            GetInfoResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

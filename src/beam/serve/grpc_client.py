@@ -1,15 +1,19 @@
+import io
+import json
+
 import grpc
-from .beam_grpc_pb2 import SetVariableRequest, GetVariableRequest, QueryAlgorithmRequest
+from .beam_grpc_pb2 import SetVariableRequest, GetVariableRequest, QueryAlgorithmRequest, GetInfoRequest
 from .beam_grpc_pb2_grpc import BeamServiceStub
+from .client import BeamClient
 
 
 class GRPCClient(BeamClient):
     def __init__(self, *args, host="localhost", port=50051, **kwargs):
-        super().__init__(*args, **kwargs)
         # Establishing the channel
         self.channel = grpc.insecure_channel(f'{host}:{port}')
         # Creating a stub (client)
         self.stub = BeamServiceStub(self.channel)
+        super().__init__(*args, **kwargs)
 
     def set_variable(self, name, value, client='beam'):
         """
@@ -19,7 +23,7 @@ class GRPCClient(BeamClient):
         :param value: The value to set the variable to.
         :param client: The client identifier.
         """
-        request = SetVariableRequest(client=client, name=name, value=value)
+        request = SetVariableRequest(client=client, name=name, value=value.getvalue())
         return self.stub.SetVariable(request)
 
     def get_variable(self, name, client='beam'):
@@ -31,9 +35,12 @@ class GRPCClient(BeamClient):
         """
         request = GetVariableRequest(client=client, name=name)
         response = self.stub.GetVariable(request)
-        return response.value
 
-    def query_algorithm(self, method, args=None, kwargs=None, client='beam'):
+        response = self.load_function(io.BytesIO(response.value))
+
+        return response
+
+    def _post(self, method, io_args, io_kwargs, client='beam'):
         """
         Query an algorithm on the server.
 
@@ -42,13 +49,21 @@ class GRPCClient(BeamClient):
         :param kwargs: The keyword arguments to pass to the algorithm.
         :param client: The client identifier.
         """
-        if args is None:
-            args = b''
-        if kwargs is None:
-            kwargs = b''
-        request = QueryAlgorithmRequest(client=client, method=method, args=args, kwargs=kwargs)
+
+        io_args = b'' if io_args is None else io_args.getvalue()
+        io_kwargs = b'' if io_kwargs is None else io_kwargs.getvalue()
+        method = method.split('/')[-1]
+        request = QueryAlgorithmRequest(client=client, method=method, args=io_args, kwargs=io_kwargs)
         response = self.stub.QueryAlgorithm(request)
-        return response.results
+
+        response = self.load_function(io.BytesIO(response.results))
+        return response
+
+    def get_info(self):
+        request = GetInfoRequest()  # If GetInfoRequest has fields, populate them here
+        response = self.stub.GetInfo(request)
+        info = json.loads(response.info)  # Assuming the response includes information as a string or serialized data
+        return info
 
     def close(self):
         """Close the gRPC channel."""

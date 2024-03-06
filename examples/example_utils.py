@@ -8,6 +8,18 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def grpc_server():
+    from src.beam.serve.grpc_server import GRPCServer
+    from src.beam.misc import BeamFakeAlg
+
+    fake_alg = BeamFakeAlg(sleep_time=1., variance=0.5, error_rate=0.1)
+
+    server = GRPCServer(fake_alg)
+    server.run(port=28851)
+
+    print('done!')
+
+
 def distributed_client():
 
     alg = resource('async-http://localhost:28850')
@@ -390,8 +402,10 @@ if __name__ == '__main__':
 
     # sftp_example()
 
-    distributed_server()
+    # distributed_server()
 
     # distributed_client()
+
+    grpc_server()
 
     print('done')

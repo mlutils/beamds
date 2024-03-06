@@ -18,6 +18,9 @@ class BeamClient(Processor):
         self.username = username
         self.info = self.get_info()
 
+    def get_info(self):
+        raise NotImplementedError
+
     @property
     def load_function(self):
         if self.serialization == 'torch':
@@ -62,7 +65,7 @@ class BeamClient(Processor):
 
         return response
 
-    def _post(self, path, io_args, io_kwargs):
+    def _post(self, path, io_args, io_kwargs, **other_kwargs):
             raise NotImplementedError
 
     def __call__(self, *args, **kwargs):
