@@ -1,16 +1,19 @@
+from dataclasses import make_dataclass
 from ..core import Processor
 from ..utils import lazy_property
-from kubernetes import client
+from kubernetes import client, watch
 from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
+import time
+import json
 
 
 class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits the method of processor
     """BeamK8S is a class  that  provides a simple interface to the Kubernetes API."""
 
     def __init__(self, api_url=None, api_token=None, namespace=None,
-                 project_name=None, use_scc=True, scc_name="anyuid", *args, **kwargs):
+                 project_name=None, use_scc=None, scc_name=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.api_token = api_token
         self.api_url = api_url
@@ -70,14 +73,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             else:
                 logger.error(f"Failed to check or create project '{project_name}': {e}")
 
-    def add_scc_to_service_account(self, service_account_name, namespace, scc_name='anyuid'):
-        scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
-        scc_obj = scc.get(name=scc_name)
-        user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
-        if user_name not in scc_obj.users:
-            scc_obj.users.append(user_name)
-            scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
-
     def create_service_account(self, name, namespace=None):
         namespace = namespace or self.namespace
 
@@ -95,19 +90,31 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
 
+    def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
+        scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
+        scc_obj = scc.get(name=scc_name)
+        user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
+        if user_name not in scc_obj.users:
+            scc_obj.users.append(user_name)
+            scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
+
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None,
                          memory_limits=None, gpu_requests=None,
-                         gpu_limits=None, *entrypoint_args, **envs):
+                         gpu_limits=None, security_context_config=None,  security_context=None,
+                         entrypoint_args=None, entrypoint_envs=None):
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
 
         # Preparing environment variables from entrypoint_args and envs
         env_vars = []
+        entrypoint_args = entrypoint_args or []
+        entrypoint_envs = entrypoint_envs or {}
+
         for arg in entrypoint_args:
             env_vars.append(client.V1EnvVar(name=f"ARG_{arg}", value=str(arg)))
-        for key, value in envs.items():
+        for key, value in entrypoint_envs.items():
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
         # Preparing volume mounts
@@ -131,8 +138,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             resources['requests']['memory'] = memory_requests
             resources['limits']['memory'] = memory_limits
         if gpu_requests and gpu_limits:
-            resources['limits']['nvidia.com/gpu'] = gpu_requests
             resources['requests']['nvidia.com/gpu'] = gpu_limits
+            resources['limits']['nvidia.com/gpu'] = gpu_requests
+
+        if security_context_config and security_context_config.enable_security_context:
+            security_context = {
+                "capabilities": {
+                    "add": security_context_config.add_capabilities
+                }
+            }
 
         return client.V1Container(
             name=container_name,
@@ -140,7 +154,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             ports=[client.V1ContainerPort(container_port=port) for port in ports] if ports else [],
             env=env_vars,
             volume_mounts=volume_mounts,
-            resources=client.V1ResourceRequirements(requests=resources['requests'], limits=resources['limits'])
+            resources=client.V1ResourceRequirements(requests=resources['requests'], limits=resources['limits']),
+            security_context=security_context
         )
 
     @staticmethod
@@ -174,7 +189,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return env_vars
 
     def create_pod_template(self, image_name, labels=None, deployment_name=None, project_name=None,
-                            ports=None, service_account_name=None, pvc_mounts=None, entrypoint_args=None, envs=None):
+                            ports=None, service_account_name=None, pvc_mounts=None,
+                            cpu_requests=None, cpu_limits=None, memory_requests=None,
+                            memory_limits=None, gpu_requests=None, gpu_limits=None,
+                            security_context_config=None, entrypoint_args=None, entrypoint_envs=None, ):
         if labels is None:
             labels = {}
         if project_name:
@@ -187,8 +205,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             project_name=project_name,
             ports=ports,
             pvc_mounts=pvc_mounts,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
             entrypoint_args=entrypoint_args,
-            envs=envs
+            entrypoint_envs=entrypoint_envs
         )
 
         # Defining volumes for the pod spec based on PVC mounts
@@ -226,7 +251,11 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
-                               ports=None, service_account_name=None, storage_configs=None, *entrypoint_args, **envs):
+                               ports=None, service_account_name=None, storage_configs=None,
+                               cpu_requests=None, cpu_limits=None, memory_requests=None,
+                               memory_limits=None, gpu_requests=None, gpu_limits=None,
+                               security_context_config=None, entrypoint_args=None,
+                               entrypoint_envs=None):
         # Ensure pvc_mounts are prepared correctly from storage_configs if needed
         pvc_mounts = [{
             'pvc_name': sc.pvc_name,
@@ -242,8 +271,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             ports=ports,
             service_account_name=service_account_name,  # Use it here
             pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
             entrypoint_args=entrypoint_args,
-            envs=envs
+            entrypoint_envs=entrypoint_envs
         )
 
         # Create and return the deployment spec
@@ -254,8 +290,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         )
 
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
-                          replicas=None, ports=None, service_account_name=None, storage_configs=None, *entrypoint_args,
-                          **envs):
+                          replicas=None, ports=None, service_account_name=None, storage_configs=None,
+                          cpu_requests=None, cpu_limits=None, memory_requests=None,
+                          memory_limits=None, gpu_requests=None, gpu_limits=None,
+                          security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
 
@@ -277,21 +315,24 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             image_name, labels=labels, deployment_name=deployment_name,
             project_name=project_name, replicas=replicas, ports=ports,
             service_account_name=service_account_name,  # Pass this
-            storage_configs=storage_configs,
-            *entrypoint_args, **envs
+            storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
+            memory_requests=memory_requests, memory_limits=memory_limits,
+            gpu_requests=gpu_requests, gpu_limits=gpu_limits, security_context_config=security_context_config,
+            entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )
 
         # Optionally add the project name to the deployment's metadata
         deployment_metadata = client.V1ObjectMeta(name=deployment_name, namespace=namespace,
                                                   labels={"project": project_name})
 
-        logger.info(f"Deployment {deployment_name} created in namespace {namespace}.")
+        # logger.info(f"Deployment {deployment_name} created in namespace {namespace}.")
         deployment = client.V1Deployment(
             api_version="apps/v1",
             kind="Deployment",
             metadata=deployment_metadata,
             spec=deployment_spec
         )
+        logger.info(f"Created deployment object type: {type(deployment)}")
         return deployment
 
     def generate_unique_deployment_name(self, base_name, namespace):
@@ -309,25 +350,62 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 raise  # Reraise exceptions that are not related to the deployment not existing
 
     def apply_deployment(self, deployment, namespace=None):
-        import json
-        logger.debug(json.dumps(client.ApiClient().sanitize_for_serialization(deployment), indent=2))
-        logger.info(f"Deployment object to be created: {deployment}")  # Adjust logging level/method as needed
-
+        # logger.info(f"Applying deployment object type: {type(deployment)}")
+        # Determine the namespace
         if namespace is None:
             namespace = self.namespace
-        if namespace is None:
-            namespace = self.project_name
 
         try:
-            # Apply the deployment and get the response (the applied deployment object)
-            applied_deployment = self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
+            # Apply the deployment
+            self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
             logger.info(f"Successfully applied deployment in namespace '{namespace}'")
-            return applied_deployment  # Return the applied deployment object
+
+            # Construct the selector based on the deployment object type
+            if isinstance(deployment, dict):
+                # If deployment is a dictionary, use dictionary access
+                selector = ','.join([f'{k}={v}' for k, v in deployment['spec']['selector']['matchLabels'].items()])
+            else:
+                # If deployment is an object, use attribute access
+                selector = ','.join([f'{k}={v}' for k, v in deployment.spec.selector['matchLabels'].items()])
+
+            w = watch.Watch()
+            timeout = 300  # Define a timeout for the watch (e.g., 300 seconds)
+            start = time.time()
+
+            for event in w.stream(self.core_v1_api.list_namespaced_pod, namespace=namespace, label_selector=selector,
+                                  timeout_seconds=60):
+                pod = event['object']
+                if pod.status.phase == 'Running':
+                    # Extract and return pod info
+                    pod_info = self.extract_pod_info(pod)
+                    logger.info(f"Pod info: '{pod_info}'")
+                    w.stop()
+                    return pod_info
+
+                if time.time() - start > timeout:
+                    logger.error("Timeout waiting for pods to become ready.")
+                    w.stop()
+                    return None
+
         except ApiException as e:
             logger.exception(f"Exception when applying the deployment: {e}")
-            return None  # Return None or handle the exception as needed
+            return None
 
-        # TODO: return pod info
+    @staticmethod
+    def extract_pod_info(pod):
+        # Extract pod name, namespace, ports, and PVCs
+        pod_name = pod.metadata.name
+        namespace = pod.metadata.namespace
+        ports = [container.ports for container in pod.spec.containers]
+        pvcs = [volume.persistent_volume_claim.claim_name for volume
+                in pod.spec.volumes if volume.persistent_volume_claim]
+
+        # Create a dynamic data class for PodInfo
+        podinfo = make_dataclass('PodInfo', [('name', str), ('namespace', str), ('ports', list), ('pvcs', list)])
+        return podinfo(name=pod_name, namespace=namespace, ports=ports, pvcs=pvcs)
+
+        # TODO: return pod info - extract pod name and namespace from the applied_deployment object,
+        # if needed, beam_k8s will query the server to retrieve all the necessary information
 
     def create_role_bindings(self, user_idm_configs):
         for config in user_idm_configs:
@@ -675,3 +753,38 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             print(f"Failed to retrieve services or nodes in namespace '{namespace}': {e}")
 
         return endpoints
+
+    def query_available_resources(self):
+        total_resources = {'cpu': '0', 'memory': '0', 'nvidia.com/gpu': '0', 'amd.com/gpu': '0', 'storage': '0Gi'}
+        node_list = self.core_v1_api.list_node()
+
+        # Summing up the allocatable CPU, memory, and GPU resources from each node
+        for node in node_list.items:
+            for key, quantity in node.status.allocatable.items():
+                if key in ['cpu', 'memory', 'nvidia.com/gpu', 'amd.com/gpu']:
+                    if quantity.endswith('m'):  # Handle milliCPU
+                        total_resources[key] = str(
+                            int(total_resources.get(key, '0')) + int(float(quantity.rstrip('m')) / 1000))
+                    else:
+                        total_resources[key] = str(
+                            int(total_resources.get(key, '0')) + int(quantity.strip('Ki')))
+
+        # Summing up the storage requests for all PVCs in the namespace
+        pvc_list = self.core_v1_api.list_namespaced_persistent_volume_claim(namespace=self.namespace)
+        for pvc in pvc_list.items:
+            for key, quantity in pvc.spec.resources.requests.items():
+                if key == 'storage':
+                    total_resources['storage'] = str(
+                        int(total_resources['storage'].strip('Gi')) + int(quantity.strip('Gi'))) + 'Gi'
+
+        # Remove resources with a count of '0'
+        total_resources = {key: value for key, value in total_resources.items() if value != '0'}
+
+        logger.info(f"Total Available Resources in the Namespace '{self.namespace}': {total_resources}")
+        return total_resources
+
+    # def list_pods(self):
+    #     label_selector = f"app={self.deployment_name}"
+    #     pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)
+    #     for pod in pods.items:
+    #         print(f"Pod Name: {pod.metadata.name}, Pod Status: {pod.status.phase}")

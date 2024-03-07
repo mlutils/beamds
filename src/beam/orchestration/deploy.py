@@ -1,15 +1,17 @@
 from ..core import Processor
 from .pod import BeamPod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
+from typing import List
 
 
 @dataclass
 class ServiceConfig:
     port: int
     service_name: str
-    service_type: str
+    service_type: str # NodePort, ClusterIP, LoadBalancer
     port_name: str
     create_route: bool = False  # Indicates whether to create a route for this service
     route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
@@ -38,18 +40,27 @@ class UserIdmConfig:
     create_role_binding: bool = False  # Indicates whether to create a role_binding this project
 
 
+@dataclass
+class SecurityContextConfig:
+    add_capabilities: List[str] = field(default_factory=list)
+    enable_security_context: bool = False
+
+
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, project_name=None, namespace=None,
                  replicas=None, labels=None, image_name=None,
-                 deployment_name=None, use_scc=False, cpu_requests=None, cpu_limits=None, memory_requests=None,
+                 deployment_name=None, use_scc=False, deployment=None,
+                 cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
-                 service_configs=None, user_idm_configs=None, scc_name='anyuid',
-                 service_type=None, *entrypoint_args, **entrypoint_envs):
+                 service_configs=None, user_idm_configs=None,
+                 security_context_config=None, scc_name=None,
+                 service_type=None, entrypoint_args=None, entrypoint_envs=None):
         super().__init__()
         self.k8s = k8s
-        self.entrypoint_args = entrypoint_args
-        self.entrypoint_envs = entrypoint_envs
+        self.deployment = deployment
+        self.entrypoint_args = entrypoint_args or []
+        self.entrypoint_envs = entrypoint_envs or {}
         self.project_name = project_name
         self.namespace = namespace
         self.replicas = replicas
@@ -69,6 +80,7 @@ class BeamDeploy(Processor):
         self.service_configs = service_configs
         self.storage_configs = storage_configs
         self.user_idm_configs = user_idm_configs or []
+        self.security_context_config = security_context_config or []
 
     def launch(self, replicas=None):
         if replicas is None:
@@ -124,6 +136,9 @@ class BeamDeploy(Processor):
         if self.user_idm_configs:
             self.k8s.create_role_bindings(self.user_idm_configs)
 
+        if self.use_scc is True:
+            self.k8s.add_scc_to_service_account(self.service_account_name, self.namespace, self.scc_name)
+
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 
         deployment = self.k8s.create_deployment(
@@ -142,9 +157,11 @@ class BeamDeploy(Processor):
             memory_limits=self.memory_limits,
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
-            *self.entrypoint_args, **self.entrypoint_envs
+            security_context_config=self.security_context_config,
+            entrypoint_args=self.entrypoint_args,
+            entrypoint_envs=self.entrypoint_envs,
         )
-
+        # self.k8s.apply_deployment(deployment, namespace=self.namespace)
         pod_info = self.k8s.apply_deployment(deployment, namespace=self.namespace)
 
         if pod_info is list:
@@ -158,16 +175,49 @@ class BeamDeploy(Processor):
             logger.error("Failed to apply deployment")
             return None
 
-        #
-        # if pod_info is not None:
-        #     # If the deployment was successfully applied, create and return a BeamPod instance
-        #     return BeamPod(pod_info, deployment=self, k8s=self.k8s)  # Pass the applied deployment
-        #     # and any other required arguments
-        # else:
-        #     # Handle the case where the deployment application failed
-        #     logger.error("Failed to apply deployment")
-        #     return None
-        #
-
     def generate_beam_pod(self, pod_info):
+        logger.info(f"generate_beam_pod: '{pod_info}' to apply deployment")
         return BeamPod(pod_info, deployment=self, k8s=self.k8s)
+
+    def delete_deployment(self):
+        # Delete deployment
+        try:
+            self.k8s.apps_v1_api.delete_namespaced_deployment(
+                name=self.deployment.metadata.name,
+                namespace=self.deployment.metadata.namespace,
+                body=client.V1DeleteOptions()
+            )
+            logger.info(f"Deleted deployment '{self.deployment.metadata.name}' "
+                        f"from namespace '{self.deployment.metadata.namespace}'.")
+        except ApiException as e:
+            logger.error(f"Error deleting deployment '{self.deployment.metadata.name}': {e}")
+
+        # Delete related services
+        try:
+            self.k8s.delete_service(deployment_name=self.deployment_name)
+        except ApiException as e:
+            logger.error(f"Error deleting service '{self.deployment_name}: {e}")
+
+        # Delete related routes
+        try:
+            self.k8s.delete_route(
+                route_name=f"{self.deployment.metadata.name}-route",
+                namespace=self.deployment.metadata.namespace,
+            )
+            logger.info(f"Deleted route '{self.deployment.metadata.name}-route' "
+                        f"from namespace '{self.deployment.metadata.namespace}'.")
+        except ApiException as e:
+            logger.error(f"Error deleting route '{self.deployment.metadata.name}-route': {e}")
+
+        # Delete related ingress
+        try:
+            self.k8s.delete_service(deployment_name=self.deployment_name)
+        except ApiException as e:
+            logger.error(f"Error deleting service for deployment '{self.deployment_name}': {e}")
+
+    # move to BeamDeploy
+    # def list_pods(self):
+    #     label_selector = f"app={self.deployment_name}"
+    #     pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)
+    #     for pod in pods.items:
+    #         print(f"Pod Name: {pod.metadata.name}, Pod Status: {pod.status.phase}")
