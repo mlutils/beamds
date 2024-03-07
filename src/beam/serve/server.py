@@ -11,7 +11,7 @@ from uuid import uuid4 as uuid
 from ..logger import beam_logger as logger
 from ..utils import find_port
 from ..config import to_dict
-from ..core import Processor
+from ..core import MetaDispatcher
 
 try:
     import torch
@@ -20,13 +20,12 @@ except ImportError:
     has_torch = False
 
 
-class BeamServer(Processor):
+class BeamServer(MetaDispatcher):
 
     def __init__(self, obj, *args, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
                  tls=False, n_threads=4, application=None, predefined_attributes=None, **kwargs):
 
-        super().__init__(*args, **kwargs)
-        self.obj = obj
+        super().__init__(obj, *args, asynchronous=False, **kwargs)
 
         if use_torch and has_torch:
             self.load_function = torch.load
@@ -66,11 +65,6 @@ class BeamServer(Processor):
             self.batch = []
 
         atexit.register(self._cleanup)
-
-        if inspect.isfunction(self.real_object):
-            self.type = 'function'
-        else:
-            self.type = 'class'
 
         if predefined_attributes is None:
             predefined_attributes = {}
@@ -210,10 +204,6 @@ class BeamServer(Processor):
     @property
     def metadata(self):
         return None
-
-    @property
-    def real_object(self):
-        return self.obj
 
     def get_info(self):
 

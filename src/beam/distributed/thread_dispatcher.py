@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor, Future
 from functools import wraps
-from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
-from ..utils import get_class_properties
+
+from ..core import MetaAsyncResult, MetaDispatcher
+from ..utils import get_class_properties, lazy_property
 
 
 class ThreadAsyncResult(MetaAsyncResult):
@@ -105,7 +106,7 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
         MetaDispatcher.__init__(self, obj, *routes, asynchronous=asynchronous, **kwargs)
         ThreadedCluster.__init__(self, max_workers=max_workers)
 
-        self.routes_methods = {}
+        self._routes_methods = {}
 
         if self.type == 'function':
             self.call_function = self.threaded_function_wrapper(self.obj)
@@ -115,11 +116,15 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
             for route in self.routes:
                 if hasattr(self.obj, route):
                     method = getattr(self.obj, route)
-                    self.routes_methods[route] = self.threaded_function_wrapper(method)
+                    self._routes_methods[route] = self.threaded_function_wrapper(method)
         elif self.type == 'class':
             self.call_function = self.threaded_function_wrapper(self.factory_class_wrapper(self.obj))
         else:
             raise ValueError(f"Unknown type: {self.type}")
+
+    @lazy_property
+    def route_methods(self):
+        return self._routes_methods
 
     @staticmethod
     def factory_class_wrapper(cls):

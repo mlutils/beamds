@@ -2,15 +2,14 @@ import json
 import time
 from threading import Thread
 import io
+import websockets
+import asyncio
+from flask import request, jsonify, send_file
 
 from ..serve.http_server import HTTPServer
 from ..serve.server import BeamServer
 from ..logger import beam_logger as logger
-import websockets
-import asyncio
-from flask import request, jsonify, send_file
 from ..utils import ThreadSafeDict, find_port
-from .meta_dispatcher import MetaAsyncResult
 
 
 class AsyncServer(HTTPServer):
@@ -67,17 +66,6 @@ class AsyncServer(HTTPServer):
         self.ws_clients[client_id] = ws
         await ws.wait_closed()
         # self.ws_clients.pop(client_id)
-
-    # def run_ws_server(self, host, port):
-    #
-    #     logger.info("Starting WebSocket server...")
-    #
-    #     loop = asyncio.new_event_loop()
-    #     asyncio.set_event_loop(loop)
-    #
-    #     start_server = websockets.serve(self.websocket_handler, host, port, ssl=self.ssl_context)
-    #     loop.run_until_complete(start_server)
-    #     loop.run_forever()
 
     async def run_ws_server(self, host, port):
         logger.info("Starting WebSocket server...")

@@ -1,9 +1,9 @@
+import ray
 
-from ..utils import get_class_properties
+from ..utils import get_class_properties, lazy_property
 from ..core import Processor
 from ..path import BeamURL
-from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
-import ray
+from ..core import MetaAsyncResult, MetaDispatcher
 
 
 class RayAsyncResult(MetaAsyncResult):
@@ -146,6 +146,8 @@ class RayDispatcher(MetaDispatcher, RayCluster):
         RayCluster.__init__(self, name=name, address=address, host=host, port=port, username=username,
                             password=password, ray_kwargs=ray_kwargs, **kwargs)
 
+        self._routes_methods = {}
+
         self.remote_kwargs = remote_kwargs if remote_kwargs is not None else {}
 
         if self.type == 'function':
@@ -163,6 +165,10 @@ class RayDispatcher(MetaDispatcher, RayCluster):
             self.call_function = self.remote_class_wrapper(self.obj)
         else:
             raise ValueError(f"Unknown type: {self.type}")
+
+    @lazy_property
+    def route_methods(self):
+        return self._routes_methods
 
     def poll(self, task_id, timeout=0):
         async_res = RayAsyncResult.from_str(task_id)

@@ -518,7 +518,11 @@ class PureBeamPath:
 
                 nd = ext == '.ndjson'
                 try:
-                    x = pd.read_json(fo, lines=nd, **kwargs)
+                    typ = kwargs.pop('typ', 'native')
+                    if (typ == 'native') or nd:
+                        x = json.load(fo, **kwargs)
+                    else:
+                        x = pd.read_json(fo, lines=nd, **kwargs)
                 except:
                     fo.seek(0)
                     if nd:

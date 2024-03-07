@@ -44,7 +44,7 @@ class BeamBase(metaclass=MetaInitIsDoneVerifier):
     def in_cache(self, attr):
         return attr in self._lazy_cache
 
-    @lazy_property
+    @property
     def name(self):
         if self._name is None and hasattr(self, '_init_is_done') and self._init_is_done:
             self._name = retrieve_name(self)
@@ -179,7 +179,6 @@ class Processor(BeamBase):
         ask_kwargs = ask_kwargs or {}
         response = llm.ask(prompt, **ask_kwargs).json
 
-        print(response)
         constructor_name = response['method']
 
         if constructor_name not in classmethods:

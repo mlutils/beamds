@@ -1,9 +1,8 @@
 from functools import partial
 
 from .utils import get_broker_url, get_backend_url
-from ..core import Processor
 from ..utils import lazy_property
-from .meta_dispatcher import MetaAsyncResult, MetaDispatcher
+from ..core import MetaAsyncResult, MetaDispatcher
 
 
 class CeleryAsyncResult(MetaAsyncResult):

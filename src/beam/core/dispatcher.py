@@ -1,6 +1,6 @@
 import inspect
 
-from ..core import Processor
+from .processor import Processor
 from ..utils import lazy_property
 
 
@@ -78,33 +78,38 @@ class MetaDispatcher(Processor):
         self.obj = obj
         self._routes = routes
         self.asynchronous = asynchronous
-
         self.call_function = None
-        self._routes_methods = {}
 
+    @property
+    def real_object(self):
+        return self.obj
 
     @property
     def routes(self):
         routes = self._routes
         if routes is None or len(routes) == 0:
-            routes = [name for name, attr in inspect.getmembers(self.obj)
+            routes = [name for name, attr in inspect.getmembers(self.real_object)
                       if type(name) is str and not name.startswith('_') and
                       (inspect.ismethod(attr) or inspect.isfunction(attr))]
         return routes
 
     @lazy_property
     def type(self):
-        if inspect.isfunction(self.obj):
+        if inspect.isfunction(self.real_object):
             return "function"
-        elif inspect.isclass(self.obj):
+        elif inspect.isclass(self.real_object):
             return "class"
-        elif inspect.ismethod(self.obj):
+        elif inspect.ismethod(self.real_object):
             return "method"
         else:
-            return "instance" if isinstance(self.obj, object) else "unknown"
+            return "instance" if isinstance(self.real_object, object) else "unknown"
+
+    @lazy_property
+    def route_methods(self):
+        return {route: getattr(self.real_object, route) for route in self.routes}
 
     def getattr(self, item):
-        if item in self._routes_methods:
-            return self._routes_methods[item]
+        if item in self.routes_methods:
+            return self.routes_methods[item]
         else:
             raise AttributeError(f"Attribute {item} not served with {self.__class__.__name__}")
