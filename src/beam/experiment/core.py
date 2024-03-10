@@ -224,9 +224,8 @@ class Experiment(object):
         self.logs_path_is_built = False
         self.source_dir = None
 
-    @staticmethod
-    def algorithm_generator(*args, **kwargs):
-        return beam_algorithm_generator(*args, **kwargs)
+    def algorithm_generator(self, *args, **kwargs):
+        return beam_algorithm_generator(self, *args, **kwargs)
 
     @lazy_property
     def training_framework(self):
@@ -649,7 +648,7 @@ class Experiment(object):
             self.build_experiment_dir()
 
         if algorithm_generator is None:
-            algorithm_generator = self.algorithm_generator
+            algorithm_generator = beam_algorithm_generator
 
         try:
 
@@ -678,7 +677,7 @@ class Experiment(object):
 
         # take care of what is done after training ends
         if res is None or (self.world_size > 1 and not self.hparams.get('federated_runner')):
-            alg = algorithm_generator(self, alg, *args, **kwargs)
+            alg = algorithm_generator(self, alg, **kwargs)
             results = None
             self.reload_checkpoint(alg)
 

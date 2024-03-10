@@ -35,9 +35,9 @@ class BeamAssistant(MetaDispatcher):
 
     @lazy_property
     def summary(self):
-        if self.summarize_thread is not None:
-            # wait for the thread to finish and get the summary from the queue
-            self.summarize_thread.join()
+        # if self.summarize_thread is not None:
+        #     # wait for the thread to finish and get the summary from the queue
+        #     self.summarize_thread.join()
         return self.summary_queue.get()
 
     @lazy_property
@@ -49,7 +49,8 @@ class BeamAssistant(MetaDispatcher):
         if self.type in ['class', 'instance']:
             # iterate over all parent classes and get the source
             sources = []
-            for cls in inspect.getmro(self.obj):
+            base_cls = self.obj if self.type == 'class' else self.obj.__class__
+            for cls in inspect.getmro(base_cls):
                 if cls.__module__ != 'builtins':
                     sources.append(inspect.getsource(cls))
             # sum all the sources
@@ -59,7 +60,12 @@ class BeamAssistant(MetaDispatcher):
 
     @property
     def name(self):
-        return self.obj.__name__
+        if self.type == 'class':
+            return self.obj.__name__
+        elif self.type == 'instance':
+            return self.obj.__class__.__name__
+        else:
+            return self.obj.__name__
 
     @lazy_property
     def type_name(self):
