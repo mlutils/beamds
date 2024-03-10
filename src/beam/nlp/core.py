@@ -10,7 +10,7 @@ import queue
 import re
 
 
-class NLPDispatcher(MetaDispatcher):
+class BeamAssistant(MetaDispatcher):
 
     def __init__(self, obj, *args, llm=None, llm_kwargs=None, summary_len=10, _summary=None, **kwargs):
 
@@ -149,7 +149,7 @@ class NLPDispatcher(MetaDispatcher):
 
         instance = constructor(*args, **kwargs)
 
-        return NLPDispatcher(instance, llm=self.llm, summary_len=self.summary_len, _summary=self.summary)
+        return BeamAssistant(instance, llm=self.llm, summary_len=self.summary_len, _summary=self.summary)
 
     def exec_function(self, query, ask_kwargs=None):
 
