@@ -4,9 +4,9 @@ from src.beam.orchestration import (BeamK8S, BeamDeploy, ServiceConfig,
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~3yeKlg7oWUnhGjYPNObmhcp8bLVi8YSiIbWlSE-sjRQ"
+api_token = "sha256~yK4Smp26dpkQlehTT0qD_7LFNk4Kf_Xo2Z89OQkyfRw"
 project_name = "ben-guryon"
-image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
+image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
 labels = {"app": "bgu"}
 deployment_name = "bgu"
 # namespace = "ben-guryon"
@@ -18,7 +18,7 @@ use_scc = True  # Pass the SCC control parameter
 scc_name = "anyuid"  # privileged , restricted, anyuid, hostaccess, hostmount-anyuid, hostnetwork, node-exporter-scc
 security_context_config = (
     SecurityContextConfig(add_capabilities=["SYS_CHROOT", "CAP_AUDIT_CONTROL",
-                                            "CAP_AUDIT_WRITE"], enable_security_context=True))
+                                            "CAP_AUDIT_WRITE"], enable_security_context=False))
 cpu_requests = "2000m"  # 0.5 CPU
 cpu_limits = "2000m"       # 1 CPU
 memory_requests = "24Gi"
@@ -29,9 +29,13 @@ storage_configs = [
     StorageConfig(pvc_name="data-pvc", pvc_mount_path="/data-pvc",
                   pvc_size="500Gi", pvc_access_mode="ReadWriteMany", create_pvc=True),
 ]
+
+# beam_ports(initials=234)
+# # returns service_configs: {'ssh': 23422, 'jupyter': 23488, 'mlflow': 23480, }
+
 service_configs = [
-    ServiceConfig(port=22, service_name="ssh", service_type="LoadBalancer", port_name="ssh-port",
-                  create_route=False, create_ingress=False, ingress_host="ssh.example.com"),
+    ServiceConfig(port=2222, service_name="ssh", service_type="NodePort", port_name="ssh-port",
+                  create_route=True, create_ingress=False, ingress_host="ssh.example.com"),
     ServiceConfig(port=88, service_name="jupyter", service_type="LoadBalancer", port_name="jupyter-port",
                   create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
 ]

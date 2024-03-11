@@ -498,6 +498,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         try:
             self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
             print(f"Service '{service_name}' created successfully in namespace '{namespace}'.")
+            logger.info(
+                f"Service '{service_name}' of type '{service_type}' created with ports: "
+                f"{', '.join([f'Port: {port.port}, TargetPort: {port.target_port}' for port in service_ports])}")
         except client.exceptions.ApiException as e:
             print(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
 
@@ -606,8 +609,11 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         # Attempt to create the route
         try:
-            route_resource.create(body=route_manifest, namespace=namespace)
+            created_route = route_resource.create(body=route_manifest, namespace=namespace)
             logger.info(f"Route for service {service_name} created successfully in namespace {namespace}.")
+            # Print the DNS name of the route
+            dns_name = created_route.spec.host  # Accessing the DNS name from the route response
+            logger.info(f"The DNS name of the created route is: {dns_name}")  # Log the DNS name
         except Exception as e:
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
 
@@ -727,6 +733,39 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.info(f"Ingress for service {service_name} deleted successfully.")
         except Exception as e:
             logger.error(f"Failed to delete Ingress for service {service_name}: {e}")
+
+    def print_pod_node_info(self, deployment_name):
+        # Step 1: Find the deployment to get its selector
+        deployment = self.apps_v1_api.read_namespaced_deployment(deployment_name, self.namespace)
+        selector = ','.join([f'{k}={v}' for k, v in deployment.spec.selector.match_labels.items()])
+
+        # Step 2: List all pods in the deployment using the selector
+        pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=selector)
+
+        # Collect unique node names where the pods are scheduled
+        node_names = set()
+        for pod in pods.items:
+            node_name = pod.spec.node_name
+            node_names.add(node_name)
+            logger.info(f"Pod: {pod.metadata.name} is running on Node: {node_name}")
+
+        # Step 3: List services and check if they target the deployment
+        services = self.core_v1_api.list_namespaced_service(namespace=self.namespace)
+        for service in services.items:
+            if service.spec.type == "NodePort":
+                for port in service.spec.ports:
+                    if port.node_port:
+                        logger.info(
+                            f"NodePort Service: {service.metadata.name}, Port: {port.port}, NodePort: {port.node_port}")
+                        # Since we can't get the external IP, we'll just inform about using the cluster's node IPs
+                        logger.info(
+                            "To access the NodePort service, use the IP "
+                            "address of any cluster node with the listed NodePort.")
+
+        # Inform about the limitation regarding node IPs
+        logger.info(
+            "Node external IPs cannot be retrieved with namespace-scoped "
+            "permissions. Use known node IPs to access NodePort services.")
 
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []
