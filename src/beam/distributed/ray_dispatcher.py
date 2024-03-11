@@ -146,8 +146,6 @@ class RayDispatcher(MetaDispatcher, RayCluster):
         RayCluster.__init__(self, name=name, address=address, host=host, port=port, username=username,
                             password=password, ray_kwargs=ray_kwargs, **kwargs)
 
-        self._routes_methods = {}
-
         self.remote_kwargs = remote_kwargs if remote_kwargs is not None else {}
 
         if self.type == 'function':

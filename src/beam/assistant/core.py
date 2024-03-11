@@ -24,48 +24,48 @@ class BeamAssistant(MetaDispatcher):
         if llm is not None:
             self.llm = resource(llm, **llm_kwargs)
 
-        self.summary_queue = queue.Queue()
-        self.summarize_thread = None
+        self._summary_queue = queue.Queue()
+        self._summarize_thread = None
         if _summary is not None:
-            self.summary_queue.put(_summary)
+            self._summary_queue.put(_summary)
         else:
             # summarize the object in a different thread
-            self.summarize_thread = threading.Thread(target=self.summarize, daemon=True)
-            self.summarize_thread.start()
+            self._summarize_thread = threading.Thread(target=self.summarize, daemon=True)
+            self._summarize_thread.start()
 
     @lazy_property
     def summary(self):
-        # if self.summarize_thread is not None:
-        #     # wait for the thread to finish and get the summary from the queue
-        #     self.summarize_thread.join()
-        return self.summary_queue.get()
+        if self._summarize_thread is not None:
+            # wait for the thread to finish and get the summary from the queue
+            self._summarize_thread.join()
+        return self._summary_queue.get()
 
     @lazy_property
     def doc(self):
-        return self.obj.__doc__
+        return self.real_object.__doc__
 
     @lazy_property
     def source(self):
         if self.type in ['class', 'instance']:
             # iterate over all parent classes and get the source
             sources = []
-            base_cls = self.obj if self.type == 'class' else self.obj.__class__
+            base_cls = self.real_object if self.type == 'class' else self.real_object.__class__
             for cls in inspect.getmro(base_cls):
                 if cls.__module__ != 'builtins':
                     sources.append(inspect.getsource(cls))
             # sum all the sources
             return '\n'.join(sources)
         else:
-            return inspect.getsource(self.obj)
+            return inspect.getsource(self.real_object)
 
     @property
     def name(self):
         if self.type == 'class':
-            return self.obj.__name__
+            return self.real_object.__name__
         elif self.type == 'instance':
-            return self.obj.__class__.__name__
+            return self.real_object.__class__.__name__
         else:
-            return self.obj.__name__
+            return self.real_object.__name__
 
     @lazy_property
     def type_name(self):
@@ -85,12 +85,15 @@ class BeamAssistant(MetaDispatcher):
                   f"given the following source code:\n\n{self.source}\n"
                   f"Your answer:\n\n")
 
-        summary = self.ask(prompt, **kwargs).text
+        summary = self.ask(prompt, system=False, **kwargs).text
         # put the summary in the queue
-        self.summary_queue.put(summary)
+        self._summary_queue.put(summary)
 
-    def ask(self, query, **kwargs):
-        query = f"{self.system_prompt}\n{query}"
+    def ask(self, query, system=True, **kwargs):
+        if system:
+            query = f"{self.system_prompt}\n{query}"
+        else:
+            query = f"{query}"
         return self.llm.ask(query, **kwargs)
 
     @lazy_property
@@ -110,7 +113,7 @@ class BeamAssistant(MetaDispatcher):
                     return True
             return False
 
-        classmethods = [name for name, member in inspect.getmembers(self.obj, predicate=is_class_method)]
+        classmethods = [name for name, member in inspect.getmembers(self.real_object, predicate=is_class_method)]
 
         example_output = {'method': 'method_name'}
         query = (f"Choose the suitable classmethod that should be used to build a class instance according to the "
@@ -129,11 +132,11 @@ class BeamAssistant(MetaDispatcher):
         if constructor_name not in classmethods:
             raise ValueError(f"Constructor {constructor_name} not found in the list of class constructors")
 
-        constructor = getattr(self.obj, constructor_name)
+        constructor = getattr(self.real_object, constructor_name)
         logger.info(f"Using classmethod {constructor_name} to build the class instance")
 
         constructor_sourcecode = inspect.getsource(constructor)
-        init_sourcecode = inspect.getsource(self.obj.__init__)
+        init_sourcecode = inspect.getsource(self.real_object.__init__)
 
         json_output_example = {"args": ['arg1', 'arg2'], "kwargs": {'kwarg1': 'value1', 'kwarg2': 'value2'}}
         query = (f"Build a suitable dictionary of arguments and keyword arguments to build a class instance according "
@@ -178,13 +181,13 @@ class BeamAssistant(MetaDispatcher):
 
         logger.info(f"Using args: {args} and kwargs: {kwargs} to answer the query")
 
-        return self.obj(*args, **kwargs)
+        return self.real_object(*args, **kwargs)
 
     def exec_method(self, query, method_name, ask_kwargs=None):
 
         ask_kwargs = ask_kwargs or {}
 
-        method = getattr(self, method_name)
+        method = getattr(self.real_object, method_name)
         sourcecode = inspect.getsource(method)
 
         json_output_example = {"args": ['arg1', 'arg2'], "kwargs": {'kwarg1': 'value1', 'kwarg2': 'value2'}}
@@ -210,7 +213,7 @@ class BeamAssistant(MetaDispatcher):
 
         ask_kwargs = ask_kwargs or {}
 
-        method_list = inspect.getmembers(self, predicate=inspect.isroutine)
+        method_list = inspect.getmembers(self.real_object, predicate=inspect.isroutine)
         method_list = [m for m in method_list if not m[0].startswith('_')]
         json_output_example = json.dumps({'method': 'method_name'})
         class_doc = inspect.getdoc(self)

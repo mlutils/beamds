@@ -79,6 +79,7 @@ class MetaDispatcher(Processor):
         self._routes = routes
         self.asynchronous = asynchronous
         self.call_function = None
+        self._routes_methods = {}
 
     @property
     def real_object(self):
@@ -109,7 +110,7 @@ class MetaDispatcher(Processor):
         return {route: getattr(self.real_object, route) for route in self.routes}
 
     def getattr(self, item):
-        if item in self.routes_methods:
-            return self.routes_methods[item]
+        if item in self._routes_methods:
+            return self._routes_methods[item]
         else:
             raise AttributeError(f"Attribute {item} not served with {self.__class__.__name__}")

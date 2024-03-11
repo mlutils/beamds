@@ -88,7 +88,7 @@ class OpenAIBase(BeamLLM):
 
 class OpenAILLM(OpenAIBase):
 
-    _models: Any = PrivateAttr()
+    _models: Any = PrivateAttr(default=None)
 
     def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
 

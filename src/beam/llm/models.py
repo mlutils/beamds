@@ -21,7 +21,7 @@ class FCConversationLLM(BeamLLM):
 
     def get_prompt(self, messages):
 
-        conv = get_conversation_template(self.model_adapter)
+        conv = get_conversation_template(self.adapter)
         for m in messages:
 
             if m['role'] == 'system':
@@ -55,11 +55,11 @@ class FCConversationLLM(BeamLLM):
 
 class TGILLM(FCConversationLLM):
 
-    _info: Any = PrivateAttr()
-    _client: Any = PrivateAttr()
+    _info: Any = PrivateAttr(default=None)
+    _client: Any = PrivateAttr(default=None)
     timeout: Optional[float] = Field(None)
 
-    def __init__(self, hostname=None, port=None, *args, model_adapter=None, timeout=None, **kwargs):
+    def __init__(self, hostname=None, port=None, *args, adapter=None, timeout=None, **kwargs):
 
         api_base = f"http://{normalize_host(hostname, port)}"
 
@@ -76,9 +76,9 @@ class TGILLM(FCConversationLLM):
         kwargs['model'] = self._info['model_id']
         kwargs['scheme'] = 'tgi'
 
-        if model_adapter is None:
-            model_adapter = 'raw'
-        super().__init__(*args, model_adapter=model_adapter, **kwargs)
+        if adapter is None:
+            adapter = 'raw'
+        super().__init__(*args, adapter=adapter, **kwargs)
 
     def update_usage(self, response):
 
@@ -215,7 +215,7 @@ class FastAPILLM(FCConversationLLM):
     headers: Optional[dict] = Field(None)
     consumer: Optional[str] = Field(None)
     protocol: Optional[str] = Field(None)
-    _models: Any = PrivateAttr()
+    _models: Any = PrivateAttr(default=None)
 
     def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
 
@@ -433,8 +433,8 @@ class HuggingFaceLLM(BeamLLM):
     input_device: Optional[str] = Field(None)
     eos_pattern: Optional[str] = Field(None)
     tokenizer_name: Optional[str] = Field(None)
-    _text_generation_pipeline: Any = PrivateAttr()
-    _conversational_pipeline: Any = PrivateAttr()
+    _text_generation_pipeline: Any = PrivateAttr(default=None)
+    _conversational_pipeline: Any = PrivateAttr(default=None)
 
     def __init__(self, model, tokenizer=None, dtype=None, chat=False, input_device=None, compile=True, *args,
                  model_kwargs=None,

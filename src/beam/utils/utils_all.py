@@ -60,7 +60,7 @@ DataBatch = namedtuple("DataBatch", "index label data")
 
 # class Beamdantic(BaseModel):
 #     # To be used with pydantic classes and lazy_property
-#     _lazy_cache: Any = PrivateAttr()
+#     _lazy_cache: Any = PrivateAttr(default=None)
 
 
 class BeamDict(dict, Namespace):

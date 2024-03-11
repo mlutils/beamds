@@ -106,8 +106,6 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
         MetaDispatcher.__init__(self, obj, *routes, asynchronous=asynchronous, **kwargs)
         ThreadedCluster.__init__(self, max_workers=max_workers)
 
-        self._routes_methods = {}
-
         if self.type == 'function':
             self.call_function = self.threaded_function_wrapper(self.obj)
         elif self.type == 'instance':

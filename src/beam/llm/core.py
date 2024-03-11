@@ -9,31 +9,36 @@ from pydantic import BaseModel
 from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
-from ..core.processor import Processor
+# from ..core.processor import Processor
 from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass, \
     pretty_print_dict, MetaInitIsDoneVerifier
 from ..path import BeamURL
 
-# Assuming you've found that LLM's metaclass is pydantic.main.ModelMetaclass
-from pydantic.main import ModelMetaclass
+# # Assuming you've found that LLM's metaclass is pydantic.main.ModelMetaclass
+# from pydantic.main import ModelMetaclass
+#
+#
+# class CombinedMeta(ModelMetaclass, MetaInitIsDoneVerifier):
+#     def __call__(cls, *args, **kwargs):
+#         instance = ModelMetaclass.__call__(cls, *args, **kwargs)
+#         # instance = super().__call__(*args, **kwargs)
+#         instance._init_is_done = True
+#         return instance
 
+LLM = BaseModel
+CallbackManagerForLLMRun = NullClass
 
-class CombinedMeta(ModelMetaclass, MetaInitIsDoneVerifier):
-    def __call__(cls, *args, **kwargs):
-        instance = ModelMetaclass.__call__(cls, *args, **kwargs)
-        # instance = super().__call__(*args, **kwargs)
-        instance._init_is_done = True
-        return instance
+# import pydantic and check if its version is less than 2.0.0
 
-
-try:
-    from langchain.llms.base import LLM
-    from langchain.callbacks.manager import CallbackManagerForLLMRun
-except ImportError:
-    LLM = BaseModel
-    CallbackManagerForLLMRun = NullClass
-    CombinedMeta = MetaInitIsDoneVerifier
-
+import pydantic
+if pydantic.__version__ < '2.0.0':
+    try:
+        from langchain.llms.base import LLM
+        from langchain.callbacks.manager import CallbackManagerForLLMRun
+    except ImportError:
+        logger.warning("langchain not found, using pydantic only as the LLM base")
+else:
+    logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
 
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
@@ -59,15 +64,16 @@ class Completion(BeamDict):
         return pretty_print_dict(self, 'Completion')
 
 
-class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
+# class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
+class BeamLLM(LLM):
 
     model: Optional[str] = Field(None)
     scheme: Optional[str] = Field(None)
-    usage: Any
-    instruction_history: Any
-    _chat_history: Any = PrivateAttr()
-    _url: Any = PrivateAttr()
-    _debug_langchain: Any = PrivateAttr()
+    usage: Dict = Field(default_factory=dict)
+    instruction_history: List = Field(default_factory=list)
+    _chat_history: Any = PrivateAttr(default=None)
+    _url: Any = PrivateAttr(default=None)
+    _debug_langchain: Any = PrivateAttr(default=None)
     temperature: float = Field(1.0, ge=0.0, le=1.0)
     top_p: float = Field(1.0, ge=0.0, le=1.0)
     n: int = Field(1, ge=1)
@@ -81,24 +87,24 @@ class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
     parse_retrials: int = Field(3, ge=0)
     ask_retrials: int = Field(1, ge=1)
     sleep: float = Field(1.0, ge=0.0)
-    model_adapter: Optional[str] = Field(None)
-    _len_function: Any = PrivateAttr()
+    adapter: Optional[str] = Field(None)
+    _len_function: Any = PrivateAttr(default=None)
 
     # To be used with pydantic classes and lazy_property
-    _lazy_cache: Any = PrivateAttr()
-    _tokenizer: Any = PrivateAttr()
-    _path_to_tokenizer: Any = PrivateAttr()
+    _lazy_cache: Any = PrivateAttr(default=None)
+    _tokenizer: Any = PrivateAttr(default=None)
+    _path_to_tokenizer: Any = PrivateAttr(default=None)
 
-    _assistant_budget: Any = PrivateAttr()
-    _assistant_docstrings: Any = PrivateAttr()
-    _conv: Any = PrivateAttr()
-    _tools: Any = PrivateAttr()
-    _init_is_done: Any = PrivateAttr()
+    _assistant_budget: Any = PrivateAttr(default=None)
+    _assistant_docstrings: Any = PrivateAttr(default=None)
+    _conv: Any = PrivateAttr(default=None)
+    _tools: Any = PrivateAttr(default=None)
+    _init_is_done: Any = PrivateAttr(default=None)
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
                  debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
-                 model_adapter=None, tools=None, **kwargs):
+                 adapter=None, tools=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         if temperature is not None:
@@ -140,11 +146,11 @@ class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
         if self.model is None:
             self.model = 'unknown'
 
-        if model_adapter is None:
-            model_adapter = self.model
-        self.model_adapter = model_adapter
+        if adapter is None:
+            adapter = self.model
+        self.adapter = adapter
 
-        self._conv = get_conversation_template(self.model_adapter)
+        self._conv = get_conversation_template(self.adapter)
 
         self.usage = {"prompt_tokens": 0,
                       "completion_tokens": 0,
