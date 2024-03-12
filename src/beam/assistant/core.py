@@ -9,14 +9,22 @@ import threading
 import queue
 import re
 
+import torch
+import numpy as np
+import pandas as pd
+
 
 class BeamAssistant(MetaDispatcher):
 
-    def __init__(self, obj, *args, llm=None, llm_kwargs=None, summary_len=10, _summary=None, **kwargs):
+    def __init__(self, obj, *args, llm=None, llm_kwargs=None, summary_len=10, eval_arguments=True, retries=3,
+                 _summary=None, **kwargs):
 
-        super().__init__(obj, *args, summary_len=summary_len, **kwargs)
+        super().__init__(obj, *args, summary_len=summary_len,
+                         eval_arguments=eval_arguments, retries=retries, **kwargs)
 
         self.summary_len = self.get_hparam('summary_len', summary_len)
+        self.eval_arguments = self.get_hparam('eval_arguments', eval_arguments)
+        self.retries = self.get_hparam('retries', retries)
         llm = self.get_hparam('llm', llm)
         llm_kwargs = llm_kwargs or {}
 
@@ -102,7 +110,10 @@ class BeamAssistant(MetaDispatcher):
                 f"You are given a {self.type_name} named {self.name} with the following description:\n"
                 f"{self.summary}\n")
 
-    def init_instance(self, query, ask_kwargs=None):
+    def init_instance(self, query, ask_kwargs=None, user_kwargs=None, eval_arguments=None):
+
+        eval_arguments = eval_arguments or self.eval_arguments
+        user_kwargs = user_kwargs or {}
 
         # create an instance of the class and return a NLPDispatcher object
         def is_class_method(member):
@@ -116,7 +127,7 @@ class BeamAssistant(MetaDispatcher):
         classmethods = [name for name, member in inspect.getmembers(self.real_object, predicate=is_class_method)]
 
         example_output = {'method': 'method_name'}
-        query = (f"Choose the suitable classmethod that should be used to build a class instance according to the "
+        query = (f"Choose the best classmethod that should be used to build a class instance according to the "
                   f"following query:\n"
                   f"Query: {query}\n"
                   f"Methods: {classmethods}\n"
@@ -160,7 +171,9 @@ class BeamAssistant(MetaDispatcher):
 
         return BeamAssistant(instance, llm=self.llm, summary_len=self.summary_len, _summary=self.summary)
 
-    def exec_method(self, query, method_name=None, ask_kwargs=None, user_kwargs=None):
+    def exec_method(self, query, method_name=None, ask_kwargs=None, user_kwargs=None, eval_arguments=None):
+
+        eval_arguments = eval_arguments or self.eval_arguments
 
         assert method_name is not None or self.type == 'function', \
             'method_name must be provided for non-function objects'
@@ -175,26 +188,42 @@ class BeamAssistant(MetaDispatcher):
         args_hint = ''
         if user_kwargs:
             args_hint = (f"These are arguments that the user want to pass to the method "
-                         f"(their names do not necessarily match to the method signature):\n"
+                         f"(their names represent their meaning but they do not necessarily "
+                         f"match to the method signature):\n"
                          f"{self.arguments_repr(**user_kwargs)}\n")
 
-        method = getattr(self.real_object, method_name)
+        if method_name is not None:
+            method = getattr(self.real_object, method_name)
+        else:
+            method = self.real_object
+
         sourcecode = inspect.getsource(method)
 
-        json_output_example = {"args": [2, 'some_name', '<eval>np.arange(100)</eval>'],
-                               "kwargs": {'k1': 3.5, 'k2': '<eval>torch.randn(20)</eval>'}}
+        json_output_example = {"args": [2, 'some_str'],
+                               "kwargs": {'k1': 3.5, 'k2': None}}
+
+        if eval_arguments:
+            json_output_example["args"].append('<eval>np.arange(100)</eval>')
+            json_output_example["kwargs"]['ke'] = "<eval>torch.randn(20)</eval>"
+
         if args_hint:
             json_output_example["args"].append('<user_arg>arg_name</user_arg>')
-            json_output_example["kwargs"]['k3'] = "<user_kwarg>arg_name</user_kwarg>"
+            json_output_example["kwargs"]['ku'] = "<user_kwarg>arg_name</user_kwarg>"
 
+        i = 1
         possible_argument_types = ("As argument, you can use the following types:\n"
                                    "1. JSON serializable objects\n"
-                                   "2. python statements (wrapped with <eval></eval> tags). "
-                                   "In your statement you can use the following python packages: "
-                                   "(1) numpy as np (2) torch (3) pandas as pd\n")
+                                   )
+
+        if eval_arguments:
+            i += 1
+            possible_argument_types += (f"{i}. python statements (wrapped with <eval></eval> tags). "
+                                        "In your statement you can use the following python packages: "
+                                        "(1) numpy as np (2) torch (3) pandas as pd\n")
 
         if args_hint:
-            possible_argument_types += "3. User-defined arguments (wrapped with <user_arg></user_arg> tags)\n"
+            i += 1
+            possible_argument_types += f"{i}. User-defined arguments (wrapped with <user_arg></user_arg> tags)\n"
 
         prompt = (f"Build a suitable dictionary of arguments and keyword arguments to answer the following query:\n"
                   f"Query: {query}\n"
@@ -203,7 +232,7 @@ class BeamAssistant(MetaDispatcher):
                   f"{args_hint}"
                   f"{possible_argument_types}\n"
                   f"Return your answer as a JSON object of the following form:\n"
-                  f"{json_output_example}\n"
+                  f"{json.dumps(json_output_example)}\n"
                   f"Your answer:\n\n")
 
         d = self.ask(prompt, **ask_kwargs).json
@@ -218,6 +247,10 @@ class BeamAssistant(MetaDispatcher):
         user_arg_pattern = re.compile(r"<user_arg>(.*)</user_arg>")
 
         def process_value(v):
+
+            if not isinstance(v, str):
+                return v
+
             eval_match = eval_pattern.match(v)
             user_arg_match = user_arg_pattern.match(v)
             if eval_match:
@@ -229,9 +262,11 @@ class BeamAssistant(MetaDispatcher):
             elif user_arg_match:
                 # extract the content and use it as a user-defined argument
                 v = user_arg_match.group(1)
-                v = user_kwargs[v]
+                v = user_kwargs[v]['value']
 
             return v
+
+        logger.info(f"Using args: {args} and kwargs: {kwargs} to answer the query")
 
         for k, v in kwargs.items():
             kwargs[k] = process_value(v)
@@ -239,26 +274,24 @@ class BeamAssistant(MetaDispatcher):
         for i, v in enumerate(args):
             args[i] = process_value(v)
 
-        logger.info(f"Using args: {args} and kwargs: {kwargs} to answer the query")
-
         return method(*args, **kwargs)
 
     @staticmethod
     def arguments_repr(**kwargs):
         args_repr = ''
         for k, v in kwargs.items():
-            args_repr += f"{k}: {v['str']} ({v['metadata']})\n"
+            args_repr += f"{k}: {v['str']} (type: {type(v['value'])}, {v['metadata']})\n"
         return args_repr
 
-    def choose_method(self, query, ask_kwargs=None, kwargs_repr=None):
+    def choose_method(self, query, ask_kwargs=None, user_kwargs=None):
 
         ask_kwargs = ask_kwargs or {}
-        kwargs_repr = kwargs_repr or {}
+        user_kwargs = user_kwargs or {}
         args_hint = ''
-        if kwargs_repr:
+        if user_kwargs:
             args_hint = (f"These are arguments that the user want to pass to the method "
                          f"(their names do not necessarily match to the method signature):\n"
-                         f"{self.arguments_repr(**kwargs_repr)}\n")
+                         f"{self.arguments_repr(**user_kwargs)}\n")
 
         method_list = inspect.getmembers(self.real_object, predicate=inspect.isroutine)
         method_list = [m for m in method_list if not m[0].startswith('_')]
@@ -272,7 +305,7 @@ class BeamAssistant(MetaDispatcher):
                   f"{class_doc}"
                   f"Attributes: {method_list}\n"
                   f"{args_hint}"
-                  f"Return your answer as a JSON object of the following form:\n"
+                  f"Return your answer as a JSON object, see example below:\n"
                   f"{json_output_example}\n"
                   f"Your answer:\n\n")
 
@@ -286,20 +319,22 @@ class BeamAssistant(MetaDispatcher):
 
         return method_name
 
-    def do(self, query, method=None, ask_kwargs=None, **kwargs):
+    def exec(self, query, method=None, ask_kwargs=None, eval_arguments=None, **kwargs):
         # execute code according to the prompt
 
-        kwargs_repr = {k: {'str': str(v), 'metadata': check_type(v)} for k, v in kwargs.items()}
+        user_kwargs = {k: {'value': v, 'str': str(v), 'metadata': check_type(v)} for k, v in kwargs.items()}
 
         if self.type == 'class':
             # create an instance of the class
-            res = self.init_instance(query, ask_kwargs=ask_kwargs, kwargs_repr=kwargs_repr)
+            res = self.init_instance(query, ask_kwargs=ask_kwargs, user_kwargs=user_kwargs, eval_arguments=eval_arguments)
         elif self.type == 'instance':
             if method is None:
-                method = self.choose_method(query, ask_kwargs=ask_kwargs, kwargs_repr=kwargs_repr)
-            res = self.exec_method(query, method_name=method, ask_kwargs=ask_kwargs, user_kwargs=kwargs_repr)
+                method = self.choose_method(query, ask_kwargs=ask_kwargs, user_kwargs=user_kwargs)
+            res = self.exec_method(query, method_name=method, ask_kwargs=ask_kwargs,
+                                   user_kwargs=user_kwargs, eval_arguments=eval_arguments)
         elif self.type == 'function':
-            res = self.exec_method(query, ask_kwargs=ask_kwargs, user_kwargs=kwargs_repr)
+            res = self.exec_method(query, ask_kwargs=ask_kwargs,
+                                   user_kwargs=user_kwargs, eval_arguments=eval_arguments)
         else:
             raise ValueError(f"Unknown type: {self.type}")
         return res
@@ -312,14 +347,15 @@ class BeamAssistant(MetaDispatcher):
         code = self.ask(
             f"Return an executable python code that performs the following task:\n"
             f"{query}\\n"
-            f"Use the tags [PYTHON] and [\PYTHON] at the beginning and the end of the code section. "
+            f"Use a markdown syntax, i.e. the tags \'\'\'python and \'\'\' at the beginning and the end of the code "
+            f"section. "
             f"The final result should be assigned to a variable name \'result\'.\n"
             f"Your answer:\n\n").text
         # use re to extract the code
-        code = re.search(r"\[PYTHON\](.*)\[\\PYTHON\]", code, re.DOTALL).group(1)
+        code = re.search(r"\'\'\'python(.*)\'\'\'", code, re.DOTALL).group(1)
         return code
 
-    def exec(self, query):
+    def exec_eval(self, query):
         code = self.gen_code(query)
         try:
             exec(code, globals(), locals())
