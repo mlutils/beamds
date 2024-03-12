@@ -246,7 +246,7 @@ class BeamAssistant(MetaDispatcher):
         elif self.type == 'instance':
             if method is None:
                 method = self.choose_method(query, ask_kwargs=ask_kwargs)
-            res = self.exec_method(query, method=method, ask_kwargs=ask_kwargs)
+            res = self.exec_method(query, method_name=method, ask_kwargs=ask_kwargs)
         elif self.type == 'function':
             res = self.exec_function(query, ask_kwargs=ask_kwargs)
         else:
