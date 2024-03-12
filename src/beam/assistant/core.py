@@ -2,7 +2,7 @@ import json
 
 from .. import resource
 from ..core import MetaDispatcher
-from ..utils import lazy_property
+from ..utils import lazy_property, check_type
 from ..logger import beam_logger as logger
 import inspect
 import threading
@@ -160,42 +160,48 @@ class BeamAssistant(MetaDispatcher):
 
         return BeamAssistant(instance, llm=self.llm, summary_len=self.summary_len, _summary=self.summary)
 
-    def exec_function(self, query, ask_kwargs=None):
+    def exec_method(self, query, method_name=None, ask_kwargs=None, user_kwargs=None):
+
+        assert method_name is not None or self.type == 'function', \
+            'method_name must be provided for non-function objects'
+
+        if method_name is None:
+            method_description = f"function: {self.name}"
+        else:
+            method_description = f"class method: {method_name} (of class {self.name})"
 
         ask_kwargs = ask_kwargs or {}
-
-        json_output_example = {"args": ['arg1', 'arg2'], "kwargs": {'kwarg1': 'value1', 'kwarg2': 'value2'}}
-
-        prompt = (f"Build a suitable dictionary of arguments and keyword arguments to answer the following query:\n"
-                  f"Query: {query}\n"
-                  f"with the function: {self.name} with source-code:\n"
-                  f"{self.source}\n"
-                  f"Return your answer as a JSON object of the following form:\n"
-                  f"{json_output_example}\n"
-                  f"Your answer:\n\n")
-
-        d = self.ask(prompt, **ask_kwargs).json
-
-        args = d.get('args', [])
-        kwargs = d.get('kwargs', {})
-
-        logger.info(f"Using args: {args} and kwargs: {kwargs} to answer the query")
-
-        return self.real_object(*args, **kwargs)
-
-    def exec_method(self, query, method_name, ask_kwargs=None):
-
-        ask_kwargs = ask_kwargs or {}
+        user_kwargs = user_kwargs or {}
+        args_hint = ''
+        if user_kwargs:
+            args_hint = (f"These are arguments that the user want to pass to the method "
+                         f"(their names do not necessarily match to the method signature):\n"
+                         f"{self.arguments_repr(**user_kwargs)}\n")
 
         method = getattr(self.real_object, method_name)
         sourcecode = inspect.getsource(method)
 
-        json_output_example = {"args": ['arg1', 'arg2'], "kwargs": {'kwarg1': 'value1', 'kwarg2': 'value2'}}
+        json_output_example = {"args": [2, 'some_name', '<eval>np.arange(100)</eval>'],
+                               "kwargs": {'k1': 3.5, 'k2': '<eval>torch.randn(20)</eval>'}}
+        if args_hint:
+            json_output_example["args"].append('<user_arg>arg_name</user_arg>')
+            json_output_example["kwargs"]['k3'] = "<user_kwarg>arg_name</user_kwarg>"
+
+        possible_argument_types = ("As argument, you can use the following types:\n"
+                                   "1. JSON serializable objects\n"
+                                   "2. python statements (wrapped with <eval></eval> tags). "
+                                   "In your statement you can use the following python packages: "
+                                   "(1) numpy as np (2) torch (3) pandas as pd\n")
+
+        if args_hint:
+            possible_argument_types += "3. User-defined arguments (wrapped with <user_arg></user_arg> tags)\n"
 
         prompt = (f"Build a suitable dictionary of arguments and keyword arguments to answer the following query:\n"
                   f"Query: {query}\n"
-                  f"with the class method: {method_name} (of class {self.__class__.__name__}) with source-code:\n"
+                  f"with the {method_description} with source-code:\n"
                   f"{sourcecode}\n"
+                  f"{args_hint}"
+                  f"{possible_argument_types}\n"
                   f"Return your answer as a JSON object of the following form:\n"
                   f"{json_output_example}\n"
                   f"Your answer:\n\n")
@@ -204,14 +210,55 @@ class BeamAssistant(MetaDispatcher):
 
         args = d.get('args', [])
         kwargs = d.get('kwargs', {})
+
+        # iterate over args and kwargs and look for tags <eval> and <user_arg>
+        # use re to match the pattern <tag>content</tag>
+
+        eval_pattern = re.compile(r"<eval>(.*)</eval>")
+        user_arg_pattern = re.compile(r"<user_arg>(.*)</user_arg>")
+
+        def process_value(v):
+            eval_match = eval_pattern.match(v)
+            user_arg_match = user_arg_pattern.match(v)
+            if eval_match:
+                # extract the content and evaluate it
+                try:
+                    v = eval(eval_match.group(1))
+                except:
+                    raise ValueError(f"Failed to evaluate the expression: {eval_match.group(1)}")
+            elif user_arg_match:
+                # extract the content and use it as a user-defined argument
+                v = user_arg_match.group(1)
+                v = user_kwargs[v]
+
+            return v
+
+        for k, v in kwargs.items():
+            kwargs[k] = process_value(v)
+
+        for i, v in enumerate(args):
+            args[i] = process_value(v)
 
         logger.info(f"Using args: {args} and kwargs: {kwargs} to answer the query")
 
         return method(*args, **kwargs)
 
-    def choose_method(self, query, ask_kwargs=None):
+    @staticmethod
+    def arguments_repr(**kwargs):
+        args_repr = ''
+        for k, v in kwargs.items():
+            args_repr += f"{k}: {v['str']} ({v['metadata']})\n"
+        return args_repr
+
+    def choose_method(self, query, ask_kwargs=None, kwargs_repr=None):
 
         ask_kwargs = ask_kwargs or {}
+        kwargs_repr = kwargs_repr or {}
+        args_hint = ''
+        if kwargs_repr:
+            args_hint = (f"These are arguments that the user want to pass to the method "
+                         f"(their names do not necessarily match to the method signature):\n"
+                         f"{self.arguments_repr(**kwargs_repr)}\n")
 
         method_list = inspect.getmembers(self.real_object, predicate=inspect.isroutine)
         method_list = [m for m in method_list if not m[0].startswith('_')]
@@ -224,6 +271,7 @@ class BeamAssistant(MetaDispatcher):
                   f"Class: {self.__class__.__name__}\n"
                   f"{class_doc}"
                   f"Attributes: {method_list}\n"
+                  f"{args_hint}"
                   f"Return your answer as a JSON object of the following form:\n"
                   f"{json_output_example}\n"
                   f"Your answer:\n\n")
@@ -238,17 +286,20 @@ class BeamAssistant(MetaDispatcher):
 
         return method_name
 
-    def do(self, query, method=None, ask_kwargs=None):
+    def do(self, query, method=None, ask_kwargs=None, **kwargs):
         # execute code according to the prompt
+
+        kwargs_repr = {k: {'str': str(v), 'metadata': check_type(v)} for k, v in kwargs.items()}
+
         if self.type == 'class':
             # create an instance of the class
-            res = self.init_instance(query, ask_kwargs=ask_kwargs)
+            res = self.init_instance(query, ask_kwargs=ask_kwargs, kwargs_repr=kwargs_repr)
         elif self.type == 'instance':
             if method is None:
-                method = self.choose_method(query, ask_kwargs=ask_kwargs)
-            res = self.exec_method(query, method_name=method, ask_kwargs=ask_kwargs)
+                method = self.choose_method(query, ask_kwargs=ask_kwargs, kwargs_repr=kwargs_repr)
+            res = self.exec_method(query, method_name=method, ask_kwargs=ask_kwargs, user_kwargs=kwargs_repr)
         elif self.type == 'function':
-            res = self.exec_function(query, ask_kwargs=ask_kwargs)
+            res = self.exec_method(query, ask_kwargs=ask_kwargs, user_kwargs=kwargs_repr)
         else:
             raise ValueError(f"Unknown type: {self.type}")
         return res
@@ -275,5 +326,3 @@ class BeamAssistant(MetaDispatcher):
             return result
         except:
             raise ValueError(f"Failed to execute the code:\n{code}")
-
-
