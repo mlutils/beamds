@@ -267,8 +267,12 @@ class BeamServer(MetaDispatcher):
         del self.response_queue[req_id]
         return result
 
-    def call_function(self, client, args, kwargs):
-        return self.query_algorithm(client, '__call__', args, kwargs)
+    def call(self, client, *args, **kwargs):
+
+        if self.type == 'function':
+            return self.query_algorithm(client, None, *args, **kwargs)
+        else:
+            return self.query_algorithm(client, '__call__', *args, **kwargs)
 
     def query_algorithm(self, client, method, args, kwargs, return_raw_results=False):
 
@@ -279,7 +283,10 @@ class BeamServer(MetaDispatcher):
         if method in self.batch:
             results = self.batched_query_algorithm(method, args, kwargs)
         else:
-            method = getattr(self.obj, method)
+            if method is None:
+                method = self.obj
+            else:
+                method = getattr(self.obj, method)
             results = method(*args, **kwargs)
 
         if not return_raw_results and client == 'beam':

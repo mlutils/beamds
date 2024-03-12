@@ -8,6 +8,21 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def simple_server():
+
+    from src.beam.serve import beam_server
+    def func(x):
+        return sorted(x)
+
+    # def func():
+    #     return 'hello!'
+
+    # def func(x):
+    #     print(x)
+
+    beam_server(func)
+
+
 def grpc_server():
     from src.beam.serve.grpc_server import GRPCServer
     from src.beam.misc import BeamFakeAlg
@@ -406,6 +421,8 @@ if __name__ == '__main__':
 
     # distributed_client()
 
-    grpc_server()
+    # grpc_server()
+
+    simple_server()
 
     print('done')

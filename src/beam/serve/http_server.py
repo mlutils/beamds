@@ -72,8 +72,10 @@ class HTTPServer(BeamServer):
         self.app.add_url_rule('/', view_func=self.get_info)
 
         if self.type == 'function':
-            self.app.add_url_rule('/call/<client>', view_func=self.call_function, methods=['POST'])
-        elif self.type == 'class':
+            self.app.add_url_rule('/call/<client>', view_func=self.call, methods=['POST'])
+        elif self.type == 'instance':
+            if hasattr(self.obj, '__call__'):
+                self.app.add_url_rule('/call/<client>', view_func=self.call, methods=['POST'])
             self.app.add_url_rule('/alg/<client>/<method>', view_func=self.query_algorithm, methods=['POST'])
             self.app.add_url_rule('/setvar/<client>/<name>', view_func=self.set_variable, methods=['POST'])
             self.app.add_url_rule('/getvar/<client>/<name>', view_func=self.get_variable)
