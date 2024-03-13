@@ -10,7 +10,7 @@ from ..config import BeamConfig
 
 
 try:
-    from src.beam.data import BeamData
+    from ..data import BeamData
     has_beam_ds = True
 except ImportError:
     has_beam_ds = False
