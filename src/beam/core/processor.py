@@ -96,7 +96,7 @@ class Processor(BeamBase):
         @return:
         '''
 
-        return []
+        return list(self.state_dict().keys())
 
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
@@ -225,10 +225,11 @@ class Processor(BeamBase):
 
     def state_dict(self):
         # The state must contain a key 'hparams' with the hparams of the instance
-        raise NotImplementedError
+        return {}
 
     def load_state_dict(self, state_dict):
-        raise NotImplementedError
+        for k, v in state_dict.items():
+            setattr(self, k, v)
 
     def save_state(self, path, ext=None):
 
