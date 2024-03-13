@@ -1,10 +1,16 @@
 import json
 import os
+from collections import namedtuple
+from datetime import datetime
+from io import BytesIO, StringIO
 from pathlib import PurePosixPath, PureWindowsPath, Path
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 import pandas as pd
 import numpy as np
 import re
+
+
+BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 
 
 def strip_prefix(text, prefix):
@@ -578,9 +584,27 @@ class PureBeamPath:
                 from scipy.io.wavfile import read as wav_read
                 x = wav_read(fo)
 
-            elif ext in ['.joblib', '.z', '.gz', '.bz2', '.xz', '.lzma']:
+            elif ext in ['.joblib']:
                 import joblib
-                x = joblib.load(fo.read(), **kwargs)
+                x = joblib.load(fo, **kwargs)
+
+            elif ext in ['.z', '.gz']:
+                import gzip
+                with gzip.open(fo, 'rb') as file:
+                    x = file.read()
+                    x = self.read_inner_content(x, **kwargs)
+
+            elif ext in ['.bz2']:
+                import bz2
+                with bz2.open(fo, 'rb') as file:
+                    x = file.read()
+                    x = self.read_inner_content(x, **kwargs)
+
+            elif ext in ['.xz', '.lzma']:
+                import lzma
+                with lzma.open(fo, 'rb') as file:
+                    x = file.read()
+                    x = self.read_inner_content(x, **kwargs)
 
             elif ext == '.safetensors':
                 from safetensors.torch import load
@@ -590,6 +614,17 @@ class PureBeamPath:
                 x = fo.read()
 
         return x
+
+    def read_inner_content(self, content, inner_ext=None, **kwargs):
+
+        p = self.stem
+        if '.' in p:
+            inner_ext = inner_ext or f".{p.split('.')[-1]}"
+
+        if inner_ext is not None:
+            content = IOPath('/', data=content).read(ext=inner_ext, **kwargs)
+
+        return content
 
     def readlines(self):
         return self.read(readlines=True, ext='.txt')
@@ -734,16 +769,28 @@ class PureBeamPath:
                 from scipy.io.wavfile import write as wav_write
                 wav_write(fo, *x)
 
-            elif ext in ['.joblib', '.z', '.gz', '.bz2', '.xz', '.lzma']:
+            elif ext == '.joblib':
                 import joblib
-                if ext != '.joblib':
-                    compress_methods = {'.z': 'zlib', '.gz': 'gzip', '.bz2': 'bz2', '.xz': 'xz', '.lzma': 'lzma'}
-                    compress_method = compress_methods[ext]
-                    if 'compress' not in kwargs:
-                        kwargs['compress'] = compress_method
-                    else:
-                        kwargs['compress'] = (compress_method, kwargs['compress'])
-                joblib.dump(x, fo, **kwargs)
+                compress = kwargs.pop('compress', 2)
+                joblib.dump(x, fo, compress=compress, **kwargs)
+
+            elif ext in ['.z', '.gz']:
+                import gzip
+                x = self.serialize_inner_content(x, **kwargs)
+                with gzip.open(fo, 'wb') as file:
+                    file.write(x)
+
+            elif ext in ['.bz2']:
+                import bz2
+                x = self.serialize_inner_content(x, **kwargs)
+                with bz2.open(fo, 'wb') as file:
+                    file.write(x)
+
+            elif ext in ['.xz', '.lzma']:
+                import lzma
+                x = self.serialize_inner_content(x, **kwargs)
+                with lzma.open(fo, 'wb') as file:
+                    file.write(x)
 
             elif ext == '.safetensors':
                 from safetensors.torch import save
@@ -772,8 +819,204 @@ class PureBeamPath:
 
         return self
 
+    def serialize_inner_content(self, content, inner_ext=None, **kwargs):
+
+            p = self.stem
+            if '.' in p:
+                inner_ext = inner_ext or f".{p.split('.')[-1]}"
+            inner_ext = inner_ext or '.pkl'
+            io_path = IOPath('/').write(content, ext=inner_ext, **kwargs)
+            return io_path.data['/']
+
     def resolve(self, strict=False):
         return self.gen(self.path.resolve(strict=strict))
+
+
+class DictBasedPath(PureBeamPath):
+    def __init__(self, *pathsegments, scheme=None, client=None, data=None, **kwargs):
+        super().__init__(*pathsegments, scheme=scheme, **kwargs)
+        if client is None:
+            client = {}
+        if data is not None:
+            client = data
+        self.client = client
+
+    @property
+    def data(self):
+        return self.get_data()
+
+    def get_data(self):
+        return self.client
+
+    def set_data(self, data):
+        self.client = data
+
+    def is_file(self):
+        raise NotImplementedError
+
+    def is_dir(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return True
+        for p in self.parts[1:]:
+            if not isinstance(client, dict):
+                return False
+            if p not in client:
+                return False
+            client = client[p]
+        return isinstance(client, dict)
+
+    def exists(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return True
+        for p in self.parts[1:]:
+            if p not in client:
+                return False
+        return True
+
+    @property
+    def _obj(self):
+        client = self.client
+        for p in self.parts[1:]:
+            client = client[p]
+        return client
+
+    @property
+    def _parent(self):
+        client = self.client
+        for p in self.parts[1:-1]:
+            client = client[p]
+        return client
+
+    def iterdir(self):
+        client = self._obj
+        for p in client:
+            yield self.gen(self.path.joinpath(p))
+
+    def mkdir(self, *args, parents=True, exist_ok=True, **kwargs):
+
+        if self.is_root():
+            return
+
+        if not exist_ok:
+            if self.exists():
+                raise FileExistsError
+
+        if not parents:
+            if self._parent is None:
+                raise FileNotFoundError
+
+        client = self.client
+        for p in self.parts[1:]:
+            if p not in client:
+                client[p] = {}
+            elif p in client and not isinstance(client[p], dict):
+                raise NotADirectoryError
+
+    def rmdir(self):
+        client = self._parent
+        del client[self.parts[-1]]
+
+    def unlink(self, missing_ok=False):
+
+        if self.is_root():
+            raise ValueError("Cannot delete root")
+
+        client = self._parent
+        try:
+            del client[self.parts[-1]]
+        except KeyError as e:
+            if not missing_ok:
+                raise e
+
+    def rename(self, target):
+
+        if target.is_root():
+            raise ValueError("Cannot rename to root")
+
+        if type(target) is str:
+            target = self.gen(target)
+        target_parent = target._parent
+        target_parent[target.parts[-1]] = self._obj
+        self.unlink()
+
+    def replace(self, target):
+        self.rename(target)
+
+    def __enter__(self):
+        raise NotImplementedError
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        raise NotImplementedError
+
+
+class IOPath(DictBasedPath):
+
+    # this class represents a in memory file system in the form of dictionaries of dictionaries of bytes/strings objects
+    # like other PureBeamPath implementations, it is a pathlib/beam_path api
+
+    def __init__(self, *pathsegments, client=None, data=None, **kwargs):
+        super().__init__(*pathsegments, scheme='io', client=client, data=data, **kwargs)
+
+    def is_file(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return False
+        for p in self.parts[1:]:
+            if not isinstance(client, dict):
+                return False
+            if p not in client:
+                return False
+            client = client[p]
+        return isinstance(client, (bytes, str))
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            self.file_object = BytesIO(self._obj)
+        elif self.mode in ['wb', 'w']:
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
+        else:
+            raise ValueError
+
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ["wb", "w"]:
+            parent = self._parent
+            name = self.parts[-1]
+            self.file_object.seek(0)
+            content = self.file_object.getvalue()
+            parent[name] = content
+
+        self.close_at_exit()
+
+
+class DictPath(DictBasedPath):
+
+    def __init__(self, *pathsegments, client=None, data=None, **kwargs):
+        super().__init__(*pathsegments, scheme='dict', client=client, data=data, **kwargs)
+
+    def is_file(self):
+        client = self.client
+        if len(self.parts) == 1:
+            return False
+        for p in self.parts[1:]:
+            if not isinstance(client, dict):
+                return False
+            if p not in client:
+                return False
+            client = client[p]
+        return isinstance(client, BeamFile)
+
+    def write(self, *args, ext=None, **kwargs):
+        assert len(args) == 1, "DictPath.write takes exactly one argument"
+        x = args[0]
+        self._parent[self.parts[-1]] = BeamFile(x, timestamp=datetime.now())
+
+    def read(self, ext=None, **kwargs):
+        return self._obj.data
 
 
 class BeamKey:

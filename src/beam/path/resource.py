@@ -1,6 +1,6 @@
-from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset, IOPath, DictPath,
+from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset,
                      RedisPath, SMBPath)
-from .core import BeamKey, BeamURL
+from .core import BeamKey, BeamURL, IOPath, DictPath
 
 
 beam_key = BeamKey()
