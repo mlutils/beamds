@@ -1,0 +1,19 @@
+# nlp packages
+# doesnt work with setup tools at the moment, consider moving to install at the end with no deps
+# fasttext
+
+# vision and image Packages
+opencv-contrib-python-headless<4.5.5.64
+# opencv-python-headless<4.5.5.64
+
+scikit-image
+Pillow
+spacy
+nltk
+
+# move kornia to the no_deps as it tries to install pytorch
+kornia
+
+albumentations
+timm
+tsfresh
