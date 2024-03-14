@@ -1,2 +1,2 @@
-from .processor import Processor, BeamBase
+from .processor import Processor, BeamBase, MetaBeamInit
 from .dispatcher import MetaDispatcher, MetaAsyncResult

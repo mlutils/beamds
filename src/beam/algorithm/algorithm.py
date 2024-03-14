@@ -11,31 +11,16 @@ from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN, BeamDD
 from ..utils import (to_device, check_type, recursive_concatenate,
                      beam_device, filter_dict, lazy_property,
                      is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key,
-                     check_nvlink, MetaInitIsDoneVerifier)
+                     check_nvlink)
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
-from ..core import Processor
+from ..core import Processor, MetaBeamInit
 from ..logger import beam_kpi, BeamResult
 from timeit import default_timer as timer
 
 
-class MetaInit(MetaInitIsDoneVerifier):
-    def __call__(cls, *args, store_init_path=None, **kwargs):
-        init_args = {'args': args, 'kwargs': kwargs}
-        if store_init_path:
-            cls._pre_init(store_init_path, init_args)
-        instance = super().__call__(*args, **kwargs)
-        instance.init_args = init_args
-        return instance
-
-    def _pre_init(cls, store_init_path, init_args):
-        # Process or store arguments
-        store_init_path = beam_path(store_init_path)
-        store_init_path.write(init_args, ext='.pkl')
-
-
-class Algorithm(Processor, metaclass=MetaInit):
+class Algorithm(Processor, metaclass=MetaBeamInit):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
                  name=None, experiment=None, **kwargs):
@@ -336,7 +321,7 @@ class Algorithm(Processor, metaclass=MetaInit):
         return acc
 
     @property
-    def state_attributes(self):
+    def exclude_attributes(self):
         return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
                 'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']

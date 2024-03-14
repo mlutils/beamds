@@ -10,26 +10,13 @@ from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
 # from ..core.processor import Processor
-from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass, \
-    pretty_print_dict, MetaInitIsDoneVerifier
-from ..path import BeamURL
-
-# # Assuming you've found that LLM's metaclass is pydantic.main.ModelMetaclass
-# from pydantic.main import ModelMetaclass
-#
-#
-# class CombinedMeta(ModelMetaclass, MetaInitIsDoneVerifier):
-#     def __call__(cls, *args, **kwargs):
-#         instance = ModelMetaclass.__call__(cls, *args, **kwargs)
-#         # instance = super().__call__(*args, **kwargs)
-#         instance._init_is_done = True
-#         return instance
+from ..utils import (parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass,
+                     pretty_print_dict)
+from ..path import BeamURL, BeamResource
 
 LLM = BaseModel
 CallbackManagerForLLMRun = NullClass
-
 # import pydantic and check if its version is less than 2.0.0
-
 import pydantic
 if pydantic.__version__ < '2.0.0':
     try:
@@ -65,7 +52,7 @@ class Completion(BeamDict):
 
 
 # class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
-class BeamLLM(LLM):
+class BeamLLM(LLM, BeamResource):
 
     model: Optional[str] = Field(None)
     scheme: Optional[str] = Field(None)
@@ -105,7 +92,8 @@ class BeamLLM(LLM):
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
                  debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
                  adapter=None, tools=None, **kwargs):
-        super().__init__(*args, **kwargs)
+        LLM.__init__(self, *args, **kwargs)
+        BeamResource.__init__(self, resource_type='llm', scheme=scheme, **kwargs)
 
         if temperature is not None:
             temperature = float(temperature)

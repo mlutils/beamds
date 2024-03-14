@@ -206,7 +206,7 @@ class DenseSimilarity(BeamSimilarity):
         return self.reducer.fit_transform(z)
 
     @property
-    def state_attributes(self):
+    def exclude_attributes(self):
         return ['index', 'vector_store', 'training_vs']
 
     def save_state(self, path, ext=None):

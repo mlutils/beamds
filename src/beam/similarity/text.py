@@ -89,8 +89,8 @@ class TextSimilarity(DenseSimilarity):
         return similarities
 
     @property
-    def state_attributes(self):
-        return super().state_attributes + ['dense_model', '_tokenizer']
+    def exclude_attributes(self):
+        return super().exclude_attributes + ['dense_model', '_tokenizer']
 
     def save_state(self, path, ext=None):
 

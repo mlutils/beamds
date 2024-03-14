@@ -1,21 +1,19 @@
 import io
 import pickle
 from functools import partial
-from ..core import Processor
-from ..path import normalize_host
+from ..path import normalize_host, BeamResource
 
 from .server import has_torch
 if has_torch:
     import torch
 
 
-class BeamClient(Processor):
+class BeamClient(BeamResource):
 
     def __init__(self, *args, hostname=None, port=None, username=None, api_key=None, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(resource_type='client', hostname=hostname, port=port, username=username, **kwargs)
         self.host = normalize_host(hostname, port)
         self.api_key = api_key
-        self.username = username
         self.info = self.get_info()
 
     def get_info(self):

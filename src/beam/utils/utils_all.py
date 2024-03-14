@@ -1228,13 +1228,6 @@ class ThreadSafeDict(dict):
             return list(super().items())
 
 
-class MetaInitIsDoneVerifier(type):
-    def __call__(cls, *args, **kwargs):
-        instance = super().__call__(*args, **kwargs)
-        instance._init_is_done = True
-        return instance
-
-
 def mixin_dictionaries(*dicts):
     res = {}
     for d in dicts[::-1]:

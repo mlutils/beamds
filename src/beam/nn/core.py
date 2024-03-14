@@ -6,7 +6,7 @@ import torch._dynamo as dynamo
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from ..core import Processor
-from ..utils import recursive_clone, to_device, recursive_device, MetaInitIsDoneVerifier
+from ..utils import recursive_clone, to_device, recursive_device
 from ..path import beam_path, local_copy
 
 
