@@ -101,7 +101,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None,
-                         memory_limits=None, gpu_requests=None,
+                         memory_limits=None, gpu_requests=None, memory_storage_configs=None,
                          gpu_limits=None, security_context_config=None,  security_context=None,
                          entrypoint_args=None, entrypoint_envs=None):
         container_name = f"{project_name}-{deployment_name}-container" \
@@ -124,6 +124,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 volume_mounts.append(client.V1VolumeMount(
                     name=mount['pvc_name'],  # Using PVC name as the volume name
                     mount_path=mount['mount_path']  # Mount path specified in pvc_mounts
+                ))
+
+            # Handling memory_storage_configs - this is the only addition
+        if memory_storage_configs:
+            for mem_storage in memory_storage_configs:
+                volume_mounts.append(client.V1VolumeMount(
+                    name=mem_storage.name,
+                    mount_path=mem_storage.mount_path
+                    # Ensure this matches the attribute name in your memory_storage_configs items
                 ))
 
         resources = {
@@ -191,12 +200,37 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_pod_template(self, image_name, labels=None, deployment_name=None, project_name=None,
                             ports=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None,
-                            memory_limits=None, gpu_requests=None, gpu_limits=None,
+                            memory_limits=None, gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None, ):
         if labels is None:
             labels = {}
         if project_name:
             labels['project'] = project_name
+
+        volumes = []
+
+        if memory_storage_configs:
+            for mem_storage in memory_storage_configs:
+                # Initialize the memory_volume_spec without size_limit
+                memory_volume_spec = client.V1EmptyDirVolumeSource(medium="Memory")
+
+                # Conditionally set size_limit if specified
+                if mem_storage.size_gb is not None:
+                    size_limit_str = f"{mem_storage.size_gb}Gi"  # Ensure this is a string
+                    # Attempt to set size_limit directly, converting explicitly to a string
+                    memory_volume_spec.size_limit = str(size_limit_str)  # Explicit string conversion
+
+                volumes.append(client.V1Volume(
+                    name=mem_storage.name,
+                    empty_dir=memory_volume_spec  # The correct parameter name is empty_dir, not emptyDir
+                ))
+
+        if pvc_mounts:
+            for mount in pvc_mounts:
+                volumes.append(client.V1Volume(
+                    name=mount['pvc_name'],  # Volume name matches the PVC name
+                    persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=mount['pvc_name'])
+                ))
 
         # Ensure image_name is not included in entrypoint_args or envs
         container = self.create_container(
@@ -209,21 +243,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             cpu_limits=cpu_limits,
             memory_requests=memory_requests,
             memory_limits=memory_limits,
+            memory_storage_configs=memory_storage_configs,
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
             security_context_config=security_context_config,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
-
         # Defining volumes for the pod spec based on PVC mounts
-        volumes = []
-        if pvc_mounts:
-            for mount in pvc_mounts:
-                volumes.append(client.V1Volume(
-                    name=mount['pvc_name'],  # Volume name matches the PVC name
-                    persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=mount['pvc_name'])
-                ))
 
         pod_spec = client.V1PodSpec(
             containers=[container],
@@ -253,7 +280,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
                                ports=None, service_account_name=None, storage_configs=None,
                                cpu_requests=None, cpu_limits=None, memory_requests=None,
-                               memory_limits=None, gpu_requests=None, gpu_limits=None,
+                               memory_limits=None, gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
                                security_context_config=None, entrypoint_args=None,
                                entrypoint_envs=None):
         # Ensure pvc_mounts are prepared correctly from storage_configs if needed
@@ -273,6 +300,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
             cpu_requests=cpu_requests,
             cpu_limits=cpu_limits,
+            memory_storage_configs=memory_storage_configs,
             memory_requests=memory_requests,
             memory_limits=memory_limits,
             gpu_requests=gpu_requests,
@@ -291,7 +319,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
                           replicas=None, ports=None, service_account_name=None, storage_configs=None,
-                          cpu_requests=None, cpu_limits=None, memory_requests=None,
+                          cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
                           memory_limits=None, gpu_requests=None, gpu_limits=None,
                           security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
@@ -317,6 +345,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             service_account_name=service_account_name,  # Pass this
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
+            memory_storage_configs=memory_storage_configs,
             gpu_requests=gpu_requests, gpu_limits=gpu_limits, security_context_config=security_context_config,
             entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )

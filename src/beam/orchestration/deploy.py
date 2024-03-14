@@ -11,7 +11,7 @@ from typing import List
 class ServiceConfig:
     port: int
     service_name: str
-    service_type: str # NodePort, ClusterIP, LoadBalancer
+    service_type: str  # NodePort, ClusterIP, LoadBalancer
     port_name: str
     create_route: bool = False  # Indicates whether to create a route for this service
     route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
@@ -22,12 +22,26 @@ class ServiceConfig:
 
 
 @dataclass
+class RayPortsConfig:
+    ray_ports: List[int] = field(default_factory=list)
+    enable_ray_ports: bool = False
+
+
+@dataclass
 class StorageConfig:
     pvc_name: str
     pvc_mount_path: str
     create_pvc: bool = False  # Indicates whether to create a route for this service
     pvc_size: str = '1Gi'
     pvc_access_mode: str = 'ReadWriteMany'
+
+
+@dataclass
+class MemoryStorageConfig:
+    name: str
+    mount_path: str
+    size_gb: int = None  # Optional size in GB
+    enabled: bool = True  # Indicates whether this memory storage should be applied
 
 
 @dataclass
@@ -53,7 +67,7 @@ class BeamDeploy(Processor):
                  deployment_name=None, use_scc=False, deployment=None,
                  cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
-                 service_configs=None, user_idm_configs=None,
+                 service_configs=None, user_idm_configs=None, ray_ports_configs=None ,memory_storage_configs=None,
                  security_context_config=None, scc_name=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None):
         super().__init__()
@@ -77,8 +91,10 @@ class BeamDeploy(Processor):
         self.memory_limits = memory_limits
         self.gpu_requests = gpu_requests
         self.gpu_limits = gpu_limits
-        self.service_configs = service_configs
-        self.storage_configs = storage_configs
+        self.service_configs = service_configs or []
+        self.ray_ports_configs = ray_ports_configs or RayPortsConfig()
+        self.storage_configs = storage_configs or []
+        self.memory_storage_configs = memory_storage_configs or []
         self.user_idm_configs = user_idm_configs or []
         self.security_context_config = security_context_config or []
 
@@ -107,6 +123,8 @@ class BeamDeploy(Processor):
                         )
                     else:
                         logger.info(f"Skipping PVC creation for: {storage_config.pvc_name} as create_pvc is False")
+
+        enabled_memory_storages = [config for config in self.memory_storage_configs if config.enabled]
 
         for svc_config in self.service_configs:
             service_name = f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}"
@@ -141,6 +159,9 @@ class BeamDeploy(Processor):
 
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 
+        for ray_ports_config in self.ray_ports_configs:
+            extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
+
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
             labels=self.labels,
@@ -151,6 +172,7 @@ class BeamDeploy(Processor):
             ports=extracted_ports,
             service_account_name=self.service_account_name,  # Pass this
             storage_configs=self.storage_configs,
+            memory_storage_configs=enabled_memory_storages,
             cpu_requests=self.cpu_requests,
             cpu_limits=self.cpu_limits,
             memory_requests=self.memory_requests,

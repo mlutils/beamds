@@ -1,14 +1,15 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
 from src.beam.orchestration import (BeamK8S, BeamDeploy, ServiceConfig,
-                                    StorageConfig, UserIdmConfig, SecurityContextConfig)
+                                    StorageConfig, UserIdmConfig, SecurityContextConfig,
+                                    MemoryStorageConfig, RayPortsConfig)
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~yK4Smp26dpkQlehTT0qD_7LFNk4Kf_Xo2Z89OQkyfRw"
-project_name = "ben-guryon"
+api_token = "sha256~ilMc7q2AyL8sEDkHTcgJDi_tv-wS1YQm8eUwo_8mBUI"
+project_name = "kh-dev"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
-labels = {"app": "bgu"}
-deployment_name = "bgu"
+labels = {"app": "kh"}
+deployment_name = "kh"
 # namespace = "ben-guryon"
 namespace = project_name
 replicas = 1
@@ -30,15 +31,26 @@ storage_configs = [
                   pvc_size="500Gi", pvc_access_mode="ReadWriteMany", create_pvc=True),
 ]
 
+memory_storage_configs = [
+    MemoryStorageConfig(name="dshm", mount_path="/dev/shm", size_gb=8, enabled=True),
+    # Other MemoryStorageConfig instances as needed
+]
+
 # beam_ports(initials=234)
 # # returns service_configs: {'ssh': 23422, 'jupyter': 23488, 'mlflow': 23480, }
 
 service_configs = [
     ServiceConfig(port=2222, service_name="ssh", service_type="NodePort", port_name="ssh-port",
                   create_route=True, create_ingress=False, ingress_host="ssh.example.com"),
-    ServiceConfig(port=88, service_name="jupyter", service_type="LoadBalancer", port_name="jupyter-port",
-                  create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
+    ServiceConfig(port=8888, service_name="jupyter", service_type="LoadBalancer",
+                  port_name="jupyter-port", create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
 ]
+
+ray_ports_configs = [
+    RayPortsConfig(ray_ports=[10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010],)
+    ]
+
+
 user_idm_configs = [
     UserIdmConfig(user_name="yos", role_name="admin", role_binding_name="yos",
                   create_role_binding=True, project_name="ben-guryon"),
@@ -77,6 +89,8 @@ deployment = BeamDeploy(
     gpu_limits=gpu_limits,
     service_configs=service_configs,
     storage_configs=storage_configs,
+    ray_ports_configs=ray_ports_configs,
+    memory_storage_configs=memory_storage_configs,
     security_context_config=security_context_config,
     entrypoint_args=entrypoint_args,
     entrypoint_envs=entrypoint_envs,
