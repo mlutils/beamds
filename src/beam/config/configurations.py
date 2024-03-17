@@ -12,6 +12,10 @@ class CatboostConfig(BeamConfig):
     parameters = [
         BeamParam('cb_ranker', bool, False, 'Whether to use catboost ranker instead of regression', tags='model'),
         BeamParam('cb_n_estimators', int, 1000, 'The number of trees in the catboost model', tags='tune'),
+        BeamParam('cb_l2_leaf_reg', float, 1e-4, 'The L2 regularization for the catboost model', tags='tune'),
+        BeamParam('cb_border_count', int, 128, 'The border count for the catboost model', tags='tune'),
+        BeamParam('cb_depth', int, 14, 'The depth of the trees in the catboost model', tags='tune'),
+        BeamParam('cb_random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
     ]
 
 

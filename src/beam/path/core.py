@@ -184,7 +184,6 @@ class BeamResource:
         self.url = BeamURL(scheme=scheme, hostname=hostname, port=port, username=username, fragment=fragment,
                            params=params, password=password, path=path, **kwargs)
 
-        self.url = url
         self.resource_type = resource_type
         self.scheme = self.url.scheme
 
