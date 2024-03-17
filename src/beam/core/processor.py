@@ -9,13 +9,6 @@ from ..utils import retrieve_name, lazy_property, check_type
 from ..config import BeamConfig
 
 
-try:
-    from ..data import BeamData
-    has_beam_ds = True
-except ImportError:
-    has_beam_ds = False
-
-
 class MetaBeamInit(type):
     def __call__(cls, *args, _store_init_path=None, **kwargs):
         init_args = {'args': args, 'kwargs': kwargs}
@@ -104,7 +97,7 @@ class Processor(BeamBase):
         return self._llm
 
     @property
-    def exclude_attributes(self):
+    def exclude_pickle_attributes(self):
         '''
         return of list of class attributes that are used to save the state and are not part of the
         skeleton of the instance. override this function to add more attributes to the state and avoid pickling a large
@@ -118,7 +111,7 @@ class Processor(BeamBase):
 
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
-        state = {k: v for k, v in self.__dict__.items() if k not in self.exclude_attributes}
+        state = {k: v for k, v in self.__dict__.items() if k not in self.exclude_pickle_attributes}
         return state
 
     def __setstate__(self, state):
@@ -252,8 +245,14 @@ class Processor(BeamBase):
     def save_state(self, path, ext=None):
 
         state = self.state_dict()
-
         path = beam_path(path)
+
+        try:
+            from ..data import BeamData
+            has_beam_ds = True
+        except ImportError:
+            has_beam_ds = False
+
         if has_beam_ds and isinstance(state, BeamData):
             state.store(path=path, file_type=ext)
         elif has_beam_ds and (not path.suffix) and ext is None:

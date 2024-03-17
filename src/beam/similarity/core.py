@@ -86,7 +86,7 @@ class BeamSimilarity(Processor):
         return self.ntotal
 
     def save_state(self, path, ext=None, **kwargs):
-        state = {attr: getattr(self, attr) for attr in self.exclude_attributes}
+        state = {attr: getattr(self, attr) for attr in self.exclude_pickle_attributes}
         state['hparams'] = self.hparams
         bd = BeamData(state, path=path)
         bd.store(**kwargs)
@@ -94,7 +94,7 @@ class BeamSimilarity(Processor):
     def load_state(self, path, ext=None, **kwargs):
         bd = BeamData(path=path)
         state = bd.cache(**kwargs).values
-        for attr in self.exclude_attributes:
+        for attr in self.exclude_pickle_attributes:
             setattr(self, attr, state[attr])
 
     def get_index(self, index):

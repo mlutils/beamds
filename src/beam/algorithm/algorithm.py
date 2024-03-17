@@ -321,7 +321,7 @@ class Algorithm(Processor, metaclass=MetaBeamInit):
         return acc
 
     @property
-    def exclude_attributes(self):
+    def exclude_pickle_attributes(self):
         return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
                 'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']
