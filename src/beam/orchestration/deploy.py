@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
-from typing import List
+from .units import K8SUnits
+from typing import List, Union
 
 
 @dataclass
@@ -32,16 +33,22 @@ class StorageConfig:
     pvc_name: str
     pvc_mount_path: str
     create_pvc: bool = False  # Indicates whether to create a route for this service
-    pvc_size: str = '1Gi'
+    pvc_size: Union[K8SUnits, str, int] = '1Gi'
     pvc_access_mode: str = 'ReadWriteMany'
+
+    def __post_init__(self):
+        self.pvc_size = K8SUnits(self.pvc_size)
 
 
 @dataclass
 class MemoryStorageConfig:
     name: str
     mount_path: str
-    size_gb: int = None  # Optional size in GB
+    size_gb: Union[K8SUnits, str, int] = None  # Optional size in GB
     enabled: bool = True  # Indicates whether this memory storage should be applied
+
+    def __post_init__(self):
+        self.size_gb = K8SUnits(self.size_gb)
 
 
 @dataclass
@@ -67,7 +74,7 @@ class BeamDeploy(Processor):
                  deployment_name=None, use_scc=False, deployment=None,
                  cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
-                 service_configs=None, user_idm_configs=None, ray_ports_configs=None ,memory_storage_configs=None,
+                 service_configs=None, user_idm_configs=None, ray_ports_configs=None, memory_storage_configs=None,
                  security_context_config=None, scc_name=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None):
         super().__init__()
@@ -117,7 +124,7 @@ class BeamDeploy(Processor):
                         logger.info(f"Creating PVC for storage config: {storage_config.pvc_name}")
                         self.k8s.create_pvc(
                             pvc_name=storage_config.pvc_name,
-                            pvc_size=storage_config.pvc_size,
+                            pvc_size=storage_config.pvc_size.as_str,
                             pvc_access_mode=storage_config.pvc_access_mode,
                             namespace=self.namespace
                         )
@@ -198,8 +205,10 @@ class BeamDeploy(Processor):
             return None
 
     def generate_beam_pod(self, pod_info):
-        logger.info(f"generate_beam_pod: '{pod_info}' to apply deployment")
-        return BeamPod(pod_info, deployment=self, k8s=self.k8s)
+        logger.info(f"Generating BeamPod for pod: '{pod_info}'")
+        # Assuming pod_info is an object, extract the pod name as a string
+        pod_name = pod_info.name  # Adjust this line based on the actual structure of pod_info
+        return BeamPod(pod_name, namespace=self.namespace, k8s=self.k8s)
 
     def delete_deployment(self):
         # Delete deployment

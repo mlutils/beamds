@@ -1,3 +1,5 @@
+from typing import Union
+
 from dataclasses import make_dataclass
 from ..core import Processor
 from ..utils import lazy_property
@@ -6,6 +8,7 @@ from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOpt
 from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream
 from ..logger import beam_logger as logger
+from .units import K8SUnits
 import time
 import json
 
@@ -103,7 +106,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None,
                          memory_limits=None, gpu_requests=None, memory_storage_configs=None,
-                         gpu_limits=None, security_context_config=None,  security_context=None,
+                         gpu_limits=None, security_context_config=None, security_context=None,
                          entrypoint_args=None, entrypoint_envs=None):
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
@@ -142,14 +145,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         }
 
         if cpu_requests and cpu_limits:
-            resources['requests']['cpu'] = cpu_requests
-            resources['limits']['cpu'] = cpu_limits
+            resources['requests']['cpu'] = K8SUnits(cpu_requests).as_str
+            resources['limits']['cpu'] = K8SUnits(cpu_limits).as_str
         if memory_requests and memory_limits:
-            resources['requests']['memory'] = memory_requests
-            resources['limits']['memory'] = memory_limits
+            resources['requests']['memory'] = K8SUnits(memory_requests).as_str
+            resources['limits']['memory'] = K8SUnits(memory_limits).as_str
         if gpu_requests and gpu_limits:
-            resources['requests']['nvidia.com/gpu'] = gpu_limits
-            resources['limits']['nvidia.com/gpu'] = gpu_requests
+            resources['requests']['nvidia.com/gpu'] = K8SUnits(gpu_limits).as_str
+            resources['limits']['nvidia.com/gpu'] = K8SUnits(gpu_requests).as_str
 
         if security_context_config and security_context_config.enable_security_context:
             security_context = {
@@ -217,9 +220,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
                 # Conditionally set size_limit if specified
                 if mem_storage.size_gb is not None:
-                    size_limit_str = f"{mem_storage.size_gb}Gi"  # Ensure this is a string
                     # Attempt to set size_limit directly, converting explicitly to a string
-                    memory_volume_spec.size_limit = str(size_limit_str)  # Explicit string conversion
+                    memory_volume_spec.size_limit = mem_storage.size_gb.as_str  # Explicit string conversion
 
                 volumes.append(client.V1Volume(
                     name=mem_storage.name,
@@ -803,7 +805,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             services = self.core_v1_api.list_namespaced_service(namespace=namespace)
             nodes = self.core_v1_api.list_node()
             node_ips = {node.metadata.name:
-                        [address.address for address in node.status.addresses if address.type == "InternalIP"][0]
+                            [address.address for address in node.status.addresses if address.type == "InternalIP"][0]
                         for node in nodes.items}
 
             for service in services.items:
@@ -852,8 +854,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Total Available Resources in the Namespace '{self.namespace}': {total_resources}")
         return total_resources
 
-    @staticmethod
-    def execute_command_in_pod(namespace, pod_name, command):
+    def execute_command_in_pod(self, namespace, pod_name, command):
         """
         Execute a command in a pod.
 
@@ -866,21 +867,18 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         if not isinstance(command, list):
             command = [command]
 
-        # API instance
-        api_instance = client.CoreV1Api()
-
         # Executing the command
-        resp = stream(api_instance.connect_get_namespaced_pod_exec,
-                      pod_name,
-                      namespace,
-                      command=command,
-                      stderr=True,
-                      stdin=False,
-                      stdout=True,
-                      tty=False)
-        return resp
+        response = stream(self.core_v1_api.connect_get_namespaced_pod_exec,
+                          pod_name,
+                          namespace,
+                          command=command,
+                          stderr=True,
+                          stdin=False,
+                          stdout=True,
+                          tty=False)
+        return response
 
-    def get_pod_info(self, pod_name, namespace=None):
+    def get_pod_info(self, pod_name, namespace):
         """Retrieve information about a specific pod."""
         try:
             return self.core_v1_api.read_namespaced_pod(name=pod_name, namespace=namespace or self.namespace)
@@ -922,6 +920,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.info(f"Pod {pod_name} in {namespace} started successfully.")
         except ApiException as e:
             logger.error(f"Failed to create pod {pod_name} in {namespace}: {e}")
+
     # def list_pods(self):
     #     label_selector = f"app={self.deployment_name}"
     #     pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)

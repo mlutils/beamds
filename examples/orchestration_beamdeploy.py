@@ -1,5 +1,5 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
-from src.beam.orchestration import (BeamK8S, BeamDeploy, ServiceConfig,
+from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig,
                                     StorageConfig, UserIdmConfig, SecurityContextConfig,
                                     MemoryStorageConfig, RayPortsConfig)
 
@@ -43,7 +43,8 @@ service_configs = [
     ServiceConfig(port=2222, service_name="ssh", service_type="NodePort", port_name="ssh-port",
                   create_route=True, create_ingress=False, ingress_host="ssh.example.com"),
     ServiceConfig(port=8888, service_name="jupyter", service_type="LoadBalancer",
-                  port_name="jupyter-port", create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
+                  port_name="jupyter-port", create_route=True, create_ingress=False,
+                  ingress_host="jupyter.example.com"),
 ]
 
 ray_ports_configs = [
@@ -111,8 +112,8 @@ internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespac
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 
-# #beam_pod = BeamPod(pod_name=beam_pod_instance.pod_, namespace=namespace, deployment=None, k8s=k8s)
-# command = ['ls', '/']  # Example command
-# response = beam_pod.execute(command)
-#
-# print(response)
+beam_pod = BeamPod(pod_name=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s)
+command = ['ls', '/'] # Example command
+response = beam_pod.execute(command)
+
+print(response)
