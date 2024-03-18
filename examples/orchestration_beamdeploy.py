@@ -5,7 +5,7 @@ from src.beam.orchestration import (BeamK8S, BeamDeploy, ServiceConfig,
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~ilMc7q2AyL8sEDkHTcgJDi_tv-wS1YQm8eUwo_8mBUI"
+api_token = "sha256~f7FdkTRFBGDCQ_YGpBzb98DwY0NDbnBbLMkBkLSCZfk"
 project_name = "kh-dev"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
 labels = {"app": "kh"}
@@ -101,9 +101,18 @@ deployment = BeamDeploy(
 
 beam_pod_instance = deployment.launch(replicas=1)
 available_resources = k8s.query_available_resources()
+print("beam pod instance:", beam_pod_instance)
 print("Available Resources:", available_resources)
+print("Pod Status:", beam_pod_instance.pod_status)
+print("Pod Info:", beam_pod_instance.pod_info)
 
 print("Fetching external endpoints...")
 internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
+
+# #beam_pod = BeamPod(pod_name=beam_pod_instance.pod_, namespace=namespace, deployment=None, k8s=k8s)
+# command = ['ls', '/']  # Example command
+# response = beam_pod.execute(command)
+#
+# print(response)

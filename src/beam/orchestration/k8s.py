@@ -4,6 +4,7 @@ from ..utils import lazy_property
 from kubernetes import client, watch
 from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
+from kubernetes.stream import stream
 from ..logger import beam_logger as logger
 import time
 import json
@@ -851,6 +852,76 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Total Available Resources in the Namespace '{self.namespace}': {total_resources}")
         return total_resources
 
+    @staticmethod
+    def execute_command_in_pod(namespace, pod_name, command):
+        """
+        Execute a command in a pod.
+
+        :param namespace: The namespace of the pod.
+        :param pod_name: The name of the pod where the command will be executed.
+        :param command: The command to execute inside the pod, as a list of strings.
+        :return: The output from the command execution.
+        """
+        # Ensure that a list is provided for the command
+        if not isinstance(command, list):
+            command = [command]
+
+        # API instance
+        api_instance = client.CoreV1Api()
+
+        # Executing the command
+        resp = stream(api_instance.connect_get_namespaced_pod_exec,
+                      pod_name,
+                      namespace,
+                      command=command,
+                      stderr=True,
+                      stdin=False,
+                      stdout=True,
+                      tty=False)
+        return resp
+
+    def get_pod_info(self, pod_name, namespace=None):
+        """Retrieve information about a specific pod."""
+        try:
+            return self.core_v1_api.read_namespaced_pod(name=pod_name, namespace=namespace or self.namespace)
+        except ApiException as e:
+            logger.error(f"Failed to get pod info for {pod_name} in {namespace}: {e}")
+            return None
+
+    def get_pod_logs(self, pod_name, namespace=None, **kwargs):
+        """Retrieve logs for a specific pod."""
+        try:
+            return self.core_v1_api.read_namespaced_pod_log(name=pod_name, namespace=namespace or self.namespace,
+                                                            **kwargs)
+        except ApiException as e:
+            logger.error(f"Failed to get logs for {pod_name} in {namespace}: {e}")
+            return None
+
+    def get_pod_resources(self, pod_name, namespace=None):
+        """Get resource usage for a specific pod using the dynamic client."""
+        try:
+            resource = self.dyn_client.resources.get(api_version='metrics.k8s.io/v1beta1', kind='PodMetrics')
+            return resource.get(name=pod_name, namespace=namespace or self.namespace)
+        except ApiException as e:
+            logger.error(f"Failed to get resources for {pod_name} in {namespace}: {e}")
+            return None
+
+    def stop_pod(self, pod_name, namespace=None):
+        """Stop a specific pod. This is usually done by deleting the pod."""
+        try:
+            self.core_v1_api.delete_namespaced_pod(name=pod_name, namespace=namespace or self.namespace,
+                                                   body=V1DeleteOptions())
+            logger.info(f"Pod {pod_name} in {namespace} deleted successfully.")
+        except ApiException as e:
+            logger.error(f"Failed to delete pod {pod_name} in {namespace}: {e}")
+
+    def start_pod(self, pod_name, namespace=None, pod_body=None):
+        """Start a specific pod by creating it. `pod_body` should be a V1Pod manifest."""
+        try:
+            self.core_v1_api.create_namespaced_pod(namespace=namespace or self.namespace, body=pod_body)
+            logger.info(f"Pod {pod_name} in {namespace} started successfully.")
+        except ApiException as e:
+            logger.error(f"Failed to create pod {pod_name} in {namespace}: {e}")
     # def list_pods(self):
     #     label_selector = f"app={self.deployment_name}"
     #     pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)

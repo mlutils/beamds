@@ -8,13 +8,19 @@ from kubernetes.client.rest import ApiException
 class BeamPod(Processor):
     def __init__(self, pod_info, deployment, k8s, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         self.k8s = k8s
         self._pod_info = pod_info
 
     def execute(self, command, **kwargs):
-        # Execute a command in the pod
-        pass
+        namespace = self._pod_info['namespace']
+        pod_name = self._pod_info['name']
+        # You might need to adjust how you get namespace and pod_name based on your pod_info structure
+
+        # Execute command
+        output = self.k8s.execute_command_in_pod(namespace, pod_name, command.split())
+        logger.info(f"Command output: {output}")
+
+        return output
 
     def get_logs(self, **kwargs):
         # Get logs from the pod
@@ -23,7 +29,7 @@ class BeamPod(Processor):
     @property
     def pod_status(self):
         # Get pod status
-        return self.deployment.status
+        return self.k8s.deployment.status
 
     @property
     def pod_info(self):
