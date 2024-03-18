@@ -14,7 +14,7 @@ import numpy as np
 
 from src.beam import beam_arguments, Experiment, beam_algorithm_generator, BeamNN, BeamData
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm
+from src.beam import NeuralAlgorithm
 from src.beam import LinearNet, as_numpy
 from src.beam import DataTensor
 from src.beam import UniversalConfig, BeamParam
@@ -77,7 +77,7 @@ class MNISTDataset(UniversalDataset):
         return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
 
 
-class DeepTSNE(Algorithm):
+class DeepTSNE(NeuralAlgorithm):
 
     def __init__(self, hparams):
 

@@ -1,3 +1,4 @@
+import fnmatch
 import json
 import os
 from collections import namedtuple
@@ -529,9 +530,29 @@ class PureBeamPath(BeamResource):
     def with_suffix(self, suffix):
         return self.gen(self.path.with_suffix(suffix))
 
-    def glob(self, *args, **kwargs):
-        for path in self.path.glob(*args, **kwargs):
-            yield self.gen(path)
+    def glob(self, pattern, case_sensitive=None):
+        case_sensitive = case_sensitive or True
+        return self._glob_recursive(self, pattern, case_sensitive=case_sensitive)
+
+    def _glob_recursive(self, current_path, pattern, case_sensitive=True):
+
+        if not case_sensitive:
+            pattern = pattern.lower()
+
+        for p in current_path.iterdir():
+
+            # If item is a directory and pattern requires recursion
+            if p.is_dir() and '**' in pattern:
+                # Correctly pass `item` as `current_path` for recursive exploration
+                yield from self._glob_recursive(p, pattern, case_sensitive=case_sensitive)
+            # Match the item's name against the pattern
+
+            name = str(p.relative_to(self))
+            if not case_sensitive:
+                name = name.lower()
+
+            if fnmatch.fnmatch(name, pattern):
+                yield p
 
     def rglob(self, *args, **kwargs):
         for path in self.path.rglob(*args, **kwargs):
@@ -924,10 +945,21 @@ class PureBeamPath(BeamResource):
                 from scipy.io.wavfile import write as wav_write
                 wav_write(fo, *x)
 
-            elif ext == '.joblib':
+            elif '.joblib' in ext:
                 import joblib
-                compress = kwargs.pop('compress', 2)
-                joblib.dump(x, fo, compress=compress, **kwargs)
+
+                compress_methods = ext.split('_')[1:]
+                if len(compress_methods) > 0:
+                    cm = compress_methods[0]
+                    compress_methods = {'z': 'zlib', 'gz': 'gzip', 'bz2': 'bz2', 'xz': 'xz', 'lzma': 'lzma'}
+                    cm = compress_methods[cm]
+
+                    if 'compress' not in kwargs:
+                        kwargs['compress'] = cm
+                    else:
+                        kwargs['compress'] = (cm, kwargs['compress'])
+
+                joblib.dump(x, fo, **kwargs)
 
             elif ext in ['.z', '.gz']:
                 import gzip

@@ -16,7 +16,7 @@ import os
 
 from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, as_numpy
+from src.beam import NeuralAlgorithm, PackedFolds, as_numpy
 from src.beam import DataTensor, BeamOptimizer
 from src.beam.data import BeamData
 
@@ -197,7 +197,7 @@ class LRPolicy(object):
         return piecewiselin
 
 
-class CIFAR10Algorithm(Algorithm):
+class CIFAR10Algorithm(NeuralAlgorithm):
 
     def __init__(self, hparams):
 

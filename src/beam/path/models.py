@@ -23,6 +23,10 @@ class BeamPath(PureBeamPath):
         PureBeamPath.__init__(self, *pathsegments, scheme=scheme, **kwargs)
         self.path = Path(self.path)
 
+    def glob(self, pattern, case_sensitive=None):
+        for path in self.path.glob(pattern, case_sensitive=case_sensitive):
+            yield self.gen(path)
+
     @classmethod
     def cwd(cls):
         return cls(str(Path.cwd()))

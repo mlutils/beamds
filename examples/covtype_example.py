@@ -15,7 +15,7 @@ import os
 
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, LinearNet
+from src.beam import NeuralAlgorithm, PackedFolds, LinearNet
 from src.beam.nn import PID
 from src.beam.config import basic_beam_parser
 from src.beam.nn import GBN, MHRuleLayer, mySequential
@@ -463,7 +463,7 @@ class LinearNetComb(nn.Module):
 
 
 
-class CovtypeAlgorithm(Algorithm):
+class CovtypeAlgorithm(NeuralAlgorithm):
 
     def __init__(self, hparams, dataset=None, optimizers=None):
 

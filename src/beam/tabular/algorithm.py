@@ -1,5 +1,5 @@
 import torch
-from ..algorithm import Algorithm
+from ..algorithm import NeuralAlgorithm
 from ..utils import as_numpy, as_tensor, lazy_property
 from ..data import BeamData
 from ..config import BeamConfig, BeamParam
@@ -168,7 +168,7 @@ class TabularTransformer(nn.Module):
         return x
 
 
-class DeepTabularAlg(Algorithm):
+class DeepTabularAlg(NeuralAlgorithm):
 
     def __init__(self, hparams, networks=None, net_kwargs=None, task_type=None, y_sigma=None,  **kwargs):
         # choose your network
