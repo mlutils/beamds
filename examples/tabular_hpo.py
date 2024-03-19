@@ -6,7 +6,7 @@ from ray.tune.schedulers import ASHAScheduler
 # available_devices = [0, 1, 2, 3]
 # available_devices = [0, 1]
 # n_jobs = len(available_devices)
-n_jobs = 8
+n_jobs = 16
 # available_devices = [0]
 # os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
 # n_jobs = 1
@@ -38,7 +38,7 @@ if __name__ == '__main__':
                        tensorboard=False, stop_at=0.98, n_gpus=1, device=0, label_smoothing=.2,
                        n_decoder_layers=n_decoder_layers)
 
-    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, gpus_per_trial=.5,
+    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, gpus_per_trial=.25,
                            cpus_per_trial=6, n_jobs=n_jobs, hpo_path=os.path.join(logs_path, 'hpo'))
 
     run_names = {}
