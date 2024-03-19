@@ -24,7 +24,7 @@ class BeamPath(PureBeamPath):
         self.path = Path(self.path)
 
     def glob(self, pattern, case_sensitive=None):
-        for path in self.path.glob(pattern, case_sensitive=case_sensitive):
+        for path in self.path.glob(pattern):
             yield self.gen(path)
 
     @classmethod
@@ -1349,6 +1349,6 @@ class RedisPath(PureBeamPath):
 
         self.close_at_exit()
 
-    def glob(self, pattern):
+    def glob(self, pattern, case_sensitive=None):
         full_pattern = f'{self.directory_key}{pattern}'
         return [self.gen(key) for key in self.client.scan_iter(full_pattern)]

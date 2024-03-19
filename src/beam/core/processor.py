@@ -141,8 +141,8 @@ class Processor(BeamBase):
     def from_path(cls, path):
         path = beam_path(path)
 
-        skeleton_file = list(path.glob(f"{Processor.skeleton_file}"))[0]
-        state_file = list(path.glob(f"{Processor.state_file}"))[0]
+        skeleton_file = list(path.glob(f"{Processor.skeleton_file}*"))[0]
+        state_file = list(path.glob(f"{Processor.state_file}*"))[0]
 
         obj = skeleton_file.read()
         obj.load_state(state_file)
@@ -272,7 +272,7 @@ class Processor(BeamBase):
         path.mkdir()
         skeleton_ext = skeleton_ext or '.pkl'
         state_ext = state_ext or ''
-        skeleton_file = f"{Processor.state_file}{skeleton_ext}"
+        skeleton_file = f"{Processor.skeleton_file}{skeleton_ext}"
         state_file = f"{Processor.state_file}{state_ext}"
 
         path.joinpath(skeleton_file).write(self)

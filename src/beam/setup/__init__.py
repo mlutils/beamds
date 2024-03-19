@@ -1,4 +1,4 @@
-# beam_setup.py
+# setup.py
 import importlib
 
 
