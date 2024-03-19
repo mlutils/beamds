@@ -6,46 +6,76 @@ from kubernetes.client.rest import ApiException
 
 
 class BeamPod(Processor):
-    def __init__(self, pod_info, deployment, k8s, *args, **kwargs):
+    def __init__(self, pod_name, namespace=None, k8s=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         self.k8s = k8s
-        self._pod_info = pod_info
+        self.pod_name = pod_name
+        self.namespace = namespace
+        self.refresh_pod_info()
+
+    # @classmethod
+    # def from_deployment(cls, deployment, k8s, *args, **kwargs):
+    #     return cls(deployment.metadata.name, k8s, *args, **kwargs)
+
+    @classmethod
+    def from_existing_pod(cls, pod_name, api_url=None, api_token=None, namespace=None,
+                          project_name=None, use_scc=None, scc_name=None, *args, **kwargs):
+        k8s = BeamK8S(
+            api_url=api_url,
+            api_token=api_token,
+            project_name=project_name,
+            namespace=namespace,
+        )
+        return cls(pod_name, k8s, *args, **kwargs)
 
     def execute(self, command, **kwargs):
-        # Execute a command in the pod
-        pass
+        # Fetch pod information using the get_pod_info method
+        pod_info = self.k8s.get_pod_info(self.pod_name, self.namespace)
+        if pod_info is None:
+            logger.error("Failed to fetch pod information")
+            return None
 
-    def get_logs(self, **kwargs):
-        # Get logs from the pod
-        pass
+        # Assuming pod_info is an object with attributes 'namespace' and 'name'
+        namespace = pod_info.metadata.namespace
+        pod_name = pod_info.metadata.name
 
-    @property
-    def pod_status(self):
-        # Get pod status
-        return self.deployment.status
+        # Execute command
+        output = self.k8s.execute_command_in_pod(namespace, pod_name, command)  # No split() needed
+        logger.info(f"Command output: {output}")
+
+        return output
+
+    def refresh_pod_info(self):
+        """Refresh the stored pod information."""
+        _pod_info = self.k8s.get_pod_info(self.pod_name, self.namespace)
 
     @property
     def pod_info(self):
-        # Get pod info
-        return self._pod_info
+        """Get current pod information."""
+        if not self.k8s.get_pod_info(self.pod_name, self.namespace):
+            self.refresh_pod_info()
+        return self.k8s.get_pod_info(self.pod_name, self.namespace)
 
-    def get_pod_resources(self, **kwargs):
-        # Get pod resources
-        pass
+    @property
+    def pod_status(self):
+        """Get the current status of the pod."""
+        return self.pod_info.status.phase if self.pod_info else "Unknown"
 
-    def stop(self, **kwargs):
-        # Stop the pod
-        pass
+    def get_logs(self, **kwargs):
+        """Get logs from the pod."""
+        return self.k8s.get_pod_logs(self.pod_name, self.namespace, **kwargs)
 
-    def start(self, **kwargs):
-        # Start the pod
-        pass
+    def get_pod_resources(self):
+        """Get resource usage of the pod."""
+        # This might involve metrics API or similar, depending on how you implement it in BeamK8S
+        return self.k8s.get_pod_resources(self.pod_name, self.namespace)
 
-    def restart(self, **kwargs):
-        # Restart the pod
-        pass
+    def stop(self):
+        """Stop the pod."""
+        # Implement stopping the pod, possibly by scaling down the deployment or similar
+        self.k8s.stop_pod(self.pod_name, self.namespace)
 
-    @pod_info.setter
-    def pod_info(self, value):
-        self._pod_info = value
+    def start(self):
+        """Start the pod."""
+        # Implement starting the pod, possibly by scaling up the deployment or similar
+        self.k8s.start_pod(self.pod_name, self.namespace)

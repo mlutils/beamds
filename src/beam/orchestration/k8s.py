@@ -1,10 +1,14 @@
+from typing import Union
+
 from dataclasses import make_dataclass
 from ..core import Processor
 from ..utils import lazy_property
 from kubernetes import client, watch
 from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
+from kubernetes.stream import stream
 from ..logger import beam_logger as logger
+from .units import K8SUnits
 import time
 import json
 
@@ -101,8 +105,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None,
-                         memory_limits=None, gpu_requests=None,
-                         gpu_limits=None, security_context_config=None,  security_context=None,
+                         memory_limits=None, gpu_requests=None, memory_storage_configs=None,
+                         gpu_limits=None, security_context_config=None, security_context=None,
                          entrypoint_args=None, entrypoint_envs=None):
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
@@ -126,20 +130,29 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     mount_path=mount['mount_path']  # Mount path specified in pvc_mounts
                 ))
 
+            # Handling memory_storage_configs - this is the only addition
+        if memory_storage_configs:
+            for mem_storage in memory_storage_configs:
+                volume_mounts.append(client.V1VolumeMount(
+                    name=mem_storage.name,
+                    mount_path=mem_storage.mount_path
+                    # Ensure this matches the attribute name in your memory_storage_configs items
+                ))
+
         resources = {
             'requests': {},
             'limits': {}
         }
 
         if cpu_requests and cpu_limits:
-            resources['requests']['cpu'] = cpu_requests
-            resources['limits']['cpu'] = cpu_limits
+            resources['requests']['cpu'] = K8SUnits(cpu_requests).as_str
+            resources['limits']['cpu'] = K8SUnits(cpu_limits).as_str
         if memory_requests and memory_limits:
-            resources['requests']['memory'] = memory_requests
-            resources['limits']['memory'] = memory_limits
+            resources['requests']['memory'] = K8SUnits(memory_requests).as_str
+            resources['limits']['memory'] = K8SUnits(memory_limits).as_str
         if gpu_requests and gpu_limits:
-            resources['requests']['nvidia.com/gpu'] = gpu_limits
-            resources['limits']['nvidia.com/gpu'] = gpu_requests
+            resources['requests']['nvidia.com/gpu'] = K8SUnits(gpu_limits).as_str
+            resources['limits']['nvidia.com/gpu'] = K8SUnits(gpu_requests).as_str
 
         if security_context_config and security_context_config.enable_security_context:
             security_context = {
@@ -191,12 +204,36 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_pod_template(self, image_name, labels=None, deployment_name=None, project_name=None,
                             ports=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None,
-                            memory_limits=None, gpu_requests=None, gpu_limits=None,
+                            memory_limits=None, gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None, ):
         if labels is None:
             labels = {}
         if project_name:
             labels['project'] = project_name
+
+        volumes = []
+
+        if memory_storage_configs:
+            for mem_storage in memory_storage_configs:
+                # Initialize the memory_volume_spec without size_limit
+                memory_volume_spec = client.V1EmptyDirVolumeSource(medium="Memory")
+
+                # Conditionally set size_limit if specified
+                if mem_storage.size_gb is not None:
+                    # Attempt to set size_limit directly, converting explicitly to a string
+                    memory_volume_spec.size_limit = mem_storage.size_gb.as_str  # Explicit string conversion
+
+                volumes.append(client.V1Volume(
+                    name=mem_storage.name,
+                    empty_dir=memory_volume_spec  # The correct parameter name is empty_dir, not emptyDir
+                ))
+
+        if pvc_mounts:
+            for mount in pvc_mounts:
+                volumes.append(client.V1Volume(
+                    name=mount['pvc_name'],  # Volume name matches the PVC name
+                    persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=mount['pvc_name'])
+                ))
 
         # Ensure image_name is not included in entrypoint_args or envs
         container = self.create_container(
@@ -209,21 +246,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             cpu_limits=cpu_limits,
             memory_requests=memory_requests,
             memory_limits=memory_limits,
+            memory_storage_configs=memory_storage_configs,
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
             security_context_config=security_context_config,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
-
         # Defining volumes for the pod spec based on PVC mounts
-        volumes = []
-        if pvc_mounts:
-            for mount in pvc_mounts:
-                volumes.append(client.V1Volume(
-                    name=mount['pvc_name'],  # Volume name matches the PVC name
-                    persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=mount['pvc_name'])
-                ))
 
         pod_spec = client.V1PodSpec(
             containers=[container],
@@ -253,7 +283,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
                                ports=None, service_account_name=None, storage_configs=None,
                                cpu_requests=None, cpu_limits=None, memory_requests=None,
-                               memory_limits=None, gpu_requests=None, gpu_limits=None,
+                               memory_limits=None, gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
                                security_context_config=None, entrypoint_args=None,
                                entrypoint_envs=None):
         # Ensure pvc_mounts are prepared correctly from storage_configs if needed
@@ -273,6 +303,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
             cpu_requests=cpu_requests,
             cpu_limits=cpu_limits,
+            memory_storage_configs=memory_storage_configs,
             memory_requests=memory_requests,
             memory_limits=memory_limits,
             gpu_requests=gpu_requests,
@@ -291,7 +322,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
                           replicas=None, ports=None, service_account_name=None, storage_configs=None,
-                          cpu_requests=None, cpu_limits=None, memory_requests=None,
+                          cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
                           memory_limits=None, gpu_requests=None, gpu_limits=None,
                           security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
@@ -317,6 +348,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             service_account_name=service_account_name,  # Pass this
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
+            memory_storage_configs=memory_storage_configs,
             gpu_requests=gpu_requests, gpu_limits=gpu_limits, security_context_config=security_context_config,
             entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )
@@ -498,6 +530,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         try:
             self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
             print(f"Service '{service_name}' created successfully in namespace '{namespace}'.")
+            logger.info(
+                f"Service '{service_name}' of type '{service_type}' created with ports: "
+                f"{', '.join([f'Port: {port.port}, TargetPort: {port.target_port}' for port in service_ports])}")
         except client.exceptions.ApiException as e:
             print(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
 
@@ -606,8 +641,11 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         # Attempt to create the route
         try:
-            route_resource.create(body=route_manifest, namespace=namespace)
+            created_route = route_resource.create(body=route_manifest, namespace=namespace)
             logger.info(f"Route for service {service_name} created successfully in namespace {namespace}.")
+            # Print the DNS name of the route
+            dns_name = created_route.spec.host  # Accessing the DNS name from the route response
+            logger.info(f"The DNS name of the created route is: {dns_name}")  # Log the DNS name
         except Exception as e:
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
 
@@ -728,13 +766,46 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         except Exception as e:
             logger.error(f"Failed to delete Ingress for service {service_name}: {e}")
 
+    def print_pod_node_info(self, deployment_name):
+        # Step 1: Find the deployment to get its selector
+        deployment = self.apps_v1_api.read_namespaced_deployment(deployment_name, self.namespace)
+        selector = ','.join([f'{k}={v}' for k, v in deployment.spec.selector.match_labels.items()])
+
+        # Step 2: List all pods in the deployment using the selector
+        pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=selector)
+
+        # Collect unique node names where the pods are scheduled
+        node_names = set()
+        for pod in pods.items:
+            node_name = pod.spec.node_name
+            node_names.add(node_name)
+            logger.info(f"Pod: {pod.metadata.name} is running on Node: {node_name}")
+
+        # Step 3: List services and check if they target the deployment
+        services = self.core_v1_api.list_namespaced_service(namespace=self.namespace)
+        for service in services.items:
+            if service.spec.type == "NodePort":
+                for port in service.spec.ports:
+                    if port.node_port:
+                        logger.info(
+                            f"NodePort Service: {service.metadata.name}, Port: {port.port}, NodePort: {port.node_port}")
+                        # Since we can't get the external IP, we'll just inform about using the cluster's node IPs
+                        logger.info(
+                            "To access the NodePort service, use the IP "
+                            "address of any cluster node with the listed NodePort.")
+
+        # Inform about the limitation regarding node IPs
+        logger.info(
+            "Node external IPs cannot be retrieved with namespace-scoped "
+            "permissions. Use known node IPs to access NodePort services.")
+
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []
         try:
             services = self.core_v1_api.list_namespaced_service(namespace=namespace)
             nodes = self.core_v1_api.list_node()
             node_ips = {node.metadata.name:
-                        [address.address for address in node.status.addresses if address.type == "InternalIP"][0]
+                            [address.address for address in node.status.addresses if address.type == "InternalIP"][0]
                         for node in nodes.items}
 
             for service in services.items:
@@ -782,6 +853,73 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         logger.info(f"Total Available Resources in the Namespace '{self.namespace}': {total_resources}")
         return total_resources
+
+    def execute_command_in_pod(self, namespace, pod_name, command):
+        """
+        Execute a command in a pod.
+
+        :param namespace: The namespace of the pod.
+        :param pod_name: The name of the pod where the command will be executed.
+        :param command: The command to execute inside the pod, as a list of strings.
+        :return: The output from the command execution.
+        """
+        # Ensure that a list is provided for the command
+        if not isinstance(command, list):
+            command = [command]
+
+        # Executing the command
+        response = stream(self.core_v1_api.connect_get_namespaced_pod_exec,
+                          pod_name,
+                          namespace,
+                          command=command,
+                          stderr=True,
+                          stdin=False,
+                          stdout=True,
+                          tty=False)
+        return response
+
+    def get_pod_info(self, pod_name, namespace):
+        """Retrieve information about a specific pod."""
+        try:
+            return self.core_v1_api.read_namespaced_pod(name=pod_name, namespace=namespace or self.namespace)
+        except ApiException as e:
+            logger.error(f"Failed to get pod info for {pod_name} in {namespace}: {e}")
+            return None
+
+    def get_pod_logs(self, pod_name, namespace=None, **kwargs):
+        """Retrieve logs for a specific pod."""
+        try:
+            return self.core_v1_api.read_namespaced_pod_log(name=pod_name, namespace=namespace or self.namespace,
+                                                            **kwargs)
+        except ApiException as e:
+            logger.error(f"Failed to get logs for {pod_name} in {namespace}: {e}")
+            return None
+
+    def get_pod_resources(self, pod_name, namespace=None):
+        """Get resource usage for a specific pod using the dynamic client."""
+        try:
+            resource = self.dyn_client.resources.get(api_version='metrics.k8s.io/v1beta1', kind='PodMetrics')
+            return resource.get(name=pod_name, namespace=namespace or self.namespace)
+        except ApiException as e:
+            logger.error(f"Failed to get resources for {pod_name} in {namespace}: {e}")
+            return None
+
+    def stop_pod(self, pod_name, namespace=None):
+        """Stop a specific pod. This is usually done by deleting the pod."""
+        try:
+            self.core_v1_api.delete_namespaced_pod(name=pod_name, namespace=namespace or self.namespace,
+                                                   body=V1DeleteOptions())
+            logger.info(f"Pod {pod_name} in {namespace} deleted successfully.")
+        except ApiException as e:
+            logger.error(f"Failed to delete pod {pod_name} in {namespace}: {e}")
+
+    def start_pod(self, pod_name, namespace=None, pod_body=None):
+        """Start a specific pod by creating it. `pod_body` should be a V1Pod manifest."""
+        try:
+            self.core_v1_api.create_namespaced_pod(namespace=namespace or self.namespace, body=pod_body)
+            logger.info(f"Pod {pod_name} in {namespace} started successfully.")
+        except ApiException as e:
+            logger.error(f"Failed to create pod {pod_name} in {namespace}: {e}")
 
     # def list_pods(self):
     #     label_selector = f"app={self.deployment_name}"

@@ -1,14 +1,15 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
-from src.beam.orchestration import (BeamK8S, BeamDeploy, ServiceConfig,
-                                    StorageConfig, UserIdmConfig, SecurityContextConfig)
+from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig,
+                                    StorageConfig, UserIdmConfig, SecurityContextConfig,
+                                    MemoryStorageConfig, RayPortsConfig)
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~3yeKlg7oWUnhGjYPNObmhcp8bLVi8YSiIbWlSE-sjRQ"
-project_name = "ben-guryon"
-image_name = "harbor.dt.local/public/beam:openshift-20.02.1"
-labels = {"app": "bgu"}
-deployment_name = "bgu"
+api_token = "sha256~f7FdkTRFBGDCQ_YGpBzb98DwY0NDbnBbLMkBkLSCZfk"
+project_name = "kh-dev"
+image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
+labels = {"app": "kh"}
+deployment_name = "kh"
 # namespace = "ben-guryon"
 namespace = project_name
 replicas = 1
@@ -18,7 +19,7 @@ use_scc = True  # Pass the SCC control parameter
 scc_name = "anyuid"  # privileged , restricted, anyuid, hostaccess, hostmount-anyuid, hostnetwork, node-exporter-scc
 security_context_config = (
     SecurityContextConfig(add_capabilities=["SYS_CHROOT", "CAP_AUDIT_CONTROL",
-                                            "CAP_AUDIT_WRITE"], enable_security_context=True))
+                                            "CAP_AUDIT_WRITE"], enable_security_context=False))
 cpu_requests = "2000m"  # 0.5 CPU
 cpu_limits = "2000m"       # 1 CPU
 memory_requests = "24Gi"
@@ -29,12 +30,28 @@ storage_configs = [
     StorageConfig(pvc_name="data-pvc", pvc_mount_path="/data-pvc",
                   pvc_size="500Gi", pvc_access_mode="ReadWriteMany", create_pvc=True),
 ]
-service_configs = [
-    ServiceConfig(port=22, service_name="ssh", service_type="LoadBalancer", port_name="ssh-port",
-                  create_route=False, create_ingress=False, ingress_host="ssh.example.com"),
-    ServiceConfig(port=88, service_name="jupyter", service_type="LoadBalancer", port_name="jupyter-port",
-                  create_route=True, create_ingress=False, ingress_host="jupyter.example.com"),
+
+memory_storage_configs = [
+    MemoryStorageConfig(name="dshm", mount_path="/dev/shm", size_gb=8, enabled=True),
+    # Other MemoryStorageConfig instances as needed
 ]
+
+# beam_ports(initials=234)
+# # returns service_configs: {'ssh': 23422, 'jupyter': 23488, 'mlflow': 23480, }
+
+service_configs = [
+    ServiceConfig(port=2222, service_name="ssh", service_type="NodePort", port_name="ssh-port",
+                  create_route=True, create_ingress=False, ingress_host="ssh.example.com"),
+    ServiceConfig(port=8888, service_name="jupyter", service_type="LoadBalancer",
+                  port_name="jupyter-port", create_route=True, create_ingress=False,
+                  ingress_host="jupyter.example.com"),
+]
+
+ray_ports_configs = [
+    RayPortsConfig(ray_ports=[10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010],)
+    ]
+
+
 user_idm_configs = [
     UserIdmConfig(user_name="yos", role_name="admin", role_binding_name="yos",
                   create_role_binding=True, project_name="ben-guryon"),
@@ -73,6 +90,8 @@ deployment = BeamDeploy(
     gpu_limits=gpu_limits,
     service_configs=service_configs,
     storage_configs=storage_configs,
+    ray_ports_configs=ray_ports_configs,
+    memory_storage_configs=memory_storage_configs,
     security_context_config=security_context_config,
     entrypoint_args=entrypoint_args,
     entrypoint_envs=entrypoint_envs,
@@ -83,9 +102,18 @@ deployment = BeamDeploy(
 
 beam_pod_instance = deployment.launch(replicas=1)
 available_resources = k8s.query_available_resources()
+print("beam pod instance:", beam_pod_instance)
 print("Available Resources:", available_resources)
+print("Pod Status:", beam_pod_instance.pod_status)
+print("Pod Info:", beam_pod_instance.pod_info)
 
 print("Fetching external endpoints...")
 internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
+
+beam_pod = BeamPod(pod_name=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s)
+command = ['ls', '/'] # Example command
+response = beam_pod.execute(command)
+
+print(response)
