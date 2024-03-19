@@ -3,7 +3,7 @@ import mlflow
 from mlflow import log_params, log_metric
 import os
 from ..path import beam_path
-from ..algorithm import Algorithm
+from ..algorithm import NeuralAlgorithm
 
 
 class MLflowSummaryWriter:
@@ -64,7 +64,7 @@ class MFBeamAlgWrapper(mlflow.pyfunc.PythonModel):
 
         hparams = beam_path(path_to_hparams).read()
 
-        self.alg = Algorithm(hparams)
+        self.alg = NeuralAlgorithm(hparams)
         self.alg.load_checkpoint(state)
 
     def predict(self, context, model_input):

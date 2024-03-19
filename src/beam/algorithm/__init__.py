@@ -1,1 +1,1 @@
-from .algorithm import Algorithm
+from .neural_algorithm import NeuralAlgorithm

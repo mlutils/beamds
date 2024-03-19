@@ -1,12 +1,12 @@
 import numpy as np
 import torch
-from ..algorithm import Algorithm
+from ..algorithm import NeuralAlgorithm
 from ..logger import beam_logger as logger
 from ..utils import as_numpy
 from .beam_similarity import BeamSimilarity
 
 
-class BeamSSL(Algorithm):
+class BeamSSL(NeuralAlgorithm):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None, labeled_dataset=None):
 

@@ -7,7 +7,7 @@ from ..config import print_beam_hyperparameters
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
 from ..core import Processor
-from ..algorithm import Algorithm
+from ..algorithm import NeuralAlgorithm
 from functools import partial
 from ..experiment import beam_algorithm_generator
 
@@ -74,7 +74,7 @@ class BeamHPO(Processor):
 
     @staticmethod
     def get_optimization_mode(mode, objective_name):
-        return Algorithm.get_optimization_mode(mode, objective_name)
+        return NeuralAlgorithm.get_optimization_mode(mode, objective_name)
 
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}

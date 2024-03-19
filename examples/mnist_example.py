@@ -7,7 +7,7 @@ import numpy as np
 
 from src.beam import beam_arguments, Experiment, beam_algorithm_generator
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm
+from src.beam import NeuralAlgorithm
 from src.beam import LinearNet
 from src.beam import DataTensor, PackedFolds, as_numpy
 from src.beam.data import BeamData
@@ -62,7 +62,7 @@ class MNISTDataset(UniversalDataset):
         return {'x': x, 'y': y}
 
 
-class MNISTAlgorithm(Algorithm):
+class MNISTAlgorithm(NeuralAlgorithm):
 
     def __init__(self, hparams):
 

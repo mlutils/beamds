@@ -65,7 +65,7 @@ class BeamBase(metaclass=MetaBeamInit):
 
 class Processor(BeamBase):
 
-    skeleton_file = 'skeleton.pkl'
+    skeleton_file = 'skeleton'
     state_file = 'state'
 
     def __init__(self, *args, name=None, hparams=None, override=True, remote=None, llm=None, **kwargs):
@@ -140,8 +140,13 @@ class Processor(BeamBase):
     @classmethod
     def from_path(cls, path):
         path = beam_path(path)
-        obj = path.joinpath(Processor.skeleton_file).read()
-        obj.load_state(path.joinpath(Processor.state_file))
+
+        skeleton_file = list(path.glob(f"{Processor.skeleton_file}"))[0]
+        state_file = list(path.glob(f"{Processor.state_file}"))[0]
+
+        obj = skeleton_file.read()
+        obj.load_state(state_file)
+
         return obj
 
     @classmethod
@@ -261,16 +266,27 @@ class Processor(BeamBase):
         else:
             path.write(state, ext=ext)
 
-    def to_path(self, path):
+    def to_path(self, path, skeleton_ext=None, state_ext=None):
         path = beam_path(path)
         path.clean()
         path.mkdir()
-        path.joinpath('skeleton.pkl').write(self)
-        self.save_state(path.joinpath('state'))
+        skeleton_ext = skeleton_ext or '.pkl'
+        state_ext = state_ext or ''
+        skeleton_file = f"{Processor.state_file}{skeleton_ext}"
+        state_file = f"{Processor.state_file}{state_ext}"
+
+        path.joinpath(skeleton_file).write(self)
+        self.save_state(path.joinpath(state_file))
 
     def load_state(self, path):
 
         path = beam_path(path)
+
+        try:
+            from ..data import BeamData
+            has_beam_ds = True
+        except ImportError:
+            has_beam_ds = False
 
         if path.is_file():
             state = path.read()

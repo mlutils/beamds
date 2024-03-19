@@ -1,9 +1,9 @@
-from ..algorithm import Algorithm
+from ..algorithm import NeuralAlgorithm
 from ..path import local_copy, in_memory_storage
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 
 
-class FineTuneLLM(Algorithm):
+class FineTuneLLM(NeuralAlgorithm):
 
     def __init__(self, hparams, **kwargs):
 
