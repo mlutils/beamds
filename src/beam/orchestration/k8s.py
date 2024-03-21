@@ -203,8 +203,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_pod_template(self, image_name, labels=None, deployment_name=None, project_name=None,
                             ports=None, service_account_name=None, pvc_mounts=None,
-                            cpu_requests=None, cpu_limits=None, memory_requests=None,
-                            memory_limits=None, gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
+                            cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
+                            memory_limits=None, gpu_requests=None, gpu_limits=None, node_selector=None,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None, ):
         if labels is None:
             labels = {}
@@ -258,7 +258,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         pod_spec = client.V1PodSpec(
             containers=[container],
             service_account_name=service_account_name,
-            volumes=volumes  # Including PVC volumes here
+            volumes=volumes,  # Including PVC volumes here
+            node_selector=node_selector
         )
 
         return client.V1PodTemplateSpec(
@@ -282,7 +283,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
                                ports=None, service_account_name=None, storage_configs=None,
-                               cpu_requests=None, cpu_limits=None, memory_requests=None,
+                               cpu_requests=None, cpu_limits=None, memory_requests=None, node_selector=None,
                                memory_limits=None, gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
                                security_context_config=None, entrypoint_args=None,
                                entrypoint_envs=None):
@@ -299,6 +300,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             deployment_name=deployment_name,
             project_name=project_name,
             ports=ports,
+            node_selector=node_selector,
             service_account_name=service_account_name,  # Use it here
             pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
             cpu_requests=cpu_requests,
@@ -322,8 +324,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
                           replicas=None, ports=None, service_account_name=None, storage_configs=None,
-                          cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
-                          memory_limits=None, gpu_requests=None, gpu_limits=None,
+                          cpu_requests=None, cpu_limits=None, memory_requests=None, node_selector=None,
+                          memory_storage_configs=None, memory_limits=None, gpu_requests=None, gpu_limits=None,
                           security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
@@ -345,7 +347,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         deployment_spec = self.create_deployment_spec(
             image_name, labels=labels, deployment_name=deployment_name,
             project_name=project_name, replicas=replicas, ports=ports,
-            service_account_name=service_account_name,  # Pass this
+            service_account_name=service_account_name, node_selector=node_selector,
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
             memory_storage_configs=memory_storage_configs,
