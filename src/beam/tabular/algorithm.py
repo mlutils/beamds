@@ -1,5 +1,5 @@
 import torch
-from ..core.algorithm import Algorithm
+from ..algorithm import NeuralAlgorithm
 from ..utils import as_numpy, as_tensor, lazy_property
 from ..data import BeamData
 from ..config import BeamConfig, BeamParam
@@ -11,11 +11,12 @@ import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
 import pandas as pd
 from ..logger import beam_logger as logger
+from ..nn import BeamNN
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
 
-class TabularTransformer(torch.nn.Module):
+class TabularTransformer(nn.Module):
     """
     The TabularTransformer class is a PyTorch module that implements a transformer-based model for tabular data classification. It takes as input a set of hyperparameters, the number of classes, the number of tokens, and a categorical mask. The class inherits from the torch.nn.Module class.
 
@@ -75,12 +76,13 @@ class TabularTransformer(torch.nn.Module):
         """
         super().__init__()
 
-        n_tokens = as_tensor(n_tokens)
-        cat_mask = as_tensor(cat_mask)
+        # n_tokens = as_tensor(n_tokens)
+        # cat_mask = as_tensor(cat_mask)
+
         self.register_buffer('n_tokens', n_tokens.unsqueeze(0))
         n_tokens = n_tokens + 1  # add masking token
         tokens_offset = n_tokens.cumsum(0) - n_tokens
-        total_tokens = n_tokens.sum()
+        total_tokens = int(n_tokens.sum())
 
         self.register_buffer('tokens_offset', tokens_offset.unsqueeze(0))
         self.register_buffer('cat_mask', cat_mask.unsqueeze(0))
@@ -101,17 +103,29 @@ class TabularTransformer(torch.nn.Module):
         else:
             self.register_buffer('rule_bias', torch.zeros(1, 1, hparams.emb_dim))
 
-        self.rules = nn.Parameter(torch.randn(1, self.n_rules, hparams.emb_dim))
         self.mask = distributions.Bernoulli(1 - hparams.mask_rate)
-        self.rule_mask = distributions.Bernoulli(1 - hparams.rule_mask_rate)
 
-        self.transformer = nn.Transformer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
-                                          num_encoder_layers=hparams.n_encoder_layers,
-                                          num_decoder_layers=hparams.n_decoder_layers,
-                                          dim_feedforward=hparams.transformer_hidden_dim,
-                                          dropout=hparams.transformer_dropout,
-                                          activation=hparams.activation, layer_norm_eps=1e-05,
-                                          batch_first=True, norm_first=True)
+        self.rules = None
+        self.rule_mask = None
+        if hparams.n_decoder_layers > 0:
+            self.rules = nn.Parameter(torch.randn(1, self.n_rules, hparams.emb_dim))
+            self.rule_mask = distributions.Bernoulli(1 - hparams.rule_mask_rate)
+
+            self.transformer = nn.Transformer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
+                                              num_encoder_layers=hparams.n_encoder_layers,
+                                              num_decoder_layers=hparams.n_decoder_layers,
+                                              dim_feedforward=hparams.transformer_hidden_dim,
+                                              dropout=hparams.transformer_dropout,
+                                              activation=hparams.activation, layer_norm_eps=1e-05,
+                                              batch_first=True, norm_first=True)
+        else:
+
+            self.transformer = nn.TransformerEncoder(
+                nn.TransformerEncoderLayer(d_model=hparams.emb_dim, nhead=hparams.n_transformer_head,
+                                           dim_feedforward=hparams.transformer_hidden_dim,
+                                           dropout=hparams.transformer_dropout, activation=hparams.activation,
+                                           layer_norm_eps=1e-05, norm_first=True, batch_first=True),
+                num_layers=hparams.n_encoder_layers)
 
         if hparams.lin_version > 0:
             self.lin = nn.Sequential(nn.ReLU(), nn.Dropout(hparams.dropout), nn.LayerNorm(hparams.emb_dim),
@@ -119,9 +133,7 @@ class TabularTransformer(torch.nn.Module):
         else:
             self.lin = nn.Linear(hparams.emb_dim, n_classes, bias=False)
 
-    def forward(self, sample):
-
-        x, x_frac = sample['x'], sample['x_frac']
+    def forward(self, x, x_frac):
 
         x1 = (x + 1)
         x2 = torch.minimum(x + 2, self.n_tokens)
@@ -139,27 +151,32 @@ class TabularTransformer(torch.nn.Module):
         x_frac = x_frac.unsqueeze(-1)
         x = (1 - x_frac) * x1 + x_frac * x2 + self.feature_bias
 
-        if self.training:
-            rules = self.rule_mask.sample(torch.Size((len(x), self.n_rules, 1))).to(x.device) * self.rules
-        else:
-            rules = torch.repeat_interleave(self.rules, len(x), dim=0)
+        if self.rules is not None:
+            if self.training:
+                rules = self.rule_mask.sample(torch.Size((len(x), self.n_rules, 1))).to(x.device) * self.rules
+            else:
+                rules = torch.repeat_interleave(self.rules, len(x), dim=0)
 
-        rules = rules + self.rule_bias
-        x = self.transformer(x, rules)
+            rules = rules + self.rule_bias
+            x = self.transformer(x, rules)
+        else:
+            x = self.transformer(x)
+
         x = self.lin(x.max(dim=1).values)
 
         x = x.squeeze(-1)
         return x
 
 
-class DeepTabularAlg(Algorithm):
+class DeepTabularAlg(NeuralAlgorithm):
 
-    def __init__(self, hparams, networks=None, net_kwargs=None,  **kwargs):
+    def __init__(self, hparams, networks=None, net_kwargs=None, task_type=None, y_sigma=None,  **kwargs):
         # choose your network
 
         if networks is None:
             if net_kwargs is None:
                 net_kwargs = dict()
+            net_kwargs = as_tensor(net_kwargs)
             net = TabularTransformer(hparams, **net_kwargs)
             networks = {'net': net}
 
@@ -167,12 +184,10 @@ class DeepTabularAlg(Algorithm):
         self.loss_function = None
         self.loss_kwargs = None
         self.train_acc = None
+        self.task_type = task_type
+        self.y_sigma = y_sigma
         self.previous_masking = 1 - self.get_hparam('mask_rate')
         self.best_masking = 1 - self.get_hparam('mask_rate')
-
-    @property
-    def task_type(self):
-        return self.dataset.task_type
 
     def preprocess_epoch(self, epoch=None, subset=None, training=True, **kwargs):
         if epoch == 0:
@@ -213,14 +228,14 @@ class DeepTabularAlg(Algorithm):
 
             self.report_scalar('mask_rate', 1 - self.net.mask.probs)
 
-    def inner_train(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
-        y = label
-        net = self.net
-
-        y_hat = net(sample)
-        loss = self.loss_function(y_hat, y, **self.loss_kwargs)
-        self.apply(loss, training=training)
-        return loss, y_hat, y
+    # def inner_train(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
+    #     y = label
+    #     net = self.net
+    #
+    #     y_hat = net(sample)
+    #     loss = self.loss_function(y_hat, y, **self.loss_kwargs)
+    #     self.apply(loss, training=training)
+    #     return loss, y_hat, y
 
     def train_iteration(self, sample=None, label=None, subset=None, counter=None, index=None,
                         training=True, **kwargs):
@@ -231,13 +246,14 @@ class DeepTabularAlg(Algorithm):
         y = label
         net = self.net
 
-        y_hat = net(sample)
+        x, x_frac = sample['x'], sample['x_frac']
+        y_hat = net(x, x_frac)
         loss = self.loss_function(y_hat, y, **self.loss_kwargs)
         self.apply(loss, training=training)
 
         # add scalar measurements
         if self.task_type == 'regression':
-            self.report_scalar('mse', loss.mean() * self.dataset.y_sigma ** 2)
+            self.report_scalar('mse', loss.mean() * self.y_sigma ** 2)
         else:
             self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
@@ -250,17 +266,18 @@ class DeepTabularAlg(Algorithm):
         y = label
         net = self.net
         n_ensembles = self.get_hparam('n_ensembles')
+        x, x_frac = sample['x'], sample['x_frac']
 
         if n_ensembles > 1:
             net.train()
             y_hat = []
             for _ in range(n_ensembles):
-                y_hat.append(net(sample))
+                y_hat.append(net(x, x_frac))
             y_hat = torch.stack(y_hat, dim=0)
             self.report_scalar('y_pred_std', y_hat.std(dim=0))
             y_hat = y_hat.mean(dim=0)
         else:
-            y_hat = net(sample)
+            y_hat = net(x, x_frac)
 
         # add scalar measurements
         self.report_scalar('y_pred', y_hat)
@@ -268,7 +285,7 @@ class DeepTabularAlg(Algorithm):
         if not predicting:
 
             if self.task_type == 'regression':
-                self.report_scalar('mse', F.mse_loss(y_hat, y, reduction='mean') * self.dataset.y_sigma ** 2)
+                self.report_scalar('mse', F.mse_loss(y_hat, y, reduction='mean') * self.y_sigma ** 2)
             else:
                 self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
@@ -301,14 +318,14 @@ class DeepTabularAlg(Algorithm):
 
                 self.report_scalar('objective', self.get_scalar('acc', aggregate=True))
 
-    def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
-                        processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,
-                        hparams=True, aux=None, pickle_model=False):
-        aux = {'kwargs': {'net_kwargs': {'n_classes': self.dataset.n_classes,
-                              'n_tokens': self.dataset.n_tokens,
-                              'cat_mask': self.dataset.cat_mask}}}
-
-        return super().save_checkpoint(path=path, networks=networks, optimizers=optimizers, schedulers=schedulers,
-                                processors=processors, scaler=scaler, scalers=scalers,
-                                swa_schedulers=swa_schedulers, swa_networks=swa_networks, hparams=hparams,
-                                aux=aux, pickle_model=pickle_model)
+    # def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
+    #                     processors=True, scaler=True, scalers=True, swa_schedulers=True, swa_networks=True,
+    #                     hparams=True, aux=None, pickle_model=False):
+    #     aux = {'kwargs': {'net_kwargs': {'n_classes': self.dataset.n_classes,
+    #                           'n_tokens': self.dataset.n_tokens,
+    #                           'cat_mask': self.dataset.cat_mask}}}
+    #
+    #     return super().save_checkpoint(path=path, networks=networks, optimizers=optimizers, schedulers=schedulers,
+    #                             processors=processors, scaler=scaler, scalers=scalers,
+    #                             swa_schedulers=swa_schedulers, swa_networks=swa_networks, hparams=hparams,
+    #                             aux=aux, pickle_model=pickle_model)

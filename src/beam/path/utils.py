@@ -4,10 +4,16 @@ from .resource import beam_path
 
 
 @contextmanager
-def local_copy(path, tmp_path='/tmp', as_beam_path=True, copy_changes=False, disable=False):
+def local_copy(path, tmp_path='/tmp', as_beam_path=False, copy_changes=False, disable=None):
+
+    if disable is None:
+        disable = path.scheme == 'file'
 
     if disable:
-        yield path
+        if as_beam_path:
+            yield path
+        else:
+            yield str(path)
         return
 
     path = beam_path(path)

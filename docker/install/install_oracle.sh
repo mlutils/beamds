@@ -7,3 +7,8 @@ mkdir -p /opt/oracle \
     && ln -s $ORACLE_HOME/*/libocci.so* $ORACLE_HOME
 
 pip install cx_Oracle
+
+rm /opt/oracle/instantclient
+
+oracle_dir=$(ls -l /opt/oracle | awk '/^d/ {print $9; exit}')
+ln -s $oracle_dir $ORACLE_HOME

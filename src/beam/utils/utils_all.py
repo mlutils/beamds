@@ -14,6 +14,10 @@ import time
 import re
 import threading
 
+import traceback
+import linecache
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
 
 try:
     import modin.pandas as mpd
@@ -56,7 +60,7 @@ DataBatch = namedtuple("DataBatch", "index label data")
 
 # class Beamdantic(BaseModel):
 #     # To be used with pydantic classes and lazy_property
-#     _lazy_cache: Any = PrivateAttr()
+#     _lazy_cache: Any = PrivateAttr(default=None)
 
 
 class BeamDict(dict, Namespace):
@@ -123,6 +127,41 @@ def retrieve_name(var):
         names = [var_name for var_name, var_val in fi.frame.f_locals.items() if var_val is var]
         if len(names) > 0:
             return names[0]
+
+# def retrieve_name(var):
+#     name = None
+#     # Start by checking the global scope of the caller.
+#     for fi in reversed(inspect.stack()):
+#         names = [var_name for var_name, var_val in fi.frame.f_globals.items() if var_val is var]
+#         if names:
+#             name = names[0]
+#             break  # Exit on the first match in global scope.
+#
+#     # If not found in global scope, check the local scope from inner to outer.
+#     if not name:
+#         for fi in inspect.stack():
+#             names = [var_name for var_name, var_val in fi.frame.f_locals.items() if var_val is var]
+#             if names:
+#                 name = names[0]
+#                 break  # Exit on the first match in local scope.
+#
+#     return name
+
+
+def has_kwargs(func):
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in inspect.signature(func).parameters.values())
+
+
+def strip_prefix(text, prefix):
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text
+
+
+def strip_suffix(text, suffix):
+    if text.endswith(suffix):
+        return text[:-len(suffix)]
+    return text
 
 
 class nested_defaultdict(defaultdict):
@@ -203,15 +242,24 @@ def beam_service_port(service):
     port = None
     try:
         conf = pd.read_csv('/workspace/configuration/config.csv', index_col=0)
-        port = int(conf.loc[service.lower()])
+        port = int(conf.drop_duplicates().loc[service.lower()])
     except:
         pass
 
     return port
 
 
-def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
+def find_port(port=None, get_port_from_beam_port_range=True, application='none', blacklist=None, whitelist=None):
     from ..logger import beam_logger as logger
+
+    if blacklist is None:
+        blacklist = []
+
+    if whitelist is None:
+        whitelist = []
+
+    blacklist = [int(p) for p in blacklist]
+    whitelist = [int(p) for p in whitelist]
 
     if application == 'tensorboard':
         first_beam_range = 66
@@ -222,6 +270,9 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
     elif application == 'ray':
         first_beam_range = 65
         first_global_range = 28265
+    elif application == 'distributed':
+        first_beam_range = 64
+        first_global_range = 28264
     else:
         first_beam_range = 2
         first_global_range = 30000
@@ -233,15 +284,9 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
         if get_port_from_beam_port_range:
 
             base_range = None
-            if 'JUPYTER_PORT' in os.environ:
-                base_range = int(os.environ['JUPYTER_PORT']) // 100
-
-            elif os.path.isfile('/workspace/configuration/config.csv'):
+            if os.path.isfile('/workspace/configuration/config.csv'):
                 conf = pd.read_csv('/workspace/configuration/config.csv')
-                try:
-                    base_range = int(conf.set_index('parameters').loc['initials'])
-                except:
-                    base_range = int(np.unique(conf.set_index('parameters').loc['initials'])[0])
+                base_range = int(conf.set_index('parameters').drop_duplicates().loc['initials'])
 
             if base_range is not None:
                 port_range = range(base_range * 100, (base_range + 1) * 100)
@@ -251,6 +296,13 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
             port_range = np.roll(np.array(range(10000, 2 ** 16)), -first_global_range)
 
         for p in port_range:
+
+            if p in blacklist:
+                continue
+
+            if whitelist and p not in whitelist:
+                continue
+
             if check_if_port_is_available(p):
                 port = str(p)
                 break
@@ -384,10 +436,6 @@ def check_minor_type(x):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
-    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
-        return 'modin'
-    if has_scipy and scipy.sparse.issparse(x):
-        return 'scipy_sparse'
     if isinstance(x, dict):
         return 'dict'
     if isinstance(x, list):
@@ -396,11 +444,14 @@ def check_minor_type(x):
         return 'tuple'
     if isinstance(x, set):
         return 'set'
+    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
+        return 'modin'
+    if has_scipy and scipy.sparse.issparse(x):
+        return 'scipy_sparse'
     if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
         return 'path'
     else:
         return 'other'
-
 
 def elt_of_list(x):
     if len(x) < 100:
@@ -430,14 +481,14 @@ def check_type(x, check_minor=True, check_element=True):
 
     major type: container, array, scalar, none, other
     minor type: dict, list, tuple, set, tensor, numpy, pandas, scipy_sparse, native, none
-    elements type: array, int, float, complex, str, object, empty, none, unknown
+    elements type: array, int, float, complex, bool, str, object, empty, none, unknown
 
     '''
 
     if np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape))):
         mjt = 'scalar'
         if check_minor:
-            if type(x) in [int, float, str]:
+            if type(x) in [int, float, str, complex, bool]:
                 mit = 'native'
             else:
                 mit = check_minor_type(x)
@@ -612,9 +663,8 @@ def dictionary_iterator(d):
     for _ in itertools.count():
         try:
             yield {k: next(v) for k, v in d.items()}
-        except KeyError:
+        except StopIteration:
             return
-
 
 
 def get_item_with_tuple_key(x, key):
@@ -821,8 +871,8 @@ class NoneClass:
         return none_function
 
 
-import traceback
-import linecache
+class NullClass:
+    pass
 
 
 def beam_traceback(exc_type=None, exc_value=None, tb=None, context=3):
@@ -1035,10 +1085,13 @@ def is_arange(x, convert_str=True):
 def dict_to_list(x, convert_str=True):
     x_type = check_type(x)
 
+    if not x:
+        return []
+
     if x_type.minor != 'dict':
         return x
 
-    keys = list(x.keys())
+    keys = np.array(list(x.keys()))
     argsort, isa = is_arange(keys, convert_str=convert_str)
 
     if isa:
@@ -1048,25 +1101,35 @@ def dict_to_list(x, convert_str=True):
 
 
 class Timer(object):
-
-    def __init__(self, logger, name='', silence=False):
+    def __init__(self, logger, name='', silence=False, timeout=None, task=None, task_args=None, task_kwargs=None):
         self.name = name
         self.logger = logger
         self.silence = silence
+        self.timeout = timeout
+        self.task = task
+        self.task_args = task_args or ()
+        self.task_kwargs = task_kwargs or {}
         self._elapsed = 0
         self.paused = True
         self.t0 = None
-
-    def reset(self):
-        self._elapsed = 0
-        self.paused = True
-        self.t0 = None
-        return self
+        self.executor = None
+        self.future = None
 
     def __enter__(self):
         if not self.silence:
             self.logger.info(f"Starting timer: {self.name}")
         self.run()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        elapsed = self.pause()
+        if not self.silence:
+            self.logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
+
+    def reset(self):
+        self._elapsed = 0
+        self.paused = True
+        self.t0 = None
         return self
 
     @property
@@ -1085,18 +1148,30 @@ class Timer(object):
     def run(self):
         self.paused = False
         self.t0 = time.time()
-        return self
+
+        if self.task is not None:
+
+            self.logger.info(f"Starting task with timeout of {self.timeout} seconds.")
+            self.executor = ThreadPoolExecutor(max_workers=1)
+            self.future = self.executor.submit(self.task, *self.task_args, **self.task_kwargs)
+
+            try:
+                if self.future:
+                    self.future.result(timeout=self.timeout)
+            except TimeoutError:
+                self.logger.info(f"Timer {self.name} exceeded timeout of {self.timeout} seconds.")
+            finally:
+                elapsed = self.pause()
+                if not self.silence:
+                    self.logger.info(f"Timer {self.name} paused. Elapsed time: {elapsed} Sec")
+                if self.executor:
+                    self.executor.shutdown()
 
     def __str__(self):
         return f"Timer {self.name}: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"
 
     def __repr__(self):
         return str(self)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        elapsed = self.pause()
-        if not self.silence:
-            self.logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
 
 
 class ThreadSafeDict(dict):
@@ -1151,3 +1226,30 @@ class ThreadSafeDict(dict):
     def items(self):
         with self.lock:
             return list(super().items())
+
+
+def mixin_dictionaries(*dicts):
+    res = {}
+    for d in dicts[::-1]:
+        if d is not None:
+            res.update(d)
+    return res
+
+
+def get_class_properties(cls):
+    properties = []
+    for attr_name in dir(cls):
+        attr_value = getattr(cls, attr_name)
+        if isinstance(attr_value, property):
+            properties.append(attr_name)
+    return properties
+
+
+def pretty_print_dict(d, name):
+
+    # Convert each key-value pair to 'k=v' format and join them with commas
+    formatted_str = ", ".join(f"{k}={v}" for k, v in d.items())
+
+    # Enclose in parentheses
+    formatted_str = f"{name}({formatted_str})"
+    return formatted_str

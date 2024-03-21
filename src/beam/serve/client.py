@@ -1,22 +1,24 @@
 import io
 import pickle
 from functools import partial
+from ..path import normalize_host, BeamResource
 from ..core import Processor
-from ..path import normalize_host
 
 from .server import has_torch
 if has_torch:
     import torch
 
 
-class BeamClient(Processor):
+class BeamClient(Processor, BeamResource):
 
     def __init__(self, *args, hostname=None, port=None, username=None, api_key=None, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(resource_type='client', hostname=hostname, port=port, username=username, **kwargs)
         self.host = normalize_host(hostname, port)
         self.api_key = api_key
-        self.username = username
         self.info = self.get_info()
+
+    def get_info(self):
+        raise NotImplementedError
 
     @property
     def load_function(self):
@@ -62,13 +64,13 @@ class BeamClient(Processor):
 
         return response
 
-    def _post(self, path, io_args, io_kwargs):
+    def _post(self, path, io_args, io_kwargs, **other_kwargs):
             raise NotImplementedError
 
     def __call__(self, *args, **kwargs):
         return self.post('call/beam', *args, **kwargs)
 
-    def __getattr__(self, item):
+    def getattr(self, item):
         if item.startswith('_') or item in ['info'] or not hasattr(self, 'info'):
             return super().__getattribute__(item)
 

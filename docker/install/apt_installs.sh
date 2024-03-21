@@ -89,6 +89,10 @@ apt install -y lsb-release
 
 echo "Installing iptables"
 apt install -y iptables
+
+echo "Installing smbclient"
+apt install -y smbclient
+
 #
 ## don't install libopenmpi as it messes up the pytorch geometric installation
 #apt install -y libopenmpi-dev

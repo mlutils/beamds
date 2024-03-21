@@ -1,25 +1,31 @@
 import json
-import time
 from collections import namedtuple
 from functools import partial
 from typing import Optional, Any, Dict, List, Mapping
 from uuid import uuid4 as uuid
-import numpy as np
 import pandas as pd
+from pydantic import BaseModel
 
 from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
-from ..core.processor import Processor
-from ..utils import parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict
-from ..path import BeamURL
+# from ..core.processor import Processor
+from ..utils import (parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass,
+                     pretty_print_dict)
+from ..path import BeamURL, BeamResource
 
-try:
-    from langchain.llms.base import LLM
-    from langchain.callbacks.manager import CallbackManagerForLLMRun
-except ImportError:
-    LLM = object
-    CallbackManagerForLLMRun = object
+LLM = BaseModel
+CallbackManagerForLLMRun = NullClass
+# import pydantic and check if its version is less than 2.0.0
+import pydantic
+if pydantic.__version__ < '2.0.0':
+    try:
+        from langchain.llms.base import LLM
+        from langchain.callbacks.manager import CallbackManagerForLLMRun
+    except ImportError:
+        logger.warning("langchain not found, using pydantic only as the LLM base")
+else:
+    logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
 
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
@@ -30,15 +36,31 @@ from .tools import LLMTool
 CompletionObject = namedtuple("CompletionObject", "prompt kwargs response")
 
 
-class BeamLLM(LLM, Processor):
+class ChatCompletionChunk(BeamDict):
+    def __repr__(self):
+        return pretty_print_dict(self, 'ChatCompletionChunk')
+
+
+class ChatCompletion(BeamDict):
+    def __repr__(self):
+        return pretty_print_dict(self, 'ChatCompletion')
+
+
+class Completion(BeamDict):
+    def __repr__(self):
+        return pretty_print_dict(self, 'Completion')
+
+
+# class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
+class BeamLLM(LLM, BeamResource):
 
     model: Optional[str] = Field(None)
     scheme: Optional[str] = Field(None)
-    usage: Any
-    instruction_history: Any
-    _chat_history: Any = PrivateAttr()
-    _url: Any = PrivateAttr()
-    _debug_langchain: Any = PrivateAttr()
+    usage: Dict = Field(default_factory=dict)
+    instruction_history: List = Field(default_factory=list)
+    _chat_history: Any = PrivateAttr(default=None)
+    _url: Any = PrivateAttr(default=None)
+    _debug_langchain: Any = PrivateAttr(default=None)
     temperature: float = Field(1.0, ge=0.0, le=1.0)
     top_p: float = Field(1.0, ge=0.0, le=1.0)
     n: int = Field(1, ge=1)
@@ -52,24 +74,26 @@ class BeamLLM(LLM, Processor):
     parse_retrials: int = Field(3, ge=0)
     ask_retrials: int = Field(1, ge=1)
     sleep: float = Field(1.0, ge=0.0)
-    model_adapter: Optional[str] = Field(None)
-    _len_function: Any = PrivateAttr()
+    adapter: Optional[str] = Field(None)
+    _len_function: Any = PrivateAttr(default=None)
 
     # To be used with pydantic classes and lazy_property
-    _lazy_cache: Any = PrivateAttr()
-    _tokenizer: Any = PrivateAttr()
-    _path_to_tokenizer: Any = PrivateAttr()
+    _lazy_cache: Any = PrivateAttr(default=None)
+    _tokenizer: Any = PrivateAttr(default=None)
+    _path_to_tokenizer: Any = PrivateAttr(default=None)
 
-    _assistant_budget: Any = PrivateAttr()
-    _assistant_docstrings: Any = PrivateAttr()
-    _conv: Any = PrivateAttr()
-    _tools: Any = PrivateAttr()
+    _assistant_budget: Any = PrivateAttr(default=None)
+    _assistant_docstrings: Any = PrivateAttr(default=None)
+    _conv: Any = PrivateAttr(default=None)
+    _tools: Any = PrivateAttr(default=None)
+    _init_is_done: Any = PrivateAttr(default=None)
 
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
                  debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
-                 model_adapter=None, tools=None, **kwargs):
-        super().__init__(*args, **kwargs)
+                 adapter=None, tools=None, **kwargs):
+        LLM.__init__(self, *args, **kwargs)
+        BeamResource.__init__(self, resource_type='llm', scheme=scheme, **kwargs)
 
         if temperature is not None:
             temperature = float(temperature)
@@ -110,11 +134,11 @@ class BeamLLM(LLM, Processor):
         if self.model is None:
             self.model = 'unknown'
 
-        if model_adapter is None:
-            model_adapter = self.model
-        self.model_adapter = model_adapter
+        if adapter is None:
+            adapter = self.model
+        self.adapter = adapter
 
-        self._conv = get_conversation_template(self.model_adapter)
+        self._conv = get_conversation_template(self.adapter)
 
         self.usage = {"prompt_tokens": 0,
                       "completion_tokens": 0,
@@ -340,9 +364,8 @@ class BeamLLM(LLM, Processor):
             # add tools message
             self.add_tool_message_to_chat(kwargs.pop('messages', None))
 
+        kwargs['stream'] = stream
         completion_object = chat_completion_function(**kwargs)
-        self.update_usage(completion_object.response)
-
         response = LLMResponse(completion_object.response, self, chat=True, stream=stream,
                                parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
@@ -353,7 +376,7 @@ class BeamLLM(LLM, Processor):
 
         return response
 
-    def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', **kwargs):
+    def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', stream=False, **kwargs):
 
         completion_function = self._completion
         if ask_retrials > 1:
@@ -361,10 +384,9 @@ class BeamLLM(LLM, Processor):
                                         sleep=sleep, logger=logger,
                                         name=f"LLM completion with model: {self.model}")
 
+        kwargs['stream'] = stream
         completion_object = completion_function(**kwargs)
-        self.update_usage(completion_object.response)
-
-        response = LLMResponse(completion_object.response, self, chat=False,
+        response = LLMResponse(completion_object.response, self, chat=False, stream=stream,
                                parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
         return response
@@ -458,15 +480,19 @@ class BeamLLM(LLM, Processor):
         if reset_chat:
             self.reset_chat()
 
-        messages = []
+        if type(message) is list:
+            self.reset_chat()
+            messages = message
+        else:
+            messages = []
 
-        if system is not None:
-            system = {'role': 'system', 'content': system}
-            if system_name is not None:
-                system['system_name'] = system_name
-            messages.append(system)
+            if system is not None:
+                system = {'role': 'system', 'content': system}
+                if system_name is not None:
+                    system['system_name'] = system_name
+                messages.append(system)
 
-        messages.extend(self.chat_history)
+            messages.extend(self.chat_history)
 
         self.add_to_chat(message, is_user=True)
         message = {'role': 'user', 'content': message}
@@ -479,9 +505,26 @@ class BeamLLM(LLM, Processor):
             self.add_tool_message_to_chat(messages)
 
         response = self.chat_completion(messages=messages, prompt_type=prompt_type, **default_params)
-        self.add_to_chat(response.text, is_user=False)
 
-        return response
+        if stream:
+            def gen():
+
+                generated_text = []
+                for res in response:
+                    if res.text is not None:
+                        generated_text.append(res.text)
+                    yield res
+
+                generated_text = "".join(generated_text)
+                self.update_usage(res.response)
+                self.add_to_chat(generated_text, is_user=False)
+
+            return gen()
+
+        else:
+            self.update_usage(response.response)
+            self.add_to_chat(response.text, is_user=False)
+            return response
 
     def chat_with_assistant(self, message=None, docstrings=None, budget=3, **kwargs):
 
@@ -619,9 +662,36 @@ class BeamLLM(LLM, Processor):
 
     def openai_format(self, res, finish_reason="stop", tokens=None, completion_tokens=0, prompt_tokens=0, total_tokens=0):
 
+        stream = res.stream
         text = self.extract_text(res)
 
-        if res.chat:
+        # an example of openai format:
+        # ChatCompletionChunk(id='chatcmpl-8ooipEUzmkwlqMVnUJHZzWQ4uKyKj', choices=[
+        #     Choice(delta=ChoiceDelta(content=None, function_call=None, role=None, tool_calls=None),
+        #            finish_reason='stop', index=0, logprobs=None)], created=1707122067, model='gpt-4-0613',
+        #                     object='chat.completion.chunk', system_fingerprint=None)
+        #
+        # Completion(id='cmpl-8op1yf5pOL7oEd7EXulOFbODmRSFp', choices=[
+        #     CompletionChoice(finish_reason='length', index=0, logprobs=None,
+        #                      text='\n\nI am an AI and do not have emotions, but thank you for asking')],
+        #            created=1707123254, model='gpt-3.5-turbo-instruct', object='text_completion',
+        #            system_fingerprint=None,
+        #            usage=CompletionUsage(completion_tokens=16, prompt_tokens=4, total_tokens=20))
+
+        if stream:
+            Class = ChatCompletionChunk
+            choice = {
+                "index": 0,
+                "delta": {"content": text,
+                          "function_call": None,
+                          "role": None,
+                          "tool_calls": None},
+                "logprobs": None,
+                "finish_reason": finish_reason,
+            }
+
+        elif res.chat:
+            Class = ChatCompletion
 
             if len(self.tools):
 
@@ -656,6 +726,7 @@ class BeamLLM(LLM, Processor):
                     }
                 }
             else:
+
                 choice = {
                           "finish_reason": finish_reason,
                           "index": 0,
@@ -665,6 +736,8 @@ class BeamLLM(LLM, Processor):
                           }
                         }
         else:
+
+            Class = Completion
             choice = {
                 "finish_reason": finish_reason,
                 "index": 0,
@@ -680,6 +753,7 @@ class BeamLLM(LLM, Processor):
                   "id": res.id,
                   "model": res.model,
                   "object": res.object,
+                  "system_fingerprint": None,
                   "usage": {
                     "completion_tokens": completion_tokens,
                     "prompt_tokens": prompt_tokens,
@@ -687,7 +761,7 @@ class BeamLLM(LLM, Processor):
                   }
                 }
 
-        return BeamDict(**res)
+        return Class(**res)
 
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
@@ -736,9 +810,22 @@ class BeamLLM(LLM, Processor):
             response = self.completion(prompt=question, logprobs=logprobs, echo=echo,
                                        prompt_type=prompt_type, **default_params)
 
-        self.instruction_history.append({'question': question, 'response': response.text, 'type': 'ask'})
+        if stream:
+            def gen():
+                for res in response:
+                    yield res
 
-        return response
+                if not self.is_completions:
+                    # currently openai stream does not support update usage
+                    self.update_usage(res.response)
+                    self.instruction_history.append({'question': question, 'response': res.response, 'type': 'ask'})
+
+            return gen()
+
+        else:
+            self.update_usage(response.response)
+            self.instruction_history.append({'question': question, 'response': response, 'type': 'ask'})
+            return response
 
     def reset_instruction_history(self):
         self.instruction_history = []
@@ -949,7 +1036,7 @@ class BeamLLM(LLM, Processor):
 
     def is_keyword_found(self, text, keywords, **kwargs):
         """
-        chek if one or more key words found in given text
+        check if one or more key words found in given text
         :param text: text to looks for
         :param keywords:  key words list
         :param kwargs: additional arguments for the ask function
@@ -965,7 +1052,7 @@ class BeamLLM(LLM, Processor):
 
     def get_similar_terms(self, keywords, **kwargs):
         """
-        chek if one or more key words found in given text
+        check if one or more key words found in given text
         :param keywords:  key words list
         :param kwargs: additional arguments for the ask function
         :return: similar terms
@@ -980,7 +1067,7 @@ class BeamLLM(LLM, Processor):
         pass
 
     def stem_message(self, message, n_tokens, skip_special_tokens=True):
-        if self.tokenizer is not None:
+        if self.tokenizer is not None and hasattr(self.tokenizer, 'decode'):
             tokens = self.tokenizer(message)['input_ids'][:n_tokens+1]  # +1 for the start token
             return self.tokenizer.decode(tokens, skip_special_tokens=skip_special_tokens)
         else:

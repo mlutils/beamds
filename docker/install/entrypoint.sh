@@ -86,12 +86,11 @@ mlflow server --host 0.0.0.0 --port "$MLFLOW_PORT" --backend-store-uri /workspac
 export MLFLOW_TRACKING_URI=http://localhost:$MLFLOW_PORT
 
 # run prefect server
-
-prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
+#prefect server start --host 0.0.0.0 --port $PREFECT_PORT &
 
 # run ray serve
-ray start --head --node-ip-address=0.0.0.0 --port=${RAY_REDIS_PORT} --dashboard-port=${RAY_DASHBOARD_PORT} --dashboard-host=0.0.0.0 &
-
+#ray start --head --node-ip-address=0.0.0.0 --port=${RAY_REDIS_PORT} --dashboard-port=${RAY_DASHBOARD_PORT} --dashboard-host=0.0.0.0 &
+#ray start --address="localhost:${RAY_REDIS_PORT}" --resources="{\"hostname_${HOSTNAME}\": 1000}" &
 
 # run mongodb
 bash /workspace/install/run_mongo.sh $MONGODB_PORT
@@ -105,7 +104,8 @@ bash /workspace/install/run_mongo.sh $MONGODB_PORT
 #iptables -t nat -A PREROUTING -p tcp --dport 5000 -j REDIRECT --to-port $MLFLOW_PORT
 #iptables -t nat -A PREROUTING -p tcp --dport 27017 -j REDIRECT --to-port $MONGODB_PORT
 
-
+service start avahi-daemon
+service enable avahi-daemon
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
     # If OPTIONAL_COMMAND is empty, run bash

@@ -3,12 +3,11 @@ import mlflow
 from mlflow import log_params, log_metric
 import os
 from ..path import beam_path
-from ..core import Algorithm
+from ..algorithm import NeuralAlgorithm
 
 
 class MLflowSummaryWriter:
     def __init__(self,  exp_name, tensorboard_hparams=None, mlflow_uri=None):
-        mlflow.start_run()
 
         if mlflow_uri is None:
             mlflow_uri = os.environ['MLFLOW_TRACKING_URI']
@@ -35,7 +34,7 @@ class MLflowSummaryWriter:
 
         return self._url
 
-    def add_hparams(self, hparam_dict, metric_dict):
+    def add_hparams(self, hparam_dict, metric_dict, **kwargs):
         log_params(hparam_dict)
         for key, value in metric_dict.items():
             log_metric(key, value)
@@ -65,7 +64,7 @@ class MFBeamAlgWrapper(mlflow.pyfunc.PythonModel):
 
         hparams = beam_path(path_to_hparams).read()
 
-        self.alg = Algorithm(hparams)
+        self.alg = NeuralAlgorithm(hparams)
         self.alg.load_checkpoint(state)
 
     def predict(self, context, model_input):

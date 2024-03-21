@@ -14,9 +14,9 @@ from ..config import get_beam_llm, BeamConfig
 done_training = mp.Event()
 
 
-def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='ddp'):
+def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='ddp', master_addr='localhost'):
 
-    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_ADDR'] = master_addr
     os.environ['MASTER_PORT'] = port
     logger.info(f"Initializing distributed training with backend={backend} and framework={framework}")
     if framework == 'ddp':
@@ -30,10 +30,17 @@ def setup_distributed(rank, world_size, port='7463', backend='nccl', framework='
         # os.environ['LD_LIBRARY_PATH'] = f"/usr/local/mpi/lib:{os.environ['PATH']}"
 
         os.environ['LOCAL_RANK'] = str(rank)
+        os.environ['RANK'] = str(rank)
+        os.environ['WORLD_SIZE'] = str(world_size)
+        os.environ['OMPI_COMM_WORLD_SIZE'] = str(world_size)
+        os.environ['OMPI_COMM_WORLD_RANK'] = str(rank)
 
         import deepspeed
+        # deepspeed.init_distributed(dist_backend=backend, auto_mpi_discovery=backend == 'mpi',
+        #                            rank=rank, world_size=world_size, distributed_port=port)
         deepspeed.init_distributed(dist_backend=backend, auto_mpi_discovery=False,
                                    rank=rank, world_size=world_size, distributed_port=port)
+
     else:
         raise ValueError(f"Unknown distributed framework: {framework}")
 
@@ -45,7 +52,7 @@ def cleanup(rank, world_size, framework='ddp'):
         dist.destroy_process_group()
     elif framework == 'deepspeed':
         pass
-    elif framework == 'horovbod':
+    elif framework == 'horovod':
         import horovod.torch as hvd
         hvd.shutdown()
     else:
@@ -67,8 +74,8 @@ def path_depth(path):
     return len(str(path.resolve()).split(os.sep))
 
 
-def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None,
-                             dataset_args=None, dataset_kwargs=None):
+def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None, dataset_args=None,
+                             dataset_kwargs=None, rank=0, **kwargs):
 
     if alg_args is None:
         alg_args = tuple()
@@ -92,8 +99,11 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
                 datasets[k] = v(experiment.hparams, *dataset_args, **dataset_kwargs)
 
     if inspect.isclass(alg):
+        store_init_path = None
+        if rank == 0:
+            store_init_path = experiment.store_init_path
 
-        alg = alg(experiment.hparams, experiment=experiment, *alg_args, **alg_kwargs)
+        alg = alg(experiment.hparams, experiment=experiment, *alg_args, store_init_path=store_init_path, **alg_kwargs)
         # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
         # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
         experiment.writer_cleanup()
@@ -106,13 +116,25 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
     return alg
 
 
-def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
-    alg = algorithm_generator(*args, **kwargs)
+def training_closure(rank, world_size, experiment, alg, *args, **kwargs):
 
-    experiment.writer_control(enable=not (bool(rank)))
+    if not rank:
+        alg.training_closure(*args, **kwargs)
+        checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
+        alg.save_checkpoint(checkpoint_file)
+
+
+def default_runner(rank, world_size, experiment, algorithm_generator, *args, tensorboard_arguments=None, **kwargs):
+
+    alg = algorithm_generator(*args, rank=rank, **kwargs)
+
+    if rank == 0:
+        experiment.writer_control()
     results = {}
 
-    t0 = time.time()
+    if world_size > 1:
+        import torch.distributed as dist
+        dist.barrier()
 
     try:
         for i, results in enumerate(iter(alg)):
@@ -120,26 +142,22 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
             if done_training.is_set():
                 break
 
-            total_time = time.time() - t0
-            estimated_time = total_time * (alg.n_epochs - i - 1) / (i + 1)
+            experiment.save_model_results(copy.deepcopy(results), alg, i, argv=tensorboard_arguments)
 
-            experiment.save_model_results(copy.deepcopy(results), alg, i,
-                                          print_results=experiment.hparams.print_results,
-                                          visualize_results=experiment.hparams.visualize_results,
-                                          store_results=experiment.hparams.store_results, store_networks=experiment.hparams.store_networks,
-                                          visualize_weights=experiment.hparams.visualize_weights,
-                                          argv=tensorboard_arguments, total_time=total_time, estimated_time=estimated_time)
+            if world_size > 1:
+                logger.info(f"Worker {rank + 1}/{world_size} finished epoch {i + 1}/{alg.n_epochs}. Waiting for others.")
+                dist.barrier()
+                logger.info(f"Worker {rank + 1}/{world_size} is continuing.")
+
+        if rank == 0:
+            logger.info(f"Training is done, Worker terminates.")
 
     except KeyboardInterrupt as e:
 
-        tb = traceback.format_exc()
-        logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
-        logger.debug(f"KeyboardInterrupt: {e}")
-        logger.debug(f"KeyboardInterrupt: {tb}")
-
         if rank == 0:
-            checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
-            alg.save_checkpoint(checkpoint_file)
+            logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
+            logger.debug(f"KeyboardInterrupt: {e}")
+            training_closure(rank, world_size, experiment, alg, *args, **kwargs)
 
     except Exception as e:
 
@@ -151,16 +169,15 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
             explain = llm.explain_traceback(tb)
             logger.error(f"LLM Message: {explain}")
 
+        if rank == 0:
+
+            logger.error(f"Exception: {e}")
+            logger.error(f"Exception: {tb}")
+            logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
+            training_closure(rank, world_size, experiment, alg, *args, **kwargs)
+
         if not is_notebook():
             raise e
-
-        logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
-        logger.error(f"Exception: {e}")
-        logger.error(f"Exception: {tb}")
-
-        if rank == 0:
-            checkpoint_file = experiment.checkpoints_dir.joinpath(f'checkpoint_{alg.epoch + 1:06d}')
-            alg.save_checkpoint(checkpoint_file)
 
     experiment.writer_cleanup()
 
@@ -171,7 +188,7 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
         return alg, results
 
 
-def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs):
+def run_worker(rank, world_size, results_queue_or_kwargs, job, experiment, *args, **kwargs):
 
     logger.info(f"Worker: {rank + 1}/{world_size} is running...")
 
@@ -183,6 +200,12 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
         setup_distributed(rank, world_size, port=experiment.hparams.mp_port, backend=backend,
                           framework=experiment.distributed_training_framework)
 
+    if world_size > 1 and backend == 'mpi':
+        results_queue = None
+        kwargs = results_queue_or_kwargs
+    else:
+        results_queue = results_queue_or_kwargs
+
     experiment.set_rank(rank, world_size)
     set_seed(seed=experiment.hparams.seed, constant=rank+1, increment=False, deterministic=experiment.hparams.deterministic)
 
@@ -191,7 +214,14 @@ def run_worker(rank, world_size, results_queue, job, experiment, *args, **kwargs
     if world_size > 1:
 
         cleanup(rank, world_size, experiment.distributed_training_framework)
-        results_queue.put({'rank': rank, 'results': res})
+
+        if results_queue is not None:
+            results_queue.put({'rank': rank, 'results': res})
+
+        elif backend == 'mpi' and rank != 0:
+            from mpi4py import MPI
+            comm = MPI.COMM_WORLD
+            comm.send({'rank': rank, 'results': res}, dest=0)
 
         done_training.wait()
 

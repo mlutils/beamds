@@ -1,48 +1,10 @@
+
 import torch
-
-from ..core.processor import Processor
-from ..utils import check_type, as_tensor, beam_device
-from collections import Counter
+from .core import BeamSimilarity, Similarities
+from ..utils import check_type, as_tensor, beam_device, tqdm_beam as tqdm, lazy_property
 
 
-class TFIDF(Processor):
-
-    def __init__(self, *args, separator=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.separator = separator
-        self.state = {'idf_counter': Counter()}
-
-    def add_single(self, x, x_type=None):
-
-        if x_type is None:
-            x_type = check_type(x)
-
-        if x_type.major == 'scalar' and x_type.element == 'str':
-            x = x.split(self.separator)
-        elif x_type.minor == 'dict':
-            x = x.keys()
-
-        self.state['idf_counter'].update(set(x))
-
-    def add(self, x):
-
-        x_type = check_type(x)
-        if not (x_type.major == 'container' and x_type.minor != 'dict'):
-            self.add_single(x, x_type)
-
-        else:
-            for xi in x:
-                self.add_single(xi)
-
-    def train(self):
-        pass
-
-    def transform(self, x):
-
-        return x * self.idf
-
-
-class SparseSimilarity(Processor):
+class SparseSimilarity(BeamSimilarity):
     """
     The `SparseSimilarity` class is a processor that computes similarity between sparse vectors.
 
@@ -110,20 +72,22 @@ class SparseSimilarity(Processor):
                 Tensor: The distances to the nearest neighbors.
                 Tensor: The indices of the nearest neighbors.
     """
-    def __init__(self, *args, metric='cosine', layout='coo', vec_size=None, device=None, k=1, q=.9, **kwargs):
+    def __init__(self, *args, metric='cosine', layout='coo', vec_size=None, device=None, quantile=.9, **kwargs):
 
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, metric=metric, layout=layout, vec_size=vec_size, device=device, quantile=quantile,
+                         **kwargs)
         # possible similarity metrics: cosine, prod, l2, max
-        self.metric = metric
-        self.layout = layout
-        self.device = beam_device(device)
+        self.metric = self.get_hparam('metric', metric)
+        self.layout = self.get_hparam('layout', layout)
+        self.device = beam_device(self.get_hparam('device', device))
         self.vec_size = vec_size
-        self.state = {'index': None, 'chunks': []}
-        self.k = k
-        self.q = q
+        self.index = None
+        self.vectors = None
+        self.quantile = self.get_hparam('quantile', quantile)
 
     def reset(self):
-        self.state = {'index': None, 'chunks': []}
+        self.index = None
+        self.vectors = None
 
     def sparse_tensor(self, r, c, v,):
         device = self.device
@@ -138,21 +102,6 @@ class SparseSimilarity(Processor):
             return torch.sparse_csr_tensor(r, c, v, size=size, device=device)
 
         raise ValueError(f"Unknown format: {self.layout}")
-
-    @property
-    def index(self):
-
-        if len(self.state['chunks']):
-
-            if self.state['index'] is None:
-                chunks = self.state['chunks']
-            else:
-                chunks = [self.state['index']] + self.state['chunks']
-
-            self.state['index'] = torch.cat(chunks)
-            self.state['chunks'] = []
-
-        return self.state['index']
 
     @staticmethod
     def scipy_to_row_col_val(x):
@@ -191,15 +140,30 @@ class SparseSimilarity(Processor):
 
         return x
 
-    def add(self, x):
+    def add(self, x, index=None, **kwargs):
 
         x = self.to_sparse(x)
-        self.state['chunks'].append(x)
+        if self.vectors is None:
+            self.vectors = x
+        else:
+            self.vectors = torch.cat([self.vectors, x])
 
-    def search(self, x, k=None, **kwargs):
+        if index is not None:
+            if self.index is None:
+                self.index = index
+            else:
+                self.index = torch.cat([self.index, index])
+        else:
+            if self.index is None:
+                self.index = torch.arange(len(x), device=self.device)
+            else:
+                index = torch.arange(len(x), device=self.device) + self.index.max() + 1
+                self.index = torch.cat([self.index, index])
 
-        if k is None:
-            k = self.k
+    def train(self, x=None):
+        raise NotImplementedError
+
+    def search(self, x, k=1, **kwargs):
 
         x = self.to_sparse(x)
 
@@ -234,7 +198,7 @@ class SparseSimilarity(Processor):
                 if self.metric == 'max':
                     return x.max()
                 elif self.metric == 'quantile':
-                    return x.quantile(self.q)
+                    return x.quantile(self.quantile)
                 else:
                     raise ValueError(f"Unknown metric: {self.metric}")
 
@@ -249,5 +213,7 @@ class SparseSimilarity(Processor):
             dist = -torch.stack(dist, dim=1)
 
         topk = torch.topk(dist, k, dim=0, largest=False, sorted=True)
+        I = topk.indices.T
+        D = topk.values.T
 
-        return topk.values.T, topk.indices.T
+        return Similarities(index=self.index[I], distance=D, metric=self.metric, model='sparse')

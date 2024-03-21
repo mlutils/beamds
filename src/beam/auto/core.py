@@ -20,6 +20,9 @@ from uuid import uuid4 as uuid
 
 class AutoBeam(Processor):
 
+    # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
+    blacklisted_pip_package = ['sklearn']
+
     def __init__(self, obj):
         self._private_modules = None
         self._visited_modules = None
@@ -260,13 +263,13 @@ class AutoBeam(Processor):
         ab = AutoBeam(obj)
         path.clean()
         path.mkdir()
-        logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state.pt, requierements.txt]")
+        logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
         path.joinpath('requirements.json').write(ab.requirements)
         ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'))
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
         if hasattr(obj, 'save_state'):
-            obj.save_state(path.joinpath('state.pt'))
+            obj.save_state(path.joinpath('state'))
         else:
             logger.warning(f"Object {obj} does not have a save_state method.")
         try:
@@ -276,7 +279,7 @@ class AutoBeam(Processor):
             logger.warning(f"Could not pickle object: {obj} ({e}), saving only the state.")
 
         if not path.joinpath('skeleton.pkl').is_file() and \
-                not path.joinpath('state.pt').is_file():
+                not path.joinpath('state').exists():
             logger.error(f"Could not save object {obj} to path {path}. "
                          f"Make sure the object has a save_state method and/or "
                          f"it is pickleable.")
@@ -298,7 +301,7 @@ class AutoBeam(Processor):
         # 1. Check necessary files
         req_file = path.joinpath('requirements.json')
         modules_tar = path.joinpath('modules.tar.gz')
-        state_file = path.joinpath('state.pt')
+        state_file = path.joinpath('state')
         skeleton_file = path.joinpath('skeleton.pkl')
         metadata_file = path.joinpath('metadata.json')
 
@@ -334,9 +337,9 @@ class AutoBeam(Processor):
                     if state_file.exists:
                         obj.load_state(state_file)
                 except:
-                    obj = cls_obj.from_path(state_file)
+                    obj = cls_obj.from_state_path(state_file)
             else:
-                obj = cls_obj.from_path(state_file)
+                obj = cls_obj.from_state_path(state_file)
 
             return obj
 
@@ -372,17 +375,43 @@ class AutoBeam(Processor):
         for module_name in self.module_dependencies:
             pip_package = self.get_pip_package(module_name)
             if pip_package is not None:
-                requirements.append({'pip_package': pip_package.project_name, 'module_name': module_name,
-                                     'version': pip_package.version
-                                     })
+                if type(pip_package) is not list:
+                    pip_package = [pip_package]
+                for pp in pip_package:
+                    if pp.project_name is AutoBeam.blacklisted_pip_package:
+                        continue
+                    requirements.append({'pip_package': pp.project_name, 'module_name': module_name,
+                                         'version': pp.version
+                                         })
             else:
                 logger.warning(f"Could not find pip package for module: {module_name}")
         return requirements
 
     @staticmethod
-    def write_requirements(requirements, path):
+    def write_requirements(requirements, path, relation='~=', sim_type='major'):
+        '''
+
+        @param requirements:
+        @param path:
+        @param relation: can be '~=', '==' or '>=' or 'all'
+        @return:
+        '''
+
         path = beam_path(path)
-        content = '\n'.join([f"{r['pip_package']}=={r['version']}" for r in requirements])
+        if relation == 'all':
+            content = '\n'.join([f"{r['pip_package']}" for r in requirements])
+        elif relation in ['==', '>=']:
+            content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements])
+        elif relation == '~=':
+            if sim_type == 'major':
+                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.'))[:2]}" for r in requirements])
+            elif sim_type == 'minor':
+                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.'))[:3]}" for r in requirements])
+            else:
+                raise ValueError(f"sim_type can be 'major' or 'minor'")
+        else:
+            raise ValueError(f"relation can be '~=', '==' or '>=' or 'all'")
+
         content = f"{content}\n"
         path.write(content, ext='.txt')
 

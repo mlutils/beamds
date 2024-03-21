@@ -15,7 +15,7 @@ import os
 
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, LinearNet
+from src.beam import NeuralAlgorithm, PackedFolds, LinearNet
 from src.beam.nn import PID
 from src.beam.config import basic_beam_parser
 from src.beam.nn import GBN, MHRuleLayer, mySequential
@@ -224,7 +224,7 @@ class Head(nn.Module):
         return x
 
 
-class BetterEmbedding(torch.nn.Module):
+class BetterEmbedding(nn.Module):
 
     def __init__(self, n_num, n_categories, emb_dim, n_tables=15, initial_mask=1.,
                  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, flatten=False, kaiming_init=False, sparse=True):
@@ -463,7 +463,7 @@ class LinearNetComb(nn.Module):
 
 
 
-class CovtypeAlgorithm(Algorithm):
+class CovtypeAlgorithm(NeuralAlgorithm):
 
     def __init__(self, hparams, dataset=None, optimizers=None):
 

@@ -1,18 +1,68 @@
 from functools import partial
 
 from .utils import get_broker_url, get_backend_url
-from ..core import Processor
 from ..utils import lazy_property
+from ..core import MetaAsyncResult, MetaDispatcher
 
 
-class BeamDispatcher(Processor):
+class CeleryAsyncResult(MetaAsyncResult):
+
+    @classmethod
+    def from_str(cls, value, app=None):
+        return cls(app.AsyncResult(value))
+
+    @property
+    def value(self):
+        if self._value is None and self.is_ready:
+            self._value = self.obj.get()  # Timeout can be adjusted
+        return self._value
+
+    def wait(self, timeout=None):
+
+        try:
+            return self.obj.get(timeout=timeout)
+        except self.obj.TimeoutError:
+            return None
+
+    @property
+    def hex(self):
+        return self.obj.task_id
+
+    @property
+    def is_ready(self):
+        if self._is_ready is None:
+            self._is_ready = self.obj.ready()
+        return self._is_ready
+
+    @property
+    def is_success(self):
+        return self.obj.successful()
+
+    @property
+    def state(self):
+        return self.obj.state
+
+    @property
+    def args(self):
+        return self.obj.args
+
+    @property
+    def kwargs(self):
+        return self.obj.kwargs
+
+    def __repr__(self):
+        return f"CeleryAsyncResult({self.hex}, is_ready={self.is_ready}, is_success={self.is_success})"
+
+
+class CeleryDispatcher(MetaDispatcher):
 
     def __init__(self, *args, name=None, broker=None, backend=None,
                  broker_username=None, broker_password=None, broker_port=None, broker_scheme=None, broker_host=None,
                  backend_username=None, backend_password=None, backend_port=None, backend_scheme=None,
-                 backend_host=None, serve='local', log_level='INFO', **kwargs):
+                 backend_host=None, asynchronous=True, log_level='INFO', **kwargs):
 
-        super().__init__(*args, name=name, **kwargs)
+        # in celery obj is not used
+        super().__init__(None, *args, name=name, asynchronous=asynchronous, **kwargs)
 
         self.broker_url = get_broker_url(broker=broker, broker_username=broker_username,
                                          broker_password=broker_password, broker_port=broker_port,
@@ -23,7 +73,6 @@ class BeamDispatcher(Processor):
                                            backend_scheme=backend_scheme, backend_host=backend_host)
 
         self.log_level = log_level
-        self.serve = serve
 
     @lazy_property
     def broker(self):
@@ -38,11 +87,9 @@ class BeamDispatcher(Processor):
     def __call__(self, *args, **kwargs):
         return self.dispatch('function', *args, **kwargs)
 
-    def poll(self, task_id, *args, **kwargs):
-        res = self.broker.AsyncResult(task_id)
-        if res.state == 'SUCCESS':
-            return res.result
-        return None
+    def poll(self, task_id, timeout=0):
+        async_res = CeleryAsyncResult.from_str(task_id, app=self.broker)
+        return async_res.wait(timeout=timeout)
 
     def metadata(self, task_id, *args, **kwargs):
         res = self.broker.AsyncResult(task_id)
@@ -57,12 +104,12 @@ class BeamDispatcher(Processor):
 
     def dispatch(self, attribute, *args, **kwargs):
         res = self.broker.send_task(attribute, args=args, kwargs=kwargs)
-        if self.serve == 'local':
+        res = CeleryAsyncResult(res)
+        if self.asynchronous:
             return res
-        return res.task_id
+        else:
+            return res.value
 
-    def __getattr__(self, item):
-        if item.startswith('_') or item in ['serve'] or not hasattr(self, 'serve'):
-            return super().__getattribute__(item)
+    def getattr(self, item):
         return partial(self.dispatch, item)
 

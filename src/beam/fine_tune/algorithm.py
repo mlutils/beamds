@@ -1,13 +1,9 @@
-from peft import LoraConfig, get_peft_model, PeftModel
-
-from ..core import Algorithm
+from ..algorithm import NeuralAlgorithm
 from ..path import local_copy, in_memory_storage
-from transformers import Trainer, LlamaForCausalLM
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
-import transformers
 
 
-class FineTuneLLM(Algorithm):
+class FineTuneLLM(NeuralAlgorithm):
 
     def __init__(self, hparams, **kwargs):
 
@@ -17,6 +13,13 @@ class FineTuneLLM(Algorithm):
             config = self.load_configuration(hparams)
             model = self.load_lora_model(hparams, config=config)
             networks = {'llm': model}
+
+        # dtype = hparams.get('model_dtype', 'float16')
+        # if dtype != 'float32':
+        #     dtype = getattr(torch, dtype)
+        #     for n, v in networks['llm'].named_parameters():
+        #         if not v.requires_grad:
+        #             v.to(dtype=dtype)
 
         self.tokenizer = self.load_tokenizer(hparams, config=config)
         super().__init__(hparams, networks=networks, **kwargs)
@@ -46,6 +49,7 @@ class FineTuneLLM(Algorithm):
         if model is None:
             model = FineTuneLLM.load_model(hparams, config=config)
 
+        from peft import LoraConfig, get_peft_model
         lora_config = LoraConfig(r=hparams.lora_r, lora_alpha=hparams.lora_alpha,
                                  target_modules=hparams.target_modules, lora_dropout=hparams.lora_dropout,
                                  bias=hparams.lora_bias, fan_in_fan_out=hparams.lora_fan_in_fan_out,
@@ -59,7 +63,12 @@ class FineTuneLLM(Algorithm):
     def train_iteration(self, sample=None, label=None, index=None, counter=None, subset=None, training=True, **kwargs):
         net = self.networks['llm']
 
-        res = net(input_ids=sample['input_ids'], attention_mask=sample['attention_mask'], labels=sample['input_ids'])
+        # labels are shifted inside the model forward pass
+        # (see https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L1106)
+
+        labels = sample['labels'] if 'labels' in sample else sample['input_ids']
+
+        res = net(input_ids=sample['input_ids'], attention_mask=sample['attention_mask'], labels=labels)
         self.apply(res.loss)
 
     def save_checkpoint(self, path=None, networks=True, optimizers=True, schedulers=True,
@@ -86,6 +95,8 @@ class FineTuneLLM(Algorithm):
         aux = super().load_checkpoint(path_or_state, networks=False, optimizers=optimizers, schedulers=schedulers,
                         processors=processors, scaler=scaler, scalers=scalers, swa_schedulers=swa_schedulers, swa_networks=swa_networks,
                         hparams=hparams)
+
+        from peft import PeftModel
 
         in_memory_path = in_memory_storage(mode='file', data=aux.pop('lora'))
         with local_copy(in_memory_path, as_beam_path=False) as local_path:

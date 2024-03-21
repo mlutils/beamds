@@ -6,7 +6,8 @@ from ..utils import find_port, check_type, is_notebook, beam_device
 from ..config import print_beam_hyperparameters
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
-from ..core import Processor, Algorithm
+from ..core import Processor
+from ..algorithm import NeuralAlgorithm
 from functools import partial
 from ..experiment import beam_algorithm_generator
 
@@ -17,7 +18,7 @@ class BeamHPO(Processor):
 
     def __init__(self, hparams, *args, hpo_config=None,
                  alg=None, dataset=None, algorithm_generator=None, alg_args=None,
-                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, **kwargs):
+                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, post_train_hook=None, **kwargs):
 
         if hpo_config is None:
             hpo_config = HPOConfig(**kwargs)
@@ -38,8 +39,9 @@ class BeamHPO(Processor):
         self.identifier = f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}'
         self.experiment_hparams.set('identifier', self.identifier)
 
+        self.alg = alg
         if algorithm_generator is None:
-            self.ag = partial(beam_algorithm_generator, alg=alg, dataset=dataset,
+            self.ag = partial(beam_algorithm_generator, dataset=dataset,
                               alg_args=alg_args, alg_kwargs=alg_kwargs, dataset_args=dataset_args,
                               dataset_kwargs=dataset_kwargs)
         else:
@@ -68,10 +70,11 @@ class BeamHPO(Processor):
         self.hpo_path = hpo_path
         self.experiments_tracker = []
         self.suggestions = {}
+        self.post_train_hook = post_train_hook
 
     @staticmethod
     def get_optimization_mode(mode, objective_name):
-        return Algorithm.get_optimization_mode(mode, objective_name)
+        return NeuralAlgorithm.get_optimization_mode(mode, objective_name)
 
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}

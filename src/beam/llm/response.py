@@ -1,6 +1,13 @@
+import inspect
 import re
 import time
 import uuid
+
+try:
+    from collections.abc import Iterator
+except ImportError:
+    # assume python < 3.10
+    from collections import Iterator
 
 from ..logger import beam_logger as logger
 from ..utils import parse_text_to_protocol, retry
@@ -19,12 +26,21 @@ class LLMResponse:
         self.model = llm.model
         self.created = int(time.time())
         self.chat = chat
-        self.object = "chat.completion" if chat else "text_completion"
+
+        if stream:
+            self.object = "chat.completion.chunk"
+        elif chat:
+            self.object = "chat.completion"
+        else:
+            self.object = "text.completion"
+
         self.stream = stream
         self.prompt_type = prompt_type
         self._task_result = None
         self._task_success = None
-        assert self.verify(), "Response is not valid"
+
+        if not inspect.isgenerator(self.response) and not isinstance(self.response, Iterator):
+            assert self.verify(), "Response is not valid"
 
     def __str__(self):
         return self.text

@@ -1,5 +1,6 @@
 import json
 import math
+from json import JSONDecodeError
 from typing import Optional, Any
 import requests
 import pandas as pd
@@ -12,7 +13,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 from ..path import beam_key, normalize_host
 
 from .utils import get_conversation_template
-from ..utils import lazy_property
+from ..utils import lazy_property, strip_suffix
 from .openai import OpenAIBase
 
 
@@ -20,7 +21,7 @@ class FCConversationLLM(BeamLLM):
 
     def get_prompt(self, messages):
 
-        conv = get_conversation_template(self.model_adapter)
+        conv = get_conversation_template(self.adapter)
         for m in messages:
 
             if m['role'] == 'system':
@@ -54,15 +55,20 @@ class FCConversationLLM(BeamLLM):
 
 class TGILLM(FCConversationLLM):
 
-    _info: Any = PrivateAttr()
-    _client: Any = PrivateAttr()
+    _info: Any = PrivateAttr(default=None)
+    _client: Any = PrivateAttr(default=None)
+    timeout: Optional[float] = Field(None)
 
-    def __init__(self, hostname=None, port=None, *args, model_adapter=None, **kwargs):
+    def __init__(self, hostname=None, port=None, *args, adapter=None, timeout=None, **kwargs):
 
         api_base = f"http://{normalize_host(hostname, port)}"
 
+        client_kwargs = {}
+        if timeout is not None:
+            client_kwargs['timeout'] = timeout
+
         from text_generation import Client
-        self._client = Client(api_base)
+        self._client = Client(api_base, **client_kwargs)
 
         req = requests.get(f"{api_base}/info")
         self._info = json.loads(req.text)
@@ -70,9 +76,9 @@ class TGILLM(FCConversationLLM):
         kwargs['model'] = self._info['model_id']
         kwargs['scheme'] = 'tgi'
 
-        if model_adapter is None:
-            model_adapter = 'raw'
-        super().__init__(*args, model_adapter=model_adapter, **kwargs)
+        if adapter is None:
+            adapter = 'raw'
+        super().__init__(*args, adapter=adapter, **kwargs)
 
     def update_usage(self, response):
 
@@ -181,7 +187,7 @@ class TGILLM(FCConversationLLM):
 
         res = res.response
         text = res.generated_text
-        text = text.rstrip(self.stop_sequence)
+        text = strip_suffix(text, self.stop_sequence)
         return text
 
 
@@ -205,12 +211,11 @@ class FastChatLLM(OpenAIBase):
 
 class FastAPILLM(FCConversationLLM):
 
-    model: Optional[str] = Field(None)
     hostname: Optional[str] = Field(None)
     headers: Optional[dict] = Field(None)
     consumer: Optional[str] = Field(None)
     protocol: Optional[str] = Field(None)
-    _models: Any = PrivateAttr()
+    _models: Any = PrivateAttr(default=None)
 
     def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
 
@@ -263,6 +268,8 @@ class FastAPILLM(FCConversationLLM):
         if 'stop_criteria' in kwargs:
             kwargs_processed['stop_criteria'] = kwargs.pop('stop_criteria')
 
+        kwargs_processed['stream'] = kwargs.pop('stream', False)
+
         return kwargs_processed
 
     def _chat_completion(self, messages=None, **kwargs):
@@ -275,16 +282,41 @@ class FastAPILLM(FCConversationLLM):
         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         return self._completion_internal(prompt, **kwargs)
 
-    def _completion_internal(self, prompt, **kwargs):
+    def _stream_generator(self, d):
+
+        with requests.post(f"{self.protocol}://{self.hostname}/predict/stream", headers=self.headers, json=d,
+                           stream=True, verify=False) as response:
+            for chunk in response.iter_content(chunk_size=1024):
+
+                chunks = chunk.split("\0")
+                for c in chunks:
+                    if not len(c):
+                        continue
+                    try:
+                        yield json.loads(c.decode())
+                    except JSONDecodeError:
+                        logger.error(f"Bad chunk: {c}")
+                        yield c
+
+    def _completion_internal(self, prompt, stream=False, **kwargs):
 
         d = dict(model_name=self.model, consumer=self.consumer, input=prompt,
                  hyper_params=self.process_kwargs(prompt, **kwargs))
 
-        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
+        if stream:
+            res = self._stream_generator(d)
+            return CompletionObject(prompt=d['input'], kwargs=d, response=res)
+
+        else:
+            res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
                             verify=False)
-        return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
+            return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
     def verify_response(self, res):
+
+        if res.stream:
+            return True
+
         try:
 
             if not res.response['is_done']:
@@ -401,8 +433,8 @@ class HuggingFaceLLM(BeamLLM):
     input_device: Optional[str] = Field(None)
     eos_pattern: Optional[str] = Field(None)
     tokenizer_name: Optional[str] = Field(None)
-    _text_generation_pipeline: Any = PrivateAttr()
-    _conversational_pipeline: Any = PrivateAttr()
+    _text_generation_pipeline: Any = PrivateAttr(default=None)
+    _conversational_pipeline: Any = PrivateAttr(default=None)
 
     def __init__(self, model, tokenizer=None, dtype=None, chat=False, input_device=None, compile=True, *args,
                  model_kwargs=None,

@@ -9,10 +9,9 @@ from threading import Thread
 from uuid import uuid4 as uuid
 
 from ..logger import beam_logger as logger
-from ..experiment import Experiment
 from ..utils import find_port
 from ..config import to_dict
-from ..core import Processor
+from ..core import MetaDispatcher
 
 try:
     import torch
@@ -21,13 +20,12 @@ except ImportError:
     has_torch = False
 
 
-class BeamServer(Processor):
+class BeamServer(MetaDispatcher):
 
     def __init__(self, obj, *args, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
                  tls=False, n_threads=4, application=None, predefined_attributes=None, **kwargs):
 
-        super().__init__(*args, **kwargs)
-        self.obj = obj
+        super().__init__(obj, *args, asynchronous=False, **kwargs)
 
         if use_torch and has_torch:
             self.load_function = torch.load
@@ -67,11 +65,6 @@ class BeamServer(Processor):
             self.batch = []
 
         atexit.register(self._cleanup)
-
-        if inspect.isfunction(obj):
-            self.type = 'function'
-        else:
-            self.type = 'class'
 
         if predefined_attributes is None:
             predefined_attributes = {}
@@ -119,6 +112,7 @@ class BeamServer(Processor):
     def build_algorithm_from_path(cls, path, alg, override_hparams=None, dataset=None, alg_args=None, alg_kwargs=None,
                              dataset_args=None, dataset_kwargs=None, **argv):
 
+        from ..experiment import Experiment
         experiment = Experiment.reload_from_path(path, override_hparams=override_hparams, **argv)
         alg = experiment.algorithm_generator(alg, dataset=dataset, alg_args=alg_args, alg_kwargs=alg_kwargs,
                                                   dataset_args=dataset_args, dataset_kwargs=dataset_kwargs)
@@ -213,18 +207,26 @@ class BeamServer(Processor):
 
     def get_info(self):
 
+        obj = self.real_object
+
         d = {'name': None, 'obj': self.type, 'serialization': self.serialization_method}
-        if self.type == 'function':
-            d['vars_args'] = self.obj.__code__.co_varnames
+
+        if obj is None:
+            d['attributes'] = self._predefined_attributes.copy()
+            d['hparams'] = None
+            d['vars_args'] = None
+
+        elif self.type == 'function':
+            d['vars_args'] = obj.__code__.co_varnames
         else:
-            d['vars_args'] = self.obj.__init__.__code__.co_varnames
-            if hasattr(self.obj, 'hparams'):
-                d['hparams'] = to_dict(self.obj.hparams)
+            d['vars_args'] = obj.__init__.__code__.co_varnames
+            if hasattr(obj, 'hparams'):
+                d['hparams'] = to_dict(obj.hparams)
             else:
                 d['hparams'] = None
 
             attributes = self._predefined_attributes.copy()
-            for name, attr in inspect.getmembers(self.obj):
+            for name, attr in inspect.getmembers(obj):
                 if type(name) is not str:
                     continue
                 if not name.startswith('_') and (inspect.ismethod(attr) or inspect.isfunction(attr)):
@@ -232,15 +234,15 @@ class BeamServer(Processor):
                 elif not name.startswith('_') and not inspect.isbuiltin(attr):
                     attributes[name] = 'variable'
 
-            properties = inspect.getmembers(type(self.obj), lambda m: isinstance(m, property))
+            properties = inspect.getmembers(type(obj), lambda m: isinstance(m, property))
             for name, attr in properties:
                 if not name.startswith('_'):
                     attributes[name] = 'property'
 
             d['attributes'] = attributes
 
-        if hasattr(self.obj, 'name'):
-            d['name'] = self.obj.name
+        if hasattr(obj, 'name'):
+            d['name'] = obj.name
 
         if hasattr(self, 'metadata'):
             metadata = self.metadata
@@ -265,8 +267,12 @@ class BeamServer(Processor):
         del self.response_queue[req_id]
         return result
 
-    def call_function(self, client, args, kwargs):
-        return self.query_algorithm(client, '__call__', args, kwargs)
+    def call(self, client, *args, **kwargs):
+
+        if self.type == 'function':
+            return self.query_algorithm(client, None, *args, **kwargs)
+        else:
+            return self.query_algorithm(client, '__call__', *args, **kwargs)
 
     def query_algorithm(self, client, method, args, kwargs, return_raw_results=False):
 
@@ -277,7 +283,10 @@ class BeamServer(Processor):
         if method in self.batch:
             results = self.batched_query_algorithm(method, args, kwargs)
         else:
-            method = getattr(self.obj, method)
+            if method is None:
+                method = self.obj
+            else:
+                method = getattr(self.obj, method)
             results = method(*args, **kwargs)
 
         if not return_raw_results and client == 'beam':

@@ -61,12 +61,12 @@ if __name__ == '__main__':
     # print('done!')
 
     # Create a fake algorithm
-    fake_alg = BeamFakeAlg(sleep_time=3., variance=0.5, error_rate=0.1)
+    fake_alg = BeamFakeAlg(sleep_time=10., variance=0.5, error_rate=0.1)
 
-    def postrun(task_args=None, **kwargs):
-        logger.info(f'Task has completed for {task_args} with {kwargs}')
+    def postrun(**kwargs):
+        logger.info(f'Server side callback: Task has completed for {kwargs}')
 
-    server = AsyncServer(fake_alg, postrun=postrun, port=28412, ws_port=28411,
+    server = AsyncServer(fake_alg, postrun=postrun, port=28450, ws_port=28402,
                          )
     server.run()
     print('Done!')

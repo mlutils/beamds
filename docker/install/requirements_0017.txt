@@ -21,3 +21,12 @@ websockets
 websocket-client
 coolname
 Faker
+tritonclient[all]
+smbprotocol[smb2]
+# fastchat
+sentence_transformers
+polars
+rho-pysparnn
+fastbm25
+pysftp
+transformers_stream_generator

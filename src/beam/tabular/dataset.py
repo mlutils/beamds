@@ -154,6 +154,9 @@ class TabularDataset(UniversalDataset):
         else:
             self.n_classes = self.label.max() + 1
 
+        # logger.warning("Check x-max consistency at dataset:")
+        # logger.warning(f"n-tokens: {self.n_tokens}")
+        # logger.warning(self.n_tokens < x.max(dim=0).values)
         self.split(validation=len(x_train_mixed) + np.arange(len(x_val_mixed)),
                            test=len(x_train_mixed) + len(x_val_mixed) + np.arange(len(x_test_mixed)))
 

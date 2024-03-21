@@ -15,7 +15,8 @@ from ..data import BeamData
 
 class UniversalDataset(torch.utils.data.Dataset):
 
-    def __init__(self, *args, index=None, label=None, device=None, target_device=None, to_torch=True, **kwargs):
+    def __init__(self, *args, index=None, label=None, device=None, target_device=None, to_torch=True,
+                 index_mapping='backward', **kwargs):
         """
         Universal Beam dataset class
 
@@ -35,8 +36,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         target_device = beam_device(target_device)
 
         self.index = None
-        self.label = label
-        self.set_index(index)
+        self.set_index(index, mapping=index_mapping)
 
         if not hasattr(self, 'indices_split'):
             self.indices = {}
@@ -78,6 +78,8 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 self.data = None
 
+        self.label = as_tensor(label, device=self.device)
+
     @lazy_property
     def target_device(self):
         if self._target_device is not None:
@@ -91,17 +93,24 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         return None
 
-    def set_index(self, index):
+    def set_index(self, index, mapping='backward'):
 
         self.index = None
         if index is not None:
             index_type = check_type(index)
             if index_type.minor == 'tensor':
                 index = as_numpy(index)
-            index = pd.Series(data=np.arange(len(index)), index=index)
-            # check if index is not a simple arange
-            if np.abs(index.index.values - np.arange(len(index))).sum() > 0:
+            if mapping == 'backward':
+                index = pd.Series(data=np.arange(len(index)), index=index)
+                # check if index is not a simple arange
+                if np.abs(index.index.values - np.arange(len(index))).sum() > 0:
+                    self.index = index
+            elif mapping == 'forward':
+                index = pd.Series(data=index, index=np.arange(len(index)))
                 self.index = index
+            else:
+                raise NotImplementedError(f"Mapping type: {mapping} not supported")
+
 
     def train(self):
         self.training = True
@@ -132,7 +141,16 @@ class UniversalDataset(torch.utils.data.Dataset):
         else:
             return self.data[ind]
 
+    @classmethod
+    def get_subset(cls, self, subset):
+        index = self.indices[subset]
+        return cls(self.data, index=index, label=self.label, device=self.device,
+                     target_device=self.target_device, to_torch=self.to_torch, index_mapping='forward')
+
     def __getitem__(self, ind):
+
+        if type(ind) is str:
+            return UniversalDataset.get_subset(self, ind)
 
         if self.index is not None:
 
@@ -204,6 +222,9 @@ class UniversalDataset(torch.utils.data.Dataset):
     #         path.write(state)
 
     def __len__(self):
+
+        if self.index is not None:
+            return len(self.index)
 
         if self.data_type is None:
             self.data_type = check_type(self.data).minor
@@ -320,7 +341,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.statistics = stats
 
     def build_sampler(self, batch_size, subset=None, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
-                       dynamic=False, buffer_size=None, probs_normalization='sum', sample_size=100000):
+                       dynamic=False, buffer_size=None, probs_normalization='sum', tail=True, sample_size=100000):
 
         from sklearn.utils.class_weight import compute_sample_weight
 
@@ -334,7 +355,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if not persistent:
             return UniversalBatchSampler(indices, batch_size, shuffle=False,
-                                         tail=True, once=True, dynamic=False)
+                                         tail=tail, once=True, dynamic=False)
 
         probs = None
         if oversample and subset in self.labels_split and self.labels_split[subset] is not None:
@@ -346,11 +367,11 @@ class UniversalDataset(torch.utils.data.Dataset):
             probs = self.probs[subset]
 
         return UniversalBatchSampler(indices,
-                                     batch_size, probs=probs, shuffle=True, tail=True,
+                                     batch_size, probs=probs, shuffle=True, tail=tail,
                                      once=False, expansion_size=expansion_size,
                                      dynamic=dynamic, buffer_size=buffer_size,
                                      probs_normalization=probs_normalization,
-                                     sample_size=sample_size)
+                                     sample_size=sample_size, device=self.device)
 
     def build_dataloader(self, sampler, num_workers=0, pin_memory=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2):

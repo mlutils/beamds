@@ -1,4 +1,4 @@
-# beam_setup.py
+# setup.py
 import importlib
 
 
@@ -61,11 +61,13 @@ class BeamImporter:
 
         try:
             imported_object = importlib.import_module(actual_name)
+            # print(f"Info: actual_name: {actual_name}, imported_object: {imported_object}")
         except Exception as e:
             try:
                 module_name, object_name = actual_name.rsplit('.', 1)
                 module = importlib.import_module(module_name)
                 imported_object = getattr(module, object_name)
+                # print(f"Info: module_name: {module_name}, object_name: {object_name}, imported_object: {imported_object}")
             except:
                 print(f"Warning: Could not import {actual_name}, {e}, Skipping...")
                 imported_object = None
@@ -105,7 +107,7 @@ def load_ipython_extension(ipython):
             ipython.push({alias: module})
         if alias == 'beam':
             for k in module.__dict__.keys():
-                if not k.startswith('_'):
+                if not k.startswith('_') and k in module.__all__:
                     ipython.push({k: module.__dict__[k]})
 
     print(f"Done importing packages. It took: {time.time() - t0: .2} seconds")

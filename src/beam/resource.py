@@ -7,7 +7,7 @@ def resource(uri, **kwargs):
         return beam_path(uri, **kwargs)
 
     scheme = uri.split(':')[0]
-    if scheme in ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp', 'comet', 'io', 'dict', 'redis']:
+    if scheme in ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp', 'comet', 'io', 'dict', 'redis', 'smb', 'nt']:
         from .path import beam_path
         return beam_path(uri, **kwargs)
     elif scheme in ['beam-http', 'beam-https', 'beam-grpc']:
@@ -19,5 +19,8 @@ def resource(uri, **kwargs):
     elif scheme in ['openai', 'tgi', 'fastchat', 'huggingface', 'fastapi', 'fastapi-dp']:
         from .llm import beam_llm
         return beam_llm(uri, **kwargs)
+    elif scheme in ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs']:
+        from .serve import triton_client
+        return triton_client(uri, **kwargs)
     else:
         raise Exception(f'Unknown resource scheme: {scheme}')

@@ -1,12 +1,12 @@
 import numpy as np
 import torch
-from ..core import Algorithm
+from ..algorithm import NeuralAlgorithm
 from ..logger import beam_logger as logger
 from ..utils import as_numpy
 from .beam_similarity import BeamSimilarity
 
 
-class BeamSSL(Algorithm):
+class BeamSSL(NeuralAlgorithm):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, dataset=None, labeled_dataset=None):
 
@@ -180,8 +180,8 @@ class BeamSSL(Algorithm):
         return self.sim
 
     def inference_iteration(self, sample=None, results=None, subset=None, predicting=True, similarity=0,
-                            projection=True, prediction=True, augmentations=0, inference_networks=True,
-                            add_to_sim=False, latent_variable='h', **kwargs):
+                            projection=True, prediction=True, augmentations=0, add_to_sim=False, latent_variable='h',
+                            **kwargs):
 
         data = {}
         if isinstance(sample, dict):
@@ -191,7 +191,7 @@ class BeamSSL(Algorithm):
         else:
             x = sample
 
-        networks = self.inference_networks if inference_networks else self.networks
+        networks = self.networks
 
         # b = len(x)
         # if b < self.batch_size_eval:
@@ -233,7 +233,7 @@ class BeamSSL(Algorithm):
 
         if similarity > 0:
             if self.sim is not None:
-                similarities = self.sim.most_similar(data[latent_variable], n=similarity)
+                similarities = self.sim.search(data[latent_variable], k=similarity)
 
                 data['similarities_index'] = similarities.index
                 data['similarities_distance'] = similarities.distance

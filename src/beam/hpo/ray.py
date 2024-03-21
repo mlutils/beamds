@@ -9,8 +9,8 @@ from .utils import TimeoutStopper
 from ..utils import find_port, check_type, is_notebook, beam_device
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
+from ..distributed.ray_dispatcher import RayCluster
 
-import ray
 from ray.tune import JupyterNotebookReporter, TuneConfig
 from ray import tune, train
 from functools import partial
@@ -20,7 +20,7 @@ import numpy as np
 from .core import BeamHPO
 
 
-class RayHPO(BeamHPO):
+class RayHPO(BeamHPO, RayCluster):
 
     @staticmethod
     def _categorical(param, choices):
@@ -72,39 +72,26 @@ class RayHPO(BeamHPO):
     def _randn(param, mu, sigma):
         return tune.qrandn(mu, sigma)
 
-    @staticmethod
-    def init_ray(address=None, num_cpus=None, num_gpus=None, resources=None, labels=None, object_store_memory=None,
-                 ignore_reinit_error=False, include_dashboard=True, dashboard_host='0.0.0.0',
-                 dashboard_port=None, job_config=None, configure_logging=True, logging_level=None, logging_format=None,
-                 log_to_driver=True, namespace=None, runtime_env=None, storage=None):
-
-        kwargs = {}
-        if logging_level is not None:
-            kwargs['logging_level'] = logging_level
-
-        ray.init(address=address, num_cpus=num_cpus, num_gpus=num_gpus, resources=resources, labels=labels,
-                 object_store_memory=object_store_memory, ignore_reinit_error=ignore_reinit_error,
-                 job_config=job_config, configure_logging=configure_logging, logging_format=logging_format,
-                 log_to_driver=log_to_driver, namespace=namespace, storage=storage,
-                 runtime_env=runtime_env, dashboard_port=dashboard_port,
-                 include_dashboard=include_dashboard, dashboard_host=dashboard_host, **kwargs)
-
-    @staticmethod
-    def shutdown_ray():
-        ray.shutdown()
-
     def runner(self, config):
 
         hparams = self.generate_hparams(config)
 
         experiment = Experiment(hparams, hpo='tune', print_hyperparameters=False)
-        alg, report = experiment(self.ag, return_results=True)
+
+        trial_dir = beam_path(train.get_context().get_trial_dir())
+        logger.info(f"Experiment directory is: {experiment.experiment_dir}, see experiment_dir at beam_configuration.pkl"
+                    f" in trial directory ({trial_dir})")
+        trial_dir.joinpath('beam_configuration.pkl').write({'experiment_dir': experiment.experiment_dir})
+
+        alg, report = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True)
         train.report({report.objective_name: report.best_objective})
+        if self.post_train_hook is not None:
+            self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=report)
 
         self.tracker(algorithm=alg, results=report.data, hparams=hparams, suggestion=config)
 
     def run(self, *args, runtime_env=None, tune_config_kwargs=None, run_config_kwargs=None,
-            init_config_kwargs=None, **kwargs):
+            init_config_kwargs=None, restore_path=None, restore_config=None, **kwargs):
 
         hparams = copy.deepcopy(self.hparams)
         hparams.update(kwargs)
@@ -166,19 +153,31 @@ class RayHPO(BeamHPO):
         if 'search_alg' not in tune_config_kwargs.keys():
             metric = tune_config_kwargs['metric']
             mode = tune_config_kwargs['mode']
-            tune_config_kwargs['search_alg'] = OptunaSearch(search_space, metric=metric, mode=mode)
+            tune_config_kwargs['search_alg'] = OptunaSearch(space=None, metric=metric, mode=mode)
             # tune_config_kwargs['search_alg'] = OptunaSearch()
 
         tune_config = TuneConfig(**tune_config_kwargs)
 
         # the ray run configuration
         local_dir = self.hparams.get('hpo_path')
-        run_config = RunConfig(stop=stop, storage_path=local_dir, name=self.identifier)
+
+        run_config_kwargs = run_config_kwargs or {}
+        if 'name' not in run_config_kwargs.keys():
+            run_config_kwargs['name'] = self.identifier
+        if 'stop' not in run_config_kwargs.keys():
+            run_config_kwargs['stop'] = stop
+        if 'storage_path' not in run_config_kwargs.keys():
+            run_config_kwargs['storage_path'] = local_dir
+        run_config = RunConfig(**run_config_kwargs)
 
         logger.info(f"Starting ray-tune hyperparameter optimization process. "
                     f"Results and logs will be stored at {local_dir}")
 
-        tuner = tune.Tuner(runner_tune, param_space=None, tune_config=tune_config, run_config=run_config)
+        if restore_path:
+            restore_config = restore_config or {}
+            tuner = tune.Tuner.restore(restore_path, runner_tune, **restore_config)
+        else:
+            tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()
 
         return analysis

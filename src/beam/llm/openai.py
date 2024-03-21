@@ -45,7 +45,7 @@ class OpenAIBase(BeamLLM):
 
     def _completion(self, prompt=None, **kwargs):
         # self.sync_openai()
-        res = self.client.completion.create(engine=self.model, prompt=prompt, **kwargs)
+        res = self.client.completions.create(model=self.model, prompt=prompt, **kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
     def _chat_completion(self, messages=None, **kwargs):
@@ -54,10 +54,16 @@ class OpenAIBase(BeamLLM):
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 
     def verify_response(self, res):
+        stream = res.stream
         res = res.response
+
+        if not hasattr(res.choices[0], 'finish_reason'):
+            return False
+
         finish_reason = res.choices[0].finish_reason
-        if finish_reason != 'stop':
+        if finish_reason != 'stop' and not stream:
             logger.warning(f"finish_reason is {finish_reason}")
+
         return True
 
     def extract_text(self, res):
@@ -80,9 +86,9 @@ class OpenAIBase(BeamLLM):
         return res
 
 
-class OpenAI(OpenAIBase):
+class OpenAILLM(OpenAIBase):
 
-    _models: Any = PrivateAttr()
+    _models: Any = PrivateAttr(default=None)
 
     def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
 
@@ -97,10 +103,10 @@ class OpenAI(OpenAIBase):
 
     @property
     def is_chat(self):
-        chat_models = ['gpt-4', 'gpt-4-0314', 'gpt-4-32k', 'gpt-4-32k-0314', 'gpt-3.5-turbo', 'gpt-3.5-turbo-0301']
-        if any([m in self.model for m in chat_models]):
-            return True
-        return False
+        instruct_models = ['gpt-3.5-turbo-instruct', 'babbage-002', 'davinci-002']
+        if self.model in instruct_models:
+            return False
+        return True
 
     def file_list(self):
         import openai

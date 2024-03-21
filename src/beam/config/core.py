@@ -25,7 +25,7 @@ class BeamConfig(Namespace):
     parameters = []
     defaults = {}
 
-    def __init__(self, *args, config=None, tags=None, return_defaults=False, **kwargs):
+    def __init__(self, *args, config=None, tags=None, return_defaults=False, silent=False, strict=False, **kwargs):
 
         if tags is None:
             tags = defaultdict(set)
@@ -68,7 +68,7 @@ class BeamConfig(Namespace):
                 parser = self.update_parser(parser, defaults=d, parameters=h, source=ti.__name__)
 
             config, more_tags = _beam_arguments(parser, *args, return_defaults=return_defaults,
-                                                return_tags=True, **kwargs)
+                                                return_tags=True, silent=silent, strict=strict, **kwargs)
 
             for k, v in more_tags.items():
                 tags[k] = tags[k].union(v)

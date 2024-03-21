@@ -11,9 +11,8 @@ from ..serve.http_client import HTTPClient
 
 class AsyncClient(HTTPClient):
 
-    def __init__(self, *args, ws_port=None, ws_tls=False, hostname=None,
-                 postrun=None, enable_websocket=True,  **kwargs):
-        super().__init__(*args, hostname=hostname, **kwargs)
+    def __init__(self, hostname=None, ws_port=None, ws_tls=False, postrun=None, enable_websocket=True,  **kwargs):
+        super().__init__(hostname=hostname, **kwargs)
 
         metadata = self.info.get('metadata', {})
         if ws_port is None and 'ws_port' in metadata:
@@ -35,6 +34,9 @@ class AsyncClient(HTTPClient):
 
         self.ws = None
         self.wst = None
+
+    def set_callback(self, callback):
+        self.postrun_callback = callback
 
     def post(self, path, *args, postrun_args=None, postrun_kwargs=None, **kwargs):
 
@@ -76,8 +78,11 @@ class AsyncClient(HTTPClient):
     def postrun(self, result):
         pass
 
-    def poll(self, task_id):
-        return self.get('/poll/beam', params={'task_id': task_id})
+    def poll(self, task_id, timeout=None):
+        params = {'task_id': task_id}
+        if timeout is not None:
+            params['timeout'] = timeout
+        return self.get('/poll/beam', params=params)
 
     def on_message(self, ws, message):
         data = json.loads(message)
@@ -85,12 +90,12 @@ class AsyncClient(HTTPClient):
         # Extract task_id and state from the message
         task_id = data.get('task_id')
         state = data.get('state')
+        metadata = data.get('metadata', None)
 
         if state == 'SUCCESS':
             result = self.poll(task_id)
             self.postrun_callback(result)
         else:
-            metadata = self.metadata(task_id)
             logger.error(f"Task {task_id} failed with state {state} and metadata: {metadata}")
 
     def on_error(self, ws, error):

@@ -10,7 +10,8 @@ from timeit import default_timer as timer
 import threading
 
 from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format,
-                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type,  lazy_property)
+                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type, lazy_property,
+                     strip_prefix, recursive_detach, recursive_to_cpu)
 
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
@@ -19,7 +20,7 @@ from ..data import BeamData
 
 class BeamReport(object):
 
-    def __init__(self, objective=None, objective_mode='max'):
+    def __init__(self, objective=None, objective_mode='max', aux_objectives=None, aux_objectives_modes=None):
 
         self.scalar = None
         self.aux = None
@@ -34,8 +35,20 @@ class BeamReport(object):
         self.scalar_aggregation = None
         self.scalars_aggregation = None
 
-        self.objective_name = objective
-        self.objective_mode = objective_mode
+        if aux_objectives is None:
+            aux_objectives = []
+        if aux_objectives_modes is None:
+            aux_objectives_modes = []
+
+        if objective is not None:
+            aux_objectives.insert(0, objective)
+            aux_objectives_modes.insert(0, objective_mode)
+
+        self.objective_names = aux_objectives
+        self.objectives_modes = aux_objectives_modes
+
+        self.objective_name = None
+        self.objective_mode = None
 
         self.epoch = None
         self.best_epoch = None
@@ -271,7 +284,7 @@ class BeamReport(object):
             name = k
         else:
             subset = k.split('/')[0]
-            name = k.lstrip(f"{subset}/")
+            name = strip_prefix(k, f"{subset}/")
         return subset, name
 
     @lazy_property
@@ -289,6 +302,14 @@ class BeamReport(object):
             self.best_state = True
         else:
             self.best_state = False
+
+    def set_objective_name(self, keys):
+
+        for i, o in enumerate(self.objective_names):
+            if o is not None and o in keys:
+                self.objective_name = o
+                self.objective_mode = self.objectives_modes[i]
+                return
 
     @contextmanager
     def track_epoch(self, subset, batch_size=None, training=True):
@@ -320,15 +341,27 @@ class BeamReport(object):
 
         agg = None
 
+        if self.objective_name is None:
+            self.set_objective_name(list(self.subsets_keys[subset]['scalar']))
+
         for name in self.subsets_keys[subset]['scalar']:
 
             k = f'{subset}/{name}' if subset is not None else name
             v = self.scalar[k]
 
             self.scalar[k] = self.stack_scalar(v, batch_size=batch_size)
+
             if name == self.objective_name and track_objective:
                 agg = self.scalar_aggregation.get(k, None)
                 self.set_objective(self.aggregate_scalar(self.scalar[k], agg))
+
+        for data_type in self.subsets_keys[subset]:
+            if data_type in ['scalar', 'scalars', 'stats']:
+                continue
+            for name in self.subsets_keys[subset][data_type]:
+                k = f'{subset}/{name}' if subset is not None else name
+                v = self.aux[data_type][k]
+                self.aux[data_type][k] = recursive_to_cpu(v)
 
         if self.objective_name and track_objective and agg is None:
             logger.warning(f"The objective {self.objective_name} is missing from the validation results")
@@ -349,18 +382,24 @@ class BeamReport(object):
 
     @staticmethod
     def detach_scalar(val):
-        val_type = check_type(val)
-        if val_type.major == 'scalar':
-            if val_type.element == 'float':
-                val = float(val)
-            elif val_type.element == 'int':
-                val = int(val)
-        elif val_type.minor == 'tensor':
-            val = val.detach().cpu()
-        elif val_type.major == 'container':
-            val = as_tensor(val, device='cpu')
-
+        recursive_detach(val)
         return val
+
+    # @staticmethod
+    # def detach_scalar(val):
+    #     val_type = check_type(val)
+    #     if val_type.major == 'scalar':
+    #         if val_type.element == 'float':
+    #             val = float(val)
+    #             pass
+    #         elif val_type.element == 'int':
+    #             val = int(val)
+    #     elif val_type.minor == 'tensor':
+    #         val = val.detach().cpu()
+    #     elif val_type.major == 'container':
+    #         val = as_tensor(val, device='cpu')
+    #
+    #     return val
 
     @staticmethod
     def stack_scalar(val, batch_size=None):

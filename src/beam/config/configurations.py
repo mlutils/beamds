@@ -3,6 +3,7 @@ import os
 import math
 from pathlib import Path
 from .core import BeamConfig, BeamParam
+from .deepspeed import DeepspeedConfig
 from .utils import _beam_arguments
 
 
@@ -11,6 +12,10 @@ class CatboostConfig(BeamConfig):
     parameters = [
         BeamParam('cb_ranker', bool, False, 'Whether to use catboost ranker instead of regression', tags='model'),
         BeamParam('cb_n_estimators', int, 1000, 'The number of trees in the catboost model', tags='tune'),
+        BeamParam('cb_l2_leaf_reg', float, 1e-4, 'The L2 regularization for the catboost model', tags='tune'),
+        BeamParam('cb_border_count', int, 128, 'The border count for the catboost model', tags='tune'),
+        BeamParam('cb_depth', int, 14, 'The depth of the trees in the catboost model', tags='tune'),
+        BeamParam('cb_random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
     ]
 
 
@@ -65,6 +70,7 @@ class SamplerConfig(BeamConfig):
         BeamParam('sample_size', int, 100000, 'Periodic sample size for the dynamic sampler'),
     ]
 
+
 class OptimizerConfig(BeamConfig):
 
     parameters = [
@@ -87,28 +93,27 @@ class SWAConfig(BeamConfig):
     ]
 
 
-class DistributedTrainingConfig(BeamConfig):
+class FederatedTrainingConfig(BeamConfig):
 
     parameters = [
-        BeamParam('mp_port', str, 'random', 'Port to be used for multiprocessing'),
+        BeamParam('mp_ip', str, 'localhost', 'IP to be used for multiprocessing'),
+        BeamParam('mp_port', str, None, 'Port to be used for multiprocessing'),
         BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
-        BeamParam('distributed_backend', str, None, 'The distributed backend to use. Supported backends: [nccl, gloo, mpi]'),
+        BeamParam('n_cpus_per_worker', int, 6, 'Number of cpus to use in each worker'),
+        BeamParam('n_gpus_per_worker', int, 1, 'Number of gpus to use in each worker'),
+        BeamParam('distributed_backend', str, 'nccl', 'The distributed backend to use. '
+                                                    'Supported backends: [nccl, gloo, mpi]'),
         BeamParam('mp_context', str, 'spawn', 'The multiprocessing context to use'),
-        BeamParam('mp_backend', str, None, 'The multiprocessing backend to use'),
+        BeamParam('kv_store', str, 'tcp', 'The key-value store to use [tcp|file|hash]'),
+        BeamParam('kv_store_path', str, None, 'The path to the key-value store file'),
+        BeamParam('kv_store_timeout', float, 300., 'The timeout for the key-value store'),
+        BeamParam('kv_store_port', str, None, 'The port to use for the key-value store'),
+        BeamParam('federated_runner', bool, False, 'Use the new federated runner for distributed training'),
+
     ]
 
 
-class DeepspeedConfig(DistributedTrainingConfig):
-
-    parameters = [
-        BeamParam('deepspeed_optimizer', str, 'AdamW', 'Optimizer type (currently used for deepspeed configuration only) '
-                                                       'Supported optimizers: [Adam, AdamW, Lamb, OneBitAdam, OneBitLamb]'),
-        BeamParam('deepspeed_config', str, None, 'Deepspeed configuration JSON object.'),
-        BeamParam('zero_stage', int, 2, 'The ZeRO training stage to use.'),
-    ]
-
-
-class AccelerateConfig(DeepspeedConfig):
+class AccelerateConfig(DeepspeedConfig, FederatedTrainingConfig):
     # accelerate parameters
     # based on https://huggingface.co/docs/accelerate/v0.24.0/en/package_reference/accelerator#accelerate.Accelerator
 
@@ -122,8 +127,40 @@ class AccelerateConfig(DeepspeedConfig):
     ]
 
 
+class NNCompilerConfig(BeamConfig):
+
+    """
+    For torch compile see:
+    https://pytorch.org/docs/stable/generated/torch.compile.html
+
+    For torch jit see:
+    https://pytorch.org/docs/stable/generated/torch.jit.trace.html
+    """
+
+    parameters = [
+        BeamParam('compile_fullgraph', bool, False, 'Whether it is ok to break model into several subgraphs'),
+        BeamParam('compile_dynamic', bool, None, 'Use dynamic shape tracing. When this is True, '
+                                                  'we will up-front attempt to generate a kernel that is as dynamic as '
+                                                  'possible to avoid recompilations when sizes change.'),
+        BeamParam('compile_backend', str, 'inductor', 'The backend to use for compilation [inductor|torch]'),
+        BeamParam('compile_mode', str, 'default', '[default|reduce-overhead|max-autotune|max-autotune-no-cudagraphs],'
+                                                  ' see https://pytorch.org/docs/stable/generated/torch.compile.html'),
+        BeamParam('compile_options', dict, None, 'Additional options for the compiler'),
+
+
+        BeamParam('jit_check_trace', bool, True, 'Check if the same inputs run through traced code produce the same '
+                                                 'outputs'),
+        BeamParam('jit_check_inputs', list, None, 'A list of tuples of input arguments that should be used to check the '
+                                                  'trace against what is expected.'),
+        BeamParam('jit_check_tolerance', float, 1e-5, 'Floating-point comparison tolerance to use in the checker '
+                                                      'procedure.'),
+        BeamParam('jit_strict', bool, True, 'Only turn this off when you want the tracer to record your mutable container '
+                                            'types'),
+    ]
+
+
 class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
-                       SWAConfig, OptimizerConfig, DatasetConfig, SamplerConfig):
+                       SWAConfig, OptimizerConfig, DatasetConfig, SamplerConfig, NNCompilerConfig):
 
     parameters = [
         BeamParam('objective', str, 'objective', 'A single objective to apply hyperparameter optimization or '
@@ -135,6 +172,8 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
                                                'By default objectives that contain the words "loss/error/mse" a are minimized and '
                                                'other objectives are maximized. You can override this behavior by setting this flag.'),
 
+        BeamParam('objective_to_report', str, 'best', 'Which objective to report in HPO run [best|last]'),
+
         BeamParam('scale_epoch_by_batch_size', bool, True,
                   'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch '
                   'When False: epoch length corresponds to the number of forward passes in each epoch'),
@@ -145,6 +184,8 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
         BeamParam('epoch_length', int, None, 'Length of train+eval epochs '
                                              '(if None - it is taken from epoch_length_train/epoch_length_eval arguments)',
                   tags='tune'),
+        BeamParam('train_on_tail', bool, False, 'Should the last (incomplete) batch be included in the training epoch '
+                                                '(useful for small datasets but not time efficient)'),
         BeamParam('epoch_length_train', int, None, 'Length of each epoch (if None - it is the dataset[train] size)', tags='tune'),
         BeamParam('epoch_length_eval', int, None, 'Length of each evaluation epoch (if None - it is the dataset[validation] size)',
                     tags='tune'),
@@ -157,8 +198,8 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
                     tags='tune'),
         BeamParam('lr_dense', float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
         BeamParam('lr_sparse', float, 1e-2, 'learning rate for sparse optimizers', tags='tune'),
-        BeamParam('stop_at', float, 0., 'Early stopping when objective >= stop_at', tags='tune'),
-        BeamParam('early_stopping_patience', int, 0, 'Early stopping patience in epochs, '
+        BeamParam('stop_at', float, None, 'Early stopping when objective >= stop_at', tags='tune'),
+        BeamParam('early_stopping_patience', int, None, 'Early stopping patience in epochs, '
                                                      'stop when current_epoch - best_epoch >= early_stopping_patience',
                     tags='tune'),
     ]
@@ -185,6 +226,8 @@ class DDPConfig(BeamConfig):
 
         BeamParam('broadcast_buffers', bool, True, 'For DDP applications: Flag that enables syncing (broadcasting) '
                                                    'buffers of the module at beginning of the forward function.'),
+
+        BeamParam('nvlink', bool, False, 'For DDP applications: whether nvlink is available for faster communication'),
     ]
 
 
@@ -242,6 +285,7 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
         BeamParam('scalene', bool, False, 'Profile the experiment with the Scalene python profiler'),
         BeamParam('safetensors', bool, False, 'Save tensors in safetensors format instead of native torch'),
         BeamParam('store_initial_weights', bool, False, 'Store the network\'s initial weights'),
+        BeamParam('store_init_args', bool, True, 'Store the algorithm init args/kwargs for better reloading'),
         BeamParam('copy_code', bool, True, 'Copy the code directory into the experiment directory'),
         BeamParam('restart_epochs_count', bool, True, 'When reloading an algorithm, restart counting epochs from zero '
                                                       '(with respect to schedulers and swa training)', tags='tune'),
@@ -252,16 +296,19 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
         # results printing and visualization
 
         BeamParam('print_results', bool, True, 'Print results after each epoch to screen'),
-        BeamParam('visualize_weights', bool, True, 'Visualize network weights on tensorboard'),
+        BeamParam('visualize_weights', bool, False, 'Visualize network weights on tensorboard'),
         BeamParam('enable_tqdm', bool, True, 'Print tqdm progress bar when training'),
         BeamParam('visualize_results_log_base', int, 10, 'log base for the logarithmic based results visualization'),
         BeamParam('tqdm_threshold', float, 10., 'Minimal expected epoch time to print tqdm bar '
                                                 'set 0 to ignore and determine tqdm bar with tqdm-enable flag'),
         BeamParam('tqdm_stats', float, 1., 'Take this period to calculate the expected epoch time'),
 
-        BeamParam('visualize_results', str, 'yes', 'when to visualize results on tensorboard [yes|no|logscale]'),
-        BeamParam('store_results', str, 'logscale', 'when to store results to pickle files'),
-        BeamParam('store_networks', str, 'logscale', 'when to store network weights to the log directory'),
+        BeamParam('visualize_results', str, 'yes', 'when to visualize results on tensorboard '
+                                                   '[yes|no|logscale|best|never|final]'),
+        BeamParam('store_results', str, 'logscale', 'when to store results to pickle files '
+                                                    '[yes|no|logscale|best|never|final]'),
+        BeamParam('store_networks', str, 'best/last', 'when to store network weights to the log directory '
+                                         '[yes|no|logscale|best|all_bests|never|final|last|best/last]'),
 
         BeamParam('comet', bool, False, 'Whether to use comet.ml for logging'),
         BeamParam('git_directory', str, None, 'The git directory to use for comet.ml logging'),
@@ -276,6 +323,8 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
                   'Apply torch.compile to optimize the inner_train function to speed up training. '
                   'To use this feature, you must override and use the alg.inner_train function '
                   'in your alg.train_iteration function'),
+        BeamParam('compile_network', bool, False,
+                  'Apply torch.compile to optimize the network forward function to speed up training.'),
 
         # possible combinations for single gpu:
         # 1. torch

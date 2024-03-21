@@ -1,9 +1,11 @@
 from tqdm import tqdm
 import random
+
+from ..distributed import RayCluster, RayDispatcher
 from ..utils import tqdm_beam
 from ..utils import collate_chunks, retrieve_name, lazy_property, dict_to_list
 from ..logger import beam_logger as logger
-from .task import BeamTask, TaskResult
+from .task import BeamTask, TaskResult, SyncedResults
 
 
 class BeamAsync(object):
@@ -65,33 +67,6 @@ class BeamAsync(object):
         return TaskResult(async_result)
 
 
-class SyncedResults:
-
-    def __init__(self, results):
-
-        # results is a list of dicts with keys: name, result, exception
-        self.results = results
-
-    @lazy_property
-    def results_map(self):
-        return {r['name']: r for r in self.results}
-
-    @lazy_property
-    def failed(self):
-        failed = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
-        return dict_to_list(failed, convert_str=False)
-
-    @lazy_property
-    def succeeded(self):
-        succeeded = {r['name']: r['result'] for r in self.results if r['exception'] is None}
-        return dict_to_list(succeeded, convert_str=False)
-
-    @lazy_property
-    def values(self):
-        vals = {r['name']: r['result'] if r['exception'] is None else r['exception'] for r in self.results}
-        return dict_to_list(vals, convert_str=False)
-
-
 class BeamParallel(object):
 
     def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam',
@@ -128,6 +103,9 @@ class BeamParallel(object):
 
     def __len__(self):
         return len(self.queue)
+
+    def reset(self):
+        self.queue = []
 
     def add(self, *args, **kwargs):
 
@@ -336,31 +314,15 @@ class BeamParallel(object):
         if n_workers is None:
             n_workers = self.n_workers
 
-        import ray
+        address = self.kwargs.get('address', None)
+        ray_kwargs = self.kwargs.get('ray_kwargs', {})
+        ray_kwargs['num_cpus'] = n_workers
+        remote_kwargs = self.kwargs.get('remote_kwargs', {})
 
-        def func_wrapper(t):
-            return t.run()
+        RayCluster(address=address, ray_kwargs=ray_kwargs)
 
-        if 'runtime_env' in self.kwargs:
-            runtime_env = self.kwargs.pop('runtime_env')
-        else:
-            runtime_env = {}
-
-        if 'dashboard_port' in self.kwargs:
-            dashboard_port = self.kwargs.pop('dashboard_port')
-        else:
-            dashboard_port = None
-
-        if 'include_dashboard' in self.kwargs:
-            include_dashboard = self.kwargs.pop('include_dashboard')
-        else:
-            include_dashboard = True
-
-        ray.init(runtime_env=runtime_env, dashboard_port=dashboard_port,
-                 include_dashboard=include_dashboard, dashboard_host="0.0.0.0", ignore_reinit_error=True)
-
-        tasks = [ray.remote(num_cpus=n_workers)(func_wrapper).remote(t) for t in self.queue]
-        results = ray.get(tasks)
+        tasks = [RayDispatcher(t, remote_kwargs=remote_kwargs, asynchronous=False) for t in self.queue]
+        results = [t.run() for t in self.progressbar(tasks)]
 
         return results
 
@@ -402,33 +364,34 @@ class BeamParallel(object):
             logger.info(f"Queue {self.name} is empty, returning empty list.")
             return []
 
-        logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {n_workers} workers,"
-                    f" method: {method}")
-
         if shuffle:
             random.shuffle(self.queue)
 
         if n_workers <= 1 or len(self.queue) == 1:
             results = [t.run() for t in self.progressbar(self.queue)]
-        elif method == 'joblib':
-            results = self._run_joblib(n_workers=n_workers)
-        elif method == 'process_map':
-            results = self._run_process_map(n_workers=n_workers)
-        elif method == 'apply_async':
-            results = self._run_apply_async(n_workers=n_workers)
-        elif method == 'thread_map':
-            results = self._run_thread_map(n_workers=n_workers)
-        elif method in ['starmap', 'map']:
-            results = self._run_starmap(n_workers=n_workers)
-        elif method == 'ray':
-            results = self._run_ray(n_workers=n_workers)
-        elif method == 'threading':
-            results = self._run_threading(n_workers=n_workers)
-        elif method == 'dask':
-            results = self._run_dask(n_workers=n_workers)
-
+            logger.info(f"Running queue (length={len(self.queue)}) on the main thread: {self.name} with 1 worker")
         else:
-            raise ValueError(f"Unknown method: {method}")
+            logger.info(f"Start running queue: {self.name}: {len(self.queue)} tasks with {n_workers} workers,"
+                        f" method: {method}")
+            if method == 'joblib':
+                results = self._run_joblib(n_workers=n_workers)
+            elif method == 'process_map':
+                results = self._run_process_map(n_workers=n_workers)
+            elif method == 'apply_async':
+                results = self._run_apply_async(n_workers=n_workers)
+            elif method == 'thread_map':
+                results = self._run_thread_map(n_workers=n_workers)
+            elif method in ['starmap', 'map']:
+                results = self._run_starmap(n_workers=n_workers)
+            elif method == 'ray':
+                results = self._run_ray(n_workers=n_workers)
+            elif method == 'threading':
+                results = self._run_threading(n_workers=n_workers)
+            elif method == 'dask':
+                results = self._run_dask(n_workers=n_workers)
+
+            else:
+                raise ValueError(f"Unknown method: {method}")
 
         logger.info(f"Finish running queue: {self.name}.")
         return SyncedResults(results)
