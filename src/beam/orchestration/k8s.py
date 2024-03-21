@@ -855,23 +855,26 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return total_resources
 
     def execute_command_in_pod(self, namespace, pod_name, command):
+        import shlex
         """
         Execute a command in a pod.
 
         :param namespace: The namespace of the pod.
         :param pod_name: The name of the pod where the command will be executed.
-        :param command: The command to execute inside the pod, as a list of strings.
+        :param command: The command to execute inside the pod. This can be a string or a list of strings.
         :return: The output from the command execution.
         """
-        # Ensure that a list is provided for the command
-        if not isinstance(command, list):
-            command = [command]
+        # If command is a string, use shlex to split it into a list
+        if isinstance(command, str):
+            command_list = shlex.split(command)
+        else:
+            command_list = command
 
         # Executing the command
         response = stream(self.core_v1_api.connect_get_namespaced_pod_exec,
                           pod_name,
                           namespace,
-                          command=command,
+                          command=command_list,
                           stderr=True,
                           stdin=False,
                           stdout=True,

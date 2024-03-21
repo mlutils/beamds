@@ -5,7 +5,7 @@ from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig,
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~f7FdkTRFBGDCQ_YGpBzb98DwY0NDbnBbLMkBkLSCZfk"
+api_token = "sha256~WXfKuA-vsnnmYDjllYgSsnzCo34c4JJUi9uLyU04RFE"
 project_name = "kh-dev"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
 labels = {"app": "kh"}
@@ -20,10 +20,10 @@ scc_name = "anyuid"  # privileged , restricted, anyuid, hostaccess, hostmount-an
 security_context_config = (
     SecurityContextConfig(add_capabilities=["SYS_CHROOT", "CAP_AUDIT_CONTROL",
                                             "CAP_AUDIT_WRITE"], enable_security_context=False))
-cpu_requests = "2000m"  # 0.5 CPU
-cpu_limits = "2000m"       # 1 CPU
-memory_requests = "24Gi"
-memory_limits = "24Gi"
+cpu_requests = "1"  # 0.5 CPU
+cpu_limits = "1"       # 1 CPU
+memory_requests = "12Gi"
+memory_limits = "12Gi"
 gpu_requests = "1"
 gpu_limits = "1"
 storage_configs = [
@@ -48,7 +48,8 @@ service_configs = [
 ]
 
 ray_ports_configs = [
-    RayPortsConfig(ray_ports=[10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010],)
+    RayPortsConfig(ray_ports=[10001, 10002, 10003, 10004, 10005, 10006, 10007,
+                              10008, 10009, 10010, 30000, 30001, 30002, 30003, 30004],)
     ]
 
 
@@ -113,7 +114,10 @@ for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 
 beam_pod = BeamPod(pod_name=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s)
-command = ['ls', '/'] # Example command
+#command = ['ls', '/'] # Example command
+# command = ("ray start --head --node-ip-address=10.128.0.80 --port=${RAY_REDIS_PORT} "
+#            "--dashboard-port=${RAY_DASHBOARD_PORT} --dashboard-host=0.0.0.0")
+command = "ray status"
 response = beam_pod.execute(command)
 
 print(response)
