@@ -20,7 +20,7 @@ from ..logger import beam_kpi, BeamResult
 from timeit import default_timer as timer
 
 
-class NeuralAlgorithm(Processor, metaclass=MetaBeamInit):
+class NeuralAlgorithm(Processor):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
                  name=None, experiment=None, **kwargs):

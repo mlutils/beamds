@@ -9,7 +9,7 @@ if has_torch:
     import torch
 
 
-class BeamClient(Processor,BeamResource):
+class BeamClient(Processor, BeamResource):
 
     def __init__(self, *args, hostname=None, port=None, username=None, api_key=None, **kwargs):
         super().__init__(resource_type='client', hostname=hostname, port=port, username=username, **kwargs)
