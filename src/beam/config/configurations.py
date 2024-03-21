@@ -231,7 +231,22 @@ class DDPConfig(BeamConfig):
     ]
 
 
-class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
+class BeamProjectConfig(BeamConfig):
+    parameters = [
+        BeamParam('project_name', str, 'beam', 'The name of the beam project'),
+        BeamParam('algorithm', str, 'Algorithm', 'algorithm name'),
+        BeamParam('identifier', str, 'debug', 'The name of the model to use'),
+        BeamParam('logs_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'experiments'),
+                  'Root directory for Logs and results'),
+        BeamParam('data_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'data'),
+                  'Where the dataset is located'),
+        BeamParam('config_file', str, str(Path.home().joinpath('conf.pkl'), ),
+                  'The beam config file to use with secret keys'),
+        BeamParam('verbosity', str, 'info', 'The verbosity level [debug|info|warning|error]'),
+    ]
+
+
+class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig):
     '''
 
         Arguments
@@ -249,16 +264,8 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
     '''
 
     parameters = [
-        BeamParam('project_name', str, 'beam', 'The name of the beam project'),
-        BeamParam('algorithm', str, 'Algorithm', 'algorithm name'),
-        BeamParam('identifier', str, 'debug', 'The name of the model to use'),
 
         BeamParam('llm', str, None, 'URI of a Large Language Model to be used in the experiment.'),
-        BeamParam('logs_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'experiments'),
-                  'Root directory for Logs and results'),
-        BeamParam('data_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'data'),
-                  'Where the dataset is located'),
-
         BeamParam('reload', bool, False, 'Load saved model'),
         BeamParam('resume', int, -1, 'Resume experiment number, set -1 for last experiment: active when reload=True'),
         BeamParam('override', bool, False, 'Override last experiment: active when reload=False'),
@@ -314,7 +321,6 @@ class ExperimentConfig(NNTrainingConfig, DDPConfig, KeysConfig):
         BeamParam('git_directory', str, None, 'The git directory to use for comet.ml logging'),
         BeamParam('comet_workspace', str, None, 'The comet.ml workspace to use for logging'),
 
-        BeamParam('config_file', str, str(Path.home().joinpath('conf.pkl'),), 'The beam config file to use with secret keys'),
         BeamParam('mlflow_url', str, None, 'The url of the mlflow serve to use for logging. '
                                            'If None, mlflow will log to $MLFLOW_TRACKING_URI'),
 
