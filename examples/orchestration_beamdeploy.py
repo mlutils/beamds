@@ -102,28 +102,34 @@ deployment = BeamDeploy(
 )
 
 # deployment.launch(replicas=1)
-
+#available_resources = k8s.query_available_resources()
+#print("Available Resources:", available_resources)
 beam_pod_instance = deployment.launch(replicas=1)
-if isinstance(beam_pod_instance, BeamPod):
-    print("Pod Statuses:", beam_pod_instance.get_pod_status())
-available_resources = k8s.query_available_resources()
-print("beam pod instance:", beam_pod_instance)
-print("Available Resources:", available_resources)
+#print("beam pod instance:", beam_pod_instance)
+
+if isinstance(beam_pod_instance, list):  # If there are multiple Pods
+    for pod in beam_pod_instance:
+        print(pod.get_pod_status())
+        # Other operations on each pod
+else:
+    print(beam_pod_instance.get_pod_status())
+    # Other operations on the single pod
+
 # print("Pod Status:", beam_pod_instance.pod_status)
 # print("Pod Info:", beam_pod_instance.pod_info)
 
-print("Fetching external endpoints...")
-internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
-for endpoint in internal_endpoints:
-    print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
-
-beam_pod = BeamPod(pnamespace=namespace, k8s=k8s)
-print(beam_pod)
-#command = ['ls', '/'] # Example command
+# print("Fetching external endpoints...")
+# internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
+# for endpoint in internal_endpoints:
+#     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
+#
+beam_pod = BeamPod(pod_infos=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s)
+#print(beam_pod)
+command = ["ls /"] # Example command
 # command = ("ray start --head --node-ip-address=10.128.0.80 --port=${RAY_REDIS_PORT} "
 #            "--dashboard-port=${RAY_DASHBOARD_PORT} --dashboard-host=0.0.0.0")
 # command = "ray status"
-# response = beam_pod.execute(command)
+response = beam_pod.execute(command)
 
 # print(response)
 

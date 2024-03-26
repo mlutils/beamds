@@ -131,16 +131,65 @@ class BeamDeploy(Processor):
             entrypoint_args=self.entrypoint_args,
             entrypoint_envs=self.entrypoint_envs,
         )
-        # self.k8s.apply_deployment(deployment, namespace=self.namespace)
+
         pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
 
-        if isinstance(pod_infos, list):
-            return [self.generate_beam_pod(pod_info) for pod_info in pod_infos]
-        elif pod_infos is not None:
-            return self.generate_beam_pod(pod_infos)
-        else:
-            logger.error("Failed to apply deployment")
+        # Print the type and content of pod_infos for debugging
+        print(f"Type of pod_infos: {type(pod_infos)}")
+        print(f"Content of pod_infos: {pod_infos}")
+
+        beam_pod_instances = []
+
+        # Check if pod_infos is a list and iterate over it
+        if isinstance(pod_infos, list) and pod_infos:
+            for pod_info in pod_infos:
+                # Print each pod_info for debugging
+                print(f"Processing pod_info: {pod_info}")
+
+                # Extract the pod name from pod_info
+                pod_name = getattr(pod_info, 'name', None)
+                print(f"Extracted pod_name: {pod_name}")
+
+                if pod_name:
+                    # Fetch detailed Pod information using the name
+                    actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
+                    print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
+
+                    # Create a BeamPod instance with the detailed Pod info
+                    beam_pod_instance = BeamPod(pod_infos=[actual_pod_info], namespace=self.namespace, k8s=self.k8s)
+                    beam_pod_instances.append(beam_pod_instance)
+                else:
+                    logger.warning("PodInfo object does not have a 'name' attribute.")
+
+        # If pod_infos is not a list but a single object with a name attribute
+        elif pod_infos and hasattr(pod_infos, 'name'):
+            pod_name = pod_infos.name
+            print(f"Single pod_info with pod_name: {pod_name}")
+
+            actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
+            print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
+
+            # Directly return the single BeamPod instance
+            return BeamPod(pod_infos=[actual_pod_info], namespace=self.namespace, k8s=self.k8s)
+
+        # Handle cases where deployment failed or no pods were returned
+        if not beam_pod_instances:
+            logger.error("Failed to apply deployment or no pods were returned.")
             return None
+
+        # Return a single BeamPod instance or a list of them, based on the number of instances created
+        return beam_pod_instances if len(beam_pod_instances) > 1 else beam_pod_instances[0]
+
+        # # self.k8s.apply_deployment(deployment, namespace=self.namespace)
+        # pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+        #
+        # if isinstance(pod_infos, list):
+        #     return [self.generate_beam_pod(pod_info) for pod_info in pod_infos]
+        # elif pod_infos is not None:
+        #     return self.generate_beam_pod(pod_infos)
+        # else:
+        #     logger.error("Failed to apply deployment")
+        #     return None
 
     def generate_beam_pod(self, pod_infos):
         # logger.info(f"Generating BeamPod for pods: '{pod_infos}'")
