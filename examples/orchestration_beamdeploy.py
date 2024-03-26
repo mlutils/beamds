@@ -1,11 +1,10 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
-from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig,
-                                    StorageConfig, UserIdmConfig, SecurityContextConfig,
-                                    MemoryStorageConfig, RayPortsConfig)
+from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig, StorageConfig,
+                                    RayPortsConfig, UserIdmConfig, MemoryStorageConfig, SecurityContextConfig)
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~WXfKuA-vsnnmYDjllYgSsnzCo34c4JJUi9uLyU04RFE"
+api_token = "sha256~CRB6JJj8mS6d2F9D91yNvaU4ksa0V-fqXo6RrDeXlko"
 project_name = "kh-dev"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
 labels = {"app": "kh"}
@@ -23,8 +22,8 @@ security_context_config = (
 node_selector = {"gpu-type": "tesla-a100"}
 cpu_requests = "1"  # 0.5 CPU
 cpu_limits = "1"       # 1 CPU
-memory_requests = "12Gi"
-memory_limits = "12Gi"
+memory_requests = "12"
+memory_limits = "12"
 gpu_requests = "1"
 gpu_limits = "1"
 storage_configs = [
@@ -104,18 +103,20 @@ deployment = BeamDeploy(
 # deployment.launch(replicas=1)
 
 beam_pod_instance = deployment.launch(replicas=1)
+if isinstance(beam_pod_instance, BeamPod):
+    print("Pod Statuses:", beam_pod_instance.get_pod_status())
 available_resources = k8s.query_available_resources()
 print("beam pod instance:", beam_pod_instance)
 print("Available Resources:", available_resources)
-print("Pod Status:", beam_pod_instance.pod_status)
-print("Pod Info:", beam_pod_instance.pod_info)
+# print("Pod Status:", beam_pod_instance.pod_status)
+# print("Pod Info:", beam_pod_instance.pod_info)
 
 print("Fetching external endpoints...")
 internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 
-beam_pod = BeamPod(pod_name=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s)
+beam_pod = BeamPod(namespace=namespace, k8s=k8s)
 #command = ['ls', '/'] # Example command
 # command = ("ray start --head --node-ip-address=10.128.0.80 --port=${RAY_REDIS_PORT} "
 #            "--dashboard-port=${RAY_DASHBOARD_PORT} --dashboard-host=0.0.0.0")
@@ -123,3 +124,10 @@ command = "ray status"
 response = beam_pod.execute(command)
 
 print(response)
+
+# pod_array = BeamPod(pod_name=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s, replicas=10)
+#
+# pod_array[0].execute('ray head ...')
+# for p in pod_array[1:]:
+#     p.execute('ray worker ...')
+

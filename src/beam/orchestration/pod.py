@@ -4,14 +4,16 @@ from ..logger import beam_logger as logger
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 
+from ..utils import lazy_property
+
 
 class BeamPod(Processor):
-    def __init__(self, pod_name, namespace=None, k8s=None, *args, **kwargs):
+    def __init__(self, pod_infos=None, namespace=None, k8s=None,  *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.pod_infos = pod_infos
         self.k8s = k8s
-        self.pod_name = pod_name
         self.namespace = namespace
-        self.refresh_pod_info()
+        # self.refresh_pod_info()
 
     # @classmethod
     # def from_deployment(cls, deployment, k8s, *args, **kwargs):
@@ -28,16 +30,23 @@ class BeamPod(Processor):
         )
         return cls(pod_name, k8s, *args, **kwargs)
 
+    @lazy_property
+    def pod_info(self):
+        """Get current pod information."""
+        if not self.k8s.get_pod_info(self.pod_name, self.namespace):
+            self.refresh_pod_info()
+        return self.k8s.get_pod_info(self.pod_name, self.namespace)
+
     def execute(self, command, **kwargs):
         # Fetch pod information using the get_pod_info method
         pod_info = self.k8s.get_pod_info(self.pod_name, self.namespace)
-        if pod_info is None:
+        if self.pod_info is None:
             logger.error("Failed to fetch pod information")
             return None
 
         # Assuming pod_info is an object with attributes 'namespace' and 'name'
-        namespace = pod_info.metadata.namespace
-        pod_name = pod_info.metadata.name
+        namespace = self.pod_info.metadata.namespace
+        pod_name = self.pod_info.metadata.name
 
         # Execute command
         output = self.k8s.execute_command_in_pod(namespace, pod_name, command)  # No split() needed
@@ -45,21 +54,18 @@ class BeamPod(Processor):
 
         return output
 
-    def refresh_pod_info(self):
-        """Refresh the stored pod information."""
-        _pod_info = self.k8s.get_pod_info(self.pod_name, self.namespace)
-
-    @property
-    def pod_info(self):
-        """Get current pod information."""
-        if not self.k8s.get_pod_info(self.pod_name, self.namespace):
-            self.refresh_pod_info()
-        return self.k8s.get_pod_info(self.pod_name, self.namespace)
+    # def refresh_pod_info(self):
+    #     """Refresh the stored pod information."""
+    #     _pod_info = self.k8s.get_pod_info(self.pod_infos, self.namespace)
 
     @property
     def pod_status(self):
         """Get the current status of the pod."""
         return self.pod_info.status.phase if self.pod_info else "Unknown"
+
+    def get_pod_status(self):
+        # Example method to get the status of all pods
+        return [pod_info.status for pod_info in self.pod_infos]
 
     def get_logs(self, **kwargs):
         """Get logs from the pod."""

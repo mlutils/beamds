@@ -1,70 +1,9 @@
 from ..core import Processor
 from .pod import BeamPod
-from dataclasses import dataclass, field
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
-from .units import K8SUnits
-from typing import List, Union
-
-
-@dataclass
-class ServiceConfig:
-    port: int
-    service_name: str
-    service_type: str  # NodePort, ClusterIP, LoadBalancer
-    port_name: str
-    create_route: bool = False  # Indicates whether to create a route for this service
-    route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
-    create_ingress: bool = False  # Indicates whether to create an ingress for this service
-    ingress_host: str = None  # Optional: specify a host for the ingress
-    ingress_path: str = '/'  # Default path for ingress, can be overridden
-    ingress_tls_secret: str = None  # Optional: specify a TLS secret for ingress TLS
-
-
-@dataclass
-class RayPortsConfig:
-    ray_ports: List[int] = field(default_factory=list)
-    enable_ray_ports: bool = False
-
-
-@dataclass
-class StorageConfig:
-    pvc_name: str
-    pvc_mount_path: str
-    create_pvc: bool = False  # Indicates whether to create a route for this service
-    pvc_size: Union[K8SUnits, str, int] = '1Gi'
-    pvc_access_mode: str = 'ReadWriteMany'
-
-    def __post_init__(self):
-        self.pvc_size = K8SUnits(self.pvc_size)
-
-
-@dataclass
-class MemoryStorageConfig:
-    name: str
-    mount_path: str
-    size_gb: Union[K8SUnits, str, int] = None  # Optional size in GB
-    enabled: bool = True  # Indicates whether this memory storage should be applied
-
-    def __post_init__(self):
-        self.size_gb = K8SUnits(self.size_gb)
-
-
-@dataclass
-class UserIdmConfig:
-    user_name: str
-    role_name: str
-    role_binding_name: str
-    project_name: str
-    role_namespace: str = 'default'  # Default to 'default' namespace
-    create_role_binding: bool = False  # Indicates whether to create a role_binding this project
-
-
-@dataclass
-class SecurityContextConfig:
-    add_capabilities: List[str] = field(default_factory=list)
-    enable_security_context: bool = False
+from .dataclasses import *
 
 
 class BeamDeploy(Processor):
@@ -193,24 +132,20 @@ class BeamDeploy(Processor):
             entrypoint_envs=self.entrypoint_envs,
         )
         # self.k8s.apply_deployment(deployment, namespace=self.namespace)
-        pod_info = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+        pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
 
-        if pod_info is list:
-            # If the deployment was successfully applied, create and return a BeamPod instance
-            return [self.generate_beam_pod(pod) for pod in pod_info]
-        elif pod_info is not None:
-            # If the deployment was successfully applied, create and return a BeamPod instance
-            return self.generate_beam_pod(pod_info)
+        if isinstance(pod_infos, list):
+            return [self.generate_beam_pod(pod_info) for pod_info in pod_infos]
+        elif pod_infos is not None:
+            return self.generate_beam_pod(pod_infos)
         else:
-            # Handle the case where the deployment application failed
             logger.error("Failed to apply deployment")
             return None
 
-    def generate_beam_pod(self, pod_info):
-        logger.info(f"Generating BeamPod for pod: '{pod_info}'")
-        # Assuming pod_info is an object, extract the pod name as a string
-        pod_name = pod_info.name  # Adjust this line based on the actual structure of pod_info
-        return BeamPod(pod_name, namespace=self.namespace, k8s=self.k8s)
+    def generate_beam_pod(self, pod_infos):
+        # logger.info(f"Generating BeamPod for pods: '{pod_infos}'")
+        # Ensure pod_infos is a list of PodInfo objects
+        return BeamPod(pod_infos=pod_infos, k8s=self.k8s, namespace=self.namespace)
 
     def delete_deployment(self):
         # Delete deployment

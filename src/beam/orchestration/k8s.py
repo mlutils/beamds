@@ -9,6 +9,7 @@ from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream
 from ..logger import beam_logger as logger
 from .units import K8SUnits
+from .dataclasses import *
 import time
 import json
 
@@ -151,8 +152,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             resources['requests']['memory'] = K8SUnits(memory_requests).as_str
             resources['limits']['memory'] = K8SUnits(memory_limits).as_str
         if gpu_requests and gpu_limits:
-            resources['requests']['nvidia.com/gpu'] = K8SUnits(gpu_limits).as_str
-            resources['limits']['nvidia.com/gpu'] = K8SUnits(gpu_requests).as_str
+            #
+            resources['requests']['nvidia.com/gpu'] = gpu_limits
+            resources['limits']['nvidia.com/gpu'] = gpu_requests
 
         if security_context_config and security_context_config.enable_security_context:
             security_context = {
@@ -383,47 +385,54 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     return unique_name
                 raise  # Reraise exceptions that are not related to the deployment not existing
 
+    #
     def apply_deployment(self, deployment, namespace=None):
-        # logger.info(f"Applying deployment object type: {type(deployment)}")
-        # Determine the namespace
         if namespace is None:
             namespace = self.namespace
 
         try:
-            # Apply the deployment
             self.apps_v1_api.create_namespaced_deployment(body=deployment, namespace=namespace)
             logger.info(f"Successfully applied deployment in namespace '{namespace}'")
 
-            # Construct the selector based on the deployment object type
-            if isinstance(deployment, dict):
-                # If deployment is a dictionary, use dictionary access
-                selector = ','.join([f'{k}={v}' for k, v in deployment['spec']['selector']['matchLabels'].items()])
-            else:
-                # If deployment is an object, use attribute access
-                selector = ','.join([f'{k}={v}' for k, v in deployment.spec.selector['matchLabels'].items()])
+            selector = self.get_selector_from_deployment(deployment)
 
-            w = watch.Watch()
-            timeout = 300  # Define a timeout for the watch (e.g., 300 seconds)
-            start = time.time()
+            # Wait briefly for pods to be created
+            time.sleep(5)  # Adjust this value as needed
 
-            for event in w.stream(self.core_v1_api.list_namespaced_pod, namespace=namespace, label_selector=selector,
-                                  timeout_seconds=60):
-                pod = event['object']
-                if pod.status.phase == 'Running':
-                    # Extract and return pod info
-                    pod_info = self.extract_pod_info(pod)
-                    logger.info(f"Pod info: '{pod_info}'")
-                    w.stop()
-                    return pod_info
+            pod_list = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=selector)
+            pod_infos = [self.extract_pod_info(pod) for pod in pod_list.items if pod.metadata.labels is not None]
 
-                if time.time() - start > timeout:
-                    logger.error("Timeout waiting for pods to become ready.")
-                    w.stop()
-                    return None
+            logger.info(f"Pod infos: '{pod_infos}'")
+            return pod_infos
 
         except ApiException as e:
             logger.exception(f"Exception when applying the deployment: {e}")
             return None
+
+    @staticmethod
+    def get_selector_from_deployment(deployment):
+        # Log the type and content of the deployment object for debugging
+        logger.debug(f"Deployment object type: {type(deployment)}")
+        logger.debug(f"Deployment object content: {deployment}")
+        try:
+            if isinstance(deployment, dict):
+                # Extract matchLabels from the dictionary
+                match_labels = deployment.get('spec', {}).get('selector', {}).get('matchLabels', {})
+            elif isinstance(deployment, client.V1Deployment):  # Adjust with the correct class
+                # Extract matchLabels from the Kubernetes client model object
+                match_labels = deployment.spec.selector.match_labels
+            else:
+                # Log a warning if the deployment object type is unexpected
+                logger.warning(f"Unexpected deployment object type: {type(deployment)}")
+                match_labels = {}
+
+            # Construct the selector string
+            selector = ','.join([f'{k}={v}' for k, v in match_labels.items()])
+        except Exception as e:
+            logger.error(f"Error extracting selector from deployment: {e}")
+            selector = ""
+
+        return selector
 
     @staticmethod
     def extract_pod_info(pod):
