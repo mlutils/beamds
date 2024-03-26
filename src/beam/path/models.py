@@ -288,7 +288,16 @@ class SMBPath(PureBeamPath):
         if parents and not self.parent.exists():
             self.parent.mkdir(parents=True, exist_ok=True, **kwargs)
 
-        self.client.mkdir(self.smb_path, **{**self.credentials, **kwargs})
+        from smbprotocol.exceptions import SMBOSError
+        from smbprotocol.header import NtStatus
+
+        try:
+            self.client.mkdir(self.smb_path, **{**self.credentials, **kwargs})
+        except SMBOSError as e:
+            if e.ntstatus == NtStatus.STATUS_OBJECT_NAME_COLLISION:
+                pass
+            else:
+                raise e
 
     def rmdir(self):
         self.client.rmdir(self.smb_path, **self.credentials)
