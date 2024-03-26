@@ -19,16 +19,17 @@ scc_name = "anyuid"  # privileged , restricted, anyuid, hostaccess, hostmount-an
 security_context_config = (
     SecurityContextConfig(add_capabilities=["SYS_CHROOT", "CAP_AUDIT_CONTROL",
                                             "CAP_AUDIT_WRITE"], enable_security_context=False))
-node_selector = {"gpu-type": "tesla-a100"}
-cpu_requests = "1"  # 0.5 CPU
-cpu_limits = "1"       # 1 CPU
+# node_selector = {"gpu-type": "tesla-a100"} # Node selector in case of GPU scheduling
+node_selector = None
+cpu_requests = "4"  # 0.5 CPU
+cpu_limits = "4"       # 1 CPU
 memory_requests = "12"
 memory_limits = "12"
 gpu_requests = "1"
 gpu_limits = "1"
 storage_configs = [
     StorageConfig(pvc_name="data-pvc", pvc_mount_path="/data-pvc",
-                  pvc_size="500Gi", pvc_access_mode="ReadWriteMany", create_pvc=True),
+                  pvc_size="500", pvc_access_mode="ReadWriteMany", create_pvc=True),
 ]
 
 memory_storage_configs = [

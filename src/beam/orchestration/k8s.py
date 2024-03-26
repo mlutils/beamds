@@ -146,16 +146,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         }
 
         if cpu_requests and cpu_limits:
-            resources['requests']['cpu'] = K8SUnits(cpu_requests).as_str
-            resources['limits']['cpu'] = K8SUnits(cpu_limits).as_str
+            resources['requests']['cpu'] = K8SUnits(cpu_requests, resource_type="cpu").as_str
+            resources['limits']['cpu'] = K8SUnits(cpu_limits, resource_type="cpu").as_str
         if memory_requests and memory_limits:
-            resources['requests']['memory'] = K8SUnits(memory_requests).as_str
-            resources['limits']['memory'] = K8SUnits(memory_limits).as_str
+            resources['requests']['memory'] = K8SUnits(memory_requests, resource_type="memory").as_str
+            resources['limits']['memory'] = K8SUnits(memory_limits, resource_type="memory").as_str
         if gpu_requests and gpu_limits:
-            #
-            resources['requests']['nvidia.com/gpu'] = gpu_limits
-            resources['limits']['nvidia.com/gpu'] = gpu_requests
-
+            resources['requests']['nvidia.com/gpu'] = gpu_requests
+            resources['limits']['nvidia.com/gpu'] = gpu_limits
         if security_context_config and security_context_config.enable_security_context:
             security_context = {
                 "capabilities": {
@@ -203,11 +201,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     raise TypeError(f"Unsupported environment variable type: {type(env_var)}")
         return env_vars
 
-    def create_pod_template(self, image_name, labels=None, deployment_name=None, project_name=None,
+    @staticmethod
+    def create_pod_template(image_name, labels=None, deployment_name=None, project_name=None,
                             ports=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
                             memory_limits=None, gpu_requests=None, gpu_limits=None, node_selector=None,
-                            security_context_config=None, entrypoint_args=None, entrypoint_envs=None, ):
+                            security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
+
         if labels is None:
             labels = {}
         if project_name:
@@ -215,31 +215,28 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         volumes = []
 
+        # Handle memory_storage_configs
         if memory_storage_configs:
             for mem_storage in memory_storage_configs:
-                # Initialize the memory_volume_spec without size_limit
                 memory_volume_spec = client.V1EmptyDirVolumeSource(medium="Memory")
-
-                # Conditionally set size_limit if specified
                 if mem_storage.size_gb is not None:
-                    # Attempt to set size_limit directly, converting explicitly to a string
-                    memory_volume_spec.size_limit = mem_storage.size_gb.as_str  # Explicit string conversion
-
+                    memory_volume_spec.size_limit = mem_storage.size_gb.as_str
                 volumes.append(client.V1Volume(
                     name=mem_storage.name,
-                    empty_dir=memory_volume_spec  # The correct parameter name is empty_dir, not emptyDir
+                    empty_dir=memory_volume_spec
                 ))
 
+        # Handle PVC mounts
         if pvc_mounts:
             for mount in pvc_mounts:
                 volumes.append(client.V1Volume(
-                    name=mount['pvc_name'],  # Volume name matches the PVC name
+                    name=mount['pvc_name'],
                     persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=mount['pvc_name'])
                 ))
 
-        # Ensure image_name is not included in entrypoint_args or envs
-        container = self.create_container(
-            image_name=image_name,  # Ensure this is the only place where image_name is provided
+        # Call the create_container static method
+        container = BeamK8S.create_container(
+            image_name=image_name,
             deployment_name=deployment_name,
             project_name=project_name,
             ports=ports,
@@ -248,21 +245,23 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             cpu_limits=cpu_limits,
             memory_requests=memory_requests,
             memory_limits=memory_limits,
-            memory_storage_configs=memory_storage_configs,
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
             security_context_config=security_context_config,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
-        # Defining volumes for the pod spec based on PVC mounts
 
+        # Initialize pod_spec without node_selector
         pod_spec = client.V1PodSpec(
             containers=[container],
             service_account_name=service_account_name,
-            volumes=volumes,  # Including PVC volumes here
-            node_selector=node_selector
+            volumes=volumes
         )
+
+        # Conditionally add node_selector if it's not None
+        if node_selector is not None:
+            pod_spec.node_selector = node_selector
 
         return client.V1PodTemplateSpec(
             metadata=client.V1ObjectMeta(labels=labels),
