@@ -4,7 +4,7 @@ from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig,
 
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~CRB6JJj8mS6d2F9D91yNvaU4ksa0V-fqXo6RrDeXlko"
+api_token = "sha256~cSHcm4lVO9FiiCqbfaldGf0et0JsQzrt9l2dOBkAII4"
 project_name = "kh-dev"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
 labels = {"app": "kh"}
@@ -116,14 +116,15 @@ internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespac
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 
-beam_pod = BeamPod(namespace=namespace, k8s=k8s)
+beam_pod = BeamPod(pnamespace=namespace, k8s=k8s)
+print(beam_pod)
 #command = ['ls', '/'] # Example command
 # command = ("ray start --head --node-ip-address=10.128.0.80 --port=${RAY_REDIS_PORT} "
 #            "--dashboard-port=${RAY_DASHBOARD_PORT} --dashboard-host=0.0.0.0")
-command = "ray status"
-response = beam_pod.execute(command)
+# command = "ray status"
+# response = beam_pod.execute(command)
 
-print(response)
+# print(response)
 
 # pod_array = BeamPod(pod_name=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s, replicas=10)
 #

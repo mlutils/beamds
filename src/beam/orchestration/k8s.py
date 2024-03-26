@@ -402,7 +402,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             pod_list = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=selector)
             pod_infos = [self.extract_pod_info(pod) for pod in pod_list.items if pod.metadata.labels is not None]
 
-            logger.info(f"Pod infos: '{pod_infos}'")
+            #logger.info(f"Pod infos: '{pod_infos}'")
             return pod_infos
 
         except ApiException as e:
@@ -411,28 +411,29 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     @staticmethod
     def get_selector_from_deployment(deployment):
-        # Log the type and content of the deployment object for debugging
-        logger.debug(f"Deployment object type: {type(deployment)}")
-        logger.debug(f"Deployment object content: {deployment}")
+        print("Debugging get_selector_from_deployment method")
+        print(f"Received deployment object type: {type(deployment)}")
+
         try:
-            if isinstance(deployment, dict):
-                # Extract matchLabels from the dictionary
-                match_labels = deployment.get('spec', {}).get('selector', {}).get('matchLabels', {})
-            elif isinstance(deployment, client.V1Deployment):  # Adjust with the correct class
-                # Extract matchLabels from the Kubernetes client model object
-                match_labels = deployment.spec.selector.match_labels
+            # Convert the Kubernetes client object to a dictionary if it's not already a dict
+            if not isinstance(deployment, dict):
+                print("Converting Kubernetes client object to dictionary")
+                deployment_dict = deployment.to_dict()
             else:
-                # Log a warning if the deployment object type is unexpected
-                logger.warning(f"Unexpected deployment object type: {type(deployment)}")
-                match_labels = {}
+                deployment_dict = deployment
 
-            # Construct the selector string
-            selector = ','.join([f'{k}={v}' for k, v in match_labels.items()])
+            # Now that we have a dictionary, access the matchLabels
+            match_labels = deployment_dict.get('spec', {}).get('selector', {}).get('matchLabels', {})
+            print(f"Extracted matchLabels: {match_labels}")
+
+            # Construct the selector string from matchLabels
+            selector_str = ','.join([f'{k}={v}' for k, v in match_labels.items()])
+            print(f"Selector string: {selector_str}")
         except Exception as e:
-            logger.error(f"Error extracting selector from deployment: {e}")
-            selector = ""
+            print(f"Error extracting selector from deployment: {e}")
+            selector_str = ""
 
-        return selector
+        return selector_str
 
     @staticmethod
     def extract_pod_info(pod):
