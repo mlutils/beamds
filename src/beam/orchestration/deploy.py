@@ -135,8 +135,8 @@ class BeamDeploy(Processor):
         pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
 
         # Print the type and content of pod_infos for debugging
-        print(f"Type of pod_infos: {type(pod_infos)}")
-        print(f"Content of pod_infos: {pod_infos}")
+        # print(f"Type of pod_infos: {type(pod_infos)}")
+        # print(f"Content of pod_infos: {pod_infos}")
 
         beam_pod_instances = []
 
@@ -144,7 +144,7 @@ class BeamDeploy(Processor):
         if isinstance(pod_infos, list) and pod_infos:
             for pod_info in pod_infos:
                 # Print each pod_info for debugging
-                print(f"Processing pod_info: {pod_info}")
+                # print(f"Processing pod_info: {pod_info}")
 
                 # Extract the pod name from pod_info
                 pod_name = getattr(pod_info, 'name', None)
@@ -153,7 +153,7 @@ class BeamDeploy(Processor):
                 if pod_name:
                     # Fetch detailed Pod information using the name
                     actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
-                    print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
+                    # print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
 
                     # Create a BeamPod instance with the detailed Pod info
                     beam_pod_instance = BeamPod(pod_infos=[actual_pod_info], namespace=self.namespace, k8s=self.k8s)
@@ -179,17 +179,6 @@ class BeamDeploy(Processor):
 
         # Return a single BeamPod instance or a list of them, based on the number of instances created
         return beam_pod_instances if len(beam_pod_instances) > 1 else beam_pod_instances[0]
-
-        # # self.k8s.apply_deployment(deployment, namespace=self.namespace)
-        # pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
-        #
-        # if isinstance(pod_infos, list):
-        #     return [self.generate_beam_pod(pod_info) for pod_info in pod_infos]
-        # elif pod_infos is not None:
-        #     return self.generate_beam_pod(pod_infos)
-        # else:
-        #     logger.error("Failed to apply deployment")
-        #     return None
 
     def generate_beam_pod(self, pod_infos):
         # logger.info(f"Generating BeamPod for pods: '{pod_infos}'")

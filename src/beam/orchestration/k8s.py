@@ -6,7 +6,6 @@ from ..utils import lazy_property
 from kubernetes import client, watch
 from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
-from kubernetes.stream import stream
 from ..logger import beam_logger as logger
 from .units import K8SUnits
 from .dataclasses import *
@@ -865,8 +864,34 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Total Available Resources in the Namespace '{self.namespace}': {total_resources}")
         return total_resources
 
+    # def execute_command_in_pod(self, namespace, pod_name, command):
+    #     import shlex
+    #     from kubernetes.stream import stream
+    #
+    #     # If command is a string, use shlex to split it into a list
+    #     if isinstance(command, str):
+    #         command_list = shlex.split(command)
+    #     else:
+    #         command_list = command
+    #
+    #     # Executing the command
+    #     try:
+    #         response = stream(self.core_v1_api.connect_get_namespaced_pod_exec,
+    #                           pod_name,
+    #                           namespace,
+    #                           command=command_list,
+    #                           stderr=True,
+    #                           stdin=False,
+    #                           stdout=True,
+    #                           tty=False)
+    #         return response
+    #     except Exception as e:
+    #         logger.error(f"Failed to execute command in pod: {e}")
+    #         return None
+
     def execute_command_in_pod(self, namespace, pod_name, command):
         import shlex
+        from kubernetes.stream import stream
         """
         Execute a command in a pod.
 
