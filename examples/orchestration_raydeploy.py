@@ -116,6 +116,8 @@ elif isinstance(worker_deployment, BeamPod):
     response = worker_deployment.execute(command)
     print(f"Response from pod {worker_deployment.pod_infos[0].metadata.name}: {response}")
 
+# Initial configuration for the Worker deployment
+
 project_name = "kh-dev"
 image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
 labels = {"app": "kh-ray-cluster"}
