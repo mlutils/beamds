@@ -2,11 +2,9 @@ import copy
 import torch.multiprocessing as mp
 import inspect
 import traceback
-import time
 import os
 
-from .. import beam_device
-from ..utils import (set_seed, is_notebook,)
+from ..utils import (set_seed, is_notebook, beam_device)
 from ..path import beam_path
 from ..logger import beam_logger as logger
 from ..config import get_beam_llm, BeamConfig

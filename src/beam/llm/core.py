@@ -51,8 +51,24 @@ class Completion(BeamDict):
         return pretty_print_dict(self, 'Completion')
 
 
+class PedanticBeamResource(LLM, BeamResource):
+    url: Optional[BeamURL] = Field(None)
+    resource_type: Optional[str] = Field(None)
+    scheme: Optional[str] = Field(None)
+
+    # url: BeamURL
+    # resource_type: str
+    # scheme: str
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def __init__(self, *args, resource_type=None, scheme=None, **kwargs):
+        super().__init__(*args, resource_type=resource_type, scheme=scheme, **kwargs)
+
+
 # class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
-class BeamLLM(LLM, BeamResource):
+class BeamLLM(PedanticBeamResource):
 
     model: Optional[str] = Field(None)
     scheme: Optional[str] = Field(None)
@@ -92,8 +108,7 @@ class BeamLLM(LLM, BeamResource):
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
                  debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
                  adapter=None, tools=None, **kwargs):
-        LLM.__init__(self, *args, **kwargs)
-        BeamResource.__init__(self, resource_type='llm', scheme=scheme, **kwargs)
+        super().__init__(resource_type='llm', scheme=scheme, **kwargs)
 
         if temperature is not None:
             temperature = float(temperature)

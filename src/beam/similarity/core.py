@@ -3,9 +3,9 @@ from typing import Any
 import numpy as np
 from dataclasses import dataclass
 
-from .. import BeamData, as_numpy, as_tensor
+from ..data import BeamData
 from ..core import Processor
-from ..utils import as_scipy_csr, as_scipy_coo
+from ..utils import as_scipy_csr, as_scipy_coo, as_numpy, as_tensor
 
 
 @dataclass
