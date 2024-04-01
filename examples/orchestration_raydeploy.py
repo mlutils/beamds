@@ -5,9 +5,9 @@ import time
 
 # Initial configuration for the head deployment
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~y4xvFJcBdK_MckDxoeMh48v4gdsQ1CQUpky2RTI2gHs"
+api_token = "sha256~vwhR7ChEtsDEtpNYCC8qFYshS1sETVuzSd3ilN_4k4o"
 project_name = "kh-dev"
-image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
+image_name = "harbor.dt.local/public/beam:openshift-01.04.24"
 labels = {"app": "kh-ray-cluster"}
 deployment_name = "kh-ray-head"
 # namespace = "ben-guryon"
@@ -16,6 +16,7 @@ replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variables
 use_scc = True  # Pass the SCC control parameter
+is_head = True
 scc_name = "anyuid"  # privileged , restricted, anyuid, hostaccess, hostmount-anyuid, hostnetwork, node-exporter-scc
 security_context_config = (
     SecurityContextConfig(add_capabilities=["SYS_CHROOT", "CAP_AUDIT_CONTROL",
@@ -44,10 +45,15 @@ service_configs = [
     ServiceConfig(port=8888, service_name="jupyter", service_type="LoadBalancer",
                   port_name="jupyter-port", create_route=True, create_ingress=False,
                   ingress_host="jupyter.example.com"),
+    ServiceConfig(port=8265, service_name="ray-dashboard", service_type="LoadBalancer",
+                  port_name="ray-dashboard-port", create_route=True,
+                  ingress_host="jupyter.example.com"),
+    ServiceConfig(port=6379, service_name="ray-gcs", service_type="LoadBalancer",
+                  port_name="ray-gcs-port", create_route=False,
+                  ingress_host="jupyter.example.com"),
 ]
 ray_ports_configs = [
-    RayPortsConfig(ray_ports=[10001, 10002, 10003, 10004, 10005, 10006, 10007,
-                              10008, 10009, 10010, 30000, 30001, 30002, 30003, 30004],)
+    RayPortsConfig(ray_ports=[6379, 8265],)
     ]
 # user_idm_configs = [
 #     UserIdmConfig(user_name="yos", role_name="admin", role_binding_name="yos",
@@ -93,15 +99,35 @@ deployment = BeamDeploy(
 )
 
 # Launch deployment and obtain pod instances
-worker_deployment = deployment.launch(replicas=1)
+head_deployment = deployment.launch(replicas=1)
+
 
 wait_time = 10  # Time to wait before executing commands
 time.sleep(wait_time)
-command = "ls /"  # Command as a regular shell command string
+
+# Retrieving Head Pod IP
+# Assuming head_deployment returns a single BeamPod instance or a list with one BeamPod instance for the head
+head_pod_instance = head_deployment[0] if isinstance(head_deployment, list) else head_deployment
+
+# Check if the head pod is running
+head_pod_status = head_pod_instance.get_pod_status()
+
+head_pod_name = head_pod_instance.pod_infos[0].metadata.name  # Retrieve the head pod name
+
+if head_pod_status[0][1] == "Running":
+    # Head pod is running, retrieve the IP address
+    head_pod_ip = k8s.get_pod_ip(head_pod_name, namespace)
+    print(f"Head Pod IP: {head_pod_ip}")
+else:
+    # Head pod is not running, raise an error
+    raise Exception(f"Head pod {head_pod_name} is not running unable to start head cluster. Current status: {head_pod_status[0][1]}")
+
+
+command = "ray start --head --port=6379 --disable-usage-stats --dashboard-host=0.0.0.0"  # Command as a regular shell command string
 
 # Handle multiple pod instances
-if isinstance(worker_deployment, list):
-    for pod_instance in worker_deployment:
+if isinstance(head_deployment, list):
+    for pod_instance in head_deployment:
         # Print pod status for each instance
         print(f"Pod statuses: {pod_instance.get_pod_status()}")
         # Execute command on each pod instance
@@ -109,17 +135,16 @@ if isinstance(worker_deployment, list):
         print(f"Response from pod {pod_instance.pod_infos[0].metadata.name}: {response}")
 
 # Handle a single pod instance
-elif isinstance(worker_deployment, BeamPod):
+elif isinstance(head_deployment, BeamPod):
     # Print pod status for the single instance
-    print(f"Pod status: {worker_deployment.get_pod_status()}")
+    print(f"Pod status: {head_deployment.get_pod_status()}")
     # Execute command on the single pod instance
-    response = worker_deployment.execute(command)
-    print(f"Response from pod {worker_deployment.pod_infos[0].metadata.name}: {response}")
+    response = head_deployment.execute(command)
+    print(f"Response from pod {head_deployment.pod_infos[0].metadata.name}: {response}")
 
 # Initial configuration for the Worker deployment
 
 project_name = "kh-dev"
-image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
 labels = {"app": "kh-ray-cluster"}
 deployment_name = "kh-ray-workers"
 # namespace = "ben-guryon"
@@ -204,8 +229,26 @@ worker_deployment = deployment.launch(replicas=1)
 
 wait_time = 10  # Time to wait before executing commands
 time.sleep(wait_time)
-command = "ls /"  # Command as a regular shell command string
 
+worker_pod_instance = worker_deployment[0] if isinstance(worker_deployment, list) else worker_deployment
+
+worker_pod_status = worker_pod_instance.get_pod_status()
+
+worker_pod_name = worker_pod_instance.pod_infos[0].metadata.name  # Retrieve the head pod name
+
+# if worker_pod_status[0][1] == "Running":
+#     # Head pod is running, retrieve the IP address
+#     head_pod_ip = k8s.get_pod_ip(head_pod_name, namespace)
+#     print(f"Head Pod IP: {head_pod_ip}")
+# else:
+#     # Head pod is not running, raise an error
+#     raise Exception(f"Head pod {head_pod_name} is not running unable to start head cluster. Current status: {head_pod_status[0][1]}")
+
+
+# command = "ray start --address={head_pod_ip}:6379"  # Command as a regular shell command string
+command = "ray start --address={}:6379".format(head_pod_ip)
+
+# Handle multiple pod instances
 # Handle multiple pod instances
 if isinstance(worker_deployment, list):
     for pod_instance in worker_deployment:
@@ -224,50 +267,4 @@ elif isinstance(worker_deployment, BeamPod):
     print(f"Response from pod {worker_deployment.pod_infos[0].metadata.name}: {response}")
 
 
-#
-# # Handle case where no valid pod instances are available
-# else:
-#     print("No valid pod instances available for executing commands.")
-
-# command = "ls /"  # Command as a regular shell command string
-# specific_pod_name = "kh-69b46bc57c-hcrfk"
-# response = beam_pod_instance.execute(command, pod_name=specific_pod_name)
-
-
-# deployment.launch(replicas=1)
-# available_resources = k8s.query_available_resources()
-# print("Available Resources:", available_resources)
-# beam_pod_instance = deployment.launch(replicas=1)
-# # print("beam pod instance:", beam_pod_instance)
-#
-# if isinstance(beam_pod_instance, list):  # If there are multiple Pods
-#     for pod in beam_pod_instance:
-#         print(f"pod statuses' : '{pod.get_pod_status()}'")
-#         # Other operations on each pod
-# else:
-#     print(beam_pod_instance.get_pod_status())
-#     # Other operations on the single pod
-
-# print("Pod Status:", beam_pod_instance.pod_status)
-# print("Pod Info:", beam_pod_instance.pod_info)
-
-# print("Fetching external endpoints...")
-# internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
-# for endpoint in internal_endpoints:
-#     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
-#
-# beam_pod = BeamPod(pod_infos=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s)
-# # print(beam_pod)
-# command = ["ls /"] # Example command
-# # command = ("ray start --head --node-ip-address=10.128.0.80 --port=${RAY_REDIS_PORT} "
-# #            "--dashboard-port=${RAY_DASHBOARD_PORT} --dashboard-host=0.0.0.0")
-# # command = "ray status"
-# response = beam_pod.execute(command)
-# print(response)
-
-# pod_array = BeamPod(pod_name=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s, replicas=10)
-#
-# pod_array[0].execute('ray head ...')
-# for p in pod_array[1:]:
-#     p.execute('ray worker ...')
 

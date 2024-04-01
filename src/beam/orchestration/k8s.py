@@ -925,6 +925,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.error(f"Failed to get pod info for {pod_name} in {namespace}: {e}")
             return None
 
+    def get_pod_ip(self, pod_name, namespace):
+        try:
+            pod = self.core_v1_api.read_namespaced_pod(name=pod_name, namespace=namespace)
+            return pod.status.pod_ip
+        except ApiException as e:
+            logger.error(f"Failed to fetch IP for pod {pod_name} in namespace {namespace}: {str(e)}")
+            return None
+
     def get_pod_logs(self, pod_name, namespace=None, **kwargs):
         """Retrieve logs for a specific pod."""
         try:

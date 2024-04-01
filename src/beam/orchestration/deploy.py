@@ -144,7 +144,7 @@ class BeamDeploy(Processor):
         if isinstance(pod_infos, list) and pod_infos:
             for pod_info in pod_infos:
                 # Print each pod_info for debugging
-                # print(f"Processing pod_info: {pod_info}")
+                print(f"Processing pod_info: {pod_info}")
 
                 # Extract the pod name from pod_info
                 pod_name = getattr(pod_info, 'name', None)
