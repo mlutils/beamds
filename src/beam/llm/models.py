@@ -211,7 +211,7 @@ class FastChatLLM(OpenAIBase):
 
 class FastAPILLM(FCConversationLLM):
 
-    hostname: Optional[str] = Field(None)
+    normalized_hostname: Optional[str] = Field(None)
     headers: Optional[dict] = Field(None)
     consumer: Optional[str] = Field(None)
     protocol: Optional[str] = Field(None)
@@ -220,10 +220,10 @@ class FastAPILLM(FCConversationLLM):
     def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
 
         kwargs['scheme'] = 'fastapi'
-        super().__init__(*args, model=model, **kwargs)
+        super().__init__(*args, hostname=hostname, port=port, model=model, **kwargs)
 
         self.consumer = username
-        self.hostname = normalize_host(hostname, port)
+        self.normalized_hostname = normalize_host(hostname, port)
         self._models = None
         self.headers = {'Content-Type': 'application/json'}
         self.protocol = protocol
@@ -235,7 +235,7 @@ class FastAPILLM(FCConversationLLM):
     @property
     def models(self):
         if self._models is None:
-            res = requests.get(f"{self.protocol}://{self.hostname}/models", headers=self.headers, verify=False)
+            res = requests.get(f"{self.protocol}://{self.normalized_hostname}/models", headers=self.headers, verify=False)
             self._models = res.json()
         return self._models
 
@@ -284,7 +284,7 @@ class FastAPILLM(FCConversationLLM):
 
     def _stream_generator(self, d):
 
-        with requests.post(f"{self.protocol}://{self.hostname}/predict/stream", headers=self.headers, json=d,
+        with requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/stream", headers=self.headers, json=d,
                            stream=True, verify=False) as response:
             for chunk in response.iter_content(chunk_size=1024):
 
@@ -308,8 +308,8 @@ class FastAPILLM(FCConversationLLM):
             return CompletionObject(prompt=d['input'], kwargs=d, response=res)
 
         else:
-            res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
-                            verify=False)
+            res = requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/once", headers=self.headers, json=d,
+                                verify=False)
             return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
     def verify_response(self, res):
@@ -401,7 +401,7 @@ class FastAPIDPLLM(FastAPILLM):
                  application=application or self.application,
                  number_of_generations=kwargs_processed['number_of_generations'])
 
-        res = requests.post(f"{self.protocol}://{self.hostname}/{self.worker_generate_stream_ep}",
+        res = requests.post(f"{self.protocol}://{self.normalized_hostname}/{self.worker_generate_stream_ep}",
                             headers=self.headers, json=d, verify=False, timeout=self.timeout)
         res = self.post_process(res, kwargs['max_new_tokens'])
         return CompletionObject(prompt=d['prompt'], kwargs=d, response=res)

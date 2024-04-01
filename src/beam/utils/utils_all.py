@@ -41,6 +41,18 @@ try:
 except ImportError:
     has_scipy = False
 
+try:
+    import polars as pl
+    has_polars = True
+except ImportError:
+    has_polars = False
+
+# try:
+#     import cudf
+#     has_cudf = True
+# except ImportError:
+#     has_cudf = False
+
 import socket
 from contextlib import closing
 from collections import namedtuple
@@ -448,6 +460,8 @@ def check_minor_type(x):
         return 'modin'
     if has_scipy and scipy.sparse.issparse(x):
         return 'scipy_sparse'
+    if has_polars and isinstance(x, pl.DataFrame):
+        return 'polars'
     if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
         return 'path'
     else:

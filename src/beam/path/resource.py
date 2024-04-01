@@ -65,6 +65,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     if path == '':
         path = '/'
 
+    username = beam_key('BEAM_USERNAME', username)
+    password = beam_key('BEAM_PASSWORD', password)
+
     if 's3' in url.protocol:
 
         access_key = beam_key('AWS_ACCESS_KEY_ID', access_key)
@@ -76,16 +79,16 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
             return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
 
     elif url.protocol == 'hdfs':
-        return HDFSPath(path, hostname=hostname, port=port, username=username, **kwargs)
+        return HDFSPath(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
 
     elif url.protocol == 'hdfs-pa':
-        return HDFSPAPath(path, hostname=hostname, port=port, username=username, **kwargs)
+        return HDFSPAPath(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
 
     elif url.protocol == 'redis':
-        return RedisPath(path, hostname=hostname, port=port, username=username, **kwargs)
+        return RedisPath(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
 
     elif url.protocol == 'smb':
-        return SMBPath(path, hostname=hostname, port=port, username=username, **kwargs)
+        return SMBPath(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
 
     elif url.protocol == 'comet':
 

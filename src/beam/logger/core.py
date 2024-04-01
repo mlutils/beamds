@@ -28,8 +28,7 @@ class BeamLogger:
         self.logger.remove(self.handlers['stdout'])
 
     def print(self):
-        self.handlers['stdout'] = self.logger.add(sys.stdout, level='INFO', colorize=True, format=
-        '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
+        self.handlers['stdout'] = self.stdout_handler()
 
     def cleanup(self, print=True):
         for k, handler in self.handlers.items():
@@ -126,6 +125,22 @@ class BeamLogger:
 
     def __setstate__(self, state):
         self.__init__(state['path'])
+
+    def stdout_handler(self, level='INFO'):
+        return self.logger.add(sys.stdout, level=level, colorize=True, format=
+        '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
+
+    def set_verbosity(self, level):
+        """
+        Sets the log level for all handlers to the specified level.
+        """
+        # Convert the level string to uppercase to match Loguru's expected levels
+        level = level.upper()
+
+        if 'stdout' in self.handlers:
+            self.logger.remove(self.handlers['stdout'])
+
+        self.handlers['stdout'] = self.stdout_handler(level=level)
 
 
 beam_logger = BeamLogger()

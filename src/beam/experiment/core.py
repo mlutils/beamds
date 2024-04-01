@@ -5,7 +5,8 @@ import numpy as np
 import os
 import warnings
 
-from .utils import path_depth, gen_hparams_string, beam_algorithm_generator, default_runner, run_worker
+from .utils import (path_depth, gen_hparams_string, beam_algorithm_generator, default_runner, run_worker,
+                    build_device_list)
 import torch
 import copy
 import pandas as pd
@@ -68,6 +69,9 @@ class Experiment(object):
                 self.tensorboard_hparams[k] = v
 
         self.hparams = copy.deepcopy(args)
+        logger
+
+
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 
         # parameters
@@ -213,10 +217,7 @@ class Experiment(object):
         self.distributed_training = False
 
         if self.device.type == 'cuda':
-            if self.device_list is not None:
-                self.device_list = [beam_device(di) for di in self.device_list]
-            else:
-                self.device_list = [beam_device(di + self.device.index) for di in range(self.hparams.n_gpus)]
+            self.device_list = build_device_list(self.hparams)
 
         self.comet_exp = None
         self.comet_writer = None

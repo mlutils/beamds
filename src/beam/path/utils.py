@@ -4,7 +4,7 @@ from .resource import beam_path
 
 
 @contextmanager
-def local_copy(path, tmp_path='/tmp', as_beam_path=False, copy_changes=False, disable=None):
+def local_copy(path, tmp_path='/tmp', as_beam_path=False, override=False, disable=None):
 
     if disable is None:
         disable = path.scheme == 'file'
@@ -22,6 +22,9 @@ def local_copy(path, tmp_path='/tmp', as_beam_path=False, copy_changes=False, di
     tmp_path = tmp_dir.joinpath(path.name)
 
     exists = path.exists() and (path.is_file() or len(list(path)) > 0)
+
+    assert not exists or override, f'Path {path} already exists, set override=True to overwrite it.'
+
     if exists:
         path.copy(tmp_path)
 
@@ -29,9 +32,7 @@ def local_copy(path, tmp_path='/tmp', as_beam_path=False, copy_changes=False, di
         yield tmp_path if as_beam_path else str(tmp_path)
     finally:
 
-        if not exists or copy_changes:
-            tmp_path.copy(path)
-
+        tmp_path.copy(path)
         tmp_dir.rmtree()
 
 

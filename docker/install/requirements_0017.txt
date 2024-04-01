@@ -30,3 +30,6 @@ rho-pysparnn
 fastbm25
 pysftp
 transformers_stream_generator
+pymssql
+thefuzz
+smbprotocol

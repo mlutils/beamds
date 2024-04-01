@@ -2,10 +2,9 @@ import copy
 import torch.multiprocessing as mp
 import inspect
 import traceback
-import time
 import os
 
-from ..utils import (set_seed, is_notebook,)
+from ..utils import (set_seed, is_notebook, beam_device)
 from ..path import beam_path
 from ..logger import beam_logger as logger
 from ..config import get_beam_llm, BeamConfig
@@ -227,3 +226,16 @@ def run_worker(rank, world_size, results_queue_or_kwargs, job, experiment, *args
 
     else:
         return res
+
+
+def build_device_list(hparams):
+
+    device = beam_device(hparams.device)
+
+    device_list = hparams.get('device_list', None)
+    if device_list is not None:
+        device_list = [beam_device(di) for di in device_list]
+    else:
+        device_list = [beam_device(di + device.index) for di in range(hparams.n_gpus)]
+
+    return device_list

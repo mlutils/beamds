@@ -288,7 +288,16 @@ class SMBPath(PureBeamPath):
         if parents and not self.parent.exists():
             self.parent.mkdir(parents=True, exist_ok=True, **kwargs)
 
-        self.client.mkdir(self.smb_path, **{**self.credentials, **kwargs})
+        from smbprotocol.exceptions import SMBOSError
+        from smbprotocol.header import NtStatus
+
+        try:
+            self.client.mkdir(self.smb_path, **{**self.credentials, **kwargs})
+        except SMBOSError as e:
+            if e.ntstatus == NtStatus.STATUS_OBJECT_NAME_COLLISION:
+                pass
+            else:
+                raise e
 
     def rmdir(self):
         self.client.rmdir(self.smb_path, **self.credentials)
@@ -1015,6 +1024,10 @@ class CometAsset(PureBeamPath):
         super().__init__(*pathsegments, scheme='comet', client=client, hostname=hostname, port=port,
                          access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
 
+        if self.hostname is not None:
+            tls = 'https' if tls else 'http'
+            os.environ['COMET_URL_OVERRIDE'] = f"{tls}://{normalize_host(self.hostname, self.port)}/clientlib"
+
         if client is None:
 
             from comet_ml import API
@@ -1124,7 +1137,7 @@ class CometAsset(PureBeamPath):
         if self.level == 1:
             raise ValueError("CometArtifact: cannot create workspace")
         elif self.level == 2:
-            self.client.create_project(self.project_name)
+            self.client.create_project(self.workspace, self.project_name)
         elif self.level == 3:
             from comet_ml import APIExperiment
             exp = APIExperiment(api_key=self.client.api_key, workspace=self.workspace, project_name=self.project_name)

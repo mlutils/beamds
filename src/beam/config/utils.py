@@ -182,7 +182,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
                 for k, v in cf['_tags'].items():
                     tags[k].add(v)
                 del cf['_tags']
-            config_args = config_args.update(cf)
+            config_args.update(cf)
 
         args = Namespace(**{**config_args, **to_dict(args)})
     elif hasattr(args, 'config_files'):
