@@ -3,9 +3,9 @@ from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig,
                                     RayPortsConfig, UserIdmConfig, MemoryStorageConfig, SecurityContextConfig)
 import time
 
-from src.beam.orchestration.config import DeployConfig
+from src.beam.orchestration.config import K8SConfig
 
-hparams = DeployConfig()
+hparams = K8SConfig()
 
 api_url = "https://api.kh-dev.dt.local:6443"
 api_token = "sha256~CUfUK_8toDmCmLRBkdwcS3qQXbCjaHdqWK-tZw_mGds"
@@ -77,6 +77,8 @@ k8s = BeamK8S(
     project_name=project_name,
     namespace=project_name,
 )
+
+# k8s = BeamK8S(hparams)
 
 deployment = BeamDeploy(
     k8s=k8s,

@@ -16,8 +16,8 @@ import json
 class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits the method of processor
     """BeamK8S is a class  that  provides a simple interface to the Kubernetes API."""
 
-    def __init__(self, api_url=None, api_token=None, namespace=None,
-                 project_name=None, use_scc=None, scc_name=None, *args, **kwargs):
+    def __init__(self, *args, api_url=None, api_token=None, namespace=None,
+                 project_name=None, use_scc=None, scc_name=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.api_token = api_token
         self.api_url = api_url
