@@ -3,6 +3,10 @@ from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig,
                                     RayPortsConfig, UserIdmConfig, MemoryStorageConfig, SecurityContextConfig)
 import time
 
+from src.beam.orchestration.config import DeployConfig
+
+hparams = DeployConfig()
+
 api_url = "https://api.kh-dev.dt.local:6443"
 api_token = "sha256~CUfUK_8toDmCmLRBkdwcS3qQXbCjaHdqWK-tZw_mGds"
 project_name = "kh-dev"
@@ -152,9 +156,9 @@ elif isinstance(beam_pod_instance, BeamPod):
 # print("Pod Info:", beam_pod_instance.pod_info)
 
 # print("Fetching external endpoints...")
-# internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
-# for endpoint in internal_endpoints:
-#     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
+internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
+for endpoint in internal_endpoints:
+    print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 #
 # beam_pod = BeamPod(pod_infos=beam_pod_instance.pod_name, namespace=namespace, k8s=k8s)
 # # print(beam_pod)

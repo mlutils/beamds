@@ -24,6 +24,11 @@ class BeamPod(Processor):
     #         logger.info(f"Command output for {pod_name}: {output}")
     #     return outputs
 
+    @lazy_property
+    def port_mapping(self):
+        #TODO: return a dictionary of port forwards
+        raise NotImplementedError
+
     def execute(self, command, pod_name=None, **kwargs):
         """Execute a command on a specific pod or on each pod if no pod name is provided."""
         outputs = []
