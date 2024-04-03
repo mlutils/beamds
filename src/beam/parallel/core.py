@@ -1,9 +1,10 @@
 from tqdm import tqdm
 import random
+from functools import cached_property
 
-from ..distributed import RayCluster, RayDispatcher
+from ..distributed import RayClient, RayDispatcher
 from ..utils import tqdm_beam
-from ..utils import collate_chunks, retrieve_name, lazy_property, dict_to_list
+from ..utils import collate_chunks, retrieve_name
 from ..logger import beam_logger as logger
 from .task import BeamTask, TaskResult, SyncedResults
 
@@ -319,7 +320,7 @@ class BeamParallel(object):
         ray_kwargs['num_cpus'] = n_workers
         remote_kwargs = self.kwargs.get('remote_kwargs', {})
 
-        RayCluster(address=address, ray_kwargs=ray_kwargs)
+        RayClient(address=address, ray_kwargs=ray_kwargs)
 
         tasks = [RayDispatcher(t, remote_kwargs=remote_kwargs, asynchronous=False) for t in self.queue]
         results = [t.run() for t in self.progressbar(tasks)]

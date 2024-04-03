@@ -1,8 +1,9 @@
 import json
+from functools import cached_property
 
 from ..llm import beam_llm
 from ..core import MetaDispatcher
-from ..utils import lazy_property, check_type
+from ..utils import check_type
 from ..logger import beam_logger as logger
 import inspect
 import threading
@@ -43,18 +44,18 @@ class BeamAssistant(MetaDispatcher):
             self._summarize_thread = threading.Thread(target=self.summarize, daemon=True)
             self._summarize_thread.start()
 
-    @lazy_property
+    @cached_property
     def summary(self):
         if self._summarize_thread is not None:
             # wait for the thread to finish and get the summary from the queue
             self._summarize_thread.join()
         return self._summary_queue.get()
 
-    @lazy_property
+    @cached_property
     def doc(self):
         return self.real_object.__doc__
 
-    @lazy_property
+    @cached_property
     def source(self):
         if self.type in ['class', 'instance']:
             # iterate over all parent classes and get the source
@@ -77,7 +78,7 @@ class BeamAssistant(MetaDispatcher):
         else:
             return self.real_object.__name__
 
-    @lazy_property
+    @cached_property
     def type_name(self):
         if self.type == 'class':
             return 'class'
@@ -106,7 +107,7 @@ class BeamAssistant(MetaDispatcher):
             query = f"{query}"
         return self.llm.ask(query, **kwargs)
 
-    @lazy_property
+    @cached_property
     def system_prompt(self):
         return (f"Your job is to help a programmer to execute a python code from natural language queries.\n"
                 f"You are given a {self.type_name} named {self.name} with the following description:\n"

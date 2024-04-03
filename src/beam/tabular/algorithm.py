@@ -1,6 +1,8 @@
 import torch
+from functools import cached_property
+
 from ..algorithm import NeuralAlgorithm
-from ..utils import as_numpy, as_tensor, lazy_property
+from ..utils import as_numpy, as_tensor
 from ..data import BeamData
 from ..config import BeamConfig, BeamParam
 import torch.nn.functional as F

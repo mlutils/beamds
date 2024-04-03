@@ -1,7 +1,7 @@
 import inspect
+from functools import cached_property
 
 from .processor import Processor
-from ..utils import lazy_property
 
 
 class MetaAsyncResult:
@@ -94,7 +94,7 @@ class MetaDispatcher(Processor):
                       (inspect.ismethod(attr) or inspect.isfunction(attr))]
         return routes
 
-    @lazy_property
+    @cached_property
     def type(self):
         if inspect.isfunction(self.real_object):
             return "function"
@@ -105,7 +105,7 @@ class MetaDispatcher(Processor):
         else:
             return "instance" if isinstance(self.real_object, object) else "unknown"
 
-    @lazy_property
+    @cached_property
     def route_methods(self):
         return {route: getattr(self.real_object, route) for route in self.routes}
 

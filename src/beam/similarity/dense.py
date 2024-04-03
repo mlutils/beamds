@@ -1,13 +1,13 @@
 import math
-
 import torch
 import faiss
 import numpy as np
+from functools import cached_property
 
 from ..data import BeamData
 from ..logger import beam_logger as logger
 from ..path import beam_path, local_copy
-from ..utils import pretty_format_number, lazy_property, as_numpy, check_type, as_tensor, beam_device
+from ..utils import pretty_format_number, as_numpy, check_type, as_tensor, beam_device
 from .core import BeamSimilarity, Similarities
 
 
@@ -154,7 +154,7 @@ class DenseSimilarity(BeamSimilarity):
         self.training_device = training_device
         self.reducer_type = reducer
 
-    @lazy_property
+    @cached_property
     def reducer(self):
         if self.reducer_type == 'umap':
             import umap

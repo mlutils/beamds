@@ -1,16 +1,16 @@
 import time
 import numpy as np
 import os
-
 import torch
 from collections import defaultdict
 import pandas as pd
 from contextlib import contextmanager
 from timeit import default_timer as timer
 import threading
+from functools import cached_property
 
 from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format,
-                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type, lazy_property,
+                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type,
                      strip_prefix, recursive_detach, recursive_to_cpu)
 
 from ..utils import tqdm_beam as tqdm
@@ -183,7 +183,7 @@ class BeamReport(object):
         else:
             return v
 
-    @lazy_property
+    @cached_property
     def llm(self):
         from ..config import get_beam_llm
         return get_beam_llm()
@@ -287,7 +287,7 @@ class BeamReport(object):
             name = strip_prefix(k, f"{subset}/")
         return subset, name
 
-    @lazy_property
+    @cached_property
     def comparison(self):
         return {'max': np.greater, 'min': np.less}[self.objective_mode]
 

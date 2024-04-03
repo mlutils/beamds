@@ -9,7 +9,7 @@ from .utils import TimeoutStopper
 from ..utils import find_port, check_type, is_notebook, beam_device
 from ..logger import beam_logger as logger
 from ..path import beam_path, BeamPath
-from ..distributed.ray_dispatcher import RayCluster
+from ..distributed.ray_dispatcher import RayClient
 
 from ray.tune import JupyterNotebookReporter, TuneConfig
 from ray import tune, train
@@ -20,7 +20,7 @@ import numpy as np
 from .core import BeamHPO
 
 
-class RayHPO(BeamHPO, RayCluster):
+class RayHPO(BeamHPO, RayClient):
 
     @staticmethod
     def _categorical(param, choices):

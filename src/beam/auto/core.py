@@ -1,10 +1,10 @@
 import inspect
 import ast
 import sys
+from functools import cached_property
 
 from ..core import Processor
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
-from ..utils import lazy_property
 from ..path import beam_path
 
 import importlib.metadata
@@ -28,11 +28,11 @@ class AutoBeam(Processor):
         self._visited_modules = None
         self.obj = obj
 
-    @lazy_property
+    @cached_property
     def self_path(self):
         return beam_path(inspect.getfile(AutoBeam)).resolve()
 
-    @lazy_property
+    @cached_property
     def loaded_modules(self):
         modules = list(sys.modules.keys())
         root_modules = [m.split('.')[0] for m in modules]
@@ -60,7 +60,7 @@ class AutoBeam(Processor):
             return
         self._private_modules.append(module_spec)
 
-    @lazy_property
+    @cached_property
     def module_spec(self):
         module_spec = importlib.util.find_spec(type(self.obj).__module__)
         root_module = module_spec.name.split('.')[0]
@@ -88,7 +88,7 @@ class AutoBeam(Processor):
 
         return module_walk
 
-    @lazy_property
+    @cached_property
     def private_modules_walk(self):
 
         private_modules_walk = {}
@@ -177,14 +177,14 @@ class AutoBeam(Processor):
 
         return modules
 
-    @lazy_property
+    @cached_property
     def module_dependencies(self):
         module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
         modules = self.recursive_module_dependencies(module_path)
         return list(set(modules))
 
 
-    @lazy_property
+    @cached_property
     def top_levels(self):
 
         top_levels = {}
@@ -369,7 +369,7 @@ class AutoBeam(Processor):
             return None
         return self.top_levels[module_name]
 
-    @lazy_property
+    @cached_property
     def requirements(self):
         requirements = []
         for module_name in self.module_dependencies:

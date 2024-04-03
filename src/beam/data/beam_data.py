@@ -1,7 +1,7 @@
 import time
 from collections import defaultdict
 from copy import deepcopy
-from functools import partial
+from functools import partial, cached_property
 
 import numpy as np
 import pandas as pd
@@ -12,7 +12,7 @@ from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
 from ..core import BeamBase
-from ..utils import (is_container, lazy_property, Slicer, recursive, iter_container, recursive_collate_chunks,
+from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
                      collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device,
                      container_len, recursive_len, is_arange, recursive_size, divide_chunks,
                      recursive_hierarchical_keys,
@@ -184,15 +184,15 @@ class BeamData(BeamBase):
             if not self.lazy:
                 self.cache()
 
-    @lazy_property
+    @cached_property
     def data_slicer(self):
         return Slicer(self.data)
 
-    @lazy_property
+    @cached_property
     def index_slicer(self):
         return Slicer(self.index)
 
-    @lazy_property
+    @cached_property
     def label_slicer(self):
         return Slicer(self.label)
 
@@ -608,11 +608,11 @@ class BeamData(BeamBase):
         self.is_stored = False
 
 
-    @lazy_property
+    @cached_property
     def index_type(self):
         return check_type(self.index)
 
-    @lazy_property
+    @cached_property
     def label_type(self):
         return check_type(self.label)
 

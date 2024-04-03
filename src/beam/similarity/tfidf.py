@@ -1,11 +1,12 @@
 from typing import List, Union, Any
+from functools import cached_property
 
 import numpy as np
 import torch
 
 from ..data import BeamData
 from ..transformer import Transformer
-from ..utils import check_type,lazy_property, as_numpy
+from ..utils import check_type, as_numpy
 from .core import Similarities, BeamSimilarity
 from collections import Counter
 import scipy.sparse as sp
@@ -19,7 +20,7 @@ class ChunkTF(Transformer):
         self._device = device
         super().__init__(*args, **kwargs)
 
-    @lazy_property
+    @cached_property
     def device(self):
         from ..utils import beam_device
         return beam_device(self._device)
@@ -305,20 +306,20 @@ class TFIDF(BeamSimilarity):
         self.clear_cache('idf', 'tokens', 'n_tokens', 'avg_doc_len', 'idf_bm25', 'doc_len', 'doc_len_sparse',
                          'max_token')
 
-    @lazy_property
+    @cached_property
     def tokens(self):
         """Build a mapping from tokens to indices based on filtered tokens."""
         return set(self.df.keys())
 
-    @lazy_property
+    @cached_property
     def avg_doc_len(self):
         return sum(self.cf.values()) / self.n_docs
 
-    @lazy_property
+    @cached_property
     def n_tokens(self):
         return max(list(self.tokens))
 
-    @lazy_property
+    @cached_property
     def idf(self):
 
         if self.use_idf:
@@ -334,11 +335,11 @@ class TFIDF(BeamSimilarity):
     def idf_bm25(self, epsilon=.25):
         return self.calculate_idf(scheme='bm25', epsilon=epsilon)
 
-    @lazy_property
+    @cached_property
     def max_token(self):
         return max(list(self.tokens))
 
-    @lazy_property
+    @cached_property
     def doc_len(self):
         if self.sparse_framework == 'torch':
             doc_lengths = self.tf.sum(dim=1, keepdim=True).to_dense().squeeze(-1)
@@ -347,7 +348,7 @@ class TFIDF(BeamSimilarity):
 
         return doc_lengths
 
-    @lazy_property
+    @cached_property
     def doc_len_sparse(self):
         if self.sparse_framework == 'torch':
             repeats = self.tf.crow_indices().diff()

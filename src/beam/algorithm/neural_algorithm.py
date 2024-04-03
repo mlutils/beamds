@@ -1,15 +1,18 @@
 import math
 import os
+import numpy as np
 from argparse import Namespace
 from collections import defaultdict
 from torch import nn
 import torch
 import copy
+from functools import cached_property
+from timeit import default_timer as timer
+
 from ..logger import beam_logger as logger
-import numpy as np
 from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN, BeamDDP
 from ..utils import (to_device, check_type, recursive_concatenate,
-                     beam_device, filter_dict, lazy_property,
+                     beam_device, filter_dict,
                      is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key,
                      check_nvlink)
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
@@ -17,7 +20,6 @@ from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
 from ..core import Processor, MetaBeamInit
 from ..logger import beam_kpi, BeamResult
-from timeit import default_timer as timer
 
 
 class NeuralAlgorithm(Processor):
@@ -90,63 +92,63 @@ class NeuralAlgorithm(Processor):
     def no_experiment_message(property):
         logger.warning(f"{property} is not supported without an active experiment. Set self.experiment = experiment")
 
-    @lazy_property
+    @cached_property
     def distributed_training(self):
         if self.experiment is None:
             self.no_experiment_message('distributed_training')
             return False
         return self.experiment.distributed_training
 
-    @lazy_property
+    @cached_property
     def distributed_training_framework(self):
         if self.experiment is None:
             self.no_experiment_message('distributed_training_framework')
             return None
         return self.experiment.distributed_training_framework
 
-    @lazy_property
+    @cached_property
     def hpo(self):
         if self.experiment is None:
             self.no_experiment_message('hpo')
             return False
         return self.experiment.hpo
 
-    @lazy_property
+    @cached_property
     def rank(self):
         if self.experiment is None:
             self.no_experiment_message('rank')
             return 0
         return self.experiment.rank
 
-    @lazy_property
+    @cached_property
     def world_size(self):
         if self.experiment is None:
             self.no_experiment_message('world_size')
             return 1
         return self.experiment.world_size
 
-    @lazy_property
+    @cached_property
     def enable_tqdm(self):
         return self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
                                                               or not self.get_hparam('enable_tqdm')) else None
 
-    @lazy_property
+    @cached_property
     def n_epochs(self):
         return self.get_hparam('n_epochs')
 
-    @lazy_property
+    @cached_property
     def batch_size_train(self):
         return self.get_hparam('batch_size_train')
 
-    @lazy_property
+    @cached_property
     def batch_size_eval(self):
         return self.get_hparam('batch_size_eval')
 
-    @lazy_property
+    @cached_property
     def pin_memory(self):
         return self.is_cuda
 
-    @lazy_property
+    @cached_property
     def half(self):
 
         # maybe we should add bfloat16 + accelerate
@@ -155,17 +157,17 @@ class NeuralAlgorithm(Processor):
 
         return False
 
-    @lazy_property
+    @cached_property
     def autocast_device(self):
         return 'cuda' if self.is_cuda else 'cpu'
 
-    @lazy_property
+    @cached_property
     def brain(self):
         if self.model_dtype in [torch.bfloat16]:
             return True
         return False
 
-    @lazy_property
+    @cached_property
     def model_dtype(self):
 
         if self.amp:
@@ -189,15 +191,15 @@ class NeuralAlgorithm(Processor):
         model_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'no'}
         return model_mapping[model_dtype]
 
-    @lazy_property
+    @cached_property
     def training_framework(self):
         return self.get_hparam('training_framework', default='torch')
 
-    @lazy_property
+    @cached_property
     def native_training(self):
         return self.training_framework == 'torch'
 
-    @lazy_property
+    @cached_property
     def mixed_precision_dtype(self):
 
         if self.native_training:
@@ -212,23 +214,23 @@ class NeuralAlgorithm(Processor):
 
         return self.dtype_mapping(model_dtype)
 
-    @lazy_property
+    @cached_property
     def amp(self):
         return self.training_framework == 'amp' if self.is_cuda else False
 
-    # @lazy_property
+    # @cached_property
     # def deepspeed(self):
     #     return self.training_framework == 'deepspeed' and self.get_hparam('n_gpus') > 1
 
-    @lazy_property
+    @cached_property
     def deepspeed(self):
         return self.training_framework == 'deepspeed'
 
-    @lazy_property
+    @cached_property
     def scaler(self):
         return torch.cuda.amp.GradScaler() if self.amp else None
 
-    @lazy_property
+    @cached_property
     def swa_epochs(self):
         swa_epochs = 0
         if self.get_hparam('swa') is not None:
@@ -244,7 +246,7 @@ class NeuralAlgorithm(Processor):
                             'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
                             'scaler', 'swa_epochs')
 
-    @lazy_property
+    @cached_property
     def device(self):
         if self.in_cache('accelerator') and self.accelerator.device_placement:
             device = self.accelerator.device
@@ -257,7 +259,7 @@ class NeuralAlgorithm(Processor):
 
         return device
 
-    @lazy_property
+    @cached_property
     def deepspeed_plugin(self):
         deepspeed_plugin = None
         if self.get_hparam('n_gpus') > 1 and self.accelerate:
@@ -267,27 +269,27 @@ class NeuralAlgorithm(Processor):
 
         return deepspeed_plugin
 
-    @lazy_property
+    @cached_property
     def fsdp_plugin(self):
         return None
 
-    @lazy_property
+    @cached_property
     def megatron_lm_plugin(self):
         return None
 
-    @lazy_property
+    @cached_property
     def accelerate_kwargs_handlers(self):
         return None
 
-    @lazy_property
+    @cached_property
     def gradient_accumulation_plugin(self):
         return None
 
-    @lazy_property
+    @cached_property
     def accelerate(self):
         return self.training_framework == 'accelerate'
 
-    @lazy_property
+    @cached_property
     def accelerator(self):
 
         acc = None
@@ -326,7 +328,7 @@ class NeuralAlgorithm(Processor):
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
                 'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']
 
-    @lazy_property
+    @cached_property
     def train_reporter(self):
         return BeamReport(objective=self.get_hparam('objective'), objective_mode=self.optimization_mode,
                           aux_objectives=['loss'], aux_objectives_modes=['min'])
@@ -359,7 +361,7 @@ class NeuralAlgorithm(Processor):
         self.reporter = self.train_reporter
         self.reporter.reset_time(first_epoch=first_epoch, n_epochs=n_epochs)
 
-    @lazy_property
+    @cached_property
     def is_notebook(self):
         return is_notebook()
 
@@ -1303,7 +1305,7 @@ class NeuralAlgorithm(Processor):
         '''
         pass
 
-    @lazy_property
+    @cached_property
     def optimized_inner_train(self):
         def inner_train_with_cloned_ouptut(*args, **kwargs):
             res = self.inner_train(*args, **kwargs)
@@ -1446,7 +1448,7 @@ class NeuralAlgorithm(Processor):
             if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
                 raise optuna.exceptions.OptunaError(f"Trial timed out after {self.get_hparam('train-timeout')} seconds.")
 
-    @lazy_property
+    @cached_property
     def optimization_mode(self):
         objective_mode = self.get_hparam('objective_mode')
         objective_name = self.get_hparam('objective')

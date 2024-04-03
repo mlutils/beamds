@@ -1,6 +1,7 @@
 import ray
+from functools import cached_property
 
-from ..utils import get_class_properties, lazy_property
+from ..utils import get_class_properties
 from ..core import Processor
 from ..path import BeamURL
 from ..core import MetaAsyncResult, MetaDispatcher
@@ -49,10 +50,10 @@ class RayAsyncResult(MetaAsyncResult):
             return "PENDING"
 
 
-class RayCluster(Processor):
+class RayClient(Processor):
 
     def __init__(self, *args, name=None, address=None, host=None, port=None,
-                    username=None, password=None, ray_kwargs=None, **kwargs):
+                    username=None, password=None, ray_kwargs=None, init_ray=True, **kwargs):
 
         super().__init__(*args, name=name, **kwargs)
 
@@ -62,11 +63,12 @@ class RayCluster(Processor):
             else:
                 if host is None:
                     host = 'localhost'
-                address = BeamURL(host=host, port=port, username=username, password=password)
+                address = BeamURL(scheme='ray', hostname=host, port=port, username=username, password=password)
                 address = address.url
 
         ray_kwargs = ray_kwargs if ray_kwargs is not None else {}
-        self.init_ray(address=address, ignore_reinit_error=True, **ray_kwargs)
+        if init_ray:
+            self.init_ray(address=address, ignore_reinit_error=True, **ray_kwargs)
 
     def wait(self, results, num_returns=1, timeout=None):
         results = [r.result if isinstance(r, RayAsyncResult) else r for r in results]
@@ -136,15 +138,16 @@ class RayRemoteClass:
             return ray.get(res)
 
 
-class RayDispatcher(MetaDispatcher, RayCluster):
+class RayDispatcher(MetaDispatcher, RayClient):
 
     def __init__(self, obj, *routes, name=None, address=None, host=None, port=None,
-                 username=None, password=None, remote_kwargs=None, ray_kwargs=None, asynchronous=True, **kwargs):
+                 username=None, password=None, remote_kwargs=None, ray_kwargs=None, asynchronous=True,
+                 init_ray=True, **kwargs):
 
         MetaDispatcher.__init__(self, obj, *routes, name=name, ray_kwargs=ray_kwargs,
                                 asynchronous=asynchronous, **kwargs)
-        RayCluster.__init__(self, name=name, address=address, host=host, port=port, username=username,
-                            password=password, ray_kwargs=ray_kwargs, **kwargs)
+        RayClient.__init__(self, name=name, address=address, host=host, port=port, username=username,
+                           password=password, ray_kwargs=ray_kwargs, init_ray=init_ray, **kwargs)
 
         self.remote_kwargs = remote_kwargs if remote_kwargs is not None else {}
 
@@ -164,7 +167,7 @@ class RayDispatcher(MetaDispatcher, RayCluster):
         else:
             raise ValueError(f"Unknown type: {self.type}")
 
-    @lazy_property
+    @cached_property
     def route_methods(self):
         return self._routes_methods
 

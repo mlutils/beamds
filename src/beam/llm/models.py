@@ -3,8 +3,7 @@ import math
 from json import JSONDecodeError
 from typing import Optional, Any
 import requests
-import pandas as pd
-import numpy as np
+from functools import cached_property
 
 from .hf_conversation import Conversation
 from ..logger import beam_logger as logger
@@ -13,7 +12,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 from ..path import beam_key, normalize_host
 
 from .utils import get_conversation_template
-from ..utils import lazy_property, strip_suffix
+from ..utils import strip_suffix
 from .openai import OpenAIBase
 
 
@@ -488,7 +487,7 @@ class HuggingFaceLLM(BeamLLM):
                                                               tokenizer=self.tokenizer, device=self.input_device,
                                                               **conversational_kwargs)
 
-    @lazy_property
+    @cached_property
     def tokenizer(self):
         from transformers import AutoTokenizer
         return AutoTokenizer.from_pretrained(self.tokenizer_name, trust_remote_code=True)
