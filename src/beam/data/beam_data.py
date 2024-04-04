@@ -1175,8 +1175,8 @@ class BeamData(BeamBase):
         self._columns_map = None
         return self._columns_map
 
-    def keys(self):
-        for k in recursive_keys(self.data):
+    def keys(self, level=1):
+        for k in recursive_keys(self.data, level=level):
             yield k
 
     def hierarchical_keys(self, recursive=False):
@@ -1205,8 +1205,8 @@ class BeamData(BeamBase):
                         keys = range(len(self.all_paths))
         return keys
 
-    def items(self):
-        for k, v in recursive_items(self.data):
+    def items(self, level=1):
+        for k, v in recursive_items(self.data, level=1):
             yield k, v
 
     @property

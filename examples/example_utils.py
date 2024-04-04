@@ -8,6 +8,14 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def test_beam_data_keys():
+    from src.beam import BeamData
+    bd = BeamData({'a': [1, 2, 3], 'b': {'x': 1, 'y': 2}})
+    print(list(bd.keys()))
+    print(list(bd.keys(level=2)))
+    print(list(bd.keys(level=-1)))
+
+
 def simple_server():
 
     from src.beam.serve import beam_server
@@ -423,6 +431,8 @@ if __name__ == '__main__':
 
     # grpc_server()
 
-    simple_server()
+    # simple_server()
+
+    test_beam_data_keys()
 
     print('done')

@@ -703,64 +703,75 @@ def recursive(func):
             return values
 
         elif in_place and check_minor_type(x) == 'other':
-            for k, v in x.__dict__.items():
-                setattr(x, k, apply_recursively(v, *args, **kwargs))
-            return x
+            if hasattr(x, '__dict__'):
+                for k, v in x.__dict__.items():
+                    setattr(x, k, apply_recursively(v, *args, **kwargs))
+                return x
+            else:
+                return func(x, *args, **kwargs)
         else:
             return func(x, *args, **kwargs)
 
     return apply_recursively
 
 
-def recursive_yield(func, keys=True, values=True):
-    def apply_recursively(x, *args, _keys=True, _values=True, **kwargs):
+def recursive_yield(func, keys=True, values=True, level=-1):
+    def apply_recursively(x, *args, _keys=True, _values=True, _level=-1, **kwargs):
 
-        if is_container(x):
+        def _apply(_k, _v):
+            for item in apply_recursively(_v, *args, _keys=_keys, _values=_values, _level=_level-1, **kwargs):
 
+                if _keys and _values:
+                    kk, vv = item
+                    kk = (_k,) + kk
+                    yield kk, vv
+                elif _keys:
+                    item = (_k,) + item
+                    yield item
+                else:
+                    yield item
+
+        if _level and is_container(x):
             for k, v in iter_container(x):
+                for vv in _apply(k, v):
+                    yield vv
+            return
 
-                for kk, vv in apply_recursively(v, *args, **kwargs):
-                    kk = (k,) + kk
-                    if _keys and _values:
-                        yield kk, vv
-                    elif _keys:
-                        yield kk
-                    else:
+        elif _level and check_minor_type(x) == 'other':
+            if hasattr(x, '__dict__'):
+                for k, v in x.__dict__.items():
+                    for vv in _apply(k, v):
                         yield vv
+                return
 
-        elif check_minor_type(x) == 'other':
-            for k, v in x.__dict__.items():
-                for kk, vv in apply_recursively(v, *args, **kwargs):
-                    kk = (k,) + kk
-                    if _keys and _values:
-                        yield kk, vv
-                    elif _keys:
-                        yield kk
-                    else:
-                        yield vv
-
+        if _keys and _values:
+            yield tuple(), func(x, *args, **kwargs)
+        elif _keys:
+            yield tuple()
         else:
+            yield func(x, *args, **kwargs)
 
-            if _keys and _values:
-                yield tuple(), func(x, *args, **kwargs)
-            elif _keys:
-                yield tuple()
-            else:
-                yield func(x, *args, **kwargs)
-
-    return partial(apply_recursively, _keys=keys, _values=values)
+    return partial(apply_recursively, _keys=keys, _values=values, _level=level)
 
 
-def recursive_values(x):
-    return recursive_yield(lambda y: y, keys=False, values=True)(x)
+def recursive_values(x, level=1):
+    return recursive_yield(lambda y: y, keys=False, values=True, level=level)(x)
 
 
-def recursive_items(x):
-    return recursive_yield(lambda y: y, keys=True, values=True)(x)
+def recursive_items(x, level=1):
+    for k, v in recursive_yield(lambda y: y, keys=True, values=True, level=level)(x):
+        if level == 1:
+            yield k[0], v
+        else:
+            yield k, v
 
 
-def recursive_keys(x):
-    return recursive_yield(lambda y: y, keys=True, values=False)(x)
+def recursive_keys(x, level=1):
+    for k in recursive_yield(lambda y: y, keys=True, values=False, level=level)(x):
+        if level == 1:
+            yield k[0]
+        else:
+            yield k
 
 
 @recursive

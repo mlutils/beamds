@@ -461,8 +461,11 @@ def check_minor_type(x):
         return 'polars'
     if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
         return 'path'
+    elif is_scalar(x):
+        return 'scalar'
     else:
         return 'other'
+
 
 def elt_of_list(x):
     if len(x) < 100:
@@ -483,6 +486,10 @@ def elt_of_list(x):
     return elt0
 
 
+def is_scalar(x):
+    return np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape)))
+
+
 def check_type(x, check_minor=True, check_element=True):
     '''
 
@@ -496,7 +503,7 @@ def check_type(x, check_minor=True, check_element=True):
 
     '''
 
-    if np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape))):
+    if is_scalar(x):
         mjt = 'scalar'
         if check_minor:
             if type(x) in [int, float, str, complex, bool]:

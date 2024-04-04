@@ -1,10 +1,9 @@
-import torchvision
-from cugraph_dgl.cugraph_storage import torch
+import torch
 
 from ..path import beam_path
 from ..dataset import UniversalDataset
 from ..data import BeamData
-from ..utils import DataBatch, as_tensor
+from ..utils import as_tensor
 from transformers import AutoTokenizer, AutoConfig
 import datasets
 
