@@ -1,8 +1,9 @@
 import inspect
 import json
 from typing import Any
+from functools import cached_property
 
-from ..utils import lazy_property, jupyter_like_traceback
+from ..utils import jupyter_like_traceback
 from dataclasses import dataclass, field
 import re
 
@@ -72,11 +73,11 @@ class LLMTool:
 
         self.tool_token = f"[{self.name}]"
 
-    @lazy_property
+    @cached_property
     def args(self):
         return [k for k, v in self.properties.items() if v.required]
 
-    @lazy_property
+    @cached_property
     def kwargs(self):
         return [k for k, v in self.properties.items() if not v.required]
 
@@ -84,7 +85,7 @@ class LLMTool:
     def required(self):
         return [k for k, v in self.properties.items() if v.required]
 
-    @lazy_property
+    @cached_property
     def tool_search_pattern(self):
         # Escape special characters in tokens
         escaped_token_start = re.escape(self.token_start)

@@ -1,9 +1,10 @@
 from typing import List
+
 from sentence_transformers import SentenceTransformer
 
 from ..utils import beam_device
 from ..core import Processor
-from ..llm import beam_llm, default_tokenizer
+from ..llm import default_tokenizer
 from .dense import DenseSimilarity
 from ..path import local_copy
 

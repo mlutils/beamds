@@ -1,8 +1,7 @@
-from ..core import Processor
-from ..utils import lazy_property
-
-
+from functools import cached_property
 from catboost import CatBoostClassifier, CatBoostRegressor,CatBoost
+
+from ..core import Processor
 from ..experiment.utils import build_device_list
 
 
@@ -22,7 +21,7 @@ class CBAlgorithm(Processor):
         device_list = [d.index for d in device_list]
         return device_list
 
-    @lazy_property
+    @cached_property
     def model(self):
         cb_kwargs = {
             'learning_rate': self.get_hparam('lr', 1e-2),

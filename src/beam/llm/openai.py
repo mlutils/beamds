@@ -2,13 +2,13 @@ import json
 from typing import Optional, Any
 import pandas as pd
 import numpy as np
+from functools import cached_property
 
 from ..logger import beam_logger as logger
 from .core import BeamLLM, CompletionObject
 from pydantic import Field, PrivateAttr
 from ..path import beam_key
 
-from ..utils import lazy_property
 
 
 class OpenAIBase(BeamLLM):
@@ -24,7 +24,7 @@ class OpenAIBase(BeamLLM):
         self.api_base = api_base
         self.organization = organization
 
-    @lazy_property
+    @cached_property
     def client(self):
         from openai import OpenAI
         return OpenAI(organization=self.organization, api_key=self.api_key, base_url=self.api_base)

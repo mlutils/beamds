@@ -1,6 +1,8 @@
 import itertools
-import os, sys
+import os
+import sys
 from collections import defaultdict
+from functools import cached_property
 import random
 import numpy as np
 from fnmatch import filter
@@ -68,11 +70,6 @@ from ..path import PureBeamPath
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
-
-
-# class Beamdantic(BaseModel):
-#     # To be used with pydantic classes and lazy_property
-#     _lazy_cache: Any = PrivateAttr(default=None)
 
 
 class BeamDict(dict, Namespace):
@@ -194,31 +191,31 @@ class nested_defaultdict(defaultdict):
         super().__init__(default_factory, **kwargs)
 
 
-def lazy_property(fn):
-
-    @property
-    def _lazy_property(self):
-        try:
-            cache = getattr(self, '_lazy_cache')
-            return cache[fn.__name__]
-        except KeyError:
-            v = fn(self)
-            cache[fn.__name__] = v
-            return v
-        except AttributeError:
-            v = fn(self)
-            setattr(self, '_lazy_cache', {fn.__name__: v})
-            return v
-
-    @_lazy_property.setter
-    def _lazy_property(self, value):
-        try:
-            cache = getattr(self, '_lazy_cache')
-            cache[fn.__name__] = value
-        except AttributeError:
-            setattr(self, '_lazy_cache', {fn.__name__: value})
-
-    return _lazy_property
+# def lazy_property(fn):
+#
+#     @property
+#     def _lazy_property(self):
+#         try:
+#             cache = getattr(self, '_lazy_cache')
+#             return cache[fn.__name__]
+#         except KeyError:
+#             v = fn(self)
+#             cache[fn.__name__] = v
+#             return v
+#         except AttributeError:
+#             v = fn(self)
+#             setattr(self, '_lazy_cache', {fn.__name__: v})
+#             return v
+#
+#     @_lazy_property.setter
+#     def _lazy_property(self, value):
+#         try:
+#             cache = getattr(self, '_lazy_cache')
+#             cache[fn.__name__] = value
+#         except AttributeError:
+#             setattr(self, '_lazy_cache', {fn.__name__: value})
+#
+#     return _lazy_property
 
 
 def get_public_ip():
@@ -471,8 +468,11 @@ def check_minor_type(x):
         return 'polars'
     if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
         return 'path'
+    elif is_scalar(x):
+        return 'scalar'
     else:
         return 'other'
+
 
 def elt_of_list(x):
     if len(x) < 100:
@@ -493,6 +493,10 @@ def elt_of_list(x):
     return elt0
 
 
+def is_scalar(x):
+    return np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape)))
+
+
 def check_type(x, check_minor=True, check_element=True):
     '''
 
@@ -506,7 +510,7 @@ def check_type(x, check_minor=True, check_element=True):
 
     '''
 
-    if np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape))):
+    if is_scalar(x):
         mjt = 'scalar'
         if check_minor:
             if type(x) in [int, float, str, complex, bool]:
@@ -1264,6 +1268,16 @@ def get_class_properties(cls):
         if isinstance(attr_value, property):
             properties.append(attr_name)
     return properties
+
+
+def get_cached_properties(obj):
+    cached_props = {}
+    # Inspect the class dictionary for cached_property instances
+    for name, prop in inspect.getmembers(type(obj), lambda member: isinstance(member, cached_property)):
+        # Check if the instance dictionary has a cached value for this property
+        if name in obj.__dict__:
+            cached_props[name] = getattr(obj, name)
+    return cached_props
 
 
 def pretty_print_dict(d, name):

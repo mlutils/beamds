@@ -1,5 +1,7 @@
+from functools import cached_property
+
 from ..utils import (divide_chunks, Timer, collate_chunks, retrieve_name,
-                     jupyter_like_traceback, lazy_property, dict_to_list)
+                     jupyter_like_traceback, dict_to_list)
 from ..logger import beam_logger as logger
 
 
@@ -40,26 +42,26 @@ class SyncedResults:
         # results is a list of dicts with keys: name, result, exception
         self.results = results
 
-    @lazy_property
+    @cached_property
     def results_map(self):
         return {r['name']: r for r in self.results}
 
-    @lazy_property
+    @cached_property
     def failed(self):
         failed = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
         return dict_to_list(failed, convert_str=False)
 
-    @lazy_property
+    @cached_property
     def succeeded(self):
         succeeded = {r['name']: r['result'] for r in self.results if r['exception'] is None}
         return dict_to_list(succeeded, convert_str=False)
 
-    @lazy_property
+    @cached_property
     def values(self):
         vals = {r['name']: r['result'] if r['exception'] is None else r['exception'] for r in self.results}
         return dict_to_list(vals, convert_str=False)
 
-    @lazy_property
+    @cached_property
     def exceptions(self):
         vals = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
         return dict_to_list(vals, convert_str=False)

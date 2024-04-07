@@ -2,7 +2,6 @@ import copy
 import torch.multiprocessing as mp
 import inspect
 import traceback
-import time
 import os
 
 from ..utils import (set_seed, is_notebook, beam_device)

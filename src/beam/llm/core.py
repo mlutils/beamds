@@ -5,12 +5,13 @@ from typing import Optional, Any, Dict, List, Mapping
 from uuid import uuid4 as uuid
 import pandas as pd
 from pydantic import BaseModel
+from functools import cached_property
 
 from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
 # from ..core.processor import Processor
-from ..utils import (parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass,
+from ..utils import (parse_text_to_protocol, get_edit_ratio, retry, BeamDict, NullClass,
                      pretty_print_dict)
 from ..path import BeamURL, BeamResource
 
@@ -51,8 +52,24 @@ class Completion(BeamDict):
         return pretty_print_dict(self, 'Completion')
 
 
+class PedanticBeamResource(LLM, BeamResource):
+    url: Optional[BeamURL] = Field(None)
+    resource_type: Optional[str] = Field(None)
+    scheme: Optional[str] = Field(None)
+
+    # url: BeamURL
+    # resource_type: str
+    # scheme: str
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def __init__(self, *args, resource_type=None, scheme=None, **kwargs):
+        super().__init__(*args, resource_type=resource_type, scheme=scheme, **kwargs)
+
+
 # class BeamLLM(LLM, Processor, metaclass=CombinedMeta):
-class BeamLLM(LLM, BeamResource):
+class BeamLLM(PedanticBeamResource):
 
     model: Optional[str] = Field(None)
     scheme: Optional[str] = Field(None)
@@ -77,8 +94,6 @@ class BeamLLM(LLM, BeamResource):
     adapter: Optional[str] = Field(None)
     _len_function: Any = PrivateAttr(default=None)
 
-    # To be used with pydantic classes and lazy_property
-    _lazy_cache: Any = PrivateAttr(default=None)
     _tokenizer: Any = PrivateAttr(default=None)
     _path_to_tokenizer: Any = PrivateAttr(default=None)
 
@@ -92,8 +107,7 @@ class BeamLLM(LLM, BeamResource):
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
                  debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
                  adapter=None, tools=None, **kwargs):
-        LLM.__init__(self, *args, **kwargs)
-        BeamResource.__init__(self, resource_type='llm', scheme=scheme, **kwargs)
+        super().__init__(resource_type='llm', scheme=scheme, **kwargs)
 
         if temperature is not None:
             temperature = float(temperature)
@@ -223,7 +237,7 @@ class BeamLLM(LLM, BeamResource):
     def roles(self):
         return self._conv.roles
 
-    @lazy_property
+    @cached_property
     def tokenizer(self):
         if self._tokenizer is not None:
             tokenizer = self._tokenizer

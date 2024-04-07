@@ -22,5 +22,8 @@ def resource(uri, **kwargs):
     elif scheme in ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs']:
         from .serve import triton_client
         return triton_client(uri, **kwargs)
+    elif scheme in ['ray']:
+        from .distributed import ray_client
+        return ray_client(uri, **kwargs)
     else:
         raise Exception(f'Unknown resource scheme: {scheme}')

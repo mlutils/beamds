@@ -30,20 +30,20 @@ if __name__ == '__main__':
     #                       resume=-1, n_gpus=2, model_dtype='float16', distributed_backend='nccl',
     #                       zero_stage=2, context_length=512)
 
-    hparams = FTLLMConfig(identifier='debug', hf_cache_dir=hf_cache_dir, batch_size=2,
-                          training_framework='deepspeed', device_placement=True, reload=False,
-                          resume=-1, device=1, n_gpus=2, model_dtype='float16', distributed_backend='nccl',
-                          zero_stage=2, model='codellama/CodeLlama-7b-hf', context_length=2048,
-                          dataset='/home/shared/data/dataset/reverse_engineering/re_v0', algorithm='re_ft',
-                          prompt_key='decompiled_to_source_prompt',
-                          completion_key='source')
-
     # hparams = FTLLMConfig(identifier='debug', hf_cache_dir=hf_cache_dir, batch_size=2,
-    #                       training_framework='torch', device_placement=True, reload=False,
-    #                       resume=-1, n_gpus=1, model_dtype='bfloat16', distributed_backend='nccl',
-    #                       zero_stage=2, model='codellama/CodeLlama-7b-hf',
+    #                       training_framework='deepspeed', device_placement=True, reload=False,
+    #                       resume=-1, device=1, n_gpus=2, model_dtype='float16', distributed_backend='nccl',
+    #                       zero_stage=2, model='codellama/CodeLlama-7b-hf', context_length=2048,
     #                       dataset='/home/shared/data/dataset/reverse_engineering/re_v0', algorithm='re_ft',
-    #                       prompt_key='decompiled_to_source_prompt')
+    #                       prompt_key='decompiled_to_source_prompt',
+    #                       completion_key='source')
+
+    hparams = FTLLMConfig(identifier='debug', hf_cache_dir=hf_cache_dir, batch_size=2,
+                          training_framework='torch', device_placement=True, reload=False,
+                          resume=-1, n_gpus=1, model_dtype='bfloat16', distributed_backend='nccl',
+                          zero_stage=2, model='codellama/CodeLlama-7b-hf',
+                          dataset='/home/shared/data/dataset/reverse_engineering/re_v0', algorithm='re_ft',
+                          prompt_key='decompiled_to_source_prompt')
 
     experiment = Experiment(hparams)
 

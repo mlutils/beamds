@@ -1,7 +1,7 @@
 import socket
 
 from ..distributed import ThreadedDispatcher
-from ..distributed import RayDispatcher, RayCluster
+from ..distributed import RayDispatcher, RayClient
 from .core import BeamFederated
 from ..utils import find_port, GPUManager
 from ..logger import beam_logger as logger

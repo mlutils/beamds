@@ -1,11 +1,11 @@
 import json
 from collections import OrderedDict
 import inspect
-import pickle
 from argparse import Namespace
-import io
+from functools import cached_property
+
 from ..path import beam_path, normalize_host
-from ..utils import retrieve_name, lazy_property, check_type
+from ..utils import retrieve_name, check_type, get_cached_properties
 from ..config import BeamConfig
 
 
@@ -31,7 +31,6 @@ class BeamBase(metaclass=MetaBeamInit):
 
         self._init_is_done = False
         self._name = name
-        self._lazy_cache = {}
 
     def getattr(self, attr):
         raise AttributeError(f"Attribute {attr} not found")
@@ -44,14 +43,13 @@ class BeamBase(metaclass=MetaBeamInit):
 
     def clear_cache(self, *args):
         if len(args) == 0:
-            self._lazy_cache = {}
-        else:
-            for k in args:
-                if k in self._lazy_cache:
-                    del self._lazy_cache[k]
+            args = get_cached_properties(self)
+        for k in args:
+            if hasattr(self, k):
+                delattr(self, k)
 
     def in_cache(self, attr):
-        return attr in self._lazy_cache
+        return hasattr(self, attr)
 
     @property
     def name(self):
@@ -89,7 +87,7 @@ class Processor(BeamBase):
 
         self._llm = self.get_hparam('llm', llm)
 
-    @lazy_property
+    @cached_property
     def llm(self):
         if type(self._llm) is str:
             from ..resource import resource
