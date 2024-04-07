@@ -1,16 +1,14 @@
-from functools import partial
-from typing import List, Union, Any
 
+from typing import List, Union, Any
+from collections import Counter
+import scipy.sparse as sp
 import numpy as np
 import torch
 
-from .. import as_numpy, BeamData, beam_path
-from ..core import Processor
+from ..data import BeamData
 from ..transformer import Transformer
-from ..utils import check_type, as_tensor, beam_device, tqdm_beam as tqdm, lazy_property
+from ..utils import check_type, as_numpy, lazy_property
 from .core import Similarities, BeamSimilarity
-from collections import Counter
-import scipy.sparse as sp
 
 
 class ChunkTF(Transformer):

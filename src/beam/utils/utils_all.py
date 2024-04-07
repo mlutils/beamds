@@ -368,15 +368,22 @@ def pretty_format_number(x, short=False):
     trim = 4 if short else 8
     exp = 2 if short else 4
 
+    big_num = 1000 if short else 10000
+    normal_num = 100 if short else 1000
+    small_num = 0.1 if short else 0.001
+
     if x is None or np.isinf(x) or np.isnan(x):
         return f'{x}'.ljust(just)
-    if int(x) == x and np.abs(x) < 10000:
+    if int(x) == x and np.abs(x) < big_num:
         return f'{int(x)}'.ljust(just)
-    if np.abs(x) >= 10000 or np.abs(x) < 0.0001:
-        return f'{float(x):.4}'.ljust(just)
-    if np.abs(x) >= 1000:
+    if np.abs(x) >= big_num or np.abs(x) < small_num:
+        if short:
+            return f'{x:.1e}'.ljust(just)
+        else:
+            return f'{float(x):.4}'.ljust(just)
+    if np.abs(x) >= normal_num:
         return f'{x:.1f}'.ljust(just)
-    if np.abs(x) < 10000 and np.abs(x) >= 0.0001:
+    if np.abs(x) < big_num and np.abs(x) >= small_num:
         nl = int(np.log10(np.abs(x)))
         return f'{np.sign(x) * int(np.abs(x) * (10 ** (exp - nl))) * float(10 ** (nl - exp))}'.ljust(trim)[:trim].ljust(just)
 

@@ -5,10 +5,10 @@ import torch
 import faiss
 import numpy as np
 
-from .. import beam_path, as_numpy, check_type, as_tensor, beam_device, BeamData
+from ..data import BeamData
 from ..logger import beam_logger as logger
-from ..path import local_copy
-from ..utils import pretty_format_number, lazy_property
+from ..path import local_copy, beam_path
+from ..utils import pretty_format_number, lazy_property, as_numpy, check_type, as_tensor, beam_device
 from .core import BeamSimilarity, Similarities
 
 

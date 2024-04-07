@@ -1,6 +1,6 @@
 import json
 
-from .. import resource
+from ..llm import beam_llm
 from ..core import MetaDispatcher
 from ..utils import lazy_property, check_type
 from ..logger import beam_logger as logger
@@ -30,7 +30,7 @@ class BeamAssistant(MetaDispatcher):
 
         self.llm = None
         if llm is not None:
-            self.llm = resource(llm, **llm_kwargs)
+            self.llm = beam_llm(llm, **llm_kwargs)
 
         self._summary_queue = queue.Queue()
         self._summarize_thread = None

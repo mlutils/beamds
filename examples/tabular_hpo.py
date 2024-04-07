@@ -6,7 +6,7 @@ from ray.tune.schedulers import ASHAScheduler
 # available_devices = [0, 1, 2, 3]
 # available_devices = [0, 1]
 # n_jobs = len(available_devices)
-n_jobs = 16
+n_jobs = 4
 # available_devices = [0]
 # os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
 # n_jobs = 1
@@ -38,7 +38,7 @@ if __name__ == '__main__':
                        tensorboard=False, stop_at=0.98, n_gpus=1, device=0, label_smoothing=.2,
                        n_decoder_layers=n_decoder_layers)
 
-    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, gpus_per_trial=.25,
+    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, gpus_per_trial=1,
                            cpus_per_trial=6, n_jobs=n_jobs, hpo_path=os.path.join(logs_path, 'hpo'))
 
     run_names = {}
@@ -46,14 +46,14 @@ if __name__ == '__main__':
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128)
+    # kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256)
     # kwargs_all['jannis'] = dict(batch_size=256)
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
-    # kwargs_all['covtype'] = dict(batch_size=512)
+    kwargs_all['covtype'] = dict(batch_size=512)
 
     for k in kwargs_all.keys():
 

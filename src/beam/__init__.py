@@ -13,7 +13,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'UniversalConfig', 'beam_arguments', 'BeamConfig', 'BeamParam',
            'check_type', 'Timer',
            'beam_logger', 'beam_kpi',
-           'beam_path', 'beam_key',
+           'beam_path', 'beam_key', 'pretty_format_number',
            'beam_server', 'beam_client',
            '__version__',
            'resource',
@@ -37,7 +37,7 @@ if has_torch:
     from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch, beam_hash
 
 from .config import UniversalConfig, beam_arguments, BeamConfig, BeamParam
-from .utils import check_type, Timer
+from .utils import check_type, Timer, pretty_format_number
 from .logger import beam_logger, beam_kpi
 
 from functools import partial

@@ -1,12 +1,7 @@
 from typing import List
-
-import numpy as np
-from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
-from .. import as_numpy
 from ..utils import beam_device
-from .core import BeamSimilarity
 from ..core import Processor
 from ..llm import beam_llm, default_tokenizer
 from .dense import DenseSimilarity
