@@ -15,10 +15,10 @@ import os
 
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, LinearNet
-from src.beam.model import PID
+from src.beam import NeuralAlgorithm, PackedFolds, LinearNet
+from src.beam.nn import PID
 from src.beam.config import basic_beam_parser
-from src.beam.model import GBN, MHRuleLayer, mySequential
+from src.beam.nn import GBN, MHRuleLayer, mySequential
 
 from ray import tune
 from sklearn.datasets import fetch_covtype
@@ -224,7 +224,7 @@ class Head(nn.Module):
         return x
 
 
-class BetterEmbedding(torch.nn.Module):
+class BetterEmbedding(nn.Module):
 
     def __init__(self, n_num, n_categories, emb_dim, n_tables=15, initial_mask=1.,
                  k_p=0.05, k_i=0.005, k_d=0.005, T=20, clip=0.005, flatten=False, kaiming_init=False, sparse=True):
@@ -386,7 +386,7 @@ class CovtypeDataset(UniversalDataset):
 
     def __init__(self, hparams):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         seed = hparams.seed
 
@@ -463,7 +463,7 @@ class LinearNetComb(nn.Module):
 
 
 
-class CovtypeAlgorithm(Algorithm):
+class CovtypeAlgorithm(NeuralAlgorithm):
 
     def __init__(self, hparams, dataset=None, optimizers=None):
 
@@ -520,7 +520,7 @@ class CovtypeAlgorithm(Algorithm):
 
         return results
 
-    def predict_iteration(self, sample=None, results=None, subset=None, with_labels=True, **kwargs):
+    def inference_iteration(self, sample=None, results=None, subset=None, with_labels=True, **kwargs):
 
         if with_labels:
             x_num, x_cat, y = sample['x_num'], sample['x_cat'], sample['y']
@@ -603,29 +603,29 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data/dataset/covtype'
-    root_dir = '/home/shared/data/results/covtype'
+    data_path = '/home/shared/data/dataset/covtype'
+    logs_path = '/home/shared/data/results/covtype'
 
     # hparams = beam_arguments(get_covtype_parser(),
-    #                       f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=1",
+    #                       f"--project-name=covtype --logs-path={logs_path} --algorithm=CovtypeAlgorithm --device=1",
     #                       f" --no-half --lr-d=1e-3 --lr-s=1e-2 --batch-size=512",
-    #                       "--n-epochs=100 --clip-gradient=0 --parallel=1 --accumulate=1",
+    #                       "--n-epochs=100 --clip-gradient=0 --n-gpus=1 --accumulate=1",
     #                       "--momentum=0.9 --beta2=0.99", weight_factor=.0, scheduler_patience=16,
     #                       weight_decay=1e-5, label_smoothing=0.,
     #                       k_p=.05, k_i=0.001, k_d=0.005, initial_mask=1,
-    #                       path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
+    #                       data_path=data_path, dropout=.0, activation='gelu', channels=256, n_rules=128,
     #                       n_layers=2, scheduler_factor=1 / math.sqrt(10))
 
     hparams = beam_arguments(get_covtype_parser(),
-                             f"--project-name=covtype --root-dir={root_dir} --algorithm=CovtypeAlgorithm --device=0 --no-half --lr-d=1e-3 --lr-s=.01 --batch-size=512",
-                             "--n-epochs=200 --clip-gradient=0 --parallel=1 --accumulate=1",
+                             f"--project-name=covtype --logs-path={logs_path} --algorithm=CovtypeAlgorithm --device=0 --no-half --lr-d=1e-3 --lr-s=.01 --batch-size=512",
+                             "--n-epochs=200 --clip-gradient=0 --n-gpus=1 --accumulate=1",
                              "--weight-decay=1e-5 --beta1=0.9 --beta2=0.99", weight_factor=1., scheduler_patience=16,
                              label_smoothing=.1, initial_mask=1,
-                             path_to_data=path_to_data, dropout=.0, activation='gelu', channels=256, n_rules=128,
+                             data_path=data_path, dropout=.0, activation='gelu', channels=256, n_rules=128,
                              n_layers=5, scheduler_factor=1 / math.sqrt(10))
 
     experiment = Experiment(hparams)
-    alg = experiment.fit(Alg=CovtypeAlgorithm, Dataset=CovtypeDataset, tensorboard_arguments=None)
+    alg = experiment.fit(alg=CovtypeAlgorithm, dataset=CovtypeDataset, tensorboard_arguments=None)
 
     # ## Inference
     inference = alg('test')

@@ -1,4 +1,5 @@
-from .models import OpenAI, TGILLM, FastChatLLM, FastAPILLM, HuggingFaceLLM, FastAPIDPLLM
+from .models import TGILLM, FastChatLLM, FastAPILLM, HuggingFaceLLM, FastAPIDPLLM
+from .openai import OpenAILLM
 from ..path import beam_key, BeamURL
 
 
@@ -42,7 +43,7 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
     if url.protocol == 'openai':
 
         api_key = beam_key('OPENAI_API_KEY', api_key)
-        return OpenAI(model=model, api_key=api_key, **kwargs)
+        return OpenAILLM(model=model, api_key=api_key, **kwargs)
 
     elif url.protocol == 'fastchat':
         return FastChatLLM(model=model, hostname=hostname, port=port, **kwargs)

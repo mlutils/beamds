@@ -12,11 +12,12 @@ from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
-from src.beam import beam_arguments, Experiment, beam_algorithm_generator
-from src.beam import UniversalDataset, UniversalBatchSampler, basic_beam_parser
-from src.beam import Algorithm
+from src.beam import beam_arguments, Experiment, beam_algorithm_generator, BeamNN, BeamData
+from src.beam import UniversalDataset, UniversalBatchSampler
+from src.beam import NeuralAlgorithm
 from src.beam import LinearNet, as_numpy
-from src.beam import DataTensor, PackedFolds
+from src.beam import DataTensor
+from src.beam import UniversalConfig, BeamParam
 from functools import partial
 import math
 import matplotlib.pyplot as plt
@@ -40,7 +41,7 @@ def pairwise_distance(a, b, p=2):
     return r
 
 
-class DeepTSNENet(nn.Module):
+class DeepTSNENet(BeamNN):
     def __init__(self, net, eps=1e-05, momentum=0.1):
         super().__init__()
         self.net = net
@@ -59,22 +60,24 @@ class MNISTDataset(UniversalDataset):
 
     def __init__(self, hparams):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         seed = hparams.split_dataset_seed
 
         super().__init__()
         dataset_train = torchvision.datasets.MNIST(root=path, train=True, transform=torchvision.transforms.ToTensor(), download=True)
         dataset_test = torchvision.datasets.MNIST(root=path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
 
-        self.data = PackedFolds({'train': dataset_train.data, 'test': dataset_test.data})
-        self.labels = PackedFolds({'train': dataset_train.targets, 'test': dataset_test.targets})
-        self.split(validation=.2, test=self.labels['test'].index, seed=seed)
+        self.data = BeamData.simple({'train': dataset_train.data, 'test': dataset_test.data},
+                                    label={'train': dataset_train.targets, 'test': dataset_test.targets},
+                                    quick_getitem=True)
+        self.labels = self.data.label
+        self.split(validation=.2, test=self.data['test'].index, seed=seed)
 
     def getitem(self, index):
         return {'x': self.data[index].float() / 255, 'y': self.labels[index]}
 
 
-class DeepTSNE(Algorithm):
+class DeepTSNE(NeuralAlgorithm):
 
     def __init__(self, hparams):
 
@@ -197,7 +200,7 @@ class DeepTSNE(Algorithm):
 
         return results
 
-    def predict_iteration(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, results=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
@@ -221,19 +224,17 @@ class DeepTSNE(Algorithm):
         return results
 
 
-def get_deep_tsne_parser():
+class TSNEConfig(UniversalConfig):
 
-    parser = basic_beam_parser()
-    parser.add_argument('--emb-size', type=int, default=2, help='Size of embedding dimension')
-    parser.add_argument('--p-norm', type=int, default=2, help='The norm degree')
-    parser.add_argument('--perplexity-top', type=float, default=.02, help='The number of nearest neighbors that is used in'
-                                                                  ' other manifold learning algorithms')
-    parser.add_argument('--perplexity-bottom', type=float, default=.9, help='The number of farest neighbors that is used in'
-                                                                   ' other manifold learning algorithms')
-    parser.add_argument('--reg-weight', type=float, default=.0, help='Regularization weight factor')
-    parser.add_argument('--reduction', type=str, default='sum', help='The reduction to apply')
-
-    return parser
+    parameters = [BeamParam('emb_size', int, 2, 'Size of embedding dimension'),
+                  BeamParam('p_norm', int, 2, 'The norm degree'),
+                  BeamParam('perplexity_top', float, .02, 'The number of nearest neighbors that is used in'
+                                                          ' other manifold learning algorithms'),
+                  BeamParam('perplexity_bottom', float, .9, 'The number of farest neighbors that is used in'
+                                                              ' other manifold learning algorithms'),
+                  BeamParam('reg_weight', float, .0, 'Regularization weight factor'),
+                  BeamParam('reduction', str, 'sum', 'The reduction to apply'),
+    ]
 
 
 # ## Training
@@ -243,12 +244,12 @@ if __name__ == '__main__':
     # here you put all actions which are performed only once before initializing the workers
     # for example, setting running arguments and experiment:
 
-    path_to_data = '/home/shared/data//dataset/mnist'
-    root_dir = '/home/shared/data/results'
+    data_path = '/home/shared/data//dataset/mnist'
+    logs_path = '/home/shared/data/results'
 
-    args = beam_arguments(get_deep_tsne_parser(),
-        f"--project-name=deep_tsne_mnist --root-dir={root_dir} --algorithm=DeepTSNE --device=cpu",
-        "--epoch-length=200000 --n-epochs=10 --parallel=1", path_to_data=path_to_data)
+    args = TSNEConfig(
+        f"--project-name=deep_tsne_mnist --logs-path={logs_path} --algorithm=DeepTSNE --device=cpu",
+        "--epoch-length=200000 --n-epochs=10 --n-gpus=1", data_path=data_path)
 
     experiment = Experiment(args)
     experiment.fit(DeepTSNE, MNISTDataset)

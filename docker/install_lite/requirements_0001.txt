@@ -1,4 +1,0 @@
-# gradient boosting tree algorithms
-# xgboost
-catboost
-lightgbm

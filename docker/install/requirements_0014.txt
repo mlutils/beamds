@@ -13,6 +13,3 @@ pypdf
 InstructorEmbedding
 celery
 
-accelerate
-deepspeed
-# vllm

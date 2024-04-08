@@ -3,6 +3,7 @@ loguru
 setuptools
 build
 johnnydep
+mpi4py
 
 # jupyter ipywidgets
 jupyterhub

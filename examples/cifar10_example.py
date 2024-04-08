@@ -16,7 +16,7 @@ import os
 
 from src.beam import beam_arguments, Experiment
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm, PackedFolds, as_numpy
+from src.beam import NeuralAlgorithm, PackedFolds, as_numpy
 from src.beam import DataTensor, BeamOptimizer
 from src.beam.data import BeamData
 
@@ -125,7 +125,7 @@ class CIFAR10Dataset(UniversalDataset):
     def __init__(self, hparams):
         super().__init__()
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         device = hparams.device
         padding = hparams.padding
 
@@ -197,7 +197,7 @@ class LRPolicy(object):
         return piecewiselin
 
 
-class CIFAR10Algorithm(Algorithm):
+class CIFAR10Algorithm(NeuralAlgorithm):
 
     def __init__(self, hparams):
 
@@ -246,7 +246,7 @@ class CIFAR10Algorithm(Algorithm):
         # add scalar measurements
         self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-    def predict_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
@@ -292,7 +292,7 @@ if __name__ == '__main__':
 
     args = beam_arguments(
         f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
-        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --no-deterministic",
+        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --n-gpus=1 --accumulate=1 --no-deterministic",
         "--weight-decay=.00256 --momentum=0.9 --beta2=0.999 --temperature=1 --objective=acc --scheduler=one_cycle",
         dropout=.0, activation='gelu', channels=512, label_smoothing=.2, padding=4, scale_down=.7,
         scale_up=1.4, ratio_down=.7, ratio_up=1.4)

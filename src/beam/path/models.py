@@ -1,9 +1,12 @@
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import PurePath, Path
 from .core import PureBeamPath, normalize_host
-from io import StringIO, BytesIO
+from io import StringIO, BytesIO, TextIOWrapper
 import os
 import urllib3
+import stat
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 import warnings
@@ -20,6 +23,10 @@ class BeamPath(PureBeamPath):
         PureBeamPath.__init__(self, *pathsegments, scheme=scheme, **kwargs)
         self.path = Path(self.path)
 
+    def glob(self, pattern, case_sensitive=None):
+        for path in self.path.glob(pattern):
+            yield self.gen(path)
+
     @classmethod
     def cwd(cls):
         return cls(str(Path.cwd()))
@@ -33,6 +40,12 @@ class BeamPath(PureBeamPath):
 
     def getmtime(self):
         return os.path.getmtime(str(self.path))
+
+    def getctime(self):
+        return os.path.getctime(str(self.path))
+
+    def getatime(self):
+        return os.path.getatime(str(self.path))
 
     def chmod(self, mode):
         return self.path.chmod(mode)
@@ -118,7 +131,7 @@ class BeamPath(PureBeamPath):
         self.path.symlink_to(str(target), target_is_directory=target_is_directory)
 
     def hardlink_to(self, target):
-        self.path.link_to(str(target))
+        self.path.hardlink_to(str(target))
 
     def link_to(self, target):
         self.path.link_to(str(target))
@@ -140,17 +153,20 @@ class BeamPath(PureBeamPath):
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.file_object.close()
+        self.close_at_exit()
 
-    def write(self, x, ext=None, **kwargs):
+    def write(self, *args, ext=None, **kwargs):
 
         if ext is None:
             ext = self.suffix
 
         if ext == '.parquet' and kwargs.get('partition_cols', None) is not None:
-            x.to_parquet(str(self), **kwargs)
 
-        return super().write(x, ext=ext, **kwargs)
+            assert len(args) == 1, "Only one argument is allowed for parquet writing with partition_cols"
+            df = args[0]
+            df.to_parquet(str(self), **kwargs)
+
+        return super().write(*args, ext=ext, **kwargs)
 
     def read(self, ext=None, **kwargs):
 
@@ -163,10 +179,168 @@ class BeamPath(PureBeamPath):
         return super().read(ext=ext, **kwargs)
 
 
+'''
+from smbclient._os import (
+    XATTR_CREATE,
+    XATTR_REPLACE,
+    SMBDirEntry,
+    SMBStatResult,
+    SMBStatVolumeResult,
+    copyfile,
+    getxattr,
+    link,
+    listdir,
+    listxattr,
+    lstat,
+    makedirs,
+    mkdir,
+    open_file,
+    readlink,
+    remove,
+    removedirs,
+    removexattr,
+    rename,
+    renames,
+    replace,
+    rmdir,
+    scandir,
+    setxattr,
+    stat,
+    stat_volume,
+    symlink,
+    truncate,
+    unlink,
+    utime,
+    walk,
+)
+
+'''
+
+
+class SMBPath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, hostname=None, username=None, password=None, port=None,
+                 connection_timeout=60, **kwargs):
+
+        if port is None:
+            port = 445
+        super().__init__(*pathsegments, scheme='smb', client=client, hostname=hostname, username=username,
+                         password=password, port=port, **kwargs)
+        self.connection_timeout = connection_timeout
+        if self.client is None:
+            import smbclient
+            self.client = smbclient
+        self.credentials = {'username': self.username, 'password': self.password, 'port': self.port}
+        self.register_smb_session()
+
+    @staticmethod
+    def _smb_path(server, path):
+        path = path.replace('/', '\\')
+        return fr"\\{server.upper()}\{path}"
+
+    @property
+    def smb_path(self):
+        return SMBPath._smb_path(self.hostname, str(self.path))
+
+    def register_smb_session(self):
+        self.client.register_session(self.hostname.upper(), connection_timeout=self.connection_timeout,
+                                     **self.credentials)
+
+    def exists(self):
+        try:
+            self.client.stat(self.smb_path)
+            return True
+        except FileNotFoundError:
+            # The path does not exist
+            return False
+        except Exception as e:
+            # Other exceptions might indicate a problem with the network, permissions, etc.
+            # Depending on your application, you might want to handle these differently.
+            return False
+
+    def is_file(self):
+        try:
+            file_attributes = self.client.stat(self.smb_path).st_file_attributes
+            # Check if the directory attribute is not set
+            return not file_attributes & stat.FILE_ATTRIBUTE_DIRECTORY
+        except Exception as e:
+            # Handle exceptions, possibly returning False or re-raising
+            return False
+
+    def is_dir(self):
+        try:
+            file_attributes = self.client.stat(self.smb_path).st_file_attributes
+            # Check if the directory attribute is set
+            return bool(file_attributes & stat.FILE_ATTRIBUTE_DIRECTORY)
+        except Exception as e:
+            # Handle exceptions
+            return False
+
+    def mkdir(self, parents=True, exist_ok=True, **kwargs):
+
+        if self.is_root():
+            return
+
+        if not exist_ok:
+            if self.exists():
+                raise FileExistsError(f"File already exists: {self.smb_path}")
+
+        if parents and not self.parent.exists():
+            self.parent.mkdir(parents=True, exist_ok=True, **kwargs)
+
+        from smbprotocol.exceptions import SMBOSError
+        from smbprotocol.header import NtStatus
+
+        try:
+            self.client.mkdir(self.smb_path, **{**self.credentials, **kwargs})
+        except SMBOSError as e:
+            if e.ntstatus == NtStatus.STATUS_OBJECT_NAME_COLLISION:
+                pass
+            else:
+                raise e
+
+    def rmdir(self):
+        self.client.rmdir(self.smb_path, **self.credentials)
+
+    def unlink(self, missing_ok=False):
+        self.client.unlink(self.smb_path, **self.credentials)
+
+    def iterdir(self):
+        for p in self.client.listdir(self.smb_path, **self.credentials):
+            yield self.gen(f"{self.path}/{p}")
+
+    def replace(self, target):
+        self.rename(target)
+
+    def rename(self, target):
+        self.client.rename(self.smb_path, target.smb_path, **self.credentials)
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            self.file_object = self.client.open_file(self.smb_path, mode=self.mode, **self.credentials,
+                                                     encoding=self.open_kwargs['encoding'],
+                                                     newline=self.open_kwargs['newline'],
+                                                     errors=self.open_kwargs['errors'])
+        elif self.mode == 'wb':
+            self.file_object = BytesIO()
+        elif self.mode == 'w':
+            self.file_object = StringIO(newline=self.open_kwargs['newline'])
+        else:
+            raise ValueError
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.mode in ["wb", "w"]:
+            self.file_object.seek(0)
+            self.client.open_file(self.smb_path, mode=self.mode, **self.credentials).write(self.file_object.getvalue())
+        self.close_at_exit()
+
+
 class SFTPPath(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, username=None, private_key=None, password=None,
-                 port=None, private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None, **kwargs):
+                 port=None, private_key_pass=None, ciphers=None, log=False, cnopts=None, default_path=None,
+                 disable_hostkey=True, **kwargs):
 
         super().__init__(*pathsegments, scheme='sftp', client=client, hostname=hostname, username=username,
                          private_key=private_key, password=password, port=port, private_key_pass=private_key_pass,
@@ -179,6 +353,9 @@ class SFTPPath(PureBeamPath):
 
         if client is None:
             import pysftp
+            if disable_hostkey:
+                cnopts = pysftp.CnOpts()
+                cnopts.hostkeys = None  # This disables host key checking
             self.client = pysftp.Connection(host=hostname, username=username, private_key=private_key, password=password,
                                             port=port, private_key_pass=private_key_pass, ciphers=ciphers, log=log,
                                             cnopts=cnopts, default_path=default_path)
@@ -210,24 +387,27 @@ class SFTPPath(PureBeamPath):
         self.client.rename(str(self.path), str(target))
 
     def __enter__(self):
-        if self.mode in ["rb", "r"]:
+        if self.mode == "rb":
             self.file_object = self.client.open(str(self.path), self.mode)
+        elif self.mode == "r":
+            self.file_object = TextIOWrapper(self.client.open(str(self.path), self.mode),
+                                             encoding=self.open_kwargs['encoding'],
+                                            newline=self.open_kwargs['newline'])
         elif self.mode == 'wb':
             self.file_object = BytesIO()
         elif self.mode == 'w':
-            self.file_object = StringIO()
+            self.file_object = StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             self.client.putfo(self.file_object, remotepath=str(self.path))
-            self.file_object.close()
+
+        self.close_at_exit()
 
     def rmdir(self):
         self.client.rmdir(str(self.path))
@@ -243,9 +423,9 @@ class SFTPPath(PureBeamPath):
 class S3Path(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
-                 secret_key=None, tls=True, **kwargs):
+                 secret_key=None, tls=True, storage_class=None, **kwargs):
         super().__init__(*pathsegments, scheme='s3', client=client, hostname=hostname, port=port,
-                         access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+                         access_key=access_key, secret_key=secret_key, tls=tls, storage_class=storage_class, **kwargs)
 
         if not self.is_absolute():
             self.path = PurePath('/').joinpath(self.path)
@@ -282,6 +462,7 @@ class S3Path(PureBeamPath):
         self.client = client
         self._bucket = None
         self._object = None
+        self.storage_class = storage_class or 'STANDARD'
 
     @property
     def bucket(self):
@@ -379,8 +560,9 @@ class S3Path(PureBeamPath):
         if not self._check_if_bucket_exists():
             self.bucket.create()
 
-        key = self.normalize_directory_key()
-        self.bucket.put_object(Key=key)
+        if self.key is not None:
+            key = self.normalize_directory_key()
+            self.bucket.put_object(Key=key, StorageClass=self.storage_class)
 
     def _is_empty_bucket(self):
         for _ in self.bucket.objects.all():
@@ -465,7 +647,7 @@ class S3Path(PureBeamPath):
         elif self.mode == 'wb':
             self.file_object = BytesIO()
         elif self.mode == 'w':
-            self.file_object = StringIO()
+            self.file_object = StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
 
@@ -473,12 +655,16 @@ class S3Path(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
-            self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue())
-            self.file_object.close()
+            self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue(),
+                                                               StorageClass=self.storage_class)
+
+        self.close_at_exit()
+
+    def getmtime(self):
+        d = self.object.get()["LastModified"]
+        return d.timestamp()
 
 
 class PyArrowPath(PureBeamPath):
@@ -555,25 +741,31 @@ class PyArrowPath(PureBeamPath):
             with self.client.open_input_file(self.str_path) as f:
                 content = f.read()
             # io_obj = StringIO if 'r' else BytesIO
-            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                  newline=self.open_kwargs['newline'])
         elif self.mode in ['wb', 'w']:
-            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError("Invalid mode")
 
         return self.file_object
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             content = self.file_object.getvalue()
             with self.client.open_output_stream(self.str_path) as f:
                 f.write(content if 'b' in self.mode else content.encode())
-            self.file_object.close()
 
-    def write(self, x, ext=None, **kwargs):
+        self.close_at_exit()
+
+    def write(self, *args, ext=None, **kwargs):
+
+        x = None
+        if len(args) >= 1:
+            x = args[0]
 
         if ext is None:
             ext = self.suffix
@@ -586,7 +778,7 @@ class PyArrowPath(PureBeamPath):
             import pyarrow.orc as orc
             orc.write_table(x, self.str_path, filesystem=self.client)
 
-        return super().write(x, ext=ext, **kwargs)
+        return super().write(*args, ext=ext, **kwargs)
 
     def read(self, ext=None, **kwargs):
 
@@ -695,7 +887,11 @@ class HDFSPath(PureBeamPath):
 
         return super().read(ext=ext, **kwargs)
 
-    def write(self, x, ext=None,  **kwargs):
+    def write(self, *args, ext=None,  **kwargs):
+
+        x = None
+        if len(args) >= 1:
+            x = args[0]
 
         if ext is None:
             ext = self.suffix
@@ -711,7 +907,7 @@ class HDFSPath(PureBeamPath):
             write_dataframe(self.client, str(self), x, **kwargs)
 
         else:
-            super().write(x, ext=ext, **kwargs)
+            super().write(*args, ext=ext, **kwargs)
 
     def __enter__(self):
         if self.mode in ["rb", "r"]:
@@ -726,10 +922,12 @@ class HDFSPath(PureBeamPath):
             with self.client.read(str(self), chunk_size=chunk_size) as reader:
                 content = reader.read()
 
-            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                  newline=self.open_kwargs['newline'])
 
         elif self.mode in ['wb', 'w']:
-            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
 
@@ -737,14 +935,14 @@ class HDFSPath(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
+
             self.file_object.seek(0)
             content = self.file_object.getvalue()
             with self.client.write(str(self)) as writer:
                 writer.write(content if 'b' in self.mode else content.encode())
-            self.file_object.close()
+
+        self.close_at_exit()
 
 
 class S3PAPath(PyArrowPath):
@@ -825,6 +1023,10 @@ class CometAsset(PureBeamPath):
                  secret_key=None, tls=True, **kwargs):
         super().__init__(*pathsegments, scheme='comet', client=client, hostname=hostname, port=port,
                          access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+
+        if self.hostname is not None:
+            tls = 'https' if tls else 'http'
+            os.environ['COMET_URL_OVERRIDE'] = f"{tls}://{normalize_host(self.hostname, self.port)}/clientlib"
 
         if client is None:
 
@@ -935,7 +1137,7 @@ class CometAsset(PureBeamPath):
         if self.level == 1:
             raise ValueError("CometArtifact: cannot create workspace")
         elif self.level == 2:
-            self.client.create_project(self.project_name)
+            self.client.create_project(self.workspace, self.project_name)
         elif self.level == 3:
             from comet_ml import APIExperiment
             exp = APIExperiment(api_key=self.client.api_key, workspace=self.workspace, project_name=self.project_name)
@@ -947,7 +1149,7 @@ class CometAsset(PureBeamPath):
         raise NotImplementedError
 
     def unlink(self, missing_ok=False):
-        if not missing_ok:
+        if missing_ok:
             raise NotImplementedError
         if self.level == 1:
             raise ValueError("CometArtifact: cannot delete workspace")
@@ -970,10 +1172,12 @@ class CometAsset(PureBeamPath):
         if self.mode in ["rb", "r"]:
 
             content = self.experiment.get_asset(self.assets_map[self.name]['assetId'])
-            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode())
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                  newline=self.open_kwargs['newline'])
 
         elif self.mode in ['wb', 'w']:
-            self.file_object = BytesIO() if 'b' in self.mode else StringIO()
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
         else:
             raise ValueError
 
@@ -981,9 +1185,7 @@ class CometAsset(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        if self.mode in ["rb", "r"]:
-            self.file_object.close()
-        else:
+        if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             content = self.file_object.getvalue()
             with temp_local_file(content, name=self.name, as_beam_path=True, binary='b' in self.mode) as tmp_path:
@@ -993,6 +1195,173 @@ class CometAsset(PureBeamPath):
                     self.experiment.log_asset(tmp_path.name)
                 finally:
                     os.chdir(cwd)
-            self.file_object.close()
+        self.close_at_exit()
 
 
+class RedisPath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, password=None, username=None, data=None,
+                 tls=False, db=0, **kwargs):
+        super().__init__(*pathsegments, scheme='redis', client=client, data=data, **kwargs)
+
+        if type(tls) is str:
+            tls = tls.lower() == 'true'
+
+        if client is None:
+
+            if port is None:
+                port = 6379
+            if hostname is None:
+                hostname = 'localhost'
+
+            import redis
+            client = redis.Redis(host=hostname, port=port, db=db, password=password, username=username, ssl=tls)
+
+        self.client = client
+
+    def normalize_directory_key(self, key=None):
+        if key is None:
+            key = self.key
+        if key is None:
+            return None
+        if not key.endswith('/'):
+            key = f'{key}/'
+        return key
+
+    def mkdir(self, *args, parents=True, exist_ok=True):
+
+        if self.is_root():
+            return
+
+        if not exist_ok:
+            if self.exists():
+                raise FileExistsError
+
+        if not parents:
+            if not self.parent.exists():
+                raise FileNotFoundError
+        else:
+            p = self.parent
+            while not p.root:
+                if not p.exists():
+                    p.mkdir()
+                else:
+                    break
+                p = p.parent
+
+        self.write_to_redis(self.client, self.directory_key, '')
+
+    def rmdir(self):
+        if not self.is_dir():
+            raise NotADirectoryError
+        if not self.is_empty():
+            raise OSError("Directory not empty: %s" % self)
+        self.client.delete(self.directory_key)
+
+    def unlink(self, missing_ok=False):
+        if self.is_dir():
+            raise IsADirectoryError
+        self.client.delete(self.key)
+
+    def is_file(self):
+
+        if self.key.endswith('/'):
+            return False
+        return bool(self.client.exists(self.key))
+
+    def is_dir(self):
+        return bool(self.client.exists(self.directory_key))
+
+    def exists(self):
+        return bool(self.client.exists(self.key) or self.client.exists(self.directory_key))
+
+    def iterdir(self):
+        if not self.is_dir():
+            raise NotADirectoryError
+
+        prefix = self.directory_key
+        for key in self.client.scan_iter(f'{prefix}*'):
+            key = key.decode('utf-8')
+            if key.count('/') == prefix.count('/') or (key.endswith('/') and key.count('/') == prefix.count('/') + 1):
+
+                if prefix.rstrip('/') == key.rstrip('/'):
+                    continue
+                yield self.gen(key)
+
+        # # Pattern for files
+        # file_pattern = f'{prefix}[^/]+'
+        # for key in self.client.scan_iter(file_pattern):
+        #     yield self.gen(key.decode('utf-8'))
+        #
+        # # Pattern for directories
+        # dir_pattern = f'{prefix}[^/]+/'
+        # for key in self.client.scan_iter(dir_pattern):
+        #     yield self.gen(key.decode('utf-8'))
+
+    def is_empty(self):
+        for _ in self.iterdir():
+            return False
+        return True
+
+    def rename(self, target):
+        self.client.rename(self.key, target.key)
+
+    def replace(self, target):
+        if target.exists():
+            target.unlink()
+        self.rename(target)
+
+    @property
+    def directory_key(self):
+        return self.normalize_directory_key(self.key)
+
+    @property
+    def key(self):
+        # key = '/'.join(self.parts)
+        # # to remove the leading slash if exists
+        # key = key.lstrip('/')
+        key = str(self)
+        return key
+
+    @property
+    def _obj(self):
+        obj = self.client.hget(self.key, 'data')
+        return obj
+
+    @property
+    def _timestamp(self):
+        timestamp = self.client.hget(self.key, 'modified')
+        return timestamp
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            content = self._obj
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                  newline=self.open_kwargs['newline'])
+        elif self.mode in ['wb', 'w']:
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
+        else:
+            raise ValueError
+
+        return self.file_object
+
+    @staticmethod
+    def write_to_redis(client, key, content, timestamp=None):
+        if timestamp is None:
+            timestamp = str(datetime.now())
+        client.hset(key, 'data', content)
+        client.hset(key, 'modified', timestamp)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self.mode in ['wb', 'w']:
+            self.file_object.seek(0)
+            content = self.file_object.getvalue()
+            self.write_to_redis(self.client, self.key, content)
+
+        self.close_at_exit()
+
+    def glob(self, pattern, case_sensitive=None):
+        full_pattern = f'{self.directory_key}{pattern}'
+        return [self.gen(key) for key in self.client.scan_iter(full_pattern)]

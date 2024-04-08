@@ -1,3 +1,8 @@
 #!/bin/bash
+SUFFIX=$1
 
-docker build -f docker/Dockerfile --tag beam:$(date '+%Y%m%d') --progress=plain . 2>&1 | tee -a /tmp/beam_build_$(date '+%Y%m%d').log
+TAG=$(date '+%Y%m%d')${SUFFIX}
+
+echo "Building image with tag: ${TAG}"
+
+docker build -f docker/Dockerfile --tag beam:${TAG} --progress=plain . 2>&1 | tee -a /tmp/beam_build_$(date '+%Y%m%d').log

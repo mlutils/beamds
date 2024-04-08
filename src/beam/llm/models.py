@@ -1,162 +1,26 @@
 import json
 import math
+from json import JSONDecodeError
 from typing import Optional, Any
-import openai
 import requests
-import pandas as pd
-import numpy as np
-from transformers.pipelines import Conversation
+from functools import cached_property
 
+from .hf_conversation import Conversation
 from ..logger import beam_logger as logger
 from .core import BeamLLM, CompletionObject
 from pydantic import BaseModel, Field, PrivateAttr
 from ..path import beam_key, normalize_host
+
 from .utils import get_conversation_template
-from ..utils import lazy_property
-
-
-class OpenAIBase(BeamLLM):
-
-    api_key: Optional[str] = Field(None)
-    api_base: Optional[str] = Field(None)
-    organization: Optional[str] = Field(None)
-
-    def __init__(self, api_key=None, api_base=None, organization=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.api_key = api_key
-        self.api_base = api_base
-        self.organization = organization
-
-    def update_usage(self, response):
-
-        if 'usage' in response:
-            response = response['usage']
-
-            self.usage["prompt_tokens"] += response["prompt_tokens"]
-            self.usage["completion_tokens"] += response["completion_tokens"]
-            self.usage["total_tokens"] += response["prompt_tokens"] + response["completion_tokens"]
-
-    def sync_openai(self):
-        openai.api_key = self.api_key
-        openai.api_base = self.api_base
-        openai.organization = self.organization
-
-    def _chat_completion(self, **kwargs):
-        self.sync_openai()
-        res = openai.ChatCompletion.create(model=self.model, **kwargs)
-        return CompletionObject(prompt=kwargs['prompt'], kwargs=kwargs, response=res)
-
-    def _completion(self, **kwargs):
-        self.sync_openai()
-        res = openai.Completion.create(engine=self.model, **kwargs)
-        return CompletionObject(prompt=kwargs['messages'], kwargs=kwargs, response=res)
-
-    def verify_response(self, res):
-        res = res.response
-        finish_reason = res.choices[0].finish_reason
-        if finish_reason != 'stop':
-            logger.warning(f"finish_reason is {finish_reason}")
-        return True
-
-    def extract_text(self, res):
-
-        stream = res.stream
-        res = res.response
-
-        if not self.is_chat:
-            res = res.choices[0].text
-        else:
-            if not stream:
-                res = res.choices[0].message.content
-            else:
-                res = res.choices[0].delta.content
-        return res
-
-    def openai_format(self, res):
-
-        res = res.response
-        return res
-
-
-class OpenAI(OpenAIBase):
-
-    _models: Any = PrivateAttr()
-
-    def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
-
-        api_key = beam_key('OPENAI_API_KEY', api_key)
-
-        kwargs['scheme'] = 'openai'
-        super().__init__(api_key=api_key, api_base='https://api.openai.com/v1',
-                         organization=organization, *args, **kwargs)
-
-        self.model = model
-        self._models = None
-
-    @property
-    def is_chat(self):
-        chat_models = ['gpt-4', 'gpt-4-0314', 'gpt-4-32k', 'gpt-4-32k-0314', 'gpt-3.5-turbo', 'gpt-3.5-turbo-0301']
-        if any([m in self.model for m in chat_models]):
-            return True
-        return False
-
-    def file_list(self):
-        return openai.File.list()
-
-    def build_dataset(self, data=None, question=None, answer=None, path=None) -> object:
-        """
-        Build a dataset for training a model
-        :param data: dataframe with prompt and completion columns
-        :param question: list of questions
-        :param answer: list of answers
-        :param path: path to save the dataset
-        :return: path to the dataset
-        """
-        if data is None:
-            data = pd.DataFrame(data={'prompt': question, 'completion': answer})
-
-        records = data.to_dict(orient='records')
-
-        if path is None:
-            print('No path provided, using default path: dataset.jsonl')
-            path = 'dataset.jsonl'
-
-        # Open a file for writing
-        with open(path, 'w') as outfile:
-            # Write each data item to the file as a separate line
-            for item in records:
-                json.dump(item, outfile)
-                outfile.write('\n')
-
-        return path
-
-    def retrieve(self, model=None):
-        if model is None:
-            model = self.model
-        return openai.Engine.retrieve(id=model)
-
-    @property
-    def models(self):
-        if self._models is None:
-            models = openai.Model.list()
-            models = {m.id: m for m in models.data}
-            self._models = models
-        return self._models
-
-    def embedding(self, text, model=None):
-        if model is None:
-            model = self.model
-        response = openai.Engine(model).embedding(input=text, model=model)
-        embedding = np.array(response.data[1]['embedding'])
-        return embedding
+from ..utils import strip_suffix
+from .openai import OpenAIBase
 
 
 class FCConversationLLM(BeamLLM):
 
     def get_prompt(self, messages):
 
-        conv = get_conversation_template(self.model_adapter)
+        conv = get_conversation_template(self.adapter)
         for m in messages:
 
             if m['role'] == 'system':
@@ -190,22 +54,30 @@ class FCConversationLLM(BeamLLM):
 
 class TGILLM(FCConversationLLM):
 
-    _info: Any = PrivateAttr()
-    _client: Any = PrivateAttr()
+    _info: Any = PrivateAttr(default=None)
+    _client: Any = PrivateAttr(default=None)
+    timeout: Optional[float] = Field(None)
 
-    def __init__(self, hostname=None, port=None, *args, **kwargs):
+    def __init__(self, hostname=None, port=None, *args, adapter=None, timeout=None, **kwargs):
 
         api_base = f"http://{normalize_host(hostname, port)}"
 
+        client_kwargs = {}
+        if timeout is not None:
+            client_kwargs['timeout'] = timeout
+
         from text_generation import Client
-        self._client = Client(api_base)
+        self._client = Client(api_base, **client_kwargs)
 
         req = requests.get(f"{api_base}/info")
         self._info = json.loads(req.text)
 
         kwargs['model'] = self._info['model_id']
         kwargs['scheme'] = 'tgi'
-        super().__init__(*args, **kwargs)
+
+        if adapter is None:
+            adapter = 'raw'
+        super().__init__(*args, adapter=adapter, **kwargs)
 
     def update_usage(self, response):
 
@@ -314,7 +186,7 @@ class TGILLM(FCConversationLLM):
 
         res = res.response
         text = res.generated_text
-        text = text.rstrip(self.stop_sequence)
+        text = strip_suffix(text, self.stop_sequence)
         return text
 
 
@@ -338,20 +210,19 @@ class FastChatLLM(OpenAIBase):
 
 class FastAPILLM(FCConversationLLM):
 
-    model: Optional[str] = Field(None)
-    hostname: Optional[str] = Field(None)
+    normalized_hostname: Optional[str] = Field(None)
     headers: Optional[dict] = Field(None)
     consumer: Optional[str] = Field(None)
     protocol: Optional[str] = Field(None)
-    _models: Any = PrivateAttr()
+    _models: Any = PrivateAttr(default=None)
 
     def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
 
         kwargs['scheme'] = 'fastapi'
-        super().__init__(*args, model=model, **kwargs)
+        super().__init__(*args, hostname=hostname, port=port, model=model, **kwargs)
 
         self.consumer = username
-        self.hostname = normalize_host(hostname, port)
+        self.normalized_hostname = normalize_host(hostname, port)
         self._models = None
         self.headers = {'Content-Type': 'application/json'}
         self.protocol = protocol
@@ -363,7 +234,7 @@ class FastAPILLM(FCConversationLLM):
     @property
     def models(self):
         if self._models is None:
-            res = requests.get(f"{self.protocol}://{self.hostname}/models", headers=self.headers, verify=False)
+            res = requests.get(f"{self.protocol}://{self.normalized_hostname}/models", headers=self.headers, verify=False)
             self._models = res.json()
         return self._models
 
@@ -396,6 +267,8 @@ class FastAPILLM(FCConversationLLM):
         if 'stop_criteria' in kwargs:
             kwargs_processed['stop_criteria'] = kwargs.pop('stop_criteria')
 
+        kwargs_processed['stream'] = kwargs.pop('stream', False)
+
         return kwargs_processed
 
     def _chat_completion(self, messages=None, **kwargs):
@@ -408,16 +281,41 @@ class FastAPILLM(FCConversationLLM):
         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         return self._completion_internal(prompt, **kwargs)
 
-    def _completion_internal(self, prompt, **kwargs):
+    def _stream_generator(self, d):
+
+        with requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/stream", headers=self.headers, json=d,
+                           stream=True, verify=False) as response:
+            for chunk in response.iter_content(chunk_size=1024):
+
+                chunks = chunk.split("\0")
+                for c in chunks:
+                    if not len(c):
+                        continue
+                    try:
+                        yield json.loads(c.decode())
+                    except JSONDecodeError:
+                        logger.error(f"Bad chunk: {c}")
+                        yield c
+
+    def _completion_internal(self, prompt, stream=False, **kwargs):
 
         d = dict(model_name=self.model, consumer=self.consumer, input=prompt,
                  hyper_params=self.process_kwargs(prompt, **kwargs))
 
-        res = requests.post(f"{self.protocol}://{self.hostname}/predict/once", headers=self.headers, json=d,
-                            verify=False)
-        return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
+        if stream:
+            res = self._stream_generator(d)
+            return CompletionObject(prompt=d['input'], kwargs=d, response=res)
+
+        else:
+            res = requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/once", headers=self.headers, json=d,
+                                verify=False)
+            return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
     def verify_response(self, res):
+
+        if res.stream:
+            return True
+
         try:
 
             if not res.response['is_done']:
@@ -476,10 +374,10 @@ class FastAPIDPLLM(FastAPILLM):
 
     def post_process(self, res, max_new_tokens):
 
-        response = json.load(res.content.split(self.streaming_delimiter)[-2].decode())
+        response = json.loads(res.content.split(self.streaming_delimiter)[-2].decode())
         response['text'] = self.stem_message(response['text'], max_new_tokens)
 
-        return res
+        return response
 
     def _completion(self, prompt=None, **kwargs):
 
@@ -491,16 +389,18 @@ class FastAPIDPLLM(FastAPILLM):
         prompt = self.get_prompt(messages)
         return self._completion_internal(prompt, **kwargs)
 
-    def _completion_internal(self, prompt, **kwargs):
+    def _completion_internal(self, prompt, stop=None, stop_token_ids=None, cut_long_prompt=None,
+                             echo=None, task=None, network=None, application=None, **kwargs):
 
         kwargs_processed = self.process_kwargs(prompt, **kwargs)
         d = dict(model=self.model, user=self.consumer, max_new_tokens=kwargs['max_new_tokens'],
-                 prompt=prompt, temperature=kwargs['temperature'], stop_token_ids=self.stop_token_ids,
-                 stop=self.stop, cut_long_prompt=self.cut_long_prompt, echo=self.echo,
-                 task=self.task, network=self.network, application=self.application,
+                 prompt=prompt, temperature=kwargs['temperature'], stop_token_ids=stop_token_ids or self.stop_token_ids,
+                 stop=stop or self.stop, cut_long_prompt=cut_long_prompt or self.cut_long_prompt,
+                 echo=echo or self.echo, task=self.task or self.task, network=network or self.network,
+                 application=application or self.application,
                  number_of_generations=kwargs_processed['number_of_generations'])
 
-        res = requests.post(f"{self.protocol}://{self.hostname}/{self.worker_generate_stream_ep}",
+        res = requests.post(f"{self.protocol}://{self.normalized_hostname}/{self.worker_generate_stream_ep}",
                             headers=self.headers, json=d, verify=False, timeout=self.timeout)
         res = self.post_process(res, kwargs['max_new_tokens'])
         return CompletionObject(prompt=d['prompt'], kwargs=d, response=res)
@@ -508,7 +408,7 @@ class FastAPIDPLLM(FastAPILLM):
     def verify_response(self, res):
         try:
 
-            if not res.response['error_code']:
+            if res.response['error_code']:
                 logger.warning(f"Model {self.model}: error_code={res.response['error_code']}")
 
             assert 'text' in res.response, f"Response does not contain 'text' key"
@@ -532,8 +432,8 @@ class HuggingFaceLLM(BeamLLM):
     input_device: Optional[str] = Field(None)
     eos_pattern: Optional[str] = Field(None)
     tokenizer_name: Optional[str] = Field(None)
-    _text_generation_pipeline: Any = PrivateAttr()
-    _conversational_pipeline: Any = PrivateAttr()
+    _text_generation_pipeline: Any = PrivateAttr(default=None)
+    _conversational_pipeline: Any = PrivateAttr(default=None)
 
     def __init__(self, model, tokenizer=None, dtype=None, chat=False, input_device=None, compile=True, *args,
                  model_kwargs=None,
@@ -587,7 +487,7 @@ class HuggingFaceLLM(BeamLLM):
                                                               tokenizer=self.tokenizer, device=self.input_device,
                                                               **conversational_kwargs)
 
-    @lazy_property
+    @cached_property
     def tokenizer(self):
         from transformers import AutoTokenizer
         return AutoTokenizer.from_pretrained(self.tokenizer_name, trust_remote_code=True)

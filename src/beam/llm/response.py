@@ -1,5 +1,13 @@
+import inspect
+import re
 import time
 import uuid
+
+try:
+    from collections.abc import Iterator
+except ImportError:
+    # assume python < 3.10
+    from collections import Iterator
 
 from ..logger import beam_logger as logger
 from ..utils import parse_text_to_protocol, retry
@@ -18,10 +26,33 @@ class LLMResponse:
         self.model = llm.model
         self.created = int(time.time())
         self.chat = chat
-        self.object = "chat.completion" if chat else "text_completion"
+
+        if stream:
+            self.object = "chat.completion.chunk"
+        elif chat:
+            self.object = "chat.completion"
+        else:
+            self.object = "text.completion"
+
         self.stream = stream
         self.prompt_type = prompt_type
-        assert self.verify(), "Response is not valid"
+        self._task_result = None
+        self._task_success = None
+
+        if not inspect.isgenerator(self.response) and not isinstance(self.response, Iterator):
+            assert self.verify(), "Response is not valid"
+
+    def __str__(self):
+        return self.text
+
+    def __bool__(self):
+        return self.bool
+
+    def __int__(self):
+        return self.int
+
+    def __float__(self):
+        return self.float
 
     def __iter__(self):
         if not self.stream:
@@ -31,6 +62,32 @@ class LLMResponse:
                 yield LLMResponse(r, self.llm, prompt=self.prompt, chat=self.chat, stream=self.stream,
                                   prompt_kwargs=self._prompt_kwargs, parse_retrials=self.parse_retrials,
                                   sleep=self.sleep, prompt_type=self.prompt_type)
+
+    def add_task_result(self, task_result, success=True):
+        self._task_result = task_result
+        self._task_success = success
+
+    @property
+    def int(self):
+        try:
+            return int(self.text)
+        except:
+            return None
+
+    @property
+    def float(self):
+        try:
+            return float(self.text)
+        except:
+            return None
+
+    @property
+    def task_result(self):
+        return self._task_result
+
+    @property
+    def task_success(self):
+        return self._task_success
 
     @property
     def prompt(self):
@@ -51,6 +108,12 @@ class LLMResponse:
     def openai_format(self):
         return self.llm.openai_format(self)
 
+    def parse_text(self, text, protocol='json'):
+        return self._protocol(text, protocol=protocol)
+
+    def parse(self, protocol='json'):
+        return self._protocol(self.text, protocol=protocol)
+
     def _protocol(self, text, protocol='json'):
 
         if self.parse_retrials == 0:
@@ -61,6 +124,28 @@ class LLMResponse:
             retry_protocol = (retry(retrials=self.parse_retrials, sleep=self.sleep,  logger=logger, name=f"fix-{protocol} with {self.model}")
                               (self.llm.fix_protocol))
             return retry_protocol(text, protocol=protocol)
+
+    @property
+    def judge(self):
+        # boolean judgement of response by LLM for the prompt
+        # return self.llm.judge(self.prompt, self.text, **self.prompt_kwargs)
+        return self.llm.judge(self.prompt, self.text)
+
+    @property
+    def bool(self):
+
+        text = re.findall(r'\w+', self.text.lower())
+        n_words = len(text)
+
+        if 'true' in text:
+            return True
+        elif 'false' in text:
+            return False
+        elif 'yes' in text:
+            return True
+        elif 'no' in text and n_words == 1:
+            return False
+        return None
 
     @property
     def json(self):

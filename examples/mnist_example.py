@@ -1,11 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-from examples.example_utils import add_beam_to_path
-add_beam_to_path()
-
 import torch
 import torchvision
 import torch.nn.functional as F
@@ -15,7 +7,7 @@ import numpy as np
 
 from src.beam import beam_arguments, Experiment, beam_algorithm_generator
 from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import Algorithm
+from src.beam import NeuralAlgorithm
 from src.beam import LinearNet
 from src.beam import DataTensor, PackedFolds, as_numpy
 from src.beam.data import BeamData
@@ -26,7 +18,7 @@ class MNISTDataset(UniversalDataset):
 
     def __init__(self, hparams):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         seed = hparams.split_dataset_seed
 
         super().__init__()
@@ -70,7 +62,7 @@ class MNISTDataset(UniversalDataset):
         return {'x': x, 'y': y}
 
 
-class MNISTAlgorithm(Algorithm):
+class MNISTAlgorithm(NeuralAlgorithm):
 
     def __init__(self, hparams):
 
@@ -100,7 +92,7 @@ class MNISTAlgorithm(Algorithm):
         self.report_scalar('ones', x.sum(dim=-1))
         self.report_scalar('acc', (y_hat.argmax(1) == y).float().mean())
 
-    def predict_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
+    def inference_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
             x = sample
@@ -142,7 +134,7 @@ class MNISTAlgorithm(Algorithm):
 
 if __name__ == '__main__':
 
-     # in this example we do not set the root-dir and the path-to-data, so the defaults will be used
+     # in this example we do not set the logs-path and the data-path, so the defaults will be used
 
     args = beam_arguments(
         f"--project-name=mnist --algorithm=MNISTAlgorithm --amp  --device=0   ",
@@ -155,7 +147,7 @@ if __name__ == '__main__':
     alg = MNISTAlgorithm(experiment.hparams)
 
     # train
-    alg = experiment.fit(Alg=alg, Dataset=dataset)
+    alg = experiment.fit(alg=alg, dataset=dataset)
 
     examples = alg.dataset[np.random.choice(len(alg.dataset), size=50000, replace=True)]
     res = alg.predict(examples.data['x'])

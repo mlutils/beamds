@@ -1,0 +1,35 @@
+cx_Oracle
+
+# infomap>=1.3.0
+wurlitzer>=1.0.2
+GraphRicciCurvature
+networkit
+pycombo
+# leidenalg
+bayanpy
+pyclustering
+
+docker
+prefect
+kubernetes
+openshift
+pytorch-optimizer
+pyts
+lightning
+
+websockets
+websocket-client
+coolname
+Faker
+tritonclient[all]
+smbprotocol[smb2]
+# fastchat
+sentence_transformers
+polars
+rho-pysparnn
+fastbm25
+pysftp
+transformers_stream_generator
+pymssql
+thefuzz
+smbprotocol

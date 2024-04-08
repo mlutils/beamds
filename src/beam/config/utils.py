@@ -4,12 +4,35 @@ import os
 import sys
 from argparse import Namespace
 import re
+from collections import defaultdict
 
-from .basic_configuration import basic_beam_parser
 from ..utils import is_notebook, check_type
 from ..path import beam_path, beam_key
 from ..logger import beam_logger as logger
 from .._version import __version__
+import re
+
+
+def boolean_feature(parser, feature, default=False, help='', metavar=None):
+    featurename = feature.replace("-", "_")
+    feature_parser = parser.add_mutually_exclusive_group(required=False)
+    feature_parser.add_argument('--%s' % feature, dest=featurename, action='store_true', help=help)
+    feature_parser.add_argument('--no-%s' % feature, dest=featurename, action='store_false', help=help)
+    pa = parser._actions
+    for a in pa:
+        if a.dest == featurename:
+            a.metavar = metavar
+    parser.set_defaults(**{featurename: default})
+
+
+def empty_beam_parser():
+
+    parser = argparse.ArgumentParser(description='List of available arguments for this project',
+                                     conflict_handler='resolve')
+    parser.add_argument('config_files', nargs='*',
+                        help='A list config files (optional) to load, will be loaded in reverse order '
+                             '(first one has higher priority). Pass explicit arguments to override these configs')
+    return parser
 
 
 def to_dict(hparams):
@@ -34,19 +57,20 @@ def normalize_value(v):
     return v
 
 
-def add_unknown_arguments(args, unknown):
+def add_unknown_arguments(args, unknown, silent=False):
     args = copy.deepcopy(args)
 
     i = 0
 
-    if len(unknown) > 0:
+    if len(unknown) > 0 and not silent:
         logger.warning(f"Parsing unkown arguments: {unknown}. Please check for typos")
 
     while i < len(unknown):
 
         arg = unknown[i]
         if not arg.startswith("-"):
-            logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it as it does not start with \'-\' sign")
+            if not silent:
+                logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it as it does not start with \'-\' sign")
             i += 1
             continue
         if arg.startswith("--"):
@@ -63,7 +87,8 @@ def add_unknown_arguments(args, unknown):
         if '=' in arg:
             arg = arg.split('=')
             if len(arg) != 2:
-                logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it contains more than one \'=\' sign")
+                if not silent:
+                    logger.error(f"Cannot correctly parse: {unknown[i]} arguments as it contains more than one \'=\' sign")
                 i += 1
                 continue
             k, v = arg
@@ -83,11 +108,14 @@ def add_unknown_arguments(args, unknown):
     return args
 
 
-def beam_arguments(*args, **kwargs):
+def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=False, strict=False, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
     '''
+
+    pr = args[0]
+    args = args[1:]
 
     def update_parser(p, d):
         for pi in p._actions:
@@ -104,12 +132,6 @@ def beam_arguments(*args, **kwargs):
 
     args_str = []
     args_dict = []
-
-    if len(args) and type(args[0]) == argparse.ArgumentParser:
-        pr = args[0]
-        args = args[1:]
-    else:
-        pr = basic_beam_parser()
 
     for ar in args:
 
@@ -136,27 +158,54 @@ def beam_arguments(*args, **kwargs):
     # set defaults from environment variables
     update_parser(pr, os.environ)
 
-    args, unknown = pr.parse_known_args()
-    args = add_unknown_arguments(args, unknown)
+    if return_defaults:
+        args = pr.parse_args([])
+    else:
+        args, unknown = pr.parse_known_args()
+        if not strict:
+            args = add_unknown_arguments(args, unknown, silent=silent)
 
     for k, v in kwargs.items():
         if k not in args:
             setattr(args, k, v)
 
-    if args.experiment_configuration is not None:
-        cf = beam_path(args.experiment_configuration).read()
-        for k, v in cf.items():
-            setattr(args, k, v)
+    tags = defaultdict(set)
+    if hasattr(args, 'config_files') and args.config_files:
+        config_files = args.config_files
+        delattr(args, 'config_files')
+
+        config_args = {}
+
+        for config_file in config_files:
+            cf = beam_path(config_file).read()
+            if '_tags' in cf:
+                for k, v in cf['_tags'].items():
+                    tags[k].add(v)
+                del cf['_tags']
+            config_args.update(cf)
+
+        args = Namespace(**{**config_args, **to_dict(args)})
+    elif hasattr(args, 'config_files'):
+        delattr(args, 'config_files')
 
     beam_key.set_hparams(to_dict(args))
 
-    tune = [pai.dest for pai in pr._actions if pai.metavar is not None and 'tune' in pai.metavar]
-    setattr(args, 'tune_set', set(tune))
+    if not return_tags:
+        return args
 
-    model = [pai.dest for pai in pr._actions if pai.metavar is not None and 'model' in pai.metavar]
-    setattr(args, 'model_set', set(model))
+    for pai in pr._actions:
+        tag_list = get_tags_from_action(pai)
+        for tag in tag_list:
+            tags[tag].add(pai.dest)
 
-    return args
+    return args, tags
+
+
+def get_tags_from_action(action):
+    tags = set()
+    if action.metavar is not None:
+        tags = re.findall(r'[a-zA-Z0-9_-]+', action.metavar)
+    return list(tags)
 
 
 def get_beam_llm(llm_uri=None, get_from_key=True):
@@ -172,7 +221,7 @@ def get_beam_llm(llm_uri=None, get_from_key=True):
     return llm
 
 
-def print_beam_hyperparameters(args, debug_only=False):
+def print_beam_hyperparameters(args, default_params=None, debug_only=False):
     if debug_only:
         log_func = logger.debug
     else:
@@ -181,8 +230,8 @@ def print_beam_hyperparameters(args, debug_only=False):
     log_func(f"Beam experiment (Beam version: {__version__})")
     log_func(f"project: {args.project_name}, algorithm: {args.algorithm}, identifier: {args.identifier}")
     log_func(f"Global paths:")
-    log_func(f"path-to-data (where the dataset should be): {args.path_to_data}")
-    log_func(f"root-dir (where results are written to): {args.root_dir}")
+    log_func(f"data-path (where the dataset should be): {args.data_path}")
+    log_func(f"logs-path (where the experiments are log to): {args.logs_path}")
     log_func(f'Experiment objective: {args.objective} (set for schedulers, early stopping and best checkpoint store)')
     log_func('Experiment Hyperparameters (only non default values are listed):')
     log_func('----------------------------------------------------------'
@@ -195,12 +244,11 @@ def print_beam_hyperparameters(args, debug_only=False):
 
     var_args_sorted = dict(sorted(to_dict(args).items()))
 
-    default_params = basic_beam_parser()
-
     for k, v in var_args_sorted.items():
         if k == 'hparams':
             continue
-        elif k in hparams_list and (v is not None and v != default_params.get_default(k)):
+        elif (default_params is not None and k in hparams_list and hasattr(default_params, k) and
+              (v is not None and v != getattr(default_params, k))):
             log_func(k + ': ' + str(v))
         else:
             logger.debug(k + ': ' + str(v))

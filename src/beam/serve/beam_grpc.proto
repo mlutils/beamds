@@ -1,0 +1,53 @@
+// beam_service.proto
+syntax = "proto3";
+
+package beam;
+
+// The Beam service definition.
+service BeamService {
+  rpc SetVariable(SetVariableRequest) returns (SetVariableResponse) {}
+  rpc GetVariable(GetVariableRequest) returns (GetVariableResponse) {}
+  rpc QueryAlgorithm(QueryAlgorithmRequest) returns (QueryAlgorithmResponse) {}
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {}
+  // Add other methods as needed.
+}
+
+// Request and Response messages
+message SetVariableRequest {
+  string client = 1;
+  string name = 2;
+  bytes value = 3;
+}
+
+message SetVariableResponse {
+  bool success = 1;
+}
+
+message GetVariableRequest {
+  string client = 1;
+  string name = 2;
+}
+
+message GetVariableResponse {
+  bytes value = 1;
+}
+
+message QueryAlgorithmRequest {
+  string client = 1;
+  string method = 2;
+  bytes args = 3;
+  bytes kwargs = 4;
+}
+
+message QueryAlgorithmResponse {
+  bytes results = 1;
+}
+
+message GetInfoRequest {
+    // This message might be empty if no parameters are needed
+}
+
+message GetInfoResponse {
+    // Define the response structure
+    string info = 1; // This is simplified; your actual response structure might be more complex
+}

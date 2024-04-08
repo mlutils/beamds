@@ -1,12 +1,13 @@
-from .models import BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset
-from .core import BeamKey, BeamURL
+from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset,
+                     RedisPath, SMBPath)
+from .core import BeamKey, BeamURL, IOPath, DictPath
 
 
 beam_key = BeamKey()
 
 
 def beam_path(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
-              **kwargs):
+              password=None, **kwargs):
     """
 
     @param port:
@@ -27,7 +28,7 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     elif path[1] == ':':  # windows path
         path = path.replace('\\', '/')
         path = path.lstrip('/')
-        return BeamPath(path, scheme='windows')
+        return BeamPath(path, scheme='nt')
 
     url = BeamURL.from_string(path)
 
@@ -39,6 +40,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
     if url.username is not None:
         username = url.username
+
+    if url.password is not None:
+        password = url.password
 
     query = url.query
     for k, v in query.items():
@@ -61,6 +65,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     if path == '':
         path = '/'
 
+    username = beam_key('BEAM_USERNAME', username)
+    password = beam_key('BEAM_PASSWORD', password)
+
     if 's3' in url.protocol:
 
         access_key = beam_key('AWS_ACCESS_KEY_ID', access_key)
@@ -72,15 +79,27 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
             return S3Path(path, hostname=hostname, port=port, access_key=access_key, secret_key=secret_key,  **kwargs)
 
     elif url.protocol == 'hdfs':
-        return HDFSPath(path, hostname=hostname, port=port, username=username, **kwargs)
+        return HDFSPath(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
 
     elif url.protocol == 'hdfs-pa':
-        return HDFSPAPath(path, hostname=hostname, port=port, username=username, **kwargs)
+        return HDFSPAPath(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
+
+    elif url.protocol == 'redis':
+        return RedisPath(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
+
+    elif url.protocol == 'smb':
+        return SMBPath(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
 
     elif url.protocol == 'comet':
 
         access_key = beam_key('COMET_API_KEY', access_key)
         return CometAsset(path, access_key=access_key, **kwargs)
+
+    elif url.protocol == 'io':
+        return IOPath(path, **kwargs)
+
+    elif url.protocol == 'dict':
+        return DictPath(path, **kwargs)
 
     elif url.protocol == 'gs':
         raise NotImplementedError
@@ -92,12 +111,19 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
         raise NotImplementedError
     elif url.protocol == 'ftps':
         raise NotImplementedError
-    elif url.protocol == 'windows':
+    elif url.protocol == 'nt':
         path = path.replace('\\', '/')
         return BeamPath(path)
     elif url.protocol == 'sftp':
 
         private_key = beam_key('SSH_PRIVATE_KEY', private_key)
-        return SFTPPath(path, hostname=hostname, username=username, port=port, private_key=private_key, **kwargs)
+        return SFTPPath(path, hostname=hostname, username=username, port=port,
+                        private_key=private_key, password=password, **kwargs)
     else:
         raise NotImplementedError
+
+
+def in_memory_storage(mode=None, data=None):
+    if mode == 'file':
+        return beam_path('io:///', data=data)
+    return beam_path('dict:///', data=data)

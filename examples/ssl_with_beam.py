@@ -15,10 +15,13 @@ import torch_tensorrt
 
 from examples.example_utils import add_beam_to_path
 
-from src.beam import UniversalDataset, Experiment, Algorithm, beam_arguments, PackedFolds, batch_augmentation
+from src.beam import UniversalDataset, Experiment, NeuralAlgorithm, beam_arguments, PackedFolds, batch_augmentation
 from src.beam import tqdm, beam_logger, basic_beam_parser, beam_boolean_feature, BeamOptimizer
-from src.beam import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
+from src.beam.ssl.models import BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
+from src.beam.ssl.beam_ssl import BeamSimilarity
+from src.beam.ssl.beam_similarity import BeamSimilarity
 from src.beam.ssl import get_ssl_parser
+from src.beam import beam_logger as logger
 
 import requests
 from collections import namedtuple
@@ -50,17 +53,17 @@ def my_default_configuration_by_cluster():
     ip = requests.get(r'http://jsonip.com').json()['ip']
 
     if '132.70.60' not in ip:
-        path_to_data = '/home/shared/data/dataset/stl10/stl10_binary'
-        root_dir = '/home/shared/data/results/'
+        data_path = '/home/shared/data/dataset/stl10/stl10_binary'
+        logs_path = '/home/shared/data/results/'
     else:
-        # path_to_data = '/home/dsi/elads/external/data/datasets/stl10/stl10_binary'
-        # root_dir = '/home/dsi/elads/external/data/resutls'
-        path_to_data = '/external/data/datasets/stl10/stl10_binary'
-        root_dir = '/external/data/resutls'
-        # path_to_data = '/localdata/elads/data/datasets/stl10/stl10_binary'
-        # root_dir = '/localdata/elads/data/resutls'
+        # data_path = '/home/dsi/elads/external/data/datasets/stl10/stl10_binary'
+        # logs_path = '/home/dsi/elads/external/data/resutls'
+        data_path = '/external/data/datasets/stl10/stl10_binary'
+        logs_path = '/external/data/resutls'
+        # data_path = '/localdata/elads/data/datasets/stl10/stl10_binary'
+        # logs_path = '/localdata/elads/data/resutls'
 
-    return path_to_data, root_dir
+    return data_path, logs_path
 
 
 class ImageNetAugmented(UniversalDataset):
@@ -112,7 +115,7 @@ class STL10Dataset(ImageNetAugmented):
 
     def __init__(self, hparams, subset='unlabeled'):
 
-        path = hparams.path_to_data
+        path = hparams.data_path
         seed = hparams.split_dataset_seed
 
         super().__init__(hparams)
@@ -219,11 +222,11 @@ def imagenet_ssl_parser():
 
     parser = get_ssl_parser()
 
-    path_to_data, root_dir = my_default_configuration_by_cluster()
+    data_path, logs_path = my_default_configuration_by_cluster()
     beam_boolean_feature(parser, "pretrained", False, "Whether to load pretrained weights", metavar='hparam')
 
-    parser.add_argument('--path-to-data', type=str, default=path_to_data, help='Path to the STL10 binaries')
-    parser.add_argument('--root-dir', type=str, default=root_dir, help='Root directory for Logs and results')
+    parser.add_argument('--data-path', type=str, default=data_path, help='Path to the STL10 binaries')
+    parser.add_argument('--logs-path', type=str, default=logs_path, help='Root directory for Logs and results')
     parser.add_argument('--n-ensembles', type=int, default=1, help='Size of the ensemble model')
     parser.add_argument('--temperature', type=float, default=1.0, metavar='hparam', help='Softmax temperature')
     parser.add_argument('--model', type=str, default='resnet18', metavar='hparam',
@@ -240,7 +243,7 @@ if __name__ == '__main__':
     hparams = beam_arguments(imagenet_ssl_parser(),
                          f"--project-name=beam_ssl --epoch-length=200 --reduction=mean --no-scale-epoch-by-batch-size",
                          f" --identifier=parallel_alternatives",
-                         "--algorithm=BeamVICReg --parallel=4 --amp --model=swin_s --no-pretrained --layer=avgpool ",
+                         "--algorithm=BeamVICReg --n-gpus=4 --amp --model=swin_s --no-pretrained --layer=avgpool ",
                          f"--batch-size=96 --n-epochs=20000 --no-broadcast-buffers --lr-d=1e-3 --weight-decay=1e-5")
 
     experiment = Experiment(hparams)

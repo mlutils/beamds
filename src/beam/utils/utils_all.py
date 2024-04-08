@@ -1,6 +1,8 @@
 import itertools
-import os, sys
+import os
+import sys
 from collections import defaultdict
+from functools import cached_property
 import random
 import numpy as np
 from fnmatch import filter
@@ -8,11 +10,16 @@ from tqdm.notebook import tqdm as tqdm_notebook
 from tqdm import tqdm
 
 import pandas as pd
-import json
 import __main__
 from datetime import timedelta
 import time
 import re
+import threading
+
+import traceback
+import linecache
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
 
 try:
     import modin.pandas as mpd
@@ -36,6 +43,18 @@ try:
 except ImportError:
     has_scipy = False
 
+try:
+    import polars as pl
+    has_polars = True
+except ImportError:
+    has_polars = False
+
+# try:
+#     import cudf
+#     has_cudf = True
+# except ImportError:
+#     has_cudf = False
+
 import socket
 from contextlib import closing
 from collections import namedtuple
@@ -51,11 +70,6 @@ from ..path import PureBeamPath
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
-
-
-# class Beamdantic(BaseModel):
-#     # To be used with pydantic classes and lazy_property
-#     _lazy_cache: Any = PrivateAttr()
 
 
 class BeamDict(dict, Namespace):
@@ -123,6 +137,42 @@ def retrieve_name(var):
         if len(names) > 0:
             return names[0]
 
+# def retrieve_name(var):
+#     name = None
+#     # Start by checking the global scope of the caller.
+#     for fi in reversed(inspect.stack()):
+#         names = [var_name for var_name, var_val in fi.frame.f_globals.items() if var_val is var]
+#         if names:
+#             name = names[0]
+#             break  # Exit on the first match in global scope.
+#
+#     # If not found in global scope, check the local scope from inner to outer.
+#     if not name:
+#         for fi in inspect.stack():
+#             names = [var_name for var_name, var_val in fi.frame.f_locals.items() if var_val is var]
+#             if names:
+#                 name = names[0]
+#                 break  # Exit on the first match in local scope.
+#
+#     return name
+
+
+def has_kwargs(func):
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in inspect.signature(func).parameters.values())
+
+
+def strip_prefix(text, prefix):
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text
+
+
+def strip_suffix(text, suffix):
+    if text.endswith(suffix):
+        return text[:-len(suffix)]
+    return text
+
+
 class nested_defaultdict(defaultdict):
 
     @staticmethod
@@ -141,23 +191,31 @@ class nested_defaultdict(defaultdict):
         super().__init__(default_factory, **kwargs)
 
 
-def lazy_property(fn):
-
-    @property
-    def _lazy_property(self):
-        try:
-            cache = getattr(self, '_lazy_cache')
-            return cache[fn.__name__]
-        except KeyError:
-            v = fn(self)
-            cache[fn.__name__] = v
-            return v
-        except AttributeError:
-            v = fn(self)
-            setattr(self, '_lazy_cache', {fn.__name__: v})
-            return v
-
-    return _lazy_property
+# def lazy_property(fn):
+#
+#     @property
+#     def _lazy_property(self):
+#         try:
+#             cache = getattr(self, '_lazy_cache')
+#             return cache[fn.__name__]
+#         except KeyError:
+#             v = fn(self)
+#             cache[fn.__name__] = v
+#             return v
+#         except AttributeError:
+#             v = fn(self)
+#             setattr(self, '_lazy_cache', {fn.__name__: v})
+#             return v
+#
+#     @_lazy_property.setter
+#     def _lazy_property(self, value):
+#         try:
+#             cache = getattr(self, '_lazy_cache')
+#             cache[fn.__name__] = value
+#         except AttributeError:
+#             setattr(self, '_lazy_cache', {fn.__name__: value})
+#
+#     return _lazy_property
 
 
 def get_public_ip():
@@ -176,8 +234,41 @@ def rate_string_format(n, t):
     return f"{t / n: .4} [sec/iter]"
 
 
-def find_port(port=None, get_port_from_beam_port_range=True, application='tensorboard'):
+def beam_base_port():
+    base_range = None
+    if 'JUPYTER_PORT' in os.environ:
+        base_range = 100 * (int(os.environ['JUPYTER_PORT']) // 100)
+    elif os.path.isfile('/workspace/configuration/config.csv'):
+        try:
+            conf = pd.read_csv('/workspace/configuration/config.csv', index_col=0)
+            base_range = 100 * int(conf.loc['initials'])
+        except:
+            pass
+    return base_range
+
+
+def beam_service_port(service):
+    port = None
+    try:
+        conf = pd.read_csv('/workspace/configuration/config.csv', index_col=0)
+        port = int(conf.drop_duplicates().loc[service.lower()])
+    except:
+        pass
+
+    return port
+
+
+def find_port(port=None, get_port_from_beam_port_range=True, application='none', blacklist=None, whitelist=None):
     from ..logger import beam_logger as logger
+
+    if blacklist is None:
+        blacklist = []
+
+    if whitelist is None:
+        whitelist = []
+
+    blacklist = [int(p) for p in blacklist]
+    whitelist = [int(p) for p in whitelist]
 
     if application == 'tensorboard':
         first_beam_range = 66
@@ -188,6 +279,9 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
     elif application == 'ray':
         first_beam_range = 65
         first_global_range = 28265
+    elif application == 'distributed':
+        first_beam_range = 64
+        first_global_range = 28264
     else:
         first_beam_range = 2
         first_global_range = 30000
@@ -199,16 +293,9 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
         if get_port_from_beam_port_range:
 
             base_range = None
-            if 'JUPYTER_PORT' in os.environ:
-
-                base_range = int(os.environ['JUPYTER_PORT']) // 100
-
-            elif os.path.isfile('/workspace/configuration/config.csv'):
+            if os.path.isfile('/workspace/configuration/config.csv'):
                 conf = pd.read_csv('/workspace/configuration/config.csv')
-                try:
-                    base_range = int(conf.set_index('parameters').loc['initials'])
-                except:
-                    base_range = int(np.unique(conf.set_index('parameters').loc['initials'])[0])
+                base_range = int(conf.set_index('parameters').drop_duplicates().loc['initials'])
 
             if base_range is not None:
                 port_range = range(base_range * 100, (base_range + 1) * 100)
@@ -218,6 +305,13 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='tensor
             port_range = np.roll(np.array(range(10000, 2 ** 16)), -first_global_range)
 
         for p in port_range:
+
+            if p in blacklist:
+                continue
+
+            if whitelist and p not in whitelist:
+                continue
+
             if check_if_port_is_available(p):
                 port = str(p)
                 break
@@ -265,36 +359,28 @@ def get_notebook_name():
     return display_javascript(js)
 
 
-def rmtree(path):
-    if type(path) is str:
-        path = Path(path)
-
-    if path.is_file():
-        path.unlink()
-    elif path.is_dir():
-        for item in path.iterdir():
-            if item.is_dir():
-                rmtree(item)
-            else:
-                item.unlink()
-        path.rmdir()
-
-
 def pretty_format_number(x, short=False):
 
     just = 4 if short else 10
     trim = 4 if short else 8
     exp = 2 if short else 4
 
+    big_num = 1000 if short else 10000
+    normal_num = 100 if short else 1000
+    small_num = 0.1 if short else 0.001
+
     if x is None or np.isinf(x) or np.isnan(x):
         return f'{x}'.ljust(just)
-    if int(x) == x and np.abs(x) < 10000:
+    if int(x) == x and np.abs(x) < big_num:
         return f'{int(x)}'.ljust(just)
-    if np.abs(x) >= 10000 or np.abs(x) < 0.0001:
-        return f'{float(x):.4}'.ljust(just)
-    if np.abs(x) >= 1000:
+    if np.abs(x) >= big_num or np.abs(x) < small_num:
+        if short:
+            return f'{x:.1e}'.ljust(just)
+        else:
+            return f'{float(x):.4}'.ljust(just)
+    if np.abs(x) >= normal_num:
         return f'{x:.1f}'.ljust(just)
-    if np.abs(x) < 10000 and np.abs(x) >= 0.0001:
+    if np.abs(x) < big_num and np.abs(x) >= small_num:
         nl = int(np.log10(np.abs(x)))
         return f'{np.sign(x) * int(np.abs(x) * (10 ** (exp - nl))) * float(10 ** (nl - exp))}'.ljust(trim)[:trim].ljust(just)
 
@@ -366,10 +452,6 @@ def check_minor_type(x):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
-    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
-        return 'modin'
-    if has_scipy and scipy.sparse.issparse(x):
-        return 'scipy_sparse'
     if isinstance(x, dict):
         return 'dict'
     if isinstance(x, list):
@@ -378,8 +460,16 @@ def check_minor_type(x):
         return 'tuple'
     if isinstance(x, set):
         return 'set'
+    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
+        return 'modin'
+    if has_scipy and scipy.sparse.issparse(x):
+        return 'scipy_sparse'
+    if has_polars and isinstance(x, pl.DataFrame):
+        return 'polars'
     if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
         return 'path'
+    elif is_scalar(x):
+        return 'scalar'
     else:
         return 'other'
 
@@ -403,6 +493,10 @@ def elt_of_list(x):
     return elt0
 
 
+def is_scalar(x):
+    return np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape)))
+
+
 def check_type(x, check_minor=True, check_element=True):
     '''
 
@@ -412,14 +506,14 @@ def check_type(x, check_minor=True, check_element=True):
 
     major type: container, array, scalar, none, other
     minor type: dict, list, tuple, set, tensor, numpy, pandas, scipy_sparse, native, none
-    elements type: array, int, float, complex, str, object, empty, none, unknown
+    elements type: array, int, float, complex, bool, str, object, empty, none, unknown
 
     '''
 
-    if np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape))):
+    if is_scalar(x):
         mjt = 'scalar'
         if check_minor:
-            if type(x) in [int, float, str]:
+            if type(x) in [int, float, str, complex, bool]:
                 mit = 'native'
             else:
                 mit = check_minor_type(x)
@@ -594,9 +688,8 @@ def dictionary_iterator(d):
     for _ in itertools.count():
         try:
             yield {k: next(v) for k, v in d.items()}
-        except KeyError:
+        except StopIteration:
             return
-
 
 
 def get_item_with_tuple_key(x, key):
@@ -794,6 +887,8 @@ def filter_dict(d, keys):
 
 def none_function(*args, **kwargs):
     return None
+
+
 class NoneClass:
     def __init__(self, *args, **kwargs):
         pass
@@ -801,8 +896,8 @@ class NoneClass:
         return none_function
 
 
-import traceback
-import linecache
+class NullClass:
+    pass
 
 
 def beam_traceback(exc_type=None, exc_value=None, tb=None, context=3):
@@ -914,17 +1009,30 @@ def parse_text_to_protocol(text, protocol='json'):
 
 
 class Slicer:
-    def __init__(self, x, x_type=None):
+    def __init__(self, x, x_type=None, wrap_object=False):
         self.x = x
         if x_type is None:
             x_type = check_type(x)
         self.x_type = x_type
+        self.wrap_object = wrap_object
 
     def __getitem__(self, item):
-        return slice_array(self.x, item, x_type=self.x_type)
+        return slice_array(self.x, item, x_type=self.x_type, wrap_object=self.wrap_object)
 
 
-def slice_array(x, index, x_type=None, indices_type=None):
+class DataObject:
+    def __init__(self, data, data_type=None):
+        self.data = data
+        self._data_type = data_type
+
+    @property
+    def data_type(self):
+        if self._data_type is None:
+            self._data_type = check_type(self.data)
+        return self._data_type
+
+
+def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
 
     if x_type is None:
         x_type = check_minor_type(x)
@@ -938,7 +1046,8 @@ def slice_array(x, index, x_type=None, indices_type=None):
 
     if indices_type == 'pandas':
         index = index.values
-
+    if indices_type == 'other': # the case where there is a scalar value with a dtype attribute
+        index = int(index)
     if x_type == 'numpy':
         return x[index]
     elif x_type == 'pandas':
@@ -950,7 +1059,13 @@ def slice_array(x, index, x_type=None, indices_type=None):
     elif x_type == 'list':
         return [x[i] for i in index]
     else:
-        raise TypeError(f"Cannot slice object of type {x_type}")
+        try:
+            xi = x[index]
+            if wrap_object:
+                xi = DataObject(xi)
+            return xi
+        except:
+            raise TypeError(f"Cannot slice object of type {x_type}")
 
 
 def is_arange(x, convert_str=True):
@@ -995,13 +1110,181 @@ def is_arange(x, convert_str=True):
 def dict_to_list(x, convert_str=True):
     x_type = check_type(x)
 
+    if not x:
+        return []
+
     if x_type.minor != 'dict':
         return x
 
-    keys = list(x.keys())
+    keys = np.array(list(x.keys()))
     argsort, isa = is_arange(keys, convert_str=convert_str)
 
     if isa:
         return [x[k] for k in keys[argsort]]
     else:
         return x
+
+
+class Timer(object):
+    def __init__(self, logger, name='', silence=False, timeout=None, task=None, task_args=None, task_kwargs=None):
+        self.name = name
+        self.logger = logger
+        self.silence = silence
+        self.timeout = timeout
+        self.task = task
+        self.task_args = task_args or ()
+        self.task_kwargs = task_kwargs or {}
+        self._elapsed = 0
+        self.paused = True
+        self.t0 = None
+        self.executor = None
+        self.future = None
+
+    def __enter__(self):
+        if not self.silence:
+            self.logger.info(f"Starting timer: {self.name}")
+        self.run()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        elapsed = self.pause()
+        if not self.silence:
+            self.logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
+
+    def reset(self):
+        self._elapsed = 0
+        self.paused = True
+        self.t0 = None
+        return self
+
+    @property
+    def elapsed(self):
+        if self.paused:
+            return self._elapsed
+        return self._elapsed + time.time() - self.t0
+
+    def pause(self):
+        if self.paused:
+            return self._elapsed
+        self._elapsed = self._elapsed + time.time() - self.t0
+        self.paused = True
+        return self._elapsed
+
+    def run(self):
+        self.paused = False
+        self.t0 = time.time()
+
+        if self.task is not None:
+
+            self.logger.info(f"Starting task with timeout of {self.timeout} seconds.")
+            self.executor = ThreadPoolExecutor(max_workers=1)
+            self.future = self.executor.submit(self.task, *self.task_args, **self.task_kwargs)
+
+            try:
+                if self.future:
+                    self.future.result(timeout=self.timeout)
+            except TimeoutError:
+                self.logger.info(f"Timer {self.name} exceeded timeout of {self.timeout} seconds.")
+            finally:
+                elapsed = self.pause()
+                if not self.silence:
+                    self.logger.info(f"Timer {self.name} paused. Elapsed time: {elapsed} Sec")
+                if self.executor:
+                    self.executor.shutdown()
+
+    def __str__(self):
+        return f"Timer {self.name}: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"
+
+    def __repr__(self):
+        return str(self)
+
+
+class ThreadSafeDict(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lock = threading.Lock()
+
+    def __setitem__(self, key, value):
+        with self.lock:
+            super().__setitem__(key, value)
+
+    def __getitem__(self, key):
+        with self.lock:
+            return super().__getitem__(key)
+
+    def __delitem__(self, key):
+        with self.lock:
+            super().__delitem__(key)
+
+    def update(self, *args, **kwargs):
+        with self.lock:
+            super().update(*args, **kwargs)
+
+    def pop(self, key, *args):
+        with self.lock:
+            return super().pop(key, *args)
+
+    def clear(self):
+        with self.lock:
+            super().clear()
+
+    def setdefault(self, key, default=None):
+        with self.lock:
+            return super().setdefault(key, default)
+
+    def popitem(self):
+        with self.lock:
+            return super().popitem()
+
+    def copy(self):
+        with self.lock:
+            return super().copy()
+
+    def keys(self):
+        with self.lock:
+            return list(super().keys())
+
+    def values(self):
+        with self.lock:
+            return list(super().values())
+
+    def items(self):
+        with self.lock:
+            return list(super().items())
+
+
+def mixin_dictionaries(*dicts):
+    res = {}
+    for d in dicts[::-1]:
+        if d is not None:
+            res.update(d)
+    return res
+
+
+def get_class_properties(cls):
+    properties = []
+    for attr_name in dir(cls):
+        attr_value = getattr(cls, attr_name)
+        if isinstance(attr_value, property):
+            properties.append(attr_name)
+    return properties
+
+
+def get_cached_properties(obj):
+    cached_props = {}
+    # Inspect the class dictionary for cached_property instances
+    for name, prop in inspect.getmembers(type(obj), lambda member: isinstance(member, cached_property)):
+        # Check if the instance dictionary has a cached value for this property
+        if name in obj.__dict__:
+            cached_props[name] = getattr(obj, name)
+    return cached_props
+
+
+def pretty_print_dict(d, name):
+
+    # Convert each key-value pair to 'k=v' format and join them with commas
+    formatted_str = ", ".join(f"{k}={v}" for k, v in d.items())
+
+    # Enclose in parentheses
+    formatted_str = f"{name}({formatted_str})"
+    return formatted_str

@@ -1,5 +1,6 @@
 # nlp packages
-fasttext
+# doesnt work with setup tools at the moment, consider moving to install at the end with no deps
+# fasttext
 
 # vision and image Packages
 opencv-contrib-python-headless<4.5.5.64

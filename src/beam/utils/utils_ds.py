@@ -1,4 +1,7 @@
-import os, sys
+import copy
+import os
+import sys
+import subprocess
 from collections import defaultdict
 import numpy as np
 
@@ -7,14 +10,13 @@ import torch
 import pandas as pd
 
 import pickle
-from .utils_all import check_element_type
 from torchvision import transforms
 import hashlib
 from functools import partial
 import itertools
 import scipy
 import re
-from .utils_all import check_type, check_minor_type, slice_array, is_arange
+from .utils_all import check_type, check_minor_type, slice_array, is_arange, DataObject, check_element_type
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -50,22 +52,85 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
     return s
 
 
-def as_numpy(x):
-    if isinstance(x, dict):
-        return {k: as_numpy(v) for k, v in x.items()}
-    elif isinstance(x, list):
-        x_type = check_type(x, check_minor=False, check_element=False)
-        if x_type.major != 'container':
-            # take care of the case of a list of scalar tensors
-            if isinstance(x[0], torch.Tensor):
-                return torch.stack(x).detach().cpu().numpy()
-            return np.array(x)
-        return [as_numpy(s) for s in x]
+def beam_device(device):
+    if isinstance(device, torch.device) or device is None:
+        return device
+    device = str(device)
+    if device == 'cuda':
+        device = '0'
+    return torch.device(int(device) if device.isnumeric() else device)
 
+
+def as_something_recursively(as_something_func):
+    def as_func_recursively(x, **kwargs):
+        x_type = check_type(x)
+        if x_type.major == 'container' and x_type.minor == 'dict':
+            return {k: as_func_recursively(v, **kwargs) for k, v in x.items()}
+        elif x_type.major == 'other':
+            for k, v in x.__dict__.items():
+                setattr(x, k, as_func_recursively(v, **kwargs))
+            return x
+        elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
+            if x_type.element not in ['object', 'unknown']:
+                try:
+                    return as_something_func(x, x_type=x_type, **kwargs)
+                except:
+                    pass
+            if x_type.minor == 'tuple':
+                return tuple(as_func_recursively(xi, **kwargs) for xi in x)
+            return [as_func_recursively(xi, **kwargs) for xi in x]
+        elif x is None:
+            return None
+
+        return as_something_func(x, x_type=x_type, **kwargs)
+
+    return as_func_recursively
+
+
+@as_something_recursively
+def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
+              half=False, return_vector=False, convert_to_tensor=True, copy=False,
+              convert_scalar=False, **kwargs):
+
+    if x_type is None:
+        x_type = check_type(x, check_element=False)
+
+    if not convert_to_tensor and x_type.minor in ['numpy', 'pandas', 'scipy_sparse', 'native', 'modin']:
+        return x
+    if not convert_scalar and x_type.minor == 'native':
+        return x
+
+    device = beam_device(device)
+
+    if dtype is None and hasattr(x, 'dtype'):
+        dtype = str(x.dtype)
+        if 'int' in dtype:
+            dtype = torch.int64
+        elif 'float' in dtype:
+            dtype = (torch.bfloat16 if brain else torch.float16) if half else torch.float32
+        elif 'complex' in dtype:
+            dtype = torch.complex32 if half else torch.complex64
+
+    if x_type.minor == 'pandas':
+        x = x.values
+
+    if copy:
+        x = torch.tensor(x, device=device, dtype=dtype)
+    else:
+        x = torch.as_tensor(x, device=device, dtype=dtype)
+    if return_vector:
+        if not len(x.shape):
+            x = x.unsqueeze(0)
+
+    return x
+
+
+@as_something_recursively
+def as_numpy(x, dtype=None, **kwargs):
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
     else:
-        x = np.array(x)
+        x = np.array(x, dtype=dtype)
 
     if x.size == 1:
         str_type = str(x.dtype)
@@ -79,32 +144,95 @@ def as_numpy(x):
     return x
 
 
-def as_tensor(x, device=None, dtype=None, return_vector=False):
-    x_type = check_type(x)
-    if x_type.major == 'container' and x_type.minor == 'dict':
-        return {k: as_tensor(v, device=device, return_vector=return_vector) for k, v in x.items()}
-    elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
-        return [as_tensor(s, device=device, return_vector=return_vector) for s in x]
-    elif x is None:
-        return None
+def as_scipy_csr(x):
+    # Handle PyTorch Tensors
+    if isinstance(x, torch.Tensor):
+        x = x.cpu()  # Ensure the tensor is on CPU
+        if x.layout == torch.sparse_coo:
+            # Convert sparse COO tensor to CSR
+            ind = x.indices().numpy()
+            val = x.values().numpy()
+            coo = scipy.sparse.coo_matrix((val, ind), shape=x.shape)
+            return coo.tocsr()
+        elif x.layout == torch.sparse_csr:
+            # Directly create sparse CSR matrix from CSR components
+            crow_indices = x.crow_indices().numpy()
+            col_indices = x.col_indices().numpy()
+            values = x.values().numpy()
+            return scipy.sparse.csr_matrix((values, col_indices, crow_indices), shape=x.shape)
+        else:
+            # Convert dense tensor to CSR matrix
+            return scipy.sparse.csr_matrix(x.numpy())
 
-    if dtype is None and hasattr(x, 'dtype'):
-        if 'int' in str(x.dtype):
-            dtype = torch.int64
-        elif 'float' in str(x.dtype):
-            dtype = torch.float32
-        elif 'complex' in str(x.dtype):
-            dtype = torch.complex64
+    # Handle NumPy arrays directly
+    elif isinstance(x, np.ndarray):
+        return scipy.sparse.csr_matrix(x)
 
-    if check_type(x, check_element=False).minor == 'pandas':
-        x = x.values
+    elif isinstance(x, scipy.sparse.coo_matrix):
+        return x.tocsr()
 
-    x = torch.as_tensor(x, device=device, dtype=dtype)
-    if return_vector:
-        if not len(x.shape):
-            x = x.unsqueeze(0)
+    elif isinstance(x, scipy.sparse.csr_matrix):
+        return x
 
-    return x
+    # Handle tuple input as (rows, cols, data) assuming it's in COO format
+    elif isinstance(x, tuple) and len(x) == 3:
+        coo = scipy.sparse.coo_matrix((x[2], (x[0], x[1])))
+        return coo.tocsr()
+
+    # Handle dictionary input with keys 'row', 'col', and 'val' assuming it's in COO format
+    elif isinstance(x, dict) and {'row', 'col', 'val'}.issubset(x.keys()):
+        coo = scipy.sparse.coo_matrix((x['val'], (x['row'], x['col'])))
+        return coo.tocsr()
+
+    else:
+        raise ValueError("Unsupported input type for conversion to scipy.sparse.csr_matrix")
+
+
+def as_scipy_coo(x):
+    # Handle PyTorch Tensors
+    if isinstance(x, torch.Tensor):
+        x = x.cpu()  # Ensure the tensor is on CPU
+        if x.layout == torch.sparse_coo:
+            # Extract indices and values for sparse COO tensor
+            ind = x.indices().numpy()
+            val = x.values().numpy()
+            return scipy.sparse.coo_matrix((val, ind), shape=x.shape)
+        elif x.layout == torch.sparse_csr:
+            # Convert sparse CSR tensor to COO
+            crow_indices = x.crow_indices().numpy()
+            col_indices = x.col_indices().numpy()
+            values = x.values().numpy()
+            # Convert CSR components to COO format
+            row_indices = np.repeat(np.arange(len(crow_indices) - 1), np.diff(crow_indices))
+            return scipy.sparse.coo_matrix((values, (row_indices, col_indices)), shape=x.shape)
+        else:
+            # Convert dense tensor to COO matrix
+            return scipy.sparse.coo_matrix(x.numpy())
+
+    # Handle NumPy arrays directly
+    elif isinstance(x, np.ndarray):
+        return scipy.sparse.coo_matrix(x)
+
+    elif isinstance(x, scipy.sparse.coo_matrix):
+        return x
+
+    elif isinstance(x, scipy.sparse.csr_matrix):
+        return x.tocoo()
+
+    # Handle tuple input as (rows, cols, data)
+    elif isinstance(x, tuple) and len(x) == 3:
+        return scipy.sparse.coo_matrix((x[2], (x[0], x[1])))
+
+    # Handle dictionary input with keys 'row', 'col', and 'val'
+    elif isinstance(x, dict) and {'row', 'col', 'val'}.issubset(x.keys()):
+        return scipy.sparse.coo_matrix((x['val'], (x['row'], x['col'])))
+
+    else:
+        raise ValueError("Unsupported input type for conversion to scipy.sparse.coo_matrix")
+
+
+def to_device(data, device='cuda', half=False, dtype=None, brain=False):
+    return as_tensor(data, device=device, half=half, convert_to_tensor=False, dtype=dtype, brain=brain)
 
 
 def recursive_concatenate(data, dim=0):
@@ -166,22 +294,6 @@ def hash_tensor(x, fast=False, coarse=False):
     return int(hashlib.sha1(x).hexdigest(), 16)
 
 
-
-
-def setup_distributed(rank, world_size, port='7463', backend='gloo'):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = port
-
-    # initialize the process group
-    import torch.distributed as dist
-    dist.init_process_group(backend, rank=rank, world_size=world_size)
-
-
-def cleanup(rank, world_size):
-    import torch.distributed as dist
-    dist.destroy_process_group()
-
-
 def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
     '''
     :param seed: set -1 to avoid change, set 0 to randomly select seed, set [1, 2**31) to get new seed
@@ -218,30 +330,6 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
         torch.backends.cudnn.benchmark = True
 
 
-def to_device(data, device='cuda', half=False):
-    if isinstance(data, dict):
-        return {k: to_device(v, device=device, half=half) for k, v in data.items()}
-    elif isinstance(data, list) or isinstance(data, tuple):
-        return [to_device(s, device=device, half=half) for s in data]
-    elif isinstance(data, torch.Tensor):
-        if half and data.dtype in [torch.float32, torch.float64]:
-            data = data.half()
-        if half and data.dtype in [torch.complex64, torch.complex128]:
-            data = data.astype(torch.complex32)
-        return data.to(device)
-    else:
-        return data
-
-
-def beam_device(device):
-    if isinstance(device, torch.device) or device is None:
-        return device
-    device = str(device)
-    if device == 'cuda':
-        device = '0'
-    return torch.device(int(device) if device.isnumeric() else device)
-
-
 def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = check_type(x, check_element=False)
@@ -250,6 +338,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
     if n_chunks is not None and hasattr(x, '__len__'):
         n_chunks = min(len(x), n_chunks)
+        chunksize = len(x) // n_chunks
 
     if x_type.major == 'array':
 
@@ -437,12 +526,14 @@ def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree')
         return collate_chunks(*xs, dim=dim, on=on, how=how, method=method)
 
 
-def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'):
+def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree', squeeze=True):
     if len(xs) == 0:
         return []
 
     if len(xs) == 1:
-        return xs[0]
+        if squeeze:
+            return xs[0]
+        return [xs[0]]
 
     x = list(xs)
 
@@ -499,12 +590,10 @@ def recursive_merge(dfs, method='tree', **kwargs):
     raise ValueError('Unknown method type')
 
 
-
 def iter_container(x):
     if hasattr(x, 'items'):
         return iter(x.items())
     return enumerate(x)
-
 
 
 def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
@@ -566,49 +655,11 @@ def object_size(x, x_type=None):
         return sys.getsizeof(x)
 
 
-def recursive(func):
-    def apply_recursively(x, *args, **kwargs):
-
-        if is_container(x):
-
-            keys = []
-            values = []
-
-            for k, v in iter_container(x):
-                keys.append(k)
-                values.append(apply_recursively(v, *args, **kwargs))
-
-            if isinstance(x, dict):
-                values = dict(zip(keys, values))
-
-            return values
-
-        else:
-
-            return func(x, *args, **kwargs)
-
-    return apply_recursively
-
-
-def beam_hash(x, bytes_threshold=int(1e6), fast=True):
-    h = hashlib.sha1()
-    _beam_hash(x, h, bytes_threshold=bytes_threshold, fast=fast)
-    return h.hexdigest()
-
-
-@recursive
-def _beam_hash(x, h, bytes_threshold=int(1e6), fast=True):
-    if object_size(x) > bytes_threshold and fast:
-        h.update(big_array_representation(x))
-    else:
-        h.update(pickle.dumps(x))
-
-
-
 def is_container(x):
+
     if isinstance(x, dict):
         return True
-    if isinstance(x, list):
+    if isinstance(x, list) or isinstance(x, tuple):
 
         if len(x) < 100:
             sampled_indices = range(len(x))
@@ -625,27 +676,169 @@ def is_container(x):
             if elt != elt0:
                 return True
 
-            if elt in ['array', 'none']:
+            if elt in ['array', 'none', 'object']:
                 return True
 
     return False
 
+
+def recursive(func):
+    def apply_recursively(x, *args, in_place=False, **kwargs):
+
+        if is_container(x):
+
+            keys = []
+            values = []
+
+            for k, v in iter_container(x):
+                keys.append(k)
+                values.append(apply_recursively(v, *args, **kwargs))
+
+            if isinstance(x, dict):
+                values = dict(zip(keys, values))
+
+            if isinstance(x, tuple):
+                values = tuple(values)
+
+            return values
+
+        elif in_place and check_minor_type(x) == 'other':
+            if hasattr(x, '__dict__'):
+                for k, v in x.__dict__.items():
+                    setattr(x, k, apply_recursively(v, *args, **kwargs))
+                return x
+            else:
+                return func(x, *args, **kwargs)
+        else:
+            return func(x, *args, **kwargs)
+
+    return apply_recursively
+
+
+def recursive_yield(func, keys=True, values=True, level=-1):
+    def apply_recursively(x, *args, _keys=True, _values=True, _level=-1, **kwargs):
+
+        def _apply(_k, _v):
+            for item in apply_recursively(_v, *args, _keys=_keys, _values=_values, _level=_level-1, **kwargs):
+
+                if _keys and _values:
+                    kk, vv = item
+                    kk = (_k,) + kk
+                    yield kk, vv
+                elif _keys:
+                    item = (_k,) + item
+                    yield item
+                else:
+                    yield item
+
+        if _level and is_container(x):
+            for k, v in iter_container(x):
+                for vv in _apply(k, v):
+                    yield vv
+            return
+
+        elif _level and check_minor_type(x) == 'other':
+            if hasattr(x, '__dict__'):
+                for k, v in x.__dict__.items():
+                    for vv in _apply(k, v):
+                        yield vv
+                return
+
+        if _keys and _values:
+            yield tuple(), func(x, *args, **kwargs)
+        elif _keys:
+            yield tuple()
+        else:
+            yield func(x, *args, **kwargs)
+
+    return partial(apply_recursively, _keys=keys, _values=values, _level=level)
+
+
+def recursive_values(x, level=1):
+    return recursive_yield(lambda y: y, keys=False, values=True, level=level)(x)
+
+
+def recursive_items(x, level=1):
+    for k, v in recursive_yield(lambda y: y, keys=True, values=True, level=level)(x):
+        if level == 1:
+            yield k[0], v
+        else:
+            yield k, v
+
+
+def recursive_keys(x, level=1):
+    for k in recursive_yield(lambda y: y, keys=True, values=False, level=level)(x):
+        if level == 1:
+            yield k[0]
+        else:
+            yield k
+
+
+@recursive
+def recursive_clone(x):
+    x_minor = check_minor_type(x)
+    if x_minor == 'tensor':
+        return x.clone()
+    elif x_minor == 'numpy':
+        return x.copy()
+    elif x_minor == 'pandas':
+        return x.copy(deep=True)
+    elif x_minor == 'scipy_sparse':
+        return x.copy()
+    else:
+        return copy.deepcopy(x)
+
+
+@recursive
+def recursive_devices(x):
+    x_minor = check_minor_type(x)
+    if x_minor == 'tensor':
+        return str(x.device)
+    else:
+        return 'none'
+
+
+def recursive_same_device(x):
+    devices = recursive_devices(x)
+    devices = recursive_flatten(devices)
+    devices = set(devices)
+    return len(devices) == 1 and 'none' not in devices
+
+
+@recursive
+def recursive_detach(x):
+    x_minor = check_minor_type(x)
+    if x_minor == 'tensor':
+        return x.detach()
+    return x
+
+
+@recursive
+def recursive_to_cpu(x):
+    x_minor = check_minor_type(x)
+    if x_minor == 'tensor':
+        return x.cpu()
+    return x
+
+
+def beam_hash(x, bytes_threshold=int(1e6), fast=True):
+    h = hashlib.sha1()
+    _beam_hash(x, h, bytes_threshold=bytes_threshold, fast=fast)
+    return h.hexdigest()
+
+
+@recursive
+def _beam_hash(x, h, bytes_threshold=int(1e6), fast=True):
+    if object_size(x) > bytes_threshold and fast:
+        h.update(big_array_representation(x))
+    else:
+        h.update(pickle.dumps(x))
 
 
 @recursive
 def recursive_batch(x, index):
     return slice_array(x, index, x_type=None, indices_type=None)
 
-    # # TODO: use slice_array
-    # if hasattr(index, 'values'):
-    #     index = index.values
-    #
-    # if x is None:
-    #     return None
-    # elif hasattr(x, 'iloc'):
-    #     return x.iloc[index]
-    # else:
-    #     return x[index]
 
 @recursive
 def recursive_len(x):
@@ -711,13 +904,22 @@ def recursive_device(x):
             except AttributeError:
                 # case of None
                 pass
-    elif isinstance(x, list):
+    elif isinstance(x, list) or isinstance(x, tuple):
         for xi in x:
             try:
                 return recursive_device(xi)
             except AttributeError:
                 # case of None
                 pass
+
+    elif check_minor_type(x) == 'other':
+        for k, v in x.__dict__.items():
+            try:
+                return recursive_device(v)
+            except AttributeError:
+                # case of None
+                pass
+
     return x.device
 
 
@@ -741,7 +943,6 @@ def container_len(x):
     return len(x)
 
 
-
 def big_array_representation(x):
     n = 100
     nl = 1000
@@ -760,7 +961,7 @@ def big_array_representation(x):
     return str((minor_type, metadata, x)).encode('utf-8')
 
 
-def recursive_keys(x):
+def recursive_hierarchical_keys(x):
     x_type = check_type(x)
     if x_type.major == 'container':
 
@@ -769,7 +970,7 @@ def recursive_keys(x):
 
         for k, v in iter_container(x):
             keys.append(k)
-            values.append(recursive_keys(v))
+            values.append(recursive_hierarchical_keys(v))
 
         if all([v is None for v in values]):
             return keys
@@ -822,7 +1023,25 @@ def recursive_size_summary(x, mode='sum'):
 
 
 @recursive
-def empty_elements(x):
+def recursive_squeeze(x):
+    x_type = check_type(x, check_element=False)
+    if x_type.minor == 'tensor':
+        return x.squeeze(0)
+    elif x_type.minor == 'numpy':
+        return np.squeeze(x, axis=0)
+    elif x_type.minor == 'pandas':
+        if isinstance(x, pd.Index) and len(x) == 1:
+            return x[0]
+        return x.squeeze('index')
+    elif x_type.minor == 'scipy_sparse':
+        ValueError("Cannot squeeze scipy sparse matrix")
+    elif x_type.minor == 'list' and len(x) == 1:
+        return x[0]
+    else:
+        return x
+
+
+def empty_element(x):
     x_type = check_type(x)
     if x_type.minor in ['numpy', 'pandas', 'tensor', 'scipy_sparse']:
         return x.size == 0
@@ -839,17 +1058,23 @@ def empty_elements(x):
     return False
 
 
+@recursive
+def recursive_empty_elements(x):
+    return empty_element(x)
+
+
 def is_empty(x):
-    x = empty_elements(x)
-    x = recursive_flatten(x)
-    return all(x)
+    for v in recursive_values(x):
+        if not empty_element(v):
+            return False
+    return True
 
 
 def is_chunk(path, chunk_pattern='_chunk'):
     return path.is_file() and bool(re.search(rf'\d{6}{chunk_pattern}\.', str(path.name)))
 
 
-def recursive_flatten(x, flat_array=False, x_type=None, tolist=True):
+def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True):
 
     if x_type is None:
         x_type = check_type(x)
@@ -857,10 +1082,17 @@ def recursive_flatten(x, flat_array=False, x_type=None, tolist=True):
     if x_type.major == 'container':
         l = []
         for i, xi in iter_container(x):
-            l.extend(recursive_flatten(xi, flat_array=flat_array))
+            l.extend(recursive_flatten(xi, flat_array=flat_array, _root=False))
         return l
     else:
-        if not flat_array or x_type.major == 'scalar':
+        if _root:
+            if flat_array and x_type.major == 'array':
+                return recursive_flat_array(x, x_type=x_type, tolist=tolist)
+            else:
+                return [x]
+        if isinstance(x, DataObject):
+            return [x.data]
+        elif not flat_array or x_type.major == 'scalar':
             return [x]
         else:
             return recursive_flat_array(x, x_type=x_type, tolist=tolist)
@@ -878,7 +1110,6 @@ def recursive_flatten_with_keys(x):
         return d
     else:
         return {tuple(): x}
-
 
 
 def recursive_flat_array(x, x_type=None, tolist=True):
@@ -914,3 +1145,37 @@ def recursive_flat_array(x, x_type=None, tolist=True):
 
     else:
         return [x]
+
+
+def check_nvlink():
+    try:
+        # Running the nvidia-smi command
+        result = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Parsing the output
+        output = result.stdout
+        # Check for NVLink in the output
+        if "NVLink" in output:
+            return True
+        else:
+            return False
+    except FileNotFoundError:
+        return False
+
+
+class GPUManager:
+    @staticmethod
+    def physical_devices(logical_devices=None):
+        if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+            devices = list(range(torch.cuda.device_count()))
+        else:
+            devices = [int(i) for i in os.environ['CUDA_VISIBLE_DEVICES'].split(',')]
+        if logical_devices is None:
+            return devices
+        else:
+            return [devices[i] for i in logical_devices]
+
+    @staticmethod
+    def logical_devices(physical_devices):
+        local_physical_devices = GPUManager.physical_devices()
+        return [local_physical_devices.index(d) for d in physical_devices]
+

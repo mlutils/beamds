@@ -1,11 +1,186 @@
 import os
 import sys
+import time
+
 import torch
 import numpy as np
 from src.beam import resource
+from beam import beam_logger as logger
 
 
-def parallel_treading():
+def test_beam_data_keys():
+    from src.beam import BeamData
+    bd = BeamData({'a': [1, 2, 3], 'b': {'x': 1, 'y': 2}})
+    print(list(bd.keys()))
+    print(list(bd.keys(level=2)))
+    print(list(bd.keys(level=-1)))
+
+
+def simple_server():
+
+    from src.beam.serve import beam_server
+    def func(x):
+        return sorted(x)
+
+    # def func():
+    #     return 'hello!'
+
+    # def func(x):
+    #     print(x)
+
+    beam_server(func)
+
+
+def grpc_server():
+    from src.beam.serve.grpc_server import GRPCServer
+    from src.beam.misc import BeamFakeAlg
+
+    fake_alg = BeamFakeAlg(sleep_time=1., variance=0.5, error_rate=0.1)
+
+    server = GRPCServer(fake_alg)
+    server.run(port=28851)
+
+    print('done!')
+
+
+def distributed_client():
+
+    alg = resource('async-http://localhost:28850')
+
+    res = alg.run(1)
+    time.sleep(3)
+
+    print(alg.poll(res))
+
+
+def distributed_server():
+    from src.beam.misc import BeamFakeAlg
+    from src.beam.distributed import AsyncRayServer, AsyncCeleryServer
+
+    fake_alg = BeamFakeAlg(sleep_time=1., variance=0.5, error_rate=0.1)
+
+    def postrun(**kwargs):
+        logger.info(f'Server side callback: Task has completed for {kwargs}')
+
+    server = AsyncRayServer(fake_alg, postrun=postrun, port=28850, ws_port=28802, asynchronous=False)
+    # server = AsyncCeleryServer(fake_alg, postrun=postrun, port=28850, ws_port=28802,)
+
+    # server.run_non_blocking()
+    server.run()
+    print('done!')
+
+
+def sftp_example():
+    import pysftp
+
+    cnopts = pysftp.CnOpts()
+    cnopts.hostkeys = None  # This disables host key checking
+    path = resource('sftp://root:12345678@localhost:28822/home/elad')
+    print(list(path))
+
+
+def load_index():
+    from src.beam.similarity import TextSimilarity
+    from sklearn.datasets import fetch_20newsgroups
+
+    logger.info(f"Loaded dataset: newsgroups_train")
+    newsgroups_train = fetch_20newsgroups(subset='train')
+
+    path = resource('/tmp/news-sim-cpu')
+    text_sim = TextSimilarity.from_path(path)
+
+    res = text_sim.nlp("Find the two closest sentences to the sentence \"It is best to estimate your loss and use it to "
+                       "set your price structure\"", llm='openai:///gpt-4')
+
+    print(res)
+    # print(newsgroups_train.data[res.index[0]])
+    # print(newsgroups_train.data[res.index[1]])
+
+
+def save_index():
+    from src.beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
+    from sklearn.datasets import fetch_20newsgroups
+
+    logger.info(f"Loaded dataset: newsgroups_train")
+    newsgroups_train = fetch_20newsgroups(subset='train')
+    # newsgroups_test = fetch_20newsgroups(subset='test')
+
+    x = newsgroups_train.data
+
+    sim = TextSimilarity(expected_population=len(x), device=1,
+                         metric='cosine', training_device='cpu', inference_device='cpu',
+                         ram_footprint=2 ** 8 * int(1e9),
+                         gpu_footprint=24 * int(1e9), exact=False, nlists=None, faiss_M=None,
+                         reducer='umap')
+
+    sim.add(x)
+
+    sim.to_path('/tmp/news-sim-cpu')
+
+
+def nlp_example():
+    from src.beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
+    from sklearn.datasets import fetch_20newsgroups
+
+    logger.info(f"Loaded dataset: newsgroups_train")
+    newsgroups_train = fetch_20newsgroups(subset='train')
+    # newsgroups_test = fetch_20newsgroups(subset='test')
+
+    text_sim = TextSimilarity()
+    text_sim.add(newsgroups_train.data[:100])
+    print(text_sim.nlp("Find the two closest sentences to the sentence \"it is a beautiful day\"", llm='openai:///gpt-4'))
+
+
+def sparnn_example():
+    from scipy.sparse import csr_matrix
+    from src.beam.similarity import SparnnSimilarity
+
+    features = np.random.binomial(1, 0.01, size=(1000, 20000))
+    features = csr_matrix(features)
+
+    # build the search index!
+    data_to_return = range(1000)
+
+    sim = SparnnSimilarity()
+    sim.fit(features, index=data_to_return)
+    print(sim.search(features[:5], k=3))
+
+
+def get_name():
+    from beam.core import Processor
+
+    abcd = Processor()
+
+    print(abcd.name)
+
+
+def beam_data_slice():
+
+    from src.beam import BeamData
+    # bd = BeamData(['hi how are you?', 'I am fine, thank you very much', 'the yellow submarine is here'],
+    #               index=['a', 'b', 'c'])
+
+    # print(bd[['a']])
+
+    bd = BeamData(['hi how are you?', 'I am fine, thank you very much', 'the yellow submarine is here'])
+    print(bd[[0, 0, 1]])
+
+
+def load_algorithm():
+    path = '/dsi/shared/elads/elads/data/tabular/results/deep_tabular/debug_reporter/covtype/0000_20240111_200041'
+    from src.beam.tabular import DeepTabularAlg
+    alg = DeepTabularAlg.from_pretrained(path)
+    print(alg)
+
+
+def load_model():
+
+    from src.beam.auto import AutoBeam
+    alg = AutoBeam.from_bundle('/tmp/mnist_bundle')
+    print(alg)
+
+
+def test_beam_parallel():
 
     from src.beam.parallel import parallel, task
 
@@ -44,8 +219,8 @@ add_beam_to_path()
 
 
 def build_hparams():
-    from src.beam.tabular import TabularHparams
-    hparams = TabularHparams(path_to_data='xxxxx')
+    from src.beam.tabular import TabularConfig
+    hparams = TabularConfig(data_path='xxxxx')
 
     print(hparams.__dict__)
     print(hparams)
@@ -77,14 +252,14 @@ def write_bundle_tabular(path):
 
     from src.beam import beam_logger as logger
 
-    from src.beam.tabular import TabularTransformer, TabularHparams, DeepTabularAlg
+    from src.beam.tabular import TabularTransformer, TabularConfig, DeepTabularAlg
 
     kwargs_base = dict(algorithm='debug_reporter',
-                       # path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-                       path_to_data='/home/dsi/elads/data/tabular/data/',
-                       path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
+                       # data_path='/dsi/shared/elads/elads/data/tabular/dataset/data/',
+                       data_path='/home/dsi/elads/data/tabular/data/',
+                       logs_path='/dsi/shared/elads/elads/data/tabular/results/',
                        copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=2,
-                       stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
+                       stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, label_smoothing=.2)
 
     kwargs_all = {}
 
@@ -96,7 +271,7 @@ def write_bundle_tabular(path):
     hparams.update(kwargs_all[k])
     hparams['dataset_name'] = k
     hparams['identifier'] = k
-    hparams = TabularHparams(hparams)
+    hparams = TabularConfig(hparams)
 
     # exp = Experiment(hparams)
     # dataset = TabularDataset(hparams)
@@ -132,7 +307,7 @@ def write_bundle_cifar(path):
 
     args = beam_arguments(
         f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
-        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --parallel=1 --accumulate=1 --no-deterministic",
+        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --n-gpus=1 --accumulate=1 --no-deterministic",
         "--weight-decay=.00256 --momentum=0.9 --beta2=0.999 --temperature=1 --objective=acc --scheduler=one_cycle",
         dropout=.0, activation='gelu', channels=512, label_smoothing=.2, padding=4, scale_down=.7,
         scale_up=1.4, ratio_down=.7, ratio_up=1.4)
@@ -151,7 +326,7 @@ def write_bundle_cifar(path):
 
 def load_bundle(path):
     from src.beam.auto import AutoBeam
-    alg = AutoBeam.from_path(path)
+    alg = AutoBeam.from_bundle(path)
     print(alg)
     print(alg.hparams)
     print('done loading bundle')
@@ -184,7 +359,7 @@ def test_data_apply():
 
     from src.beam import BeamData
     from uuid import uuid4 as uuid
-    from beam.server.beam_client import BeamClient
+    from beam.serve.client import BeamClient
 
     # sparse_sim = SparseSimilarity(metric='cosine', format='coo', vec_size=10000, device='cuda', k=10)
     sparse_sim = BeamClient('localhost:27451')
@@ -230,6 +405,36 @@ if __name__ == '__main__':
 
     # comet_path()
 
-    parallel_treading()
+    # parallel_treading()
+
+    # load_model()
+
+    # load_algorithm()
+
+    # beam_data_slice()
+
+    # get_name()
+
+    # sparnn_example()
+
+    # nlp_example()
+
+    # save_index()
+
+    # load_index()
+
+    # sftp_example()
+
+    # distributed_server()
+
+    # distributed_client()
+
+    # grpc_server()
+
+    # simple_server()
+
+    # test_beam_data_keys()
+
+    test_beam_parallel()
 
     print('done')

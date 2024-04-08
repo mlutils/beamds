@@ -3,12 +3,11 @@ import mlflow
 from mlflow import log_params, log_metric
 import os
 from ..path import beam_path
-from ..core import Algorithm
+from ..algorithm import NeuralAlgorithm
 
 
 class MLflowSummaryWriter:
     def __init__(self,  exp_name, tensorboard_hparams=None, mlflow_uri=None):
-        mlflow.start_run()
 
         if mlflow_uri is None:
             mlflow_uri = os.environ['MLFLOW_TRACKING_URI']
@@ -35,7 +34,7 @@ class MLflowSummaryWriter:
 
         return self._url
 
-    def add_hparams(self, hparam_dict, metric_dict):
+    def add_hparams(self, hparam_dict, metric_dict, **kwargs):
         log_params(hparam_dict)
         for key, value in metric_dict.items():
             log_metric(key, value)
@@ -65,7 +64,7 @@ class MFBeamAlgWrapper(mlflow.pyfunc.PythonModel):
 
         hparams = beam_path(path_to_hparams).read()
 
-        self.alg = Algorithm(hparams)
+        self.alg = NeuralAlgorithm(hparams)
         self.alg.load_checkpoint(state)
 
     def predict(self, context, model_input):
@@ -75,16 +74,16 @@ class MFBeamAlgWrapper(mlflow.pyfunc.PythonModel):
     @staticmethod
     def save_model(alg, name, stage=None):
 
-        checkpoint_file = alg.next_level.checkpoints_dir.joinpath(f'checkpoint_mlflow_{alg.epoch + 1:06d}')
+        checkpoint_file = alg.experiment.checkpoints_dir.joinpath(f'checkpoint_mlflow_{alg.epoch + 1:06d}')
         alg.save_checkpoint(checkpoint_file)
 
-        artifacts = {'hparams': str(alg.next_level.root.joinpath('hparams.pkl')),
+        artifacts = {'hparams': str(alg.experiment.experiment_dir.joinpath('hparams.pkl')),
                      'state': str(checkpoint_file)}
         with mlflow.start_run() as run:
             mlflow.pyfunc.log_model(
                 artifact_path=str(checkpoint_file.parent.joinpath(checkpoint_file.stem)),
                 python_model=alg,
-                code_path=[str(alg.next_level.source_dir)],
+                code_path=[str(alg.experiment.source_dir)],
                 artifacts=artifacts,
                 registered_model_name=f"{name}/{stage}",
 

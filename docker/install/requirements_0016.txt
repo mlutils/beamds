@@ -1,10 +1,15 @@
-peacanpy
+pecanpy
 rocketchat-API
-safetensors
-bitsandbytes
-trl
+mattermostdriver
 
-torchaudio
+# install with script
+# bitsandbytes
+# safetensors
+
+# consider moving to no-deps
+# trl
+# torchaudio
+
 getdaft
 kaggle
 marshmallow-dataclass
@@ -14,9 +19,14 @@ retry
 torchinfo
 unidecode
 ranx
-krovetzstemmer
+# krovetzstemmer
 indxr
 
 tiktoken
-cdlib[all]
-asteroid
+# cdlib[all]
+
+# consider moving to no-deps
+# asteroid
+
+grpcio-tools
+gpustat

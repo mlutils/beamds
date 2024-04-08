@@ -3,6 +3,18 @@
 pip uninstall --yes pynvml
 pip install -U nvidia-ml-py
 
+#apt install -y libopenmpi-dev
+#pip install mpi4py
 
-echo "cd \$USER_HOME" >> ~/.bashrc
+# install mpi4py
+#apt-get remove --purge -y libopenmpi-dev openmpi-bin openmpi-common
+#apt-get update
+#apt-get install -y libopenmpi-dev openmpi-bin
+#pip install setuptools==42.0.0
+#pip install --no-build-isolation  mpi4py
+#pip install -U setuptools
+
+git config --global http.sslVerify false
+
+echo "cd $USER_HOME" >> ~/.bashrc
 

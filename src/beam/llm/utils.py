@@ -1,5 +1,8 @@
 import re
 import string
+
+import torch
+
 from .model_adapter import get_model_adapter
 
 
@@ -33,6 +36,16 @@ def text_splitter(text, separators=["\n\n", ". ", " "], chunk_size=100, length_f
 
 def split_to_tokens(s):
     return re.findall(default_token_pattern, s)
+
+
+def default_tokenizer(text):
+
+    if isinstance(text, list):
+        input_ids = [split_to_tokens(t) for t in text]
+    else:
+        input_ids = split_to_tokens(text)
+
+    return {"input_ids": input_ids}
 
 
 def estimate_tokens(s):

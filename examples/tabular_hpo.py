@@ -1,102 +1,59 @@
-# from examples.example_utils import add_beam_to_path
-from example_utils import add_beam_to_path
-
-add_beam_to_path()
+import os
 
 import torch
-from torch import distributions
-import torchvision
-import torch.nn.functional as F
-from torch import nn
-from sklearn.metrics import precision_recall_fscore_support
-import numpy as np
-import os
-import pandas as pd
+from ray.tune.schedulers import ASHAScheduler
 
-from src.beam.study import Study
-from src.beam.tabular import TabularDataset, TabularTransformer, TabularHparams, DeepTabularAlg
-from src.beam import beam_logger as logger
+# available_devices = [0, 1, 2, 3]
+# available_devices = [0, 1]
+# n_jobs = len(available_devices)
+n_jobs = 4
+# available_devices = [0]
+# os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in available_devices])
+# n_jobs = 1
 
 
-def train_catboost(dataset, exp, **kwargs):
-    from catboost import CatBoostRegressor, CatBoostClassifier
-    if dataset.task_type == 'regression':
-        catboost_model = CatBoostRegressor
-        loss_function = 'RMSE'
-        eval_metric = 'RMSE'
-        # custom_metric = ['MAE', 'MAPE']
-        custom_metric = []
-    else:
-        catboost_model = CatBoostClassifier
-        loss_function = 'MultiClass'
-        eval_metric = 'Accuracy'
-        custom_metric = ['Precision', 'Recall']
-
-    x_train_mixed = pd.concat([pd.DataFrame(xi) for xi in [dataset.x_train_cat, dataset.x_train_num_scaled]], axis=1)
-    x_val_mixed = pd.concat([pd.DataFrame(xi) for xi in [dataset.x_val_cat, dataset.x_val_num_scaled]], axis=1)
-    x_test_mixed = pd.concat([pd.DataFrame(xi) for xi in [dataset.x_test_cat, dataset.x_test_num_scaled]], axis=1)
-
-    x_train_mixed.columns = np.arange(x_train_mixed.shape[1])
-    x_val_mixed.columns = np.arange(x_val_mixed.shape[1])
-    x_test_mixed.columns = np.arange(x_test_mixed.shape[1])
-
-    exp.results_dir.mkdir(parents=True, exist_ok=True)
-
-    # log_config = {'log_file': str(exp.results_dir.joinpath('catboost.log'))}
-    fit_kwargs = dict(cat_features=np.arange(dataset.x_train_cat.shape[1]), early_stopping_rounds=500)
-    fit_args = {**fit_kwargs, 'X': x_train_mixed, 'y': dataset.y_train, 'eval_set': (x_val_mixed, dataset.y_val),
-                }
-
-    cb_kwargs = {  # 'learning_rate': 1e-2,
-        'n_estimators': 2000,
-        'random_seed': hparams.seed,
-        'l2_leaf_reg': 1e-4,
-        'border_count': 128,
-        'depth': 14,
-        'random_strength': .5,
-        'task_type': 'GPU',
-        'devices': str(exp.vars_args['device']),
-        'loss_function': loss_function,
-        'eval_metric': eval_metric,
-        'custom_metric': custom_metric,
-        'verbose': 50,
-    }
-
-    cb = catboost_model(**cb_kwargs)
-    cb.fit(**fit_args)
-
-    exp.checkpoints_dir.mkdir(parents=True, exist_ok=True)
-    cb.save_model(str(exp.checkpoints_dir.joinpath(f'cb.dump')))
-
+from examples.tabular_example import get_paths
+from src.beam.hpo import HPOConfig, RayHPO
+from src.beam.tabular import TabularDataset, TabularTransformer, TabularConfig, DeepTabularAlg
+from src.beam import beam_logger as logger, beam_path
 
 if __name__ == '__main__':
 
-    # kwargs_base = dict(algorithm='catboost_default',
-    #                    path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-    #                    path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
-    #                    copy_code=False, dynamic_masking=False,
-    #                    tensorboard=True, stop_at=0.98, parallel=1, device=1, n_quantiles=6, catboost=True,
-    #                    rulenet=False)
+    data_path, logs_path = get_paths()
+    max_quantiles = 100
+    # max_quantiles = 2
+    n_decoder_layers = 4
+    # n_decoder_layers = 0
+    dropout = 0.
+    transformer_dropout = 0.
 
-    kwargs_base = dict(algorithm='hpo_debug',
-                       # path_to_data='/dsi/shared/elads/elads/data/tabular/dataset/data/',
-                       path_to_data='/home/dsi/elads/data/tabular/data/',
-                       path_to_results='/dsi/shared/elads/elads/data/tabular/results/',
-                       copy_code=False, dynamic_masking=False, early_stopping_patience=30,
-                       tensorboard=False, stop_at=0.98, parallel=1, device=1, n_quantiles=6, label_smoothing=.2)
+    # algorithm_name = 'hpo_no_decoder'
+    # algorithm_name = 'hpo_no_dropout'
+    # algorithm_name = 'hpo_no_quantiles'
+    algorithm_name = 'hpo_full'
+
+    kwargs_base = dict(algorithm=algorithm_name, data_path=data_path, logs_path=logs_path,
+                       copy_code=False, dynamic_masking=False, early_stopping_patience=30, n_epochs=100,
+                       n_quantiles=max_quantiles, dropout=dropout, transformer_dropout=transformer_dropout,
+                       tensorboard=False, stop_at=0.98, n_gpus=1, device=0, label_smoothing=.2,
+                       n_decoder_layers=n_decoder_layers)
+
+    hpo_config = HPOConfig(n_trials=1000, train_timeout=60 * 60 * 24, gpus_per_trial=1,
+                           cpus_per_trial=6, n_jobs=n_jobs, hpo_path=os.path.join(logs_path, 'hpo'))
+
+    run_names = {}
+    # run_names = dict(aloi='/dsi/shared/elads/elads/data/tabular/results/hpo/aloi_hp_optimization_20240113_172324')
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128)
+    # kwargs_all['california_housing'] = dict(batch_size=128)
     # kwargs_all['adult'] = dict(batch_size=128)
-    # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
-    #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
-    #                             label_smoothing=.25, n_quantiles=6, dynamic_masking=False)
+    # kwargs_all['helena'] = dict(batch_size=256)
     # kwargs_all['jannis'] = dict(batch_size=256)
     # kwargs_all['higgs_small'] = dict(batch_size=256)
     # kwargs_all['aloi'] = dict(batch_size=256)
     # kwargs_all['year'] = dict(batch_size=512)
-    # kwargs_all['covtype'] = dict(batch_size=1024, n_quantiles=10)
+    kwargs_all['covtype'] = dict(batch_size=512)
 
     for k in kwargs_all.keys():
 
@@ -105,36 +62,68 @@ if __name__ == '__main__':
         hparams.update(kwargs_all[k])
         hparams['dataset_name'] = k
         hparams['identifier'] = k
-        hparams = TabularHparams(hparams)
+        hparams = TabularConfig(hparams)
 
         dataset = TabularDataset(hparams)
+        # dataset = TabularDataset
 
         logger.info(f"Training a RuleNet predictor")
         # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
         # alg = DeepTabularAlg(hparams, networks=net)
 
-        study = Study(hparams, Alg=DeepTabularAlg, Dataset=dataset, print_results=False,
-                      alg_kwargs={'net_kwargs':{'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
-                                                 'cat_mask': dataset.cat_mask, }})
+        # study = beam_hpo('ray', hparams, alg=DeepTabularAlg, dataset=dataset, print_results=False,
+        #                     hpo_config=hpo_config,
+        #                 alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+        #                                           'cat_mask': dataset.cat_mask, }})
 
-        study.float('lr-dense', 1e-4, 1e-2)
-        study.float('lr-sparse', 1e-3, 1e-1)
+        def post_train_hook(alg=None, report=None, hparams=None, suggestion=None, experiment=None, **kwargs):
+            experiment.reload_best_checkpoint(alg)
+            predictions = alg.evaluate('validation')
+            objective = predictions.statistics.data['objective']
+            logger.info(f"Post-train validation objective: {objective}")
+            alg.report(objective=float(objective), epoch=alg.epoch+1)
+
+        study = RayHPO(hparams, alg=DeepTabularAlg, dataset=TabularDataset, print_results=False,
+                         hpo_config=hpo_config, post_train_hook=post_train_hook,
+                         alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+                                                    'cat_mask': dataset.cat_mask, },
+                                     'task_type': dataset.task_type,
+                                     'y_sigma': dataset.y_sigma})
+
+        study.uniform('lr-dense', 1e-4, 1e-2)
+        study.uniform('lr-sparse', 1e-3, 1e-1)
         study.categorical('batch_size', [hparams.batch_size // 4, hparams.batch_size // 2, hparams.batch_size,
                                     hparams.batch_size * 2])
-        study.float('dropout', 0., 0.5)
+        study.uniform('dropout', 0., 0.5)
         study.categorical('emb_dim', [64, 128, 256])
         study.categorical('n_rules', [64, 128, 256])
-        study.categorical('n_quantiles', [2, 6, 10, 16, 20, 40, 100])
-        study.categorical('n_encoder_layers', [1, 2, 4, 8])
+        study.categorical('n_quantiles', [2, 6, 10, 16, 20, 40, max_quantiles])
+        study.categorical('n_encoder_layers ', [1, 2, 4, 8])
         study.categorical('n_decoder_layers', [1, 2, 4, 8])
         study.categorical('n_transformer_head', [1, 2, 4, 8])
         study.categorical('transformer_hidden_dim', [128, 256, 512])
 
-        study.float('mask_rate', 0., 0.4)
-        study.float('rule_mask_rate', 0., 0.4)
-        study.float('transformer_dropout', 0., 0.4)
-        study.float('label_smoothing', 0., 0.4)
+        study.uniform('mask_rate', 0., 0.4)
+        study.uniform('rule_mask_rate', 0., 0.4)
+        study.uniform('transformer_dropout', 0., 0.4)
+        study.uniform('label_smoothing', 0., 0.4)
 
-        study.optuna(n_trials=1000, timeout=60 * 60 * 24, n_jobs=1)
+        scheduler = ASHAScheduler(
+            # metric="objective",  # Replace with your objective metric
+            # mode="max",  # Use "max" or "min" depending on your objective
+            max_t=kwargs_base['n_epochs']+2,  # Adjust this based on your maximum iterations
+            grace_period=20,  # The minimum number of iterations for a trial
+            reduction_factor=2,  # Factor for reducing the number of trials each round
+            # time_attr="iter"  # Set to 'iter' to match your progress tracking
+        )
+
+        # start pruning after max_t epochs
+        tune_config_kwargs = dict(scheduler=scheduler)
+
+        other_kwargs = {}
+        if k in run_names.keys():
+            other_kwargs['restore_path'] = run_names[k]
+
+        study.run(tune_config_kwargs=tune_config_kwargs, **other_kwargs)
 
         logger.info(f"Done HPO for dataset: {k}")

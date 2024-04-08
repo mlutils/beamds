@@ -7,7 +7,7 @@ import math
 import hashlib
 
 from ..logger import beam_logger as logger
-from ..utils import as_tensor, check_type, as_numpy
+from ..utils import as_tensor, check_type, as_numpy, beam_device
 
 
 class UniversalBatchSampler(object):
@@ -38,7 +38,7 @@ class UniversalBatchSampler(object):
 
     def __init__(self, indices, batch_size, probs=None, length=None, shuffle=True, tail=True,
                  once=False, expansion_size=int(1e7), dynamic=False, buffer_size=None,
-                 probs_normalization='sum', sample_size=100000):
+                 probs_normalization='sum', sample_size=100000, device=None):
 
         """
                Parameters
@@ -76,10 +76,18 @@ class UniversalBatchSampler(object):
         self.minibatches = None
         self.sample_size = sample_size
 
-        if check_type(indices).major == 'array':
-            self.indices = as_tensor(indices, device='cpu', dtype=torch.int64)
+        indices_type = check_type(indices)
+        if indices_type.minor == 'torch':
+            device = device if device is not None else indices.device
         else:
-            self.indices = torch.arange(indices)
+            device = device if device is not None else 'cpu'\
+
+        self.device = beam_device(device)
+
+        if indices_type.major == 'array':
+            self.indices = as_tensor(indices, device=device, dtype=torch.int64)
+        else:
+            self.indices = torch.arange(indices, device=device)
         self.probs = as_numpy(probs) if probs is not None else None
 
         if dynamic:
@@ -100,9 +108,9 @@ class UniversalBatchSampler(object):
 
                 logger.info(f"Expansion size: {expansion_size}, before expansion: {len(probs)}, "
                             f"after expansion: {np.sum(reps)}")
-                indices = pd.DataFrame({'index': self.indices, 'times': reps})
+                indices = pd.DataFrame({'index': as_numpy(self.indices), 'times': reps})
                 self.indices = as_tensor(indices.loc[indices.index.repeat(indices['times'])]['index'].values,
-                                         device='cpu', dtype=torch.int64)
+                                         device=self.device, dtype=torch.int64)
 
         self.size = len(self.indices)
         self.minibatches = int(self.size / self.batch_size)
@@ -184,7 +192,7 @@ class UniversalBatchSampler(object):
         for _ in itertools.count():
 
             if self.shuffle:
-                indices = indices[torch.randperm(len(indices))]
+                indices = indices[torch.randperm(len(indices), device=self.device)]
 
             indices_batched = indices[:self.minibatches * self.batch_size]
             indices_tail = indices[self.minibatches * self.batch_size:]
@@ -198,7 +206,7 @@ class UniversalBatchSampler(object):
                 except ValueError:
                     raise ValueError("Looks like your dataset is smaller than a single batch. Try to make it larger.")
 
-                fill_batch = indices_batched[torch.LongTensor(fill_batch)]
+                fill_batch = indices_batched[as_tensor(fill_batch, device=self.device)]
                 indices_tail = torch.cat([indices_tail, fill_batch])
 
                 indices_batched = torch.cat([indices_batched, indices_tail])
