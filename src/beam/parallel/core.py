@@ -1,8 +1,6 @@
 from tqdm import tqdm
 import random
-from functools import cached_property
 
-from ..distributed import RayClient, RayDispatcher
 from ..utils import tqdm_beam
 from ..utils import collate_chunks, retrieve_name
 from ..logger import beam_logger as logger
@@ -311,6 +309,8 @@ class BeamParallel(object):
         return results
 
     def _run_ray(self, n_workers=None):
+
+        from ..distributed import RayClient, RayDispatcher
 
         if n_workers is None:
             n_workers = self.n_workers

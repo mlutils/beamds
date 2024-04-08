@@ -180,7 +180,7 @@ def load_model():
     print(alg)
 
 
-def parallel_treading():
+def test_beam_parallel():
 
     from src.beam.parallel import parallel, task
 
@@ -433,6 +433,8 @@ if __name__ == '__main__':
 
     # simple_server()
 
-    test_beam_data_keys()
+    # test_beam_data_keys()
+
+    test_beam_parallel()
 
     print('done')
