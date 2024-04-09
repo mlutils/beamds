@@ -3,7 +3,7 @@ import ast
 import sys
 from functools import cached_property
 
-from ..core import Processor
+from ..processor import Processor
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
 from ..path import beam_path
 

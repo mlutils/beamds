@@ -1,7 +1,7 @@
 from functools import cached_property
 from catboost import CatBoostClassifier, CatBoostRegressor,CatBoost
 
-from ..core import Processor
+from ..processor import Processor
 from ..experiment.utils import build_device_list
 
 

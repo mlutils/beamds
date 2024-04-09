@@ -1365,3 +1365,68 @@ class RedisPath(PureBeamPath):
     def glob(self, pattern, case_sensitive=None):
         full_pattern = f'{self.directory_key}{pattern}'
         return [self.gen(key) for key in self.client.scan_iter(full_pattern)]
+
+
+class MLFlowPath(PureBeamPath):
+
+        def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
+                    secret_key=None, tls=True, **kwargs):
+            super().__init__(*pathsegments, scheme='mlflow', client=client, hostname=hostname, port=port,
+                            access_key=access_key, secret_key=secret_key, tls=tls, **kwargs)
+
+            if client is None:
+
+                from mlflow.tracking import MlflowClient
+                client = MlflowClient(tracking_uri=f'http://{normalize_host(hostname, port)}')
+
+            self.client = client
+
+        def is_file(self):
+            return self.client.get_run(self.run_id).info.artifact_uri == self.path
+
+        def is_dir(self):
+            return self.client.list_artifacts(self.run_id, self.path)
+
+        def exists(self):
+            return self.client.list_artifacts(self.run_id, self.path)
+
+        def iterdir(self):
+            for a in self.client.list_artifacts(self.run_id, self.path):
+                yield self.gen(a.path)
+
+        def mkdir(self, *args, parents=True, exist_ok=True):
+            self.client.create_experiment(self.path)
+
+        def rmdir(self):
+            self.client.delete_experiment(self.path)
+
+        def unlink(self, missing_ok=False):
+            self.client.delete_artifacts(self.run_id, self.path)
+
+        def rename(self, target):
+            self.client.rename_artifacts(self.run_id, self.path, target.path)
+
+        def replace(self, target):
+            self.rename(target)
+
+        def __enter__(self):
+            if self.mode in ["rb", "r"]:
+                content = self.client.download_artifacts(self.run_id, self.path)
+                encoding = self.open_kwargs['encoding'] or 'utf-8'
+                self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
+                                                                                    newline=self.open_kwargs['newline'])
+            elif self.mode in ['wb', 'w']:
+                self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
+            else:
+                raise ValueError
+
+            return self.file_object
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+
+            if self.mode in ['wb', 'w']:
+                self.file_object.seek(0)
+                content = self.file_object.getvalue()
+                self.client.upload_artifacts(self.run_id, self.path, content)
+
+            self.close_at_exit()

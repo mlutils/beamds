@@ -25,7 +25,6 @@ try:
 except ImportError:
     has_polars = False
 
-from ..path import PureBeamPath
 from .lazy_importer import lazy_importer as lzi
 
 
@@ -83,14 +82,12 @@ def check_minor_type(x):
         return 'polars'
     if has_scipy and lzi.scipy.sparse.issparse(x):
         return 'scipy_sparse'
-    if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
-        return 'path'
     if lzi.is_loaded('cudf') and isinstance(x, lzi.cudf.DataFrame):
         return 'cudf'
-    if lzi.is_loaded('modin') and isinstance(x, lzi.modin.pandas.base.BasePandasDataset):
-        return 'modin'
     elif is_scalar(x):
         return 'scalar'
+    elif isinstance(x, PurePath) or hasattr(x, 'beam_class') and 'PureBeamPath' in x.beam_class:
+        return 'path'
     else:
         return 'other'
 
@@ -226,3 +223,30 @@ def _check_type(x, minor=True, element=True):
             elt = 'other'
 
     return TypeTuple(major=mjt, minor=mit, element=elt)
+
+
+def is_container(x):
+
+    if isinstance(x, dict):
+        return True
+    if isinstance(x, list) or isinstance(x, tuple):
+
+        if len(x) < 100:
+            sampled_indices = range(len(x))
+        else:
+            sampled_indices = np.random.randint(len(x), size=(100,))
+
+        elt0 = None
+        for i in sampled_indices:
+            elt = check_element_type(x[i])
+
+            if elt0 is None:
+                elt0 = elt
+
+            if elt != elt0:
+                return True
+
+            if elt in ['array', 'none', 'object']:
+                return True
+
+    return False

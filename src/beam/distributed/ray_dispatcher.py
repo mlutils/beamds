@@ -2,9 +2,9 @@ import ray
 from functools import cached_property
 
 from ..utils import get_class_properties
-from ..core import Processor
+from ..processor import Processor
 from ..path import BeamURL
-from ..core import MetaAsyncResult, MetaDispatcher
+from ..processor import MetaAsyncResult, MetaDispatcher
 
 
 class RayAsyncResult(MetaAsyncResult):

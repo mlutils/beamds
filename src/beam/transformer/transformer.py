@@ -5,7 +5,7 @@ from ..data import BeamData
 from ..path import beam_path
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
-from ..core.processor import Processor
+from ..processor.core import Processor
 from ..config import BeamConfig
 from enum import Enum
 
@@ -187,6 +187,9 @@ class Transformer(Processor):
         store_suffix = transform_kwargs.pop('store_suffix', self.store_suffix)
         transform_strategy = transform_kwargs.pop('transform_strategy', self.transform_strategy)
         reduce = transform_kwargs.pop('reduce', self.to_reduce)
+        path = transform_kwargs.pop('path', self.store_path)
+        store = transform_kwargs.pop('store', (path is not None))
+
         parallel_kwargs = parallel_kwargs or {}
 
         reduce_dim = self.reduce_dim
@@ -195,9 +198,6 @@ class Transformer(Processor):
             logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
                            f'The split_by is set to "key".')
             split_by = 'keys'
-
-        path = transform_kwargs.pop('path', self.store_path)
-        store = transform_kwargs.pop('store', (path is not None))
 
         logger.info(f"Starting transformer process: {self.name}")
 

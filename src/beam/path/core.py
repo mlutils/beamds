@@ -219,6 +219,9 @@ class BeamResource:
     def query(self):
         return self.url.query
 
+    def beam_class(self):
+        return [c.__name__ for c in self.__class__.mro()]
+
 
 class PureBeamPath(BeamResource):
     feather_index_mark = "feather_index:"

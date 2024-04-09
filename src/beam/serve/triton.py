@@ -2,7 +2,7 @@ from collections import defaultdict
 from functools import partial
 from functools import cached_property
 
-from ..core import Processor
+from ..processor import Processor
 from ..utils import as_numpy, check_type, as_tensor
 
 triton_to_numpy_dtype_dict = {

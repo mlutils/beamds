@@ -5,60 +5,9 @@ from argparse import Namespace
 from functools import cached_property
 
 from ..path import beam_path, normalize_host
-from ..utils import retrieve_name, check_type, get_cached_properties
+from ..utils import check_type
 from ..config import BeamConfig
-
-
-class MetaBeamInit(type):
-    def __call__(cls, *args, _store_init_path=None, **kwargs):
-        init_args = {'args': args, 'kwargs': kwargs}
-        if _store_init_path:
-            cls._pre_init(_store_init_path, init_args)
-        instance = super().__call__(*args, **kwargs)
-        instance._init_args = init_args
-        instance._init_is_done = True
-        return instance
-
-    def _pre_init(cls, store_init_path, init_args):
-        # Process or store arguments
-        store_init_path = beam_path(store_init_path)
-        store_init_path.write(init_args, ext='.pkl')
-
-
-class BeamBase(metaclass=MetaBeamInit):
-
-    def __init__(self, *args, name=None, **kwargs):
-
-        self._init_is_done = False
-        self._name = name
-
-    def getattr(self, attr):
-        raise AttributeError(f"Attribute {attr} not found")
-
-    def __getattr__(self, item):
-        if (item.startswith('_') or item == '_init_is_done' or not hasattr(self, '_init_is_done')
-                or not self._init_is_done):
-            return object.__getattribute__(self, item)
-        return self.getattr(item)
-
-    def clear_cache(self, *args):
-        if len(args) == 0:
-            args = get_cached_properties(self)
-        for k in args:
-            if hasattr(self, k):
-                delattr(self, k)
-
-    def in_cache(self, attr):
-        return hasattr(self, attr)
-
-    @property
-    def name(self):
-        if self._name is None and hasattr(self, '_init_is_done') and self._init_is_done:
-            self._name = retrieve_name(self)
-        return self._name
-
-    def beam_class(self):
-        return self.__class__.__name__
+from ..core import BeamBase
 
 
 class Processor(BeamBase):
@@ -72,9 +21,9 @@ class Processor(BeamBase):
         self.remote = remote
 
         if len(args) > 0:
-            self.hparams = args[0]
+            self.hparams = BeamConfig(args[0])
         elif hparams is not None:
-            self.hparams = hparams
+            self.hparams = BeamConfig(hparams)
         else:
             if not hasattr(self, 'hparams'):
                 self.hparams = BeamConfig(config=Namespace())

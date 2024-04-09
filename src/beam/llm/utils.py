@@ -1,12 +1,10 @@
 import re
 import string
-
-import torch
-
 from .model_adapter import get_model_adapter
 
 
 default_token_pattern = f" ?[{re.escape(string.whitespace + string.punctuation)}]| ?[A-Za-z]{{1,4}}| ?\d{{1,3}}"
+
 
 def text_splitter(text, separators=["\n\n", ". ", " "], chunk_size=100, length_function=None):
     if length_function is None:

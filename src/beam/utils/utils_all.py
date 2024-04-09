@@ -28,11 +28,10 @@ import inspect
 from argparse import Namespace
 from functools import wraps, partial, cached_property
 
-from ..type import check_type, check_minor_type, check_element_type, is_scalar
+from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container
 
 
 DataBatch = namedtuple("DataBatch", "index label data")
-lazy_property = cached_property
 
 
 class BeamDict(dict, Namespace):
@@ -293,11 +292,12 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='none',
 
 def is_boolean(x):
     x_type = check_type(x)
-    if x_type.minor in ['numpy', 'pandas', 'tensor'] and 'bool' in str(x.dtype).lower():
+    if x_type.minor in ['numpy', 'pandas', 'tensor', 'cudf'] and 'bool' in str(x.dtype).lower():
+        return True
+    elif x_type.minor == 'polars' and 'Boolean' == str(next(iter(x.schema.values()))):
         return True
     if x_type.minor == 'list' and len(x) and isinstance(x[0], bool):
         return True
-
     return False
 
 
@@ -813,13 +813,13 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
     else:
         indices_type = indices_type.minor
 
-    if indices_type == 'pandas':
+    if indices_type in ['pandas', 'cudf']:
         index = index.values
-    if indices_type == 'other': # the case where there is a scalar value with a dtype attribute
+    if indices_type == 'other':  # the case where there is a scalar value with a dtype attribute
         index = int(index)
-    if x_type == 'numpy':
+    if x_type in ['numpy', 'polars']:
         return x[index]
-    elif x_type == 'pandas':
+    elif x_type in ['pandas', 'cudf']:
         return x.iloc[index]
     elif x_type == 'tensor':
         if x.is_sparse:
@@ -1057,3 +1057,30 @@ def pretty_print_dict(d, name):
     # Enclose in parentheses
     formatted_str = f"{name}({formatted_str})"
     return formatted_str
+
+
+def lazy_property(fn):
+
+    @property
+    def _lazy_property(self):
+        try:
+            cache = getattr(self, '_lazy_cache')
+            return cache[fn.__name__]
+        except KeyError:
+            v = fn(self)
+            cache[fn.__name__] = v
+            return v
+        except AttributeError:
+            v = fn(self)
+            setattr(self, '_lazy_cache', {fn.__name__: v})
+            return v
+
+    @_lazy_property.setter
+    def _lazy_property(self, value):
+        try:
+            cache = getattr(self, '_lazy_cache')
+            cache[fn.__name__] = value
+        except AttributeError:
+            setattr(self, '_lazy_cache', {fn.__name__: value})
+
+    return _lazy_property

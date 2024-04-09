@@ -4,7 +4,7 @@ from optuna import Study
 from optuna.trial import TrialState, FrozenTrial
 
 from .optuna import OptunaBase
-from ..core import Processor
+from ..processor import Processor
 from .params import HPOConfig
 from functools import cached_property
 

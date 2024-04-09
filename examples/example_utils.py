@@ -417,7 +417,7 @@ if __name__ == '__main__':
 
     # sparnn_example()
 
-    # nlp_example()
+    nlp_example()
 
     # save_index()
 
@@ -435,6 +435,6 @@ if __name__ == '__main__':
 
     # test_beam_data_keys()
 
-    test_beam_parallel()
+    # test_beam_parallel()
 
     print('done')

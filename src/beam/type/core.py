@@ -50,8 +50,20 @@ class BeamType:
         return self._major == 'scalar'
 
     @cached_property
+    def is_array(self):
+        return self._major == 'array'
+
+    @cached_property
     def is_dataframe(self):
-        return self._minor in ['pandas', 'polars', 'modin', 'cudf']
+        return self._minor in ['pandas', 'polars', 'cudf']
+
+    @cached_property
+    def is_data_array(self):
+        return self._minor in ['numpy', 'torch', 'polars', 'cudf', 'pandas', 'scipy_sparse']
+
+    @cached_property
+    def is_dataframe(self):
+        return self._minor in ['pandas', 'polars', 'cudf']
 
     @classmethod
     def check(cls, x, major=True, minor=True, element=True):

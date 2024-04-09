@@ -1,4 +1,4 @@
-from ..core import Processor
+from ..processor import Processor
 from .pod import BeamPod
 from dataclasses import dataclass, field
 from kubernetes import client

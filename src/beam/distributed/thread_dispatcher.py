@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, Future
 from functools import wraps
 from functools import cached_property
 
-from ..core import MetaAsyncResult, MetaDispatcher
+from ..processor import MetaAsyncResult, MetaDispatcher
 from ..utils import get_class_properties
 
 

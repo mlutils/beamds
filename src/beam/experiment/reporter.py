@@ -417,6 +417,12 @@ class BeamReport(object):
                 oprs = {'cat': pd.concat, 'stack': pd.concat}
             elif v_minor == 'native':
                 oprs = {'cat': torch.tensor, 'stack': torch.tensor}
+            elif v_minor == 'cudf':
+                import cudf
+                oprs = {'cat': cudf.concat, 'stack': cudf.concat}
+            elif v_minor == 'polars':
+                import polars as pl
+                oprs = {'cat': pl.concat, 'stack': pl.concat}
             else:
                 oprs = {'cat': lambda x: x, 'stack': lambda x: x}
 
@@ -452,8 +458,13 @@ class BeamReport(object):
         val_type = check_type(val)
         if val_type.major == 'scalar':
             val = float(val)
-        elif val_type.minor == 'pandas':
+        elif val_type.minor in ['pandas', 'cudf']:
             val = val.values
+            val = agg_dict['numpy'][aggregation](val)
+            if val_type.minor == 'cudf':
+                val = float(val)
+        elif val_type.minor == 'polars':
+            val = val.to_numpy()
             val = agg_dict['numpy'][aggregation](val)
         elif val_type.minor == 'tensor':
             val = agg_dict['tensor'][aggregation](val)

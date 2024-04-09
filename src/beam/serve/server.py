@@ -11,7 +11,7 @@ from uuid import uuid4 as uuid
 from ..logger import beam_logger as logger
 from ..utils import find_port
 from ..config import to_dict
-from ..core import MetaDispatcher
+from ..processor import MetaDispatcher
 
 try:
     import torch

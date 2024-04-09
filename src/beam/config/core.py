@@ -5,11 +5,12 @@ from argparse import Namespace
 from collections import defaultdict
 from typing import List, Union
 from pprint import pformat
-
+import json
 from dataclasses import dataclass, field
+
 from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
 from ..path import beam_path
-import json
+from ..core import MetaBeamInit
 
 
 @dataclass
@@ -21,11 +22,13 @@ class BeamParam:
     tags: Union[List[str], str, None] = None
 
 
-class BeamConfig(Namespace):
+class BeamConfig(Namespace, metaclass=MetaBeamInit):
     parameters = []
     defaults = {}
 
     def __init__(self, *args, config=None, tags=None, return_defaults=False, silent=False, strict=False, **kwargs):
+
+        self._init_is_done = False
 
         if tags is None:
             tags = defaultdict(set)
@@ -100,6 +103,10 @@ class BeamConfig(Namespace):
 
         super().__init__(**config)
 
+    @property
+    def is_initialized(self):
+        return hasattr(self, '_init_is_done') and self._init_is_done
+
     @classmethod
     def default_values(cls):
         return cls(return_defaults=True)
@@ -131,6 +138,19 @@ class BeamConfig(Namespace):
     @classmethod
     def set_default(cls, name, value):
         cls.defaults[name] = value
+
+    def pop(self, key, default=None):
+
+        value = default
+        if key in self:
+            value = getattr(self, key)
+            delattr(self, key)
+
+            for k, v in self._tags.items():
+                if key in v:
+                    v.remove(key)
+
+        return value
 
     def dict(self):
         return to_dict(self)
@@ -246,7 +266,8 @@ class BeamConfig(Namespace):
         if key.startswith('_'):
             super().__setattr__(key, value)
         else:
-            self._tags['new'].add(key)
+            if self.is_initialized:
+                self._tags['new'].add(key)
             super().__setattr__(key, value)
 
     def get(self, key, default=None, preferred=None, specific=None):

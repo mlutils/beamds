@@ -2,13 +2,12 @@ import json
 from typing import Optional, Any
 import pandas as pd
 import numpy as np
-from functools import cached_property
+from ..utils import lazy_property as cached_property
 
 from ..logger import beam_logger as logger
 from .core import BeamLLM, CompletionObject
 from pydantic import Field, PrivateAttr
 from ..path import beam_key
-
 
 
 class OpenAIBase(BeamLLM):

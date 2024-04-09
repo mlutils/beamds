@@ -19,8 +19,8 @@ from ..utils import (is_container, Slicer, recursive, iter_container, recursive_
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
-                     DataBatch, recursive_squeeze, recursive_same_device, recursive_concatenate, recursive_items,
-                     recursive_keys)
+                     DataBatch, recursive_same_device, recursive_concatenate, recursive_items,
+                     recursive_keys, concat_polars_horizontally)
 
 
 class BeamData(BeamBase):
@@ -707,9 +707,9 @@ class BeamData(BeamBase):
 
             if not is_container(self.data):
                 self._orientation = 'simple'
-                if self.data_type.minor == 'pandas' and self.columns is None:
+                if self.data_type.minor in ['pandas', 'polars', 'cudf'] and self.columns is None:
                     self.columns = self.data.columns
-                if self.data_type.minor == 'pandas' and self._index is None:
+                if self.data_type.minor in ['pandas', 'cudf'] and self._index is None:
                     self._index = self.data.index
 
             else:
@@ -1079,9 +1079,9 @@ class BeamData(BeamBase):
                                                  n_chunks=n_chunks, size=size)
 
             data_type = check_type(data)
-            if partition is not None and data_type.minor == 'pandas':
+            if partition is not None and data_type.minor in ['pandas', 'polars']:
                 priority = ['.parquet', '.fea', '.pkl']
-            elif data_type.minor == 'pandas':
+            elif data_type.minor in ['pandas', 'cudf', 'polars']:
                 priority = ['.fea', '.parquet', '.pkl']
             elif data_type.minor == 'numpy':
                 priority = ['.npy', '.pkl']
@@ -1250,6 +1250,18 @@ class BeamData(BeamBase):
         elif objects_type == 'pandas':
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
             func = pd.concat
+            kwargs = {'axis': dim}
+        elif objects_type == 'polars':
+            if dim == 0:
+                import polars as pl
+                func = pl.concat
+                kwargs = {'axis': dim}
+            else:
+                func = concat_polars_horizontally
+        elif objects_type == 'cudf':
+            import cudf
+            func = cudf.concat
+            data = [cudf.Series(v.values) if isinstance(v, cudf.Index) else v for v in data]
             kwargs = {'axis': dim}
         elif objects_type == 'numpy':
             func = np.stack if dim==1 and dim >= len(v.shape) else np.concatenate
@@ -2297,7 +2309,7 @@ class BeamData(BeamBase):
 
             i_type = check_type(ind_i)
             # skip the first axis in these case
-            if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'slice', 'tensor']):
+            if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'slice', 'tensor', 'cudf']):
                 axes.pop(0)
             if axes[0] == 'keys' and (i_type.minor == 'list' and i_type.element == 'int'):
                 axes.pop(0)

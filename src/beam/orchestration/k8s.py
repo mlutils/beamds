@@ -7,7 +7,7 @@ from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream
 
 from ..logger import beam_logger as logger
-from ..core import Processor
+from ..processor import Processor
 from .units import K8SUnits
 import time
 import json

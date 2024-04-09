@@ -1,7 +1,7 @@
 import inspect
 from functools import cached_property
 
-from .processor import Processor
+from .core import Processor
 
 
 class MetaAsyncResult:

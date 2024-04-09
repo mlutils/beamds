@@ -1,4 +1,4 @@
-from ..core.processor import Processor
+from ..processor.core import Processor
 from ..utils import collate_chunks
 
 

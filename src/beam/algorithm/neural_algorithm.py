@@ -18,7 +18,8 @@ from ..utils import (to_device, check_type, recursive_concatenate,
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
-from ..core import Processor, MetaBeamInit
+from ..processor import Processor
+from ..core import MetaBeamInit
 from ..logger import beam_kpi, BeamResult
 
 
