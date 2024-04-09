@@ -722,7 +722,7 @@ class NeuralAlgorithm(Processor):
         elif isinstance(weights, dict):
             pass
         else:
-            weights_type = check_type(weights, check_minor=False, check_element=False)
+            weights_type = check_type(weights, minor=False, element=False)
             if weights_type.major == 'scalar':
                 weights = {next(iter(losses.keys())): weights}
             else:

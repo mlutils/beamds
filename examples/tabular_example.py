@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from src.beam import beam_arguments, Experiment
+from src.beam import beam_arguments, Experiment, Timer
 from src.beam.tabular import TabularDataset, TabularConfig, DeepTabularAlg
 from src.beam import beam_logger as logger
 from src.beam.utils import get_public_ip
@@ -50,17 +50,22 @@ def train_catboost(dataset, exp, **kwargs):
         'loss_function': loss_function,
         'eval_metric': eval_metric,
         'custom_metric': custom_metric,
-        'verbose': 50,
+        'verbose': 5,
     }
 
     cb = catboost_model(**cb_kwargs)
-    cb.fit(**fit_args)
+
+    logger.info(f"Results will be saved to: {exp.results_dir}")
+    with Timer(name='Catboost training time', logger=logger) as t:
+        cb.fit(**fit_args)
 
     exp.checkpoints_dir.mkdir(parents=True, exist_ok=True)
     cb.save_model(str(exp.checkpoints_dir.joinpath(f'cb.dump')))
 
     # Assuming 'cb' is your trained CatBoost model object
     metrics = cb.get_evals_result()
+    metrics['elapsed_time'] = t.elapsed
+    metrics['n_estimators'] = cb_kwargs['n_estimators']
 
     # Specify the file path where you want to save the metrics
     metrics_file_path = exp.results_dir.joinpath('catboost_metrics.json')
@@ -103,20 +108,20 @@ if __name__ == '__main__':
 
     kwargs_all = {}
 
-    kwargs_all['california_housing'] = dict(batch_size=128, stop_at=-.43)
-    kwargs_all['adult'] = dict(batch_size=128)
-    kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
-                                minimal_mask_rate=.2, maximal_mask_rate=.4,
-                                label_smoothing=.25, n_quantiles=6, dynamic_masking=False, cb_depth=12)
-    kwargs_all['jannis'] = dict(batch_size=256, cb_depth=12)
-    kwargs_all['higgs_small'] = dict(batch_size=256, cb_depth=12)
-    kwargs_all['aloi'] = dict(batch_size=256, cb_depth=12)
+    # kwargs_all['california_housing'] = dict(batch_size=128, stop_at=-.43)
+    # kwargs_all['adult'] = dict(batch_size=128)
+    # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
+    #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
+    #                             label_smoothing=.25, n_quantiles=6, dynamic_masking=False, cb_depth=12)
+    # kwargs_all['jannis'] = dict(batch_size=256, cb_depth=14)
+    # kwargs_all['higgs_small'] = dict(batch_size=256, cb_depth=14)
+    # kwargs_all['aloi'] = dict(batch_size=256, cb_depth=10)
 
-    kwargs_all['year'] = dict(batch_size=256, emb_dim=128, n_decoder_layers=4, n_encoder_layers=4,
-                              n_quantiles=7, n_rules=128, n_transformer_head=4, transformer_hidden_dim=256, cb_depth=10)
+    # kwargs_all['year'] = dict(batch_size=256, emb_dim=128, n_decoder_layers=4, n_encoder_layers=4,
+    #                       n_quantiles=7, n_rules=128, n_transformer_head=4, transformer_hidden_dim=256, cb_depth=10)
 
-    kwargs_all['year'] = dict(batch_size=512, cb_depth=10)
-    kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=10, cb_depth=10)
+    kwargs_all['year'] = dict(batch_size=512, cb_depth=14)
+    kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=12, cb_depth=14)
 
     for k in kwargs_all.keys():
 

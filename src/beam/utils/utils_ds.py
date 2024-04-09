@@ -93,7 +93,7 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
               convert_scalar=False, **kwargs):
 
     if x_type is None:
-        x_type = check_type(x, check_element=False)
+        x_type = check_type(x, element=False)
 
     if not convert_to_tensor and x_type.minor in ['numpy', 'pandas', 'scipy_sparse', 'native', 'modin']:
         return x
@@ -332,7 +332,7 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
 
 def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
-    x_type = check_type(x, check_element=False)
+    x_type = check_type(x, element=False)
 
     # assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
 
@@ -537,7 +537,7 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
 
     x = list(xs)
 
-    x_type = check_type(x[0], check_element=False)
+    x_type = check_type(x[0], element=False)
 
     if x_type.major == 'container' and x_type.minor == 'dict':
         dictionary = {}
@@ -1024,7 +1024,7 @@ def recursive_size_summary(x, mode='sum'):
 
 @recursive
 def recursive_squeeze(x):
-    x_type = check_type(x, check_element=False)
+    x_type = check_type(x, element=False)
     if x_type.minor == 'tensor':
         return x.squeeze(0)
     elif x_type.minor == 'numpy':

@@ -1696,7 +1696,7 @@ class BeamData(BeamBase):
     def slice_index(self, index, index_type=None):
 
         if index_type is None:
-            index_type = check_type(index, check_minor=False, check_element=False)
+            index_type = check_type(index, minor=False, element=False)
         if index_type.major == 'scalar':
             index = [index]
         #     squeeze = True
@@ -2302,7 +2302,7 @@ class BeamData(BeamBase):
             if axes[0] == 'keys' and (i_type.minor == 'list' and i_type.element == 'int'):
                 axes.pop(0)
             if (axes[0] == 'keys' and (i_type.major == 'scalar' and i_type.element == 'int')
-                    and check_type(list(self.hierarchical_keys()), check_minor=False).element == 'str'):
+                    and check_type(list(self.hierarchical_keys()), minor=False).element == 'str'):
                 axes.pop(0)
             # for orientation == 'simple' we skip the first axis if we slice over columns and index_type is not str
             if short_list and axes[0] == 'index' and i_type.element == 'str' and self.index_type.element != 'str':

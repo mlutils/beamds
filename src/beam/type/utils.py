@@ -5,16 +5,6 @@ import pandas as pd
 from collections import Counter
 from pathlib import PurePath
 
-from ..path import PureBeamPath
-
-try:
-    import modin.pandas as mpd
-
-    has_modin = True
-except ImportError:
-    mpd = None
-    has_modin = False
-
 try:
     import torch
 
@@ -35,11 +25,9 @@ try:
 except ImportError:
     has_polars = False
 
-# try:
-#     import cudf
-#     has_cudf = True
-# except ImportError:
-#     has_cudf = False
+from ..path import PureBeamPath
+from .lazy_importer import lazy_importer as lzi
+
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
 
@@ -91,14 +79,16 @@ def check_minor_type(x):
         return 'tuple'
     if isinstance(x, set):
         return 'set'
-    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
-        return 'modin'
-    if has_scipy and scipy.sparse.issparse(x):
-        return 'scipy_sparse'
-    if has_polars and isinstance(x, pl.DataFrame):
+    if has_polars and isinstance(x, lzi.polars.DataFrame):
         return 'polars'
+    if has_scipy and lzi.scipy.sparse.issparse(x):
+        return 'scipy_sparse'
     if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
         return 'path'
+    if lzi.is_loaded('cudf') and isinstance(x, lzi.cudf.DataFrame):
+        return 'cudf'
+    if lzi.is_loaded('modin') and isinstance(x, lzi.modin.pandas.base.BasePandasDataset):
+        return 'modin'
     elif is_scalar(x):
         return 'scalar'
     else:
@@ -128,7 +118,7 @@ def is_scalar(x):
     return np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape)))
 
 
-def check_type(x, check_minor=True, check_element=True):
+def _check_type(x, minor=True, element=True):
     '''
 
     returns:
@@ -143,20 +133,20 @@ def check_type(x, check_minor=True, check_element=True):
 
     if is_scalar(x):
         mjt = 'scalar'
-        if check_minor:
+        if minor:
             if type(x) in [int, float, str, complex, bool]:
                 mit = 'native'
             else:
                 mit = check_minor_type(x)
         else:
             mit = 'na'
-        elt = check_element_type(x) if check_element else 'na'
+        elt = check_element_type(x) if element else 'na'
 
     elif isinstance(x, dict):
         mjt = 'container'
         mit = 'dict'
 
-        if check_element:
+        if element:
             if len(x):
                 elt = check_element_type(next(iter(x.values())))
             else:
@@ -216,7 +206,7 @@ def check_type(x, check_minor=True, check_element=True):
             if elt in ['array', 'object', 'none']:
                 mjt = 'container'
 
-        mit = check_minor_type(x) if check_minor else 'na'
+        mit = check_minor_type(x) if minor else 'na'
 
         if elt:
             if mit in ['numpy', 'tensor', 'pandas', 'scipy_sparse']:

@@ -2,7 +2,6 @@ import itertools
 import os
 import sys
 from collections import defaultdict
-from functools import cached_property
 import numpy as np
 from fnmatch import filter
 from tqdm.notebook import tqdm as tqdm_notebook
@@ -29,7 +28,7 @@ import inspect
 from argparse import Namespace
 from functools import wraps, partial, cached_property
 
-from ..type import check_type
+from ..type import check_type, check_minor_type, check_element_type, is_scalar
 
 
 DataBatch = namedtuple("DataBatch", "index label data")
