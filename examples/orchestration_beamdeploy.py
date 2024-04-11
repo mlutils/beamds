@@ -7,12 +7,13 @@ from src.beam.orchestration.config import K8SConfig
 
 hparams = K8SConfig()
 
-api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~CUfUK_8toDmCmLRBkdwcS3qQXbCjaHdqWK-tZw_mGds"
-project_name = "kh-dev"
-image_name = "harbor.dt.local/public/beam:openshift-20.02.6"
-labels = {"app": "kh"}
-deployment_name = "kh"
+api_url = "https://api.dayo-ocp.dt.local:6443"
+api_token = "sha256~EBoYZ2e8ON8BnPGx7187T4viQ-lScg78zcDcbsXFdW0"
+check_project_exists = True
+project_name = "moh"
+image_name = "harbor.dt.local/public/beam:openshift-10.04.24"
+labels = {"app": "moh"}
+deployment_name = "moh"
 # namespace = "ben-guryon"
 namespace = project_name
 replicas = 1
@@ -46,12 +47,22 @@ memory_storage_configs = [
 
 service_configs = [
     ServiceConfig(port=2222, service_name="ssh", service_type="NodePort", port_name="ssh-port",
-                  create_route=True, create_ingress=False, ingress_host="ssh.example.com"),
+                  create_route=False, create_ingress=False, ingress_host="ssh.example.com"),
     ServiceConfig(port=8888, service_name="jupyter", service_type="LoadBalancer",
                   port_name="jupyter-port", create_route=True, create_ingress=False,
                   ingress_host="jupyter.example.com"),
-]
+    ServiceConfig(port=8880, service_name="mlflow", service_type="LoadBalancer",
+                  port_name="mlflow-port", create_route=True, create_ingress=False,
+                  ingress_host="mlflow.example.com"),
+    ServiceConfig(port=8265, service_name="ray-dashboard", service_type="LoadBalancer",
+                  port_name="ray-dashboard-port", create_route=True,
+                  ingress_host="ray-dashboard.example.com"),
+    ServiceConfig(port=6379, service_name="ray-gcs", service_type="LoadBalancer",
+                  port_name="ray-gcs-port", create_route=False,
+                  ingress_host="ray-gcs.example.com"),
 
+]
+enable_ray_ports=False
 ray_ports_configs = [
     RayPortsConfig(ray_ports=[10001, 10002, 10003, 10004, 10005, 10006, 10007,
                               10008, 10009, 10010, 30000, 30001, 30002, 30003, 30004],)

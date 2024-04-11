@@ -43,4 +43,14 @@ class K8SConfig(BeamConfig):
         BeamParam('node_selector', dict, None, 'Node selector for GPU scheduling'),
         BeamParam('cpu_requests', str, '4', 'CPU requests'),
         BeamParam('cpu_limits', str, '4', 'CPU limits'),
+        BeamParam('memory_requests', str, '12', 'Memory requests'),
+        BeamParam('memory_limits', str, '12', 'Memory limits'),
+        BeamParam('gpu_requests', str, '1', 'GPU requests'),
+        BeamParam('gpu_limits', str, '1', 'GPU limits'),
+        BeamParam('storage_configs', list, [], 'Storage configurations'),
+        BeamParam('memory_storage_configs', list, [], 'Memory storage configurations'),
+        BeamParam('service_configs', list, [], 'Service configurations'),
+        BeamParam('ray_ports_configs', list, [], 'Ray ports configurations'),
+        BeamParam('user_idm_configs', list, [], 'User IDM configurations'),
+
     ]

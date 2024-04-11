@@ -6,6 +6,7 @@ import time
 # Initial configuration for the head deployment
 api_url = "https://api.kh-dev.dt.local:6443"
 api_token = "sha256~vwhR7ChEtsDEtpNYCC8qFYshS1sETVuzSd3ilN_4k4o"
+check_project_exists = False
 project_name = "kh-dev"
 image_name = "harbor.dt.local/public/beam:openshift-01.04.24"
 labels = {"app": "kh-ray-cluster"}
@@ -52,6 +53,7 @@ service_configs = [
                   port_name="ray-gcs-port", create_route=False,
                   ingress_host="jupyter.example.com"),
 ]
+enable_ray_ports=False
 ray_ports_configs = [
     RayPortsConfig(ray_ports=[6379, 8265],)
     ]

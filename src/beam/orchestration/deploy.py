@@ -8,12 +8,13 @@ from .dataclasses import *
 
 class BeamDeploy(Processor):
 
-    def __init__(self, k8s=None, project_name=None, namespace=None,
+    def __init__(self, k8s=None, check_project_exists=False, project_name=None, namespace=None,
                  replicas=None, labels=None, image_name=None,
-                 deployment_name=None, use_scc=False, deployment=None,
+                 deployment_name=None, use_scc=False, deployment=None, create_service_account=False,
                  cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
-                 service_configs=None, user_idm_configs=None, ray_ports_configs=None, memory_storage_configs=None,
+                 service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
+                 memory_storage_configs=None,
                  security_context_config=None, scc_name=None, node_selector=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None):
         super().__init__()
@@ -21,7 +22,9 @@ class BeamDeploy(Processor):
         self.deployment = deployment
         self.entrypoint_args = entrypoint_args or []
         self.entrypoint_envs = entrypoint_envs or {}
+        self.check_project_exists = check_project_exists
         self.project_name = project_name
+        self.create_service_account = create_service_account
         self.namespace = namespace
         self.replicas = replicas
         self.labels = labels
@@ -39,6 +42,7 @@ class BeamDeploy(Processor):
         self.gpu_requests = gpu_requests
         self.gpu_limits = gpu_limits
         self.service_configs = service_configs or []
+        self.enable_ray_ports = enable_ray_ports
         self.ray_ports_configs = ray_ports_configs or RayPortsConfig()
         self.storage_configs = storage_configs or []
         self.memory_storage_configs = memory_storage_configs or []
@@ -49,9 +53,11 @@ class BeamDeploy(Processor):
         if replicas is None:
             replicas = self.replicas
 
-        self.k8s.create_project(self.namespace)
+        if self.check_project_exists is True:
+            self.k8s.create_project(self.namespace)
 
-        self.k8s.create_service_account(self.service_account_name, self.namespace)
+        if self.create_service_account is True:
+            self.k8s.create_service_account(self.service_account_name, self.namespace)
 
         if self.storage_configs:
             for storage_config in self.storage_configs:
@@ -106,8 +112,9 @@ class BeamDeploy(Processor):
 
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 
-        for ray_ports_config in self.ray_ports_configs:
-            extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
+        if self.enable_ray_ports is True:
+            for ray_ports_config in self.ray_ports_configs:
+                extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
