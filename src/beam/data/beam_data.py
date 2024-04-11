@@ -1079,10 +1079,16 @@ class BeamData(BeamBase):
                                                  n_chunks=n_chunks, size=size)
 
             data_type = check_type(data)
-            if partition is not None and data_type.minor in ['pandas', 'polars']:
+            if partition is not None and data_type.minor == 'pandas':
                 priority = ['.parquet', '.fea', '.pkl']
-            elif data_type.minor in ['pandas', 'cudf', 'polars']:
+            elif partition is not None and data_type.minor == 'polars':
+                priority = ['.pl.parquet', '.pl.fea', '.pl.pkl']
+            elif data_type.minor == 'pandas':
                 priority = ['.fea', '.parquet', '.pkl']
+            elif data_type.minor == 'polars':
+                priority = ['.pl.fea', '.pl.parquet', '.pl.pkl']
+            elif data_type.minor == 'cudf':
+                priority = ['.cf.fea', '.cf.parquet', '.cf.pkl']
             elif data_type.minor == 'numpy':
                 priority = ['.npy', '.pkl']
             elif data_type.minor == 'scipy_sparse':
