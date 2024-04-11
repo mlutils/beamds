@@ -54,3 +54,10 @@ class K8SConfig(BeamConfig):
         BeamParam('user_idm_configs', list, [], 'User IDM configurations'),
 
     ]
+
+
+class RayClusterConfig(K8SConfig):
+
+    parameters = [
+        BeamParam('n-workers', int, 1, 'Number of Ray workers'),
+    ]

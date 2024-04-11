@@ -17,7 +17,6 @@
 
 class RayCluster:
 
-
     def launch(self):
         pass
 
