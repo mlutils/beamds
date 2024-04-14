@@ -19,7 +19,6 @@ from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDatase
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
 from ..processor import Processor
-from ..core import MetaBeamInit
 from ..logger import beam_kpi, BeamResult
 
 

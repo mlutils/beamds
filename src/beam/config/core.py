@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
 from ..path import beam_path
-from ..core import MetaBeamInit
+from ..meta import MetaBeamInit
 
 
 @dataclass

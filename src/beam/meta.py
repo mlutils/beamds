@@ -1,0 +1,17 @@
+from .path import beam_path
+
+
+class MetaBeamInit(type):
+    def __call__(cls, *args, _store_init_path=None, **kwargs):
+        init_args = {'args': args, 'kwargs': kwargs}
+        if _store_init_path:
+            cls._pre_init(_store_init_path, init_args)
+        instance = super().__call__(*args, **kwargs)
+        instance._init_args = init_args
+        instance._init_is_done = True
+        return instance
+
+    def _pre_init(cls, store_init_path, init_args):
+        # Process or store arguments
+        store_init_path = beam_path(store_init_path)
+        store_init_path.write(init_args, ext='.pkl')

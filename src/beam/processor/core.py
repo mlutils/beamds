@@ -1,13 +1,11 @@
 import json
 from collections import OrderedDict
 import inspect
-from argparse import Namespace
 from functools import cached_property
 
 from ..path import beam_path, normalize_host
-from ..utils import check_type
 from ..config import BeamConfig
-from ..core import BeamBase
+from ..base import BeamBase
 
 
 class Processor(BeamBase):
@@ -15,25 +13,10 @@ class Processor(BeamBase):
     skeleton_file = 'skeleton'
     state_file = 'state'
 
-    def __init__(self, *args, name=None, hparams=None, override=True, remote=None, llm=None, **kwargs):
+    def __init__(self, *args, name=None, remote=None, llm=None, **kwargs):
 
-        super().__init__(name=name)
+        super().__init__(*args, name=name, **kwargs)
         self.remote = remote
-
-        if len(args) > 0:
-            self.hparams = BeamConfig(args[0])
-        elif hparams is not None:
-            self.hparams = BeamConfig(hparams)
-        else:
-            if not hasattr(self, 'hparams'):
-                self.hparams = BeamConfig(config=Namespace())
-
-        for k, v in kwargs.items():
-            v_type = check_type(v)
-            if v_type.major in ['scalar', 'none']:
-                if k not in self.hparams or override:
-                    self.hparams[k] = v
-
         self._llm = self.get_hparam('llm', llm)
 
     @cached_property

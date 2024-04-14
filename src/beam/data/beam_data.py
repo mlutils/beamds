@@ -11,7 +11,7 @@ from ..logger import beam_logger as logger
 from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
-from ..core import BeamBase
+from ..base import BeamBase
 from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
                      collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device,
                      container_len, recursive_len, is_arange, recursive_size, divide_chunks,

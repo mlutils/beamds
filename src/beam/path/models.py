@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime
+from functools import cached_property
 from pathlib import PurePath, Path
 from .core import PureBeamPath, normalize_host
 from io import StringIO, BytesIO, TextIOWrapper
@@ -11,6 +12,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 import warnings
 from uuid import uuid4 as uuid
+import tempfile
 
 
 class BeamPath(PureBeamPath):
@@ -1377,44 +1379,96 @@ class MLFlowPath(PureBeamPath):
             if client is None:
 
                 from mlflow.tracking import MlflowClient
-                client = MlflowClient(tracking_uri=f'http://{normalize_host(hostname, port)}')
+                if hostname is None:
+                    if 'MLFLOW_TRACKING_URI' in os.environ:
+                        hostname = os.environ['MLFLOW_TRACKING_URI']
+                    else:
+                        hostname = 'localhost'
+                tls = 'https' if tls else 'http'
+                client = MlflowClient(tracking_uri=f'{tls}://{normalize_host(hostname, port)}')
 
             self.client = client
 
-        def is_file(self):
-            return self.client.get_run(self.run_id).info.artifact_uri == self.path
+            self._experiment = None
+            self._run = None
 
-        def is_dir(self):
-            return self.client.list_artifacts(self.run_id, self.path)
+            parts = self.parts[1:]
 
-        def exists(self):
-            return self.client.list_artifacts(self.run_id, self.path)
+            self.experiment_name = None
+            self.run_name = None
 
-        def iterdir(self):
-            for a in self.client.list_artifacts(self.run_id, self.path):
-                yield self.gen(a.path)
+            self.level = len(parts)
+            if self.level > 0:
+                self.experiment_name = parts[0]
+            if self.level > 1:
+                self.run_name = parts[1]
+            if self.level > 2:
+                self.artifact_path = '/'.join(parts[2:])
+
+        @property
+        def experiment(self):
+            if self._experiment is None:
+                if self.experiment_name is not None:
+                    self._experiment = self.client.get_experiment_by_name(self.experiment_name)
+            return self._experiment
+
+        @property
+        def experiment_id(self):
+            if self.experiment is None:
+                return None
+            return self.experiment.experiment_id
+
+        @property
+        def run_id(self):
+            if self.run is None:
+                return None
+            return self.run.info.run_id
+
+        @property
+        def run(self):
+            if self._run is None:
+                if self.run_name is not None:
+                    for r in self.client.search_runs([self.experiment_id],
+                                                     f"tags.mlflow.runName = '{self.run_name}'"):
+                        self._run = r
+                        break
+            return self._run
 
         def mkdir(self, *args, parents=True, exist_ok=True):
-            self.client.create_experiment(self.path)
 
-        def rmdir(self):
-            self.client.delete_experiment(self.path)
+            assert parents and exist_ok, "Only parents=True and exist_ok=True are supported"
+            if self.experiment_name is not None:
+                if self.experiment is None:
+                    exp_id = self.client.create_experiment(self.experiment_name)
+                    self._experiment = self.client.get_experiment(exp_id)
 
-        def unlink(self, missing_ok=False):
-            self.client.delete_artifacts(self.run_id, self.path)
+            if self.run_name is not None:
+                if self.run is None:
+                    self._run = self.client.create_run(self.experiment_id, run_name=self.run_name)
 
-        def rename(self, target):
-            self.client.rename_artifacts(self.run_id, self.path, target.path)
+            if self.artifact_path is not None:
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    self.client.log_artifact(self.run_id, tmp_dir, artifact_path=self.artifact_path)
 
-        def replace(self, target):
-            self.rename(target)
+        def exists(self):
+            if self.level == 0:
+                return True
+            if self.level == 1:
+                return self.experiment is not None
+            if self.level == 2:
+                return self.run is not None
+            if self.level > 2:
+                return len(self.client.list_artifacts(self.run_id, self.path))
 
         def __enter__(self):
             if self.mode in ["rb", "r"]:
-                content = self.client.download_artifacts(self.run_id, self.path)
+
+                content = self.experiment.get_asset(self.assets_map[self.name]['assetId'])
                 encoding = self.open_kwargs['encoding'] or 'utf-8'
                 self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content.decode(encoding),
-                                                                                    newline=self.open_kwargs['newline'])
+                                                                                      newline=self.open_kwargs[
+                                                                                          'newline'])
+
             elif self.mode in ['wb', 'w']:
                 self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
             else:
@@ -1424,9 +1478,29 @@ class MLFlowPath(PureBeamPath):
 
         def __exit__(self, exc_type, exc_val, exc_tb):
 
-            if self.mode in ['wb', 'w']:
+            if self.mode in ["wb", "w"]:
                 self.file_object.seek(0)
                 content = self.file_object.getvalue()
-                self.client.upload_artifacts(self.run_id, self.path, content)
-
+                with temp_local_file(content, name=self.name, as_beam_path=True, binary='b' in self.mode) as tmp_path:
+                    cwd = os.getcwd()
+                    try:
+                        os.chdir(tmp_path.parent)
+                        self.experiment.log_asset(tmp_path.name)
+                    finally:
+                        os.chdir(cwd)
             self.close_at_exit()
+
+        def iterdir(self):
+            if self.level == 0:
+                for e in self.client.list_experiments():
+                    yield self.gen(e.name)
+            if self.level == 1:
+                for r in self.client.search_runs([self.experiment_id]):
+                    yield self.gen(r.info.run_name)
+            if self.level == 2:
+                for a in self.client.list_artifacts(self.run_id, self.path):
+                    yield self.gen(a.path)
+            if self.level > 2:
+                raise ValueError("MLFlowPath: too many levels, it is not a directory")
+
+

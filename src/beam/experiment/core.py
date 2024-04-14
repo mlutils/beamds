@@ -162,8 +162,6 @@ class Experiment(object):
             logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
             logger.info(f"Resuming existing experiment")
 
-        self.tensorboard_writer = None
-
         self.rank = 0
         self.world_size = args.n_gpus
         if hasattr(args, 'n_gpus_per_worker') and args.n_gpus_per_worker is not None:
@@ -219,6 +217,7 @@ class Experiment(object):
             self.device_list = build_device_list(self.hparams)
 
         self.comet_exp = None
+        self.tensorboard_writer = None
         self.comet_writer = None
         self.mlflow_writer = None
         self.logs_path_is_built = False

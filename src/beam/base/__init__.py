@@ -1,29 +1,31 @@
-from ..path import beam_path
+from argparse import Namespace
+
+from ..type import check_type
+from ..meta import MetaBeamInit
 from ..utils import retrieve_name, get_cached_properties
-
-
-class MetaBeamInit(type):
-    def __call__(cls, *args, _store_init_path=None, **kwargs):
-        init_args = {'args': args, 'kwargs': kwargs}
-        if _store_init_path:
-            cls._pre_init(_store_init_path, init_args)
-        instance = super().__call__(*args, **kwargs)
-        instance._init_args = init_args
-        instance._init_is_done = True
-        return instance
-
-    def _pre_init(cls, store_init_path, init_args):
-        # Process or store arguments
-        store_init_path = beam_path(store_init_path)
-        store_init_path.write(init_args, ext='.pkl')
+from ..config import BeamConfig
 
 
 class BeamBase(metaclass=MetaBeamInit):
 
-    def __init__(self, *args, name=None, **kwargs):
+    def __init__(self, *args, name=None, override=True, hparams=None, **kwargs):
 
         self._init_is_done = False
         self._name = name
+
+        if len(args) > 0 and (isinstance(args[0], BeamConfig) or isinstance(args[0], dict)):
+            self.hparams = BeamConfig(args[0])
+        elif hparams is not None:
+            self.hparams = BeamConfig(hparams)
+        else:
+            if not hasattr(self, 'hparams'):
+                self.hparams = BeamConfig(config=Namespace())
+
+        for k, v in kwargs.items():
+            v_type = check_type(v)
+            if v_type.major in ['scalar', 'none']:
+                if k not in self.hparams or override:
+                    self.hparams[k] = v
 
     def getattr(self, attr):
         raise AttributeError(f"Attribute {attr} not found")
