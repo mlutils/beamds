@@ -34,7 +34,7 @@ def get_target(path, deep=1):
         return targets[ext]
     if deep == 0:
         return None
-    return get_target(path.stem, deep-1)
+    return get_target(path.parent.joinpath(path.stem), deep-1)
 
 
 class BeamURL:

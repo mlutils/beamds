@@ -8,6 +8,15 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def test_mlflow_path():
+    path = resource('mlflow:///new-exp/new-run')
+    path.mkdir()
+    path.joinpath('aaa.pkl').write({'a': 1, 'b': 2})
+    print(path.joinpath('aaa.pkl').read())
+
+    print(list(path))
+
+
 def test_beam_data_keys():
     from src.beam import BeamData
     bd = BeamData({'a': [1, 2, 3], 'b': {'x': 1, 'y': 2}})
@@ -417,7 +426,7 @@ if __name__ == '__main__':
 
     # sparnn_example()
 
-    nlp_example()
+    # nlp_example()
 
     # save_index()
 
@@ -436,5 +445,7 @@ if __name__ == '__main__':
     # test_beam_data_keys()
 
     # test_beam_parallel()
+
+    test_mlflow_path()
 
     print('done')
