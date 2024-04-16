@@ -33,7 +33,7 @@ class K8SConfig(BeamConfig):
         BeamParam('api_url', str, None, 'URL of the Kubernetes API server'),
         BeamParam('api_token', str, None, 'API token for the Kubernetes API server'),
         BeamParam('project_name', str, None, 'Name of the project'),
-        BeamParam('k8s-namespace', str, None, 'Namespace for the deployment'),
+        BeamParam('os_namespace', str, None, 'Namespace for the deployment'),
         BeamParam('replicas', int, 1, 'Number of replicas for the deployment'),
         BeamParam('entrypoint_args', list, [], 'Arguments for the container entrypoint'),
         BeamParam('entrypoint_envs', dict, {}, 'Environment variables for the container entrypoint'),
