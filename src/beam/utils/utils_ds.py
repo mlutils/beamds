@@ -15,7 +15,7 @@ from functools import partial
 import itertools
 import scipy
 import re
-from .utils_all import check_type, check_minor_type, slice_array, is_arange, DataObject, check_element_type
+from .utils_all import check_type, check_minor_type, slice_array, is_arange, DataObject, is_container
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -400,7 +400,8 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             else:
                 upd = pd
 
-            index_name = x.index.name
+            index_name = x.index.name or 'index'
+            is_series = x.ndim == 1
             x = x.reset_index()
             columns = x.columns
 
@@ -415,6 +416,9 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
                 else:
                     c = upd.DataFrame(data=c, columns=columns)
                     c = c.set_index(index_name)
+
+                    if is_series:
+                        c = c.squeeze()
 
                 yield i, c
 

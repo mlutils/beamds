@@ -841,7 +841,7 @@ def is_arange(x, convert_str=True):
     x_type = check_type(x)
 
     if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
-        return False
+        return None, False
 
     if convert_str and x_type.element == 'str':
         pattern = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)(?P<suffix>.*?)$')

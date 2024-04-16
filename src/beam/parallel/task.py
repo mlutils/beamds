@@ -62,7 +62,8 @@ class SyncedResults:
 
     @cached_property
     def exceptions(self):
-        vals = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
+        vals = {r['name']: {'exception': r['exception'], 'traceback': r['result']}
+                for r in self.results if r['exception'] is not None}
         return dict_to_list(vals, convert_str=False)
 
 

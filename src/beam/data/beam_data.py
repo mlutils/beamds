@@ -1332,6 +1332,8 @@ class BeamData(BeamBase):
               archive_size=None, override=True, **kwargs):
 
         if path is not None:
+            if override:
+                path.clean()
             self.path = path
         else:
             path = self.path
