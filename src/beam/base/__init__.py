@@ -55,5 +55,6 @@ class BeamBase(metaclass=MetaBeamInit):
             self._name = retrieve_name(self)
         return self._name
 
+    @property
     def beam_class(self):
         return [c.__name__ for c in self.__class__.mro()]

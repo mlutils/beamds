@@ -32,9 +32,13 @@ TypeTuple = namedtuple('TypeTuple', 'major minor element')
 
 
 def check_element_type(x):
-    unknown = (check_minor_type(x) == 'other')
+
+    minor = check_minor_type(x)
+    unknown = (minor == 'other')
 
     if not unknown and not np.isscalar(x) and (has_torch and not (torch.is_tensor(x) and (not len(x.shape)))):
+        if minor == 'path':
+            return 'path'
         return 'array'
 
     if pd.isna(x):
@@ -246,7 +250,8 @@ def is_container(x):
             if elt != elt0:
                 return True
 
-            if elt in ['array', 'none', 'object']:
+            # path is needed here since we want to consider a list of paths as a container
+            if elt in ['array', 'none', 'object', 'path']:
                 return True
 
     return False

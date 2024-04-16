@@ -236,6 +236,7 @@ class BeamResource:
     def query(self):
         return self.url.query
 
+    @property
     def beam_class(self):
         return [c.__name__ for c in self.__class__.mro()]
 

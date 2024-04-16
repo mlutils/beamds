@@ -7,12 +7,35 @@ from src.beam import resource, Timer
 from src.beam.transformer import Transformer
 from src.beam import beam_logger as logger
 
+from src.beam.config import TransformerConfig, BeamParam
+
+
+class TicketSimilarityConfig(TransformerConfig):
+
+    defaults = {
+        'chunksize': 1000,
+        'n_workers': 40,
+        'mp_method': 'apply_async',
+        'store_chunk': True,
+        'store_path': '/home/shared/data/results/enron/enron_mails_without_entities_acc',
+        'store_suffix': '.parquet',
+        'override': False,
+
+    }
+    parameters = [
+        BeamParam('nlp-model', type=str, default="en_core_web_trf", help='Spacy NLP model'),
+        BeamParam('nlp-max-length', type=int, default=2000000, help='Spacy NLP max length'),
+        BeamParam('path-to-data', type=str, default='/home/hackathon_2023/data/enron/emails.parquet',
+                  help='Path to emails.parquet data')
+    ]
+
 
 def replace_entities(text, nlp=None):
 
     if nlp is None:
         nlp = spacy.load("en_core_web_sm")
 
+    text = text[:nlp.max_length]
     doc = nlp(text)
     sorted_entities = sorted(doc.ents, key=lambda ent: ent.start_char)
 
@@ -55,15 +78,18 @@ def replace_entity_over_series(series, nlp=None):
 
 if __name__ == '__main__':
 
-    path = '/home/hackathon_2023/data/enron/emails.parquet'
-    df = resource(path).read(target='pandas')
-    # Load the English tokenizer, tagger, parser, NER, and word vectors
-    nlp = spacy.load("en_core_web_sm")
+    # from src.beam import BeamData
+    # bd = BeamData.from_path('/home/shared/data/results/enron/enron_mails_without_entities', read_metadata=False)
+    # bd.cache()
 
-    transformer = Transformer(func=replace_entity_over_series, chunksize=1000,
-                              n_workers=40, mp_method='apply_async', store_chunk=True,
-                              store_path='/home/shared/data/results/enron/enron_mails_without_entities',
-                              store_suffix='.parquet')
+    hparams = TicketSimilarityConfig()
+
+    df = resource(hparams.get('path-to-data')).read(target='pandas')
+
+    nlp = spacy.load(hparams.get('nlp-model'))
+    nlp.max_length = hparams.get('nlp-max-length')
+
+    transformer = Transformer(hparams, func=replace_entity_over_series)
 
     with Timer(name='transform: replace_entity_over_series', logger=logger) as t:
         res = transformer.transform(df['body'], nlp=nlp)

@@ -365,6 +365,7 @@ class TransformerConfig(BeamConfig):
         BeamParam('store_chunk', bool, False, 'Whether to store the chunked results'),
         BeamParam('split_by', str, 'keys', 'The split strategy to use can be [keys|index|columns]'),
         BeamParam('store_suffix', str, None, 'The suffix to add to the stored file'),
+        BeamParam('override', bool, False, 'Whether to override the stored file if it exists'),
     ]
 
 
