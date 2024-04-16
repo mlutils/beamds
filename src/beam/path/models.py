@@ -1551,5 +1551,10 @@ class MLFlowPath(PureBeamPath):
             return False
         return info.is_dir
 
+    def stat(self):
+        return {'size': self.artifact_info.file_size,
+                'is_dir': self.artifact_info.is_dir,
+                }
 
-
+    def rename(self, target):
+        raise NotImplementedError("MLFlowPath: rename is not supported")
