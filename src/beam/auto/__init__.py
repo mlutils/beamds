@@ -1,1 +1,1 @@
-from .core import AutoBeam
+from .auto import AutoBeam

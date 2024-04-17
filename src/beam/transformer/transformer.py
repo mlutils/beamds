@@ -2,14 +2,13 @@ import inspect
 from enum import Enum
 
 from ..utils import (collate_chunks, recursive_chunks, iter_container,
-                        build_container_from_tupled_keys, is_empty, )
+                        build_container_from_tupled_keys, is_empty, check_type)
 from ..parallel import BeamParallel, BeamTask
 from ..data import BeamData
 from ..path import beam_path
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
 from ..processor.core import Processor
-from ..config import BeamConfig
 
 
 class TransformStrategy(Enum):
@@ -111,6 +110,10 @@ class Transformer(Processor):
         self.reduce_dim = self.hparams.reduce_dim
         self.to_reduce = self.hparams.reduce
         self._exceptions = None
+        self.counter = 0
+
+    def reset(self):
+        self.counter = 0
 
     def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None, split_by=None, partition=None):
 
@@ -250,6 +253,13 @@ class Transformer(Processor):
         if squeeze is None:
             squeeze = self.squeeze
 
+        if split_by == 'index':
+            part_name = BeamData.index_partition_directory_name
+        elif split_by == 'columns':
+            part_name = BeamData.columns_partition_directory_name
+        else:
+            part_name = ''
+
         is_chunk = (n_chunks != 1) or (not squeeze) or (split_by == 'keys' and isinstance(x, BeamData) and x.is_stored)
 
         if ((transform_strategy is None) or (transform_strategy == TransformStrategy.C)) and type(x) == BeamData:
@@ -308,22 +318,30 @@ class Transformer(Processor):
                 chunk_path = None
                 if store_chunk:
 
-                    if split_by == 'index':
-                        part_name = BeamData.index_partition_directory_name
-                    elif split_by == 'columns':
-                        part_name = BeamData.columns_partition_directory_name
-                    else:
-                        part_name = ''
+                    k_type = check_type(k)
+                    k_with_counter = k
+                    if k_type.element == 'int':
+                        k_with_counter = BeamData.normalize_key(self.counter)
 
-                    chunk_path = store_path.joinpath(f"{BeamData.normalize_key(k)}{part_name}")
+                    chunk_path = store_path.joinpath(f"{self.name}_{k_with_counter}{part_name}")
+
                     if store_suffix is not None:
-                        chunk_path = f"{chunk_path}{store_suffix}"
-                    # chunk_path = chunk_path.as_uri()
+                        chunk_path = chunk_path.with_suffix(chunk_path.suffix + store_suffix)
+
+                    self.counter += 1
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
                                    override=override, store=store_chunk, name=k, metadata=f"{self.name}", **kwargs))
 
         else:
+            self.counter += 1
+
+            if store_path:
+
+                store_path = store_path.joinpath(f"{self.name}_{self.counter}")
+                if store_suffix is not None:
+                    store_path = store_path.with_suffix(store_path.suffix + store_suffix)
+
             queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, store_path=store_path,
                                override=override, store=store_chunk, name=self.name, **kwargs))
 

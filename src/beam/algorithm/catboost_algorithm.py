@@ -1,5 +1,5 @@
 from functools import cached_property
-from catboost import CatBoostClassifier, CatBoostRegressor,CatBoost
+from catboost import CatBoostClassifier, CatBoostRegressor, CatBoost
 
 from ..processor import Processor
 from ..experiment.utils import build_device_list
@@ -38,3 +38,16 @@ class CBAlgorithm(Processor):
             'custom_metric': custom_metric,
             'verbose': 50,
         }
+
+        return CatBoost(**cb_kwargs)
+
+    def after_iteration(self, info):
+        print(info)
+        return False  # return True to stop training
+
+
+    def fit(self, X, y):
+        self.model.fit(X, y, log_cout=self.after_iteration)
+
+    def predict(self, X):
+        return self.model.predict(X)
