@@ -196,7 +196,10 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
         if parameters is not None:
             for v in parameters:
 
-                name_to_parse = v.name.replace('_', '-').strip()
+                if type(v.name) is list:
+                    name_to_parse = [ni.replace('_', '-').strip() for ni in v.name]
+                else:
+                    name_to_parse = v.name.replace('_', '-').strip()
 
                 tags = v.tags
                 if tags is None:
@@ -210,14 +213,17 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
 
                 if v.type is bool:
                     boolean_feature(parser, name_to_parse, v.default, v.help)
-                elif v.type is list:
-                    parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, nargs='+', metavar=tags,
-                                        help=v.help)
-                elif v.type is dict:
-                    parser.add_argument(f"--{name_to_parse}", type=json.loads, default=v.default, metavar=tags,
-                                        help=v.help)
                 else:
-                    parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, metavar=tags, help=v.help)
+                    parse_kwargs = {'type': v.type, 'default': v.default, 'metavar': tags, 'help': v.help}
+                    if v.type is list:
+                        parse_kwargs['nargs'] = '+'
+                    elif v.type is dict:
+                        parse_kwargs['type'] = json.loads
+
+                    if type(v.name) is list:
+                        parser.add_argument(*[f"--{ni}" for ni in name_to_parse], **parse_kwargs)
+                    else:
+                        parser.add_argument(f"--{name_to_parse}", **parse_kwargs)
 
         return parser
 
