@@ -11,9 +11,9 @@ from ..logger import beam_logger as logger
 from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
-from ..meta import BeamClass
+from ..meta import BeamName
 from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
-                     collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device,
+                     collate_chunks, recursive_flatten, recursive_flatten_with_keys, recursive_device,
                      container_len, recursive_len, is_arange, recursive_size, divide_chunks,
                      recursive_hierarchical_keys,
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
@@ -23,7 +23,7 @@ from ..utils import (is_container, Slicer, recursive, iter_container, recursive_
                      recursive_keys, concat_polars_horizontally)
 
 
-class BeamData(BeamClass):
+class BeamData(BeamName):
 
     # metadata files
     metadata_files = {'conf': '.conf.pkl', 'schema': '.schema.pkl',
@@ -442,12 +442,6 @@ class BeamData(BeamClass):
         kwargs['index'] = index
 
         return cls(data, *args, **kwargs)
-
-    @property
-    def name(self):
-        if self._name is None:
-            self._name = retrieve_name(self)
-        return self._name
 
     @property
     def objects_type(self):

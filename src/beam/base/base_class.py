@@ -2,19 +2,18 @@ from argparse import Namespace
 
 
 from ..type import check_type
-from ..meta import MetaBeamInit, BeamClass
+from ..meta import MetaBeamInit, BeamName
 
-from ..utils import retrieve_name, get_cached_properties
+from ..utils import get_cached_properties
 from ..config import BeamConfig
 
 
-
-class BeamBase(BeamClass, metaclass=MetaBeamInit):
+class BeamBase(BeamName, metaclass=MetaBeamInit):
 
     def __init__(self, *args, name=None, override=True, hparams=None, **kwargs):
 
+        super().__init__(name=name)
         self._init_is_done = False
-        self._name = name
 
         if len(args) > 0 and (isinstance(args[0], BeamConfig) or isinstance(args[0], dict)):
             self.hparams = BeamConfig(args[0])
@@ -51,9 +50,3 @@ class BeamBase(BeamClass, metaclass=MetaBeamInit):
 
     def in_cache(self, attr):
         return hasattr(self, attr)
-
-    @property
-    def name(self):
-        if self._name is None and self.is_initialized:
-            self._name = retrieve_name(self)
-        return self._name

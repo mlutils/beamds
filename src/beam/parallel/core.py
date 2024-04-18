@@ -2,14 +2,17 @@ from tqdm import tqdm
 import random
 
 from ..utils import tqdm_beam
-from ..utils import collate_chunks, retrieve_name
+from ..utils import collate_chunks
+from ..meta import  BeamName
 from ..logger import beam_logger as logger
 from .task import BeamTask, TaskResult, SyncedResults
 
 
-class BeamAsync(object):
+class BeamAsync(BeamName):
     def __init__(self, method='apply_async', name=None, silence=False, context='spawn', n_workers=1,
                  backend='redis://localhost', broker='pyamqp://guest@localhost//', local_celery=False):
+
+        super().__init__(name=name)
         self.method = method
         self._name = name
         self.silence = silence
@@ -44,12 +47,6 @@ class BeamAsync(object):
         else:
             raise ValueError('method must be one of {apply_async, celery}')
 
-    @property
-    def name(self):
-        if self._name is None:
-            self._name = retrieve_name(self)
-        return self._name
-
     def set_silent(self, silence):
         self.silence = silence
 
@@ -66,11 +63,13 @@ class BeamAsync(object):
         return TaskResult(async_result)
 
 
-class BeamParallel(object):
+class BeamParallel(BeamName):
 
     def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam',
                  reduce=False, reduce_dim=0, name=None, shuffle=False,
                  **kwargs):
+
+        super().__init__(name=name)
 
         self.func = func
         self.n_workers = n_workers
@@ -80,7 +79,6 @@ class BeamParallel(object):
         self.reduce_dim = reduce_dim
         self.queue = []
         self.kwargs = kwargs
-        self._name = name
 
         if progressbar == 'beam':
             self.progressbar = tqdm_beam
@@ -90,15 +88,6 @@ class BeamParallel(object):
             self.progressbar = lambda x: x
 
         # TODO: add support for other methods: apply, apply_async, starmap_async, dask, ray
-
-    def set_name(self, name):
-        self._name = name
-
-    @property
-    def name(self):
-        if self._name is None:
-            self._name = retrieve_name(self)
-        return self._name
 
     def __len__(self):
         return len(self.queue)

@@ -37,7 +37,7 @@ class BeamSimilarity(Processor):
 
     @staticmethod
     def extract_data_and_index(x, index=None, convert_to='numpy'):
-        if isinstance(x, BeamData) or hasattr(x, 'beam_class') and 'BeamData' in x.beam_class:
+        if isinstance(x, BeamData) or hasattr(x, 'beam_class_name') and 'BeamData' in x.beam_class_name:
             index = x.index
             x = x.values
 

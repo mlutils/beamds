@@ -24,13 +24,13 @@ class CBAlgorithm(Processor):
     @cached_property
     def model(self):
         cb_kwargs = {
-            'learning_rate': self.get_hparam('lr', 1e-2),
-            'n_estimators': self.get_hparam('cb_n_estimators', 2000),
-            'random_seed': self.get_hparam('seed', 0),
-            'l2_leaf_reg': self.get_hparam('cb_l2_leaf_reg', 1e-4),
-            'border_count': self.get_hparam('cb_border_count', 128),
-            'depth': self.get_hparam('cb_depth', 14),
-            'random_strength': self.get_hparam('cb_random_strength', .5),
+            'learning_rate': self.get_hparam('lr'),
+            'n_estimators': self.get_hparam('cb_n_estimators'),
+            'random_seed': self.get_hparam('seed'),
+            'l2_leaf_reg': self.get_hparam('cb_l2_leaf_reg'),
+            'border_count': self.get_hparam('cb_border_count'),
+            'depth': self.get_hparam('cb_depth'),
+            'random_strength': self.get_hparam('cb_random_strength'),
             'task_type': self.task_type,
             'devices': self.devices,
             'loss_function': loss_function,

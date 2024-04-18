@@ -90,7 +90,7 @@ def check_minor_type(x):
         return 'cudf'
     elif is_scalar(x):
         return 'scalar'
-    elif isinstance(x, PurePath) or hasattr(x, 'beam_class') and 'PureBeamPath' in x.beam_class:
+    elif isinstance(x, PurePath) or hasattr(x, 'beam_class_name') and 'PureBeamPath' in x.beam_class_name:
         return 'path'
     else:
         return 'other'

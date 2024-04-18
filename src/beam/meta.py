@@ -1,3 +1,4 @@
+from .utils import retrieve_name
 
 
 class MetaBeamInit(type):
@@ -17,7 +18,21 @@ class MetaBeamInit(type):
         store_init_path.write(init_args, ext='.pkl')
 
 
-class BeamClass:
+class BeamName:
+
+    def __init__(self, name=None):
+        self._name = name
+
     @property
-    def beam_class(self):
+    def name(self):
+        if self._name is None:
+            self._name = retrieve_name(self)
+        return self._name
+
+    def set_name(self, name):
+        self._name = name
+
+    @property
+    def beam_class_name(self):
         return [c.__name__ for c in self.__class__.mro()]
+

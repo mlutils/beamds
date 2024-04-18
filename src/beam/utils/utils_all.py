@@ -377,6 +377,52 @@ def pretty_print_timedelta(seconds):
     return f"{pretty_format_number(t_delta.seconds, short=True)} seconds"
 
 
+def parse_string_number(x, time_units=None, unit_prefixes=None):
+
+    try:
+        int_x = int(x)
+        if int_x == float(x):
+            return int_x
+    except:
+        pass
+
+    try:
+        float_x = float(x)
+        return float_x
+    except:
+        pass
+
+    # check for unit prefix or time format
+    match = re.match(r'^(?P<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?])(?P<unit>[a-zA-Z]+)$', x)
+    if match:
+        unit = match.group('unit')
+
+        val = int(match.group('value'))
+        if val != float(match.group('value')):
+            val = float(match.group('value'))
+
+        # if time format return timedelta
+        if time_units is None:
+            time_units = {'s': 'seconds', 'm': 'minutes', 'h': 'hours', 'd': 'days',
+                          'ms': 'milliseconds', 'us': 'microseconds', 'ns': 'nanoseconds',
+                          'y': 'years', 'mo': 'months', 'w': 'weeks',
+                          'sec': 'seconds', 'min': 'minutes', 'hours': 'hours', 'days': 'days', 'weeks': 'weeks',
+                          'months': 'months', 'minutes': 'minutes', 'seconds': 'seconds', 'years': 'years'}
+
+        if unit in time_units.keys():
+            return timedelta(**{time_units[unit]: val})
+
+        # if in unit prefix return the value in the unit
+        unit_prefixes = {'k': int(1e3), 'M': int(1e6), 'Gi': int(1e9), 'T': int(1e12),
+                         'K': int(1e3), 'm': int(1e-3), 'u': int(1e-6), 'n': int(1e-9),
+                         'G': int(1e9), 'Mi': int(1e6), 'p': int(1e-12), 'f': int(1e-15)}
+
+        if unit in unit_prefixes.keys():
+            return val * unit_prefixes[unit]
+
+    return x
+
+
 def include_patterns(*patterns):
     """Factory function that can be used with copytree() ignore parameter.
     Arguments define a sequence of glob-style patterns

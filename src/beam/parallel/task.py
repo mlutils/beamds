@@ -1,5 +1,6 @@
 from functools import cached_property
 
+from ..meta import BeamName
 from ..utils import Timer, jupyter_like_traceback, dict_to_list
 from ..logger import beam_logger as logger
 
@@ -67,14 +68,15 @@ class SyncedResults:
         return dict_to_list(vals, convert_str=False)
 
 
-class BeamTask:
+class BeamTask(BeamName):
 
     def __init__(self, func, *args, name=None, silence=False, metadata=None, **kwargs):
+
+        super().__init__(name=name)
 
         self.func = func
         self.args = args
         self.kwargs = kwargs
-        self._name = name
         self.pid = None
         self.is_pending = True
         self.result = None
@@ -85,13 +87,6 @@ class BeamTask:
 
     def set_silent(self, silence):
         self.silence = silence
-
-    @property
-    def name(self):
-        return self._name
-
-    def set_name(self, name):
-        self._name = name
 
     def __call__(self, *args, **kwargs):
         self.args = args
