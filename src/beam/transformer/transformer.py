@@ -9,6 +9,7 @@ from ..path import beam_path
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
 from ..processor.core import Processor
+from ..base import beam_cache
 
 
 class TransformStrategy(Enum):
@@ -208,15 +209,17 @@ class Transformer(Processor):
 
         return x
 
+    @beam_cache(exception_keys=['parallel_kwargs'])
+    def cached_transform(self, x, transform_kwargs=None, parallel_kwargs=None, **kwargs):
+        return self.transform(x, transform_kwargs=transform_kwargs, parallel_kwargs=parallel_kwargs, **kwargs)
+
     def transform(self, x, transform_kwargs=None, parallel_kwargs=None, **kwargs):
 
         transform_kwargs = transform_kwargs or {}
 
         split_by = transform_kwargs.pop('split_by', self.split_by)
         partition = transform_kwargs.pop('partition', self.partition)
-        mp_method = transform_kwargs.pop('mp_method', self.mp_method)
         shuffle = transform_kwargs.pop('shuffle', self.shuffle)
-        n_workers = transform_kwargs.pop('n_workers', self.n_workers)
         store_suffix = transform_kwargs.pop('store_suffix', self.store_suffix)
         transform_strategy = transform_kwargs.pop('transform_strategy', self.transform_strategy)
         store_chunk = transform_kwargs.pop('store_chunk', self.store_chunk)
@@ -226,6 +229,8 @@ class Transformer(Processor):
         store = transform_kwargs.pop('store', (store_path is not None))
 
         parallel_kwargs = parallel_kwargs or {}
+        n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
+        mp_method = parallel_kwargs.pop('mp_method', self.mp_method)
 
         reduce_dim = self.reduce_dim
 
@@ -306,6 +311,8 @@ class Transformer(Processor):
                 store_chunk = False
         elif store_chunk:
             logger.info(f"Storing transformed chunks of data in: {store_path}")
+            if is_chunk:
+                store_path.mkdir(parents=True, exist_ok=True)
 
         queue = BeamParallel(n_workers=n_workers, func=None, method=mp_method, name=self.name,
                              progressbar='beam', reduce=False, reduce_dim=reduce_dim, **parallel_kwargs)

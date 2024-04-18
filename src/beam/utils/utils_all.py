@@ -27,6 +27,7 @@ from timeit import default_timer as timer
 import inspect
 from argparse import Namespace
 from functools import wraps, partial, cached_property
+from collections import OrderedDict
 
 from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container
 
@@ -1084,3 +1085,28 @@ def lazy_property(fn):
             setattr(self, '_lazy_cache', {fn.__name__: value})
 
     return _lazy_property
+
+
+class LimitedSizeDict(OrderedDict):
+    def __init__(self, size_limit=None, on_removal=None):
+        super().__init__()
+        self.size_limit = size_limit
+        self.on_removal = on_removal  # Callback function to call on removal
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        OrderedDict.__setitem__(self, key, value)
+        if self.size_limit is not None and len(self) > self.size_limit:
+            oldest_key, oldest_value = self.popitem(last=False)
+            if self.on_removal:  # Check if a callback function is provided
+                self.on_removal(oldest_key, oldest_value)  # Call the callback with the removed key and value
+
+
+class LimitedSizeDictFactory:
+    def __init__(self, size_limit=None, on_removal=None):
+        self.size_limit = size_limit
+        self.on_removal = on_removal
+
+    def __call__(self):
+        return LimitedSizeDict(size_limit=self.size_limit, on_removal=self.on_removal)

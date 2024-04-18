@@ -13,7 +13,7 @@ from src.beam.config import TransformerConfig, BeamParam
 class TicketSimilarityConfig(TransformerConfig):
 
     defaults = {
-        'chunksize': 1000,
+        'chunksize': 100,
         'n_workers': 40,
         'mp_method': 'apply_async',
         'store_chunk': True,

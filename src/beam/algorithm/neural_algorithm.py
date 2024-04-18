@@ -20,6 +20,7 @@ from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
 from ..processor import Processor
 from ..logger import beam_kpi, BeamResult
+from ..base import beam_cache
 
 
 class NeuralAlgorithm(Processor):
@@ -1895,3 +1896,7 @@ class NeuralAlgorithm(Processor):
             return algorithm(sample, predicting=True, **kwargs)
 
         return predict_wrapper(dataset, algorithm=self, *args, **kwargs)
+
+    @beam_cache
+    def cached_predict(self, *args, **kwargs):
+        return self.predict(*args, **kwargs)

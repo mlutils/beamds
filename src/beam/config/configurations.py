@@ -7,6 +7,18 @@ from .deepspeed import DeepspeedConfig
 from .utils import _beam_arguments
 
 
+class CacheConfig(BeamConfig):
+
+    parameters = [
+        BeamParam('cache_depth', int, None, 'The depth of the cache'),
+        BeamParam('cache_path', str, None, 'The path to the cache (if None, the cache is stored in memory)'),
+        BeamParam('cache_exception_keys', list, None, 'The keys to exclude from the cache'),
+        BeamParam('cache_store_suffix', str, None, 'The suffix to add to the stored file '
+                                                   '(if None, the cache is stored as BeamData)'),
+        BeamParam('silent_cache', bool, False, 'Whether to log cache operations'),
+    ]
+
+
 class CatboostConfig(BeamConfig):
     # catboost
     parameters = [
@@ -248,7 +260,7 @@ class BeamProjectConfig(BeamConfig):
     ]
 
 
-class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig):
+class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig, CacheConfig):
     '''
 
         Arguments
@@ -348,7 +360,7 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
     ]
 
 
-class TransformerConfig(BeamConfig):
+class TransformerConfig(CacheConfig):
     # transformer arguments
 
     parameters = [

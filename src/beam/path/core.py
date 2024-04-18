@@ -12,7 +12,7 @@ import numpy as np
 import re
 
 from ..type import check_type
-
+from ..meta import BeamClass
 
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
@@ -37,7 +37,7 @@ def get_target(path, deep=1):
     return get_target(path.parent.joinpath(path.stem), deep-1)
 
 
-class BeamURL:
+class BeamURL(BeamClass):
 
     def __init__(self, url=None, scheme=None, hostname=None, port=None, username=None, password=None, path=None,
                  fragment=None, params=None, **query):
@@ -176,7 +176,7 @@ def normalize_host(hostname, port=None, default='localhost'):
     return host
 
 
-class BeamResource:
+class BeamResource(BeamClass):
     """
     Base class for all resources. Gets as an input a URI and the resource type and returns the resource.
     """
@@ -235,10 +235,6 @@ class BeamResource:
     @property
     def query(self):
         return self.url.query
-
-    @property
-    def beam_class(self):
-        return [c.__name__ for c in self.__class__.mro()]
 
 
 class PureBeamPath(BeamResource):

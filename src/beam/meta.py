@@ -1,4 +1,3 @@
-from .path import beam_path
 
 
 class MetaBeamInit(type):
@@ -13,5 +12,12 @@ class MetaBeamInit(type):
 
     def _pre_init(cls, store_init_path, init_args):
         # Process or store arguments
+        from .path import beam_path
         store_init_path = beam_path(store_init_path)
         store_init_path.write(init_args, ext='.pkl')
+
+
+class BeamClass:
+    @property
+    def beam_class(self):
+        return [c.__name__ for c in self.__class__.mro()]
