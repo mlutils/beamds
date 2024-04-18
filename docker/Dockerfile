@@ -110,8 +110,10 @@ RUN bash /workspace/beam_image/install_torchsig.sh
 
 # install DGL from source
 # REMOVE FOR LITE VERSION
-COPY docker/install/install_dgl.sh /workspace/beam_image
-RUN bash /workspace/beam_image/install_dgl.sh
+# RUN bash /workspace/install/install_dgl.sh
+COPY docker/install_dgl_fixed.sh /workspace/install/install_dgl_fixed.sh
+RUN bash /workspace/install/install_dgl_fixed.sh
+
 
 # install RAPID framework
 # cannot install rapids as it does not support cuda 12.0 yet

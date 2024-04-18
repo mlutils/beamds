@@ -227,6 +227,7 @@ class KeysConfig(BeamConfig):
         BeamParam('OPENAI_API_KEY', str, None, 'The openai api key to use for openai connections'),
         BeamParam('BEAM_USERNAME', str, None, 'The beam username to use for connections like smb/ftp/ssh etc'),
         BeamParam('BEAM_PASSWORD', str, None, 'The beam password to use for connections like smb/ftp/ssh etc'),
+        BeamParam('K8S_API_KEY', str, None, 'The k8s api key to use for k8s connections'),
     ]
 
 

@@ -5,34 +5,41 @@ import time
 
 from src.beam.orchestration.config import K8SConfig
 
-hparams = K8SConfig()
+# api_token = get_token()
+api_token: str = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkFOYndaWldZRXFjT0FXeURWOVl4aWVQUE9OZW14UGRGR0RxTi1pb2czMG8ifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6InRva2Fuc3ZjLXRva2VuIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InRva2Fuc3ZjIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQudWlkIjoiNzZkYTdhYmQtOTE2Ni00ODI3LTkzYjEtN2YzNGFjMzk2ODY4Iiwic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50OmRlZmF1bHQ6dG9rYW5zdmMifQ.BrC9QLxHSMimPonn23f_KEEyPkMmLLfG14eVRn-Tt-WkuBlvfzuT6iVZQd-1ZmkCR7Q7LAhFRQFjyG53E-mhcppIFYcaR0_k4zxI7i1bet93wkVG4NdOKK75eudQQIrtN8-vqPyaqzdRB3PgljrWSxQQMFznXE-f2-JUH7WqcijiraBanXPy0wmgrx_4v2u5H1hotz-g9qKqdKcolZps1FmGrn1NjrA6a9Qz_jpj1BLOnRqjiPu9Ee1ATSKoVSic3a1ibztZ1VdzfIrehZE-junIYJlRinduIh1dD7xS0o3SWPk0sZigK6bKn6nAhm95lnrJcXOH9Mgq6-VHLDEIMmjt6hCYKyOoJqm_4QDUGDkixi1QlEnmu8GeIm3RFrrOvTkY-tQijoUzvCHZhigCEwbKefwNPdxMoqJF9Q1u5xLqnf6sF_KnGcTPhVu4CzTVLGyWcv0yxgeJ4Z06F9uYb7z-mP59HXqNfWUIFm1AqFLtGkKXzI17drQ1BflrIOIlPaH8ABRbpzm4WHD0sUdw9a8j7iXdhVowiJ5LVSvamkkFPySbXgQrVf4EcFVVh8T9S58scDzlxt1Zv8M6NH_YizSJ3VWXpBPIjFXdVM8dUbrZ3_IV7HAGLcCruZriB-KjUQJe3M-n92lElHMhFB22kV4N38TpTz-Xjq85Wu_nvC8'
+hparams = K8SConfig(K8S_API_KEY=api_token, api_url="https://api.dayo-ocp.dt.local:6443", check_project_exists=True,
+                    os_namespace="moh", project_name="moh", create_service_account=True,
+                    image_name="harbor.dt.local/public/beam:openshift-moh150424", labels={"app": "moh"},
+                    deployment_name="moh", replicas=1, use_scc=True,
+                    scc_name="anyuid", node_selector=None, cpu_requests="4", cpu_limits="4",
+                    memory_requests="12", memory_limits="12", gpu_requests="1", gpu_limits="1",  enable_ray_ports=False)
 
-api_url = "https://api.dayo-ocp.dt.local:6443"
-api_token = "sha256~EBoYZ2e8ON8BnPGx7187T4viQ-lScg78zcDcbsXFdW0"
-check_project_exists = True
-project_name = "moh"
-create_service_account = True
-image_name = "harbor.dt.local/public/beam:openshift-10.04.24"
-labels = {"app": "moh"}
-deployment_name = "moh"
+# api_url = "https://api.dayo-ocp.dt.local:6443"
+# api_token = "sha256~EBoYZ2e8ON8BnPGx7187T4viQ-lScg78zcDcbsXFdW0"
+# check_project_exists = True
+# project_name = "moh"
+# create_service_account = True
+# image_name = "harbor.dt.local/public/beam:openshift-10.04.24"
+# labels = {"app": "moh"}
+# deployment_name = "moh"
 # namespace = "ben-guryon"
-namespace = project_name
-replicas = 1
+# namespace = project_name
+# replicas = 1
 entrypoint_args = ["63"]  # Container arguments
 entrypoint_envs = {"TEST": "test"}  # Container environment variables
-use_scc = True  # Pass the SCC control parameter
-scc_name = "anyuid"  # privileged , restricted, anyuid, hostaccess, hostmount-anyuid, hostnetwork, node-exporter-scc
+# use_scc = True  # Pass the SCC control parameter
+# scc_name = "anyuid"  # privileged , restricted, anyuid, hostaccess, hostmount-anyuid, hostnetwork, node-exporter-scc
 security_context_config = (
     SecurityContextConfig(add_capabilities=["SYS_CHROOT", "CAP_AUDIT_CONTROL",
                                             "CAP_AUDIT_WRITE"], enable_security_context=False))
 # node_selector = {"gpu-type": "tesla-a100"} #  Node selector in case of GPU scheduling
-node_selector = None
-cpu_requests = "4"  # 0.5 CPU
-cpu_limits = "4"       # 1 CPU
-memory_requests = "12"
-memory_limits = "12"
-gpu_requests = "1"
-gpu_limits = "1"
+# node_selector = None
+# cpu_requests = "4"  # 0.5 CPU
+# cpu_limits = "4"       # 1 CPU
+# memory_requests = "12"
+# memory_limits = "12"
+# gpu_requests = "1"
+# gpu_limits = "1"
 storage_configs = [
     StorageConfig(pvc_name="data-pvc", pvc_mount_path="/data-pvc",
                   pvc_size="500", pvc_access_mode="ReadWriteMany", create_pvc=True),
@@ -63,7 +70,7 @@ service_configs = [
                   ingress_host="ray-gcs.example.com"),
 
 ]
-enable_ray_ports=False
+# enable_ray_ports=False
 ray_ports_configs = [
     RayPortsConfig(ray_ports=[10001, 10002, 10003, 10004, 10005, 10006, 10007,
                               10008, 10009, 10010, 30000, 30001, 30002, 30003, 30004],)
@@ -72,44 +79,44 @@ ray_ports_configs = [
 
 user_idm_configs = [
     UserIdmConfig(user_name="yos", role_name="admin", role_binding_name="yos",
-                  create_role_binding=True, project_name="ben-guryon"),
+                  create_role_binding=False, project_name="ben-guryon"),
     UserIdmConfig(user_name="asafe", role_name="admin", role_binding_name="asafe",
-                  create_role_binding=True, project_name="ben-guryon"),
+                  create_role_binding=False, project_name="ben-guryon"),
 ]
 
 
 print('hello world')
-print("API URL:", api_url)
-print("API Token:", api_token)
+print("API URL:", hparams.api_url)
+print("API Token:", hparams.K8S_API_KEY)
 
 # the order of the VARS is important!! (see BeamK8S class)
 k8s = BeamK8S(
-    api_url=api_url,
-    api_token=api_token,
-    project_name=project_name,
-    namespace=project_name,
+    api_url=hparams.api_url,
+    api_token=hparams.K8S_API_KEY,
+    project_name=hparams.project_name,
+    namespace=hparams.project_name,
 )
 
 # k8s = BeamK8S(hparams)
 
 deployment = BeamDeploy(
     k8s=k8s,
-    project_name=project_name,
-    namespace=project_name,
-    create_service_account=create_service_account,
-    replicas=replicas,
-    labels=labels,
-    image_name=image_name,
-    deployment_name=deployment_name,
-    use_scc=use_scc,
-    node_selector=node_selector,
-    scc_name=scc_name,
-    cpu_requests=cpu_requests,
-    cpu_limits=cpu_limits,
-    memory_requests=memory_requests,
-    memory_limits=memory_limits,
-    gpu_requests=gpu_requests,
-    gpu_limits=gpu_limits,
+    project_name=hparams.project_name,
+    namespace=hparams.os_namespace,
+    create_service_account=hparams.create_service_account,
+    replicas=hparams.replicas,
+    labels=hparams.labels,
+    image_name=hparams.image_name,
+    deployment_name=hparams.deployment_name,
+    use_scc=hparams.use_scc,
+    node_selector=hparams.node_selector,
+    scc_name=hparams.scc_name,
+    cpu_requests=hparams.cpu_requests,
+    cpu_limits=hparams.cpu_limits,
+    memory_requests=hparams.memory_requests,
+    memory_limits=hparams.memory_limits,
+    gpu_requests=hparams.gpu_requests,
+    gpu_limits=hparams.gpu_limits,
     service_configs=service_configs,
     storage_configs=storage_configs,
     ray_ports_configs=ray_ports_configs,
@@ -121,28 +128,28 @@ deployment = BeamDeploy(
 )
 
 # Launch deployment and obtain pod instances
-beam_pod_instance = deployment.launch(replicas=1)
-wait_time = 10  # Time to wait before executing commands
-time.sleep(wait_time)
-command = "ls /"  # Command as a regular shell command string
+# beam_pod_instance = deployment.launch(hparams.replicas)
+# wait_time = 10  # Time to wait before executing commands
+# time.sleep(wait_time)
+# command = "ls /"  # Command as a regular shell command string
 
 
 # Handle multiple pod instances
-if isinstance(beam_pod_instance, list):
-    for pod_instance in beam_pod_instance:
-        # Print pod status for each instance
-        print(f"Pod statuses: {pod_instance.get_pod_status()}")
-        # Execute command on each pod instance
-        response = pod_instance.execute(command)
-        print(f"Response from pod {pod_instance.pod_infos[0].metadata.name}: {response}")
-
-# Handle a single pod instance
-elif isinstance(beam_pod_instance, BeamPod):
-    # Print pod status for the single instance
-    print(f"Pod status: {beam_pod_instance.get_pod_status()}")
-    # Execute command on the single pod instance
-    response = beam_pod_instance.execute(command)
-    print(f"Response from pod {beam_pod_instance.pod_infos[0].metadata.name}: {response}")
+# if isinstance(beam_pod_instance, list):
+#     for pod_instance in beam_pod_instance:
+#         # Print pod status for each instance
+#         print(f"Pod statuses: {pod_instance.get_pod_status()}")
+#         # Execute command on each pod instance
+#         response = pod_instance.execute(command)
+#         print(f"Response from pod {pod_instance.pod_infos[0].metadata.name}: {response}")
+#
+# # Handle a single pod instance
+# elif isinstance(beam_pod_instance, BeamPod):
+#     # Print pod status for the single instance
+#     print(f"Pod status: {beam_pod_instance.get_pod_status()}")
+#     # Execute command on the single pod instance
+#     response = beam_pod_instance.execute(command)
+#     print(f"Response from pod {beam_pod_instance.pod_infos[0].metadata.name}: {response}")
 #
 # # Handle case where no valid pod instances are available
 # else:
@@ -153,7 +160,7 @@ elif isinstance(beam_pod_instance, BeamPod):
 # response = beam_pod_instance.execute(command, pod_name=specific_pod_name)
 
 
-# deployment.launch(replicas=1)
+deployment.launch(replicas=1)
 # available_resources = k8s.query_available_resources()
 # print("Available Resources:", available_resources)
 # beam_pod_instance = deployment.launch(replicas=1)
@@ -171,7 +178,7 @@ elif isinstance(beam_pod_instance, BeamPod):
 # print("Pod Info:", beam_pod_instance.pod_info)
 
 # print("Fetching external endpoints...")
-internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=namespace)
+internal_endpoints = k8s.get_internal_endpoints_with_nodeport(namespace=hparams.os_namespace)
 for endpoint in internal_endpoints:
     print(f"Internal Access: {endpoint['node_ip']}:{endpoint['node_port']}")
 #

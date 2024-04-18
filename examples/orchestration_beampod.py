@@ -2,7 +2,7 @@
 from src.beam.orchestration import BeamK8S, BeamPod
 
 api_url = "https://api.kh-dev.dt.local:6443"
-api_token = "sha256~S-Qg-qh_F6gIPWX-V6aM3Wa77xU2Ckkx-KI81QIvogE"
+api_token = "sha256~y4xvFJcBdK_MckDxoeMh48v4gdsQ1CQUpky2RTI2gHs"
 project_name = "ben-guryon"
 deployment_name = "bgu-4"
 
