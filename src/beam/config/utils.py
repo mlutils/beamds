@@ -14,10 +14,19 @@ import re
 
 
 def boolean_feature(parser, feature, default=False, help='', metavar=None):
-    featurename = feature.replace("-", "_")
+
+    if type(feature) is not str:
+        featurename = feature[0].replace("-", "_")
+    else:
+        featurename = feature.replace("-", "_")
+        feature = [feature]
+
     feature_parser = parser.add_mutually_exclusive_group(required=False)
-    feature_parser.add_argument('--%s' % feature, dest=featurename, action='store_true', help=help)
-    feature_parser.add_argument('--no-%s' % feature, dest=featurename, action='store_false', help=help)
+
+    for f in feature:
+        feature_parser.add_argument(f"--{f}", dest=featurename, action='store_true', help=help)
+        feature_parser.add_argument(f"--no-{f}", dest=featurename, action='store_false', help=help)
+
     pa = parser._actions
     for a in pa:
         if a.dest == featurename:

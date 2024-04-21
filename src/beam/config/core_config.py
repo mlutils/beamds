@@ -15,7 +15,7 @@ from ..meta import MetaBeamInit
 
 @dataclass
 class BeamParam:
-    name: str
+    name: Union[str, List[str]]
     type: type
     default: any
     help: str

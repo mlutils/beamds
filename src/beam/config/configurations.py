@@ -2,9 +2,21 @@ import argparse
 import os
 import math
 from pathlib import Path
-from .core import BeamConfig, BeamParam
+from .core_config import BeamConfig, BeamParam
 from .deepspeed import DeepspeedConfig
 from .utils import _beam_arguments
+
+
+class DeviceConfig(BeamConfig):
+
+    parameters = [
+        BeamParam('device', str, '0', 'GPU Number or cpu/cuda string'),
+        BeamParam('device_list', list, None,
+                  'Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
+                  'when passing --n-gpus=2 and will use GPUs 2 1 3 when passing --n-gpus=3. '
+                  'If None, will use an ascending order starting from the GPU passed in the --device parameter. '
+                  'e.g. when --device=1 will use GPUs 1,2,3,4 when --n-gpus=4'),
+    ]
 
 
 class CacheConfig(BeamConfig):
@@ -123,7 +135,7 @@ class CacheConfig(BeamConfig):
 #                          text_processing=None,
 #                          fixed_binary_splits=None)
 
-class CatboostConfig(BeamConfig):
+class CatboostConfig(DeviceConfig):
     # catboost
     parameters = [
         BeamParam('cb_task', str, 'classification', 'The task type for the catboost model '
@@ -135,7 +147,15 @@ class CatboostConfig(BeamConfig):
         BeamParam('cb_border_count', int, 128, 'The border count for the catboost model', tags='tune'),
         BeamParam('cb_depth', int, 14, 'The depth of the trees in the catboost model', tags='tune'),
         BeamParam('cb_random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
-        BeamParam
+        BeamParam('cb_lr', float, 1e-2, 'The learning rate for the catboost model', tags='tune'),
+        BeamParam('cb_eval_metric', str, None, 'The evaluation metric for the catboost model, '
+                                               'if None, it is set to RMSE for regression and '
+                                               'Accuracy for classification'),
+        BeamParam('cb_custom_metric', list, None, 'The custom metric for the catboost model, '
+                                                  'if None, it is set to MAE, MAPE for regression and '
+                                                  'Precision, Recall for classification'),
+
+        BeamParam('cb_log_resolution', int, 10, 'The resolution (in epochs) of the logging for the catboost model'),
 
     ]
 
@@ -317,7 +337,7 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
         BeamParam('batch_size_eval', int, None, 'Batch Size for testing/evaluation iterations', tags='tune'),
         BeamParam('reduction', str, 'sum', 'whether to sum loss elements or average them [sum|mean|mean_batch|sqrt|mean_sqrt]',
                     tags='tune'),
-        BeamParam('lr_dense', float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
+        BeamParam(['lr_dense', 'lr'], float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
         BeamParam('lr_sparse', float, 1e-2, 'learning rate for sparse optimizers', tags='tune'),
         BeamParam('stop_at', float, None, 'Early stopping when objective >= stop_at', tags='tune'),
         BeamParam('early_stopping_patience', int, None, 'Early stopping patience in epochs, '
@@ -370,7 +390,7 @@ class BeamProjectConfig(BeamConfig):
     ]
 
 
-class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig, CacheConfig):
+class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig, CacheConfig, DeviceConfig):
     '''
 
         Arguments
@@ -398,12 +418,6 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
         BeamParam('cpu_workers', int, 0, 'How many CPUs will be used for the data loading'),
         BeamParam('data_fetch_timeout', float, 0., 'Timeout for the dataloader fetching. '
                                                    'set to 0 for no timeout.'),
-        BeamParam('device', str, '0', 'GPU Number or cpu/cuda string'),
-        BeamParam('device_list', list, None,
-                  'Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
-                  'when passing --n-gpus=2 and will use GPUs 2 1 3 when passing --n-gpus=3. '
-                  'If None, will use an ascending order starting from the GPU passed in the --device parameter. '
-                  'e.g. when --device=1 will use GPUs 1,2,3,4 when --n-gpus=4'),
 
         BeamParam('tensorboard', bool, True, 'Log results to tensorboard'),
         BeamParam('mlflow', bool, False, 'Log results to MLFLOW serve'),

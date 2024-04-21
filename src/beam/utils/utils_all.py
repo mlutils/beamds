@@ -412,10 +412,11 @@ def parse_string_number(x, time_units=None, unit_prefixes=None):
         if unit in time_units.keys():
             return timedelta(**{time_units[unit]: val})
 
-        # if in unit prefix return the value in the unit
-        unit_prefixes = {'k': int(1e3), 'M': int(1e6), 'Gi': int(1e9), 'T': int(1e12),
-                         'K': int(1e3), 'm': int(1e-3), 'u': int(1e-6), 'n': int(1e-9),
-                         'G': int(1e9), 'Mi': int(1e6), 'p': int(1e-12), 'f': int(1e-15)}
+        if unit_prefixes is None:
+            # if in unit prefix return the value in the unit
+            unit_prefixes = {'k': int(1e3), 'M': int(1e6), 'Gi': int(1e9), 'T': int(1e12),
+                             'K': int(1e3), 'm': int(1e-3), 'u': int(1e-6), 'n': int(1e-9),
+                             'G': int(1e9), 'Mi': int(1e6), 'p': int(1e-12), 'f': int(1e-15)}
 
         if unit in unit_prefixes.keys():
             return val * unit_prefixes[unit]

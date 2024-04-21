@@ -1,10 +1,10 @@
 from argparse import Namespace
-
+from functools import cached_property
 
 from ..type import check_type
 from ..meta import MetaBeamInit, BeamName
 
-from ..utils import get_cached_properties
+from ..utils import get_cached_properties, is_notebook
 from ..config import BeamConfig
 
 
@@ -50,3 +50,7 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
 
     def in_cache(self, attr):
         return hasattr(self, attr)
+
+    @cached_property
+    def is_notebook(self):
+        return is_notebook()
