@@ -10,7 +10,7 @@ from ..config import BeamConfig
 
 class BeamBase(BeamName, metaclass=MetaBeamInit):
 
-    def __init__(self, *args, name=None, override=True, hparams=None, **kwargs):
+    def __init__(self, *args, name=None, hparams=None, override_hparams=True, **kwargs):
 
         super().__init__(name=name)
         self._init_is_done = False
@@ -26,7 +26,7 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         for k, v in kwargs.items():
             v_type = check_type(v)
             if v_type.major in ['scalar', 'none']:
-                if k not in self.hparams or override:
+                if k not in self.hparams or override_hparams:
                     self.hparams[k] = v
 
     def getattr(self, attr):
@@ -45,8 +45,10 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         if len(args) == 0:
             args = get_cached_properties(self)
         for k in args:
-            if hasattr(self, k):
+            try:
                 delattr(self, k)
+            except AttributeError:
+                pass
 
     def in_cache(self, attr):
         return hasattr(self, attr)

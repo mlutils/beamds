@@ -295,7 +295,7 @@ class Transformer(Processor):
                            f"storing data for transformer: {self.name} before the split to chunks.")
             x.store()
 
-        store_chunk = transform_strategy in [TransformStrategy.CS, TransformStrategy.SS, transform_strategy.S]
+        store_chunk = transform_strategy in [TransformStrategy.CS, TransformStrategy.SS, TransformStrategy.S]
 
         if store_path is None and store_chunk:
 

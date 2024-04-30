@@ -8,6 +8,14 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def test_transformer():
+
+    from src.beam.transformer import Transformer
+
+    t = Transformer()
+    print(t)
+
+
 def test_mlflow_path():
     path = resource('mlflow:///new-exp/new-run')
     path.mkdir()
@@ -446,6 +454,8 @@ if __name__ == '__main__':
 
     # test_beam_parallel()
 
-    test_mlflow_path()
+    # test_mlflow_path()
+
+    test_transformer()
 
     print('done')

@@ -455,11 +455,11 @@ class AutoBeam(Processor):
             # Print build logs (optional)
             for line in build_logs:
                 if 'stream' in line:
-                    print(line['stream'].strip())
+                    logger.info(line['stream'].strip())
 
         except BuildError as e:
-            print("Error building Docker image:", e)
+            logger.error("Error building Docker image:", e)
         except Exception as e:
-            print("Error:", e)
+            logger.error("Error:", e)
         finally:
             client.close()

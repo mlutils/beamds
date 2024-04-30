@@ -145,7 +145,7 @@ class ChunkDF(Transformer):
 
 class TFIDF(BeamSimilarity):
 
-    def __init__(self, *args, preprocessor=None, min_df=None, max_df=None, max_features=None, use_idf=True,
+    def __init__(self, *args, preprocessor=None, min_df=2, max_df=.95, max_features=None, use_idf=True,
                  smooth_idf=True, sublinear_tf=False, n_workers=0, mp_method='joblib', chunksize=None,
                  n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
                  metric='bm25', bm25_k1=1.5, bm25_b=0.75, bm25_epsilon=0.25, **kwargs):
@@ -185,15 +185,28 @@ class TFIDF(BeamSimilarity):
         self.device = self.get_hparam('device', device)
 
         self.n_workers = self.get_hparam('n_workers', n_workers)
-        n_chunks = self.get_hparam('n_chunks', self.n_workers)
-        chunksize = self.get_hparam('chunksize', None)
+        self.n_chunks = self.get_hparam('n_chunks', self.n_workers)
+        self.chunksize = self.get_hparam('chunksize', None)
         mp_method = self.get_hparam('mp_method', mp_method)
 
-        self.chunk_tf = ChunkTF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
+        self.chunk_tf = ChunkTF(n_workers=self.n_workers, n_chunks=self.n_chunks, chunksize=self.chunksize,
+                                mp_method=mp_method,
                                 squeeze=False, reduce=False, sparse_framework=self.sparse_framework, device=self.device,
                                 preprocessor=self.preprocessor)
-        self.chunk_df = ChunkDF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
+        self.chunk_df = ChunkDF(n_workers=self.n_workers, n_chunks=self.n_chunks, chunksize=self.chunksize,
+                                mp_method=mp_method,
                                 squeeze=False, reduce=False, preprocessor=self.preprocessor)
+
+        self.preprocessor_transformer = Transformer(func=self.preprocessor, n_workers=self.n_workers,
+                                                    n_chunks=self.n_chunks,
+                                                    chunksize=self.chunksize, mp_method=mp_method)
+
+    def preprocess(self, x):
+        if self.chunksize is not None and len(x) <= self.chunksize:
+            return self.preprocessor(x)
+        if self.n_chunks is not None and self.n_chunks < 2:
+            return self.preprocessor(x)
+        return self.preprocessor_transformer.transform(x)
 
     @staticmethod
     def default_preprocessor(x):
@@ -317,7 +330,10 @@ class TFIDF(BeamSimilarity):
 
     @cached_property
     def n_tokens(self):
-        return max(list(self.tokens))
+        l = list(self.tokens)
+        if len(l) == 0:
+            return 0
+        return max(l) + 1
 
     @cached_property
     def idf(self):
@@ -443,6 +459,8 @@ class TFIDF(BeamSimilarity):
         self.fit(x)
 
     def search(self, q, k=1, **kwargs):
+
+        q = self.preprocess(q)
 
         if self.metric == 'bm25':
             scores = self.bm25(q, **kwargs)

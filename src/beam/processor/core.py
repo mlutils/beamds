@@ -13,10 +13,9 @@ class Processor(BeamBase):
     skeleton_file = 'skeleton'
     state_file = 'state'
 
-    def __init__(self, *args, name=None, remote=None, llm=None, **kwargs):
+    def __init__(self, *args, name=None, llm=None, **kwargs):
 
-        super().__init__(*args, name=name, **kwargs)
-        self.remote = remote
+        super().__init__(*args, name=name, llm=llm, **kwargs)
         self._llm = self.get_hparam('llm', llm)
 
     @cached_property

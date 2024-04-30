@@ -1176,8 +1176,20 @@ class BeamData(BeamName):
         return self._columns_map
 
     def keys(self, level=1):
-        for k in recursive_keys(self.data, level=level):
-            yield k
+        if self.is_cached:
+            if type(self.data) is dict:
+                for k in recursive_keys(self.data, level=level):
+                    yield k
+            else:
+                for k in range(len(self.data)):
+                    yield k
+        else:
+            if type(self.all_paths) is dict:
+                for k in recursive_keys(self.all_paths, level=level):
+                    yield k
+            else:
+                for k in range(len(self.all_paths)):
+                    yield k
 
     def hierarchical_keys(self, recursive=False):
         if self.orientation is None:
@@ -1206,8 +1218,8 @@ class BeamData(BeamName):
         return keys
 
     def items(self, level=1):
-        for k, v in recursive_items(self.data, level=1):
-            yield k, v
+        for k in self.keys(level=level):
+            yield k, self[k]
 
     @property
     def dtypes(self):
