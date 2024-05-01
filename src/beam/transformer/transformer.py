@@ -71,7 +71,7 @@ class Transformer(Processor):
                                           override=override, **kwargs)
 
         self.func = func
-        assert inspect.isfunction(func) or func is None, "The func argument must be a function."
+        assert inspect.isroutine(func) or func is None, "The func argument must be a function."
 
         # check if we can pass kwargs to the function
         self.func_has_kwargs = False

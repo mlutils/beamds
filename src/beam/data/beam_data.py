@@ -38,7 +38,7 @@ class BeamData(BeamName):
 
     def __init__(self, *args, data=None, path=None, name=None, all_paths=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
-                 override=True, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
+                 override=False, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None,
                  write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None, synced=False,
                  write_metadata=True, read_metadata=True, metadata_path_prefix=None, key_fold_map=None, **kwargs):
@@ -1013,7 +1013,7 @@ class BeamData(BeamName):
         return None
 
     @staticmethod
-    def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9),
+    def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9), override=True,
                    chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None, **kwargs):
 
         path = beam_path(path)
@@ -1040,14 +1040,14 @@ class BeamData(BeamName):
                 BeamData.write_tree(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
                                     archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
                                     split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
-                                    file_type=file_type, schema=s, **kwargs)
+                                    file_type=file_type, schema=s, override=override, **kwargs)
 
         else:
 
             if root:
                 path = path.joinpath(BeamData.default_data_file_name)
 
-            BeamData.write_object(data, path, size=sizes, archive=False,
+            BeamData.write_object(data, path, size=sizes, archive=False, override=override,
                                         chunksize=chunksize, chunklen=chunklen, split_by=split_by,
                                         n_chunks=n_chunks, partition=partition, schema=schema,
                                         file_type=file_type, **kwargs)
@@ -1335,7 +1335,9 @@ class BeamData(BeamName):
 
     def store(self, data=None, path=None, compress=None, chunksize=None,
               chunklen=None, n_chunks=None, partition=None, split_by=None,
-              archive_size=None, override=True, **kwargs):
+              archive_size=None, override=None, **kwargs):
+
+        override = override or self.override
 
         if path is not None:
             if override:
@@ -1353,9 +1355,9 @@ class BeamData(BeamName):
 
         kwargs = self.get_default_params(compress=compress, chunksize=chunksize, chunklen=chunklen, n_chunks=n_chunks,
                                          partition=partition, split_by=split_by, archive_size=archive_size,
-                                         override=override, **kwargs)
+                                         **kwargs)
 
-        BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, **kwargs)
+        BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, override=override, **kwargs)
 
         # store info and conf files
         if self.write_metadata:

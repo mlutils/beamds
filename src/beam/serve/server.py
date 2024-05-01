@@ -229,7 +229,7 @@ class BeamServer(MetaDispatcher):
             for name, attr in inspect.getmembers(obj):
                 if type(name) is not str:
                     continue
-                if not name.startswith('_') and (inspect.ismethod(attr) or inspect.isfunction(attr)):
+                if not name.startswith('_') and inspect.isroutine(attr):
                     attributes[name] = 'method'
                 elif not name.startswith('_') and not inspect.isbuiltin(attr):
                     attributes[name] = 'variable'

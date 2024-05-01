@@ -96,23 +96,29 @@ def check_minor_type(x):
         return 'other'
 
 
-def elt_of_list(x):
-    if len(x) < 100:
-        sampled_indices = range(len(x))
+def elt_of_list(x, sample_size=20):
+
+    if isinstance(x, set):
+        # assuming we are in the case of a set
+        elements = random.sample(list(x), sample_size)
     else:
-        sampled_indices = np.random.randint(len(x), size=(100,))
+        if len(x) < sample_size:
+            ind = list(range(len(x)))
+        else:
+            ind = np.random.randint(len(x), size=(sample_size,))
+        elements = [x[i] for i in ind]
 
-    elt0 = None
-    for i in sampled_indices:
-        elt = check_element_type(x[i])
+    elt = None
+    t0 = type(elements[0])
+    for e in elements[1:]:
+        if type(e) != t0:
+            elt = 'object'
+            break
 
-        if elt0 is None:
-            elt0 = elt
+    if elt is None:
+        elt = check_element_type(elements[0])
 
-        if elt != elt0:
-            return 'object'
-
-    return elt0
+    return elt
 
 
 def is_scalar(x):
@@ -182,27 +188,7 @@ def _check_type(x, minor=True, element=True):
             if not len(x):
                 elt = 'empty'
             else:
-
-                if len(x) < 20:
-                    elts = [check_element_type(xi) for xi in x]
-
-                else:
-
-                    sample_size = 20
-                    try:
-                        ind = np.random.randint(len(x), size=(sample_size,))
-                        elts = [check_element_type(x[i]) for i in ind]
-                    except TypeError:
-                        # assuming we are in the case of a set
-                        random.sample(list(x), sample_size)
-
-                set_elts = set(elts)
-                if len(set_elts) == 1:
-                    elt = elts[0]
-                elif set_elts == {'int', 'float'}:
-                    elt = 'float'
-                else:
-                    elt = 'object'
+                elt = elt_of_list(x)
 
             if elt in ['array', 'object', 'none']:
                 mjt = 'container'

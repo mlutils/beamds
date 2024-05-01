@@ -90,8 +90,7 @@ class MetaDispatcher(Processor):
         routes = self._routes
         if routes is None or len(routes) == 0:
             routes = [name for name, attr in inspect.getmembers(self.real_object)
-                      if type(name) is str and not name.startswith('_') and
-                      (inspect.ismethod(attr) or inspect.isfunction(attr))]
+                      if type(name) is str and not name.startswith('_') and inspect.isroutine(attr)]
         return routes
 
     @cached_property

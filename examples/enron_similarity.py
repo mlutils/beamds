@@ -1,4 +1,4 @@
-from functools import partial
+from functools import partial, cached_property
 
 import pandas as pd
 import spacy
@@ -7,10 +7,10 @@ import re
 from src.beam import resource, Timer, BeamData
 from src.beam.transformer import Transformer
 from src.beam import beam_logger as logger
+from src.beam.algorithm import Algorithm
 
 from src.beam.config import TransformerConfig, BeamParam
 from src.beam.similarity import SimilarityConfig, TFIDFConfig
-
 
 class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
 
@@ -36,11 +36,77 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('train-ratio', type=float, default=0.4, help='Train ratio for split_dataset'),
         BeamParam('val-ratio', type=float, default=0.3, help='Validation ratio for split_dataset'),
         BeamParam('gap-days', type=int, default=3, help='Gap of days between subsets for split_dataset'),
-        BeamParam('preprocess-body', type=bool, default=True, help='Preprocess body text'),
-        BeamParam('preprocess-subject', type=bool, default=True, help='Preprocess subject text (title)'),
+        BeamParam('preprocess-body', type=bool, default=False, help='Preprocess body text'),
+        BeamParam('preprocess-title', type=bool, default=False, help='Preprocess title text (subject)'),
         BeamParam('split-dataset', type=bool, default=False, help='Split the dataset'),
-        BeamParam('build-dataset', type=bool, default=True, help='Build the dataset'),
+        BeamParam('build-dataset', type=bool, default=False, help='Build the dataset'),
+        BeamParam('tfidf-similarity', type=bool, default=True, help='Analyse similarity with TFIDF'),
+        BeamParam('tokenizer', type=str, default="BAAI/bge-base-en-v1.5", help='Tokenizer model'),
+        BeamParam('tokenizer-chunksize', type=int, default=10000, help='Chunksize for tokenizer'),
     ]
+
+
+class TicketSimilarity(Algorithm):
+
+    @cached_property
+    def entity_remover(self):
+        return Transformer(self.hparams, func=replace_entity_over_series)
+
+    @cached_property
+    def root_path(self):
+        return resource(self.get_hparam('root-path'))
+
+    @cached_property
+    def dataset(self):
+        bd = BeamData.from_path(self.root_path.joinpath('dataset'))
+        bd.cache()
+        return bd
+
+    @cached_property
+    def metadata(self):
+        df = resource(self.get_hparam('path-to-data')).read(target='pandas')
+        return df
+
+    @cached_property
+    def nlp_model(self):
+        nlp = spacy.load(self.get_hparam('nlp-model'))
+        nlp.max_length = self.get_hparam('nlp-max-length')
+        return nlp
+
+    def preprocess_body(self):
+        self.entity_remover.transform(self.metadata['body'], nlp=self.nlp_model, transform_kwargs={
+            'store_path': self.root_path.joinpath('enron_mails_without_entities_body')})
+
+    def preprocess_title(self):
+        self.entity_remover.transform(self.metadata['subject'], nlp=self.nlp_model, transform_kwargs={
+            'store_path': self.root_path.joinpath('enron_mails_without_entities_title')})
+
+    def split_dataset(self):
+        split_dataset(self.metadata, self.root_path.joinpath('split_dataset'),
+                      train_ratio=self.get_hparam('train-ratio'),
+                      val_ratio=self.get_hparam('val-ratio'),
+                      gap_days=self.get_hparam('gap-days'))
+
+    def build_dataset(self):
+        build_dataset(self.root_path)
+
+    @cached_property
+    def tokenizer(self):
+        from transformers import AutoTokenizer
+        return AutoTokenizer.from_pretrained(self.get_hparam('tokenizer'))
+
+    def tokenize(self, x):
+        return self.tokenizer(x)['input_ids']
+
+    @cached_property
+    def tfidf_sim(self):
+        from src.beam.similarity import TFIDF
+        sim = TFIDF(preprocessor=self.tokenize, chunksize=self.get_hparam('tokenizer-chunksize'),
+                    n_workers=self.get_hparam('n_workers'))
+        return sim
+
+    def fit_tfidf(self):
+        self.tfidf_sim.add(self.dataset['x_train'].values)
 
 
 def split_dataset(df, output_path, train_ratio=0.4, val_ratio=0.3, gap_days=3):
@@ -198,14 +264,10 @@ def build_dataset(root_path, body_path=None, title_path=None, output_path=None):
     y_test = test['label'].values
 
     output_path = output_path or root_path.joinpath('dataset')
-    output_path.mkdir()
-    output_path.joinpath('x_train.parquet').write(x_train)
-    output_path.joinpath('x_val.parquet').write(x_val)
-    output_path.joinpath('x_test.parquet').write(x_test)
-
-    output_path.joinpath('y_train.pkl').write(y_train)
-    output_path.joinpath('y_val.pkl').write(y_val)
-    output_path.joinpath('y_test.pkl').write(y_test)
+    bd = BeamData(data={'x_train': x_train, 'x_val': x_val, 'x_test': x_test,
+                  'y_train': y_train, 'y_val': y_val, 'y_test': y_test},
+                  path=output_path, override=True)
+    bd.store()
 
     logger.info(f"Dataset built and saved to: {output_path}")
 
@@ -216,34 +278,27 @@ def main():
     # bd.cache()
 
     hparams = TicketSimilarityConfig()
-    root_path = resource(hparams.get('root-path'))
-
-    df = resource(hparams.get('path-to-data')).read(target='pandas')
-
-    nlp = spacy.load(hparams.get('nlp-model'))
-    nlp.max_length = hparams.get('nlp-max-length')
-
-    transformer = Transformer(hparams, func=replace_entity_over_series)
+    alg = TicketSimilarity(hparams=hparams)
 
     if hparams.get('preprocess-body'):
         with Timer(name='transform: replace_entity_over_series in body', logger=logger) as t:
-            transformer.transform(df['body'], nlp=nlp, transform_kwargs={
-                                            'store_path': root_path.joinpath('enron_mails_without_entities_body')})
+            alg.preprocess_body()
 
-    if hparams.get('preprocess-subject'):
+    if hparams.get('preprocess-title'):
         with Timer(name='transform: replace_entity_over_series in title', logger=logger) as t:
-            transformer.transform(df['subject'], nlp=nlp, transform_kwargs={
-                                            'store_path': root_path.joinpath('enron_mails_without_entities_title')})
+            alg.preprocess_title()
 
     if hparams.get('split-dataset'):
-        split_dataset(df,
-                      output_path=root_path.joinpath('split_dataset'),
-                      train_ratio=hparams.get('train-ratio'),
-                      val_ratio=hparams.get('val-ratio'),
-                      gap_days=hparams.get('gap-days'))
+        with Timer(name='split_dataset', logger=logger) as t:
+            alg.split_dataset()
 
     if hparams.get('build-dataset'):
-        build_dataset(root_path)
+        with Timer(name='build_dataset', logger=logger) as t:
+            alg.build_dataset()
+
+    if hparams.get('tfidf-similarity'):
+        with Timer(name='fit_tfidf', logger=logger) as t:
+            alg.fit_tfidf()
 
     logger.info('done enron_similarity example')
 
