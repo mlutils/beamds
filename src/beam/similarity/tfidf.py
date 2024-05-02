@@ -147,7 +147,7 @@ class TFIDF(BeamSimilarity):
 
     def __init__(self, *args, preprocessor=None, min_df=2, max_df=.95, max_features=None, use_idf=True,
                  smooth_idf=True, sublinear_tf=False, n_workers=0, mp_method='joblib', chunksize=None,
-                 n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
+                 use_dill=False, n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
                  metric='bm25', bm25_k1=1.5, bm25_b=0.75, bm25_epsilon=0.25, **kwargs):
 
         super().__init__(*args, min_df=min_df, max_df=max_df, max_features=max_features, use_idf=use_idf,
@@ -188,13 +188,14 @@ class TFIDF(BeamSimilarity):
         self.n_chunks = self.get_hparam('n_chunks', self.n_workers)
         self.chunksize = self.get_hparam('chunksize', None)
         mp_method = self.get_hparam('mp_method', mp_method)
+        use_dill = self.get_hparam('use_dill', use_dill)
 
         self.chunk_tf = ChunkTF(n_workers=self.n_workers, n_chunks=self.n_chunks, chunksize=self.chunksize,
-                                mp_method=mp_method,
+                                mp_method=mp_method, use_dill=use_dill,
                                 squeeze=False, reduce=False, sparse_framework=self.sparse_framework, device=self.device,
                                 preprocessor=self.preprocessor)
         self.chunk_df = ChunkDF(n_workers=self.n_workers, n_chunks=self.n_chunks, chunksize=self.chunksize,
-                                mp_method=mp_method,
+                                mp_method=mp_method, use_dill=use_dill,
                                 squeeze=False, reduce=False, preprocessor=self.preprocessor)
 
         self.preprocessor_transformer = Transformer(func=self.preprocessor, n_workers=self.n_workers,

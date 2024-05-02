@@ -66,7 +66,7 @@ class BeamAsync(BeamName):
 class BeamParallel(BeamName):
 
     def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam',
-                 reduce=False, reduce_dim=0, name=None, shuffle=False,
+                 reduce=False, reduce_dim=0, name=None, shuffle=False, use_dill=False,
                  **kwargs):
 
         super().__init__(name=name)
@@ -77,6 +77,7 @@ class BeamParallel(BeamName):
         self.reduce = reduce
         self.shuffle = shuffle
         self.reduce_dim = reduce_dim
+        self.use_dill = use_dill
         self.queue = []
         self.kwargs = kwargs
 
@@ -145,6 +146,13 @@ class BeamParallel(BeamName):
 
         if n_workers is None:
             n_workers = self.n_workers
+
+        from joblib.externals.loky import set_loky_pickler
+        if self.use_dill:
+            import dill
+            set_loky_pickler('dill')
+        else:
+            set_loky_pickler('pickle')
 
         from joblib import Parallel, delayed
 

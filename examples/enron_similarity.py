@@ -8,9 +8,28 @@ from src.beam import resource, Timer, BeamData
 from src.beam.transformer import Transformer
 from src.beam import beam_logger as logger
 from src.beam.algorithm import Algorithm
+from src.beam.utils import get_public_ip
 
 from src.beam.config import TransformerConfig, BeamParam
 from src.beam.similarity import SimilarityConfig, TFIDFConfig
+
+
+def get_paths():
+
+    ip = get_public_ip()
+
+    if ip.startswith('199'):
+        root_path = '/home/shared/data/results/enron/'
+        path_to_data = '/home/hackathon_2023/data/enron/emails.parquet'
+    else:
+        root_path = '/home/mlspeech/elads/data/enron/data/'
+        path_to_data = '/home/mlspeech/elads/data/enron/data/emails.parquet'
+
+    return root_path, path_to_data
+
+
+root_path, path_to_data = get_paths()
+
 
 class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
 
@@ -24,15 +43,14 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         'store_path': None,
         'store_suffix': '.parquet',
         'override': False,
+        'use_dill': True,
 
     }
     parameters = [
         BeamParam('nlp-model', type=str, default="en_core_web_sm", help='Spacy NLP model'),
         BeamParam('nlp-max-length', type=int, default=2000000, help='Spacy NLP max length'),
-        BeamParam('path-to-data', type=str, default='/home/hackathon_2023/data/enron/emails.parquet',
-                  help='Path to emails.parquet data'),
-        BeamParam('root-path', type=str, default='/home/shared/data/results/enron/',
-                  help='Root path to store results'),
+        BeamParam('path-to-data', type=str, default=path_to_data, help='Path to emails.parquet data'),
+        BeamParam('root-path', type=str, default=root_path, help='Root path to store results'),
         BeamParam('train-ratio', type=float, default=0.4, help='Train ratio for split_dataset'),
         BeamParam('val-ratio', type=float, default=0.3, help='Validation ratio for split_dataset'),
         BeamParam('gap-days', type=int, default=3, help='Gap of days between subsets for split_dataset'),
@@ -102,11 +120,15 @@ class TicketSimilarity(Algorithm):
     def tfidf_sim(self):
         from src.beam.similarity import TFIDF
         sim = TFIDF(preprocessor=self.tokenize, chunksize=self.get_hparam('tokenizer-chunksize'),
-                    n_workers=self.get_hparam('n_workers'))
+                    n_workers=self.get_hparam('n_workers'), use_dill=self.get_hparam('use_dill'))
         return sim
 
     def fit_tfidf(self):
-        self.tfidf_sim.add(self.dataset['x_train'].values)
+        from src.beam.similarity import TFIDF
+        sim = TFIDF(preprocessor=self.tokenize, chunksize=self.get_hparam('tokenizer-chunksize'),
+                    n_workers=self.get_hparam('n_workers'), use_dill=self.get_hparam('use_dill'))
+        sim.add(self.dataset['x_train'].values)
+        # self.tfidf_sim.add(self.dataset['x_train'].values)
 
 
 def split_dataset(df, output_path, train_ratio=0.4, val_ratio=0.3, gap_days=3):
@@ -143,21 +165,19 @@ def split_dataset(df, output_path, train_ratio=0.4, val_ratio=0.3, gap_days=3):
     test = df[df.index >= test_start_date]
 
     # Checking the split dates and sizes
-    logger.info("Training end date:", train_end_date)
-    logger.info("Validation start date:", val_start_date)
-    logger.info("Validation end date:", val_end_date)
-    logger.info("Test start date:", test_start_date)
+    logger.info(f"Training end date: {train_end_date}")
+    logger.info(f"Validation start date: {val_start_date}")
+    logger.info(f"Validation end date: {val_end_date}")
+    logger.info(f"Test start date: {test_start_date}")
 
-    logger.info("Training set size:", len(train))
-    logger.info("Validation set size:", len(validation))
-    logger.info("Test set size:", len(test))
+    logger.info(f"Training set size: {len(train)}")
+    logger.info(f"Validation set size: {len(validation)}")
+    logger.info(f"Test set size: {len(test)}")
 
     # Save the splits
-    resource(output_path).mkdir()
-    resource(output_path).joinpath('train.parquet').write(train)
-    resource(output_path).joinpath('validation.parquet').write(validation)
-    resource(output_path).joinpath('test.parquet').write(test)
-    resource(output_path).joinpath('labels.pkl').write(labels)
+    bd = BeamData(data={'train': train, 'validation': validation, 'test': test, 'labels': labels},
+                  path=output_path, override=True)
+    bd.store()
     logger.info(f"Splitting done. Data saved to: {output_path}")
 
 
@@ -240,10 +260,12 @@ def replace_entity_over_series(series, nlp=None):
 def build_dataset(root_path, body_path=None, title_path=None, output_path=None):
     root_path = resource(root_path)
 
-    splits_input_path = root_path.joinpath('split_dataset')
-    train = resource(splits_input_path).joinpath('train.parquet').read()
-    validation = resource(splits_input_path).joinpath('validation.parquet').read()
-    test = resource(splits_input_path).joinpath('test.parquet').read()
+    subsets = BeamData.from_path(root_path.joinpath('split_dataset'))
+    subsets.cache()
+
+    train = subsets['train'].values
+    validation = subsets['validation'].values
+    test = subsets['test'].values
 
     body_path = body_path or root_path.joinpath('enron_mails_without_entities_body')
     bd = BeamData.from_path(body_path)

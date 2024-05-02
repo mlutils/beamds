@@ -26,7 +26,7 @@ class Transformer(Processor):
     def __init__(self, *args, func=None, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
                  chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
-                 **kwargs):
+                 use_dill=False, **kwargs):
         """
 
         @param args:
@@ -68,7 +68,7 @@ class Transformer(Processor):
                                           mp_method=mp_method, squeeze=squeeze, reduce=reduce, reduce_dim=reduce_dim,
                                           store_chunk=store_chunk, transform_strategy=transform_strategy,
                                           split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
-                                          override=override, **kwargs)
+                                          override=override, use_dill=use_dill, **kwargs)
 
         self.func = func
         assert inspect.isroutine(func) or func is None, "The func argument must be a function."
@@ -93,6 +93,7 @@ class Transformer(Processor):
         self.store_chunk = self.hparams.store_chunk
         self.shuffle = self.hparams.shuffle
         self.override = self.hparams.override
+        self.use_dill = self.hparams.use_dill
 
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
@@ -231,6 +232,7 @@ class Transformer(Processor):
         parallel_kwargs = parallel_kwargs or {}
         n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
         mp_method = parallel_kwargs.pop('mp_method', self.mp_method)
+        use_dill = parallel_kwargs.pop('use_dill', self.use_dill)
 
         reduce_dim = self.reduce_dim
 
@@ -315,7 +317,8 @@ class Transformer(Processor):
                 store_path.mkdir(parents=True, exist_ok=True)
 
         queue = BeamParallel(n_workers=n_workers, func=None, method=mp_method, name=self.name,
-                             progressbar='beam', reduce=False, reduce_dim=reduce_dim, **parallel_kwargs)
+                             progressbar='beam', reduce=False, reduce_dim=reduce_dim, use_dill=use_dill,
+                             **parallel_kwargs)
 
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")

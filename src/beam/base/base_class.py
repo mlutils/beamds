@@ -1,3 +1,4 @@
+import inspect
 from argparse import Namespace
 from functools import cached_property
 
@@ -10,7 +11,7 @@ from ..config import BeamConfig
 
 class BeamBase(BeamName, metaclass=MetaBeamInit):
 
-    def __init__(self, *args, name=None, hparams=None, override_hparams=True, **kwargs):
+    def __init__(self, *args, name=None, hparams=None, **kwargs):
 
         super().__init__(name=name)
         self._init_is_done = False
@@ -26,8 +27,23 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         for k, v in kwargs.items():
             v_type = check_type(v)
             if v_type.major in ['scalar', 'none']:
-                if k not in self.hparams or override_hparams:
+                if k not in self.hparams or self._default_value(k) != v:
                     self.hparams[k] = v
+
+    @cached_property
+    def _signatures(self):
+        sigs = []
+        for c in self.__class__.mro():
+            sigs.append(inspect.signature(c.__init__))
+        return sigs
+
+    def _default_value(self, key):
+        default = None
+        for s in self._signatures:
+            if key in s.parameters:
+                default = s.parameters[key].default
+                break
+        return default
 
     def getattr(self, attr):
         raise AttributeError(f"Attribute {attr} not found")

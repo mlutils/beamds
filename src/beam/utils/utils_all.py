@@ -1157,3 +1157,4 @@ class LimitedSizeDictFactory:
 
     def __call__(self):
         return LimitedSizeDict(size_limit=self.size_limit, on_removal=self.on_removal)
+

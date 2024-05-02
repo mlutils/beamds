@@ -502,6 +502,7 @@ class TransformerConfig(CacheConfig):
         BeamParam('split_by', str, 'keys', 'The split strategy to use can be [keys|index|columns]'),
         BeamParam('store_suffix', str, None, 'The suffix to add to the stored file'),
         BeamParam('override', bool, False, 'Whether to override the stored file if it exists'),
+        BeamParam('use-dill', bool, False, 'Whether to use dill for serialization'),
     ]
 
 
