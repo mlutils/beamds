@@ -291,7 +291,7 @@ class TFIDF(BeamSimilarity):
     def transform(self, x: Union[List, List[List], BeamData], index: Union[None, Any] = None,
                   add_to_index: bool = False):
 
-        x, index = self.extract_data_and_index(x, index)
+        x, index = self.extract_data_and_index(x, index, convert_to=None)
         if add_to_index or self.index is None:
             self.add_index(x, index)
 
@@ -461,7 +461,9 @@ class TFIDF(BeamSimilarity):
 
     def search(self, q, k=1, **kwargs):
 
-        q = self.preprocess(q)
+        q_type = check_type(q)
+        if not q_type.major == 'container':
+            q = [q]
 
         if self.metric == 'bm25':
             scores = self.bm25(q, **kwargs)
@@ -478,6 +480,6 @@ class TFIDF(BeamSimilarity):
         return Similarities(index=self.get_index(I), distance=D, metric=self.metric, model='tfidf')
 
     @property
-    def exclude_pickle_attributes(self):
+    def state_attributes(self):
         return ['df', 'cf', 'n_docs', 'tf', 'index']
 

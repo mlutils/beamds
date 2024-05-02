@@ -8,6 +8,15 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def test_config():
+    from src.beam.config import TransformerConfig
+
+    hparams = TransformerConfig(chunksize=33333)
+    hparams2 = TransformerConfig(hparams, chunksize=44444)
+
+    print(hparams2)
+
+
 def test_transformer():
 
     from src.beam.transformer import Transformer
@@ -456,6 +465,8 @@ if __name__ == '__main__':
 
     # test_mlflow_path()
 
-    test_transformer()
+    # test_transformer()
+
+    test_config()
 
     print('done')

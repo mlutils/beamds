@@ -353,9 +353,9 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
         torch.backends.cudnn.benchmark = True
 
 
-def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
+def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0, x_type=None):
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
-    x_type = check_type(x, element=False)
+    x_type = x_type or check_type(x, element=False)
 
     # assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
 
@@ -371,7 +371,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             chunksize = l // n_chunks
 
         if n_chunks is None:
-            n_chunks = int(np.round(l / chunksize))
+            n_chunks = max(int(np.round(l / chunksize)), 1)
 
         if x_type.minor == 'tensor':
             for i, c in enumerate(torch.tensor_split(x, n_chunks, dim=dim)):
@@ -469,14 +469,14 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             yield i, c
 
 
-def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
-    x_type = check_type(x)
+def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0, x_type=None):
+    x_type = x_type or check_type(x)
 
     try:
 
         if dim is None:
             for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
-                                      squeeze=squeeze, dim=0):
+                                      squeeze=squeeze, dim=0, x_type=x_type):
                 yield k, c
 
         elif (x_type.major == 'container') and (x_type.minor == 'dict'):
@@ -509,7 +509,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
                 yield i, None
         else:
             for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
-                                      squeeze=squeeze, dim=dim):
+                                      squeeze=squeeze, dim=dim, x_type=x_type):
                 yield k, c
 
     except StopIteration:

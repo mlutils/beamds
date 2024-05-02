@@ -41,7 +41,9 @@ class BeamSimilarity(Processor):
             index = x.index
             x = x.values
 
-        if convert_to == 'numpy':
+        if convert_to is None:
+            pass
+        elif convert_to == 'numpy':
             x = as_numpy(x)
         elif convert_to == 'tensor':
             x = as_tensor(x)
@@ -86,7 +88,7 @@ class BeamSimilarity(Processor):
         return self.ntotal
 
     def save_state(self, path, ext=None, **kwargs):
-        state = {attr: getattr(self, attr) for attr in self.exclude_pickle_attributes}
+        state = {attr: getattr(self, attr) for attr in self.state_attributes}
         state['hparams'] = self.hparams
         bd = BeamData(state, path=path)
         bd.store(**kwargs)
@@ -94,7 +96,7 @@ class BeamSimilarity(Processor):
     def load_state(self, path, ext=None, **kwargs):
         bd = BeamData(path=path)
         state = bd.cache(**kwargs).values
-        for attr in self.exclude_pickle_attributes:
+        for attr in self.state_attributes:
             setattr(self, attr, state[attr])
 
     def get_index(self, index):

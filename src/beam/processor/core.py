@@ -26,7 +26,7 @@ class Processor(BeamBase):
         return self._llm
 
     @property
-    def exclude_pickle_attributes(self):
+    def state_attributes(self):
         '''
         return of list of class attributes that are used to save the state and are not part of the
         skeleton of the instance. override this function to add more attributes to the state and avoid pickling a large
@@ -40,7 +40,8 @@ class Processor(BeamBase):
 
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
-        state = {k: v for k, v in self.__dict__.items() if k not in self.exclude_pickle_attributes}
+        # this is a mislead name, as __getstate__ is used to get the skeleton of the instance and not the state
+        state = {k: v for k, v in self.__dict__.items() if k not in self.state_attributes}
         return state
 
     def __setstate__(self, state):
@@ -221,11 +222,11 @@ class Processor(BeamBase):
             state = path.read()
         elif has_beam_ds:
             state = BeamData.from_path(path=path)
-            state = state.cache()
+            state.cache()
         else:
             raise NotImplementedError
 
-        self.load_state_dict(state)
+        self.load_state_dict(state.values)
 
     def nlp(self, query, llm=None, ask_kwargs=None, **kwargs):
 

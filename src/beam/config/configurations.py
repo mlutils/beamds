@@ -490,7 +490,7 @@ class TransformerConfig(CacheConfig):
     parameters = [
         BeamParam('mp_method', str, 'joblib', 'The multiprocessing method to use'),
         BeamParam('n_chunks', int, None, 'The number of chunks to split the dataset'),
-        BeamParam('name', str, None, 'The name of the dataset', tags='tune'),
+        BeamParam('name', str, None, 'The name of the dataset'),
         BeamParam('store_path', str, None, 'The path to store the results'),
         BeamParam('partition', str, None, 'The partition to use for splitting the dataset'),
         BeamParam('chunksize', int, None, 'The chunksize to use for splitting the dataset'),

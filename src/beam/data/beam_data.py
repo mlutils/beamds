@@ -1454,6 +1454,8 @@ class BeamData(BeamName):
         else:
             return BeamData(data=data, index=self.index, label=self.label)
 
+        return self
+
     def reset_metadata(self, *args, avoid_reset=None):
 
         if avoid_reset is None:

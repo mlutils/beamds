@@ -156,7 +156,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
             raise ValueError
 
     for ar in args_dict:
-        kwargs = {**kwargs, **ar}
+        kwargs = {**ar, **kwargs}
 
     args_str = re.split(r"\s+", ' '.join([ar.strip() for ar in args_str]))
 

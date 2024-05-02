@@ -21,14 +21,16 @@ def get_paths():
     if ip.startswith('199'):
         root_path = '/home/shared/data/results/enron/'
         path_to_data = '/home/hackathon_2023/data/enron/emails.parquet'
+        model_state_path = '/home/shared/data/results/enron/models/model_state'
     else:
         root_path = '/home/mlspeech/elads/data/enron/data/'
         path_to_data = '/home/mlspeech/elads/data/enron/data/emails.parquet'
+        model_state_path = '/home/mlspeech/elads/data/enron/models/model_state'
 
-    return root_path, path_to_data
+    return root_path, path_to_data, model_state_path
 
 
-root_path, path_to_data = get_paths()
+root_path, path_to_data, model_state_path = get_paths()
 
 
 class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
@@ -43,8 +45,6 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         'store_path': None,
         'store_suffix': '.parquet',
         'override': False,
-        'use_dill': True,
-
     }
     parameters = [
         BeamParam('nlp-model', type=str, default="en_core_web_sm", help='Spacy NLP model'),
@@ -58,9 +58,13 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('preprocess-title', type=bool, default=False, help='Preprocess title text (subject)'),
         BeamParam('split-dataset', type=bool, default=False, help='Split the dataset'),
         BeamParam('build-dataset', type=bool, default=False, help='Build the dataset'),
-        BeamParam('tfidf-similarity', type=bool, default=True, help='Analyse similarity with TFIDF'),
+        BeamParam('calc-tfidf', type=bool, default=True, help='Calculate TFIDF training vectors'),
         BeamParam('tokenizer', type=str, default="BAAI/bge-base-en-v1.5", help='Tokenizer model'),
         BeamParam('tokenizer-chunksize', type=int, default=10000, help='Chunksize for tokenizer'),
+        BeamParam('reload-state', bool, False, 'Load saved model'),
+        BeamParam('save-state', bool, True, 'Save model state'),
+        BeamParam('model-state-path', str, model_state_path, 'Path to saved model state'),
+
     ]
 
 
@@ -119,16 +123,34 @@ class TicketSimilarity(Algorithm):
     @cached_property
     def tfidf_sim(self):
         from src.beam.similarity import TFIDF
-        sim = TFIDF(preprocessor=self.tokenize, chunksize=self.get_hparam('tokenizer-chunksize'),
-                    n_workers=self.get_hparam('n_workers'), use_dill=self.get_hparam('use_dill'))
+        # for now fix the metric as it is the only supported metric in tfidf sim
+        sim = TFIDF(preprocessor=self.tokenize, metric='bm25',
+                    chunksize=self.get_hparam('tokenizer-chunksize'),
+                    hparams=self.hparams)
         return sim
 
     def fit_tfidf(self):
-        from src.beam.similarity import TFIDF
-        sim = TFIDF(preprocessor=self.tokenize, chunksize=self.get_hparam('tokenizer-chunksize'),
-                    n_workers=self.get_hparam('n_workers'), use_dill=self.get_hparam('use_dill'))
-        sim.add(self.dataset['x_train'].values)
-        # self.tfidf_sim.add(self.dataset['x_train'].values)
+        self.tfidf_sim.fit_transform(self.dataset['x_train'].values)
+
+    def search_tfidf(self, query, k=5):
+        return self.tfidf_sim.search(query, k=k)
+
+    def save_state(self, path, ext=None):
+
+        path = resource(path)
+        super().save_state(path.joinpath('internal_state'), ext=ext)
+        self.tfidf_sim.save_state(path.joinpath('tfidf_sim'))
+
+    def load_state(self, path):
+
+        path = resource(path)
+        super().load_state(path.joinpath('internal_state'))
+        self.tfidf_sim.load_state(path.joinpath('tfidf_sim'))
+
+    @property
+    def state_attributes(self):
+        return ['nlp_model', 'entity_remover', 'root_path',
+                'dataset', 'metadata', 'nlp_model', 'tokenizer', 'tfidf_sim'] + super().state_attributes
 
 
 def split_dataset(df, output_path, train_ratio=0.4, val_ratio=0.3, gap_days=3):
@@ -301,6 +323,9 @@ def main():
 
     hparams = TicketSimilarityConfig()
     alg = TicketSimilarity(hparams=hparams)
+    if hparams.get('reload-state') and hparams.get('model-state-path') is not None:
+        logger.info(f"Loading state from {hparams.get('model-state-path')}")
+        alg.load_state(hparams.get('model-state-path'))
 
     if hparams.get('preprocess-body'):
         with Timer(name='transform: replace_entity_over_series in body', logger=logger) as t:
@@ -318,9 +343,20 @@ def main():
         with Timer(name='build_dataset', logger=logger) as t:
             alg.build_dataset()
 
-    if hparams.get('tfidf-similarity'):
+    if hparams.get('calc-tfidf'):
         with Timer(name='fit_tfidf', logger=logger) as t:
             alg.fit_tfidf()
+
+    if hparams.get('save-state') and hparams.get('model-state-path') is not None:
+        logger.info(f"Saving state to {hparams.get('model-state-path')}")
+        alg.save_state(hparams.get('model-state-path'))
+
+    alg.tfidf_sim.metric = 'bm25'
+    query = "I need to know about the project"
+    results = alg.search_tfidf(query, k=5)
+
+    logger.info(f"Results for query: {query}")
+    logger.info(results)
 
     logger.info('done enron_similarity example')
 
