@@ -15,7 +15,9 @@ from functools import partial
 import itertools
 import scipy
 import re
-from .utils_all import check_type, check_minor_type, slice_array, is_arange, DataObject, is_container
+from .utils_all import (check_type, check_minor_type, slice_array, is_arange, DataObject, is_container,
+                        jupyter_like_traceback)
+from ..type import BeamType
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -838,8 +840,8 @@ def recursive_batch(x, index):
 
 
 @recursive
-def recursive_len(x):
-    x_type = check_type(x)
+def recursive_len(x, data_array_only=False):
+    x_type = BeamType.check(x)
 
     if x_type.minor == 'scipy_sparse':
         return x.shape[0]
@@ -847,11 +849,17 @@ def recursive_len(x):
     if x_type.element == 'none':
         return 0
 
-    if hasattr(x, '__len__'):
-        try:
+    if data_array_only:
+        if x_type.is_data_array:
             return len(x)
-        except TypeError:
-            return 1
+        return 1
+    else:
+        if hasattr(x, '__len__'):
+            try:
+                return len(x)
+            except TypeError:
+                print(jupyter_like_traceback())
+                return 1
 
     if x is None:
         return 0
@@ -1089,7 +1097,10 @@ def is_chunk(path, chunk_pattern='_chunk'):
     return path.is_file() and bool(re.search(rf'\d{6}{chunk_pattern}\.', str(path.name)))
 
 
-def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True):
+def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True, depth=-1):
+
+    if depth == 0:
+        return [x]
 
     if x_type is None:
         x_type = check_type(x)
@@ -1097,7 +1108,7 @@ def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True)
     if x_type.major == 'container':
         l = []
         for i, xi in iter_container(x):
-            l.extend(recursive_flatten(xi, flat_array=flat_array, _root=False))
+            l.extend(recursive_flatten(xi, flat_array=flat_array, _root=False, tolist=tolist, depth=depth-1))
         return l
     else:
         if _root:

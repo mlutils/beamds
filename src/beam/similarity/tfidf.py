@@ -288,6 +288,16 @@ class TFIDF(BeamSimilarity):
 
         return scores
 
+    def as_container(self, x):
+        x_type = check_type(x)
+        if x_type.element == 'str':
+            if not x_type.major == 'array':
+                x = [x]
+        else:
+            if not x_type.major == 'container':
+                x = [x]
+        return x
+
     def transform(self, x: Union[List, List[List], BeamData], index: Union[None, Any] = None,
                   add_to_index: bool = False):
 
@@ -295,9 +305,7 @@ class TFIDF(BeamSimilarity):
         if add_to_index or self.index is None:
             self.add_index(x, index)
 
-        x_type = check_type(x)
-        if not x_type.major == 'container':
-            x = [x]
+        x = self.as_container(x)
 
         tf, tfidf = self.tf_and_tfidf(x, scheme='raw_counts')
         if self.tf is None:

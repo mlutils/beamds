@@ -12,6 +12,7 @@ from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
 from ..meta import BeamName
+from ..type import BeamType
 from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
                      collate_chunks, recursive_flatten, recursive_flatten_with_keys, recursive_device,
                      container_len, recursive_len, is_arange, recursive_size, divide_chunks,
@@ -537,14 +538,34 @@ class BeamData(BeamName):
                 if not len(filtered_data):
                     self._info = None
                     return self._info
-                fold_index = np.concatenate([np.arange(len(d)) if hasattr(d, '__len__') else np.array([0]) for d in filtered_data])
-                fold = np.concatenate([np.full(len(d), k) if hasattr(d, '__len__')
-                                       else np.array([k]) for k, d in enumerate(filtered_data)])
 
+                # fold_index = np.concatenate([np.arange(len(d)) if hasattr(d, '__len__')
+                #                              else np.array([0]) for d in filtered_data])
+                # fold = np.concatenate([np.full(len(d), k) if hasattr(d, '__len__')
+                #                        else np.array([k]) for k, d in enumerate(filtered_data)])
+
+                fold_index = []
+                fold = []
+                lengths = []
+                for k, d in enumerate(filtered_data):
+                    if hasattr(d, '__len__') and BeamType.check(d, major=False, minor=True, element=False).is_data_array:
+                        fold_index.append(np.arange(len(d)))
+                        fold.append(np.full(len(d), k))
+                        lengths.append(len(d))
+                    else:
+                        fold_index.append(np.array([0]))
+                        fold.append(np.array([k]))
+                        lengths.append(1)
+
+                fold_index = np.concatenate(fold_index)
+                fold = np.concatenate(fold)
+                lengths = np.array(lengths)
                 # still not sure if we really need this column. if so, it should be fixed
                 # fold_key = np.concatenate([np.full(len(d), k) for k, d in self.flatten_items.items()])
-                lengths = np.array([len(d) if hasattr(d, '__len__') else 1
-                                    for d in self.flatten_data])
+
+                # lengths = np.array([len(d) if hasattr(d, '__len__') else 1
+                #                     for d in self.flatten_data])
+
                 offset = np.cumsum(lengths, axis=0) - lengths
                 offset = offset[fold] + fold_index
 
@@ -558,6 +579,7 @@ class BeamData(BeamName):
                 # it is assumed that if orientation is in ['columns', 'simple'], then _index is a single array
                 index = np.concatenate([as_numpy(i) for i in recursive_flatten([self._index])])
             else:
+                # assert len(self) == len(offset)
                 index = np.arange(len(self))
 
             if self._label is not None:
@@ -573,7 +595,19 @@ class BeamData(BeamName):
             if self._label is not None:
                 info['label'] = label
 
-            self._info = pd.DataFrame(info, index=index)
+            try:
+                self._info = pd.DataFrame(info, index=index)
+            except Exception as e:
+                if self.orientation == 'packed':
+                    logger.warning(f"Error creating info DataFrame: {e}, returning simplified version")
+                    self._len = len(self.data)
+                    self._info = pd.DataFrame({'fold': np.zeros(self._len, dtype=int),
+                                               'fold_index': np.arange(self._len),
+                                               'offset': np.arange(self._len),
+                                               'map': np.arange(self._len)},
+                                              index=np.arange(self._len))
+                else:
+                    raise e
             return self._info
 
         self._info = None
@@ -668,17 +702,22 @@ class BeamData(BeamName):
         if self._len is not None:
             return self._len
 
+        if self._info is not None:
+            self._len = len(self._info)
+            return self._len
+
         if self.is_stored and self._conf is not None:
             self._len = self._conf['len']
             return self._len
 
         if self.is_cached:
             if self.orientation == 'columns':
-                self._len = container_len(self.data)
+                _len = container_len(self.data)
             else:
-                self._len = recursive_len(self.flatten_data)
-                if type(self._len) is list:
-                    self._len = sum(self._len)
+                _len = recursive_len(self.flatten_data, data_array_only=True)
+                if type(_len) is not int:
+                    _len = sum(recursive_flatten(_len, flat_array=True))
+            self._len = _len
             return self._len
 
         self._len = None
@@ -1088,7 +1127,10 @@ class BeamData(BeamName):
             elif data_type.minor == 'scipy_sparse':
                 priority = ['scipy_npz', '.pkl']
             elif data_type.minor == 'tensor':
-                priority = ['.pt']
+                if data.is_sparse_csr:
+                    priority = ['.pkl']
+                else:
+                    priority = ['.pt']
             else:
                 priority = ['.pkl']
 

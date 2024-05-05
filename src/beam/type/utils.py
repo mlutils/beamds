@@ -150,16 +150,22 @@ def _check_type(x, minor=True, element=True):
         elt = check_element_type(x) if element else 'na'
 
     elif isinstance(x, dict):
-        mjt = 'container'
-        mit = 'dict'
 
-        if element:
-            if len(x):
-                elt = check_element_type(next(iter(x.values())))
-            else:
-                elt = 'empty'
+        if isinstance(x, Counter):
+            mjt = 'counter'
+            mit = 'counter'
+            elt = 'counter'
         else:
-            elt = 'na'
+            mjt = 'container'
+            mit = 'dict'
+
+            if element:
+                if len(x):
+                    elt = check_element_type(next(iter(x.values())))
+                else:
+                    elt = 'empty'
+            else:
+                elt = 'na'
 
     elif x is None:
         mjt = 'none'
@@ -170,11 +176,6 @@ def _check_type(x, minor=True, element=True):
         mjt = 'slice'
         mit = 'slice'
         elt = 'slice'
-
-    elif isinstance(x, Counter):
-        mjt = 'counter'
-        mit = 'counter'
-        elt = 'counter'
 
     else:
 

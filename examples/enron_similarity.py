@@ -58,12 +58,17 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('preprocess-title', type=bool, default=False, help='Preprocess title text (subject)'),
         BeamParam('split-dataset', type=bool, default=False, help='Split the dataset'),
         BeamParam('build-dataset', type=bool, default=False, help='Build the dataset'),
-        BeamParam('calc-tfidf', type=bool, default=True, help='Calculate TFIDF training vectors'),
+        BeamParam('calc-tfidf', type=bool, default=False, help='Calculate TFIDF training vectors'),
+        BeamParam('calc-dense', type=bool, default=True, help='Calculate Dense training vectors'),
         BeamParam('tokenizer', type=str, default="BAAI/bge-base-en-v1.5", help='Tokenizer model'),
+        BeamParam('dense-model-path', type=str,
+                  default="BAAI/bge-base-en-v1.5", help='Dense model for text similarity'),
+        BeamParam('dense_model_device', type=str, default='cuda', help='Device for dense model'),
         BeamParam('tokenizer-chunksize', type=int, default=10000, help='Chunksize for tokenizer'),
-        BeamParam('reload-state', bool, False, 'Load saved model'),
+        BeamParam('reload-state', bool, True, 'Load saved model'),
         BeamParam('save-state', bool, True, 'Save model state'),
         BeamParam('model-state-path', str, model_state_path, 'Path to saved model state'),
+        BeamParam('batch_size', int, 32, 'Batch size for dense model'),
 
     ]
 
@@ -110,7 +115,13 @@ class TicketSimilarity(Algorithm):
                       gap_days=self.get_hparam('gap-days'))
 
     def build_dataset(self):
-        build_dataset(self.root_path)
+        build_dataset(self.subsets, self.root_path)
+
+    @cached_property
+    def subsets(self):
+        subsets = BeamData.from_path(self.root_path.joinpath('split_dataset'))
+        subsets.cache()
+        return subsets
 
     @cached_property
     def tokenizer(self):
@@ -129,23 +140,45 @@ class TicketSimilarity(Algorithm):
                     hparams=self.hparams)
         return sim
 
+    @cached_property
+    def dense_sim(self):
+        from src.beam.similarity import TextSimilarity
+        sim = TextSimilarity(hparams=self.hparams)
+        return sim
+
     def fit_tfidf(self):
-        self.tfidf_sim.fit_transform(self.dataset['x_train'].values)
+        self.tfidf_sim.fit_transform(self.dataset['x_train'].values,
+                                     index=self.subsets['train'].values.index)
+
+    def fit_dense(self):
+        self.dense_sim.add(self.dataset['x_train'].values,
+                                     index=self.subsets['train'].values.index)
 
     def search_tfidf(self, query, k=5):
         return self.tfidf_sim.search(query, k=k)
+
+    def search_dense(self, query, k=5):
+        return self.dense_sim.search(query, k=k)
 
     def save_state(self, path, ext=None):
 
         path = resource(path)
         super().save_state(path.joinpath('internal_state'), ext=ext)
         self.tfidf_sim.save_state(path.joinpath('tfidf_sim'))
+        self.dense_sim.save_state(path.joinpath('dense_sim'))
 
     def load_state(self, path):
 
         path = resource(path)
         super().load_state(path.joinpath('internal_state'))
-        self.tfidf_sim.load_state(path.joinpath('tfidf_sim'))
+        try:
+            self.tfidf_sim.load_state(path.joinpath('tfidf_sim'))
+        except FileNotFoundError:
+            logger.warning("TFIDF model not found")
+        try:
+            self.dense_sim.load_state(path.joinpath('dense_sim'))
+        except FileNotFoundError:
+            logger.warning("Dense model not found")
 
     @property
     def state_attributes(self):
@@ -279,11 +312,8 @@ def replace_entity_over_series(series, nlp=None):
     return series.apply(func)
 
 
-def build_dataset(root_path, body_path=None, title_path=None, output_path=None):
+def build_dataset(subsets, root_path, body_path=None, title_path=None, output_path=None):
     root_path = resource(root_path)
-
-    subsets = BeamData.from_path(root_path.joinpath('split_dataset'))
-    subsets.cache()
 
     train = subsets['train'].values
     validation = subsets['validation'].values
@@ -347,6 +377,10 @@ def main():
         with Timer(name='fit_tfidf', logger=logger) as t:
             alg.fit_tfidf()
 
+    if hparams.get('calc-dense'):
+        with Timer(name='fit_dense', logger=logger) as t:
+            alg.fit_dense()
+
     if hparams.get('save-state') and hparams.get('model-state-path') is not None:
         logger.info(f"Saving state to {hparams.get('model-state-path')}")
         alg.save_state(hparams.get('model-state-path'))
@@ -355,8 +389,18 @@ def main():
     query = "I need to know about the project"
     results = alg.search_tfidf(query, k=5)
 
-    logger.info(f"Results for query: {query}")
+    logger.info(f"TFIDF Results for query: {query}")
     logger.info(results)
+
+    for i in results.index:
+        logger.info(alg.subsets['train'].iloc[i]['body'])
+
+    results = alg.search_dense(query, k=5)
+    logger.info(f"Dense Results for query: {query}")
+    logger.info(results)
+
+    for i in results.index:
+        logger.info(alg.subsets['train'].iloc[i]['body'])
 
     logger.info('done enron_similarity example')
 

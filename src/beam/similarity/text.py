@@ -74,7 +74,7 @@ class TextSimilarity(DenseSimilarity):
 
     def add(self, x, index=None, **kwargs):
 
-        x, index = self.extract_data_and_index(x, index)
+        x, index = self.extract_data_and_index(x, index, convert_to=None)
         dense_vectors = self.encode(x)
         super().add(dense_vectors, index)
 
@@ -84,7 +84,7 @@ class TextSimilarity(DenseSimilarity):
 
     def search(self, x: List[str], k=1):
 
-        x, _ = self.extract_data_and_index(x)
+        x, _ = self.extract_data_and_index(x, convert_to=None)
         dense_vectors = self.encode(x)
         similarities = super().search(dense_vectors, k)
         return similarities
