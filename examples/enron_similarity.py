@@ -39,12 +39,13 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
 
     defaults = {
         'chunksize': 1000,
-        'n_workers': 40,
+        'n_workers': 1,
         'mp_method': 'apply_async',
         'store_chunk': True,
         'store_path': None,
         'store_suffix': '.parquet',
         'override': False,
+        'sparse_framework': 'scipy',
     }
     parameters = [
         BeamParam('nlp-model', type=str, default="en_core_web_sm", help='Spacy NLP model'),
@@ -58,14 +59,14 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('preprocess-title', type=bool, default=False, help='Preprocess title text (subject)'),
         BeamParam('split-dataset', type=bool, default=False, help='Split the dataset'),
         BeamParam('build-dataset', type=bool, default=False, help='Build the dataset'),
-        BeamParam('calc-tfidf', type=bool, default=False, help='Calculate TFIDF training vectors'),
+        BeamParam('calc-tfidf', type=bool, default=True, help='Calculate TFIDF training vectors'),
         BeamParam('calc-dense', type=bool, default=True, help='Calculate Dense training vectors'),
         BeamParam('tokenizer', type=str, default="BAAI/bge-base-en-v1.5", help='Tokenizer model'),
         BeamParam('dense-model-path', type=str,
                   default="BAAI/bge-base-en-v1.5", help='Dense model for text similarity'),
         BeamParam('dense_model_device', type=str, default='cuda', help='Device for dense model'),
         BeamParam('tokenizer-chunksize', type=int, default=10000, help='Chunksize for tokenizer'),
-        BeamParam('reload-state', bool, True, 'Load saved model'),
+        BeamParam('reload-state', bool, False, 'Load saved model'),
         BeamParam('save-state', bool, True, 'Save model state'),
         BeamParam('model-state-path', str, model_state_path, 'Path to saved model state'),
         BeamParam('batch_size', int, 32, 'Batch size for dense model'),
@@ -427,9 +428,8 @@ def main():
     logger.info(f"Dense Results for query: {query}")
     logger.info(results)
 
-    for i in results.index:
-        logger.info(alg.subsets['train'].iloc[i]['body'])
-
+    for i in results.index[0]:
+        logger.info(alg.subsets['train'].iloc[i].values['body'])
     logger.info('done enron_similarity example')
 
 

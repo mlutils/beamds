@@ -323,7 +323,7 @@ class TFIDF(BeamSimilarity):
         self.cf = Counter()
         self.n_docs = 0
         self.tf = None
-        self.index = None
+        self.index = np.array([])
         self._is_trained = False
         self.clear_cache('idf', 'tokens', 'n_tokens', 'avg_doc_len', 'idf_bm25', 'doc_len', 'doc_len_sparse',
                          'max_token')
