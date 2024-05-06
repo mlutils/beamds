@@ -1,11 +1,20 @@
 import os
 import sys
 import time
+from collections import Counter
 
 import torch
 import numpy as np
 from src.beam import resource
 from beam import beam_logger as logger
+
+
+def test_recursive_len():
+    from src.beam.utils import recursive_len
+    # c = Counter({'a': 1, 'b': 2})
+    c = {'a': 1, 'b': 2}
+    # c = {'a': 1, 'b': 2, 'c': np.random.randn(10)}
+    print(recursive_len([c]))
 
 
 def test_config():
@@ -467,6 +476,8 @@ if __name__ == '__main__':
 
     # test_transformer()
 
-    test_config()
+    # test_config()
+
+    test_recursive_len()
 
     print('done')

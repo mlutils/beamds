@@ -32,7 +32,7 @@ class BeamSimilarity(Processor):
         return self._is_trained
 
     def reset(self):
-        self.index = None
+        self.index = np.array([])
         self._is_trained = False
 
     @staticmethod
@@ -104,7 +104,7 @@ class BeamSimilarity(Processor):
 
     def add_index(self, x, index=None):
 
-        if self.index is None:
+        if not len(self.index):
             if index is None:
                 index = np.arange(len(x))
             else:

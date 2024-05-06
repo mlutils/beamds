@@ -4,7 +4,6 @@ import faiss
 import numpy as np
 from functools import cached_property
 
-from ..data import BeamData
 from ..logger import beam_logger as logger
 from ..path import beam_path, local_copy
 from ..utils import pretty_format_number, as_numpy, check_type, as_tensor, beam_device
@@ -140,9 +139,9 @@ class DenseSimilarity(BeamSimilarity):
             raise Exception
 
         self.vector_store = vector_store
-        self.index = None
-        if vector_store.ntotal and self.index is None:
-            self.index = BeamData(data=torch.arange(vector_store.ntotal, device=inference_device))
+        self.index = np.array([])
+        if vector_store.ntotal > 0:
+            self.index = np.arange(vector_store.ntotal)
 
         self.inference_device = inference_device
 

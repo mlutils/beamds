@@ -73,7 +73,35 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
     ]
 
 
-class TicketSimilarity(Algorithm):
+class GroupExpansionAlgorithm(Algorithm):
+
+    @cached_property
+    def base_classifier(self):
+        from sklearn.ensemble import RandomForestClassifier
+        alg = RandomForestClassifier(n_estimators=100)
+        return alg
+
+    @cached_property
+    def pu_classifier(self):
+        from pulearn import BaggingPuClassifier
+        alg = BaggingPuClassifier(
+            base_estimator=self.base_classifier, n_estimators=15)
+        return alg
+
+    def expand(self, group):
+        raise NotImplementedError
+
+    def data_of_index(self, index):
+        raise NotImplementedError
+
+    def predict(self, group):
+        candidates = self.expand(group)
+
+        x_positives = self.data_of_index(group)
+        x_unlabeled = self.data_of_index(candidates)
+
+
+class TicketSimilarity(GroupExpansionAlgorithm):
 
     @cached_property
     def entity_remover(self):
@@ -151,8 +179,8 @@ class TicketSimilarity(Algorithm):
                                      index=self.subsets['train'].values.index)
 
     def fit_dense(self):
-        self.dense_sim.add(self.dataset['x_train'].values,
-                                     index=self.subsets['train'].values.index)
+        self.dense_sim.add(self.dataset['x_train'].values[:100],
+                                     index=self.subsets['train'].values.index[:100])
 
     def search_tfidf(self, query, k=5):
         return self.tfidf_sim.search(query, k=k)
@@ -392,8 +420,8 @@ def main():
     logger.info(f"TFIDF Results for query: {query}")
     logger.info(results)
 
-    for i in results.index:
-        logger.info(alg.subsets['train'].iloc[i]['body'])
+    for i in results.index[0]:
+        logger.info(alg.subsets['train'].iloc[i].values['body'])
 
     results = alg.search_dense(query, k=5)
     logger.info(f"Dense Results for query: {query}")

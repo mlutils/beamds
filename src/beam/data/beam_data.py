@@ -595,19 +595,22 @@ class BeamData(BeamName):
             if self._label is not None:
                 info['label'] = label
 
-            try:
-                self._info = pd.DataFrame(info, index=index)
-            except Exception as e:
-                if self.orientation == 'packed':
-                    logger.warning(f"Error creating info DataFrame: {e}, returning simplified version")
-                    self._len = len(self.data)
-                    self._info = pd.DataFrame({'fold': np.zeros(self._len, dtype=int),
-                                               'fold_index': np.arange(self._len),
-                                               'offset': np.arange(self._len),
-                                               'map': np.arange(self._len)},
-                                              index=np.arange(self._len))
-                else:
-                    raise e
+            self._info = pd.DataFrame(info, index=index)
+
+            # try:
+            #     self._info = pd.DataFrame(info, index=index)
+            # except Exception as e:
+            #     if self.orientation == 'packed':
+            #         logger.warning(f"Error creating info DataFrame: {e}, returning simplified version")
+            #         self._len = len(self.data)
+            #         self._info = pd.DataFrame({'fold': np.zeros(self._len, dtype=int),
+            #                                    'fold_index': np.arange(self._len),
+            #                                    'offset': np.arange(self._len),
+            #                                    'map': np.arange(self._len)},
+            #                                   index=np.arange(self._len))
+            #     else:
+            #         raise e
+
             return self._info
 
         self._info = None
@@ -714,9 +717,10 @@ class BeamData(BeamName):
             if self.orientation == 'columns':
                 _len = container_len(self.data)
             else:
-                _len = recursive_len(self.flatten_data, data_array_only=True)
-                if type(_len) is not int:
-                    _len = sum(recursive_flatten(_len, flat_array=True))
+
+                _len = recursive_len(self.data, data_array_only=True)
+                _len = sum(recursive_flatten([_len], flat_array=True))
+
             self._len = _len
             return self._len
 

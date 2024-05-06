@@ -49,7 +49,12 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
         elif stop < 0:
             stop = l + stop
 
+        if sliced is not None:
+            return sliced[start:stop:step]
         return f(start, stop, step)
+
+    if sliced is not None:
+        return sliced[s]
     return s
 
 

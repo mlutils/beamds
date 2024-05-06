@@ -31,9 +31,10 @@ from .lazy_importer import lazy_importer as lzi
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
 
 
-def check_element_type(x):
+def check_element_type(x, minor=None):
 
-    minor = check_minor_type(x)
+    if minor is None:
+        minor = check_minor_type(x)
     unknown = (minor == 'other')
 
     if not unknown and not np.isscalar(x) and (has_torch and not (torch.is_tensor(x) and (not len(x.shape)))):
@@ -147,7 +148,7 @@ def _check_type(x, minor=True, element=True):
                 mit = check_minor_type(x)
         else:
             mit = 'na'
-        elt = check_element_type(x) if element else 'na'
+        elt = check_element_type(x, minor=mit if mit != 'na' else None) if element else 'na'
 
     elif isinstance(x, dict):
 
@@ -219,6 +220,8 @@ def _check_type(x, minor=True, element=True):
 def is_container(x):
 
     if isinstance(x, dict):
+        if isinstance(x, Counter):
+            return False
         return True
     if isinstance(x, list) or isinstance(x, tuple):
 
