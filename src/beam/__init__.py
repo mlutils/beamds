@@ -50,5 +50,5 @@ from ._version import __version__
 from .resource import resource
 
 from .config import KeysConfig
-beam_key.set_hparams(KeysConfig(silent=True, strict=True))
+beam_key.set_hparams(KeysConfig(silent=True, strict=True, load_config_files=False))
 

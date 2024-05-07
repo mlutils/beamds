@@ -23,8 +23,6 @@ from ..type import BeamType
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
     if isinstance(s, slice):
 
-        f = torch.arange if arr_type == 'tensor' else np.arange
-
         if s == slice(None):
             if sliced is not None:
                 return sliced
@@ -32,6 +30,8 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
                 return f(l)
             else:
                 return ValueError(f"Cannot slice: {s} without length info")
+
+        l = l or len(sliced) if sliced is not None else 0
 
         step = s.step
         if step is None:
@@ -50,11 +50,13 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
             stop = l + stop
 
         if sliced is not None:
-            return sliced[start:stop:step]
+            return slice_array(sliced, slice(start, stop, step))
+
+        f = torch.arange if arr_type == 'tensor' else np.arange
         return f(start, stop, step)
 
     if sliced is not None:
-        return sliced[s]
+        return slice_array(sliced, s)
     return s
 
 

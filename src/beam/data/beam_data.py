@@ -647,15 +647,6 @@ class BeamData(BeamName):
     def label_type(self):
         return check_type(self.label)
 
-    @property
-    def index_mapper(self):
-
-        info = self.info
-        if 'map' in info.columns:
-            return info['map']
-
-        return None
-
     @staticmethod
     def normalize_key(key):
         if type(key) is tuple:
@@ -1523,14 +1514,11 @@ class BeamData(BeamName):
 
     def inverse_map(self, ind):
 
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        ind = slice_to_index(ind, sliced=self.index)
 
         index_type = check_type(ind)
         if index_type.major == 'scalar':
             ind = [ind]
-
-        if self.index_mapper is not None:
-            ind = self.index_mapper.loc[ind].values
 
         return ind
 
@@ -1561,12 +1549,10 @@ class BeamData(BeamName):
         return self.__getitem__((key, ))
 
     def _loc(self, ind):
-        ind = self.inverse_map(ind)
         return self.slice_index(ind)
 
     def _iloc(self, ind):
-
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        ind = slice_to_index(ind, sliced=self.index)
         return self.slice_index(ind)
 
     def slice_data(self, index):

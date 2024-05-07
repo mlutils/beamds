@@ -26,7 +26,8 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
     parameters = []
     defaults = {}
 
-    def __init__(self, *args, config=None, tags=None, return_defaults=False, silent=False, strict=False, **kwargs):
+    def __init__(self, *args, config=None, tags=None, return_defaults=False, silent=False,
+                 strict=False, load_config_files=True, **kwargs):
 
         self._init_is_done = False
 
@@ -71,7 +72,8 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
                 parser = self.update_parser(parser, defaults=d, parameters=h, source=ti.__name__)
 
             config, more_tags = _beam_arguments(parser, *args, return_defaults=return_defaults,
-                                                return_tags=True, silent=silent, strict=strict, **kwargs)
+                                                return_tags=True, silent=silent,
+                                                strict=strict, load_config_files=load_config_files, **kwargs)
 
             for k, v in more_tags.items():
                 tags[k] = tags[k].union(v)

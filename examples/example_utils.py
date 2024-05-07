@@ -9,6 +9,15 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def test_slice_to_index():
+    from src.beam.utils import slice_to_index
+    n = np.arange(10)
+
+    print(slice_to_index(2, len(n), sliced=n))
+    print(slice_to_index(slice(1), sliced=n))
+    print(slice_to_index(slice(1, 3),  sliced=n))
+
+
 def test_recursive_len():
     from src.beam.utils import recursive_len
     # c = Counter({'a': 1, 'b': 2})
@@ -478,6 +487,8 @@ if __name__ == '__main__':
 
     # test_config()
 
-    test_recursive_len()
+    # test_recursive_len()
+
+    test_slice_to_index()
 
     print('done')

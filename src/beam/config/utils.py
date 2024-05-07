@@ -117,7 +117,8 @@ def add_unknown_arguments(args, unknown, silent=False):
     return args
 
 
-def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=False, strict=False, **kwargs):
+def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=False,
+                    strict=False, load_config_files=True, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
@@ -179,7 +180,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
             setattr(args, k, v)
 
     tags = defaultdict(set)
-    if hasattr(args, 'config_files') and args.config_files:
+    if hasattr(args, 'config_files') and args.config_files and load_config_files:
         config_files = args.config_files
         delattr(args, 'config_files')
 
@@ -193,7 +194,10 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
                 del cf['_tags']
             config_args.update(cf)
 
-        args = Namespace(**{**config_args, **to_dict(args)})
+        # the config files have higher priority than the arguments
+        # this is since the config files are loaded only after the parser is parsed
+        # therefore one cannot override a param which exists in the config file with the arguments
+        args = Namespace(**{**to_dict(args), **config_args})
     elif hasattr(args, 'config_files'):
         delattr(args, 'config_files')
 

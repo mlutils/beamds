@@ -1,0 +1,10 @@
+{
+  "preprocess_body": false,
+  "preprocess_title": false,
+  "split_dataset": false,
+  "build_dataset": false,
+  "calc_tfidf": true,
+  "calc_dense": true,
+  "reload_state": false,
+  "save_state": true
+}

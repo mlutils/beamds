@@ -83,6 +83,10 @@ def check_minor_type(x):
         return 'tuple'
     if isinstance(x, set):
         return 'set'
+    if isinstance(x, slice):
+        return 'slice'
+    if isinstance(x, Counter):
+        return 'counter'
     if has_polars and isinstance(x, lzi.polars.DataFrame):
         return 'polars'
     if has_scipy and lzi.scipy.sparse.issparse(x):
@@ -134,7 +138,7 @@ def _check_type(x, minor=True, element=True):
     <major type>, <minor type>, <elements type>
 
     major type: container, array, scalar, none, other
-    minor type: dict, list, tuple, set, tensor, numpy, pandas, scipy_sparse, native, none
+    minor type: dict, list, tuple, set, tensor, numpy, pandas, scipy_sparse, native, none, slice, counter, other
     elements type: array, int, float, complex, bool, str, object, empty, none, unknown
 
     '''
