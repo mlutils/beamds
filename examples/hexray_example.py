@@ -1,11 +1,12 @@
+from functools import cached_property
+
 from examples.example_utils import add_beam_to_path
 add_beam_to_path()
-from src.beam.core.processor import Processor
+from src.beam.processor.core import Processor
 from src.beam.path import beam_path
 from src.beam.llm import beam_llm
 import json
 from src.beam.logger import beam_logger as logger
-from src.beam.utils import lazy_property
 
 
 class HexBeam(Processor):
@@ -22,7 +23,7 @@ class HexBeam(Processor):
         analysis = beam_path(path).read()
         return cls(analysis, llm, **kwargs)
 
-    @lazy_property
+    @cached_property
     def functions_map(self):
         return {v['name']: k for k, v in enumerate(self.analysis['functions'])}
 

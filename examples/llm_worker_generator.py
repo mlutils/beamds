@@ -1,13 +1,12 @@
 import threading
 from queue import Queue
 from uuid import uuid4 as uuid
+from functools import cached_property
 
 from src.beam.config import BeamConfig, BeamParam
 from src.beam import beam_logger as logger
-from src.beam.distributed.celery_worker import CeleryWorker, BatchExecutor
-from src.beam.core import Processor
-from src.beam.utils import lazy_property
-from collections import defaultdict
+from src.beam.distributed.celery_worker import CeleryWorker
+from src.beam.processor import Processor
 
 
 class LLMServeConfig(BeamConfig):
@@ -30,7 +29,7 @@ class VLLMGenerator(Processor):
         self.n_steps = hparams.n_steps
         self.batch_size = hparams.batch_size
 
-    @lazy_property
+    @cached_property
     def model(self):
         from vllm import LLM
         return LLM(self.hparams.get('model'), revision=self.hparams.get('revision'),

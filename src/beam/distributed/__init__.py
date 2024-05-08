@@ -1,9 +1,9 @@
-from .resource import beam_worker, beam_dispatcher_server, beam_dispatcher, async_client
+from .resource import beam_worker, beam_dispatcher_server, beam_dispatcher, async_client, ray_client
 
 from .celery_dispatcher import CeleryDispatcher
 from .celery_worker import CeleryWorker
 
-from .ray_dispatcher import RayDispatcher, RayCluster
+from .ray_dispatcher import RayDispatcher, RayClient
 from .thread_dispatcher import ThreadedDispatcher
 
 from .async_client import AsyncClient

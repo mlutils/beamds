@@ -1,6 +1,7 @@
-from ..utils import lazy_property, jupyter_like_traceback
+from ..utils import jupyter_like_traceback
 from .resource import beam_llm
-from ..core import Processor
+from ..processor import Processor
+from functools import cached_property
 
 
 class LLMTask(Processor):
@@ -22,13 +23,12 @@ class LLMTask(Processor):
         self.system = system
         self._llm = llm
 
-    @lazy_property
+    @cached_property
     def llm(self):
         llm = beam_llm(self._llm)
         return llm
 
-    @llm.setter
-    def llm(self, value):
+    def set_llm(self, value):
         self.clear_cache('llm')
         self._llm = value
 

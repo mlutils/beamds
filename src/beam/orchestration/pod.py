@@ -1,5 +1,5 @@
 from .k8s import BeamK8S
-from ..core import Processor
+from ..processor import Processor
 from ..logger import beam_logger as logger
 from kubernetes import client
 from kubernetes.client.rest import ApiException

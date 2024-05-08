@@ -6,7 +6,7 @@ import datetime
 from dataclasses import dataclass
 
 
-from src.beam.core import Processor
+from src.beam.processor import Processor
 from src.beam.transformer import Transformer
 from src.beam.utils import check_type
 from src.beam import beam_path, beam_hash

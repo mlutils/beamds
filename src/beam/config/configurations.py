@@ -2,20 +2,161 @@ import argparse
 import os
 import math
 from pathlib import Path
-from .core import BeamConfig, BeamParam
+from .core_config import BeamConfig, BeamParam
 from .deepspeed import DeepspeedConfig
 from .utils import _beam_arguments
 
 
-class CatboostConfig(BeamConfig):
+class DeviceConfig(BeamConfig):
+
+    parameters = [
+        BeamParam('device', str, '0', 'GPU Number or cpu/cuda string'),
+        BeamParam('device_list', list, None,
+                  'Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
+                  'when passing --n-gpus=2 and will use GPUs 2 1 3 when passing --n-gpus=3. '
+                  'If None, will use an ascending order starting from the GPU passed in the --device parameter. '
+                  'e.g. when --device=1 will use GPUs 1,2,3,4 when --n-gpus=4'),
+    ]
+
+
+class CacheConfig(BeamConfig):
+
+    parameters = [
+        BeamParam('cache_depth', int, None, 'The depth of the cache'),
+        BeamParam('cache_path', str, None, 'The path to the cache (if None, the cache is stored in memory)'),
+        BeamParam('cache_exception_keys', list, None, 'The keys to exclude from the cache'),
+        BeamParam('cache_store_suffix', str, None, 'The suffix to add to the stored file '
+                                                   '(if None, the cache is stored as BeamData)'),
+        BeamParam('silent_cache', bool, False, 'Whether to log cache operations'),
+    ]
+
+
+# class CatBoostClassifier(iterations=None,
+#                          learning_rate=None,
+#                          depth=None,
+#                          l2_leaf_reg=None,
+#                          model_size_reg=None,
+#                          rsm=None,
+#                          loss_function=None,
+#                          border_count=None,
+#                          feature_border_type=None,
+#                          per_float_feature_quantization=None,
+#                          input_borders=None,
+#                          output_borders=None,
+#                          fold_permutation_block=None,
+#                          od_pval=None,
+#                          od_wait=None,
+#                          od_type=None,
+#                          nan_mode=None,
+#                          counter_calc_method=None,
+#                          leaf_estimation_iterations=None,
+#                          leaf_estimation_method=None,
+#                          thread_count=None,
+#                          random_seed=None,
+#                          use_best_model=None,
+#                          verbose=None,
+#                          logging_level=None,
+#                          metric_period=None,
+#                          ctr_leaf_count_limit=None,
+#                          store_all_simple_ctr=None,
+#                          max_ctr_complexity=None,
+#                          has_time=None,
+#                          allow_const_label=None,
+#                          classes_count=None,
+#                          class_weights=None,
+#                          auto_class_weights=None,
+#                          one_hot_max_size=None,
+#                          random_strength=None,
+#                          name=None,
+#                          ignored_features=None,
+#                          train_dir=None,
+#                          custom_loss=None,
+#                          custom_metric=None,
+#                          eval_metric=None,
+#                          bagging_temperature=None,
+#                          save_snapshot=None,
+#                          snapshot_file=None,
+#                          snapshot_interval=None,
+#                          fold_len_multiplier=None,
+#                          used_ram_limit=None,
+#                          gpu_ram_part=None,
+#                          allow_writing_files=None,
+#                          final_ctr_computation_mode=None,
+#                          approx_on_full_history=None,
+#                          boosting_type=None,
+#                          simple_ctr=None,
+#                          combinations_ctr=None,
+#                          per_feature_ctr=None,
+#                          task_type=None,
+#                          device_config=None,
+#                          devices=None,
+#                          bootstrap_type=None,
+#                          subsample=None,
+#                          sampling_unit=None,
+#                          dev_score_calc_obj_block_size=None,
+#                          max_depth=None,
+#                          n_estimators=None,
+#                          num_boost_round=None,
+#                          num_trees=None,
+#                          colsample_bylevel=None,
+#                          random_state=None,
+#                          reg_lambda=None,
+#                          objective=None,
+#                          eta=None,
+#                          max_bin=None,
+#                          scale_pos_weight=None,
+#                          gpu_cat_features_storage=None,
+#                          data_partition=None
+#                          metadata=None,
+#                          early_stopping_rounds=None,
+#                          cat_features=None,
+#                          grow_policy=None,
+#                          min_data_in_leaf=None,
+#                          min_child_samples=None,
+#                          max_leaves=None,
+#                          num_leaves=None,
+#                          score_function=None,
+#                          leaf_estimation_backtracking=None,
+#                          ctr_history_unit=None,
+#                          monotone_constraints=None,
+#                          feature_weights=None,
+#                          penalties_coefficient=None,
+#                          first_feature_use_penalties=None,
+#                          model_shrink_rate=None,
+#                          model_shrink_mode=None,
+#                          langevin=None,
+#                          diffusion_temperature=None,
+#                          posterior_sampling=None,
+#                          boost_from_average=None,
+#                          text_features=None,
+#                          tokenizers=None,
+#                          dictionaries=None,
+#                          feature_calcers=None,
+#                          text_processing=None,
+#                          fixed_binary_splits=None)
+
+class CatboostConfig(DeviceConfig):
     # catboost
     parameters = [
-        BeamParam('cb_ranker', bool, False, 'Whether to use catboost ranker instead of regression', tags='model'),
+        BeamParam('cb_task', str, 'classification', 'The task type for the catboost model '
+                                                    '[classification|regression|ranking]'),
+        BeamParam('cb_loss_function', str, 'Logloss', 'The loss function for the catboost model'),
+        # learning rate is drawn from other configurations
         BeamParam('cb_n_estimators', int, 1000, 'The number of trees in the catboost model', tags='tune'),
         BeamParam('cb_l2_leaf_reg', float, 1e-4, 'The L2 regularization for the catboost model', tags='tune'),
         BeamParam('cb_border_count', int, 128, 'The border count for the catboost model', tags='tune'),
         BeamParam('cb_depth', int, 14, 'The depth of the trees in the catboost model', tags='tune'),
         BeamParam('cb_random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
+        BeamParam('cb_lr', float, 1e-2, 'The learning rate for the catboost model', tags='tune'),
+        BeamParam('cb_eval_metric', str, None, 'The evaluation metric for the catboost model, '
+                                               'if None, it is set to RMSE for regression and '
+                                               'Accuracy for classification'),
+        BeamParam('cb_custom_metric', list, None, 'The custom metric for the catboost model, '
+                                                  'if None, it is set to MAE, MAPE for regression and '
+                                                  'Precision, Recall for classification'),
+
+        BeamParam('cb_log_resolution', int, 10, 'The resolution (in epochs) of the logging for the catboost model'),
+
     ]
 
 
@@ -196,7 +337,7 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
         BeamParam('batch_size_eval', int, None, 'Batch Size for testing/evaluation iterations', tags='tune'),
         BeamParam('reduction', str, 'sum', 'whether to sum loss elements or average them [sum|mean|mean_batch|sqrt|mean_sqrt]',
                     tags='tune'),
-        BeamParam('lr_dense', float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
+        BeamParam(['lr_dense', 'lr'], float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
         BeamParam('lr_sparse', float, 1e-2, 'learning rate for sparse optimizers', tags='tune'),
         BeamParam('stop_at', float, None, 'Early stopping when objective >= stop_at', tags='tune'),
         BeamParam('early_stopping_patience', int, None, 'Early stopping patience in epochs, '
@@ -249,7 +390,7 @@ class BeamProjectConfig(BeamConfig):
     ]
 
 
-class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig):
+class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig, CacheConfig, DeviceConfig):
     '''
 
         Arguments
@@ -277,12 +418,6 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
         BeamParam('cpu_workers', int, 0, 'How many CPUs will be used for the data loading'),
         BeamParam('data_fetch_timeout', float, 0., 'Timeout for the dataloader fetching. '
                                                    'set to 0 for no timeout.'),
-        BeamParam('device', str, '0', 'GPU Number or cpu/cuda string'),
-        BeamParam('device_list', list, None,
-                  'Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
-                  'when passing --n-gpus=2 and will use GPUs 2 1 3 when passing --n-gpus=3. '
-                  'If None, will use an ascending order starting from the GPU passed in the --device parameter. '
-                  'e.g. when --device=1 will use GPUs 1,2,3,4 when --n-gpus=4'),
 
         BeamParam('tensorboard', bool, True, 'Log results to tensorboard'),
         BeamParam('mlflow', bool, False, 'Log results to MLFLOW serve'),
@@ -349,13 +484,13 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
     ]
 
 
-class TransformerConfig(BeamConfig):
+class TransformerConfig(CacheConfig):
     # transformer arguments
 
     parameters = [
         BeamParam('mp_method', str, 'joblib', 'The multiprocessing method to use'),
         BeamParam('n_chunks', int, None, 'The number of chunks to split the dataset'),
-        BeamParam('name', str, None, 'The name of the dataset', tags='tune'),
+        BeamParam('name', str, None, 'The name of the dataset'),
         BeamParam('store_path', str, None, 'The path to store the results'),
         BeamParam('partition', str, None, 'The partition to use for splitting the dataset'),
         BeamParam('chunksize', int, None, 'The chunksize to use for splitting the dataset'),
@@ -363,8 +498,11 @@ class TransformerConfig(BeamConfig):
         BeamParam('reduce', bool, True, 'Whether to reduce and collate the results'),
         BeamParam('reduce_dim', int, None, 'The dimension to reduce the results'),
         BeamParam('transform_strategy', str, None, 'The transform strategy to use can be [CC|CS|SC|SS]'),
+        BeamParam('store_chunk', bool, False, 'Whether to store the chunked results'),
         BeamParam('split_by', str, 'keys', 'The split strategy to use can be [keys|index|columns]'),
         BeamParam('store_suffix', str, None, 'The suffix to add to the stored file'),
+        BeamParam('override', bool, False, 'Whether to override the stored file if it exists'),
+        BeamParam('use-dill', bool, False, 'Whether to use dill for serialization'),
     ]
 
 

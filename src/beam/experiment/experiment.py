@@ -4,21 +4,20 @@ import time
 import numpy as np
 import os
 import warnings
-
-from .utils import (path_depth, gen_hparams_string, beam_algorithm_generator, default_runner, run_worker,
-                    build_device_list)
 import torch
 import copy
 import pandas as pd
 import torch.multiprocessing as mp
-from functools import partial
+from functools import cached_property
 
 
 from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_notebook,
-                     find_port, as_numpy, lazy_property, check_type, beam_device, beam_service_port)
+                     find_port, as_numpy, check_type, beam_device, beam_service_port)
 from ..path import beam_path, BeamPath, beam_key
 from ..logger import beam_logger as logger
 from ..config import print_beam_hyperparameters, BeamConfig, UniversalConfig
+from .utils import (path_depth, gen_hparams_string, beam_algorithm_generator, default_runner, run_worker,
+                    build_device_list)
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 
@@ -163,8 +162,6 @@ class Experiment(object):
             logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
             logger.info(f"Resuming existing experiment")
 
-        self.tensorboard_writer = None
-
         self.rank = 0
         self.world_size = args.n_gpus
         if hasattr(args, 'n_gpus_per_worker') and args.n_gpus_per_worker is not None:
@@ -220,6 +217,7 @@ class Experiment(object):
             self.device_list = build_device_list(self.hparams)
 
         self.comet_exp = None
+        self.tensorboard_writer = None
         self.comet_writer = None
         self.mlflow_writer = None
         self.logs_path_is_built = False
@@ -228,11 +226,11 @@ class Experiment(object):
     def algorithm_generator(self, *args, **kwargs):
         return beam_algorithm_generator(self, *args, **kwargs)
 
-    @lazy_property
+    @cached_property
     def training_framework(self):
         return self.hparams.get('training_framework', 'torch')
 
-    @lazy_property
+    @cached_property
     def llm(self):
         if self.hparams.llm is not None:
             from ..llm import beam_llm
@@ -739,13 +737,13 @@ class Experiment(object):
 
         return results[0].wait()
 
-    @lazy_property
+    @cached_property
     def distributed_training_framework(self):
         if self.training_framework in ['accelerate', 'deepspeed']:
             return 'deepspeed'
         return 'ddp'
 
-    @lazy_property
+    @cached_property
     def default_hparams(self):
         return UniversalConfig(return_defaults=True)
 

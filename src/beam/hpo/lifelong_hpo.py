@@ -4,9 +4,9 @@ from optuna import Study
 from optuna.trial import TrialState, FrozenTrial
 
 from .optuna import OptunaBase
-from ..core import Processor
+from ..processor import Processor
 from .params import HPOConfig
-from ..utils import lazy_property
+from functools import cached_property
 
 
 class FiniteMemoryStudy(Study):
@@ -50,11 +50,11 @@ class LifelongHPO(Processor, OptunaBase):
 
 
 
-    @lazy_property
+    @cached_property
     def sampler(self):
         return self.get_sampler()
 
-    @lazy_property
+    @cached_property
     def study(self) -> FiniteMemoryStudy:
         return FiniteMemoryStudy(storage=self.storage, sampler=self.sampler, pruner=self.pruner,
                                  study_name=self.name, direction=self.direction,

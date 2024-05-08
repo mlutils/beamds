@@ -1,2 +1,2 @@
 
-from .core import BeamAssistant
+from .assistant import BeamAssistant

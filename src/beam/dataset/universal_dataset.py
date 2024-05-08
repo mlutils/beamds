@@ -1,16 +1,13 @@
 import argparse
 import warnings
-
 import numpy as np
 import pandas as pd
 import torch
+from functools import cached_property
 
 from .sampler import UniversalBatchSampler
 from ..utils import (recursive_batch, to_device, recursive_device, container_len, beam_device, as_tensor, check_type,
-                     as_numpy, slice_to_index, DataBatch, lazy_property)
-
-from ..path import beam_path
-from ..data import BeamData
+                     as_numpy, slice_to_index, DataBatch)
 
 
 class UniversalDataset(torch.utils.data.Dataset):
@@ -80,7 +77,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         self.label = as_tensor(label, device=self.device)
 
-    @lazy_property
+    @cached_property
     def target_device(self):
         if self._target_device is not None:
             return self._target_device
@@ -118,7 +115,7 @@ class UniversalDataset(torch.utils.data.Dataset):
     def eval(self):
         self.training = False
 
-    @lazy_property
+    @cached_property
     def data_type(self):
         return check_type(self.data).minor
 
@@ -126,7 +123,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if self.data_type == 'dict':
 
-            ind_type = check_type(ind, check_minor=False)
+            ind_type = check_type(ind, minor=False)
             if ind_type.element == 'str':
                 if ind_type.major == 'scalar':
                     return self.data[ind]
@@ -156,7 +153,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
             ind = slice_to_index(ind, l=self.index.index.max()+1)
 
-            ind_type = check_type(ind, check_element=False)
+            ind_type = check_type(ind, element=False)
             if ind_type.minor == 'tensor':
                 loc = as_numpy(ind)
             else:
@@ -185,7 +182,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         return DataBatch(index=ind, data=sample, label=label)
 
-    @lazy_property
+    @cached_property
     def device(self):
 
         if self.data_type == 'dict':

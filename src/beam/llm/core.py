@@ -6,11 +6,13 @@ from uuid import uuid4 as uuid
 import pandas as pd
 from pydantic import BaseModel
 
+# from functools import cached_property
+from ..utils import lazy_property as cached_property
+
 from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
-# from ..core.processor import Processor
-from ..utils import (parse_text_to_protocol, get_edit_ratio, lazy_property, retry, BeamDict, NullClass,
+from ..utils import (parse_text_to_protocol, get_edit_ratio, retry, BeamDict, NullClass,
                      pretty_print_dict)
 from ..path import BeamURL, BeamResource
 
@@ -238,7 +240,7 @@ class BeamLLM(PedanticBeamResource):
     def roles(self):
         return self._conv.roles
 
-    @lazy_property
+    @cached_property
     def tokenizer(self):
         if self._tokenizer is not None:
             tokenizer = self._tokenizer

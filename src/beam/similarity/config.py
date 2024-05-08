@@ -10,6 +10,7 @@ class SimilarityConfig(BeamConfig):
         BeamParam('metric', str, 'l2', 'distance metric [l2, cosine, max, prod, quantile]'),
         BeamParam('training_device', str, 'cpu', 'device for training'),
         BeamParam('inference_device', str, 'cpu', 'device for inference'),
+        BeamParam('dense_model_device', str, 'cuda', 'device for dense model'),
         BeamParam('ram_footprint', int, 2 ** 8 * int(1e9), 'RAM footprint'),
         BeamParam('gpu_footprint', int, 24 * int(1e9), 'GPU footprint'),
         BeamParam('exact', bool, False, 'exact search'),

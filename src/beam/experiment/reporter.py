@@ -1,16 +1,16 @@
 import time
 import numpy as np
 import os
-
 import torch
 from collections import defaultdict
 import pandas as pd
 from contextlib import contextmanager
 from timeit import default_timer as timer
 import threading
+from functools import cached_property
 
 from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format,
-                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type, lazy_property,
+                     nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type,
                      strip_prefix, recursive_detach, recursive_to_cpu)
 
 from ..utils import tqdm_beam as tqdm
@@ -183,7 +183,7 @@ class BeamReport(object):
         else:
             return v
 
-    @lazy_property
+    @cached_property
     def llm(self):
         from ..config import get_beam_llm
         return get_beam_llm()
@@ -287,7 +287,7 @@ class BeamReport(object):
             name = strip_prefix(k, f"{subset}/")
         return subset, name
 
-    @lazy_property
+    @cached_property
     def comparison(self):
         return {'max': np.greater, 'min': np.less}[self.objective_mode]
 
@@ -417,6 +417,12 @@ class BeamReport(object):
                 oprs = {'cat': pd.concat, 'stack': pd.concat}
             elif v_minor == 'native':
                 oprs = {'cat': torch.tensor, 'stack': torch.tensor}
+            elif v_minor == 'cudf':
+                import cudf
+                oprs = {'cat': cudf.concat, 'stack': cudf.concat}
+            elif v_minor == 'polars':
+                import polars as pl
+                oprs = {'cat': pl.concat, 'stack': pl.concat}
             else:
                 oprs = {'cat': lambda x: x, 'stack': lambda x: x}
 
@@ -452,8 +458,13 @@ class BeamReport(object):
         val_type = check_type(val)
         if val_type.major == 'scalar':
             val = float(val)
-        elif val_type.minor == 'pandas':
+        elif val_type.minor in ['pandas', 'cudf']:
             val = val.values
+            val = agg_dict['numpy'][aggregation](val)
+            if val_type.minor == 'cudf':
+                val = float(val)
+        elif val_type.minor == 'polars':
+            val = val.to_numpy()
             val = agg_dict['numpy'][aggregation](val)
         elif val_type.minor == 'tensor':
             val = agg_dict['tensor'][aggregation](val)

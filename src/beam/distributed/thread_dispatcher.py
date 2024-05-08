@@ -1,8 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor, Future
 from functools import wraps
+from functools import cached_property
 
-from ..core import MetaAsyncResult, MetaDispatcher
-from ..utils import get_class_properties, lazy_property
+from ..processor import MetaAsyncResult, MetaDispatcher
+from ..utils import get_class_properties
 
 
 class ThreadAsyncResult(MetaAsyncResult):
@@ -120,7 +121,7 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
         else:
             raise ValueError(f"Unknown type: {self.type}")
 
-    @lazy_property
+    @cached_property
     def route_methods(self):
         return self._routes_methods
 

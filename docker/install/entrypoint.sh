@@ -118,32 +118,6 @@ echo "initials, ${INITIALS}" >> /workspace/configuration/config.csv
 mkdir /workspace/configuration
 touch /workspace/configuration/config.csv
 
-# Start jupyter lab
-if [ "$RUN_JUPYTER" = true ]; then
-  JUPYTER_PORT="${INITIALS}88"
-  echo "Jupyter Port: $JUPYTER_PORT"
-  export JUPYTER_PORT=$JUPYTER_PORT
-  echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
-  jupyter-lab &
-  echo "Jupyter is running."
-else
-  echo "Jupyter is disabled."
-fi
-
-# run ssh server
-if [ "$RUN_SSH" = true ]; then
-  SSH_PORT="${INITIALS}22"
-  echo "SSH Port: $SSH_PORT"
-  export SSH_PORT=$SSH_PORT
-  echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
-  echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
-  echo "root:$ROOT_PASSWORD" | chpasswd
-  service ssh start
-  echo "SSH is running."
-else
-  echo "SSH is disabled."
-fi
-
 # run redis
 if [ "$RUN_REDIS" = true ]; then
   REDIS_PORT="${INITIALS}79"
@@ -207,6 +181,18 @@ else
   echo "Prefect is disabled."
 fi
 
+# run mongodb
+if [ "$RUN_MONGO" = true ]; then
+  MONGODB_PORT="${INITIALS}17"
+  echo "MongoDB Port: $MONGODB_PORT"
+  export MONGODB_PORT=$MONGODB_PORT
+  echo "mongodb_port, ${MONGODB_PORT}" >> /workspace/configuration/config.csv
+  bash /workspace/beam_image/runs/run_mongo.sh $MONGODB_PORT
+  echo "MongoDB server is running."
+else
+  echo "MongoDB is disabled."
+fi
+
 # run ray serve
 if [ "$RUN_RAY" = true ]; then
   RAY_REDIS_PORT="${INITIALS}78"
@@ -224,16 +210,30 @@ else
   echo "Ray is disabled."
 fi
 
-# run mongodb
-if [ "$RUN_MONGO" = true ]; then
-  MONGODB_PORT="${INITIALS}17"
-  echo "MongoDB Port: $MONGODB_PORT"
-  export MONGODB_PORT=$MONGODB_PORT
-  echo "mongodb_port, ${MONGODB_PORT}" >> /workspace/configuration/config.csv
-  bash /workspace/beam_image/runs/run_mongo.sh $MONGODB_PORT
-  echo "MongoDB server is running."
+# run ssh server
+if [ "$RUN_SSH" = true ]; then
+  SSH_PORT="${INITIALS}22"
+  echo "SSH Port: $SSH_PORT"
+  export SSH_PORT=$SSH_PORT
+  echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
+  echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
+  echo "root:$ROOT_PASSWORD" | chpasswd
+  service ssh start
+  echo "SSH is running."
 else
-  echo "MongoDB is disabled."
+  echo "SSH is disabled."
+fi
+
+# Start jupyter lab
+if [ "$RUN_JUPYTER" = true ]; then
+  JUPYTER_PORT="${INITIALS}88"
+  echo "Jupyter Port: $JUPYTER_PORT"
+  export JUPYTER_PORT=$JUPYTER_PORT
+  echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
+  jupyter-lab &
+  echo "Jupyter is running."
+else
+  echo "Jupyter is disabled."
 fi
 
 service start avahi-daemon
@@ -248,3 +248,4 @@ else
     # If OPTIONAL_COMMAND is provided, run it
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
+

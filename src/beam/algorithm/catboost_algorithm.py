@@ -1,20 +1,27 @@
-from ..core import Processor
-from ..utils import lazy_property
+import re
+from functools import cached_property
 
-
-from catboost import CatBoostClassifier, CatBoostRegressor,CatBoost
+from ..utils import parse_string_number
 from ..experiment.utils import build_device_list
 
+from .core_algorithm import Algorithm
 
-class CBAlgorithm(Processor):
 
-    def __init__(self, hparams, **kwargs):
+class CBAlgorithm(Algorithm):
 
-        super().__init__(hparams=hparams, **kwargs)
+    def __init__(self, hparams, name=None, **kwargs):
+
+        super().__init__(hparams=hparams, name=name, **kwargs)
+
+    @property
+    def device_type(self):
+        return 'CPU' if self.get_hparam('device', 'cpu') else 'GPU'
 
     @property
     def task_type(self):
-        return 'CPU' if self.get_hparam('device', 'cpu') else 'GPU'
+        tp = self.get_hparam('cb_task', 'classification')
+        assert tp in ['classification', 'regression', 'ranking'], f"Invalid task type: {tp}"
+        return tp
 
     @property
     def devices(self):
@@ -22,20 +29,82 @@ class CBAlgorithm(Processor):
         device_list = [d.index for d in device_list]
         return device_list
 
-    @lazy_property
+    @property
+    def eval_metric(self):
+        if self.task_type == 'regression':
+            em = 'RMSE'
+        else:
+            em = 'Accuracy'
+        return self.get_hparam('eval_metric', em)
+
+    @property
+    def custom_metric(self):
+        if self.task_type == 'regression':
+            cm = []
+        else:
+            cm = ['Precision', 'Recall']
+        return self.get_hparam('custom_metric', cm)
+
+    @cached_property
     def model(self):
         cb_kwargs = {
-            'learning_rate': self.get_hparam('lr', 1e-2),
-            'n_estimators': self.get_hparam('cb_n_estimators', 2000),
-            'random_seed': self.get_hparam('seed', 0),
-            'l2_leaf_reg': self.get_hparam('cb_l2_leaf_reg', 1e-4),
-            'border_count': self.get_hparam('cb_border_count', 128),
-            'depth': self.get_hparam('cb_depth', 14),
-            'random_strength': self.get_hparam('cb_random_strength', .5),
-            'task_type': self.task_type,
+            'learning_rate': self.get_hparam('lr'),
+            'n_estimators': self.get_hparam('cb_n_estimators'),
+            'random_seed': self.get_hparam('seed'),
+            'l2_leaf_reg': self.get_hparam('cb_l2_leaf_reg'),
+            'border_count': self.get_hparam('cb_border_count'),
+            'depth': self.get_hparam('cb_depth'),
+            'random_strength': self.get_hparam('cb_random_strength'),
+            'task_type': self.device_type,
             'devices': self.devices,
-            'loss_function': loss_function,
-            'eval_metric': eval_metric,
-            'custom_metric': custom_metric,
-            'verbose': 50,
+            'loss_function': self.get_hparam('loss_function'),
+            'eval_metric': self.eval_metric,
+            'custom_metric': self.custom_metric,
+            'verbose': self.get_hparam('cb_log_resolution'),
         }
+
+        if self.task_type == 'classification':
+            from catboost import CatBoostClassifier as CatBoost
+        elif self.task_type == 'regression':
+            from catboost import CatBoostRegressor as CatBoost
+        elif self.task_type == 'ranking':
+            from catboost import CatBoostRanker as CatBoost
+        else:
+            raise ValueError(f"Invalid task type: {self.task_type}")
+
+        return CatBoost(**cb_kwargs)
+
+    @cached_property
+    def info_re_pattern(self):
+        # Regular expression pattern to capture iteration number and then any number of key-value metrics
+        pattern = r'(?P<iteration>\d+):\t((?P<metric_name>\w+):\s(?P<metric_value>[\d.\w]+)\s*(?:\(\d+\))?\s*)+'
+
+        # Compiling the pattern
+        compiled_pattern = re.compile(pattern)
+        return compiled_pattern
+
+    def postprocess_epoch(self, info, **kwargs):
+
+        # Searching the string
+        match = self.info_re_pattern.search(info)
+
+        metrics = dict()
+        if match:
+            # Extracting iteration number
+            iteration = match.group('iteration')
+
+            # Extracting metrics
+            metrics_string = info[info.index('\t') + 1:].strip()  # Get the substring after the iteration
+            metrics_parts = re.findall(r'(\w+):\s([\d.\w]+)\s*(?:\(\d+\))?', metrics_string)
+
+            # Converting metric parts into a dictionary
+            metrics = {name: parse_string_number(value) for name, value in metrics_parts}
+
+            for k, v in metrics.items():
+                self.report_scalar(k, v, subset='eval', epoch=iteration)
+
+    def fit(self, X, y):
+        self.model.fit(X, y, log_cout=self.postprocess_epoch)
+
+    def predict(self, X):
+        return self.model.predict(X)

@@ -1,13 +1,15 @@
+import inspect
+from enum import Enum
+
 from ..utils import (collate_chunks, recursive_chunks, iter_container,
-                        build_container_from_tupled_keys, is_empty, )
+                        build_container_from_tupled_keys, is_empty, check_type)
 from ..parallel import BeamParallel, BeamTask
 from ..data import BeamData
 from ..path import beam_path
 from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
-from ..core.processor import Processor
-from ..config import BeamConfig
-from enum import Enum
+from ..processor.core import Processor
+from ..base import beam_cache
 
 
 class TransformStrategy(Enum):
@@ -21,9 +23,10 @@ class TransformStrategy(Enum):
 
 class Transformer(Processor):
 
-    def __init__(self, *args, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
-                 chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0,
-                 transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, **kwargs):
+    def __init__(self, *args, func=None, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
+                 chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0, store_chunk=None,
+                 transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
+                 use_dill=False, **kwargs):
         """
 
         @param args:
@@ -60,30 +63,38 @@ class Transformer(Processor):
         @param shuffle Shuffling the tasks before running them.
         @param kwargs:
         """
-        super(Transformer, self).__init__(*args, name=name, **kwargs)
+        super(Transformer, self).__init__(*args, name=name, n_workers=n_workers, n_chunks=n_chunks,
+                                          store_path=store_path, partition=partition, chunksize=chunksize,
+                                          mp_method=mp_method, squeeze=squeeze, reduce=reduce, reduce_dim=reduce_dim,
+                                          store_chunk=store_chunk, transform_strategy=transform_strategy,
+                                          split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
+                                          override=override, use_dill=use_dill, **kwargs)
 
-        if (n_chunks is None) and (chunksize is None):
-            n_chunks = 1
+        self.func = func
+        assert inspect.isroutine(func) or func is None, "The func argument must be a function."
 
-        self.transformers = None
+        # check if we can pass kwargs to the function
+        self.func_has_kwargs = False
+        if func is not None:
+            sig = inspect.signature(func)
+            self.func_has_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+            self.func_has_kwargs = self.func_has_kwargs or 'transformer_kwargs' in sig.parameters
 
-        if len(args) > 0 and isinstance(args[0], BeamConfig):
-            self.hparams = args[0]
-        else:
-            self.hparams = BeamConfig(chunksizes=chunksize, n_chunks=n_chunks, n_workers=n_workers, squeeze=squeeze,
-                                      split_by=split_by, partition=partition, mp_method=mp_method, shuffle=shuffle,
-                                      reduce_dim=reduce_dim, transform_strategy=transform_strategy,
-                                      reduce=reduce, **kwargs)
+        self.chunksize = self.hparams.chunksize
+        self.n_chunks = self.hparams.n_chunks
+        if (self.n_chunks is None) and (self.chunksize is None):
+            self.n_chunks = 1
 
-        self.chunksize = self.get_hparam('chunksize', preferred=chunksize)
-        self.n_chunks = self.get_hparam('n_chunks', preferred=n_chunks)
-        self.n_workers = self.get_hparam('n_workers', preferred=n_workers)
-        self.squeeze = self.get_hparam('squeeze', preferred=squeeze)
-        self.split_by = self.get_hparam('split_by', preferred=split_by)
-        self.store_suffix = self.get_hparam('store_suffix', preferred=store_suffix)
-        self.transform_strategy = self.get_hparam('transform_strategy', preferred=transform_strategy)
-        self.shuffle = self.get_hparam('shuffle', preferred=shuffle)
-        self.kwargs = kwargs
+        self.n_workers = self.hparams.n_workers
+        self.squeeze = self.hparams.squeeze
+        self.split_by = self.hparams.split_by
+        self.store_suffix = self.hparams.store_suffix
+        self.transform_strategy = self.hparams.transform_strategy
+        self.store_chunk = self.hparams.store_chunk
+        self.shuffle = self.hparams.shuffle
+        self.override = self.hparams.override
+        self.use_dill = self.hparams.use_dill
+
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
                            f'The split_by is set to "keys".')
@@ -96,11 +107,15 @@ class Transformer(Processor):
             store_path = store_path.joinpath(name)
 
         self.store_path = store_path
-        self.partition = self.get_hparam('partition', preferred=partition)
-        self.mp_method = self.get_hparam('mp_method', preferred=mp_method)
-        self.reduce_dim = self.get_hparam('reduce_dim', preferred=reduce_dim)
-        self.to_reduce = self.get_hparam('reduce', preferred=reduce)
+        self.partition = self.hparams.partition
+        self.mp_method = self.hparams.mp_method
+        self.reduce_dim = self.hparams.reduce_dim
+        self.to_reduce = self.hparams.reduce
         self._exceptions = None
+        self.counter = 0
+
+    def reset(self):
+        self.counter = 0
 
     def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None, split_by=None, partition=None):
 
@@ -123,20 +138,42 @@ class Transformer(Processor):
             for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze, dim=dim):
                 yield k, c
 
-    def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
-        raise NotImplementedError
+    def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, store=False, **kwargs):
 
-    def worker(self, x, key=None, is_chunk=False, fit=False, cache=True, store_path=None, **kwargs):
+        if self.func is None:
+            raise ValueError("The function is not defined for the transformer. Either pass fanc to the constructor or "
+                             "override the transform_callback method.")
+
+        if self.func_has_kwargs:
+            kwargs['transformer_kwargs'] = dict(key=key, is_chunk=is_chunk, fit=fit, path=path, store=store)
+        r = self.func(x, **kwargs)
+
+        return r
+
+    def worker(self, x, key=None, is_chunk=False, fit=False, cache=True, store_path=None, store=False,
+               override=False, **kwargs):
 
         if isinstance(x, BeamData):
             if not x.is_cached and cache:
                 x.cache()
 
-        x = self.transform_callback(x, key=key, is_chunk=is_chunk, fit=fit, **kwargs)
+        if store_path is not None:
+            store_path = beam_path(store_path)
+            if store_path.exists():
+                if override:
+                    logger.warning(f"File {store_path} exists, the data will be stored with the same name "
+                                   f"(override=True).")
+                    store_path.unlink()
+                else:
+                    logger.warning(f"File {store_path} already exists, the data will not be stored (override=False).")
+                    return key, None
+
+        x = self.transform_callback(x, key=key, is_chunk=is_chunk, fit=fit, store=store, **kwargs)
 
         if store_path is not None:
             store_path = beam_path(store_path)
             if store_path.suffix:
+                logger.info(f"Storing transformed chunk in: {store_path}")
                 store_path.write(x)
             else:
                 if not isinstance(x, BeamData):
@@ -147,7 +184,7 @@ class Transformer(Processor):
         return key, x
 
     def fit(self, x, **kwargs):
-        return x
+        raise NotImplementedError("Override the fit method to implement the fitting process.")
 
     @property
     def exceptions(self):
@@ -159,21 +196,23 @@ class Transformer(Processor):
 
     def fit_transform(self, x, **kwargs):
         return self.transform(x, fit=True, **kwargs)
-        # self.fit(x, **kwargs)
-        # return self.transform(x, **kwargs)
 
-    def reduce(self, x, reduce_dim=None, split_by=None, squeeze=True, **kwargs):
+    def reduce(self, x, reduce_dim=None, split_by=None, squeeze=True):
 
         if isinstance(next(iter_container(x))[1], BeamData):
-            x = BeamData.collate(x, split_by=split_by, **kwargs)
+            x = BeamData.collate(x, split_by=split_by)
         else:
 
             if reduce_dim is None:
                 reduce_dim = self.reduce_dim
 
-            x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze, **kwargs)
+            x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze)
 
         return x
+
+    @beam_cache(exception_keys=['parallel_kwargs'])
+    def cached_transform(self, x, transform_kwargs=None, parallel_kwargs=None, **kwargs):
+        return self.transform(x, transform_kwargs=transform_kwargs, parallel_kwargs=parallel_kwargs, **kwargs)
 
     def transform(self, x, transform_kwargs=None, parallel_kwargs=None, **kwargs):
 
@@ -181,23 +220,29 @@ class Transformer(Processor):
 
         split_by = transform_kwargs.pop('split_by', self.split_by)
         partition = transform_kwargs.pop('partition', self.partition)
-        mp_method = transform_kwargs.pop('mp_method', self.mp_method)
         shuffle = transform_kwargs.pop('shuffle', self.shuffle)
-        n_workers = transform_kwargs.pop('n_workers', self.n_workers)
         store_suffix = transform_kwargs.pop('store_suffix', self.store_suffix)
         transform_strategy = transform_kwargs.pop('transform_strategy', self.transform_strategy)
+        store_chunk = transform_kwargs.pop('store_chunk', self.store_chunk)
         reduce = transform_kwargs.pop('reduce', self.to_reduce)
+        store_path = transform_kwargs.pop('store_path', self.store_path)
+        override = transform_kwargs.pop('override', self.override)
+        store = transform_kwargs.pop('store', (store_path is not None))
+
         parallel_kwargs = parallel_kwargs or {}
+        n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
+        mp_method = parallel_kwargs.pop('mp_method', self.mp_method)
+        use_dill = parallel_kwargs.pop('use_dill', self.use_dill)
 
         reduce_dim = self.reduce_dim
+
+        if transform_strategy is None and store_chunk is not None:
+            transform_strategy = TransformStrategy.S if store_chunk else TransformStrategy.C
 
         if transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and split_by != 'keys':
             logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
                            f'The split_by is set to "key".')
             split_by = 'keys'
-
-        path = transform_kwargs.pop('path', self.store_path)
-        store = transform_kwargs.pop('store', (path is not None))
 
         logger.info(f"Starting transformer process: {self.name}")
 
@@ -214,6 +259,13 @@ class Transformer(Processor):
             n_chunks = 1
         if squeeze is None:
             squeeze = self.squeeze
+
+        if split_by == 'index':
+            part_name = BeamData.index_partition_directory_name
+        elif split_by == 'columns':
+            part_name = BeamData.columns_partition_directory_name
+        else:
+            part_name = ''
 
         is_chunk = (n_chunks != 1) or (not squeeze) or (split_by == 'keys' and isinstance(x, BeamData) and x.is_stored)
 
@@ -245,25 +297,28 @@ class Transformer(Processor):
                            f"storing data for transformer: {self.name} before the split to chunks.")
             x.store()
 
-        store_chunk = transform_strategy in [TransformStrategy.CS, TransformStrategy.SS]
+        store_chunk = transform_strategy in [TransformStrategy.CS, TransformStrategy.SS, TransformStrategy.S]
 
-        if path is None and store_chunk:
+        if store_path is None and store_chunk:
 
             if isinstance(x, BeamData) and x.path is not None:
-                path = x.path
-                path = path.parent.joinpath(f"{path.name}_transformed_{self.name}")
+                store_path = x.path
+                store_path = store_path.parent.joinpath(f"{store_path.name}_transformed_{self.name}")
                 logger.info(f"Path is not specified for transformer: {self.name}, "
                             f"the chunk will be stored in a neighboring directory as the original data: {x.path}"
-                            f"to: {path}.")
+                            f"to: {store_path}.")
             else:
                 logger.warning(f"Path is not specified for transformer: {self.name}, "
                                f"the chunk will not be stored.")
                 store_chunk = False
         elif store_chunk:
-            logger.info(f"Storing transformed chunks of data in: {path}")
+            logger.info(f"Storing transformed chunks of data in: {store_path}")
+            if is_chunk:
+                store_path.mkdir(parents=True, exist_ok=True)
 
         queue = BeamParallel(n_workers=n_workers, func=None, method=mp_method, name=self.name,
-                             progressbar='beam', reduce=False, reduce_dim=reduce_dim, **parallel_kwargs)
+                             progressbar='beam', reduce=False, reduce_dim=reduce_dim, use_dill=use_dill,
+                             **parallel_kwargs)
 
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")
@@ -273,24 +328,32 @@ class Transformer(Processor):
                 chunk_path = None
                 if store_chunk:
 
-                    if split_by == 'index':
-                        part_name = BeamData.index_partition_directory_name
-                    elif split_by == 'columns':
-                        part_name = BeamData.columns_partition_directory_name
-                    else:
-                        part_name = ''
+                    k_type = check_type(k)
+                    k_with_counter = k
+                    if k_type.element == 'int':
+                        k_with_counter = BeamData.normalize_key(self.counter)
 
-                    chunk_path = path.joinpath(f"{BeamData.normalize_key(k)}{part_name}")
+                    chunk_path = store_path.joinpath(f"{self.name}_{k_with_counter}{part_name}")
+
                     if store_suffix is not None:
-                        chunk_path = f"{chunk_path}{store_suffix}"
-                    # chunk_path = chunk_path.as_uri()
+                        chunk_path = chunk_path.with_suffix(chunk_path.suffix + store_suffix)
+
+                    self.counter += 1
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
-                                   store=store_chunk, name=k, metadata=f"{self.name}", **kwargs))
+                                   override=override, store=store_chunk, name=k, metadata=f"{self.name}", **kwargs))
 
         else:
-            queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk,
-                               store=store_chunk, name=self.name, **kwargs))
+            self.counter += 1
+
+            if store_path:
+
+                store_path = store_path.joinpath(f"{self.name}_{self.counter}")
+                if store_suffix is not None:
+                    store_path = store_path.with_suffix(store_path.suffix + store_suffix)
+
+            queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, store_path=store_path,
+                               override=override, store=store_chunk, name=self.name, **kwargs))
 
         logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "
                     f"Number of queued tasks is {len(queue)}.")
@@ -299,7 +362,7 @@ class Transformer(Processor):
 
         exceptions = []
         for i, (_, v) in enumerate(iter_container(synced_results.exceptions)):
-            exceptions.append({'exception': v, 'task': queue.queue[i]})
+            exceptions.append({**v, 'task': queue.queue[i]})
 
         if len(exceptions) > 0:
             logger.error(f"Transformer {self.name} had {len(exceptions)} exceptions during operation.")
@@ -322,10 +385,10 @@ class Transformer(Processor):
                 logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
                 if reduce:
-                    x = self.reduce(x, split_by=split_by, **kwargs)
+                    x = self.reduce(x, split_by=split_by)
             else:
                 x = {k[0] if type(k) is tuple and len(k) == 1 else k: v for k, v in zip(keys, values)}
-                if store:
+                if store and not store_chunk:
                     logger.warning("Due to exceptions, the data will not be stored, "
                                    "the data is returned as a dictionary of all the successful tasks.")
                 return x
@@ -337,13 +400,13 @@ class Transformer(Processor):
             logger.info(f"Finished transformer process: {self.name}.")
             x = results[0][1]
 
-        if store:
+        if store and not store_chunk:
 
-            logger.info(f"Storing transformed of data in: {path}")
+            logger.info(f"Storing aggregated transformed data in: {store_path}")
             if not isinstance(x, BeamData):
                 x = BeamData(x)
-            x.store(path=path)
-            x = BeamData.from_path(path=path)
+            x.store(path=store_path)
+            # x = BeamData.from_path(path=path)
 
         return x
 

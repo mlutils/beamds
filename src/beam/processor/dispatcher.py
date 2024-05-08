@@ -1,7 +1,7 @@
 import inspect
+from functools import cached_property
 
-from .processor import Processor
-from ..utils import lazy_property
+from .core import Processor
 
 
 class MetaAsyncResult:
@@ -90,11 +90,10 @@ class MetaDispatcher(Processor):
         routes = self._routes
         if routes is None or len(routes) == 0:
             routes = [name for name, attr in inspect.getmembers(self.real_object)
-                      if type(name) is str and not name.startswith('_') and
-                      (inspect.ismethod(attr) or inspect.isfunction(attr))]
+                      if type(name) is str and not name.startswith('_') and inspect.isroutine(attr)]
         return routes
 
-    @lazy_property
+    @cached_property
     def type(self):
         if inspect.isfunction(self.real_object):
             return "function"
@@ -105,7 +104,7 @@ class MetaDispatcher(Processor):
         else:
             return "instance" if isinstance(self.real_object, object) else "unknown"
 
-    @lazy_property
+    @cached_property
     def route_methods(self):
         return {route: getattr(self.real_object, route) for route in self.routes}
 

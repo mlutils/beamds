@@ -1,12 +1,13 @@
 from typing import Union
-
+from functools import cached_property
 from dataclasses import make_dataclass
-from ..core import Processor
-from ..utils import lazy_property
 from kubernetes import client, watch
 from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
+from kubernetes.stream import stream
+
 from ..logger import beam_logger as logger
+from ..processor import Processor
 from .units import K8SUnits
 from .dataclasses import *
 import time
@@ -26,19 +27,19 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         self.use_scc = use_scc
         self.scc_name = scc_name
 
-    @lazy_property
+    @cached_property
     def core_v1_api(self):
         return client.CoreV1Api(self.api_client)
 
-    @lazy_property
+    @cached_property
     def api_client(self):
         return client.ApiClient(self.configuration)
 
-    @lazy_property
+    @cached_property
     def apps_v1_api(self):
         return client.AppsV1Api(self.api_client)
 
-    @lazy_property
+    @cached_property
     def configuration(self):
         configuration = Configuration()
         configuration.host = self.api_url
@@ -49,13 +50,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         }
         return configuration
 
-    @lazy_property
+    @cached_property
     def dyn_client(self):
         from openshift.dynamic import DynamicClient
         # Ensure the api_client is initialized before creating the DynamicClient
         return DynamicClient(self.api_client)
 
-    @lazy_property
+    @cached_property
     def rbac_api(self):
         return RbacAuthorizationV1Api(self.api_client)
 

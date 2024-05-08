@@ -1,6 +1,6 @@
 import os
 from collections import defaultdict
-from .core import BeamConfig, BeamParam
+from .core_config import BeamConfig, BeamParam
 from ..path import beam_path
 
 

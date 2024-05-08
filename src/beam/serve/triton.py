@@ -1,8 +1,9 @@
 from collections import defaultdict
 from functools import partial
+from functools import cached_property
 
-from ..core import Processor
-from ..utils import lazy_property, as_numpy, check_type, as_tensor
+from ..processor import Processor
+from ..utils import as_numpy, check_type, as_tensor
 
 triton_to_numpy_dtype_dict = {
     'BOOL': 'bool',
@@ -60,7 +61,7 @@ class TritonClient(Processor):
         self.metadata_cache[model_name][model_version] = metadata
         return metadata
 
-    @lazy_property
+    @cached_property
     def metadata(self):
         return self.get_metadata(self.model_name, self.model_version)
 
@@ -68,7 +69,7 @@ class TritonClient(Processor):
     def is_alive(self):
         return self.client.is_server_live()
 
-    @lazy_property
+    @cached_property
     def infer_input(self):
         if 'http' in self.scheme:
             from tritonclient.http import InferInput
@@ -78,7 +79,7 @@ class TritonClient(Processor):
             raise ValueError(f"Invalid scheme: {self.scheme}")
         return InferInput
 
-    @lazy_property
+    @cached_property
     def infer_requested_output(self):
         if 'http' in self.scheme:
             from tritonclient.http import InferRequestedOutput
@@ -88,7 +89,7 @@ class TritonClient(Processor):
             raise ValueError(f"Invalid scheme: {self.scheme}")
         return InferRequestedOutput
 
-    @lazy_property
+    @cached_property
     def client(self):
         if 'http' in self.scheme:
             from tritonclient.http import InferenceServerClient

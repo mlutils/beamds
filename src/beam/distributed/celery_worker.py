@@ -2,14 +2,13 @@ import inspect
 from typing import Tuple, Dict, Any
 from uuid import uuid4 as uuid
 from multiprocessing import Process
-
+from functools import cached_property
 from dataclasses import dataclass, field
+import warnings
 
 from .utils import get_broker_url, get_backend_url
-from ..core import Processor
-from ..utils import lazy_property
+from ..processor import Processor
 from ..logger import beam_logger as logger
-import warnings
 
 
 class CeleryWorker(Processor):
@@ -48,13 +47,13 @@ class CeleryWorker(Processor):
         logger.info(f"Setting up a Celery worker: app name: {self.name} broker: {self.broker_url.url} "
                     f"backend: {self.backend_url.url}")
 
-    @lazy_property
+    @cached_property
     def type(self):
         if inspect.isfunction(self.obj):
             return 'function'
         return 'class'
 
-    @lazy_property
+    @cached_property
     def broker(self):
         from celery import Celery
         from celery.exceptions import SecurityWarning
@@ -78,8 +77,7 @@ class CeleryWorker(Processor):
         routes = self._routes
         if routes is None or len(routes) == 0:
             routes = [name for name, attr in inspect.getmembers(self.obj)
-                      if type(name) is str and not name.startswith('_') and
-                      (inspect.ismethod(attr) or inspect.isfunction(attr))]
+                      if type(name) is str and not name.startswith('_') and inspect.isroutine(attr)]
 
         return routes
 

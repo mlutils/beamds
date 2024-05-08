@@ -1,11 +1,63 @@
 import os
 import sys
 import time
+from collections import Counter
 
 import torch
 import numpy as np
 from src.beam import resource
 from beam import beam_logger as logger
+
+
+def test_slice_to_index():
+    from src.beam.utils import slice_to_index
+    n = np.arange(10)
+
+    print(slice_to_index(2, len(n), sliced=n))
+    print(slice_to_index(slice(1), sliced=n))
+    print(slice_to_index(slice(1, 3),  sliced=n))
+
+
+def test_recursive_len():
+    from src.beam.utils import recursive_len
+    # c = Counter({'a': 1, 'b': 2})
+    c = {'a': 1, 'b': 2}
+    # c = {'a': 1, 'b': 2, 'c': np.random.randn(10)}
+    print(recursive_len([c]))
+
+
+def test_config():
+    from src.beam.config import TransformerConfig
+
+    hparams = TransformerConfig(chunksize=33333)
+    hparams2 = TransformerConfig(hparams, chunksize=44444)
+
+    print(hparams2)
+
+
+def test_transformer():
+
+    from src.beam.transformer import Transformer
+
+    t = Transformer()
+    print(t)
+
+
+def test_mlflow_path():
+    path = resource('mlflow:///new-exp/new-run')
+    path.mkdir()
+    path.joinpath('aaa.pkl').write({'a': 1, 'b': 2})
+    print(path.joinpath('aaa.pkl').read())
+
+    print(list(path))
+
+
+def test_beam_data_keys():
+    from src.beam import BeamData
+    bd = BeamData({'a': [1, 2, 3], 'b': {'x': 1, 'y': 2}})
+    print(list(bd.keys()))
+    print(list(bd.keys(level=2)))
+    print(list(bd.keys(level=-1)))
 
 
 def simple_server():
@@ -172,7 +224,7 @@ def load_model():
     print(alg)
 
 
-def parallel_treading():
+def test_beam_parallel():
 
     from src.beam.parallel import parallel, task
 
@@ -423,6 +475,20 @@ if __name__ == '__main__':
 
     # grpc_server()
 
-    simple_server()
+    # simple_server()
+
+    # test_beam_data_keys()
+
+    # test_beam_parallel()
+
+    # test_mlflow_path()
+
+    # test_transformer()
+
+    # test_config()
+
+    # test_recursive_len()
+
+    test_slice_to_index()
 
     print('done')

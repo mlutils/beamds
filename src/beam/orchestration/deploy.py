@@ -1,4 +1,4 @@
-from ..core import Processor
+from ..processor import Processor
 from .pod import BeamPod
 from kubernetes import client
 from kubernetes.client.rest import ApiException

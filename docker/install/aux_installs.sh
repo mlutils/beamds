@@ -14,6 +14,8 @@ pip install -U nvidia-ml-py
 #pip install --no-build-isolation  mpi4py
 #pip install -U setuptools
 
+python -c "from opencv_fixer import AutoFix; AutoFix()"
+
 git config --global http.sslVerify false
 
 echo "cd $USER_HOME" >> ~/.bashrc

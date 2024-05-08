@@ -2,7 +2,7 @@ import io
 import pickle
 from functools import partial
 from ..path import normalize_host, BeamResource
-from ..core import Processor
+from ..processor import Processor
 
 from .server import has_torch
 if has_torch:

@@ -4,7 +4,7 @@ import numpy as np
 from dataclasses import dataclass
 
 from ..data import BeamData
-from ..core import Processor
+from ..processor import Processor
 from ..utils import as_scipy_csr, as_scipy_coo, as_numpy, as_tensor
 
 
@@ -32,16 +32,18 @@ class BeamSimilarity(Processor):
         return self._is_trained
 
     def reset(self):
-        self.index = None
+        self.index = np.array([])
         self._is_trained = False
 
     @staticmethod
     def extract_data_and_index(x, index=None, convert_to='numpy'):
-        if isinstance(x, BeamData) or hasattr(x, 'beam_class') and x.beam_class == 'BeamData':
+        if isinstance(x, BeamData) or hasattr(x, 'beam_class_name') and 'BeamData' in x.beam_class_name:
             index = x.index
             x = x.values
 
-        if convert_to == 'numpy':
+        if convert_to is None:
+            pass
+        elif convert_to == 'numpy':
             x = as_numpy(x)
         elif convert_to == 'tensor':
             x = as_tensor(x)
@@ -86,7 +88,7 @@ class BeamSimilarity(Processor):
         return self.ntotal
 
     def save_state(self, path, ext=None, **kwargs):
-        state = {attr: getattr(self, attr) for attr in self.exclude_pickle_attributes}
+        state = {attr: getattr(self, attr) for attr in self.state_attributes}
         state['hparams'] = self.hparams
         bd = BeamData(state, path=path)
         bd.store(**kwargs)
@@ -94,7 +96,7 @@ class BeamSimilarity(Processor):
     def load_state(self, path, ext=None, **kwargs):
         bd = BeamData(path=path)
         state = bd.cache(**kwargs).values
-        for attr in self.exclude_pickle_attributes:
+        for attr in self.state_attributes:
             setattr(self, attr, state[attr])
 
     def get_index(self, index):
@@ -102,7 +104,7 @@ class BeamSimilarity(Processor):
 
     def add_index(self, x, index=None):
 
-        if self.index is None:
+        if not len(self.index):
             if index is None:
                 index = np.arange(len(x))
             else:

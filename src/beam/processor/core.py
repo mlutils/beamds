@@ -1,66 +1,11 @@
 import json
 from collections import OrderedDict
 import inspect
-import pickle
-from argparse import Namespace
-import io
+from functools import cached_property
+
 from ..path import beam_path, normalize_host
-from ..utils import retrieve_name, lazy_property, check_type
 from ..config import BeamConfig
-
-
-class MetaBeamInit(type):
-    def __call__(cls, *args, _store_init_path=None, **kwargs):
-        init_args = {'args': args, 'kwargs': kwargs}
-        if _store_init_path:
-            cls._pre_init(_store_init_path, init_args)
-        instance = super().__call__(*args, **kwargs)
-        instance._init_args = init_args
-        instance._init_is_done = True
-        return instance
-
-    def _pre_init(cls, store_init_path, init_args):
-        # Process or store arguments
-        store_init_path = beam_path(store_init_path)
-        store_init_path.write(init_args, ext='.pkl')
-
-
-class BeamBase(metaclass=MetaBeamInit):
-
-    def __init__(self, *args, name=None, **kwargs):
-
-        self._init_is_done = False
-        self._name = name
-        self._lazy_cache = {}
-
-    def getattr(self, attr):
-        raise AttributeError(f"Attribute {attr} not found")
-
-    def __getattr__(self, item):
-        if (item.startswith('_') or item == '_init_is_done' or not hasattr(self, '_init_is_done')
-                or not self._init_is_done):
-            return object.__getattribute__(self, item)
-        return self.getattr(item)
-
-    def clear_cache(self, *args):
-        if len(args) == 0:
-            self._lazy_cache = {}
-        else:
-            for k in args:
-                if k in self._lazy_cache:
-                    del self._lazy_cache[k]
-
-    def in_cache(self, attr):
-        return attr in self._lazy_cache
-
-    @property
-    def name(self):
-        if self._name is None and hasattr(self, '_init_is_done') and self._init_is_done:
-            self._name = retrieve_name(self)
-        return self._name
-
-    def beam_class(self):
-        return self.__class__.__name__
+from ..base import BeamBase
 
 
 class Processor(BeamBase):
@@ -68,28 +13,12 @@ class Processor(BeamBase):
     skeleton_file = 'skeleton'
     state_file = 'state'
 
-    def __init__(self, *args, name=None, hparams=None, override=True, remote=None, llm=None, **kwargs):
+    def __init__(self, *args, name=None, llm=None, **kwargs):
 
-        super().__init__(name=name)
-        self.remote = remote
-
-        if len(args) > 0:
-            self.hparams = args[0]
-        elif hparams is not None:
-            self.hparams = hparams
-        else:
-            if not hasattr(self, 'hparams'):
-                self.hparams = BeamConfig(config=Namespace())
-
-        for k, v in kwargs.items():
-            v_type = check_type(v)
-            if v_type.major in ['scalar', 'none']:
-                if k not in self.hparams or override:
-                    self.hparams[k] = v
-
+        super().__init__(*args, name=name, llm=llm, **kwargs)
         self._llm = self.get_hparam('llm', llm)
 
-    @lazy_property
+    @cached_property
     def llm(self):
         if type(self._llm) is str:
             from ..resource import resource
@@ -97,7 +26,7 @@ class Processor(BeamBase):
         return self._llm
 
     @property
-    def exclude_pickle_attributes(self):
+    def state_attributes(self):
         '''
         return of list of class attributes that are used to save the state and are not part of the
         skeleton of the instance. override this function to add more attributes to the state and avoid pickling a large
@@ -111,7 +40,8 @@ class Processor(BeamBase):
 
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
-        state = {k: v for k, v in self.__dict__.items() if k not in self.exclude_pickle_attributes}
+        # this is a mislead name, as __getstate__ is used to get the skeleton of the instance and not the state
+        state = {k: v for k, v in self.__dict__.items() if k not in self.state_attributes}
         return state
 
     def __setstate__(self, state):
@@ -292,11 +222,11 @@ class Processor(BeamBase):
             state = path.read()
         elif has_beam_ds:
             state = BeamData.from_path(path=path)
-            state = state.cache()
+            state.cache()
         else:
             raise NotImplementedError
 
-        self.load_state_dict(state)
+        self.load_state_dict(state.values)
 
     def nlp(self, query, llm=None, ask_kwargs=None, **kwargs):
 

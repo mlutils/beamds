@@ -1,7 +1,7 @@
 import io
-
+from functools import cached_property
 import requests
-from ..utils import lazy_property
+
 from .client import BeamClient
 
 

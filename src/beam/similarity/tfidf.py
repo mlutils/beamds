@@ -1,14 +1,15 @@
 from typing import List, Union, Any
+from functools import cached_property
 
+from collections import Counter
+import scipy.sparse as sp
 import numpy as np
 import torch
 
 from ..data import BeamData
 from ..transformer import Transformer
-from ..utils import check_type,lazy_property, as_numpy
+from ..utils import check_type, as_numpy
 from .core import Similarities, BeamSimilarity
-from collections import Counter
-import scipy.sparse as sp
 
 
 class ChunkTF(Transformer):
@@ -19,7 +20,7 @@ class ChunkTF(Transformer):
         self._device = device
         super().__init__(*args, **kwargs)
 
-    @lazy_property
+    @cached_property
     def device(self):
         from ..utils import beam_device
         return beam_device(self._device)
@@ -144,9 +145,9 @@ class ChunkDF(Transformer):
 
 class TFIDF(BeamSimilarity):
 
-    def __init__(self, *args, preprocessor=None, min_df=None, max_df=None, max_features=None, use_idf=True,
+    def __init__(self, *args, preprocessor=None, min_df=2, max_df=.95, max_features=None, use_idf=True,
                  smooth_idf=True, sublinear_tf=False, n_workers=0, mp_method='joblib', chunksize=None,
-                 n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
+                 use_dill=False, n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
                  metric='bm25', bm25_k1=1.5, bm25_b=0.75, bm25_epsilon=0.25, **kwargs):
 
         super().__init__(*args, min_df=min_df, max_df=max_df, max_features=max_features, use_idf=use_idf,
@@ -184,15 +185,29 @@ class TFIDF(BeamSimilarity):
         self.device = self.get_hparam('device', device)
 
         self.n_workers = self.get_hparam('n_workers', n_workers)
-        n_chunks = self.get_hparam('n_chunks', self.n_workers)
-        chunksize = self.get_hparam('chunksize', None)
+        self.n_chunks = self.get_hparam('n_chunks', self.n_workers)
+        self.chunksize = self.get_hparam('chunksize', None)
         mp_method = self.get_hparam('mp_method', mp_method)
+        use_dill = self.get_hparam('use_dill', use_dill)
 
-        self.chunk_tf = ChunkTF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
+        self.chunk_tf = ChunkTF(n_workers=self.n_workers, n_chunks=self.n_chunks, chunksize=self.chunksize,
+                                mp_method=mp_method, use_dill=use_dill,
                                 squeeze=False, reduce=False, sparse_framework=self.sparse_framework, device=self.device,
                                 preprocessor=self.preprocessor)
-        self.chunk_df = ChunkDF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
+        self.chunk_df = ChunkDF(n_workers=self.n_workers, n_chunks=self.n_chunks, chunksize=self.chunksize,
+                                mp_method=mp_method, use_dill=use_dill,
                                 squeeze=False, reduce=False, preprocessor=self.preprocessor)
+
+        self.preprocessor_transformer = Transformer(func=self.preprocessor, n_workers=self.n_workers,
+                                                    n_chunks=self.n_chunks,
+                                                    chunksize=self.chunksize, mp_method=mp_method)
+
+    def preprocess(self, x):
+        if self.chunksize is not None and len(x) <= self.chunksize:
+            return self.preprocessor(x)
+        if self.n_chunks is not None and self.n_chunks < 2:
+            return self.preprocessor(x)
+        return self.preprocessor_transformer.transform(x)
 
     @staticmethod
     def default_preprocessor(x):
@@ -273,16 +288,24 @@ class TFIDF(BeamSimilarity):
 
         return scores
 
+    def as_container(self, x):
+        x_type = check_type(x)
+        if x_type.element == 'str':
+            if not x_type.major == 'array':
+                x = [x]
+        else:
+            if not x_type.major == 'container':
+                x = [x]
+        return x
+
     def transform(self, x: Union[List, List[List], BeamData], index: Union[None, Any] = None,
                   add_to_index: bool = False):
 
-        x, index = self.extract_data_and_index(x, index)
+        x, index = self.extract_data_and_index(x, index, convert_to=None)
         if add_to_index or self.index is None:
             self.add_index(x, index)
 
-        x_type = check_type(x)
-        if not x_type.major == 'container':
-            x = [x]
+        x = self.as_container(x)
 
         tf, tfidf = self.tf_and_tfidf(x, scheme='raw_counts')
         if self.tf is None:
@@ -300,25 +323,28 @@ class TFIDF(BeamSimilarity):
         self.cf = Counter()
         self.n_docs = 0
         self.tf = None
-        self.index = None
+        self.index = np.array([])
         self._is_trained = False
         self.clear_cache('idf', 'tokens', 'n_tokens', 'avg_doc_len', 'idf_bm25', 'doc_len', 'doc_len_sparse',
                          'max_token')
 
-    @lazy_property
+    @cached_property
     def tokens(self):
         """Build a mapping from tokens to indices based on filtered tokens."""
         return set(self.df.keys())
 
-    @lazy_property
+    @cached_property
     def avg_doc_len(self):
         return sum(self.cf.values()) / self.n_docs
 
-    @lazy_property
+    @cached_property
     def n_tokens(self):
-        return max(list(self.tokens))
+        l = list(self.tokens)
+        if len(l) == 0:
+            return 0
+        return max(l) + 1
 
-    @lazy_property
+    @cached_property
     def idf(self):
 
         if self.use_idf:
@@ -334,11 +360,11 @@ class TFIDF(BeamSimilarity):
     def idf_bm25(self, epsilon=.25):
         return self.calculate_idf(scheme='bm25', epsilon=epsilon)
 
-    @lazy_property
+    @cached_property
     def max_token(self):
         return max(list(self.tokens))
 
-    @lazy_property
+    @cached_property
     def doc_len(self):
         if self.sparse_framework == 'torch':
             doc_lengths = self.tf.sum(dim=1, keepdim=True).to_dense().squeeze(-1)
@@ -347,7 +373,7 @@ class TFIDF(BeamSimilarity):
 
         return doc_lengths
 
-    @lazy_property
+    @cached_property
     def doc_len_sparse(self):
         if self.sparse_framework == 'torch':
             repeats = self.tf.crow_indices().diff()
@@ -443,6 +469,8 @@ class TFIDF(BeamSimilarity):
 
     def search(self, q, k=1, **kwargs):
 
+        q = self.as_container(q)
+
         if self.metric == 'bm25':
             scores = self.bm25(q, **kwargs)
             if self.sparse_framework == 'torch':
@@ -458,6 +486,6 @@ class TFIDF(BeamSimilarity):
         return Similarities(index=self.get_index(I), distance=D, metric=self.metric, model='tfidf')
 
     @property
-    def exclude_pickle_attributes(self):
+    def state_attributes(self):
         return ['df', 'cf', 'n_docs', 'tf', 'index']
 

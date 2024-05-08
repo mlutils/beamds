@@ -36,10 +36,11 @@ def parallel_copy_path(src, dst, chunklen=10, **kwargs):
     parallel(jobs, **kwargs)
 
 
-def parallel(tasks, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0, **kwargs):
+def parallel(tasks, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0,
+             use_dill=False, **kwargs):
     bp = BeamParallel(func=func, n_workers=n_workers, method=method, progressbar=progressbar,
-                      reduce=reduce, reduce_dim=reduce_dim, **kwargs)
-    return bp(tasks)
+                      reduce=reduce, reduce_dim=reduce_dim, use_dill=use_dill, **kwargs)
+    return bp(tasks).values
 
 
 # def task(func, name=None, silence=False):

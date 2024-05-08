@@ -1,5 +1,7 @@
-from ..utils import (divide_chunks, Timer, collate_chunks, retrieve_name,
-                     jupyter_like_traceback, lazy_property, dict_to_list)
+from functools import cached_property
+
+from ..meta import BeamName
+from ..utils import Timer, jupyter_like_traceback, dict_to_list
 from ..logger import beam_logger as logger
 
 
@@ -40,39 +42,41 @@ class SyncedResults:
         # results is a list of dicts with keys: name, result, exception
         self.results = results
 
-    @lazy_property
+    @cached_property
     def results_map(self):
         return {r['name']: r for r in self.results}
 
-    @lazy_property
+    @cached_property
     def failed(self):
         failed = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
         return dict_to_list(failed, convert_str=False)
 
-    @lazy_property
+    @cached_property
     def succeeded(self):
         succeeded = {r['name']: r['result'] for r in self.results if r['exception'] is None}
         return dict_to_list(succeeded, convert_str=False)
 
-    @lazy_property
+    @cached_property
     def values(self):
         vals = {r['name']: r['result'] if r['exception'] is None else r['exception'] for r in self.results}
         return dict_to_list(vals, convert_str=False)
 
-    @lazy_property
+    @cached_property
     def exceptions(self):
-        vals = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
+        vals = {r['name']: {'exception': r['exception'], 'traceback': r['result']}
+                for r in self.results if r['exception'] is not None}
         return dict_to_list(vals, convert_str=False)
 
 
-class BeamTask(object):
+class BeamTask(BeamName):
 
     def __init__(self, func, *args, name=None, silence=False, metadata=None, **kwargs):
+
+        super().__init__(name=name)
 
         self.func = func
         self.args = args
         self.kwargs = kwargs
-        self._name = name
         self.pid = None
         self.is_pending = True
         self.result = None
@@ -81,17 +85,8 @@ class BeamTask(object):
         self.queue_id = -1
         self.silence = silence
 
-    @property
-    def name(self):
-        if self._name is None:
-            self._name = retrieve_name(self)
-        return self._name
-
     def set_silent(self, silence):
         self.silence = silence
-
-    def set_name(self, name):
-        self._name = name
 
     def __call__(self, *args, **kwargs):
         self.args = args

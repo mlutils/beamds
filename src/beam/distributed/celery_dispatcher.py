@@ -1,8 +1,7 @@
-from functools import partial
+from functools import partial, cached_property
 
 from .utils import get_broker_url, get_backend_url
-from ..utils import lazy_property
-from ..core import MetaAsyncResult, MetaDispatcher
+from ..processor import MetaAsyncResult, MetaDispatcher
 
 
 class CeleryAsyncResult(MetaAsyncResult):
@@ -74,7 +73,7 @@ class CeleryDispatcher(MetaDispatcher):
 
         self.log_level = log_level
 
-    @lazy_property
+    @cached_property
     def broker(self):
         from celery import Celery
         app = Celery(self.name, broker=self.broker_url.url, backend=self.backend_url.url)
