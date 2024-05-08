@@ -1,5 +1,7 @@
 from functools import cached_property
 
+import numpy as np
+import pandas as pd
 import spacy
 
 from src.beam import resource, BeamData
@@ -39,6 +41,11 @@ class GroupExpansionAlgorithm(Algorithm):
 
 
 class TicketSimilarity(GroupExpansionAlgorithm):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fitted_subset_tfidf = None
+        self.fitted_subset_dense = None
 
     @cached_property
     def entity_remover(self):
@@ -111,13 +118,44 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         sim = TextSimilarity(hparams=self.hparams)
         return sim
 
-    def fit_tfidf(self):
-        self.tfidf_sim.fit_transform(self.dataset['x_train'].values,
-                                     index=self.subsets['train'].values.index)
+    @cached_property
+    def invmap(self):
+        im = {}
+        for k, v in self.subsets.items():
+            im[k] = pd.Series(np.arange(len(v.values)), index=v.values.index)
+        return im
 
-    def fit_dense(self):
-        self.dense_sim.add(self.dataset['x_train'].values,
-                                     index=self.subsets['train'].values.index)
+    @cached_property
+    def x(self):
+        return {'train': self.dataset[f'x_train'].values,
+                'validation': self.dataset['x_val'].values,
+                'test': self.dataset['x_test'].values}
+
+    @cached_property
+    def y(self):
+        return {'train': self.dataset[f'y_train'].values,
+                'validation': self.dataset['y_val'].values,
+                'test': self.dataset['y_test'].values}
+
+    @cached_property
+    def ind(self):
+        return {'train': self.subsets['train'].values.index,
+                'validation': self.subsets['validation'].values.index,
+                'test': self.subsets['test'].values.index}
+
+    def reset(self):
+        self.tfidf_sim.reset()
+        self.dense_sim.reset()
+        self.fitted_subset_tfidf = None
+        self.fitted_subset_dense = None
+
+    def fit_tfidf(self, subset='validation'):
+        self.tfidf_sim.fit_transform(self.x[subset], index=self.ind[subset])
+        self.fitted_subset_tfidf = subset
+
+    def fit_dense(self, subset='validation'):
+        self.dense_sim.add(self.x[subset], index=self.ind[subset])
+        self.fitted_subset_dense = subset
 
     def search_tfidf(self, query, k=5):
         return self.tfidf_sim.search(query, k=k)
@@ -149,3 +187,36 @@ class TicketSimilarity(GroupExpansionAlgorithm):
     def state_attributes(self):
         return ['nlp_model', 'entity_remover', 'root_path',
                 'dataset', 'metadata', 'nlp_model', 'tokenizer', 'tfidf_sim'] + super().state_attributes
+
+    def build_group_dataset(self, group_label,
+                            known_subset='train',
+                            unknown_subset='validation', k_sparse=None, k_dense=None):
+
+        k_sparse = k_sparse or self.get_hparam('k-sparse')
+        k_dense = k_dense or self.get_hparam('k-dense')
+
+        if self.fitted_subset_tfidf != known_subset:
+            if self.fitted_subset_tfidf is not None:
+                logger.warning(f"TFIDF model not fitted for {known_subset}. Fitting now and overriding existing fit")
+            else:
+                logger.info(f"TFIDF model not fitted for {known_subset}. Fitting now")
+            self.fit_tfidf(known_subset)
+
+        if self.fitted_subset_dense != known_subset:
+            if self.fitted_subset_dense is not None:
+                logger.warning(f"Dense model not fitted for {known_subset}. Fitting now and overriding existing fit")
+            else:
+                logger.info(f"Dense model not fitted for {known_subset}. Fitting now")
+            self.fit_dense(known_subset)
+
+        ind_pos = np.where(self.y[known_subset] == group_label)[0]
+        v = self.x[known_subset]
+        x_pos = [v[i] for i in ind_pos]
+        y_pos = np.ones(len(ind_pos), dtype=int)
+
+        res_sparse = self.search_tfidf(x_pos, k=k_sparse)
+        res_dense = self.search_dense(x_pos, k=k_dense)
+
+
+
+

@@ -3,8 +3,8 @@
   "preprocess_title": false,
   "split_dataset": false,
   "build_dataset": false,
-  "calc_tfidf": true,
-  "calc_dense": true,
-  "reload_state": false,
-  "save_state": true
+  "calc_tfidf": false,
+  "calc_dense": false,
+  "reload_state": true,
+  "save_state": false
 }

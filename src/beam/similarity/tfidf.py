@@ -469,9 +469,7 @@ class TFIDF(BeamSimilarity):
 
     def search(self, q, k=1, **kwargs):
 
-        q_type = check_type(q)
-        if not q_type.major == 'container':
-            q = [q]
+        q = self.as_container(q)
 
         if self.metric == 'bm25':
             scores = self.bm25(q, **kwargs)

@@ -1,3 +1,5 @@
+import numpy as np
+
 from src.beam import Timer, resource
 from src.beam import beam_logger as logger
 import os
@@ -47,24 +49,41 @@ def run_enron():
         logger.info(f"Saving state to {hparams.get('model-state-path')}")
         alg.save_state(hparams.get('model-state-path'))
 
+    # alg.tfidf_sim.metric = 'bm25'
+    # query = "I need to know about the project"
+    # results = alg.search_tfidf(query, k=5)
+    #
+    # logger.info(f"TFIDF Results for query: {query}")
+    # logger.info(results)
+    #
+    # for i in results.index[0]:
+    #     logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
+    #
+    # results = alg.search_dense([query], k=5)
+    # logger.info(f"Dense Results for query: {query}")
+    # logger.info(results)
+    #
+    # for i in results.index[0]:
+    #     logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
+    # logger.info('done enron_similarity example')
+
+    l = 1930
+    k_sparse = 50
+    k_dense = 50
+
+    ind_l = np.where(alg.dataset['y_train'].values == l)[0]
+
+    v = alg.dataset['x_train'].values
+    x_l = [v[i] for i in ind_l]
+
     alg.tfidf_sim.metric = 'bm25'
-    query = "I need to know about the project"
-    results = alg.search_tfidf(query, k=5)
+    results = alg.search_tfidf(x_l[:2], k=k_sparse)
 
-    logger.info(f"TFIDF Results for query: {query}")
+    logger.info(f"TFIDF Results for query: {l}")
     logger.info(results)
 
     for i in results.index[0]:
-        logger.info(alg.subsets['train'].loc[i].values['body'])
-
-    results = alg.search_dense(query, k=5)
-    logger.info(f"Dense Results for query: {query}")
-    logger.info(results)
-
-    for i in results.index[0]:
-        logger.info(alg.subsets['train'].loc[i].values['body'])
-    logger.info('done enron_similarity example')
-
+        logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
 
 if __name__ == '__main__':
     run_enron()

@@ -195,7 +195,6 @@ class DenseSimilarity(BeamSimilarity):
         if self.index is not None:
             I = self.index[I]
         if x_type.minor == 'tensor':
-            I = as_tensor(I, device=device)
             D = as_tensor(D, device=device)
 
         return Similarities(index=I, distance=D, model='faiss', metric=self.metric)
