@@ -50,7 +50,7 @@ class K8SConfig(BeamConfig):
         BeamParam('storage_configs', list, [], 'Storage configurations'),
         BeamParam('memory_storage_configs', list, [], 'Memory storage configurations'),
         BeamParam('service_configs', list, [], 'Service configurations'),
-        BeamParam('ray_ports_configs', list, [], 'Ray ports configurations'),
+        BeamParam('ports_configs', list, [], 'Ports configurations'),
         BeamParam('user_idm_configs', list, [], 'User IDM configurations'),
 
     ]
@@ -59,5 +59,5 @@ class K8SConfig(BeamConfig):
 class RayClusterConfig(K8SConfig):
 
     parameters = [
-        BeamParam('n-workers', int, 1, 'Number of Ray workers'),
+        BeamParam('n-pods', int, 1, 'Number of Ray worker pods'),
     ]
