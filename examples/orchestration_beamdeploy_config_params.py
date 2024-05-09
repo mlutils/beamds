@@ -10,7 +10,7 @@ api_token: str = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkFOYndaWldZRXFjT0FXeURWOVl4aWVQUE
 hparams = K8SConfig(K8S_API_KEY=api_token, api_url="https://api.dayo-ocp.dt.local:6443", check_project_exists=True,
                     os_namespace="moh", project_name="moh", create_service_account=True,
                     image_name="harbor.dt.local/public/beam:openshift-moh150424", labels={"app": "moh"},
-                    deployment_name="moh", replicas=1, use_scc=True,
+                    deployment_name="khdev", replicas=1, use_scc=True,
                     scc_name="anyuid", node_selector=None, cpu_requests="4", cpu_limits="4",
                     memory_requests="12", memory_limits="12", gpu_requests="1", gpu_limits="1",  enable_ray_ports=False)
 
