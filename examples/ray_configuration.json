@@ -1,0 +1,7 @@
+{
+  "service_configs": [{"port":  2222, "service_name":  "ssh", "service_type": "NodePort",
+                     "port_name": "ssh-port", "create_route": true, "create_ingress": false,
+                     "ingress_host": "ssh.example.com" }],
+  "storage_configs": [{"pvc_name": "data-pvc", "pvc_mount_path": "/data-pvc",
+                       "pvc_size": "500", "pvc_access_mode": "ReadWriteMany", "create_pvc": true}]
+}

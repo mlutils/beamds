@@ -48,9 +48,8 @@ class K8SConfig(BeamConfig):
         BeamParam('gpu_requests', str, '1', 'GPU requests'),
         BeamParam('gpu_limits', str, '1', 'GPU limits'),
         BeamParam('storage_configs', list, [], 'Storage configurations'),
-        BeamParam('memory_storage_configs', list, [], 'Memory storage configurations'),
+        BeamParam('memory_configs', list, [], 'Memory storage configurations'),
         BeamParam('service_configs', list, [], 'Service configurations'),
-        BeamParam('ports_configs', list, [], 'Ports configurations'),
         BeamParam('user_idm_configs', list, [], 'User IDM configurations'),
 
     ]

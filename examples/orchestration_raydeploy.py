@@ -1,7 +1,20 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
 from src.beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, ServiceConfig, StorageConfig,
-                                    RayPortsConfig, UserIdmConfig, MemoryStorageConfig, SecurityContextConfig)
+                                    RayPortsConfig, UserIdmConfig, MemoryStorageConfig, SecurityContextConfig,
+                                    RayClusterConfig)
+from src.beam import resource
+
 import time
+import os
+
+
+script_dir = os.path.dirname(os.path.realpath(__file__))
+conf_path = resource(os.path.join(script_dir, 'ray_configuration.json')).str
+
+config = RayClusterConfig(conf_path)
+service_configs = [ServiceConfig(**v) for v in config.get('service_configs')]
+storage_configs = [StorageConfig(**v) for v in config.get('storage_configs')]
+
 
 # Initial configuration for the head deployment
 api_url = "https://api.kh-dev.dt.local:6443"
