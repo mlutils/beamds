@@ -119,11 +119,23 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         return sim
 
     @cached_property
-    def invmap(self):
+    def _invmap(self):
         im = {}
         for k, v in self.subsets.items():
-            im[k] = pd.Series(np.arange(len(v.values)), index=v.values.index)
+            s = pd.Series(np.arange(len(v.values)), index=v.values.index)
+            im[k] = s.sort_index()
         return im
+
+    @cached_property
+    def invmap(self):
+        class InvMap:
+            def __init__(self, invmap):
+                self._invmap = invmap
+
+            def __getitem__(self, ind):
+                return self._invmap[ind].values
+
+        return {k: InvMap(v) for k, v in self._invmap.items()}
 
     @cached_property
     def x(self):
@@ -195,19 +207,19 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         k_sparse = k_sparse or self.get_hparam('k-sparse')
         k_dense = k_dense or self.get_hparam('k-dense')
 
-        if self.fitted_subset_tfidf != known_subset:
+        if self.fitted_subset_tfidf != unknown_subset:
             if self.fitted_subset_tfidf is not None:
-                logger.warning(f"TFIDF model not fitted for {known_subset}. Fitting now and overriding existing fit")
+                logger.warning(f"TFIDF model not fitted for {unknown_subset}. Fitting now and overriding existing fit")
             else:
-                logger.info(f"TFIDF model not fitted for {known_subset}. Fitting now")
-            self.fit_tfidf(known_subset)
+                logger.info(f"TFIDF model not fitted for {unknown_subset}. Fitting now")
+            self.fit_tfidf(unknown_subset)
 
-        if self.fitted_subset_dense != known_subset:
+        if self.fitted_subset_dense != unknown_subset:
             if self.fitted_subset_dense is not None:
-                logger.warning(f"Dense model not fitted for {known_subset}. Fitting now and overriding existing fit")
+                logger.warning(f"Dense model not fitted for {unknown_subset}. Fitting now and overriding existing fit")
             else:
-                logger.info(f"Dense model not fitted for {known_subset}. Fitting now")
-            self.fit_dense(known_subset)
+                logger.info(f"Dense model not fitted for {unknown_subset}. Fitting now")
+            self.fit_dense(unknown_subset)
 
         ind_pos = np.where(self.y[known_subset] == group_label)[0]
         v = self.x[known_subset]
@@ -217,6 +229,17 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         res_sparse = self.search_tfidf(x_pos, k=k_sparse)
         res_dense = self.search_dense(x_pos, k=k_dense)
 
+        ind_sparse = self.invmap[unknown_subset][res_sparse.index.flatten()]
+        ind_dense = self.invmap[unknown_subset][res_dense.index.flatten()]
 
+        ind_unlabeled = np.unique(np.concatenate([ind_sparse, ind_dense], axis=0))
 
+        x_unlabeled = [self.x[unknown_subset][k] for k in ind_unlabeled]
 
+        y_unlabeled = np.zeros(len(ind_unlabeled), dtype=int)
+
+        y_unlabeled_true = self.y[unknown_subset][ind_unlabeled]
+
+        return {'x_pos': x_pos, 'y_pos': y_pos,
+                'x_unlabeled': x_unlabeled,
+                'y_unlabeled': y_unlabeled, 'y_unlabeled_true': y_unlabeled_true, 'ind_unlabeled': ind_unlabeled}

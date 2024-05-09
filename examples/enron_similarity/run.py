@@ -49,41 +49,40 @@ def run_enron():
         logger.info(f"Saving state to {hparams.get('model-state-path')}")
         alg.save_state(hparams.get('model-state-path'))
 
-    # alg.tfidf_sim.metric = 'bm25'
-    # query = "I need to know about the project"
-    # results = alg.search_tfidf(query, k=5)
-    #
-    # logger.info(f"TFIDF Results for query: {query}")
-    # logger.info(results)
-    #
-    # for i in results.index[0]:
-    #     logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
-    #
-    # results = alg.search_dense([query], k=5)
-    # logger.info(f"Dense Results for query: {query}")
-    # logger.info(results)
-    #
-    # for i in results.index[0]:
-    #     logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
-    # logger.info('done enron_similarity example')
-
-    l = 1930
-    k_sparse = 50
-    k_dense = 50
-
-    ind_l = np.where(alg.dataset['y_train'].values == l)[0]
-
-    v = alg.dataset['x_train'].values
-    x_l = [v[i] for i in ind_l]
-
     alg.tfidf_sim.metric = 'bm25'
-    results = alg.search_tfidf(x_l[:2], k=k_sparse)
+    query = "I need to know about the project"
+    results = alg.search_tfidf(query, k=5)
 
-    logger.info(f"TFIDF Results for query: {l}")
+    logger.info(f"TFIDF Results for query: {query}")
     logger.info(results)
 
     for i in results.index[0]:
         logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
+
+    results = alg.search_dense([query], k=5)
+    logger.info(f"Dense Results for query: {query}")
+    logger.info(results)
+
+    for i in results.index[0]:
+        logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
+    logger.info('done enron_similarity example')
+
+
+    # alg.fitted_subset_dense = 'validation'
+    # alg.fitted_subset_tfidf = 'validation'
+    # alg.tfidf_sim.metric = 'bm25'
+    # pd.Series(alg.y['validation']).value_counts().head(20)
+    # l = 36
+    # res = alg.build_group_dataset(l)
+    # tp = (res['y_unlabeled_true'] == l).sum()
+    # fp = len(res['y_unlabeled_true']) - tp
+    # p = (alg.y['validation'] == l).sum()
+    # recall = tp / p
+    # precision = tp / (tp + fp)
+    # prevalence = p / len(alg.y['validation'])
+    #
+    # print(f"recall: {recall}, precision: {precision}, prevalence: {prevalence}")
+
 
 if __name__ == '__main__':
     run_enron()

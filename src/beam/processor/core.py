@@ -177,9 +177,14 @@ class Processor(BeamBase):
         for k, v in state_dict.items():
             setattr(self, k, v)
 
-    def save_state(self, path, ext=None):
-
+    def save_state(self, path, ext=None, **kwargs):
         state = self.state_dict()
+        for n in self.state_attributes:
+            if n not in state:
+                state[n] = getattr(self, n)
+
+        if 'hparams' not in state:
+            state['hparams'] = self.hparams
         path = beam_path(path)
 
         try:
@@ -188,13 +193,34 @@ class Processor(BeamBase):
         except ImportError:
             has_beam_ds = False
 
-        if has_beam_ds and isinstance(state, BeamData):
-            state.store(path=path, file_type=ext)
-        elif has_beam_ds and (not path.suffix) and ext is None:
-            state = BeamData(data=state, path=path)
+        if path.suffix or ext:
+            path.write(state, ext=ext, **kwargs)
+        elif has_beam_ds:
+            state = BeamData(data=state, path=path, **kwargs)
             state.store()
         else:
-            path.write(state, ext=ext)
+            raise NotImplementedError("Saving state without extension is not supported without BeamData")
+
+    def load_state(self, path, ext=None, **kwargs):
+
+        path = beam_path(path)
+
+        try:
+            from ..data import BeamData
+            has_beam_ds = True
+        except ImportError:
+            has_beam_ds = False
+
+        if path.is_file() or ext is not None:
+            state = path.read(ext=ext, **kwargs)
+        elif has_beam_ds:
+            state = BeamData.from_path(path=path, **kwargs)
+            state.cache()
+            state = state.values
+        else:
+            raise NotImplementedError("Loading state without extension is not supported without BeamData")
+
+        self.load_state_dict(state)
 
     def to_path(self, path, skeleton_ext=None, state_ext=None):
         path = beam_path(path)
@@ -207,26 +233,6 @@ class Processor(BeamBase):
 
         path.joinpath(skeleton_file).write(self)
         self.save_state(path.joinpath(state_file))
-
-    def load_state(self, path):
-
-        path = beam_path(path)
-
-        try:
-            from ..data import BeamData
-            has_beam_ds = True
-        except ImportError:
-            has_beam_ds = False
-
-        if path.is_file():
-            state = path.read()
-        elif has_beam_ds:
-            state = BeamData.from_path(path=path)
-            state.cache()
-        else:
-            raise NotImplementedError
-
-        self.load_state_dict(state.values)
 
     def nlp(self, query, llm=None, ask_kwargs=None, **kwargs):
 

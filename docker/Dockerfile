@@ -86,7 +86,9 @@ RUN pip install -U -r /workspace/beam_image/requirements_0016.txt
 # RUN pip list
 COPY docker/install/requirements_0017.txt /workspace/beam_image
 RUN pip install -U -r /workspace/beam_image/requirements_0017.txt
-
+# RUN pip list
+COPY docker/install/requirements_0018.txt /workspace/beam_image
+RUN pip install -U -r /workspace/beam_image/requirements_0018.txt
 #install huggingface ecosystem
 # REMOVE FOR LITE VERSION
 COPY docker/install/install_huggingface_ecosystem.sh /workspace/beam_image
