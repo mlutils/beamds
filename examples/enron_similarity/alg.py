@@ -4,12 +4,12 @@ import numpy as np
 import pandas as pd
 import spacy
 
-from src.beam import resource, BeamData
+from src.beam import resource, BeamData, Timer, as_numpy
 from src.beam.transformer import Transformer
 from src.beam import beam_logger as logger
 from src.beam.algorithm import Algorithm
 
-from .utils import replace_entity_over_series, build_dataset, split_dataset
+from .utils import replace_entity_over_series, build_dataset, split_dataset, extract_textstat_features
 
 
 class GroupExpansionAlgorithm(Algorithm):
@@ -71,6 +71,22 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         nlp = spacy.load(self.get_hparam('nlp-model'))
         nlp.max_length = self.get_hparam('nlp-max-length')
         return nlp
+
+    @cached_property
+    def svd_transformer(self):
+        from sklearn.decomposition import TruncatedSVD
+        svd = TruncatedSVD(n_components=self.get_hparam('svd-components', 128))
+        return svd
+    
+    def svd_transform(self, x):
+        crow_indices = x.crow_indices().numpy()
+        col_indices = x.col_indices().numpy()
+        values = x.values().numpy()
+
+        # Create a SciPy CSR matrix
+        from scipy.sparse import csr_matrix
+        x = csr_matrix((values, col_indices, crow_indices), shape=x.size())
+        return self.svd_transformer.fit_transform(x)
 
     def preprocess_body(self):
         self.entity_remover.transform(self.metadata['body'], nlp=self.nlp_model, transform_kwargs={
@@ -155,6 +171,11 @@ class TicketSimilarity(GroupExpansionAlgorithm):
                 'validation': self.subsets['validation'].values.index,
                 'test': self.subsets['test'].values.index}
 
+    @cached_property
+    def robust_scaler(self):
+        from sklearn.preprocessing import RobustScaler
+        return RobustScaler()
+
     def reset(self):
         self.tfidf_sim.reset()
         self.dense_sim.reset()
@@ -162,6 +183,8 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         self.fitted_subset_dense = None
 
     def fit_tfidf(self, subset='validation'):
+        # we need to fit the tfidf model and also apply the transformation in order to
+        # calculate the doc_len_sparse attribute
         self.tfidf_sim.fit_transform(self.x[subset], index=self.ind[subset])
         self.fitted_subset_tfidf = subset
 
@@ -188,17 +211,18 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         super().load_state(path.joinpath('internal_state'))
         try:
             self.tfidf_sim.load_state(path.joinpath('tfidf_sim'))
-        except FileNotFoundError:
-            logger.warning("TFIDF model not found")
+        except Exception as e:
+            logger.warning(f"TFIDF model not found: {e}")
+            raise e
         try:
             self.dense_sim.load_state(path.joinpath('dense_sim'))
-        except FileNotFoundError:
-            logger.warning("Dense model not found")
+        except Exception as e:
+            logger.warning(f"Dense model not found: {e}")
 
     @property
     def state_attributes(self):
-        return ['nlp_model', 'entity_remover', 'root_path',
-                'dataset', 'metadata', 'nlp_model', 'tokenizer', 'tfidf_sim'] + super().state_attributes
+        return ['nlp_model', 'entity_remover', 'root_path', 'dataset', 'metadata', 'nlp_model', 'tokenizer',
+                'tfidf_sim'] + super().state_attributes
 
     def build_group_dataset(self, group_label,
                             known_subset='train',
@@ -243,3 +267,15 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         return {'x_pos': x_pos, 'y_pos': y_pos,
                 'x_unlabeled': x_unlabeled,
                 'y_unlabeled': y_unlabeled, 'y_unlabeled_true': y_unlabeled_true, 'ind_unlabeled': ind_unlabeled}
+
+    def build_features(self, x):
+        x_tfidf = self.tfidf_sim.transform(x)
+        x_dense = self.dense_sim.encode(x)
+        with Timer(name='svd_transform', logger=logger):
+            x_svd = self.svd_transform(x_tfidf)
+        with Timer(name='extract_textstat_features', logger=logger):
+            x_textstat = extract_textstat_features(x, n_workers=self.get_hparam('n_workers'))
+            x_textstat = self.robust_scaler.fit_transform(x_textstat)
+        v = np.concatenate([as_numpy(x_dense), as_numpy(x_svd), as_numpy(x_textstat)], axis=1)
+        return v
+

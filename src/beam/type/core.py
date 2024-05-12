@@ -60,11 +60,6 @@ class BeamType:
     @cached_property
     def is_data_array(self):
         return self._minor in ['numpy', 'torch', 'polars', 'cudf', 'pandas', 'scipy_sparse']
-
-    @cached_property
-    def is_dataframe(self):
-        return self._minor in ['pandas', 'polars', 'cudf']
-
     @classmethod
     def check(cls, x, major=True, minor=True, element=True):
         if major:
@@ -73,4 +68,32 @@ class BeamType:
         element = check_element_type(x) if element else None
         minor = check_minor_type(x) if minor else None
         return cls(_ref=x, _major=None, _minor=minor, _element=element)
+
+    @classmethod
+    def check_major(cls, x):
+        return cls.check(x, major=True, minor=False, element=False)
+
+    @classmethod
+    def check_minor(cls, x):
+        return cls.check(x, major=False, minor=True, element=False)
+
+    @classmethod
+    def check_element(cls, x):
+        return cls.check(x, major=False, minor=False, element=True)
+
+    @staticmethod
+    def check_if_data_array(x):
+        return BeamType.check_minor(x).is_data_array
+
+    @staticmethod
+    def check_if_dataframe(x):
+        return BeamType.check_minor(x).is_dataframe
+
+    @staticmethod
+    def check_if_array(x):
+        return BeamType.check_major(x).is_array
+
+    @staticmethod
+    def check_if_scalar(x):
+        return BeamType.check_major(x).is_scalar
 

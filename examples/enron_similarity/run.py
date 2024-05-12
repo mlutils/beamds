@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 from src.beam import Timer, resource
 from src.beam import beam_logger as logger
@@ -67,21 +68,31 @@ def run_enron():
         logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
     logger.info('done enron_similarity example')
 
+    alg.fitted_subset_dense = 'validation'
+    alg.fitted_subset_tfidf = 'validation'
+    alg.tfidf_sim.metric = 'bm25'
+    pd.Series(alg.y['validation']).value_counts().head(20)
+    l = 36
+    res = alg.build_group_dataset(l, k_sparse=50, k_dense=50)
+    tp = (res['y_unlabeled_true'] == l).sum()
+    fp = len(res['y_unlabeled_true']) - tp
+    p = (alg.y['validation'] == l).sum()
+    recall = tp / p
+    precision = tp / (tp + fp)
+    prevalence = p / len(alg.y['validation'])
+    print(f"recall: {recall}, precision: {precision}, prevalence: {prevalence}")
 
-    # alg.fitted_subset_dense = 'validation'
-    # alg.fitted_subset_tfidf = 'validation'
-    # alg.tfidf_sim.metric = 'bm25'
-    # pd.Series(alg.y['validation']).value_counts().head(20)
-    # l = 36
-    # res = alg.build_group_dataset(l)
-    # tp = (res['y_unlabeled_true'] == l).sum()
-    # fp = len(res['y_unlabeled_true']) - tp
-    # p = (alg.y['validation'] == l).sum()
-    # recall = tp / p
-    # precision = tp / (tp + fp)
-    # prevalence = p / len(alg.y['validation'])
-    #
-    # print(f"recall: {recall}, precision: {precision}, prevalence: {prevalence}")
+    vu = res['x_unlabeled']
+    vp = res['x_pos']
+    x = vu + vp
+    v = alg.build_features(x)
+    y = np.concatenate([res['y_unlabeled'], res['y_pos']])
+    with Timer():
+        from pulearn import BaggingPuClassifier
+        from sklearn.svm import SVC
+        svc = SVC(C=10, kernel='rbf', gamma=0.4, probability=True)
+        pu_estimator = BaggingPuClassifier(estimator=svc, n_estimators=15, n_jobs=40)
+        pu_estimator.fit(v, y)
 
 
 if __name__ == '__main__':
