@@ -38,6 +38,15 @@ class Processor(BeamBase):
 
         return keys
 
+    @property
+    def excluded_attributes(self):
+        '''
+        return of list of class attributes should not be saved in the state. override this function to exclude some
+        attributes from the state.
+        @return:
+        '''
+        return []
+
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
         # this is a mislead name, as __getstate__ is used to get the skeleton of the instance and not the state
@@ -182,6 +191,10 @@ class Processor(BeamBase):
         for n in self.state_attributes:
             if n not in state:
                 state[n] = getattr(self, n)
+
+        for n in self.excluded_attributes:
+            if n in state:
+                state.pop(n)
 
         if 'hparams' not in state:
             state['hparams'] = self.hparams

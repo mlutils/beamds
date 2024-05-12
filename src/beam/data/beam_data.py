@@ -756,6 +756,8 @@ class BeamData(BeamName):
                         return self._orientation
 
                 def shape_of(x):
+                    if not BeamType.check_if_data_array(x):
+                        return 'other'
                     if hasattr(x, 'shape'):
                         return tuple(x.shape[1:])
                     if x is None:
@@ -767,7 +769,7 @@ class BeamData(BeamName):
                 shapes = recursive_flatten(recursive(shape_of)([self.data]))
 
                 shapes = list(filter(lambda x: x is not None, shapes))
-                if len(set(shapes)) == 1:
+                if len(set(shapes)) == 1 and shapes[0] != 'other':
                     self._orientation = 'index'
                 else:
                     self._orientation = 'packed'
