@@ -5,7 +5,6 @@ from functools import partial, cached_property
 
 import numpy as np
 import pandas as pd
-import torch
 
 from ..logger import beam_logger as logger
 from ..path import beam_path
@@ -431,6 +430,9 @@ class BeamData(BeamName):
         if not path.exists():
             path.mkdir()
         return cls(path=path, *args, **kwargs)
+
+    def to_path(self, path):
+        self.store(path=path)
 
     @classmethod
     def from_indexed_pandas(cls, data, *args, **kwargs):
@@ -1126,6 +1128,10 @@ class BeamData(BeamName):
                     priority = ['.pkl']
                 else:
                     priority = ['.pt']
+            elif hasattr(data, 'beam_class_name') and 'BeamData' in data.beam_class_name:
+                priority = ['.bmd', '.pkl']
+            elif hasattr(data, 'beam_class_name') and 'Processor' in data.beam_class_name:
+                priority = ['.bmp', '.pkl']
             else:
                 priority = ['.pkl']
 
@@ -1294,7 +1300,8 @@ class BeamData(BeamName):
             return data
 
         if objects_type == 'tensor':
-            func = torch.stack if dim==1 and dim >= len(v.shape) else torch.cat
+            import torch
+            func = torch.stack if dim == 1 and dim >= len(v.shape) else torch.cat
             kwargs = {'dim': dim}
         elif objects_type == 'pandas':
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]

@@ -251,7 +251,7 @@ class NeuralAlgorithm(Algorithm):
 
     @cached_property
     def device(self):
-        if self.in_cache('accelerator') and self.accelerator.device_placement:
+        if self.in_cache('accelerator') and self.accelerator is not None and self.accelerator.device_placement:
             device = self.accelerator.device
         elif self._device is not None:
             device = self._device
@@ -341,7 +341,7 @@ class NeuralAlgorithm(Algorithm):
         if item in self.networks:
             return self.networks[item]
         else:
-            raise AttributeError(f"Algorithm has no attribute {item}")
+            return super().__getattr__(item)
 
     @property
     def dataset(self):

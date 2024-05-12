@@ -81,3 +81,4 @@ class FileSystem:
 
     def iterdir(self):
         return self.__iter__()
+

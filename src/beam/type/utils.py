@@ -182,6 +182,11 @@ def _check_type(x, minor=True, element=True):
         mit = 'slice'
         elt = 'slice'
 
+    elif isinstance(x, PurePath) or hasattr(x, 'beam_class_name') and 'PureBeamPath' in x.beam_class_name:
+        mjt = 'path'
+        mit = 'path'
+        elt = 'path'
+
     else:
 
         elt = 'unknown'

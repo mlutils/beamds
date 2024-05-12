@@ -666,6 +666,17 @@ class PureBeamPath(BeamResource):
         else:
             pdu = pd
 
+        # read .bmd (beam-data) and .bmp (beam-processor) files
+
+        if ext == '.bmd':
+            from ..data import BeamData
+            lazy = kwargs.pop('lazy', False)
+            return BeamData.from_path(self, lazy=lazy)
+
+        if ext == '.bmp':
+            from ..processor import Processor
+            return Processor.from_path(self)
+
         with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
             if ext == '.fea':
@@ -879,6 +890,19 @@ class PureBeamPath(BeamResource):
 
         path = str(self)
         x_type = check_type(x)
+
+        # write .bmd (beam-data) and .bmp (beam-processor) files
+
+        if ext == '.bmd':
+            assert hasattr(x, 'beam_class_name') and 'BeamData' in x.beam_class_name, \
+                f"Expected BeamData, got {type(x)}"
+            x.to_path(self)
+            return self
+
+        if ext == '.bmp':
+            assert hasattr(x, 'beam_class_name') and 'Processor' in x.beam_class_name, \
+                f"Expected Processor, got {type(x)}"
+            x.to_path(self)
 
         with self(mode=PureBeamPath.mode('write', ext)) as fo:
 
