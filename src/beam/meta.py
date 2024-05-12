@@ -2,7 +2,7 @@ from .utils import retrieve_name
 
 
 class MetaBeamInit(type):
-    def __call__(cls, *args, _store_init_path=None, _save_init_args=False, **kwargs):
+    def __call__(cls, *args, _store_init_path=None, _save_init_args=True, **kwargs):
 
         init_args = None
         if _store_init_path or _save_init_args:

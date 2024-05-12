@@ -2,6 +2,7 @@ import json
 from collections import OrderedDict
 import inspect
 from functools import cached_property
+from typing import List, Union
 
 from ..path import beam_path, normalize_host
 from ..config import BeamConfig
@@ -10,8 +11,8 @@ from ..base import BeamBase
 
 class Processor(BeamBase):
 
-    skeleton_file = 'skeleton'
-    state_file = 'state'
+    skeleton_file = '_skeleton.pkl'
+    init_args_file = '_init_args.pkl'
 
     def __init__(self, *args, name=None, llm=None, **kwargs):
 
@@ -50,7 +51,8 @@ class Processor(BeamBase):
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
         # this is a mislead name, as __getstate__ is used to get the skeleton of the instance and not the state
-        state = {k: v for k, v in self.__dict__.items() if k not in self.state_attributes}
+        excliuded_attributes = [*self.excluded_attributes, *self.state_attributes]
+        state = {k: v for k, v in self.__dict__.items() if k not in excliuded_attributes}
         return state
 
     def __setstate__(self, state):
@@ -77,32 +79,43 @@ class Processor(BeamBase):
         return cls(*args, **kwargs)
 
     @classmethod
-    def from_path(cls, path):
+    def from_path(cls, path, skeleton: Union[bool, str] = True, init_args: Union[bool, str] = True,
+                  load_state_kwargs=None,  **kwargs):
+
+        load_state_kwargs = load_state_kwargs or {}
         path = beam_path(path)
 
-        skeleton_file = list(path.glob(f"{Processor.skeleton_file}*"))[0]
-        state_file = list(path.glob(f"{Processor.state_file}*"))[0]
+        if skeleton:
+            if skeleton is True:
+                skeleton = Processor.skeleton_file
+            if path.joinpath(skeleton).exists():
+                obj = path.joinpath(skeleton).read()
+                obj.load_state(path, skeleton=False, **load_state_kwargs)
+                return obj
 
-        obj = skeleton_file.read()
-        obj.load_state(state_file)
+        state = Processor._load_state(path, **kwargs)
+
+        obj = None
+        if init_args:
+            if init_args is True:
+                init_args = Processor.init_args_file
+            if path.joinpath(init_args).exists():
+                d = path.joinpath(init_args).read()
+                init_args = d['args']
+                init_kwargs = d['kwargs']
+                obj = cls(*init_args, **init_kwargs)
+
+        if obj is None:
+            init_args = []
+            init_kwargs = {}
+            hparams = BeamConfig(config=state['hparams'] if 'hparams' in state else {})
+            init_kwargs['hparams'] = hparams
+            init_kwargs.update(kwargs)
+            obj = cls(*init_args, **init_kwargs)
+
+        obj.load_state(state=state, **load_state_kwargs)
 
         return obj
-
-    @classmethod
-    def from_state_path(cls, path):
-        path = beam_path(path)
-        state = path.read()
-        kwargs = dict()
-        args = tuple()
-        if 'aux' in state:
-            if 'kwargs' in state['aux']:
-                kwargs = state['aux']['kwargs']
-            if 'args' in state['aux']:
-                args = state['aux']['args']
-        hparams = BeamConfig(config=state['hparams'])
-        alg = cls(hparams, *args, **kwargs)
-        alg.load_state(state)
-        return alg
 
     @classmethod
     def from_nlp(cls, query, llm=None, ask_kwargs=None, **kwargs):
@@ -186,66 +199,74 @@ class Processor(BeamBase):
         for k, v in state_dict.items():
             setattr(self, k, v)
 
-    def save_state(self, path, ext=None, **kwargs):
+    def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
+                   init_args: Union[bool, str] = True, **kwargs):
         state = self.state_dict()
         for n in self.state_attributes:
-            if n not in state:
+            if n not in state and n not in self.excluded_attributes:
                 state[n] = getattr(self, n)
-
-        for n in self.excluded_attributes:
-            if n in state:
-                state.pop(n)
 
         if 'hparams' not in state:
             state['hparams'] = self.hparams
-        path = beam_path(path)
 
-        try:
-            from ..data import BeamData
-            has_beam_ds = True
-        except ImportError:
-            has_beam_ds = False
+        if exclude:
+            state = {k: v for k, v in state.items() if k not in exclude}
+
+        path = beam_path(path)
 
         if path.suffix or ext:
             path.write(state, ext=ext, **kwargs)
-        elif has_beam_ds:
-            state = BeamData(data=state, path=path, **kwargs)
-            state.store()
         else:
-            raise NotImplementedError("Saving state without extension is not supported without BeamData")
+            from ..data import BeamData
+            for k, v in state.items():
+                BeamData.write_object(v, path.joinpath(k))
 
-    def load_state(self, path, ext=None, **kwargs):
+        if skeleton:
+            if skeleton is True:
+                skeleton = Processor.skeleton_file
+            path.joinpath(skeleton).write(self)
 
+        if init_args:
+            if init_args is True:
+                init_args = Processor.init_args_file
+            path.joinpath(init_args).write(self._init_args)
+
+    @staticmethod
+    def _load_state(path, ext=None, exclude: List = None, **kwargs):
         path = beam_path(path)
 
-        try:
-            from ..data import BeamData
-            has_beam_ds = True
-        except ImportError:
-            has_beam_ds = False
-
-        if path.is_file() or ext is not None:
+        if path.suffix or ext:
             state = path.read(ext=ext, **kwargs)
-        elif has_beam_ds:
-            state = BeamData.from_path(path=path, **kwargs)
-            state.cache()
-            state = state.values
         else:
-            raise NotImplementedError("Loading state without extension is not supported without BeamData")
+            from ..data import BeamData
+            state = BeamData.read(path, **kwargs)
+
+        if exclude:
+            state = {k: v for k, v in state.items() if k not in exclude}
+
+        return state
+
+    def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str]=True, **kwargs):
+
+        assert path or state, 'Either path or state must be provided'
+        if state is None:
+            state = Processor._load_state(path, ext=ext, exclude=exclude, **kwargs)
+
+        for k in self.state_attributes:
+            if k in state:
+                setattr(self, k, state[k])
 
         self.load_state_dict(state)
 
-    def to_path(self, path, skeleton_ext=None, state_ext=None):
-        path = beam_path(path)
-        path.clean()
-        path.mkdir()
-        skeleton_ext = skeleton_ext or '.pkl'
-        state_ext = state_ext or ''
-        skeleton_file = f"{Processor.skeleton_file}{skeleton_ext}"
-        state_file = f"{Processor.state_file}{state_ext}"
+        if skeleton:
+            if skeleton is True:
+                skeleton = Processor.skeleton_file
+            if path.joinpath(skeleton).exists():
+                state = path.joinpath(skeleton).read()
+                self.__setstate__(state)
 
-        path.joinpath(skeleton_file).write(self)
-        self.save_state(path.joinpath(state_file))
+    def to_path(self, path, **kwargs):
+        self.save_state(path, **kwargs)
 
     def nlp(self, query, llm=None, ask_kwargs=None, **kwargs):
 
