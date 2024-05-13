@@ -3,7 +3,6 @@ from functools import cached_property
 import numpy as np
 import pandas as pd
 import spacy
-from datashader.datashape import to_numpy
 
 from src.beam import resource, BeamData, Timer, as_numpy
 from src.beam.transformer import Transformer
@@ -96,7 +95,7 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         return self.svd_transformer.fit_transform(x)
 
     def pca_transform(self, x):
-        x = to_numpy(x)
+        x = as_numpy(x)
         return self.pca_transformer.fit_transform(x)
 
     def preprocess_body(self):

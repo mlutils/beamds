@@ -203,7 +203,8 @@ class Processor(BeamBase):
                    init_args: Union[bool, str] = True, **kwargs):
         state = self.state_dict()
         for n in self.state_attributes:
-            if n not in state and n not in self.excluded_attributes:
+            # save only cached_properties that are already computed
+            if n not in state and n not in self.excluded_attributes and n in self.__dict__:
                 state[n] = getattr(self, n)
 
         if 'hparams' not in state:

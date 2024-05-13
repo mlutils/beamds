@@ -18,6 +18,7 @@ def run_enron():
     conf_path = resource(os.path.join(script_dir, 'conf.json')).str
     hparams = TicketSimilarityConfig(conf_path)
     alg = TicketSimilarity(hparams=hparams)
+
     if hparams.get('reload-state') and hparams.get('model-state-path') is not None:
         logger.info(f"Loading state from {hparams.get('model-state-path')}")
         alg.load_state(hparams.get('model-state-path'))
