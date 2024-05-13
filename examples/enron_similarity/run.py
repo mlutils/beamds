@@ -50,7 +50,7 @@ def run_enron():
         logger.info(f"Saving state to {hparams.get('model-state-path')}")
         alg.save_state(hparams.get('model-state-path'))
 
-    alg.tfidf_sim.metric = 'bm25'
+    # alg.tfidf_sim.metric = 'bm25'
     query = "I need to know about the project"
     results = alg.search_tfidf(query, k=5)
 

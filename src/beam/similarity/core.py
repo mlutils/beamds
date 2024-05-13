@@ -22,7 +22,7 @@ class BeamSimilarity(Processor):
 
     def __init__(self, *args, metric=None, **kwargs):
         super().__init__(*args, metric=metric, **kwargs)
-        self.metric = self.get_hparam('metric', metric)
+        self.metric = self.hparams.metric
         self.index = None
         self._is_trained = None
         self.reset()

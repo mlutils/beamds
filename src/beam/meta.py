@@ -4,13 +4,13 @@ from .utils import retrieve_name
 class MetaBeamInit(type):
     def __call__(cls, *args, _store_init_path=None, _save_init_args=True, **kwargs):
 
-        init_args = None
-        if _store_init_path or _save_init_args:
-            init_args = {'args': args, 'kwargs': kwargs}
+        init_args = {'args': args, 'kwargs': kwargs}
         if _store_init_path:
             cls._pre_init(_store_init_path, init_args)
-        instance = super().__call__(*args, **kwargs)
-        instance._init_args = init_args
+
+        instance = super().__call__(*args, _init_args=init_args, **kwargs)
+
+        instance._init_args = init_args if _save_init_args else None
         instance._init_is_done = True
         return instance
 

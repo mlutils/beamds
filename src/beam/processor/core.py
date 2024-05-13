@@ -46,7 +46,7 @@ class Processor(BeamBase):
         attributes from the state.
         @return:
         '''
-        return []
+        return ['_init_args']
 
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
@@ -93,7 +93,7 @@ class Processor(BeamBase):
                 obj.load_state(path, skeleton=False, **load_state_kwargs)
                 return obj
 
-        state = Processor._load_state(path, **kwargs)
+        state, path = Processor._load_state(path, **kwargs)
 
         obj = None
         if init_args:
@@ -213,13 +213,16 @@ class Processor(BeamBase):
             state = {k: v for k, v in state.items() if k not in exclude}
 
         path = beam_path(path)
+        ext = ext or path.suffix
 
-        if path.suffix or ext:
+        if ext and ext != '.bmp':
             path.write(state, ext=ext, **kwargs)
+            # to save the skeleton and the init_args in the same directory as the state file
+            path = path.parent.joinpath(f".{path.stem}")
         else:
             from ..data import BeamData
             for k, v in state.items():
-                BeamData.write_object(v, path.joinpath(k))
+                BeamData.write_object(v, path.joinpath(k), split=False)
 
         if skeleton:
             if skeleton is True:
@@ -235,8 +238,12 @@ class Processor(BeamBase):
     def _load_state(path, ext=None, exclude: List = None, **kwargs):
         path = beam_path(path)
 
-        if path.suffix or ext:
+        ext = ext or path.suffix
+
+        if ext and ext != '.bmp':
             state = path.read(ext=ext, **kwargs)
+            # to load the skeleton and the init_args in the same directory as the state file
+            path = path.parent.joinpath(f".{path.stem}")
         else:
             from ..data import BeamData
             state = BeamData.read(path, **kwargs)
@@ -244,13 +251,14 @@ class Processor(BeamBase):
         if exclude:
             state = {k: v for k, v in state.items() if k not in exclude}
 
-        return state
+        return state, path
 
-    def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str]=True, **kwargs):
+    def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str] = True,
+                   **kwargs):
 
         assert path or state, 'Either path or state must be provided'
         if state is None:
-            state = Processor._load_state(path, ext=ext, exclude=exclude, **kwargs)
+            state, path = Processor._load_state(path, ext=ext, exclude=exclude, **kwargs)
 
         for k in self.state_attributes:
             if k in state:

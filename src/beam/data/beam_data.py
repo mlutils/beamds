@@ -1092,7 +1092,7 @@ class BeamData(BeamName):
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None, split_by=None, **kwargs):
+                     chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None, split_by=None, split=True, **kwargs):
 
         path = beam_path(path)
 
@@ -1106,9 +1106,11 @@ class BeamData(BeamName):
                                               schema=schema, **kwargs)
         else:
 
-            if split_by != 'keys':
+            if split and split_by != 'keys':
                 n_chunks = BeamData.get_n_chunks(data, chunksize=chunksize, chunklen=chunklen,
                                                  n_chunks=n_chunks, size=size)
+            else:
+                n_chunks = 1
 
             data_type = check_type(data)
             if partition is not None and data_type.minor == 'pandas':

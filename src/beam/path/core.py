@@ -894,15 +894,18 @@ class PureBeamPath(BeamResource):
         # write .bmd (beam-data) and .bmp (beam-processor) files
 
         if ext == '.bmd':
-            assert hasattr(x, 'beam_class_name') and 'BeamData' in x.beam_class_name, \
-                f"Expected BeamData, got {type(x)}"
-            x.to_path(self)
+            if hasattr(x, 'beam_class_name') and 'BeamData' in x.beam_class_name:
+                x.to_path(self)
+            else:
+                from ..data import BeamData
+                BeamData(x).to_path(self)
             return self
 
         if ext == '.bmp':
             assert hasattr(x, 'beam_class_name') and 'Processor' in x.beam_class_name, \
                 f"Expected Processor, got {type(x)}"
             x.to_path(self)
+            return self
 
         with self(mode=PureBeamPath.mode('write', ext)) as fo:
 

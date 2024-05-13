@@ -3,6 +3,7 @@ from functools import cached_property
 import numpy as np
 import pandas as pd
 import spacy
+from datashader.datashape import to_numpy
 
 from src.beam import resource, BeamData, Timer, as_numpy
 from src.beam.transformer import Transformer
@@ -77,6 +78,12 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         from sklearn.decomposition import TruncatedSVD
         svd = TruncatedSVD(n_components=self.get_hparam('svd-components', 128))
         return svd
+
+    @cached_property
+    def pca_transformer(self):
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=self.get_hparam('pca-components', 128))
+        return pca
     
     def svd_transform(self, x):
         crow_indices = x.crow_indices().numpy()
@@ -87,6 +94,10 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         from scipy.sparse import csr_matrix
         x = csr_matrix((values, col_indices, crow_indices), shape=x.size())
         return self.svd_transformer.fit_transform(x)
+
+    def pca_transform(self, x):
+        x = to_numpy(x)
+        return self.pca_transformer.fit_transform(x)
 
     def preprocess_body(self):
         self.entity_remover.transform(self.metadata['body'], nlp=self.nlp_model, transform_kwargs={
@@ -176,6 +187,9 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         from sklearn.preprocessing import RobustScaler
         return RobustScaler()
 
+    def robust_scale(self, x):
+        return self.robust_scaler.fit_transform(as_numpy(x))
+
     def reset(self):
         self.tfidf_sim.reset()
         self.dense_sim.reset()
@@ -198,31 +212,34 @@ class TicketSimilarity(GroupExpansionAlgorithm):
     def search_dense(self, query, k=5):
         return self.dense_sim.search(query, k=k)
 
-    def save_state(self, path, ext=None):
-
-        path = resource(path)
-        super().save_state(path.joinpath('internal_state'), ext=ext)
-        self.tfidf_sim.save_state(path.joinpath('tfidf_sim'))
-        self.dense_sim.save_state(path.joinpath('dense_sim'))
-
-    def load_state(self, path):
-
-        path = resource(path)
-        super().load_state(path.joinpath('internal_state'))
-        try:
-            self.tfidf_sim.load_state(path.joinpath('tfidf_sim'))
-        except Exception as e:
-            logger.warning(f"TFIDF model not found: {e}")
-            raise e
-        try:
-            self.dense_sim.load_state(path.joinpath('dense_sim'))
-        except Exception as e:
-            logger.warning(f"Dense model not found: {e}")
+    # def save_state(self, path, ext=None):
+    #
+    #     path = resource(path)
+    #     super().save_state(path.joinpath('internal_state'), ext=ext)
+    #     self.tfidf_sim.save_state(path.joinpath('tfidf_sim'))
+    #     self.dense_sim.save_state(path.joinpath('dense_sim'))
+    #
+    # def load_state(self, path):
+    #
+    #     path = resource(path)
+    #     super().load_state(path.joinpath('internal_state'))
+    #     try:
+    #         self.tfidf_sim.load_state(path.joinpath('tfidf_sim'))
+    #     except Exception as e:
+    #         logger.warning(f"TFIDF model not found: {e}")
+    #         raise e
+    #     try:
+    #         self.dense_sim.load_state(path.joinpath('dense_sim'))
+    #     except Exception as e:
+    #         logger.warning(f"Dense model not found: {e}")
 
     @property
     def state_attributes(self):
-        return ['nlp_model', 'entity_remover', 'root_path', 'dataset', 'metadata', 'nlp_model', 'tokenizer',
-                'tfidf_sim'] + super().state_attributes
+        return ['tfidf_sim', 'dense_sim'] + super().state_attributes
+
+    @property
+    def excluded_attributes(self):
+        return ['dataset', 'metadata', 'nlp_model', 'tokenizer'] + super().excluded_attributes
 
     def build_group_dataset(self, group_label,
                             known_subset='train',
@@ -273,9 +290,11 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         x_dense = self.dense_sim.encode(x)
         with Timer(name='svd_transform', logger=logger):
             x_svd = self.svd_transform(x_tfidf)
+        with Timer(name='pca_transform', logger=logger):
+            x_pca = self.pca_transform(x_dense)
         with Timer(name='extract_textstat_features', logger=logger):
             x_textstat = extract_textstat_features(x, n_workers=self.get_hparam('n_workers'))
-            x_textstat = self.robust_scaler.fit_transform(x_textstat)
-        v = np.concatenate([as_numpy(x_dense), as_numpy(x_svd), as_numpy(x_textstat)], axis=1)
+            x_textstat = self.robust_scale(x_textstat)
+        v = np.concatenate([x_pca, x_svd, x_textstat], axis=1)
         return v
 

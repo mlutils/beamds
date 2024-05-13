@@ -62,5 +62,6 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('batch_size', int, 32, 'Batch size for dense model'),
         BeamParam('k-sparse', int, 50, 'Number of sparse similarities to include in the dataset'),
         BeamParam('k-dense', int, 50, 'Number of dense similarities to include in the dataset'),
-        BeamParam('svd-components', int, 128, 'Number of PCA components to use to compress the tfidf vectors'),
+        BeamParam('svd-components', int, 64, 'Number of PCA components to use to compress the tfidf vectors'),
+        BeamParam('pca-components', int, 64, 'Number of PCA components to use to compress the dense vectors'),
     ]

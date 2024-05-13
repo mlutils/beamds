@@ -11,10 +11,11 @@ from ..config import BeamConfig
 
 class BeamBase(BeamName, metaclass=MetaBeamInit):
 
-    def __init__(self, *args, name=None, hparams=None, **kwargs):
+    def __init__(self, *args, name=None, hparams=None, _init_args=None, **kwargs):
 
         super().__init__(name=name)
         self._init_is_done = False
+        _init_args = _init_args or {}
 
         if len(args) > 0 and (isinstance(args[0], BeamConfig) or isinstance(args[0], dict)):
             self.hparams = BeamConfig(args[0])
@@ -25,10 +26,11 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
                 self.hparams = BeamConfig(config=Namespace())
 
         for k, v in kwargs.items():
-            v_type = check_type(v)
-            if v_type.major in ['scalar', 'none']:
-                if k not in self.hparams or self._default_value(k) != v:
-                    self.hparams[k] = v
+            if not k.startswith('_'):
+                v_type = check_type(v)
+                if v_type.major in ['scalar', 'none']:
+                    if k in _init_args['kwargs'] or k not in self.hparams or self._default_value(k) != v:
+                        self.hparams[k] = v
 
     @cached_property
     def _signatures(self):
