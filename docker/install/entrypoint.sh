@@ -136,6 +136,8 @@ else
   echo "Redis is disabled."
 fi
 
+bash
+
 # run rabbitmq
 if [ "$RUN_RABBITMQ" = true ]; then
   RABBITMQ_PORT="${INITIALS}72"
