@@ -486,6 +486,6 @@ class TFIDF(BeamSimilarity):
         return Similarities(index=self.get_index(I), distance=D, metric=self.metric, model='tfidf')
 
     @property
-    def state_attributes(self):
+    def special_state_attributes(self):
         return ['df', 'cf', 'n_docs', 'tf', 'index']
 

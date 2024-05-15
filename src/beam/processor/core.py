@@ -18,6 +18,7 @@ class Processor(BeamBase):
 
         super().__init__(*args, name=name, llm=llm, **kwargs)
         self._llm = self.get_hparam('llm', llm)
+        self._beam_pickle = False
 
     @cached_property
     def llm(self):
@@ -27,17 +28,14 @@ class Processor(BeamBase):
         return self._llm
 
     @property
-    def state_attributes(self):
+    def special_state_attributes(self):
         '''
-        return of list of class attributes that are used to save the state and are not part of the
-        skeleton of the instance. override this function to add more attributes to the state and avoid pickling a large
-        skeleton.
+        return of list of special class attributes that are stored individually in the state and not as part of the
+        skeleton of the instance (i.e. a pickle object).
+        override this function to add more attributes to the state and avoid pickling a large skeleton.
         @return:
         '''
-        keys = self.state_dict().keys()
-        keys = [k for k in keys if k not in ['hparams']]
-
-        return keys
+        return ['hparams']
 
     @property
     def excluded_attributes(self):
@@ -46,13 +44,17 @@ class Processor(BeamBase):
         attributes from the state.
         @return:
         '''
-        return ['_init_args']
+        return ['_init_args', '_beam_pickle']
 
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
         # this is a mislead name, as __getstate__ is used to get the skeleton of the instance and not the state
-        excliuded_attributes = [*self.excluded_attributes, *self.state_attributes]
-        state = {k: v for k, v in self.__dict__.items() if k not in excliuded_attributes}
+        if self._beam_pickle:
+            excliuded_attributes = [*self.excluded_attributes, *self.special_state_attributes]
+            state = {k: v for k, v in self.__dict__.items() if k not in excliuded_attributes}
+        else:
+            state = self.__dict__
+        self._beam_pickle = False
         return state
 
     def __setstate__(self, state):
@@ -191,30 +193,16 @@ class Processor(BeamBase):
         from ..auto import AutoBeam
         AutoBeam.to_bundle(self, path)
 
-    def state_dict(self):
-        # The state must contain a key 'hparams' with the hparams of the instance
-        return {'hparams': self.hparams}
+    def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
+        state, path = Processor._load_state(path, ext=ext, exclude=exclude, **kwargs)
+        return state, path
 
-    def load_state_dict(self, state_dict):
-        for k, v in state_dict.items():
-            setattr(self, k, v)
-
-    def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
-                   init_args: Union[bool, str] = True, **kwargs):
-        state = self.state_dict()
-        for n in self.state_attributes:
-            # save only cached_properties that are already computed
-            if n not in state and n not in self.excluded_attributes and n in self.__dict__:
-                state[n] = getattr(self, n)
-
-        if 'hparams' not in state:
-            state['hparams'] = self.hparams
-
-        if exclude:
-            state = {k: v for k, v in state.items() if k not in exclude}
+    def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
 
         path = beam_path(path)
         ext = ext or path.suffix
+        exclude = exclude or []
+        state = {k: v for k, v in state.items() if k not in exclude}
 
         if ext and ext != '.bmp':
             path.write(state, ext=ext, **kwargs)
@@ -225,9 +213,26 @@ class Processor(BeamBase):
             for k, v in state.items():
                 BeamData.write_object(v, path.joinpath(k), split=False)
 
+        return path
+
+    def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
+                   init_args: Union[bool, str] = False, **kwargs):
+        state = {}
+        for n in self.special_state_attributes:
+            # save only cached_properties that are already computed
+            if n not in self.excluded_attributes and n in self.__dict__:
+                state[n] = getattr(self, n)
+
+        if exclude:
+            state = {k: v for k, v in state.items() if k not in exclude}
+
+        path = beam_path(path)
+        path = self.save_state_dict(state, path, ext=ext, exclude=exclude, **kwargs)
+
         if skeleton:
             if skeleton is True:
                 skeleton = Processor.skeleton_file
+            self._beam_pickle = True
             path.joinpath(skeleton).write(self)
 
         if init_args:
@@ -246,8 +251,15 @@ class Processor(BeamBase):
             # to load the skeleton and the init_args in the same directory as the state file
             path = path.parent.joinpath(f".{path.stem}")
         else:
+
+            state = {}
             from ..data import BeamData
-            state = BeamData.read(path, **kwargs)
+            if path.is_dir() and path.suffix not in ['.bmd']:
+                for p in path.iterdir():
+                    if p.stem not in exclude:
+                        state[p.stem] = BeamData.read(p, **kwargs)
+            else:
+                state = BeamData.read(path, **kwargs)
 
         if exclude:
             state = {k: v for k, v in state.items() if k not in exclude}
@@ -258,21 +270,19 @@ class Processor(BeamBase):
                    **kwargs):
 
         assert path or state, 'Either path or state must be provided'
+
         if state is None:
-            state, path = Processor._load_state(path, ext=ext, exclude=exclude, **kwargs)
+            state, path = self.load_state_dict(path=path, ext=ext, exclude=exclude, **kwargs)
 
-        for k in self.state_attributes:
-            if k in state:
-                setattr(self, k, state[k])
-
-        self.load_state_dict(state)
+        for k, v in state.items():
+            setattr(self, k, v)
 
         if skeleton:
             if skeleton is True:
                 skeleton = Processor.skeleton_file
             if path.joinpath(skeleton).exists():
-                state = path.joinpath(skeleton).read()
-                self.__setstate__(state)
+                skeleton = path.joinpath(skeleton).read()
+                self.__dict__.update(skeleton.__dict__)
 
     def to_path(self, path, **kwargs):
         self.save_state(path, **kwargs)

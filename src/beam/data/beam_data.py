@@ -1016,7 +1016,7 @@ class BeamData(BeamName):
         if schema is not None:
             kwargs = {**schema.read_schema, **kwargs}
 
-        if path.is_file():
+        if path.is_file() or path.suffix in ['.bmp', '.bmd']:
             logger.debug(f"Reading file: {path}")
             return path.read(**kwargs)
 
