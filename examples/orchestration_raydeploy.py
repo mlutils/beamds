@@ -11,7 +11,7 @@ conf_path = resource(os.path.join(script_dir, 'ray_configuration.json')).str
 config = RayClusterConfig(conf_path)
 security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
 memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
-# print([type(sc) for sc in memory_storage_configs])
+# print([type(sc) for sc in memory_storage_configs]) 21
 service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
 # print([type(sc) for sc in service_configs])
 storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
