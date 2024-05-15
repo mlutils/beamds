@@ -326,7 +326,7 @@ class NeuralAlgorithm(Algorithm):
         return acc
 
     @property
-    def state_attributes(self):
+    def special_state_attributes(self):
         return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
                 'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']

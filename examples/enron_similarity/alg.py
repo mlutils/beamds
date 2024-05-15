@@ -83,8 +83,9 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         from sklearn.decomposition import PCA
         pca = PCA(n_components=self.get_hparam('pca-components', 128))
         return pca
-    
-    def svd_transform(self, x):
+
+    @staticmethod
+    def svd_preprocess(x):
         crow_indices = x.crow_indices().numpy()
         col_indices = x.col_indices().numpy()
         values = x.values().numpy()
@@ -92,11 +93,21 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         # Create a SciPy CSR matrix
         from scipy.sparse import csr_matrix
         x = csr_matrix((values, col_indices, crow_indices), shape=x.size())
+        return x
+
+    def svd_fit_transform(self, x):
+        x = self.svd_preprocess(x)
         return self.svd_transformer.fit_transform(x)
 
+    def svd_transform(self, x):
+        x = self.svd_preprocess(x)
+        return self.svd_transformer.transform(x)
+
+    def pca_fit_transform(self, x):
+        return self.pca_transformer.fit_transform(as_numpy(x))
+
     def pca_transform(self, x):
-        x = as_numpy(x)
-        return self.pca_transformer.fit_transform(x)
+        return self.pca_transformer.transform(as_numpy(x))
 
     def preprocess_body(self):
         self.entity_remover.transform(self.metadata['body'], nlp=self.nlp_model, transform_kwargs={
@@ -233,12 +244,13 @@ class TicketSimilarity(GroupExpansionAlgorithm):
     #         logger.warning(f"Dense model not found: {e}")
 
     @property
-    def state_attributes(self):
-        return ['tfidf_sim', 'dense_sim'] + super().state_attributes
+    def special_state_attributes(self):
+        return ['tfidf_sim', 'dense_sim'] + super().special_state_attributes
 
     @property
     def excluded_attributes(self):
-        return ['dataset', 'metadata', 'nlp_model', 'tokenizer'] + super().excluded_attributes
+        return (['dataset', 'metadata', 'nlp_model', 'tokenizer', 'subsets', 'x', 'y', 'ind'] +
+                super().excluded_attributes)
 
     def build_group_dataset(self, group_label,
                             known_subset='train',
@@ -288,9 +300,9 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         x_tfidf = self.tfidf_sim.transform(x)
         x_dense = self.dense_sim.encode(x)
         with Timer(name='svd_transform', logger=logger):
-            x_svd = self.svd_transform(x_tfidf)
+            x_svd = self.svd_fit_transform(x_tfidf)
         with Timer(name='pca_transform', logger=logger):
-            x_pca = self.pca_transform(x_dense)
+            x_pca = self.pca_fit_transform(x_dense)
         with Timer(name='extract_textstat_features', logger=logger):
             x_textstat = extract_textstat_features(x, n_workers=self.get_hparam('n_workers'))
             x_textstat = self.robust_scale(x_textstat)
