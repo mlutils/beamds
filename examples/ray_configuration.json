@@ -1,5 +1,5 @@
 {
-    "api_url": "https://api.dayo-ocp.dt.local:6443",
+    "api_url": "https://api.kh-dev.dt.local:6443",
     "api_token": "sha256~T5uzLWUBskcvBuTC0luSivOhCSE0i7pipfXum8NiajI",
     "check_project_exists": true,
     "project_name": "kh-dev",
