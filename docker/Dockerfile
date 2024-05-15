@@ -127,7 +127,8 @@ RUN bash /workspace/install/install_dgl_fixed.sh
 # RUN python /workspace/beam_image/downloader.py
 
 ## download nlp data
-# RUN python /workspace/beam_image/models_downloads.py
+COPY docker/install/models_downloads.py /workspace/beam_image
+RUN python /workspace/beam_image/models_downloads.py
 
 
 # no need to install RAPIDS as it comes with the image, except cusignal which is not found
