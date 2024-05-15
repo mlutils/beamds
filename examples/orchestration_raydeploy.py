@@ -8,13 +8,16 @@ import os
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 conf_path = resource(os.path.join(script_dir, 'ray_configuration.json')).str
-
 config = RayClusterConfig(conf_path)
-memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs')]
-service_configs = [ServiceConfig(**v) for v in config.get('service_configs')]
-storage_configs = [StorageConfig(**v) for v in config.get('storage_configs')]
-ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs')]
-user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs')]
+security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
+memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
+# print([type(sc) for sc in memory_storage_configs])
+service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
+# print([type(sc) for sc in service_configs])
+storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
+# print([type(sc) for sc in storage_configs])
+ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs', [])]
+user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
 
 print('hello world')
 print("API URL:", config['api_url'])
@@ -29,11 +32,13 @@ k8s = BeamK8S(
 deployment = BeamDeploy(
     k8s=k8s,
     project_name=config['project_name'],
+    check_project_exists=config['check_project_exists'],
     namespace=config['project_name'],
     replicas=config['replicas'],
     labels=config['labels'],
     image_name=config['image_name'],
     deployment_name=config['deployment_name'],
+    create_service_account=config['create_service_account'],
     use_scc=config['use_scc'],
     node_selector=config['node_selector'],
     scc_name=config['scc_name'],
@@ -43,19 +48,17 @@ deployment = BeamDeploy(
     memory_limits=config['memory_limits'],
     gpu_requests=config['gpu_requests'],
     gpu_limits=config['gpu_limits'],
-    service_configs=config['service_configs'],
-    storage_configs=config['storage_configs'],
-    ray_ports_configs=config['ray_ports_configs'],
-    memory_storage_configs=config['memory_storage_configs'],
-    security_context_config=config['security_context_config'],
+    service_configs=service_configs,
+    storage_configs=storage_configs,
+    ray_ports_configs=ray_ports_configs,
+    memory_storage_configs=memory_storage_configs,
+    security_context_config=security_context_config,
     entrypoint_args=config['entrypoint_args'],
     entrypoint_envs=config['entrypoint_envs'],
-    user_idm_configs=config['user_idm_configs'],
+    user_idm_configs=user_idm_configs,
 )
-
 # Launch deployment and obtain pod instances
 head_deployment = deployment.launch(replicas=1)
-
 
 wait_time = 10  # Time to wait before executing commands
 time.sleep(wait_time)

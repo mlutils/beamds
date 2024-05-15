@@ -18,6 +18,11 @@ class ServiceConfig:
 
 
 @dataclass
+class SecurityContextConfig:
+    add_capabilities: List[str] = field(default_factory=list)
+    enable_security_context: bool = False
+
+@dataclass
 class RayPortsConfig:
     ray_ports: List[int] = field(default_factory=list)
     enable_ray_ports: bool = False

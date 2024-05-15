@@ -54,6 +54,7 @@ class BeamDeploy(Processor):
             replicas = self.replicas
 
         if self.check_project_exists is True:
+            print(f"Project Name: '{self.namespace}'")
             self.k8s.create_project(self.namespace)
 
         if self.create_service_account is True:
