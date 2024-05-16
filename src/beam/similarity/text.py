@@ -98,9 +98,9 @@ class TextSimilarity(DenseSimilarity):
         exclude = exclude or []
         exclude = exclude + ['_tokenizer']
 
-        path = super().save_state_dict(state, path, ext, exclude, **kwargs)
-
         path = beam_path(path)
+        super().save_state_dict(state, path, ext, exclude, **kwargs)
+
         if self._tokenizer is not None:
             if hasattr(self._tokenizer, 'save_pretrained'):
                 tokenizer_path = path.joinpath('tokenizer.hf')
@@ -110,14 +110,12 @@ class TextSimilarity(DenseSimilarity):
                 tokenizer_path = path.joinpath('tokenizer.pkl')
                 tokenizer_path.write(self._tokenizer)
 
-        return path
-
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
 
         exclude = exclude or []
         exclude = exclude + ['_tokenizer']
 
-        state, path = super().load_state_dict(path, ext, exclude, **kwargs)
+        state = super().load_state_dict(path, ext, exclude, **kwargs)
 
         path = beam_path(path)
         self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'), device=str(self.dense_model_device))
@@ -128,7 +126,7 @@ class TextSimilarity(DenseSimilarity):
         elif path.joinpath('tokenizer.pkl').exists():
             self._tokenizer = path.joinpath('tokenizer.pkl').read()
 
-        return state, path
+        return state
 
 
 

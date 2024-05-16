@@ -194,8 +194,8 @@ class Processor(BeamBase):
         AutoBeam.to_bundle(self, path)
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
-        state, path = Processor._load_state(path, ext=ext, exclude=exclude, **kwargs)
-        return state, path
+        state = Processor._load_state(path, ext=ext, exclude=exclude, **kwargs)
+        return state
 
     def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
 
@@ -206,14 +206,10 @@ class Processor(BeamBase):
 
         if ext and ext != '.bmp':
             path.write(state, ext=ext, **kwargs)
-            # to save the skeleton and the init_args in the same directory as the state file
-            path = path.parent.joinpath(f".{path.stem}")
         else:
             from ..data import BeamData
             for k, v in state.items():
                 BeamData.write_object(v, path.joinpath(k), split=False)
-
-        return path
 
     def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
                    init_args: Union[bool, str] = False, **kwargs):
@@ -226,8 +222,8 @@ class Processor(BeamBase):
         if exclude:
             state = {k: v for k, v in state.items() if k not in exclude}
 
-        path = beam_path(path)
-        path = self.save_state_dict(state, path, ext=ext, exclude=exclude, **kwargs)
+        self.save_state_dict(state, path, ext=ext, exclude=exclude, **kwargs)
+        path = self.base_dir(path, ext=ext)
 
         if skeleton:
             if skeleton is True:
@@ -241,17 +237,22 @@ class Processor(BeamBase):
             path.joinpath(init_args).write(self._init_args)
 
     @staticmethod
+    def base_dir(path, ext=None):
+        path = beam_path(path)
+        ext = ext or path.suffix
+        if ext and ext != '.bmp':
+            # to load the skeleton and the init_args in the same directory as the state file
+            path = path.parent.joinpath(f".{path.stem}")
+        return path
+
+    @staticmethod
     def _load_state(path, ext=None, exclude: List = None, **kwargs):
         path = beam_path(path)
-
         ext = ext or path.suffix
 
         if ext and ext != '.bmp':
             state = path.read(ext=ext, **kwargs)
-            # to load the skeleton and the init_args in the same directory as the state file
-            path = path.parent.joinpath(f".{path.stem}")
         else:
-
             state = {}
             from ..data import BeamData
             if path.is_dir() and path.suffix not in ['.bmd']:
@@ -264,15 +265,17 @@ class Processor(BeamBase):
         if exclude:
             state = {k: v for k, v in state.items() if k not in exclude}
 
-        return state, path
+        return state
 
     def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str] = True,
                    **kwargs):
 
         assert path or state, 'Either path or state must be provided'
 
+        path = beam_path(path)
         if state is None:
-            state, path = self.load_state_dict(path=path, ext=ext, exclude=exclude, **kwargs)
+            state = self.load_state_dict(path=path, ext=ext, exclude=exclude, **kwargs)
+            path = self.base_dir(path, ext=ext)
 
         for k, v in state.items():
             setattr(self, k, v)

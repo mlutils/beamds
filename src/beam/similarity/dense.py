@@ -229,9 +229,7 @@ class DenseSimilarity(BeamSimilarity):
         exclude = exclude + ['index', 'vector_store', 'training_vs']
 
         path = beam_path(path)
-        path.mkdir()
-
-        path = super().save_state_dict(state, path, ext, exclude, **kwargs)
+        super().save_state_dict(state, path, ext, exclude, **kwargs)
 
         path.joinpath('index.npy').write(self.index)
         with local_copy(path.joinpath('vectore_store.bin'), as_beam_path=False) as p:
@@ -239,5 +237,3 @@ class DenseSimilarity(BeamSimilarity):
         if self.training_vs:
             with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
                 faiss.write_index(self.training_vs, p)
-
-        return path

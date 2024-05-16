@@ -209,11 +209,11 @@ class TicketSimilarity(GroupExpansionAlgorithm):
     def fit_tfidf(self, subset='validation'):
         # we need to fit the tfidf model and also apply the transformation in order to
         # calculate the doc_len_sparse attribute
-        self.tfidf_sim.fit_transform(self.x[subset], index=self.ind[subset])
+        self.tfidf_sim.fit_transform(self.x[subset][:1000], index=self.ind[subset][:1000])
         self.fitted_subset_tfidf = subset
 
     def fit_dense(self, subset='validation'):
-        self.dense_sim.add(self.x[subset], index=self.ind[subset])
+        self.dense_sim.add(self.x[subset][:1000], index=self.ind[subset][:1000])
         self.fitted_subset_dense = subset
 
     def search_tfidf(self, query, k=5):
