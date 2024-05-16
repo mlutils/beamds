@@ -35,7 +35,7 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         'store_path': None,
         'store_suffix': '.parquet',
         'override': False,
-        # 'sparse_framework': 'scipy',
+        'sparse_framework': 'scipy',
     }
     parameters = [
         BeamParam('nlp-model', type=str, default="en_core_web_sm", help='Spacy NLP model'),

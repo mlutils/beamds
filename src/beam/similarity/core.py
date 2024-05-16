@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from ..data import BeamData
 from ..processor import Processor
+from ..type.utils import is_beam_data
 from ..utils import as_scipy_csr, as_scipy_coo, as_numpy, as_tensor
 
 
@@ -37,7 +38,7 @@ class BeamSimilarity(Processor):
 
     @staticmethod
     def extract_data_and_index(x, index=None, convert_to='numpy'):
-        if isinstance(x, BeamData) or hasattr(x, 'beam_class_name') and 'BeamData' in x.beam_class_name:
+        if is_beam_data(x):
             index = x.index
             x = x.values
 

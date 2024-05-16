@@ -89,14 +89,14 @@ class TextSimilarity(DenseSimilarity):
         similarities = super().search(dense_vectors, k)
         return similarities
 
+    @classmethod
     @property
-    def special_state_attributes(self):
-        return super().special_state_attributes + ['dense_model', '_tokenizer']
+    def excluded_attributes(cls):
+        return super().excluded_attributes + ['_tokenizer', 'dense_model']
 
     def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
 
         exclude = exclude or []
-        exclude = exclude + ['_tokenizer']
 
         path = beam_path(path)
         super().save_state_dict(state, path, ext, exclude, **kwargs)

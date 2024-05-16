@@ -7,6 +7,7 @@ from typing import List, Union
 from ..path import beam_path, normalize_host
 from ..config import BeamConfig
 from ..base import BeamBase
+from ..type.utils import is_beam_processor
 
 
 class Processor(BeamBase):
@@ -27,8 +28,9 @@ class Processor(BeamBase):
             self._llm = resource(self._llm)
         return self._llm
 
+    @classmethod
     @property
-    def special_state_attributes(self):
+    def special_state_attributes(cls):
         '''
         return of list of special class attributes that are stored individually in the state and not as part of the
         skeleton of the instance (i.e. a pickle object).
@@ -37,24 +39,25 @@ class Processor(BeamBase):
         '''
         return ['hparams']
 
+    @classmethod
     @property
-    def excluded_attributes(self):
+    def excluded_attributes(cls):
         '''
         return of list of class attributes should not be saved in the state. override this function to exclude some
         attributes from the state.
         @return:
         '''
-        return ['_init_args', '_beam_pickle']
+        return ['_init_args', '_skeleton']
 
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
         # this is a mislead name, as __getstate__ is used to get the skeleton of the instance and not the state
-        if self._beam_pickle:
+        if hasattr(self, '_beam_pickle') and self._beam_pickle:
             excliuded_attributes = [*self.excluded_attributes, *self.special_state_attributes]
             state = {k: v for k, v in self.__dict__.items() if k not in excliuded_attributes}
+            state = state.copy()
         else:
-            state = self.__dict__
-        self._beam_pickle = False
+            state = self.__dict__.copy()
         return state
 
     def __setstate__(self, state):
@@ -82,9 +85,11 @@ class Processor(BeamBase):
 
     @classmethod
     def from_path(cls, path, skeleton: Union[bool, str] = True, init_args: Union[bool, str] = True,
-                  load_state_kwargs=None,  **kwargs):
+                  load_state_kwargs=None, exclude: List = None,  **kwargs):
 
         load_state_kwargs = load_state_kwargs or {}
+        exclude = exclude or []
+        exclude = exclude + cls.excluded_attributes
         path = beam_path(path)
 
         if skeleton:
@@ -95,7 +100,7 @@ class Processor(BeamBase):
                 obj.load_state(path, skeleton=False, **load_state_kwargs)
                 return obj
 
-        state, path = Processor._load_state(path, **kwargs)
+        state = Processor._load_state(path, exclude=exclude, **kwargs)
 
         obj = None
         if init_args:
@@ -193,15 +198,47 @@ class Processor(BeamBase):
         from ..auto import AutoBeam
         AutoBeam.to_bundle(self, path)
 
+    def hasattr(self, attr):
+        return attr in self.__dict__
+
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
-        state = Processor._load_state(path, ext=ext, exclude=exclude, **kwargs)
-        return state
+
+        exclude = exclude or []
+        exclude = [*exclude, *self.excluded_attributes]
+        path = beam_path(path)
+        ext = ext or path.suffix
+
+        state = {}
+        if ext and ext != '.bmp':
+            state = path.read(ext=ext, **kwargs)
+        else:
+            from ..data import BeamData
+            if path.is_dir() and path.suffix not in ['.bmd']:
+                for p in path.iterdir():
+                    k = p.stem
+                    if k not in exclude:
+                        if self.hasattr(k) and is_beam_processor(getattr(self, k)):
+                            v = getattr(self, k)
+                            v.load_state(p, **kwargs)
+                            state[k] = v
+                        else:
+                            state[k] = BeamData.read(p, **kwargs)
+            else:
+                state = BeamData.read(path, **kwargs)
+
+        if exclude:
+            state = {k: v for k, v in state.items() if k not in exclude}
+
+        for k, v in state.items():
+            setattr(self, k, v)
 
     def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
 
         path = beam_path(path)
         ext = ext or path.suffix
         exclude = exclude or []
+        exclude = [*exclude, *self.excluded_attributes]
+
         state = {k: v for k, v in state.items() if k not in exclude}
 
         if ext and ext != '.bmp':
@@ -214,13 +251,13 @@ class Processor(BeamBase):
     def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
                    init_args: Union[bool, str] = False, **kwargs):
         state = {}
+        exclude = exclude or []
+        exclude = [*exclude, *self.excluded_attributes]
+
         for n in self.special_state_attributes:
             # save only cached_properties that are already computed
-            if n not in self.excluded_attributes and n in self.__dict__:
+            if n not in self.excluded_attributes and self.hasattr(n):
                 state[n] = getattr(self, n)
-
-        if exclude:
-            state = {k: v for k, v in state.items() if k not in exclude}
 
         self.save_state_dict(state, path, ext=ext, exclude=exclude, **kwargs)
         path = self.base_dir(path, ext=ext)
@@ -230,6 +267,7 @@ class Processor(BeamBase):
                 skeleton = Processor.skeleton_file
             self._beam_pickle = True
             path.joinpath(skeleton).write(self)
+            self._beam_pickle = False
 
         if init_args:
             if init_args is True:
@@ -245,40 +283,17 @@ class Processor(BeamBase):
             path = path.parent.joinpath(f".{path.stem}")
         return path
 
-    @staticmethod
-    def _load_state(path, ext=None, exclude: List = None, **kwargs):
-        path = beam_path(path)
-        ext = ext or path.suffix
-
-        if ext and ext != '.bmp':
-            state = path.read(ext=ext, **kwargs)
-        else:
-            state = {}
-            from ..data import BeamData
-            if path.is_dir() and path.suffix not in ['.bmd']:
-                for p in path.iterdir():
-                    if p.stem not in exclude:
-                        state[p.stem] = BeamData.read(p, **kwargs)
-            else:
-                state = BeamData.read(path, **kwargs)
-
-        if exclude:
-            state = {k: v for k, v in state.items() if k not in exclude}
-
-        return state
-
     def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str] = True,
                    **kwargs):
 
         assert path or state, 'Either path or state must be provided'
 
+        exclude = exclude or []
+        exclude = [*exclude, *self.excluded_attributes]
         path = beam_path(path)
         if state is None:
-            state = self.load_state_dict(path=path, ext=ext, exclude=exclude, **kwargs)
+            self.load_state_dict(path=path, ext=ext, exclude=exclude, **kwargs)
             path = self.base_dir(path, ext=ext)
-
-        for k, v in state.items():
-            setattr(self, k, v)
 
         if skeleton:
             if skeleton is True:

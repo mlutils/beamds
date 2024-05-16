@@ -208,3 +208,11 @@ def extract_textstat_features(text: Union[str, List[str]], n_workers=1) -> pd.Da
         features = pd.DataFrame([_extract_textstat_features(t) for t in text])
 
     return features
+
+
+class InvMap:
+    def __init__(self, invmap):
+        self._invmap = invmap
+
+    def __getitem__(self, ind):
+        return self._invmap[ind].values

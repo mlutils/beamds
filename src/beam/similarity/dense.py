@@ -204,9 +204,10 @@ class DenseSimilarity(BeamSimilarity):
     def reduce(self, z):
         return self.reducer.fit_transform(z)
 
+    @classmethod
     @property
-    def special_state_attributes(self):
-        return ['index', 'vector_store', 'training_vs']
+    def excluded_attributes(cls):
+        return super().excluded_attributes + ['index', 'vector_store', 'training_vs']
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
 
@@ -226,7 +227,6 @@ class DenseSimilarity(BeamSimilarity):
     def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
 
         exclude = exclude or []
-        exclude = exclude + ['index', 'vector_store', 'training_vs']
 
         path = beam_path(path)
         super().save_state_dict(state, path, ext, exclude, **kwargs)

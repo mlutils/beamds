@@ -95,7 +95,7 @@ def check_minor_type(x):
         return 'cudf'
     elif is_scalar(x):
         return 'scalar'
-    elif isinstance(x, PurePath) or hasattr(x, 'beam_class_name') and 'PureBeamPath' in x.beam_class_name:
+    elif isinstance(x, PurePath) or is_beam_path(x):
         return 'path'
     else:
         return 'other'
@@ -182,7 +182,7 @@ def _check_type(x, minor=True, element=True):
         mit = 'slice'
         elt = 'slice'
 
-    elif isinstance(x, PurePath) or hasattr(x, 'beam_class_name') and 'PureBeamPath' in x.beam_class_name:
+    elif isinstance(x, PurePath) or is_beam_path(x):
         mjt = 'path'
         mit = 'path'
         elt = 'path'
@@ -253,4 +253,22 @@ def is_container(x):
             if elt in ['array', 'none', 'object', 'path']:
                 return True
 
+    return False
+
+
+def is_beam_data(x):
+    if hasattr(x, 'beam_class_name') and 'BeamData' in x.beam_class_name:
+        return True
+    return False
+
+
+def is_beam_processor(x):
+    if hasattr(x, 'beam_class_name') and 'Processor' in x.beam_class_name:
+        return True
+    return False
+
+
+def is_beam_path(x):
+    if hasattr(x, 'beam_class_name') and 'PureBeamPath' in x.beam_class_name:
+        return True
     return False

@@ -325,11 +325,13 @@ class NeuralAlgorithm(Algorithm):
             self.clear_cache('device')
         return acc
 
+    @classmethod
     @property
-    def special_state_attributes(self):
-        return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
+    def special_state_attributes(cls):
+        return (super().special_state_attributes +
+                ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
-                'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']
+                'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps'])
 
     @cached_property
     def train_reporter(self):

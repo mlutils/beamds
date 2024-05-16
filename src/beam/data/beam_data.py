@@ -1126,7 +1126,7 @@ class BeamData(BeamName):
             elif data_type.minor == 'numpy':
                 priority = ['.npy', '.pkl']
             elif data_type.minor == 'scipy_sparse':
-                priority = ['scipy_npz', '.pkl']
+                priority = ['.scipy_npz', '.pkl']
             elif data_type.minor == 'tensor':
                 if data.is_sparse_csr:
                     priority = ['.pkl']
@@ -1183,7 +1183,7 @@ class BeamData(BeamName):
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
 
                         elif ext == '.scipy_npz':
-                            if compress is False:
+                            if compress is True:
                                 kwargs['compressed'] = True
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
 

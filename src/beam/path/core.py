@@ -13,6 +13,7 @@ import re
 
 from ..type import check_type
 from ..meta import BeamName
+from ..type.utils import is_beam_data, is_beam_processor
 
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
@@ -894,7 +895,7 @@ class PureBeamPath(BeamResource):
         # write .bmd (beam-data) and .bmp (beam-processor) files
 
         if ext == '.bmd':
-            if hasattr(x, 'beam_class_name') and 'BeamData' in x.beam_class_name:
+            if is_beam_data(x):
                 x.to_path(self)
             else:
                 from ..data import BeamData
@@ -902,8 +903,7 @@ class PureBeamPath(BeamResource):
             return self
 
         if ext == '.bmp':
-            assert hasattr(x, 'beam_class_name') and 'Processor' in x.beam_class_name, \
-                f"Expected Processor, got {type(x)}"
+            assert is_beam_processor(x), f"Expected Processor, got {type(x)}"
             x.to_path(self)
             return self
 
@@ -972,7 +972,7 @@ class PureBeamPath(BeamResource):
             elif ext == '.scipy_npz':
                 import scipy
                 scipy.sparse.save_npz(fo, x, **kwargs)
-                self.rename(f'{path}.npz', path)
+                # self.rename(f'{path}.npz', path)
             elif ext == '.parquet':
                 if x_type.minor == 'polars':
                     x.write_parquet(fo, **kwargs)
