@@ -40,6 +40,7 @@ deployment = BeamDeploy(
     deployment_name=config['deployment_name'],
     create_service_account=config['create_service_account'],
     use_scc=config['use_scc'],
+    use_node_selector=config['use_node_selector'],
     node_selector=config['node_selector'],
     scc_name=config['scc_name'],
     cpu_requests=config['cpu_requests'],

@@ -205,7 +205,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_pod_template(image_name, labels=None, deployment_name=None, project_name=None,
                             ports=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
-                            memory_limits=None, gpu_requests=None, gpu_limits=None, node_selector=None,
+                            memory_limits=None, gpu_requests=None, gpu_limits=None, use_node_selector=False, node_selector=None,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
 
         if labels is None:
@@ -260,7 +260,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         )
 
         # Conditionally add node_selector if it's not None
-        if node_selector is not None:
+        if use_node_selector is True:
             pod_spec.node_selector = node_selector
 
         return client.V1PodTemplateSpec(
@@ -284,7 +284,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
                                ports=None, service_account_name=None, storage_configs=None,
-                               cpu_requests=None, cpu_limits=None, memory_requests=None, node_selector=None,
+                               cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=False, node_selector=None,
                                memory_limits=None, gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
                                security_context_config=None, entrypoint_args=None,
                                entrypoint_envs=None):
@@ -301,6 +301,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             deployment_name=deployment_name,
             project_name=project_name,
             ports=ports,
+            use_node_selector=use_node_selector,
             node_selector=node_selector,
             service_account_name=service_account_name,  # Use it here
             pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
@@ -322,10 +323,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             template=pod_template,
             selector={'matchLabels': pod_template.metadata.labels}
         )
-
+    #TODO: why the method recieves all vars with "none" as default value? It should be a dict with the values
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
                           replicas=None, ports=None, service_account_name=None, storage_configs=None,
-                          cpu_requests=None, cpu_limits=None, memory_requests=None, node_selector=None,
+                          cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=None, node_selector=None,
                           memory_storage_configs=None, memory_limits=None, gpu_requests=None, gpu_limits=None,
                           security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
@@ -348,7 +349,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         deployment_spec = self.create_deployment_spec(
             image_name, labels=labels, deployment_name=deployment_name,
             project_name=project_name, replicas=replicas, ports=ports,
-            service_account_name=service_account_name, node_selector=node_selector,
+            service_account_name=service_account_name, use_node_selector=use_node_selector, node_selector=node_selector,
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
             memory_storage_configs=memory_storage_configs,

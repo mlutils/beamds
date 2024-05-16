@@ -14,8 +14,8 @@ class BeamDeploy(Processor):
                  cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
                  service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
-                 memory_storage_configs=None,
-                 security_context_config=None, scc_name=None, node_selector=None,
+                 memory_storage_configs=None, security_context_config=None, use_node_selector=False,
+                 scc_name=None, node_selector=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None):
         super().__init__()
         self.k8s = k8s
@@ -33,6 +33,7 @@ class BeamDeploy(Processor):
         self.service_type = service_type
         self.service_account_name = f"svc{deployment_name}"
         self.use_scc = use_scc
+        self.use_node_selector = use_node_selector
         self.node_selector = node_selector
         self.scc_name = scc_name if use_scc else None
         self.cpu_requests = cpu_requests
@@ -127,6 +128,7 @@ class BeamDeploy(Processor):
             service_account_name=self.service_account_name,  # Pass this
             storage_configs=self.storage_configs,
             memory_storage_configs=enabled_memory_storages,
+            use_node_selector=self.node_selector,
             node_selector=self.node_selector,
             cpu_requests=self.cpu_requests,
             cpu_limits=self.cpu_limits,
