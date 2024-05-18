@@ -1,6 +1,7 @@
 import json
 from collections import OrderedDict
 import inspect
+from contextlib import contextmanager
 from functools import cached_property
 from typing import List, Union
 
@@ -20,6 +21,16 @@ class Processor(BeamBase):
         super().__init__(*args, name=name, llm=llm, **kwargs)
         self._llm = self.get_hparam('llm', llm)
         self._beam_pickle = False
+
+    @contextmanager
+    def beam_pickle(self, on=True):
+        prev = self._beam_pickle
+        self._beam_pickle = on
+        yield
+        self._beam_pickle = prev
+
+    def in_beam_pickle(self):
+        return self._beam_pickle
 
     @cached_property
     def llm(self):
@@ -52,10 +63,11 @@ class Processor(BeamBase):
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
         # this is a mislead name, as __getstate__ is used to get the skeleton of the instance and not the state
-        if hasattr(self, '_beam_pickle') and self._beam_pickle:
-            excliuded_attributes = [*self.excluded_attributes, *self.special_state_attributes]
-            state = {k: v for k, v in self.__dict__.items() if k not in excliuded_attributes}
-            state = state.copy()
+        if self.in_beam_pickle():
+            with self.beam_pickle(on=False):
+                excliuded_attributes = [*self.excluded_attributes, *self.special_state_attributes]
+                state = {k: v for k, v in self.__dict__.items() if k not in excliuded_attributes}
+                state = state.copy()
         else:
             state = self.__dict__.copy()
         return state
@@ -100,7 +112,7 @@ class Processor(BeamBase):
                 obj.load_state(path, skeleton=False, **load_state_kwargs)
                 return obj
 
-        state = Processor._load_state(path, exclude=exclude, **kwargs)
+        state = cls.load_state(path, exclude=exclude, **kwargs)
 
         obj = None
         if init_args:
@@ -265,9 +277,8 @@ class Processor(BeamBase):
         if skeleton:
             if skeleton is True:
                 skeleton = Processor.skeleton_file
-            self._beam_pickle = True
-            path.joinpath(skeleton).write(self)
-            self._beam_pickle = False
+            with self.beam_pickle():
+                path.joinpath(skeleton).write(self)
 
         if init_args:
             if init_args is True:

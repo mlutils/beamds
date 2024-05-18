@@ -9,8 +9,10 @@ from src.beam import resource, BeamData, Timer, as_numpy
 from src.beam.transformer import Transformer
 from src.beam import beam_logger as logger
 from src.beam.algorithm import Algorithm
+from src.beam.type import BeamType
 
-from .utils import replace_entity_over_series, build_dataset, split_dataset, extract_textstat_features, InvMap
+from .utils import (replace_entity_over_series, build_dataset, split_dataset, extract_textstat_features,
+                    InvMap, Tokenizer)
 
 
 class GroupExpansionAlgorithm(Algorithm):
@@ -87,13 +89,17 @@ class TicketSimilarity(GroupExpansionAlgorithm):
 
     @staticmethod
     def svd_preprocess(x):
-        crow_indices = x.crow_indices().numpy()
-        col_indices = x.col_indices().numpy()
-        values = x.values().numpy()
 
-        # Create a SciPy CSR matrix
-        from scipy.sparse import csr_matrix
-        x = csr_matrix((values, col_indices, crow_indices), shape=x.size())
+        x_type = BeamType.check_minor(x)
+
+        if x_type.minor == 'tensor':
+            crow_indices = x.crow_indices().numpy()
+            col_indices = x.col_indices().numpy()
+            values = x.values().numpy()
+
+            # Create a SciPy CSR matrix
+            from scipy.sparse import csr_matrix
+            x = csr_matrix((values, col_indices, crow_indices), shape=x.size())
         return x
 
     def svd_fit_transform(self, x):
@@ -134,18 +140,11 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         return subsets
 
     @cached_property
-    def tokenizer(self):
-        from transformers import AutoTokenizer
-        return AutoTokenizer.from_pretrained(self.get_hparam('tokenizer'))
-
-    def tokenize(self, x):
-        return self.tokenizer(x)['input_ids']
-
-    @cached_property
     def tfidf_sim(self):
         from src.beam.similarity import TFIDF
         # for now fix the metric as it is the only supported metric in tfidf sim
-        sim = TFIDF(preprocessor=self.tokenize, metric='bm25',
+        tokenizer = Tokenizer(self.hparams)
+        sim = TFIDF(preprocessor=tokenizer.tokenize, metric='bm25',
                     chunksize=self.get_hparam('tokenizer-chunksize'),
                     hparams=self.hparams)
         return sim
@@ -249,12 +248,13 @@ class TicketSimilarity(GroupExpansionAlgorithm):
     @classmethod
     @property
     def excluded_attributes(cls):
-        return (['dataset', 'metadata', 'nlp_model', 'tokenizer', 'subsets', 'x', 'y', 'ind'] +
+        return (['dataset', 'metadata', 'nlp_model', 'subsets', 'x', 'y', 'ind'] +
                 super().excluded_attributes)
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)
-        self.tfidf_sim.preprocessor = self.tokenize
+        tokenizer = Tokenizer(self.hparams)
+        self.tfidf_sim.preprocessor = tokenizer.tokenize
 
     def build_group_dataset(self, group_label,
                             known_subset='train',
@@ -300,8 +300,12 @@ class TicketSimilarity(GroupExpansionAlgorithm):
                 'x_unlabeled': x_unlabeled,
                 'y_unlabeled': y_unlabeled, 'y_unlabeled_true': y_unlabeled_true, 'ind_unlabeled': ind_unlabeled}
 
-    def build_features(self, x, x_test=None):
-        x_tfidf = self.tfidf_sim.transform(x)
+    def build_features(self, x, x_test=None, n_workers=None):
+
+        transform_kwargs = {}
+        if n_workers is not None:
+            transform_kwargs['n_workers'] = n_workers
+        x_tfidf = self.tfidf_sim.transform(x, transform_kwargs=transform_kwargs)
         x_dense = self.dense_sim.encode(x)
         with Timer(name='svd_transform', logger=logger):
             x_svd = self.svd_fit_transform(x_tfidf)
@@ -312,31 +316,35 @@ class TicketSimilarity(GroupExpansionAlgorithm):
             x_textstat = self.robust_scale_fit_transform(x_textstat)
         v_train = np.concatenate([x_pca, x_svd, x_textstat], axis=1)
 
+        v_test = None
         if x_test is not None:
-            x_tfidf_test = self.tfidf_sim.transform(x_test)
+            x_tfidf_test = self.tfidf_sim.transform(x_test, n_workers, transform_kwargs=transform_kwargs)
             x_dense_test = self.dense_sim.encode(x_test)
             x_svd_test = self.svd_transform(x_tfidf_test)
             x_pca_test = self.pca_transform(x_dense_test)
             x_textstat_test = extract_textstat_features(x_test, n_workers=self.get_hparam('n_workers'))
             x_textstat_test = self.robust_scale_transform(x_textstat_test)
             v_test = np.concatenate([x_pca_test, x_svd_test, x_textstat_test], axis=1)
-            return v_train, v_test
 
-        return v_train
+        return v_train, v_test
 
     def build_train_test_datasets(self, group_label,
                                   known_subset='train',
                                   unknown_subset='validation',
                                   test_subset='test',
-                                  k_sparse=None, k_dense=None):
+                                  k_sparse=None, k_dense=None, n_workers=None):
         res = self.build_group_dataset(group_label, known_subset=known_subset, unknown_subset=unknown_subset,
                                        k_sparse=k_sparse, k_dense=k_dense)
         x = res['x_unlabeled'] + res['x_pos']
         y = np.concatenate([res['y_unlabeled'], res['y_pos']])
 
-        x_test = self.x[test_subset]
-        y_test = (self.y[test_subset] == group_label).astype(int)
-        x_train, x_test = self.build_features(x, x_test)
+        x_test = None
+        y_test = None
+        if test_subset is not None:
+            x_test = self.x[test_subset]
+            y_test = (self.y[test_subset] == group_label).astype(int)
+
+        x_train, x_test = self.build_features(x, x_test=x_test, n_workers=n_workers)
 
         return {'x_train': x_train, 'y_train': y, 'x_test': x_test, 'y_test': y_test}
 

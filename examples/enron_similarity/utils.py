@@ -216,3 +216,13 @@ class InvMap:
 
     def __getitem__(self, ind):
         return self._invmap[ind].values
+
+
+class Tokenizer:
+
+    def __init__(self, hparams):
+        from transformers import AutoTokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(hparams.get('tokenizer'))
+
+    def tokenize(self, x):
+        return self.tokenizer(x)['input_ids']

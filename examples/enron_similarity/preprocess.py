@@ -15,7 +15,10 @@ def download_data_from_kaggle(output_dir):
 
 def get_data(output_dir):
 
+    print('Downloading data from Kaggle')
     download_data_from_kaggle(output_dir)
+
+    print('Reading data')
     df = resource(output_dir).joinpath('emails.csv').read()
 
     # from pandarallel import pandarallel
@@ -34,6 +37,7 @@ def get_data(output_dir):
         except Exception as e:
             return None
 
+    print('Parsing data with parallel workers')
     # parsed = df['message'].parallel_apply(parse_re1)
     parsed = df['message'].apply(parse_re1)
 
@@ -48,6 +52,7 @@ def get_data(output_dir):
             return None
         return m.groupdict()
 
+    print('Parsing data stage 2')
     df_else = df.loc[parsed.isna()]['message'].apply(parse_re2)
 
     parsed[parsed.isna()] = df_else
@@ -56,6 +61,7 @@ def get_data(output_dir):
 
     df_parsed = df_parsed.drop_duplicates(subset=['date', 'from', 'to', 'subject', 'body'])
 
+    print('Writing data to parquet file')
     resource(output_dir).joinpath('emails.parquet').write(df_parsed)
 
 

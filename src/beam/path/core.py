@@ -678,6 +678,10 @@ class PureBeamPath(BeamResource):
             from ..processor import Processor
             return Processor.from_path(self)
 
+        if ext == '.abm':
+            from ..auto import AutoBeam
+            return AutoBeam.from_bundle(self)
+
         with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
             if ext == '.fea':
@@ -905,6 +909,11 @@ class PureBeamPath(BeamResource):
         if ext == '.bmp':
             assert is_beam_processor(x), f"Expected Processor, got {type(x)}"
             x.to_path(self)
+            return self
+
+        if ext == '.abm':
+            from ..auto import AutoBeam
+            AutoBeam(x).to_bundle(self)
             return self
 
         with self(mode=PureBeamPath.mode('write', ext)) as fo:

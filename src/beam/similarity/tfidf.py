@@ -272,10 +272,11 @@ class TFIDF(BeamSimilarity):
 
         return tf, tfidf
 
-    def bm25(self, q, k1=1.5, b=0.75, epsilon=.25):
+    def bm25(self, q, k1=1.5, b=0.75, epsilon=.25, **kwargs):
 
         idf = self.idf_bm25(epsilon=epsilon)
-        _, q_tfidf = self.tf_and_tfidf(q, scheme='counts_times_idf', idf=idf, norm='none', log_normalization=False)
+        _, q_tfidf = self.tf_and_tfidf(q, scheme='counts_times_idf', idf=idf, norm='none', log_normalization=False,
+                                       **kwargs)
 
         if self.sparse_framework == 'torch':
             len_norm_values = (1 - b) + (b / self.avg_doc_len) * self.doc_len_sparse.values()
@@ -306,7 +307,7 @@ class TFIDF(BeamSimilarity):
         return x
 
     def transform(self, x: Union[List, List[List], BeamData], index: Union[None, Any] = None,
-                  add_to_index: bool = False):
+                  add_to_index: bool = False, **kwargs):
 
         x, index = self.extract_data_and_index(x, index, convert_to=None)
         if add_to_index or self.index is None:
@@ -314,10 +315,10 @@ class TFIDF(BeamSimilarity):
 
         x = self.as_container(x)
 
-        tf, tfidf = self.tf_and_tfidf(x, scheme='raw_counts')
+        tf, tfidf = self.tf_and_tfidf(x, scheme='raw_counts', **kwargs)
         if self.tf is None:
             self.tf = tf
-        else:
+        elif add_to_index:
             if self.sparse_framework == 'torch':
                 self.tf = self.vstack_csr_tensors([self.tf, tf])
             else:
