@@ -95,6 +95,18 @@ def run_enron():
         pu_estimator = BaggingPuClassifier(estimator=svc, n_estimators=15, n_jobs=40)
         pu_estimator.fit(v, y)
 
+    # dataset = alg.build_train_test_datasets(l, k_sparse=10, k_dense=10, test_subset='test')
+    # from src.beam.config import CatboostConfig
+    # from src.beam.algorithm import CBAlgorithm
+    # conf = CatboostConfig(cb_depth=8, cb_n_estimators=500, cb_log_resolution=50)
+    # cb = CBAlgorithm(conf)
+    # from sklearn.model_selection import train_test_split
+    # x_train, x_val, y_train, y_val = train_test_split(dataset['x_train'], dataset['y_train'])
+    # cb.fit(x_train, y_train, eval_set=(x_val, y_val), beam_postprocess=False)
+    # pred = cb.predict(dataset['x_test'])
+    # from sklearn.metrics import precision_recall_fscore_support
+    # precision_recall_fscore_support(dataset['y_test'], pred)
+
 
 if __name__ == '__main__':
     run_enron()
