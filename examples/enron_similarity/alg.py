@@ -117,7 +117,8 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         return self.pca_transformer.transform(as_numpy(x))
 
     def preprocess_body(self):
-        self.entity_remover.transform(self.metadata['body'], nlp=self.nlp_model, transform_kwargs={
+        v = self.metadata['body'].str.split('-----Original Message-----').str[0]
+        self.entity_remover.transform(v, nlp=self.nlp_model, transform_kwargs={
             'store_path': self.root_path.joinpath('enron_mails_without_entities_body')})
 
     def preprocess_title(self):

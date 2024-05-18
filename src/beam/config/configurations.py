@@ -16,6 +16,7 @@ class DeviceConfig(BeamConfig):
                   'when passing --n-gpus=2 and will use GPUs 2 1 3 when passing --n-gpus=3. '
                   'If None, will use an ascending order starting from the GPU passed in the --device parameter. '
                   'e.g. when --device=1 will use GPUs 1,2,3,4 when --n-gpus=4'),
+        BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
     ]
 
 
@@ -30,110 +31,6 @@ class CacheConfig(BeamConfig):
         BeamParam('silent_cache', bool, False, 'Whether to log cache operations'),
     ]
 
-
-# class CatBoostClassifier(iterations=None,
-#                          learning_rate=None,
-#                          depth=None,
-#                          l2_leaf_reg=None,
-#                          model_size_reg=None,
-#                          rsm=None,
-#                          loss_function=None,
-#                          border_count=None,
-#                          feature_border_type=None,
-#                          per_float_feature_quantization=None,
-#                          input_borders=None,
-#                          output_borders=None,
-#                          fold_permutation_block=None,
-#                          od_pval=None,
-#                          od_wait=None,
-#                          od_type=None,
-#                          nan_mode=None,
-#                          counter_calc_method=None,
-#                          leaf_estimation_iterations=None,
-#                          leaf_estimation_method=None,
-#                          thread_count=None,
-#                          random_seed=None,
-#                          use_best_model=None,
-#                          verbose=None,
-#                          logging_level=None,
-#                          metric_period=None,
-#                          ctr_leaf_count_limit=None,
-#                          store_all_simple_ctr=None,
-#                          max_ctr_complexity=None,
-#                          has_time=None,
-#                          allow_const_label=None,
-#                          classes_count=None,
-#                          class_weights=None,
-#                          auto_class_weights=None,
-#                          one_hot_max_size=None,
-#                          random_strength=None,
-#                          name=None,
-#                          ignored_features=None,
-#                          train_dir=None,
-#                          custom_loss=None,
-#                          custom_metric=None,
-#                          eval_metric=None,
-#                          bagging_temperature=None,
-#                          save_snapshot=None,
-#                          snapshot_file=None,
-#                          snapshot_interval=None,
-#                          fold_len_multiplier=None,
-#                          used_ram_limit=None,
-#                          gpu_ram_part=None,
-#                          allow_writing_files=None,
-#                          final_ctr_computation_mode=None,
-#                          approx_on_full_history=None,
-#                          boosting_type=None,
-#                          simple_ctr=None,
-#                          combinations_ctr=None,
-#                          per_feature_ctr=None,
-#                          task_type=None,
-#                          device_config=None,
-#                          devices=None,
-#                          bootstrap_type=None,
-#                          subsample=None,
-#                          sampling_unit=None,
-#                          dev_score_calc_obj_block_size=None,
-#                          max_depth=None,
-#                          n_estimators=None,
-#                          num_boost_round=None,
-#                          num_trees=None,
-#                          colsample_bylevel=None,
-#                          random_state=None,
-#                          reg_lambda=None,
-#                          objective=None,
-#                          eta=None,
-#                          max_bin=None,
-#                          scale_pos_weight=None,
-#                          gpu_cat_features_storage=None,
-#                          data_partition=None
-#                          metadata=None,
-#                          early_stopping_rounds=None,
-#                          cat_features=None,
-#                          grow_policy=None,
-#                          min_data_in_leaf=None,
-#                          min_child_samples=None,
-#                          max_leaves=None,
-#                          num_leaves=None,
-#                          score_function=None,
-#                          leaf_estimation_backtracking=None,
-#                          ctr_history_unit=None,
-#                          monotone_constraints=None,
-#                          feature_weights=None,
-#                          penalties_coefficient=None,
-#                          first_feature_use_penalties=None,
-#                          model_shrink_rate=None,
-#                          model_shrink_mode=None,
-#                          langevin=None,
-#                          diffusion_temperature=None,
-#                          posterior_sampling=None,
-#                          boost_from_average=None,
-#                          text_features=None,
-#                          tokenizers=None,
-#                          dictionaries=None,
-#                          feature_calcers=None,
-#                          text_processing=None,
-#                          fixed_binary_splits=None)
 
 class CatboostConfig(DeviceConfig):
     # catboost
@@ -234,12 +131,11 @@ class SWAConfig(BeamConfig):
     ]
 
 
-class FederatedTrainingConfig(BeamConfig):
+class FederatedTrainingConfig(DeviceConfig):
 
     parameters = [
         BeamParam('mp_ip', str, 'localhost', 'IP to be used for multiprocessing'),
         BeamParam('mp_port', str, None, 'Port to be used for multiprocessing'),
-        BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
         BeamParam('n_cpus_per_worker', int, 6, 'Number of cpus to use in each worker'),
         BeamParam('n_gpus_per_worker', int, 1, 'Number of gpus to use in each worker'),
         BeamParam('distributed_backend', str, 'nccl', 'The distributed backend to use. '
@@ -390,7 +286,7 @@ class BeamProjectConfig(BeamConfig):
     ]
 
 
-class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig, CacheConfig, DeviceConfig):
+class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig, CacheConfig):
     '''
 
         Arguments

@@ -1,7 +1,7 @@
 import re
 from functools import cached_property
 
-from ..utils import parse_string_number
+from ..utils import parse_string_number, as_numpy
 from ..experiment.utils import build_device_list
 
 from .core_algorithm import Algorithm
@@ -88,7 +88,6 @@ class CBAlgorithm(Algorithm):
         # Searching the string
         match = self.info_re_pattern.search(info)
 
-        metrics = dict()
         if match:
             # Extracting iteration number
             iteration = match.group('iteration')
@@ -103,8 +102,13 @@ class CBAlgorithm(Algorithm):
             for k, v in metrics.items():
                 self.report_scalar(k, v, subset='eval', epoch=iteration)
 
-    def fit(self, X, y):
-        self.model.fit(X, y, log_cout=self.postprocess_epoch)
+    def fit(self, X, y, eval_set=None, beam_postprocess=True):
+
+        log_cout = None
+        if beam_postprocess:
+            log_cout = self.postprocess_epoch
+        self.model.fit(as_numpy(X), as_numpy(y), eval_set=eval_set,
+                       log_cout=log_cout)
 
     def predict(self, X):
-        return self.model.predict(X)
+        return self.model.predict(as_numpy(X))
