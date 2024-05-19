@@ -1092,7 +1092,8 @@ class BeamData(BeamName):
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
-                     chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None, split_by=None, split=True, **kwargs):
+                     chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None,
+                     split_by=None, split=True, **kwargs):
 
         path = beam_path(path)
 

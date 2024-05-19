@@ -286,7 +286,7 @@ class BeamProjectConfig(BeamConfig):
     ]
 
 
-class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig, CacheConfig):
+class ExperimentConfig(BeamProjectConfig, KeysConfig, CacheConfig):
     '''
 
         Arguments
@@ -380,6 +380,10 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
     ]
 
 
+class NNExperimentConfig(ExperimentConfig, NNTrainingConfig, DDPConfig):
+    pass
+
+
 class TransformerConfig(CacheConfig):
     # transformer arguments
 
@@ -402,7 +406,7 @@ class TransformerConfig(CacheConfig):
     ]
 
 
-class UniversalConfig(ExperimentConfig, TransformerConfig, CatboostConfig):
+class UniversalConfig(NNExperimentConfig, TransformerConfig, CatboostConfig):
     pass
 
 

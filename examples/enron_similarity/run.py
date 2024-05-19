@@ -41,11 +41,17 @@ def run_enron():
 
     if hparams.get('calc-tfidf'):
         with Timer(name='fit_tfidf', logger=logger) as t:
-            alg.fit_tfidf()
+            alg.fit_tfidf(subset='validation')
+            alg.fit_tfidf(subset='test')
 
     if hparams.get('calc-dense'):
         with Timer(name='fit_dense', logger=logger) as t:
-            alg.fit_dense()
+            alg.fit_dense(subset='validation')
+            alg.fit_dense(subset='test')
+
+    if hparams.get('build-features'):
+        with Timer(name="Building dataset features for the classifier", logger=logger):
+            alg.build_features()
 
     if hparams.get('save-state') and hparams.get('model-state-path') is not None:
         logger.info(f"Saving state to {hparams.get('model-state-path')}")

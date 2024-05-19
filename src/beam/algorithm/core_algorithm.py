@@ -1,9 +1,34 @@
 from ..processor import Processor
+from ..logger import beam_logger as logger
 
 
 class Algorithm(Processor):
-    def __init__(self, hparams, name=None, **kwargs):
+    def __init__(self, hparams, name=None, experiment=None, **kwargs):
         super().__init__(hparams=hparams, name=name, **kwargs)
+        self._experiment = None
+        self.clear_experiment_properties()
+        if experiment is not None:
+            self.experiment = experiment
+
+    @property
+    def experiment(self):
+        logger.debug(f"Fetching the experiment which is currently associated with the algorithm")
+        return self._experiment
+
+    # a setter function
+    @experiment.setter
+    def experiment(self, experiment):
+        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.experiment_dir}")
+        self.trial = experiment.trial
+        self.hparams = experiment.hparams
+        self.clear_experiment_properties()
+        self._experiment = experiment
+
+    def clear_experiment_properties(self):
+
+        self.clear_cache('device', 'distributed_training', 'distributed_training_framework', 'hpo', 'rank', 'world_size', 'enable_tqdm', 'n_epochs',
+                            'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
+                            'scaler', 'swa_epochs')
 
     def preprocess_inference(self, *args, **kwargs):
         pass
@@ -17,8 +42,19 @@ class Algorithm(Processor):
     def preprocess_epoch(self, *args, **kwargs):
         pass
 
+    def _fit(self, *args, **kwargs):
+        raise NotImplementedError("please implement _fit method in your sub-class")
+
     def fit(self, *args, **kwargs):
-        raise NotImplementedError('fit method not implemented')
+
+        if self._experiment is None:
+            from ..config import ExperimentConfig
+            from ..experiment import Experiment
+            conf = ExperimentConfig(self.hparams)
+            experiment = Experiment(conf)
+            self.experiment = experiment
+
+        return self._fit(*args, **kwargs)
 
     def predict(self, *args, **kwargs):
         raise NotImplementedError('predict method not implemented')

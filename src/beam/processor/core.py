@@ -244,7 +244,7 @@ class Processor(BeamBase):
         for k, v in state.items():
             setattr(self, k, v)
 
-    def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
+    def save_state_dict(self, state, path, ext=None, exclude: List = None, override=False, **kwargs):
 
         path = beam_path(path)
         ext = ext or path.suffix
@@ -257,11 +257,10 @@ class Processor(BeamBase):
             path.write(state, ext=ext, **kwargs)
         else:
             from ..data import BeamData
-            for k, v in state.items():
-                BeamData.write_object(v, path.joinpath(k), split=False)
+            BeamData.write_tree(state, path, override=override, split=False)
 
     def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
-                   init_args: Union[bool, str] = False, **kwargs):
+                   init_args: Union[bool, str] = False, override=False, **kwargs):
         state = {}
         exclude = exclude or []
         exclude = [*exclude, *self.excluded_attributes]
@@ -271,19 +270,27 @@ class Processor(BeamBase):
             if n not in self.excluded_attributes and self.hasattr(n):
                 state[n] = getattr(self, n)
 
-        self.save_state_dict(state, path, ext=ext, exclude=exclude, **kwargs)
+        self.save_state_dict(state, path, ext=ext, exclude=exclude, override=override, **kwargs)
         path = self.base_dir(path, ext=ext)
 
         if skeleton:
             if skeleton is True:
                 skeleton = Processor.skeleton_file
             with self.beam_pickle():
-                path.joinpath(skeleton).write(self)
+                if override or not path.joinpath(skeleton).exists():
+                    path.joinpath(skeleton).write(self)
+                else:
+                    from ..logger import beam_logger as logger
+                    logger.warning(f"Skeleton file: {path.joinpath(skeleton)} already exists, skipping")
 
         if init_args:
             if init_args is True:
                 init_args = Processor.init_args_file
-            path.joinpath(init_args).write(self._init_args)
+            if override or not path.joinpath(init_args).exists():
+                path.joinpath(init_args).write(self._init_args)
+            else:
+                from ..logger import beam_logger as logger
+                logger.warning(f"Init_args file: {path.joinpath(init_args)} already exists, skipping")
 
     @staticmethod
     def base_dir(path, ext=None):
@@ -292,10 +299,14 @@ class Processor(BeamBase):
         if ext and ext != '.bmp':
             # to load the skeleton and the init_args in the same directory as the state file
             path = path.parent.joinpath(f".{path.stem}")
+
         return path
 
     def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str] = True,
                    **kwargs):
+
+        if not (path or state):
+            print('here')
 
         assert path or state, 'Either path or state must be provided'
 

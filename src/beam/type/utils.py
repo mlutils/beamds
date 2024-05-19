@@ -97,6 +97,10 @@ def check_minor_type(x):
         return 'scalar'
     elif isinstance(x, PurePath) or is_beam_path(x):
         return 'path'
+    elif is_beam_data(x):
+        return 'beam_data'
+    elif is_beam_processor(x):
+        return 'beam_processor'
     else:
         return 'other'
 

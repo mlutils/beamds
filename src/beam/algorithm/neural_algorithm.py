@@ -28,16 +28,11 @@ from .core_algorithm import Algorithm
 class NeuralAlgorithm(Algorithm):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
-                 name=None, experiment=None, **kwargs):
+                 name=None, **kwargs):
 
         super().__init__(hparams, name=name, **kwargs)
 
-        self.clear_experiment_properties()
-        self._experiment = None
         self._device = None
-        if experiment is not None:
-            self.experiment = experiment
-
         self.trial = None
 
         # the following are set by the experiment
@@ -242,12 +237,6 @@ class NeuralAlgorithm(Algorithm):
             else:
                 swa_epochs = int(np.round(self.get_hparam('swa') * self.n_epochs))
         return swa_epochs
-
-    def clear_experiment_properties(self):
-
-        self.clear_cache('device', 'distributed_training', 'distributed_training_framework', 'hpo', 'rank', 'world_size', 'enable_tqdm', 'n_epochs',
-                            'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
-                            'scaler', 'swa_epochs')
 
     @cached_property
     def device(self):
@@ -585,20 +574,6 @@ class NeuralAlgorithm(Algorithm):
         self.schedulers_name_by_id = {id(sch): k for k, sch in self.schedulers.items()}
         self.schedulers_flat = self.get_flat_schedulers()
         self.optimizers_flat = self.get_flat_optimizers()
-
-    @property
-    def experiment(self):
-        logger.debug(f"Fetching the experiment which is currently associated with the algorithm")
-        return self._experiment
-
-    # a setter function
-    @experiment.setter
-    def experiment(self, experiment):
-        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.experiment_dir}")
-        self.trial = experiment.trial
-        self.hparams = experiment.hparams
-        self.clear_experiment_properties()
-        self._experiment = experiment
 
     def apply(self, *losses, weights=None, training=None, optimizers=None, set_to_none=True, gradient=None,
               retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None, name=None,
@@ -1745,7 +1720,7 @@ class NeuralAlgorithm(Algorithm):
                 assert method=='compile', "Accelerate does not support other optimization methods than compile"
                 self.networks[k] = self.accelerator.prepare_model(net, evaluate=True)
 
-    def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
+    def _fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, **kwargs):
         '''
         For training purposes

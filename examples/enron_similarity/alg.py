@@ -45,11 +45,6 @@ class GroupExpansionAlgorithm(Algorithm):
 
 class TicketSimilarity(GroupExpansionAlgorithm):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fitted_subset_tfidf = None
-        self.fitted_subset_dense = None
-
     @cached_property
     def entity_remover(self):
         return Transformer(self.hparams, func=replace_entity_over_series)
@@ -144,16 +139,20 @@ class TicketSimilarity(GroupExpansionAlgorithm):
     def tfidf_sim(self):
         from src.beam.similarity import TFIDF
         # for now fix the metric as it is the only supported metric in tfidf sim
-        tokenizer = Tokenizer(self.hparams)
-        sim = TFIDF(preprocessor=tokenizer.tokenize, metric='bm25',
-                    chunksize=self.get_hparam('tokenizer-chunksize'),
-                    hparams=self.hparams)
+        sim = {}
+        for k in ['validation', 'test']:
+            tokenizer = Tokenizer(self.hparams)
+            sim[k] = TFIDF(preprocessor=tokenizer.tokenize, metric='bm25',
+                        chunksize=self.get_hparam('tokenizer-chunksize'),
+                        hparams=self.hparams)
         return sim
 
     @cached_property
     def dense_sim(self):
         from src.beam.similarity import TextSimilarity
-        sim = TextSimilarity(hparams=self.hparams)
+        sim = {}
+        for k in ['validation', 'test']:
+            sim[k] = TextSimilarity(hparams=self.hparams)
         return sim
 
     @cached_property
@@ -199,52 +198,28 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         return self.robust_scaler.transform(as_numpy(x))
 
     def reset(self):
-        self.tfidf_sim.reset()
-        self.dense_sim.reset()
-        self.fitted_subset_tfidf = None
-        self.fitted_subset_dense = None
+        for k in ['validation', 'test']:
+            self.tfidf_sim[k].reset()
+            self.dense_sim[k].reset()
 
     def fit_tfidf(self, subset='validation'):
         # we need to fit the tfidf model and also apply the transformation in order to
         # calculate the doc_len_sparse attribute
-        self.tfidf_sim.fit_transform(self.x[subset], index=self.ind[subset])
-        self.fitted_subset_tfidf = subset
+        self.tfidf_sim[subset].fit_transform(self.x[subset], index=self.ind[subset])
 
     def fit_dense(self, subset='validation'):
-        self.dense_sim.add(self.x[subset], index=self.ind[subset])
-        self.fitted_subset_dense = subset
+        self.dense_sim[subset].add(self.x[subset], index=self.ind[subset])
 
-    def search_tfidf(self, query, k=5):
-        return self.tfidf_sim.search(query, k=k)
+    def search_tfidf(self, query, subset='validation', k=5):
+        return self.tfidf_sim[subset].search(query, k=k)
 
-    def search_dense(self, query, k=5):
-        return self.dense_sim.search(query, k=k)
-
-    # def save_state(self, path, ext=None):
-    #
-    #     path = resource(path)
-    #     super().save_state(path.joinpath('internal_state'), ext=ext)
-    #     self.tfidf_sim.save_state(path.joinpath('tfidf_sim'))
-    #     self.dense_sim.save_state(path.joinpath('dense_sim'))
-    #
-    # def load_state(self, path):
-    #
-    #     path = resource(path)
-    #     super().load_state(path.joinpath('internal_state'))
-    #     try:
-    #         self.tfidf_sim.load_state(path.joinpath('tfidf_sim'))
-    #     except Exception as e:
-    #         logger.warning(f"TFIDF model not found: {e}")
-    #         raise e
-    #     try:
-    #         self.dense_sim.load_state(path.joinpath('dense_sim'))
-    #     except Exception as e:
-    #         logger.warning(f"Dense model not found: {e}")
+    def search_dense(self, query, subset='validation', k=5):
+        return self.dense_sim[subset].search(query, k=k)
 
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super().special_state_attributes + ['tfidf_sim', 'dense_sim']
+        return super().special_state_attributes + ['tfidf_sim', 'dense_sim', 'features']
 
     @classmethod
     @property
@@ -264,18 +239,12 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         k_sparse = k_sparse or self.get_hparam('k-sparse')
         k_dense = k_dense or self.get_hparam('k-dense')
 
-        if self.fitted_subset_tfidf != unknown_subset:
-            if self.fitted_subset_tfidf is not None:
-                logger.warning(f"TFIDF model not fitted for {unknown_subset}. Fitting now and overriding existing fit")
-            else:
-                logger.info(f"TFIDF model not fitted for {unknown_subset}. Fitting now")
-            self.fit_tfidf(unknown_subset)
+        if not self.tfidf_sim[unknown_subset].is_trained:
+            logger.warning(f"TFIDF model not fitted for {unknown_subset}. Fitting now")
+            self.fit_tfidf(subset=unknown_subset)
 
-        if self.fitted_subset_dense != unknown_subset:
-            if self.fitted_subset_dense is not None:
-                logger.warning(f"Dense model not fitted for {unknown_subset}. Fitting now and overriding existing fit")
-            else:
-                logger.info(f"Dense model not fitted for {unknown_subset}. Fitting now")
+        if not self.dense_sim[unknown_subset].is_trained:
+            logger.warning(f"Dense model not fitted for {unknown_subset}. Fitting now")
             self.fit_dense(unknown_subset)
 
         ind_pos = np.where(self.y[known_subset] == group_label)[0]
@@ -297,56 +266,71 @@ class TicketSimilarity(GroupExpansionAlgorithm):
 
         y_unlabeled_true = self.y[unknown_subset][ind_unlabeled]
 
-        return {'x_pos': x_pos, 'y_pos': y_pos,
+        return {'x_pos': x_pos, 'y_pos': y_pos, 'ind_pos': ind_pos,
                 'x_unlabeled': x_unlabeled,
                 'y_unlabeled': y_unlabeled, 'y_unlabeled_true': y_unlabeled_true, 'ind_unlabeled': ind_unlabeled}
 
-    def build_features(self, x, x_test=None, n_workers=None):
+    def _build_features(self, x, is_train=False, n_workers=None):
 
         transform_kwargs = {}
         if n_workers is not None:
             transform_kwargs['n_workers'] = n_workers
-        x_tfidf = self.tfidf_sim.transform(x, transform_kwargs=transform_kwargs)
-        x_dense = self.dense_sim.encode(x)
-        with Timer(name='svd_transform', logger=logger):
-            x_svd = self.svd_fit_transform(x_tfidf)
-        with Timer(name='pca_transform', logger=logger):
-            x_pca = self.pca_fit_transform(x_dense)
-        with Timer(name='extract_textstat_features', logger=logger):
-            x_textstat = extract_textstat_features(x, n_workers=self.get_hparam('n_workers'))
-            x_textstat = self.robust_scale_fit_transform(x_textstat)
-        v_train = np.concatenate([x_pca, x_svd, x_textstat], axis=1)
+        x_tfidf = self.tfidf_sim['validation'].transform(x, transform_kwargs=transform_kwargs)
+        x_dense = self.dense_sim['validation'].encode(x)
+        x_textstat = extract_textstat_features(x, n_workers=self.get_hparam('n_workers'))
 
-        v_test = None
-        if x_test is not None:
-            x_tfidf_test = self.tfidf_sim.transform(x_test, n_workers, transform_kwargs=transform_kwargs)
-            x_dense_test = self.dense_sim.encode(x_test)
-            x_svd_test = self.svd_transform(x_tfidf_test)
-            x_pca_test = self.pca_transform(x_dense_test)
-            x_textstat_test = extract_textstat_features(x_test, n_workers=self.get_hparam('n_workers'))
-            x_textstat_test = self.robust_scale_transform(x_textstat_test)
-            v_test = np.concatenate([x_pca_test, x_svd_test, x_textstat_test], axis=1)
+        if is_train:
+            with Timer(name='svd_transform', logger=logger):
+                x_svd = self.svd_fit_transform(x_tfidf)
+            with Timer(name='pca_transform', logger=logger):
+                x_pca = self.pca_fit_transform(x_dense)
+            with Timer(name='extract_textstat_features', logger=logger):
+                x_textstat = self.robust_scale_fit_transform(x_textstat)
+        else:
+            x_svd = self.svd_transform(x_tfidf)
+            x_pca = self.pca_transform(x_dense)
+            x_textstat = self.robust_scale_transform(x_textstat)
 
-        return v_train, v_test
+        x = np.concatenate([x_pca, x_svd, x_textstat], axis=1)
 
-    def build_train_test_datasets(self, group_label,
+        return x
+
+    @cached_property
+    def features(self):
+
+        # p = '/home/shared/data/results/enron/tmp/features'
+        # bd = BeamData.from_path(p)
+        # bd.cache()
+        # return bd.values
+
+        f = {'validation': self._build_features(self.x['validation'], is_train=True),
+             'train': self._build_features(self.x['train'], is_train=False),
+             'test': self._build_features(self.x['test'], is_train=False)}
+        # the "validation" set which is the second set is the true trained set.
+        return f
+
+    def build_features(self):
+        _ = self.features
+
+    def build_classification_datasets(self, group_label,
                                   known_subset='train',
                                   unknown_subset='validation',
                                   test_subset='test',
-                                  k_sparse=None, k_dense=None, n_workers=None):
-        res = self.build_group_dataset(group_label, known_subset=known_subset, unknown_subset=unknown_subset,
+                                  k_sparse=None, k_dense=None):
+        res_train = self.build_group_dataset(group_label, known_subset=known_subset, unknown_subset=unknown_subset,
                                        k_sparse=k_sparse, k_dense=k_dense)
-        x = res['x_unlabeled'] + res['x_pos']
-        y = np.concatenate([res['y_unlabeled'], res['y_pos']])
+        ind = np.concatenate([res_train['ind_unlabeled'], res_train['ind_pos']])
+        x_train = self.features[known_subset][ind]
+        y_train = np.concatenate([res_train['y_unlabeled'], res_train['y_pos']])
 
-        x_test = None
-        y_test = None
-        if test_subset is not None:
-            x_test = self.x[test_subset]
-            y_test = (self.y[test_subset] == group_label).astype(int)
+        # x_test = self.features[test_subset]
+        # y_test = (self.y[test_subset] == group_label).astype(int)
+        res_test = self.build_group_dataset(group_label, known_subset=known_subset, unknown_subset=test_subset,
+                                      k_sparse=k_sparse, k_dense=k_dense)
 
-        x_train, x_test = self.build_features(x, x_test=x_test, n_workers=n_workers)
+        x_test = self.features[test_subset][res_test['ind_unlabeled']]
+        y_test = (res_test['y_unlabeled_true'] == group_label).astype(int)
 
-        return {'x_train': x_train, 'y_train': y, 'x_test': x_test, 'y_test': y_test}
+        return {'x_train': x_train, 'y_train': y_train, 'x_test': x_test, 'y_test': y_test}
 
 

@@ -102,13 +102,19 @@ class CBAlgorithm(Algorithm):
             for k, v in metrics.items():
                 self.report_scalar(k, v, subset='eval', epoch=iteration)
 
-    def fit(self, X, y, eval_set=None, beam_postprocess=True):
+    def _fit(self, X, y, eval_set=None, beam_postprocess=True, **kwargs):
+
+        from catboost import Pool
 
         log_cout = None
         if beam_postprocess:
             log_cout = self.postprocess_epoch
-        self.model.fit(as_numpy(X), as_numpy(y), eval_set=eval_set,
-                       log_cout=log_cout)
 
-    def predict(self, X):
-        return self.model.predict(as_numpy(X))
+        train_set = Pool(as_numpy(X), as_numpy(y))
+        if eval_set is not None:
+            eval_set = Pool(as_numpy(eval_set[0]), as_numpy(eval_set[1]))
+
+        return self.model.fit(train_set, eval_set=eval_set, log_cout=log_cout, **kwargs)
+
+    def predict(self, X, **kwargs):
+        return self.model.predict(as_numpy(X), **kwargs)
