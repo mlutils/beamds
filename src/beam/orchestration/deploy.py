@@ -11,7 +11,7 @@ class BeamDeploy(Processor):
     def __init__(self, k8s=None, check_project_exists=False, project_name=None, namespace=None,
                  replicas=None, labels=None, image_name=None,
                  deployment_name=None, use_scc=False, deployment=None, create_service_account=False,
-                 cpu_requests=None, cpu_limits=None, memory_requests=None,
+                 cpu_requests=None, cpu_limits=None, memory_requests=None, use_gpu=False,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
                  service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
                  memory_storage_configs=None, security_context_config=None, use_node_selector=False,
@@ -40,6 +40,7 @@ class BeamDeploy(Processor):
         self.cpu_limits = cpu_limits
         self.memory_requests = memory_requests
         self.memory_limits = memory_limits
+        self.use_gpu = use_gpu
         self.gpu_requests = gpu_requests
         self.gpu_limits = gpu_limits
         self.service_configs = service_configs or []
@@ -134,6 +135,7 @@ class BeamDeploy(Processor):
             cpu_limits=self.cpu_limits,
             memory_requests=self.memory_requests,
             memory_limits=self.memory_limits,
+            use_gpu=self.use_gpu,
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
             security_context_config=self.security_context_config,

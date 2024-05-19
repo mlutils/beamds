@@ -107,8 +107,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None,
                          memory_limits=None, gpu_requests=None, memory_storage_configs=None,
-                         gpu_limits=None, security_context_config=None, security_context=None,
-                         entrypoint_args=None, entrypoint_envs=None):
+                         use_gpu=False, gpu_limits=None, security_context_config=None,
+                         security_context=None, entrypoint_args=None, entrypoint_envs=None):
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
 
@@ -151,7 +151,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         if memory_requests and memory_limits:
             resources['requests']['memory'] = K8SUnits(memory_requests, resource_type="memory").as_str
             resources['limits']['memory'] = K8SUnits(memory_limits, resource_type="memory").as_str
-        if gpu_requests and gpu_limits:
+        # if gpu_requests and gpu_limits:
+        if use_gpu is True:
             resources['requests']['nvidia.com/gpu'] = gpu_requests
             resources['limits']['nvidia.com/gpu'] = gpu_limits
         if security_context_config and security_context_config.enable_security_context:
@@ -205,7 +206,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_pod_template(image_name, labels=None, deployment_name=None, project_name=None,
                             ports=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
-                            memory_limits=None, gpu_requests=None, gpu_limits=None, use_node_selector=False, node_selector=None,
+                            memory_limits=None, use_gpu=False, gpu_requests=None,
+                            gpu_limits=None, use_node_selector=False, node_selector=False,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
 
         if labels is None:
@@ -245,6 +247,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             cpu_limits=cpu_limits,
             memory_requests=memory_requests,
             memory_limits=memory_limits,
+            use_gpu=use_gpu,
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
             security_context_config=security_context_config,
@@ -284,8 +287,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
                                ports=None, service_account_name=None, storage_configs=None,
-                               cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=False, node_selector=None,
-                               memory_limits=None, gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
+                               cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=False,
+                               node_selector=False, memory_limits=None, use_gpu=False,
+                               gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
                                security_context_config=None, entrypoint_args=None,
                                entrypoint_envs=None):
         # Ensure pvc_mounts are prepared correctly from storage_configs if needed
@@ -310,6 +314,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             memory_storage_configs=memory_storage_configs,
             memory_requests=memory_requests,
             memory_limits=memory_limits,
+            use_gpu=use_gpu,
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
             security_context_config=security_context_config,
@@ -323,11 +328,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             template=pod_template,
             selector={'matchLabels': pod_template.metadata.labels}
         )
-    #TODO: why the method recieves all vars with "none" as default value? It should be a dict with the values
+
+    # TODO: why the method recieves all vars with "none" as default value? It should be a dict with the values
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
                           replicas=None, ports=None, service_account_name=None, storage_configs=None,
-                          cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=None, node_selector=None,
-                          memory_storage_configs=None, memory_limits=None, gpu_requests=None, gpu_limits=None,
+                          cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=False,
+                          node_selector=False, memory_storage_configs=None, memory_limits=None,
+                          use_gpu=False, gpu_requests=None, gpu_limits=None,
                           security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
@@ -352,8 +359,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             service_account_name=service_account_name, use_node_selector=use_node_selector, node_selector=node_selector,
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
-            memory_storage_configs=memory_storage_configs,
-            gpu_requests=gpu_requests, gpu_limits=gpu_limits, security_context_config=security_context_config,
+            memory_storage_configs=memory_storage_configs, use_gpu=use_gpu,
+            gpu_requests=gpu_requests, gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
             entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )
 
@@ -402,7 +410,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             pod_list = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=selector)
             pod_infos = [self.extract_pod_info(pod) for pod in pod_list.items if pod.metadata.labels is not None]
 
-            #logger.info(f"Pod infos: '{pod_infos}'")
+            # logger.info(f"Pod infos: '{pod_infos}'")
             return pod_infos
 
         except ApiException as e:

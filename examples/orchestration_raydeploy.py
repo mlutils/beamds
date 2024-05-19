@@ -47,6 +47,7 @@ deployment = BeamDeploy(
     cpu_limits=config['cpu_limits'],
     memory_requests=config['memory_requests'],
     memory_limits=config['memory_limits'],
+    use_gpu=config['use_gpu'],
     gpu_requests=config['gpu_requests'],
     gpu_limits=config['gpu_limits'],
     service_configs=service_configs,
@@ -60,6 +61,7 @@ deployment = BeamDeploy(
 )
 # Launch deployment and obtain pod instances
 head_deployment = deployment.launch(replicas=1)
+print(f"Head Deployment: {head_deployment}")
 
 wait_time = 10  # Time to wait before executing commands
 time.sleep(wait_time)
@@ -67,7 +69,7 @@ time.sleep(wait_time)
 # Retrieving Head Pod IP
 # Assuming head_deployment returns a single BeamPod instance or a list with one BeamPod instance for the head
 head_pod_instance = head_deployment[0] if isinstance(head_deployment, list) else head_deployment
-
+print(f"Head Pod Instance: {head_pod_instance}")
 # Check if the head pod is running
 head_pod_status = head_pod_instance.get_pod_status()
 
