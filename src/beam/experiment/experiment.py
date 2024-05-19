@@ -68,8 +68,6 @@ class Experiment(object):
                 self.tensorboard_hparams[k] = v
 
         self.hparams = copy.deepcopy(args)
-        logger
-
 
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 

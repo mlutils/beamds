@@ -230,7 +230,8 @@ class TicketSimilarity(GroupExpansionAlgorithm):
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)
         tokenizer = Tokenizer(self.hparams)
-        self.tfidf_sim.preprocessor = tokenizer.tokenize
+        for k in self.tfidf_sim.keys():
+            self.tfidf_sim[k].preprocessor = tokenizer.tokenize
 
     def build_group_dataset(self, group_label,
                             known_subset='train',
@@ -245,15 +246,15 @@ class TicketSimilarity(GroupExpansionAlgorithm):
 
         if not self.dense_sim[unknown_subset].is_trained:
             logger.warning(f"Dense model not fitted for {unknown_subset}. Fitting now")
-            self.fit_dense(unknown_subset)
+            self.fit_dense(subset=unknown_subset)
 
         ind_pos = np.where(self.y[known_subset] == group_label)[0]
         v = self.x[known_subset]
         x_pos = [v[i] for i in ind_pos]
         y_pos = np.ones(len(ind_pos), dtype=int)
 
-        res_sparse = self.search_tfidf(x_pos, k=k_sparse)
-        res_dense = self.search_dense(x_pos, k=k_dense)
+        res_sparse = self.search_tfidf(x_pos, subset=unknown_subset, k=k_sparse)
+        res_dense = self.search_dense(x_pos, subset=unknown_subset, k=k_dense)
 
         ind_sparse = self.invmap[unknown_subset][res_sparse.index.flatten()]
         ind_dense = self.invmap[unknown_subset][res_dense.index.flatten()]
@@ -277,7 +278,8 @@ class TicketSimilarity(GroupExpansionAlgorithm):
             transform_kwargs['n_workers'] = n_workers
         x_tfidf = self.tfidf_sim['validation'].transform(x, transform_kwargs=transform_kwargs)
         x_dense = self.dense_sim['validation'].encode(x)
-        x_textstat = extract_textstat_features(x, n_workers=self.get_hparam('n_workers'))
+        # x_textstat = extract_textstat_features(x, n_workers=self.get_hparam('n_workers'))
+        x_textstat = extract_textstat_features(x, n_workers=1)
 
         if is_train:
             with Timer(name='svd_transform', logger=logger):

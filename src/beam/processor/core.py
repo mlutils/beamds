@@ -257,7 +257,7 @@ class Processor(BeamBase):
             path.write(state, ext=ext, **kwargs)
         else:
             from ..data import BeamData
-            BeamData.write_tree(state, path, override=override, split=False)
+            BeamData.write_tree(state, path, override=override, split=False, archive_size=0)
 
     def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
                    init_args: Union[bool, str] = False, override=False, **kwargs):

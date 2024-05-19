@@ -55,7 +55,7 @@ def run_enron():
 
     if hparams.get('save-state') and hparams.get('model-state-path') is not None:
         logger.info(f"Saving state to {hparams.get('model-state-path')}")
-        alg.save_state(hparams.get('model-state-path'))
+        alg.save_state(hparams.get('model-state-path'), override=False)
 
     # alg.tfidf_sim.metric = 'bm25'
     query = "I need to know about the project"

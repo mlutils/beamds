@@ -10,6 +10,7 @@ from ..utils import tqdm_beam as tqdm
 from ..logger import beam_logger as logger
 from ..processor.core import Processor
 from ..base import beam_cache
+from ..config import TransformerConfig
 
 
 class TransformStrategy(Enum):
@@ -68,7 +69,8 @@ class Transformer(Processor):
                                           mp_method=mp_method, squeeze=squeeze, reduce=reduce, reduce_dim=reduce_dim,
                                           store_chunk=store_chunk, transform_strategy=transform_strategy,
                                           split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
-                                          override=override, use_dill=use_dill, **kwargs)
+                                          override=override, use_dill=use_dill, _config_scheme=TransformerConfig,
+                                          **kwargs)
 
         self.func = func
         assert inspect.isroutine(func) or func is None, "The func argument must be a function."

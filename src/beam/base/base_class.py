@@ -11,19 +11,20 @@ from ..config import BeamConfig
 
 class BeamBase(BeamName, metaclass=MetaBeamInit):
 
-    def __init__(self, *args, name=None, hparams=None, _init_args=None, **kwargs):
+    def __init__(self, *args, name=None, hparams=None, _init_args=None, _config_scheme=None, **kwargs):
 
         super().__init__(name=name)
         self._init_is_done = False
         _init_args = _init_args or {}
 
+        config_scheme = _config_scheme or BeamConfig
         if len(args) > 0 and (isinstance(args[0], BeamConfig) or isinstance(args[0], dict)):
-            self.hparams = BeamConfig(args[0])
+            self.hparams = config_scheme(args[0])
         elif hparams is not None:
-            self.hparams = BeamConfig(hparams)
+            self.hparams = config_scheme(hparams)
         else:
             if not hasattr(self, 'hparams'):
-                self.hparams = BeamConfig(config=Namespace())
+                self.hparams = config_scheme(config=Namespace())
 
         for k, v in kwargs.items():
             if not k.startswith('_'):
