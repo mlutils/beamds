@@ -118,3 +118,7 @@ class CBAlgorithm(Algorithm):
 
     def predict(self, X, **kwargs):
         return self.model.predict(as_numpy(X), **kwargs)
+
+    def __sklearn_clone__(self):
+        # to be used with sklearn clone
+        return CBAlgorithm(self.hparams)
