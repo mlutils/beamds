@@ -5,7 +5,7 @@
   "build_dataset": false,
   "calc_tfidf": false,
   "calc_dense": false,
-  "build_features": true,
+  "build_features": false,
   "reload_state": true,
-  "save_state": true
+  "save_state": false
 }

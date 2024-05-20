@@ -213,7 +213,7 @@ class Processor(BeamBase):
     def hasattr(self, attr):
         return attr in self.__dict__
 
-    def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
+    def load_state_dict(self, path, ext=None, exclude: List = None, hparams=True, exclude_hparams=None, **kwargs):
 
         exclude = exclude or []
         exclude = [*exclude, *self.excluded_attributes]
@@ -242,7 +242,12 @@ class Processor(BeamBase):
             state = {k: v for k, v in state.items() if k not in exclude}
 
         for k, v in state.items():
-            setattr(self, k, v)
+            if k == 'hparams' and hasattr(self, 'hparams'):
+                if hparams:
+                    exclude_hparams = exclude_hparams or []
+                    self.hparams.update(v, exclude=exclude_hparams)
+            else:
+                setattr(self, k, v)
 
     def save_state_dict(self, state, path, ext=None, exclude: List = None, override=False, **kwargs):
 
@@ -304,9 +309,6 @@ class Processor(BeamBase):
 
     def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str] = True,
                    **kwargs):
-
-        if not (path or state):
-            print('here')
 
         assert path or state, 'Either path or state must be provided'
 

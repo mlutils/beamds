@@ -1,3 +1,4 @@
+from collections import defaultdict
 from functools import cached_property
 from typing import List
 
@@ -19,28 +20,28 @@ class GroupExpansionAlgorithm(Algorithm):
 
     @cached_property
     def base_classifier(self):
-        from sklearn.ensemble import RandomForestClassifier
-        alg = RandomForestClassifier(n_estimators=100)
+        alg = None
+        if self.get_hparam('classifier') == 'rf':
+            from sklearn.ensemble import RandomForestClassifier
+            alg = RandomForestClassifier(n_estimators=100)
+        elif self.get_hparam('classifier') == 'catboost':
+            from src.beam.algorithm import CBAlgorithm
+            alg = CBAlgorithm(self.hparams)
         return alg
 
     @cached_property
     def pu_classifier(self):
         from pulearn import BaggingPuClassifier
-        alg = BaggingPuClassifier(
-            base_estimator=self.base_classifier, n_estimators=15)
+        alg = BaggingPuClassifier(estimator=self.base_classifier,
+                                  verbose=self.get_hparam('pu_verbose', 10),
+                                  n_estimators=self.get_hparam('pu_n_estimators', 15),)
         return alg
 
     def expand(self, group):
         raise NotImplementedError
 
-    def data_of_index(self, index):
-        raise NotImplementedError
-
     def predict(self, group):
-        candidates = self.expand(group)
-
-        x_positives = self.data_of_index(group)
-        x_unlabeled = self.data_of_index(candidates)
+        raise NotImplementedError
 
 
 class TicketSimilarity(GroupExpansionAlgorithm):
@@ -325,14 +326,67 @@ class TicketSimilarity(GroupExpansionAlgorithm):
         x_train = self.features[known_subset][ind]
         y_train = np.concatenate([res_train['y_unlabeled'], res_train['y_pos']])
 
-        # x_test = self.features[test_subset]
-        # y_test = (self.y[test_subset] == group_label).astype(int)
         res_test = self.build_group_dataset(group_label, known_subset=known_subset, unknown_subset=test_subset,
                                       k_sparse=k_sparse, k_dense=k_dense)
 
         x_test = self.features[test_subset][res_test['ind_unlabeled']]
         y_test = (res_test['y_unlabeled_true'] == group_label).astype(int)
 
-        return {'x_train': x_train, 'y_train': y_train, 'x_test': x_test, 'y_test': y_test}
+        return {'x_train': x_train, 'y_train': y_train, 'ind_train': ind,
+                'y_train_true': res_train['y_unlabeled_true'],
+                'x_test': x_test, 'y_test': y_test, 'ind_test': res_test['ind_unlabeled'],
+                'y_test_true': res_test['y_unlabeled_true']}
 
+    def calculate_evaluation_metrics(self, group_label, datasets, y_pred_train, y_pred_test,
+                                     unknown_subset='validation', test_subset='test'):
 
+        y_pred = {'train': y_pred_train, 'test': y_pred_test}
+        # calculate metrics:
+        results = defaultdict(dict)
+        for part, org_set in (('train', unknown_subset), ('test', test_subset)):
+
+            results[part]['original_pool'] = len(self.y[org_set])
+            results[part]['prevalence_count'] = (self.y[org_set] == group_label).sum()
+            results[part]['prevalence'] = results[part]['prevalence_count'] / results[part]['original_pool']
+            results[part]['expansion_recall_count'] = (datasets[f'y_{part}_true'] == group_label).sum()
+            results[part]['expansion_recall'] = (results[part]['expansion_recall_count']
+                                                 / results[part]['prevalence_count'])
+            results[part]['expansion_pool'] = (datasets[f'y_{part}'] == 0).sum()
+            results[part]['expansion_precision'] = (results[part]['expansion_recall_count'] /
+                                                    results[part]['expansion_pool'])
+
+            if part == 'train':
+                y_train_true = datasets[f'y_{part}_true'] == group_label
+                results[part]['final_recall_count'] = (y_pred['train'] * y_train_true == 1).sum()
+            else:
+                results[part]['final_recall_count'] = (y_pred['test'] * datasets[f'y_test'] == 1).sum()
+
+            results[part]['final_recall'] = (results[part]['final_recall_count']
+                                             / results[part]['prevalence_count'])
+            results[part]['final_pool'] = (y_pred[part] == 1).sum()
+            results[part]['final_precision'] = (results[part]['final_recall_count'] /
+                                                results[part]['final_pool'])
+
+        return results
+
+    def evaluate(self, group_label, known_subset='train', unknown_subset='validation',
+                 test_subset='test', k_sparse=None, k_dense=None, threshold=0.5):
+
+        datasets = self.build_classification_datasets(group_label, known_subset=known_subset,
+                                                unknown_subset=unknown_subset, test_subset=test_subset,
+                                                k_sparse=k_sparse, k_dense=k_dense)
+
+        self.pu_classifier.fit(datasets['x_train'], datasets['y_train'])
+
+        x_train_unlabeled = datasets['x_train'][datasets['y_train'] == 0]
+        y_pred = {'train': self.pu_classifier.predict_proba(x_train_unlabeled)[:, 1],
+                  'test': self.pu_classifier.predict_proba(datasets['x_test'])[:, 1]}
+
+        metrics = self.calculate_evaluation_metrics(group_label, datasets, y_pred['train'] > threshold,
+                                                    y_pred['test'] > threshold,
+                                                    unknown_subset=unknown_subset,
+                                                    test_subset=test_subset)
+
+        results = {'metrics': metrics, 'datasets': datasets, 'y_pred': y_pred}
+
+        return results
