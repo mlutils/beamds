@@ -39,10 +39,10 @@ class CatboostConfig(DeviceConfig):
                                                     '[classification|regression|ranking]'),
         BeamParam('cb_loss_function', str, 'Logloss', 'The loss function for the catboost model'),
         # learning rate is drawn from other configurations
-        BeamParam('cb_n_estimators', int, 1000, 'The number of trees in the catboost model', tags='tune'),
+        BeamParam('cb_n_estimators', int, 200, 'The number of trees in the catboost model', tags='tune'),
         BeamParam('cb_l2_leaf_reg', float, 1e-4, 'The L2 regularization for the catboost model', tags='tune'),
         BeamParam('cb_border_count', int, 128, 'The border count for the catboost model', tags='tune'),
-        BeamParam('cb_depth', int, 14, 'The depth of the trees in the catboost model', tags='tune'),
+        BeamParam('cb_depth', int, 6, 'The depth of the trees in the catboost model', tags='tune'),
         BeamParam('cb_random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
         BeamParam('cb_lr', float, 1e-2, 'The learning rate for the catboost model', tags='tune'),
         BeamParam('cb_eval_metric', str, None, 'The evaluation metric for the catboost model, '
@@ -336,6 +336,7 @@ class ExperimentConfig(BeamProjectConfig, KeysConfig, CacheConfig):
 
         # results printing and visualization
 
+        BeamParam('log_experiment', bool, None, 'Log experiment to the log directory'),
         BeamParam('print_results', bool, True, 'Print results after each epoch to screen'),
         BeamParam('visualize_weights', bool, False, 'Visualize network weights on tensorboard'),
         BeamParam('enable_tqdm', bool, True, 'Print tqdm progress bar when training'),

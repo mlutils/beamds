@@ -24,7 +24,7 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
             self.hparams = config_scheme(hparams)
         else:
             if not hasattr(self, 'hparams'):
-                self.hparams = config_scheme(config=Namespace())
+                self.hparams = config_scheme()
 
         for k, v in kwargs.items():
             if not k.startswith('_'):

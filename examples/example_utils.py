@@ -9,6 +9,20 @@ from src.beam import resource
 from beam import beam_logger as logger
 
 
+def test_catboost():
+    from sklearn.datasets import load_wine
+    data = load_wine()
+
+    x = data['data']
+    y = data['target']
+
+    from src.beam.algorithm import CBAlgorithm
+    # from src.beam.config import CatboostConfig
+
+    cb = CBAlgorithm()
+
+    cb.fit(x, y)
+
 def test_slice_to_index():
     from src.beam.utils import slice_to_index
     n = np.arange(10)
@@ -489,6 +503,8 @@ if __name__ == '__main__':
 
     # test_recursive_len()
 
-    test_slice_to_index()
+    # test_slice_to_index()
+
+    test_catboost()
 
     print('done')

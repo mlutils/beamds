@@ -1,14 +1,40 @@
+from functools import cached_property
+from timeit import default_timer as timer
 from ..processor import Processor
 from ..logger import beam_logger as logger
+from ..experiment import BeamReport
 
 
 class Algorithm(Processor):
-    def __init__(self, hparams, name=None, experiment=None, **kwargs):
+    def __init__(self, hparams=None, name=None, experiment=None, **kwargs):
         super().__init__(hparams=hparams, name=name, **kwargs)
+
         self._experiment = None
+        self.reporter = None
+
+        self.epoch = 0
+        self.t0 = timer()
+        self._device = None
+        self.trial = None
+
+        self.epoch_length = None
+        self.eval_subset = None
+        self.objective = None
+        self.best_objective = None
+        self.best_epoch = None
+        self.best_state = False
+
         self.clear_experiment_properties()
         if experiment is not None:
             self.experiment = experiment
+
+    @property
+    def elapsed_time(self):
+        return timer() - self.t0
+
+    @staticmethod
+    def no_experiment_message(property):
+        logger.warning(f"{property} is not supported without an active experiment. Set self.experiment = experiment")
 
     @property
     def experiment(self):
@@ -24,11 +50,143 @@ class Algorithm(Processor):
         self.clear_experiment_properties()
         self._experiment = experiment
 
+    @cached_property
+    def train_reporter(self):
+        return BeamReport(objective=self.get_hparam('objective'), objective_mode=self.optimization_mode,
+                          aux_objectives=['loss'], aux_objectives_modes=['min'])
+
+    def set_reporter(self, reporter=None):
+        self.reporter = reporter
+        self.reporter.reset_time(None)
+        self.reporter.reset_epoch(0, total_epochs=None)
+
+    def set_train_reporter(self, first_epoch, n_epochs=None):
+
+        if n_epochs is None:
+            n_epochs = self.n_epochs
+
+        self.reporter = self.train_reporter
+        self.reporter.reset_time(first_epoch=first_epoch, n_epochs=n_epochs)
+
     def clear_experiment_properties(self):
 
         self.clear_cache('device', 'distributed_training', 'distributed_training_framework', 'hpo', 'rank', 'world_size', 'enable_tqdm', 'n_epochs',
                             'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
                             'scaler', 'swa_epochs')
+
+    @cached_property
+    def hpo(self):
+        if self.experiment is None:
+            self.no_experiment_message('hpo')
+            return False
+        return self.experiment.hpo
+
+    @cached_property
+    def enable_tqdm(self):
+        return self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
+                                                              or not self.get_hparam('enable_tqdm')) else None
+
+    @cached_property
+    def n_epochs(self):
+        return self.get_hparam('n_epochs')
+
+    def calculate_objective(self):
+        '''
+        This function calculates the optimization non-differentiable objective. It is used for hyperparameter optimization
+        and for ReduceOnPlateau scheduling. It is also responsible for tracking the best checkpoint
+        '''
+
+        self.best_objective = self.reporter.best_objective
+        self.best_epoch = self.reporter.best_epoch
+        self.objective = self.reporter.objective
+        self.best_state = self.reporter.best_state
+
+        return self.objective
+
+    def report(self, objective, epoch=None):
+        '''
+        Use this function to report results to hyperparameter optimization frameworks
+        also you can add key 'objective' to the results dictionary to report the final scores.
+        '''
+
+        if self.hpo == 'tune':
+
+            if self.get_hparam('objective') is not None:
+                metrics = {self.get_hparam('objective'): objective}
+            else:
+                metrics = {'objective': objective}
+            from ray import train
+            train.report(metrics)
+        elif self.hpo == 'optuna':
+            import optuna
+            self.trial.report(objective, epoch)
+            self.trial.set_user_attr('best_value', self.best_objective)
+            self.trial.set_user_attr('best_epoch', self.best_epoch)
+            if self.trial.should_prune():
+                raise optuna.TrialPruned()
+
+            train_timeout = self.get_hparam('train-timeout')
+            if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
+                raise optuna.exceptions.OptunaError(f"Trial timed out after {self.get_hparam('train-timeout')} seconds.")
+
+    @cached_property
+    def optimization_mode(self):
+        objective_mode = self.get_hparam('objective_mode')
+        objective_name = self.get_hparam('objective')
+        return self.get_optimization_mode(objective_mode, objective_name)
+
+    @staticmethod
+    def get_optimization_mode(mode, objective_name):
+        if mode is not None:
+            return mode
+        if any(n in objective_name.lower() for n in ['loss', 'error', 'mse']):
+            return 'min'
+        return 'max'
+
+    def early_stopping(self, epoch=None):
+        '''
+        Use this function to early stop your model based on the results or any other metric in the algorithm class
+        '''
+
+        if self.rank > 0:
+            return False
+
+        train_timeout = self.get_hparam('train-timeout')
+        if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
+            logger.info(f"Stopping training at epoch {self.epoch} - timeout {self.get_hparam('train-timeout')}")
+            return True
+
+        stop_at = self.get_hparam('stop_at')
+        early_stopping_patience = self.get_hparam('early_stopping_patience')
+        if self.objective is None and stop_at is not None:
+            logger.warning("Early stopping is enabled (stop_at is not None) but no objective is defined. "
+                           "set objective in the hparams")
+            return False
+        if self.objective is None and early_stopping_patience is not None:
+            logger.warning("Early stopping is enabled (early_stopping_patience is not None) "
+                           "but no objective is defined. set objective in the hparams")
+            return False
+
+        if stop_at is not None:
+            if self.best_objective is not None:
+
+                if self.optimization_mode == 'max':
+                    res = self.best_objective > stop_at
+                    if res:
+                        logger.info(f"Stopping training at {self.best_objective} > {stop_at}")
+                else:
+                    res = self.best_objective < stop_at
+                    if res:
+                        logger.info(f"Stopping training at {self.best_objective} < {stop_at}")
+                return res
+
+        if early_stopping_patience is not None and early_stopping_patience > 0:
+            res = self.epoch - self.best_epoch > early_stopping_patience
+            if res:
+                logger.info(f"Stopping training at epoch {self.epoch} - best epoch {self.best_epoch} > {early_stopping_patience}")
+            return res
+
+        return False
 
     def preprocess_inference(self, *args, **kwargs):
         pass
@@ -51,6 +209,8 @@ class Algorithm(Processor):
             from ..config import ExperimentConfig
             from ..experiment import Experiment
             conf = ExperimentConfig(self.hparams)
+            if conf.log_experiment is None:
+                conf.log_experiment = False
             experiment = Experiment(conf)
             self.experiment = experiment
 
