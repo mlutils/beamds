@@ -1134,11 +1134,11 @@ class BeamData(BeamName):
                 else:
                     priority = ['.pt']
             elif hasattr(data, 'beam_class_name') and 'BeamData' in data.beam_class_name:
-                priority = ['.bmd', '.pkl']
+                priority = ['.bmd', '.pkl', '.dill']
             elif hasattr(data, 'beam_class_name') and 'Processor' in data.beam_class_name:
-                priority = ['.bmp', '.pkl']
+                priority = ['.bmp', '.pkl', '.dill']
             else:
-                priority = ['.pkl']
+                priority = ['.pkl', '.dill']
 
             if file_type is not None:
                 priority.insert(file_type, 0)

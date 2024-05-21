@@ -9,12 +9,13 @@ from ..path import beam_path, normalize_host
 from ..config import BeamConfig
 from ..base import BeamBase
 from ..type.utils import is_beam_processor
+from ..data import BeamData
 
 
 class Processor(BeamBase):
 
-    skeleton_file = '_skeleton.pkl'
-    init_args_file = '_init_args.pkl'
+    skeleton_file = '_skeleton'
+    init_args_file = '_init_args'
 
     def __init__(self, *args, name=None, llm=None, **kwargs):
 
@@ -107,10 +108,15 @@ class Processor(BeamBase):
         if skeleton:
             if skeleton is True:
                 skeleton = Processor.skeleton_file
-            if path.joinpath(skeleton).exists():
-                obj = path.joinpath(skeleton).read()
+            obj = BeamData.read(path.joinpath(skeleton), **kwargs)
+            if obj is not None:
                 obj.load_state(path, skeleton=False, **load_state_kwargs)
                 return obj
+
+            # if path.joinpath(skeleton).exists():
+            #     obj = path.joinpath(skeleton).read()
+            #     obj.load_state(path, skeleton=False, **load_state_kwargs)
+            #     return obj
 
         state = cls.load_state(path, exclude=exclude, **kwargs)
 
@@ -118,11 +124,17 @@ class Processor(BeamBase):
         if init_args:
             if init_args is True:
                 init_args = Processor.init_args_file
-            if path.joinpath(init_args).exists():
-                d = path.joinpath(init_args).read()
+            d = BeamData.read(path.joinpath(init_args), **kwargs)
+            if init_args is not None:
                 init_args = d['args']
                 init_kwargs = d['kwargs']
                 obj = cls(*init_args, **init_kwargs)
+
+            # if path.joinpath(init_args).exists():
+            #     d = path.joinpath(init_args).read()
+            #     init_args = d['args']
+            #     init_kwargs = d['kwargs']
+            #     obj = cls(*init_args, **init_kwargs)
 
         if obj is None:
             init_args = []
@@ -224,7 +236,6 @@ class Processor(BeamBase):
         if ext and ext != '.bmp':
             state = path.read(ext=ext, **kwargs)
         else:
-            from ..data import BeamData
             if path.is_dir() and path.suffix not in ['.bmd']:
                 for p in path.iterdir():
                     k = p.stem
@@ -261,7 +272,6 @@ class Processor(BeamBase):
         if ext and ext != '.bmp':
             path.write(state, ext=ext, **kwargs)
         else:
-            from ..data import BeamData
             BeamData.write_tree(state, path, override=override, split=False, archive_size=0)
 
     def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
@@ -282,20 +292,27 @@ class Processor(BeamBase):
             if skeleton is True:
                 skeleton = Processor.skeleton_file
             with self.beam_pickle():
-                if override or not path.joinpath(skeleton).exists():
-                    path.joinpath(skeleton).write(self)
-                else:
-                    from ..logger import beam_logger as logger
-                    logger.warning(f"Skeleton file: {path.joinpath(skeleton)} already exists, skipping")
+                BeamData.write_object(self, path.joinpath(skeleton),
+                                      override=override, split=False, archive_size=0)
+
+                # if override or not path.joinpath(skeleton).exists():
+                #     path.joinpath(skeleton).write(self)
+                # else:
+                #     from ..logger import beam_logger as logger
+                #     logger.warning(f"Skeleton file: {path.joinpath(skeleton)} already exists, skipping")
 
         if init_args:
             if init_args is True:
                 init_args = Processor.init_args_file
-            if override or not path.joinpath(init_args).exists():
-                path.joinpath(init_args).write(self._init_args)
-            else:
-                from ..logger import beam_logger as logger
-                logger.warning(f"Init_args file: {path.joinpath(init_args)} already exists, skipping")
+
+            BeamData.write_object(self._init_args, path.joinpath(init_args),
+                                      override=override, split=False, archive_size=0)
+
+            # if override or not path.joinpath(init_args).exists():
+            #     path.joinpath(init_args).write(self._init_args)
+            # else:
+            #     from ..logger import beam_logger as logger
+            #     logger.warning(f"Init_args file: {path.joinpath(init_args)} already exists, skipping")
 
     @staticmethod
     def base_dir(path, ext=None):
@@ -310,6 +327,7 @@ class Processor(BeamBase):
     def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str] = True,
                    **kwargs):
 
+
         assert path or state, 'Either path or state must be provided'
 
         exclude = exclude or []
@@ -322,9 +340,13 @@ class Processor(BeamBase):
         if skeleton:
             if skeleton is True:
                 skeleton = Processor.skeleton_file
-            if path.joinpath(skeleton).exists():
-                skeleton = path.joinpath(skeleton).read()
-                self.__dict__.update(skeleton.__dict__)
+
+            skeleton = BeamData.read(path.joinpath(skeleton), **kwargs)
+            self.__dict__.update(skeleton.__dict__)
+
+            # if path.joinpath(skeleton).exists():
+            #     skeleton = path.joinpath(skeleton).read()
+            #     self.__dict__.update(skeleton.__dict__)
 
     def to_path(self, path, **kwargs):
         self.save_state(path, **kwargs)

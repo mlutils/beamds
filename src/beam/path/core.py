@@ -616,6 +616,7 @@ class PureBeamPath(BeamResource):
         - .fea: Feather
         - .csv: CSV
         - .pkl, .pickle: Pickle
+        - .dill: Dill
         - .npy: Numpy
         - .json: JSON
         - .ndjson: Newline delimited JSON
@@ -702,6 +703,9 @@ class PureBeamPath(BeamResource):
                 x = pdu.read_csv(fo, **kwargs)
             elif ext in ['.pkl', '.pickle']:
                 x = pd.read_pickle(fo, **kwargs)
+            elif ext == '.dill':
+                import dill
+                x = dill.load(fo, **kwargs)
             elif ext in ['.npy', '.npz', '.npzc']:
                 if ext in ['.npz', '.npzc']:
                     self.close_fo_after_read = False
@@ -893,11 +897,9 @@ class PureBeamPath(BeamResource):
         if ext is None:
             ext = self.suffix
 
-        path = str(self)
         x_type = check_type(x)
 
         # write .bmd (beam-data) and .bmp (beam-processor) files
-
         if ext == '.bmd':
             if is_beam_data(x):
                 x.to_path(self)
@@ -960,6 +962,9 @@ class PureBeamPath(BeamResource):
                 fastavro.writer(fo, x, **kwargs)
             elif ext in ['.pkl', '.pickle']:
                 pd.to_pickle(x, fo, **kwargs)
+            elif ext == '.dill':
+                import dill
+                dill.dump(x, fo, **kwargs)
             elif ext == '.npy':
                 np.save(fo, x, **kwargs)
             elif ext == '.json':
