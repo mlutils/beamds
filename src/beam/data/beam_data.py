@@ -1387,6 +1387,7 @@ class BeamData(BeamName):
               archive_size=None, override=None, **kwargs):
 
         override = override or self.override
+        path = beam_path(path)
 
         if path is not None:
             if override:

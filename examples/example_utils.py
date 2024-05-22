@@ -7,6 +7,20 @@ import torch
 import numpy as np
 from src.beam import resource
 from beam import beam_logger as logger
+import pandas as pd
+
+
+def test_collate_transformer_chunks():
+
+    from src.beam import Transformer
+    def func(x):
+        return x + 1
+
+    df = pd.DataFrame(data=np.random.rand(16, 4), columns=['a', 'b', 'c', 'd'])
+    transformer = Transformer(n_workers=1, chunksize=2, mp_method='joblib', func=func, use_dill=True)
+
+    res = transformer(df)
+    print(res)
 
 
 def test_catboost():
@@ -505,6 +519,8 @@ if __name__ == '__main__':
 
     # test_slice_to_index()
 
-    test_catboost()
+    # test_catboost()
+
+    test_collate_transformer_chunks()
 
     print('done')

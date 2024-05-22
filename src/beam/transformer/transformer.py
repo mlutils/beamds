@@ -116,6 +116,9 @@ class Transformer(Processor):
         self._exceptions = None
         self.counter = 0
 
+    def __call__(self, x, **kwargs):
+        return self.transform(x, **kwargs)
+
     def reset(self):
         self.counter = 0
 
@@ -386,7 +389,7 @@ class Transformer(Processor):
 
                 logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
-                if reduce:
+                if reduce and not (store_chunk and not store):
                     x = self.reduce(x, split_by=split_by)
             else:
                 x = {k[0] if type(k) is tuple and len(k) == 1 else k: v for k, v in zip(keys, values)}
@@ -410,6 +413,9 @@ class Transformer(Processor):
             x.store(path=store_path)
             # x = BeamData.from_path(path=path)
 
-        return x
+        if store or store_chunk:
+            return
+        else:
+            return x
 
 
