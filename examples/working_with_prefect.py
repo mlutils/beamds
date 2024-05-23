@@ -13,7 +13,7 @@ from src.beam import beam_path, beam_hash
 
 
 class DummyTransformer(Transformer):
-    def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
+    def transform_callback(self, x, _key=None, _is_chunk=False, _fit=False, path=None, **kwargs):
         res = []
         for xi in x:
             res.append(check_type(xi))

@@ -11,6 +11,7 @@ from ..logger import beam_logger as logger
 from ..processor.core import Processor
 from ..base import beam_cache
 from ..config import TransformerConfig
+from ..type import is_beam_data
 
 
 class TransformStrategy(Enum):
@@ -27,7 +28,7 @@ class Transformer(Processor):
     def __init__(self, *args, func=None, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
                  chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
-                 use_dill=False, **kwargs):
+                 use_dill=False, return_results=None, **kwargs):
         """
 
         @param args:
@@ -69,6 +70,7 @@ class Transformer(Processor):
                                           mp_method=mp_method, squeeze=squeeze, reduce=reduce, reduce_dim=reduce_dim,
                                           store_chunk=store_chunk, transform_strategy=transform_strategy,
                                           split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
+                                          return_results=return_results,
                                           override=override, use_dill=use_dill, _config_scheme=TransformerConfig,
                                           **kwargs)
 
@@ -96,6 +98,7 @@ class Transformer(Processor):
         self.shuffle = self.hparams.shuffle
         self.override = self.hparams.override
         self.use_dill = self.hparams.use_dill
+        self.return_results = self.hparams.return_results
 
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
@@ -133,7 +136,7 @@ class Transformer(Processor):
         if squeeze is None:
             squeeze = self.squeeze
 
-        if isinstance(x, BeamData):
+        if is_beam_data(x):
             for k, c in x.divide_chunks(chunksize=chunksize, n_chunks=n_chunks, partition=partition, split_by=split_by):
                 yield k, c
 
@@ -143,20 +146,22 @@ class Transformer(Processor):
             for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze, dim=dim):
                 yield k, c
 
-    def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, store=False, **kwargs):
+    def transform_callback(self, x, _key=None, _is_chunk=False, _fit=False, path=None, _store=False, **kwargs):
 
         if self.func is None:
             raise ValueError("The function is not defined for the transformer. Either pass fanc to the constructor or "
                              "override the transform_callback method.")
 
         if self.func_has_kwargs:
-            kwargs['transformer_kwargs'] = dict(key=key, is_chunk=is_chunk, fit=fit, path=path, store=store)
+            kwargs['transformer_kwargs'] = dict(key=_key, is_chunk=_is_chunk, fit=_fit, path=path, store=_store)
         r = self.func(x, **kwargs)
 
         return r
 
     def worker(self, x, key=None, is_chunk=False, fit=False, cache=True, store_path=None, store=False,
-               override=False, **kwargs):
+               override=False, return_results=True, task_kwargs=None):
+
+        task_kwargs = task_kwargs or {}
 
         if isinstance(x, BeamData):
             if not x.is_cached and cache:
@@ -173,7 +178,7 @@ class Transformer(Processor):
                     logger.warning(f"File {store_path} already exists, the data will not be stored (override=False).")
                     return key, None
 
-        x = self.transform_callback(x, key=key, is_chunk=is_chunk, fit=fit, store=store, **kwargs)
+        x = self.transform_callback(x, _key=key, _is_chunk=is_chunk, _fit=fit, _store=store, **task_kwargs)
 
         if store_path is not None:
             store_path = beam_path(store_path)
@@ -181,12 +186,13 @@ class Transformer(Processor):
                 logger.info(f"Storing transformed chunk in: {store_path}")
                 store_path.write(x)
             else:
-                if not isinstance(x, BeamData):
-                    x = BeamData(x)
-                x.store(path=store_path, )
-                x = BeamData.from_path(path=store_path)
+                if isinstance(x, BeamData):
+                    x.store(path=store_path)
+                else:
+                    BeamData.write_tree(x, path=store_path, split=False)
 
-        return key, x
+        if return_results:
+            return key, x
 
     def fit(self, x, **kwargs):
         raise NotImplementedError("Override the fit method to implement the fitting process.")
@@ -230,24 +236,16 @@ class Transformer(Processor):
         transform_strategy = transform_kwargs.pop('transform_strategy', self.transform_strategy)
         store_chunk = transform_kwargs.pop('store_chunk', self.store_chunk)
         reduce = transform_kwargs.pop('reduce', self.to_reduce)
-        store_path = transform_kwargs.pop('store_path', self.store_path)
+        store_path = beam_path(transform_kwargs.pop('store_path', self.store_path))
         override = transform_kwargs.pop('override', self.override)
         store = transform_kwargs.pop('store', (store_path is not None))
+        return_results = transform_kwargs.pop('return_results', self.return_results)
+        reduce_dim = transform_kwargs.pop('reduce_dim', self.reduce_dim)
 
         parallel_kwargs = parallel_kwargs or {}
         n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
         mp_method = parallel_kwargs.pop('mp_method', self.mp_method)
         use_dill = parallel_kwargs.pop('use_dill', self.use_dill)
-
-        reduce_dim = self.reduce_dim
-
-        if transform_strategy is None and store_chunk is not None:
-            transform_strategy = TransformStrategy.S if store_chunk else TransformStrategy.C
-
-        if transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and split_by != 'keys':
-            logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
-                           f'The split_by is set to "key".')
-            split_by = 'keys'
 
         logger.info(f"Starting transformer process: {self.name}")
 
@@ -264,6 +262,18 @@ class Transformer(Processor):
             n_chunks = 1
         if squeeze is None:
             squeeze = self.squeeze
+
+        # the default behavior is to store the chunk if the data is chunked and store path is not None
+        if store_chunk is None:
+            store_chunk = ((n_chunks is not None and n_chunks > 1) or chunksize is not None) and store
+
+        if transform_strategy is None and store_chunk is not None:
+            transform_strategy = TransformStrategy.S if store_chunk else TransformStrategy.C
+
+        if transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and split_by != 'keys':
+            logger.warning(f'transformation strategy {transform_strategy} supports only split_by=\"key\", '
+                           f'The split_by is set to "key".')
+            split_by = 'keys'
 
         if split_by == 'index':
             part_name = BeamData.index_partition_directory_name
@@ -325,6 +335,9 @@ class Transformer(Processor):
                              progressbar='beam', reduce=False, reduce_dim=reduce_dim, use_dill=use_dill,
                              **parallel_kwargs)
 
+        if return_results is None:
+            return_results = store or store_chunk
+
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")
             for k, c in tqdm(self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
@@ -346,7 +359,8 @@ class Transformer(Processor):
                     self.counter += 1
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
-                                   override=override, store=store_chunk, name=k, metadata=f"{self.name}", **kwargs))
+                                   override=override, store=store_chunk, name=k, metadata=f"{self.name}",
+                                   return_results=return_results, task_kwargs=kwargs))
 
         else:
             self.counter += 1
@@ -358,7 +372,8 @@ class Transformer(Processor):
                     store_path = store_path.with_suffix(store_path.suffix + store_suffix)
 
             queue.add(BeamTask(self.worker, x, key=None, is_chunk=is_chunk, store_path=store_path,
-                               override=override, store=store_chunk, name=self.name, **kwargs))
+                               override=override, store=store_chunk, name=self.name, return_results=return_results,
+                               task_kwargs=kwargs))
 
         logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "
                     f"Number of queued tasks is {len(queue)}.")

@@ -134,7 +134,7 @@ class ChunkDF(Transformer):
             self.preprocessor = preprocessor or TFIDF.default_preprocessor
             super().__init__(*args, **kwargs)
 
-        def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
+        def transform_callback(self, x, _key=None, _is_chunk=False, _fit=False, path=None, **kwargs):
             y = Counter()
             y_sum = Counter()
             for xi in x:

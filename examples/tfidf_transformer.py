@@ -30,7 +30,7 @@ class TFIDFTransformer(Transformer):
             self.load_state_dict(state)
             self.tfidf = self.state
 
-    def transform_callback(self, bd, key=None, is_chunk=True, **kwargs):
+    def transform_callback(self, bd, _key=None, _is_chunk=True, **kwargs):
         x = self.tfidf.transform(bd['text'].values)
         bd['tfidf'] = x
         return bd

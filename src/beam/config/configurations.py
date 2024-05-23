@@ -397,13 +397,16 @@ class TransformerConfig(CacheConfig):
         BeamParam('chunksize', int, None, 'The chunksize to use for splitting the dataset'),
         BeamParam('squeeze', bool, True, 'Whether to squeeze the results'),
         BeamParam('reduce', bool, True, 'Whether to reduce and collate the results'),
-        BeamParam('reduce_dim', int, None, 'The dimension to reduce the results'),
+        BeamParam('reduce_dim', int, 0, 'The dimension to reduce the results'),
         BeamParam('transform_strategy', str, None, 'The transform strategy to use can be [CC|CS|SC|SS]'),
-        BeamParam('store_chunk', bool, False, 'Whether to store the chunked results'),
+        BeamParam('store_chunk', bool, None, 'Whether to store the chunked results [None stores chunks if '
+                                             'n_chunks/chunksize is not None and store_path is not None]'),
         BeamParam('split_by', str, 'keys', 'The split strategy to use can be [keys|index|columns]'),
         BeamParam('store_suffix', str, None, 'The suffix to add to the stored file'),
         BeamParam('override', bool, False, 'Whether to override the stored file if it exists'),
         BeamParam('use-dill', bool, False, 'Whether to use dill for serialization'),
+        BeamParam('return-results', bool, None, 'Whether to return the results if None, it is set to True '
+                                                'if store_path is None'),
     ]
 
 

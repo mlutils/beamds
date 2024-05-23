@@ -17,9 +17,15 @@ def test_collate_transformer_chunks():
         return x + 1
 
     df = pd.DataFrame(data=np.random.rand(16, 4), columns=['a', 'b', 'c', 'd'])
-    transformer = Transformer(n_workers=1, chunksize=2, mp_method='joblib', func=func, use_dill=True)
+    my_beautiful_transformer = Transformer(n_workers=1, chunksize=2, mp_method='joblib', func=func, use_dill=True)
+    res = my_beautiful_transformer(df, transform_kwargs=dict(store_path='/tmp/xx'))
 
-    res = transformer(df)
+    add_token_transformer = Transformer(n_workers=1, chunksize=2, mp_method='joblib',
+                                        func=lambda x: [xi + ' bye' for xi in x], use_dill=True)
+
+    res = add_token_transformer(['hi how are you?', 'we are here', 'lets dance', 'it is fine'],
+                                transform_kwargs=dict(store_path='/tmp/yy'))
+
     print(res)
 
 
