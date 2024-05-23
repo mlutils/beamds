@@ -91,24 +91,25 @@ if __name__ == '__main__':
 
     data_path, logs_path = get_paths()
 
-    kwargs_base = dict(algorithm='catboost_timing',
-                       data_path=data_path,
-                       logs_path=logs_path,
-                       copy_code=False, dynamic_masking=False,
-                       tensorboard=True, stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, catboost=True,
-                       rulenet=False)
+    # kwargs_base = dict(algorithm='catboost_timing',
+    #                    data_path=data_path,
+    #                    logs_path=logs_path,
+    #                    copy_code=False, dynamic_masking=False,
+    #                    tensorboard=True, stop_at=0.98, n_gpus=1, device=1, n_quantiles=6, catboost=True,
+    #                    rulenet=False)
 
-    # kwargs_base = dict(algorithm='debug', data_path=data_path, logs_path=logs_path,
-    #                    scheduler='one_cycle', device_placement=True, device=1, n_gpus=1,
-    #                    copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=10,
-    #                    n_quantiles=6, label_smoothing=.2,
-    #                    model_dtype='float16', training_framework='torch', federated_runner=False,
-    #                    compile_train=False, sparse_embedding=False, compile_network=False, mlflow=False,
-    #                    n_decoder_layers=4)
+    kwargs_base = dict(algorithm='debug', data_path=data_path, logs_path=logs_path,
+                       scheduler='one_cycle', device_placement=True, device=1, n_gpus=1,
+                       copy_code=False, dynamic_masking=False, comet=False, tensorboard=True, n_epochs=10,
+                       n_quantiles=6, label_smoothing=.2,
+                       # model_dtype='float16',
+                       training_framework='torch', federated_runner=False,
+                       compile_train=False, sparse_embedding=False, compile_network=False, mlflow=False,
+                       n_decoder_layers=4)
 
     kwargs_all = {}
 
-    # kwargs_all['california_housing'] = dict(batch_size=128, stop_at=-.43)
+    kwargs_all['california_housing'] = dict(batch_size=128, stop_at=-.43)
     # kwargs_all['adult'] = dict(batch_size=128)
     # kwargs_all['helena'] = dict(batch_size=256, mask_rate=0.25, dropout=0.25, transformer_dropout=.25,
     #                             minimal_mask_rate=.2, maximal_mask_rate=.4,
@@ -120,63 +121,66 @@ if __name__ == '__main__':
     # kwargs_all['year'] = dict(batch_size=256, emb_dim=128, n_decoder_layers=4, n_encoder_layers=4,
     #                       n_quantiles=7, n_rules=128, n_transformer_head=4, transformer_hidden_dim=256, cb_depth=10)
 
-    kwargs_all['year'] = dict(batch_size=512, cb_depth=14)
-    kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=12, cb_depth=14)
+    # # kwargs_all['year'] = dict(batch_size=512, cb_depth=14)
+    # kwargs_all['covtype'] = dict(batch_size=512, n_quantiles=12, cb_depth=14)
 
-    for k in kwargs_all.keys():
+    import torch
+    with torch.backends.cuda.sdp_kernel(enable_flash=False):
 
-        logger.info(f"Starting a new experiment with dataset: {k}")
-        hparams = {**kwargs_base}
-        hparams.update(kwargs_all[k])
-        hparams['dataset_name'] = k
-        hparams['identifier'] = k
-        hparams = TabularConfig(hparams)
+        for k in kwargs_all.keys():
 
-        exp = Experiment(hparams)
-        dataset = TabularDataset(hparams)
+            logger.info(f"Starting a new experiment with dataset: {k}")
+            hparams = {**kwargs_base}
+            hparams.update(kwargs_all[k])
+            hparams['dataset_name'] = k
+            hparams['identifier'] = k
+            hparams = TabularConfig(hparams)
 
-        if hparams.rulenet:
+            exp = Experiment(hparams)
+            dataset = TabularDataset(hparams)
 
-            logger.info(f"Training a RuleNet predictor")
-            # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
-            # alg = DeepTabularAlg(hparams, networks=net)
+            if hparams.rulenet:
 
-            alg = exp.fit(alg=DeepTabularAlg, dataset=TabularDataset,
-                          alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
-                                                                                  'cat_mask': dataset.cat_mask},
-                                      'task_type': dataset.task_type,
-                                      'y_sigma': dataset.y_sigma},)
+                logger.info(f"Training a RuleNet predictor")
+                # net = TabularTransformer(hparams, dataset.n_classes, dataset.n_tokens, dataset.cat_mask)
+                # alg = DeepTabularAlg(hparams, networks=net)
 
-            # @profile
-            # def profile_scalene(func, *args, **kwargs):
-            #     return func(*args, **kwargs)
-            #
-            # alg = profile_scalene(exp.fit, alg=DeepTabularAlg, dataset=TabularDataset,
-            #                             alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
-            #                                                                                     'cat_mask': dataset.cat_mask},
-            #                                         'task_type': dataset.task_type,
-            #                                         'y_sigma': dataset.y_sigma},)
+                alg = exp.fit(alg=DeepTabularAlg, dataset=TabularDataset,
+                              alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+                                                                                      'cat_mask': dataset.cat_mask},
+                                          'task_type': dataset.task_type,
+                                          'y_sigma': dataset.y_sigma},)
 
-            logger.info(f"Training finished, reloading best model")
+                # @profile
+                # def profile_scalene(func, *args, **kwargs):
+                #     return func(*args, **kwargs)
+                #
+                # alg = profile_scalene(exp.fit, alg=DeepTabularAlg, dataset=TabularDataset,
+                #                             alg_kwargs={'net_kwargs': {'n_classes': dataset.n_classes, 'n_tokens': dataset.n_tokens,
+                #                                                                                     'cat_mask': dataset.cat_mask},
+                #                                         'task_type': dataset.task_type,
+                #                                         'y_sigma': dataset.y_sigma},)
 
-            # exit(0)
+                logger.info(f"Training finished, reloading best model")
 
-            exp.reload_checkpoint(alg)
-            alg.set_best_masking()
+                # exit(0)
 
-            predictions = alg.evaluate('validation')
-            logger.info(f"Validation objective: {predictions.statistics['validation']['scalar']['objective'].values}")
-            exp.results_dir.joinpath('predictions.pt').write(predictions)
+                exp.reload_checkpoint(alg)
+                alg.set_best_masking()
 
-            # store to bundle
+                predictions = alg.evaluate('validation')
+                logger.info(f"Validation objective: {predictions.statistics['validation']['scalar']['objective'].values}")
+                exp.results_dir.joinpath('predictions.pt').write(predictions)
 
-            path = '/workspace/serve/bundle'
-            logger.info(f"Storing bundle to: {path}")
-            AutoBeam.to_bundle(alg, path)
+                # store to bundle
 
-        if hparams.catboost:
+                path = '/workspace/serve/bundle'
+                logger.info(f"Storing bundle to: {path}")
+                AutoBeam.to_bundle(alg, path)
 
-            logger.info(f"Training a Catboost predictor")
-            train_catboost(dataset, exp)
+            if hparams.catboost:
+
+                logger.info(f"Training a Catboost predictor")
+                train_catboost(dataset, exp)
 
 

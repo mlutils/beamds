@@ -336,7 +336,7 @@ class ExperimentConfig(BeamProjectConfig, KeysConfig, CacheConfig):
 
         # results printing and visualization
 
-        BeamParam('log_experiment', bool, None, 'Log experiment to the log directory'),
+        BeamParam('log_experiment', bool, True, 'Log experiment to the log directory'),
         BeamParam('print_results', bool, True, 'Print results after each epoch to screen'),
         BeamParam('visualize_weights', bool, False, 'Visualize network weights on tensorboard'),
         BeamParam('enable_tqdm', bool, True, 'Print tqdm progress bar when training'),
