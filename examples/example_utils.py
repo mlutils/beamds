@@ -5,7 +5,7 @@ from collections import Counter
 
 import torch
 import numpy as np
-from src.beam import resource
+from src.beam import resource, BeamData
 from beam import beam_logger as logger
 import pandas as pd
 
@@ -27,6 +27,10 @@ def test_collate_transformer_chunks():
                                 transform_kwargs=dict(store_path='/tmp/yy'))
 
     print(res)
+
+    bd = BeamData.from_path('/tmp/xx')
+    print(bd.stacked_values)
+    print(bd)
 
 
 def test_catboost():

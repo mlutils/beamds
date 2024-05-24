@@ -586,7 +586,7 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
         else:
             upd = pd
 
-        if on is None or dim == 0:
+        if dim == 0:
             if len(x[0].shape) == 1:
                 x = [upd.Series(xi) for xi in x]
             return upd.concat(x, axis=dim)

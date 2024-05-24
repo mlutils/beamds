@@ -65,6 +65,9 @@ class Transformer(Processor):
         @param shuffle Shuffling the tasks before running them.
         @param kwargs:
         """
+        assert inspect.isroutine(func) or func is None, "The func argument must be a function."
+
+        name = name or func.__name__ if func is not None else None
         super(Transformer, self).__init__(*args, name=name, n_workers=n_workers, n_chunks=n_chunks,
                                           store_path=store_path, partition=partition, chunksize=chunksize,
                                           mp_method=mp_method, squeeze=squeeze, reduce=reduce, reduce_dim=reduce_dim,
@@ -75,7 +78,6 @@ class Transformer(Processor):
                                           **kwargs)
 
         self.func = func
-        assert inspect.isroutine(func) or func is None, "The func argument must be a function."
 
         # check if we can pass kwargs to the function
         self.func_has_kwargs = False

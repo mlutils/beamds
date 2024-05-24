@@ -39,7 +39,7 @@ class BeamData(BeamName):
     def __init__(self, *args, data=None, path=None, name=None, all_paths=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
                  override=False, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
-                 key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None,
+                 key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='index', read_kwargs=None,
                  write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None, synced=False,
                  write_metadata=True, read_metadata=True, metadata_path_prefix=None, key_fold_map=None, **kwargs):
 
@@ -744,17 +744,6 @@ class BeamData(BeamName):
 
             else:
 
-                if self.preferred_orientation == 'columns':
-                    lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
-                    lens = list(filter(lambda x: x != 0, lens))
-
-                    lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
-                    lens_index = list(filter(lambda x: x is not None, lens_index))
-
-                    if len(set(lens)) == 1 and len(lens_index) <= 1:
-                        self._orientation = 'columns'
-                        return self._orientation
-
                 def shape_of(x):
                     if not BeamType.check_if_data_array(x):
                         return 'other'
@@ -766,13 +755,32 @@ class BeamData(BeamName):
                         return ()
                     return 'scalar'
 
-                shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
+                lens = set(list(filter(lambda x: x != 0, lens)))
 
-                shapes = list(filter(lambda x: x is not None, shapes))
-                if len(set(shapes)) == 1 and shapes[0] != 'other':
-                    self._orientation = 'index'
+                lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
+                lens_index = set(list(filter(lambda x: x is not None, lens_index)))
+
+                if len(lens) == 1 and len(lens_index) <= 1:
+                    if self.preferred_orientation == 'columns':
+                        self._orientation = 'columns'
+                    else:
+                        shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                        shapes = set(list(filter(lambda x: x is not None, shapes)))
+                        if len(shapes) > 1 and 'other' not in shapes:
+                            self._orientation = 'columns'
+                        elif len(shapes) == 1:
+                            self._orientation = 'index'
+                        else:
+                            self._orientation = 'packed'
                 else:
-                    self._orientation = 'packed'
+                    shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                    shapes = set(list(filter(lambda x: x is not None, shapes)))
+
+                    if len(shapes) == 1 and shapes[0] != 'other':
+                        self._orientation = 'index'
+                    else:
+                        self._orientation = 'packed'
 
         elif self.is_stored:
             self._orientation = self.conf['orientation']
