@@ -9,7 +9,7 @@ from ..processor import Processor
 
 
 class RayCluster(Processor):
-    def __init__(self, deployment, config, *args, n_pods=1, **kwargs):
+    def __init__(self, deployment, config, *args, n_pods=2, **kwargs):
         super().__init__(*args, **kwargs)
         self.deployment = deployment
         self.workers = []

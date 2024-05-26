@@ -159,10 +159,8 @@ class BeamDeploy(Processor):
                 # Extract the pod name from pod_info
                 print(f"Extracted pod_name: {pod_name}")
                 if pod_name:
-                    # Fetch detailed Pod information using the name
                     actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
                     # print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
-
                     # Create a BeamPod instance with the detailed Pod info
                     beam_pod_instance = BeamPod(pod_infos=[actual_pod_info], namespace=self.namespace, k8s=self.k8s)
                     beam_pod_instances.append(beam_pod_instance)
@@ -229,9 +227,3 @@ class BeamDeploy(Processor):
         except ApiException as e:
             logger.error(f"Error deleting service for deployment '{self.deployment_name}': {e}")
 
-    # move to BeamDeploy
-    # def list_pods(self):
-    #     label_selector = f"app={self.deployment_name}"
-    #     pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)
-    #     for pod in pods.items:
-    #         print(f"Pod Name: {pod.metadata.name}, Pod Status: {pod.status.phase}")
