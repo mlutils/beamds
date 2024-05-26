@@ -1,11 +1,8 @@
-from typing import Union
 from functools import cached_property
 from dataclasses import make_dataclass
 from kubernetes import client, watch
 from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
-from kubernetes.stream import stream
-
 from ..logger import beam_logger as logger
 from ..processor import Processor
 from .units import K8SUnits
@@ -78,7 +75,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             else:
                 logger.error(f"Failed to check or create project '{project_name}': {e}")
 
-    def create_service_account(self, name, namespace=None):
+    def create_service_account(self, name, create_service_account, namespace=None):
         namespace = namespace or self.namespace
 
         # Attempt to read the service account, create it if it does not exist
@@ -86,14 +83,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             self.core_v1_api.read_namespaced_service_account(name, namespace)
             logger.info(f"Service Account {name} already exists in namespace {namespace}.")
         except ApiException as e:
-            if e.status == 404:  # Not Found
-                metadata = client.V1ObjectMeta(name=name)
-                service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount", metadata=metadata)
-                self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
-                logger.info(f"Service Account {name} created in namespace {namespace}.")
-            else:
-                logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
-                raise
+                if e.status == 404:
+                    metadata = client.V1ObjectMeta(name=name)
+                    service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount",
+                                                              metadata=metadata)
+                    self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
+                    logger.info(f"Service Account {name} created in namespace {namespace}.")
+                else:
+                    logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
+                    raise
 
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
@@ -204,7 +202,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     @staticmethod
     def create_pod_template(image_name, labels=None, deployment_name=None, project_name=None,
-                            ports=None, service_account_name=None, pvc_mounts=None,
+                            ports=None, create_service_account=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
                             memory_limits=None, use_gpu=False, gpu_requests=None,
                             gpu_limits=None, use_node_selector=False, node_selector=False,
@@ -286,7 +284,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 
     def create_deployment_spec(self, image_name, labels=None, deployment_name=None, project_name=None, replicas=None,
-                               ports=None, service_account_name=None, storage_configs=None,
+                               ports=None, create_service_account=None, service_account_name=None, storage_configs=None,
                                cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=False,
                                node_selector=False, memory_limits=None, use_gpu=False,
                                gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
@@ -307,6 +305,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             ports=ports,
             use_node_selector=use_node_selector,
             node_selector=node_selector,
+            create_service_account=create_service_account,
             service_account_name=service_account_name,  # Use it here
             pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
             cpu_requests=cpu_requests,
@@ -331,10 +330,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     # TODO: why the method recieves all vars with "none" as default value? It should be a dict with the values
     def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
-                          replicas=None, ports=None, service_account_name=None, storage_configs=None,
-                          cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=False,
-                          node_selector=False, memory_storage_configs=None, memory_limits=None,
-                          use_gpu=False, gpu_requests=None, gpu_limits=None,
+                          replicas=None, ports=None, create_service_account=None, service_account_name=None,
+                          storage_configs=None, cpu_requests=None, cpu_limits=None, memory_requests=None,
+                          use_node_selector=False, node_selector=False, memory_storage_configs=None,
+                          memory_limits=None, use_gpu=False, gpu_requests=None, gpu_limits=None,
                           security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
@@ -355,7 +354,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         deployment_spec = self.create_deployment_spec(
             image_name, labels=labels, deployment_name=deployment_name,
-            project_name=project_name, replicas=replicas, ports=ports,
+            project_name=project_name, replicas=replicas, ports=ports, create_service_account=create_service_account,
             service_account_name=service_account_name, use_node_selector=use_node_selector, node_selector=node_selector,
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
@@ -874,31 +873,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Total Available Resources in the Namespace '{self.namespace}': {total_resources}")
         return total_resources
 
-    # def execute_command_in_pod(self, namespace, pod_name, command):
-    #     import shlex
-    #     from kubernetes.stream import stream
-    #
-    #     # If command is a string, use shlex to split it into a list
-    #     if isinstance(command, str):
-    #         command_list = shlex.split(command)
-    #     else:
-    #         command_list = command
-    #
-    #     # Executing the command
-    #     try:
-    #         response = stream(self.core_v1_api.connect_get_namespaced_pod_exec,
-    #                           pod_name,
-    #                           namespace,
-    #                           command=command_list,
-    #                           stderr=True,
-    #                           stdin=False,
-    #                           stdout=True,
-    #                           tty=False)
-    #         return response
-    #     except Exception as e:
-    #         logger.error(f"Failed to execute command in pod: {e}")
-    #         return None
-
     def execute_command_in_pod(self, namespace, pod_name, command):
         import shlex
         from kubernetes.stream import stream
@@ -916,16 +890,20 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         else:
             command_list = command
 
-        # Executing the command
-        response = stream(self.core_v1_api.connect_get_namespaced_pod_exec,
-                          pod_name,
-                          namespace,
-                          command=command_list,
-                          stderr=True,
-                          stdin=False,
-                          stdout=True,
-                          tty=False)
-        return response
+        try:
+            # Executing the command
+            response = stream(self.core_v1_api.connect_get_namespaced_pod_exec,
+                              pod_name,
+                              namespace,
+                              command=command_list,
+                              stderr=True,
+                              stdin=False,
+                              stdout=True,
+                              tty=False)
+            return response
+        except Exception as e:
+            logger.error(f"Failed to execute command in pod {pod_name}: {str(e)}")
+            raise
 
     def get_pod_info(self, pod_name, namespace):
         """Retrieve information about a specific pod."""
@@ -977,9 +955,3 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.info(f"Pod {pod_name} in {namespace} started successfully.")
         except ApiException as e:
             logger.error(f"Failed to create pod {pod_name} in {namespace}: {e}")
-
-    # def list_pods(self):
-    #     label_selector = f"app={self.deployment_name}"
-    #     pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=label_selector)
-    #     for pod in pods.items:
-    #         print(f"Pod Name: {pod.metadata.name}, Pod Status: {pod.status.phase}")
