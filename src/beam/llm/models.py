@@ -208,128 +208,142 @@ class FastChatLLM(OpenAIBase):
         return True
 
 
-class FastAPILLM(FCConversationLLM):
+class BeamVLLM(OpenAIBase):
 
-    normalized_hostname: Optional[str] = Field(None)
-    headers: Optional[dict] = Field(None)
-    consumer: Optional[str] = Field(None)
-    protocol: Optional[str] = Field(None)
-    _models: Any = PrivateAttr(default=None)
+    def __init__(self, model=None, hostname=None, api_key=None, port=None, *args, **kwargs):
 
-    def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
-
-        kwargs['scheme'] = 'fastapi'
-        super().__init__(*args, hostname=hostname, port=port, model=model, **kwargs)
-
-        self.consumer = username
-        self.normalized_hostname = normalize_host(hostname, port)
-        self._models = None
-        self.headers = {'Content-Type': 'application/json'}
-        self.protocol = protocol
-
-        from requests.packages.urllib3.exceptions import InsecureRequestWarning
-        # Suppress only the single InsecureRequestWarning from urllib3
-        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
-    @property
-    def models(self):
-        if self._models is None:
-            res = requests.get(f"{self.protocol}://{self.normalized_hostname}/models", headers=self.headers, verify=False)
-            self._models = res.json()
-        return self._models
+        api_base = f"http://{normalize_host(hostname, port)}/openai/v1"
+        kwargs['scheme'] = 'vllm'
+        super().__init__(*args, api_key=api_key, api_base=api_base, model=model, **kwargs)
+        self.model = model
 
     @property
     def is_chat(self):
         return True
 
-    @property
-    def is_completions(self):
-        return True
 
-    def process_kwargs(self, prompt, **kwargs):
-
-        kwargs_processed = {}
-
-        max_tokens = kwargs.pop('max_tokens', None)
-        max_new_tokens = None
-
-        if max_tokens is not None:
-            max_new_tokens = max_tokens - self.len_function(prompt)
-
-        max_new_tokens = kwargs.pop('max_new_tokens', max_new_tokens)
-        if max_new_tokens is not None:
-            kwargs_processed['max_new_tokens'] = max_new_tokens
-
-        temperature = kwargs.pop('temperature', None)
-        if temperature is not None:
-            kwargs_processed['temp'] = temperature
-
-        if 'stop_criteria' in kwargs:
-            kwargs_processed['stop_criteria'] = kwargs.pop('stop_criteria')
-
-        kwargs_processed['stream'] = kwargs.pop('stream', False)
-
-        return kwargs_processed
-
-    def _chat_completion(self, messages=None, **kwargs):
-
-        prompt = self.get_prompt(messages)
-        return self._completion_internal(prompt, **kwargs)
-
-    def _completion(self, prompt=None, **kwargs):
-
-        prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
-        return self._completion_internal(prompt, **kwargs)
-
-    def _stream_generator(self, d):
-
-        with requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/stream", headers=self.headers, json=d,
-                           stream=True, verify=False) as response:
-            for chunk in response.iter_content(chunk_size=1024):
-
-                chunks = chunk.split("\0")
-                for c in chunks:
-                    if not len(c):
-                        continue
-                    try:
-                        yield json.loads(c.decode())
-                    except JSONDecodeError:
-                        logger.error(f"Bad chunk: {c}")
-                        yield c
-
-    def _completion_internal(self, prompt, stream=False, **kwargs):
-
-        d = dict(model_name=self.model, consumer=self.consumer, input=prompt,
-                 hyper_params=self.process_kwargs(prompt, **kwargs))
-
-        if stream:
-            res = self._stream_generator(d)
-            return CompletionObject(prompt=d['input'], kwargs=d, response=res)
-
-        else:
-            res = requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/once", headers=self.headers, json=d,
-                                verify=False)
-            return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
-
-    def verify_response(self, res):
-
-        if res.stream:
-            return True
-
-        try:
-
-            if not res.response['is_done']:
-                logger.warning(f"Model {self.model} is_done=False.")
-
-            assert 'res' in res.response, f"Response does not contain 'res' key"
-
-        except Exception as e:
-            logger.error(f"Error in response: {res.response}")
-            raise e
-        return True
-
-    def extract_text(self, res):
-        return res.response['res']
+# class FastAPILLM(FCConversationLLM):
+#
+#     normalized_hostname: Optional[str] = Field(None)
+#     headers: Optional[dict] = Field(None)
+#     consumer: Optional[str] = Field(None)
+#     protocol: Optional[str] = Field(None)
+#     _models: Any = PrivateAttr(default=None)
+#
+#     def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
+#
+#         kwargs['scheme'] = 'fastapi'
+#         super().__init__(*args, hostname=hostname, port=port, model=model, **kwargs)
+#
+#         self.consumer = username
+#         self.normalized_hostname = normalize_host(hostname, port)
+#         self._models = None
+#         self.headers = {'Content-Type': 'application/json'}
+#         self.protocol = protocol
+#
+#         from requests.packages.urllib3.exceptions import InsecureRequestWarning
+#         # Suppress only the single InsecureRequestWarning from urllib3
+#         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+#
+#     @property
+#     def models(self):
+#         if self._models is None:
+#             res = requests.get(f"{self.protocol}://{self.normalized_hostname}/models", headers=self.headers, verify=False)
+#             self._models = res.json()
+#         return self._models
+#
+#     @property
+#     def is_chat(self):
+#         return True
+#
+#     @property
+#     def is_completions(self):
+#         return True
+#
+#     def process_kwargs(self, prompt, **kwargs):
+#
+#         kwargs_processed = {}
+#
+#         max_tokens = kwargs.pop('max_tokens', None)
+#         max_new_tokens = None
+#
+#         if max_tokens is not None:
+#             max_new_tokens = max_tokens - self.len_function(prompt)
+#
+#         max_new_tokens = kwargs.pop('max_new_tokens', max_new_tokens)
+#         if max_new_tokens is not None:
+#             kwargs_processed['max_new_tokens'] = max_new_tokens
+#
+#         temperature = kwargs.pop('temperature', None)
+#         if temperature is not None:
+#             kwargs_processed['temp'] = temperature
+#
+#         if 'stop_criteria' in kwargs:
+#             kwargs_processed['stop_criteria'] = kwargs.pop('stop_criteria')
+#
+#         kwargs_processed['stream'] = kwargs.pop('stream', False)
+#
+#         return kwargs_processed
+#
+#     def _chat_completion(self, messages=None, **kwargs):
+#
+#         prompt = self.get_prompt(messages)
+#         return self._completion_internal(prompt, **kwargs)
+#
+#     def _completion(self, prompt=None, **kwargs):
+#
+#         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
+#         return self._completion_internal(prompt, **kwargs)
+#
+#     def _stream_generator(self, d):
+#
+#         with requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/stream", headers=self.headers, json=d,
+#                            stream=True, verify=False) as response:
+#             for chunk in response.iter_content(chunk_size=1024):
+#
+#                 chunks = chunk.split("\0")
+#                 for c in chunks:
+#                     if not len(c):
+#                         continue
+#                     try:
+#                         yield json.loads(c.decode())
+#                     except JSONDecodeError:
+#                         logger.error(f"Bad chunk: {c}")
+#                         yield c
+#
+#     def _completion_internal(self, prompt, stream=False, **kwargs):
+#
+#         d = dict(model_name=self.model, consumer=self.consumer, input=prompt,
+#                  hyper_params=self.process_kwargs(prompt, **kwargs))
+#
+#         if stream:
+#             res = self._stream_generator(d)
+#             return CompletionObject(prompt=d['input'], kwargs=d, response=res)
+#
+#         else:
+#             res = requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/once", headers=self.headers, json=d,
+#                                 verify=False)
+#             return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
+#
+#     def verify_response(self, res):
+#
+#         if res.stream:
+#             return True
+#
+#         try:
+#
+#             if not res.response['is_done']:
+#                 logger.warning(f"Model {self.model} is_done=False.")
+#
+#             assert 'res' in res.response, f"Response does not contain 'res' key"
+#
+#         except Exception as e:
+#             logger.error(f"Error in response: {res.response}")
+#             raise e
+#         return True
+#
+#     def extract_text(self, res):
+#         return res.response['res']
 
 
 class FastAPIDPLLM(FastAPILLM):

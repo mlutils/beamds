@@ -1,4 +1,4 @@
-from .models import TGILLM, FastChatLLM, FastAPILLM, HuggingFaceLLM, FastAPIDPLLM
+from .models import TGILLM, FastChatLLM, BeamVLLM, HuggingFaceLLM, FastAPIDPLLM
 from .openai import OpenAILLM
 from ..path import beam_key, BeamURL
 
@@ -51,8 +51,8 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
     elif url.protocol == 'huggingface':
         return HuggingFaceLLM(model=model, **kwargs)
 
-    elif url.protocol == 'fastapi':
-        return FastAPILLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
+    elif url.protocol == 'vllm':
+        return BeamVLLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
 
     elif url.protocol == 'fastapi-dp':
         return FastAPIDPLLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
