@@ -4,7 +4,7 @@
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
 #FROM nvidia/cuda:12.3.0-devel-ubuntu22.04
-FROM nvcr.io/nvidia/pytorch:24.04-py3
+FROM nvcr.io/nvidia/pytorch:24.05-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -182,11 +182,9 @@ COPY docker/install/aux_installs.sh /workspace/beam_image
 RUN bash /workspace/beam_image/aux_installs.sh
 
 # Create a non-root user
-RUN useradd -m -s /bin/bash beam && \
-    echo 'beam:12345678' | chpasswd
+RUN useradd -m -s /bin/bash beam && echo 'beam:12345678' | chpasswd
 
-RUN mkdir -p  /opt/ssh
-RUN mkdir -p  /opt/supervisor
+RUN mkdir -p  /opt/ssh && mkdir -p  /opt/supervisor
 
 COPY install/supervisord.conf /etc/supervisor/conf.d/
 COPY install/sshd_config /opt/ssh

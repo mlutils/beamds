@@ -218,11 +218,13 @@ if [ "$RUN_SSH" = true ]; then
   echo "SSH Port: $SSH_PORT"
   export SSH_PORT=$SSH_PORT
   echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
-  echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
+#  echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
   echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
   echo "root:$ROOT_PASSWORD" | chpasswd
   echo "beam:$BEAM_PASSWORD" | chpasswd
-  service ssh start
+  #  service ssh start
+  #/usr/bin/
+  supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log
   echo "SSH is running."
 else
   echo "SSH is disabled."
@@ -244,6 +246,9 @@ fi
 service start avahi-daemon
 service enable avahi-daemon
 
+
+# finally run command or bash shell:
+
 if [ -z "$OPTIONAL_COMMAND" ]; then
     # If OPTIONAL_COMMAND is empty, run bash
     bash
@@ -253,4 +258,5 @@ else
     # If OPTIONAL_COMMAND is provided, run it
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
+
 
