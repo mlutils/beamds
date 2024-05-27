@@ -209,7 +209,7 @@ RUN mkdir -p /home/beam/.ssh && \
     chown -R beam. /opt/ssh
 
 # You can copy a public key from your host machine to the container for key-based authentication
-COPY id_rsa.pub /home/beam/.ssh/authorized_keys
+# COPY id_rsa.pub /home/beam/.ssh/authorized_keys
 
 # Adjust file permissions for SSH
 RUN chmod 600 /home/beam/.ssh/authorized_keys && \
