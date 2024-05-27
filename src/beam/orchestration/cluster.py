@@ -91,7 +91,7 @@ class RayCluster(Processor):
             raise Exception(f"Head pod {head_pod_name} is not running. Current status: {head_pod_status[0][1]}")
 
 
-    # # TODO: implement connect_cluster live in pycharm for now
+    #  TODO: implement connect_cluster live in pycharm for now
     # def connect_cluster(self):
     #     # example how to connect to head node
     #     for w in self.workers:
@@ -105,7 +105,7 @@ class RayCluster(Processor):
                 if head_pod_status[0][1] != "Running":
                     logger.info(f"Head pod {self.head.pod_infos[0].metadata.name} is not running. Restarting...")
                     self.deploy_cluster()
-                time.sleep(30)
+                time.sleep(3)
             except KeyboardInterrupt:
                 break
 

@@ -49,6 +49,8 @@ echo "Installing alien"
 apt install -y alien
 echo "Installing libaio1"
 apt install -y libaio1
+echo "Installing supervisor"
+apt install supervisor
 echo "Installing websocat"
 wget https://github.com/vi/websocat/releases/download/v1.8.0/websocat_amd64-linux -O websocat
 chmod +x websocat

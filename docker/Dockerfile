@@ -178,9 +178,41 @@ RUN bash /workspace/beam_image/language_servers.sh
 COPY docker/install/aux_installs.sh /workspace/beam_image
 RUN bash /workspace/beam_image/aux_installs.sh
 
+# Create a non-root user
+RUN useradd -m -s /bin/bash beam && \
+    echo 'beam:12345678' | chpasswd
+
+RUN mkdir -p  /opt/ssh
+RUN mkdir -p  /opt/supervisor
+
+COPY install/supervisord.conf /etc/supervisor/conf.d/
+COPY install/sshd_config /opt/ssh
+
 # for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.
 # RUN pip install git+https://github.com/chaoleili/jupyterlab_tensorboard.git
+RUN ssh-keygen -q -N "" -t dsa -f /opt/ssh/ssh_host_dsa_key && \
+    ssh-keygen -q -N "" -t rsa -b 4096 -f /opt/ssh/ssh_host_rsa_key && \
+    ssh-keygen -q -N "" -t ecdsa -f /opt/ssh/ssh_host_ecdsa_key && \
+    ssh-keygen -q -N "" -t ed25519 -f /opt/ssh/ssh_host_ed25519_key
+
+COPY install/supervisord.conf /etc/supervisor/conf.d/
+#COPY supervisord.conf /etc/supervisor/
+
+COPY install/sshd_config /opt/ssh
+
+# Configure SSH for non-root public key authentication
+RUN mkdir -p /home/beam/.ssh && \
+    chmod 700 /home/beam/.ssh && \
+    chown beam:beam /home/beam/.ssh && \
+    chown -R beam. /opt/ssh
+
+# You can copy a public key from your host machine to the container for key-based authentication
+COPY id_rsa.pub /home/beam/.ssh/authorized_keys
+
+# Adjust file permissions for SSH
+RUN chmod 600 /home/beam/.ssh/authorized_keys && \
+     chown beam:beam /home/beam/.ssh/authorized_keys
 
 COPY docker/runs /workspace/beam_image/runs
 

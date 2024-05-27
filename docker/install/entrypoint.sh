@@ -101,6 +101,8 @@ done
 
 echo "Root password was updated"
 ROOT_PASSWORD="12345678"
+echo "Beam password was updated"
+BEAM_PASSWORD="12345678"
 
 OPTIONAL_COMMAND=$2
 MORE_ARGS=${@:3}
@@ -217,7 +219,9 @@ if [ "$RUN_SSH" = true ]; then
   export SSH_PORT=$SSH_PORT
   echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
   echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
+  echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
   echo "root:$ROOT_PASSWORD" | chpasswd
+  echo "beam:$BEAM_PASSWORD" | chpasswd
   service ssh start
   echo "SSH is running."
 else
@@ -230,7 +234,8 @@ if [ "$RUN_JUPYTER" = true ]; then
   echo "Jupyter Port: $JUPYTER_PORT"
   export JUPYTER_PORT=$JUPYTER_PORT
   echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
-  jupyter-lab &
+  #jupyter-lab &
+  su - beam -c jupyter-lab &
   echo "Jupyter is running."
 else
   echo "Jupyter is disabled."
