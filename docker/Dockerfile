@@ -186,8 +186,8 @@ RUN useradd -m -s /bin/bash beam && echo 'beam:12345678' | chpasswd
 
 RUN mkdir -p  /opt/ssh && mkdir -p  /opt/supervisor
 
-COPY install/supervisord.conf /etc/supervisor/conf.d/
-COPY install/sshd_config /opt/ssh
+COPY docker/install/supervisord.conf /etc/supervisor/conf.d/
+COPY docker/install/sshd_config /opt/ssh
 
 # for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.
@@ -197,10 +197,10 @@ RUN ssh-keygen -q -N "" -t dsa -f /opt/ssh/ssh_host_dsa_key && \
     ssh-keygen -q -N "" -t ecdsa -f /opt/ssh/ssh_host_ecdsa_key && \
     ssh-keygen -q -N "" -t ed25519 -f /opt/ssh/ssh_host_ed25519_key
 
-COPY install/supervisord.conf /etc/supervisor/conf.d/
+COPY docker/install/supervisord.conf /etc/supervisor/conf.d/
 #COPY supervisord.conf /etc/supervisor/
 
-COPY install/sshd_config /opt/ssh
+COPY docker/install/sshd_config /opt/ssh
 
 # Configure SSH for non-root public key authentication
 RUN mkdir -p /home/beam/.ssh && \
