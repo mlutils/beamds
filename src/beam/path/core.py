@@ -13,6 +13,7 @@ import re
 
 from ..type import check_type
 from ..meta import BeamName
+from ..type.utils import is_beam_data, is_beam_processor
 
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
@@ -615,6 +616,7 @@ class PureBeamPath(BeamResource):
         - .fea: Feather
         - .csv: CSV
         - .pkl, .pickle: Pickle
+        - .dill: Dill
         - .npy: Numpy
         - .json: JSON
         - .ndjson: Newline delimited JSON
@@ -666,6 +668,21 @@ class PureBeamPath(BeamResource):
         else:
             pdu = pd
 
+        # read .bmd (beam-data) and .bmp (beam-processor) files
+
+        if ext == '.bmd':
+            from ..data import BeamData
+            lazy = kwargs.pop('lazy', False)
+            return BeamData.from_path(self, lazy=lazy)
+
+        if ext == '.bmp':
+            from ..processor import Processor
+            return Processor.from_path(self)
+
+        if ext == '.abm':
+            from ..auto import AutoBeam
+            return AutoBeam.from_bundle(self)
+
         with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
             if ext == '.fea':
@@ -686,6 +703,9 @@ class PureBeamPath(BeamResource):
                 x = pdu.read_csv(fo, **kwargs)
             elif ext in ['.pkl', '.pickle']:
                 x = pd.read_pickle(fo, **kwargs)
+            elif ext == '.dill':
+                import dill
+                x = dill.load(fo, **kwargs)
             elif ext in ['.npy', '.npz', '.npzc']:
                 if ext in ['.npz', '.npzc']:
                     self.close_fo_after_read = False
@@ -877,8 +897,26 @@ class PureBeamPath(BeamResource):
         if ext is None:
             ext = self.suffix
 
-        path = str(self)
         x_type = check_type(x)
+
+        # write .bmd (beam-data) and .bmp (beam-processor) files
+        if ext == '.bmd':
+            if is_beam_data(x):
+                x.to_path(self)
+            else:
+                from ..data import BeamData
+                BeamData(x).to_path(self)
+            return self
+
+        if ext == '.bmp':
+            assert is_beam_processor(x), f"Expected Processor, got {type(x)}"
+            x.to_path(self)
+            return self
+
+        if ext == '.abm':
+            from ..auto import AutoBeam
+            AutoBeam(x).to_bundle(self)
+            return self
 
         with self(mode=PureBeamPath.mode('write', ext)) as fo:
 
@@ -924,6 +962,9 @@ class PureBeamPath(BeamResource):
                 fastavro.writer(fo, x, **kwargs)
             elif ext in ['.pkl', '.pickle']:
                 pd.to_pickle(x, fo, **kwargs)
+            elif ext == '.dill':
+                import dill
+                dill.dump(x, fo, **kwargs)
             elif ext == '.npy':
                 np.save(fo, x, **kwargs)
             elif ext == '.json':
@@ -945,7 +986,7 @@ class PureBeamPath(BeamResource):
             elif ext == '.scipy_npz':
                 import scipy
                 scipy.sparse.save_npz(fo, x, **kwargs)
-                self.rename(f'{path}.npz', path)
+                # self.rename(f'{path}.npz', path)
             elif ext == '.parquet':
                 if x_type.minor == 'polars':
                     x.write_parquet(fo, **kwargs)

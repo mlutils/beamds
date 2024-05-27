@@ -153,7 +153,7 @@ if [ "$RUN_RABBITMQ" = true ]; then
       sed -i "s/listeners.tcp.default = .*/listeners.tcp.default = $RABBITMQ_PORT/" $RABBITMQ_CONF
   fi
 
-  service rabbitmq-server start
+  service rabbitmq-server start &
   echo "RabbitMQ is running."
 else
   echo "RabbitMQ is disabled."

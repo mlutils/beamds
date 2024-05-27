@@ -16,6 +16,7 @@ class DeviceConfig(BeamConfig):
                   'when passing --n-gpus=2 and will use GPUs 2 1 3 when passing --n-gpus=3. '
                   'If None, will use an ascending order starting from the GPU passed in the --device parameter. '
                   'e.g. when --device=1 will use GPUs 1,2,3,4 when --n-gpus=4'),
+        BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
     ]
 
 
@@ -31,110 +32,6 @@ class CacheConfig(BeamConfig):
     ]
 
 
-# class CatBoostClassifier(iterations=None,
-#                          learning_rate=None,
-#                          depth=None,
-#                          l2_leaf_reg=None,
-#                          model_size_reg=None,
-#                          rsm=None,
-#                          loss_function=None,
-#                          border_count=None,
-#                          feature_border_type=None,
-#                          per_float_feature_quantization=None,
-#                          input_borders=None,
-#                          output_borders=None,
-#                          fold_permutation_block=None,
-#                          od_pval=None,
-#                          od_wait=None,
-#                          od_type=None,
-#                          nan_mode=None,
-#                          counter_calc_method=None,
-#                          leaf_estimation_iterations=None,
-#                          leaf_estimation_method=None,
-#                          thread_count=None,
-#                          random_seed=None,
-#                          use_best_model=None,
-#                          verbose=None,
-#                          logging_level=None,
-#                          metric_period=None,
-#                          ctr_leaf_count_limit=None,
-#                          store_all_simple_ctr=None,
-#                          max_ctr_complexity=None,
-#                          has_time=None,
-#                          allow_const_label=None,
-#                          classes_count=None,
-#                          class_weights=None,
-#                          auto_class_weights=None,
-#                          one_hot_max_size=None,
-#                          random_strength=None,
-#                          name=None,
-#                          ignored_features=None,
-#                          train_dir=None,
-#                          custom_loss=None,
-#                          custom_metric=None,
-#                          eval_metric=None,
-#                          bagging_temperature=None,
-#                          save_snapshot=None,
-#                          snapshot_file=None,
-#                          snapshot_interval=None,
-#                          fold_len_multiplier=None,
-#                          used_ram_limit=None,
-#                          gpu_ram_part=None,
-#                          allow_writing_files=None,
-#                          final_ctr_computation_mode=None,
-#                          approx_on_full_history=None,
-#                          boosting_type=None,
-#                          simple_ctr=None,
-#                          combinations_ctr=None,
-#                          per_feature_ctr=None,
-#                          task_type=None,
-#                          device_config=None,
-#                          devices=None,
-#                          bootstrap_type=None,
-#                          subsample=None,
-#                          sampling_unit=None,
-#                          dev_score_calc_obj_block_size=None,
-#                          max_depth=None,
-#                          n_estimators=None,
-#                          num_boost_round=None,
-#                          num_trees=None,
-#                          colsample_bylevel=None,
-#                          random_state=None,
-#                          reg_lambda=None,
-#                          objective=None,
-#                          eta=None,
-#                          max_bin=None,
-#                          scale_pos_weight=None,
-#                          gpu_cat_features_storage=None,
-#                          data_partition=None
-#                          metadata=None,
-#                          early_stopping_rounds=None,
-#                          cat_features=None,
-#                          grow_policy=None,
-#                          min_data_in_leaf=None,
-#                          min_child_samples=None,
-#                          max_leaves=None,
-#                          num_leaves=None,
-#                          score_function=None,
-#                          leaf_estimation_backtracking=None,
-#                          ctr_history_unit=None,
-#                          monotone_constraints=None,
-#                          feature_weights=None,
-#                          penalties_coefficient=None,
-#                          first_feature_use_penalties=None,
-#                          model_shrink_rate=None,
-#                          model_shrink_mode=None,
-#                          langevin=None,
-#                          diffusion_temperature=None,
-#                          posterior_sampling=None,
-#                          boost_from_average=None,
-#                          text_features=None,
-#                          tokenizers=None,
-#                          dictionaries=None,
-#                          feature_calcers=None,
-#                          text_processing=None,
-#                          fixed_binary_splits=None)
-
 class CatboostConfig(DeviceConfig):
     # catboost
     parameters = [
@@ -142,10 +39,10 @@ class CatboostConfig(DeviceConfig):
                                                     '[classification|regression|ranking]'),
         BeamParam('cb_loss_function', str, 'Logloss', 'The loss function for the catboost model'),
         # learning rate is drawn from other configurations
-        BeamParam('cb_n_estimators', int, 1000, 'The number of trees in the catboost model', tags='tune'),
+        BeamParam('cb_n_estimators', int, 200, 'The number of trees in the catboost model', tags='tune'),
         BeamParam('cb_l2_leaf_reg', float, 1e-4, 'The L2 regularization for the catboost model', tags='tune'),
         BeamParam('cb_border_count', int, 128, 'The border count for the catboost model', tags='tune'),
-        BeamParam('cb_depth', int, 14, 'The depth of the trees in the catboost model', tags='tune'),
+        BeamParam('cb_depth', int, 6, 'The depth of the trees in the catboost model', tags='tune'),
         BeamParam('cb_random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
         BeamParam('cb_lr', float, 1e-2, 'The learning rate for the catboost model', tags='tune'),
         BeamParam('cb_eval_metric', str, None, 'The evaluation metric for the catboost model, '
@@ -234,12 +131,11 @@ class SWAConfig(BeamConfig):
     ]
 
 
-class FederatedTrainingConfig(BeamConfig):
+class FederatedTrainingConfig(DeviceConfig):
 
     parameters = [
         BeamParam('mp_ip', str, 'localhost', 'IP to be used for multiprocessing'),
         BeamParam('mp_port', str, None, 'Port to be used for multiprocessing'),
-        BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
         BeamParam('n_cpus_per_worker', int, 6, 'Number of cpus to use in each worker'),
         BeamParam('n_gpus_per_worker', int, 1, 'Number of gpus to use in each worker'),
         BeamParam('distributed_backend', str, 'nccl', 'The distributed backend to use. '
@@ -390,7 +286,7 @@ class BeamProjectConfig(BeamConfig):
     ]
 
 
-class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig, CacheConfig, DeviceConfig):
+class ExperimentConfig(BeamProjectConfig, KeysConfig, CacheConfig):
     '''
 
         Arguments
@@ -440,6 +336,7 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
 
         # results printing and visualization
 
+        BeamParam('log_experiment', bool, True, 'Log experiment to the log directory'),
         BeamParam('print_results', bool, True, 'Print results after each epoch to screen'),
         BeamParam('visualize_weights', bool, False, 'Visualize network weights on tensorboard'),
         BeamParam('enable_tqdm', bool, True, 'Print tqdm progress bar when training'),
@@ -484,6 +381,10 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
     ]
 
 
+class NNExperimentConfig(ExperimentConfig, NNTrainingConfig, DDPConfig):
+    pass
+
+
 class TransformerConfig(CacheConfig):
     # transformer arguments
 
@@ -496,17 +397,20 @@ class TransformerConfig(CacheConfig):
         BeamParam('chunksize', int, None, 'The chunksize to use for splitting the dataset'),
         BeamParam('squeeze', bool, True, 'Whether to squeeze the results'),
         BeamParam('reduce', bool, True, 'Whether to reduce and collate the results'),
-        BeamParam('reduce_dim', int, None, 'The dimension to reduce the results'),
+        BeamParam('reduce_dim', int, 0, 'The dimension to reduce the results'),
         BeamParam('transform_strategy', str, None, 'The transform strategy to use can be [CC|CS|SC|SS]'),
-        BeamParam('store_chunk', bool, False, 'Whether to store the chunked results'),
+        BeamParam('store_chunk', bool, None, 'Whether to store the chunked results [None stores chunks if '
+                                             'n_chunks/chunksize is not None and store_path is not None]'),
         BeamParam('split_by', str, 'keys', 'The split strategy to use can be [keys|index|columns]'),
         BeamParam('store_suffix', str, None, 'The suffix to add to the stored file'),
         BeamParam('override', bool, False, 'Whether to override the stored file if it exists'),
         BeamParam('use-dill', bool, False, 'Whether to use dill for serialization'),
+        BeamParam('return-results', bool, None, 'Whether to return the results if None, it is set to True '
+                                                'if store_path is None'),
     ]
 
 
-class UniversalConfig(ExperimentConfig, TransformerConfig, CatboostConfig):
+class UniversalConfig(NNExperimentConfig, TransformerConfig, CatboostConfig):
     pass
 
 

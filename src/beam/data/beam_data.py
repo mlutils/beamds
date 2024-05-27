@@ -5,7 +5,6 @@ from functools import partial, cached_property
 
 import numpy as np
 import pandas as pd
-import torch
 
 from ..logger import beam_logger as logger
 from ..path import beam_path
@@ -40,7 +39,7 @@ class BeamData(BeamName):
     def __init__(self, *args, data=None, path=None, name=None, all_paths=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
                  override=False, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
-                 key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None,
+                 key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='index', read_kwargs=None,
                  write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None, synced=False,
                  write_metadata=True, read_metadata=True, metadata_path_prefix=None, key_fold_map=None, **kwargs):
 
@@ -432,6 +431,9 @@ class BeamData(BeamName):
             path.mkdir()
         return cls(path=path, *args, **kwargs)
 
+    def to_path(self, path):
+        self.store(path=path)
+
     @classmethod
     def from_indexed_pandas(cls, data, *args, **kwargs):
 
@@ -742,18 +744,9 @@ class BeamData(BeamName):
 
             else:
 
-                if self.preferred_orientation == 'columns':
-                    lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
-                    lens = list(filter(lambda x: x != 0, lens))
-
-                    lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
-                    lens_index = list(filter(lambda x: x is not None, lens_index))
-
-                    if len(set(lens)) == 1 and len(lens_index) <= 1:
-                        self._orientation = 'columns'
-                        return self._orientation
-
                 def shape_of(x):
+                    if not BeamType.check_if_data_array(x):
+                        return 'other'
                     if hasattr(x, 'shape'):
                         return tuple(x.shape[1:])
                     if x is None:
@@ -762,13 +755,32 @@ class BeamData(BeamName):
                         return ()
                     return 'scalar'
 
-                shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
+                lens = set(list(filter(lambda x: x != 0, lens)))
 
-                shapes = list(filter(lambda x: x is not None, shapes))
-                if len(set(shapes)) == 1:
-                    self._orientation = 'index'
+                lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
+                lens_index = set(list(filter(lambda x: x is not None, lens_index)))
+
+                if len(lens) == 1 and len(lens_index) <= 1:
+                    if self.preferred_orientation == 'columns':
+                        self._orientation = 'columns'
+                    else:
+                        shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                        shapes = set(list(filter(lambda x: x is not None, shapes)))
+                        if len(shapes) > 1 and 'other' not in shapes:
+                            self._orientation = 'columns'
+                        elif len(shapes) == 1:
+                            self._orientation = 'index'
+                        else:
+                            self._orientation = 'packed'
                 else:
-                    self._orientation = 'packed'
+                    shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                    shapes = set(list(filter(lambda x: x is not None, shapes)))
+
+                    if len(shapes) == 1 and shapes[0] != 'other':
+                        self._orientation = 'index'
+                    else:
+                        self._orientation = 'packed'
 
         elif self.is_stored:
             self._orientation = self.conf['orientation']
@@ -1012,7 +1024,7 @@ class BeamData(BeamName):
         if schema is not None:
             kwargs = {**schema.read_schema, **kwargs}
 
-        if path.is_file():
+        if path.is_file() or path.suffix in ['.bmp', '.bmd']:
             logger.debug(f"Reading file: {path}")
             return path.read(**kwargs)
 
@@ -1048,7 +1060,8 @@ class BeamData(BeamName):
 
     @staticmethod
     def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9), override=True,
-                   chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None, **kwargs):
+                   chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None,
+                   split=False, **kwargs):
 
         path = beam_path(path)
 
@@ -1074,7 +1087,7 @@ class BeamData(BeamName):
                 BeamData.write_tree(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
                                     archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
                                     split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
-                                    file_type=file_type, schema=s, override=override, **kwargs)
+                                    file_type=file_type, schema=s, override=override, split=split, **kwargs)
 
         else:
 
@@ -1084,11 +1097,12 @@ class BeamData(BeamName):
             BeamData.write_object(data, path, size=sizes, archive=False, override=override,
                                         chunksize=chunksize, chunklen=chunklen, split_by=split_by,
                                         n_chunks=n_chunks, partition=partition, schema=schema,
-                                        file_type=file_type, **kwargs)
+                                        file_type=file_type, split=split, **kwargs)
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None, split_by=None, **kwargs):
+                     chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None,
+                     split_by=None, split=True, **kwargs):
 
         path = beam_path(path)
 
@@ -1102,9 +1116,11 @@ class BeamData(BeamName):
                                               schema=schema, **kwargs)
         else:
 
-            if split_by != 'keys':
+            if split and split_by != 'keys':
                 n_chunks = BeamData.get_n_chunks(data, chunksize=chunksize, chunklen=chunklen,
                                                  n_chunks=n_chunks, size=size)
+            else:
+                n_chunks = 1
 
             data_type = check_type(data)
             if partition is not None and data_type.minor == 'pandas':
@@ -1120,14 +1136,18 @@ class BeamData(BeamName):
             elif data_type.minor == 'numpy':
                 priority = ['.npy', '.pkl']
             elif data_type.minor == 'scipy_sparse':
-                priority = ['scipy_npz', '.pkl']
+                priority = ['.scipy_npz', '.pkl']
             elif data_type.minor == 'tensor':
                 if data.is_sparse_csr:
                     priority = ['.pkl']
                 else:
                     priority = ['.pt']
+            elif hasattr(data, 'beam_class_name') and 'BeamData' in data.beam_class_name:
+                priority = ['.bmd', '.pkl', '.dill']
+            elif hasattr(data, 'beam_class_name') and 'Processor' in data.beam_class_name:
+                priority = ['.bmp', '.pkl', '.dill']
             else:
-                priority = ['.pkl']
+                priority = ['.pkl', '.dill']
 
             if file_type is not None:
                 priority.insert(file_type, 0)
@@ -1173,7 +1193,7 @@ class BeamData(BeamName):
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
 
                         elif ext == '.scipy_npz':
-                            if compress is False:
+                            if compress is True:
                                 kwargs['compressed'] = True
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
 
@@ -1294,7 +1314,8 @@ class BeamData(BeamName):
             return data
 
         if objects_type == 'tensor':
-            func = torch.stack if dim==1 and dim >= len(v.shape) else torch.cat
+            import torch
+            func = torch.stack if dim == 1 and dim >= len(v.shape) else torch.cat
             kwargs = {'dim': dim}
         elif objects_type == 'pandas':
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
@@ -1372,9 +1393,10 @@ class BeamData(BeamName):
 
     def store(self, data=None, path=None, compress=None, chunksize=None,
               chunklen=None, n_chunks=None, partition=None, split_by=None,
-              archive_size=None, override=None, **kwargs):
+              archive_size=None, override=None, split=True, **kwargs):
 
         override = override or self.override
+        path = beam_path(path)
 
         if path is not None:
             if override:
@@ -1394,7 +1416,8 @@ class BeamData(BeamName):
                                          partition=partition, split_by=split_by, archive_size=archive_size,
                                          **kwargs)
 
-        BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, override=override, **kwargs)
+        BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, override=override,
+                            split=split, **kwargs)
 
         # store info and conf files
         if self.write_metadata:

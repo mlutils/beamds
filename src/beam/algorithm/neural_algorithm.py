@@ -28,23 +28,12 @@ from .core_algorithm import Algorithm
 class NeuralAlgorithm(Algorithm):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
-                 name=None, experiment=None, **kwargs):
+                 name=None, **kwargs):
 
         super().__init__(hparams, name=name, **kwargs)
 
-        self.clear_experiment_properties()
-        self._experiment = None
-        self._device = None
-        if experiment is not None:
-            self.experiment = experiment
-
-        self.trial = None
-
         # the following are set by the experiment
         # some experiment hyperparameters
-
-        self.epoch = 0
-        self.t0 = timer()
 
         self.scalers = {}
         self.networks = {}
@@ -65,13 +54,6 @@ class NeuralAlgorithm(Algorithm):
         self.persistent_dataloaders = defaultdict(dict)
         self.dataloaders = defaultdict(dict)
 
-        self.epoch_length = None
-        self.eval_subset = None
-        self.objective = None
-        self.best_objective = None
-        self.best_epoch = None
-        self.best_state = False
-
         self.add_components(networks=networks, optimizers=optimizers, schedulers=schedulers, processors=processors)
 
         if self.get_hparam('reload_path') is not None:
@@ -83,17 +65,7 @@ class NeuralAlgorithm(Algorithm):
         if dataset is not None:
             self.load_dataset(dataset)
 
-        self.cb_model = None
-        self.reporter = None
         self.training = False
-
-    @property
-    def elapsed_time(self):
-        return timer() - self.t0
-
-    @staticmethod
-    def no_experiment_message(property):
-        logger.warning(f"{property} is not supported without an active experiment. Set self.experiment = experiment")
 
     @cached_property
     def distributed_training(self):
@@ -110,13 +82,6 @@ class NeuralAlgorithm(Algorithm):
         return self.experiment.distributed_training_framework
 
     @cached_property
-    def hpo(self):
-        if self.experiment is None:
-            self.no_experiment_message('hpo')
-            return False
-        return self.experiment.hpo
-
-    @cached_property
     def rank(self):
         if self.experiment is None:
             self.no_experiment_message('rank')
@@ -129,15 +94,6 @@ class NeuralAlgorithm(Algorithm):
             self.no_experiment_message('world_size')
             return 1
         return self.experiment.world_size
-
-    @cached_property
-    def enable_tqdm(self):
-        return self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
-                                                              or not self.get_hparam('enable_tqdm')) else None
-
-    @cached_property
-    def n_epochs(self):
-        return self.get_hparam('n_epochs')
 
     @cached_property
     def batch_size_train(self):
@@ -243,15 +199,9 @@ class NeuralAlgorithm(Algorithm):
                 swa_epochs = int(np.round(self.get_hparam('swa') * self.n_epochs))
         return swa_epochs
 
-    def clear_experiment_properties(self):
-
-        self.clear_cache('device', 'distributed_training', 'distributed_training_framework', 'hpo', 'rank', 'world_size', 'enable_tqdm', 'n_epochs',
-                            'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
-                            'scaler', 'swa_epochs')
-
     @cached_property
     def device(self):
-        if self.in_cache('accelerator') and self.accelerator.device_placement:
+        if self.in_cache('accelerator') and self.accelerator is not None and self.accelerator.device_placement:
             device = self.accelerator.device
         elif self._device is not None:
             device = self._device
@@ -325,23 +275,20 @@ class NeuralAlgorithm(Algorithm):
             self.clear_cache('device')
         return acc
 
+    @classmethod
     @property
-    def state_attributes(self):
-        return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
+    def special_state_attributes(cls):
+        return (super().special_state_attributes +
+                ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
-                'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']
-
-    @cached_property
-    def train_reporter(self):
-        return BeamReport(objective=self.get_hparam('objective'), objective_mode=self.optimization_mode,
-                          aux_objectives=['loss'], aux_objectives_modes=['min'])
+                'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps'])
 
     def __getattr__(self, item):
         assert item != 'networks', 'Networks are not initialized yet'
         if item in self.networks:
             return self.networks[item]
         else:
-            raise AttributeError(f"Algorithm has no attribute {item}")
+            return super().__getattr__(item)
 
     @property
     def dataset(self):
@@ -350,19 +297,6 @@ class NeuralAlgorithm(Algorithm):
         if len(self.datasets) == 1:
             return list(self.datasets.values())[0]
         return self.datasets
-
-    def set_reporter(self, reporter=None):
-        self.reporter = reporter
-        self.reporter.reset_time(None)
-        self.reporter.reset_epoch(0, total_epochs=None)
-
-    def set_train_reporter(self, first_epoch, n_epochs=None):
-
-        if n_epochs is None:
-            n_epochs = self.n_epochs
-
-        self.reporter = self.train_reporter
-        self.reporter.reset_time(first_epoch=first_epoch, n_epochs=n_epochs)
 
     def to(self, device):
 
@@ -583,20 +517,6 @@ class NeuralAlgorithm(Algorithm):
         self.schedulers_name_by_id = {id(sch): k for k, sch in self.schedulers.items()}
         self.schedulers_flat = self.get_flat_schedulers()
         self.optimizers_flat = self.get_flat_optimizers()
-
-    @property
-    def experiment(self):
-        logger.debug(f"Fetching the experiment which is currently associated with the algorithm")
-        return self._experiment
-
-    # a setter function
-    @experiment.setter
-    def experiment(self, experiment):
-        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.experiment_dir}")
-        self.trial = experiment.trial
-        self.hparams = experiment.hparams
-        self.clear_experiment_properties()
-        self._experiment = experiment
 
     def apply(self, *losses, weights=None, training=None, optimizers=None, set_to_none=True, gradient=None,
               retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None, name=None,
@@ -1308,104 +1228,6 @@ class NeuralAlgorithm(Algorithm):
         '''
         pass
 
-    def calculate_objective(self):
-        '''
-        This function calculates the optimization non-differentiable objective. It is used for hyperparameter optimization
-        and for ReduceOnPlateau scheduling. It is also responsible for tracking the best checkpoint
-        '''
-
-        self.best_objective = self.reporter.best_objective
-        self.best_epoch = self.reporter.best_epoch
-        self.objective = self.reporter.objective
-        self.best_state = self.reporter.best_state
-
-        return self.objective
-
-    def report(self, objective, epoch=None):
-        '''
-        Use this function to report results to hyperparameter optimization frameworks
-        also you can add key 'objective' to the results dictionary to report the final scores.
-        '''
-
-        if self.hpo == 'tune':
-
-            if self.get_hparam('objective') is not None:
-                metrics = {self.get_hparam('objective'): objective}
-            else:
-                metrics = {'objective': objective}
-            from ray import train
-            train.report(metrics)
-        elif self.hpo == 'optuna':
-            import optuna
-            self.trial.report(objective, epoch)
-            self.trial.set_user_attr('best_value', self.best_objective)
-            self.trial.set_user_attr('best_epoch', self.best_epoch)
-            if self.trial.should_prune():
-                raise optuna.TrialPruned()
-
-            train_timeout = self.get_hparam('train-timeout')
-            if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
-                raise optuna.exceptions.OptunaError(f"Trial timed out after {self.get_hparam('train-timeout')} seconds.")
-
-    @cached_property
-    def optimization_mode(self):
-        objective_mode = self.get_hparam('objective_mode')
-        objective_name = self.get_hparam('objective')
-        return self.get_optimization_mode(objective_mode, objective_name)
-
-    @staticmethod
-    def get_optimization_mode(mode, objective_name):
-        if mode is not None:
-            return mode
-        if any(n in objective_name.lower() for n in ['loss', 'error', 'mse']):
-            return 'min'
-        return 'max'
-
-    def early_stopping(self, epoch=None):
-        '''
-        Use this function to early stop your model based on the results or any other metric in the algorithm class
-        '''
-
-        if self.rank > 0:
-            return False
-
-        train_timeout = self.get_hparam('train-timeout')
-        if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
-            logger.info(f"Stopping training at epoch {self.epoch} - timeout {self.get_hparam('train-timeout')}")
-            return True
-
-        stop_at = self.get_hparam('stop_at')
-        early_stopping_patience = self.get_hparam('early_stopping_patience')
-        if self.objective is None and stop_at is not None:
-            logger.warning("Early stopping is enabled (stop_at is not None) but no objective is defined. "
-                           "set objective in the hparams")
-            return False
-        if self.objective is None and early_stopping_patience is not None:
-            logger.warning("Early stopping is enabled (early_stopping_patience is not None) "
-                           "but no objective is defined. set objective in the hparams")
-            return False
-
-        if stop_at is not None:
-            if self.best_objective is not None:
-
-                if self.optimization_mode == 'max':
-                    res = self.best_objective > stop_at
-                    if res:
-                        logger.info(f"Stopping training at {self.best_objective} > {stop_at}")
-                else:
-                    res = self.best_objective < stop_at
-                    if res:
-                        logger.info(f"Stopping training at {self.best_objective} < {stop_at}")
-                return res
-
-        if early_stopping_patience is not None and early_stopping_patience > 0:
-            res = self.epoch - self.best_epoch > early_stopping_patience
-            if res:
-                logger.info(f"Stopping training at epoch {self.epoch} - best epoch {self.best_epoch} > {early_stopping_patience}")
-            return res
-
-        return False
-
     def __call__(self, subset, dataset_name='dataset', predicting=False, enable_tqdm=None, max_iterations=None,
                  head=None, eval_mode=True, return_dataset=None, **kwargs):
 
@@ -1743,7 +1565,7 @@ class NeuralAlgorithm(Algorithm):
                 assert method=='compile', "Accelerate does not support other optimization methods than compile"
                 self.networks[k] = self.accelerator.prepare_model(net, evaluate=True)
 
-    def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
+    def _fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, **kwargs):
         '''
         For training purposes

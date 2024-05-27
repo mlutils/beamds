@@ -86,7 +86,9 @@ RUN pip install -U -r /workspace/beam_image/requirements_0016.txt
 # RUN pip list
 COPY docker/install/requirements_0017.txt /workspace/beam_image
 RUN pip install -U -r /workspace/beam_image/requirements_0017.txt
-
+# RUN pip list
+COPY docker/install/requirements_0018.txt /workspace/beam_image
+RUN pip install -U -r /workspace/beam_image/requirements_0018.txt
 #install huggingface ecosystem
 # REMOVE FOR LITE VERSION
 COPY docker/install/install_huggingface_ecosystem.sh /workspace/beam_image
@@ -125,7 +127,8 @@ RUN bash /workspace/install/install_dgl_fixed.sh
 # RUN python /workspace/beam_image/downloader.py
 
 ## download nlp data
-# RUN python /workspace/beam_image/models_downloads.py
+COPY docker/install/models_downloads.py /workspace/beam_image
+RUN python /workspace/beam_image/models_downloads.py
 
 
 # no need to install RAPIDS as it comes with the image, except cusignal which is not found
