@@ -1,4 +1,4 @@
-from ..core.processor import Processor
+from ..processor.core import Processor
 from ..data import BeamData
 from ..path import beam_key
 import pandas as pd

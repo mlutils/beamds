@@ -4,3 +4,4 @@ from .dense import DenseSimilarity
 from .core import Similarities
 from .text import TextSimilarity
 from .sparnn import SparnnSimilarity
+from .config import SimilarityConfig, TFIDFConfig

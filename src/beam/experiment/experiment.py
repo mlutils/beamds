@@ -68,8 +68,6 @@ class Experiment(object):
                 self.tensorboard_hparams[k] = v
 
         self.hparams = copy.deepcopy(args)
-        logger
-
 
         set_seed(seed=self.hparams.seed, constant=0, increment=False, deterministic=self.hparams.deterministic)
 
@@ -81,8 +79,15 @@ class Experiment(object):
 
         self.exp_name = None
         self.load_model = False
+        self.log_experiment = self.hparams.get('log_experiment', default=True)
 
-        if reload_dir is None:
+        if not self.log_experiment:
+            self.experiment_dir = beam_path('/tmp/')
+            self.exp_name = 'experiment'
+            self.exp_num = None
+            self.load_model = False
+
+        elif reload_dir is None:
             root_path = beam_path(self.hparams.logs_path)
             base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
 
@@ -162,8 +167,6 @@ class Experiment(object):
             logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
             logger.info(f"Resuming existing experiment")
 
-        self.tensorboard_writer = None
-
         self.rank = 0
         self.world_size = args.n_gpus
         if hasattr(args, 'n_gpus_per_worker') and args.n_gpus_per_worker is not None:
@@ -175,20 +178,17 @@ class Experiment(object):
         if self.world_size > 1:
             torch.multiprocessing.set_sharing_strategy('file_system')
 
-        # replace zero split_dataset_seed to none (non-deterministic split) - if zero
-        if self.hparams.split_dataset_seed == 0:
-            self.hparams.set('split_dataset_seed', None)
-
         # fill the batch size
 
-        if self.hparams.batch_size_train is None:
-            self.hparams.set('batch_size_train', self.hparams.batch_size)
+        if 'batch_size' in self.hparams:
+            if self.hparams.batch_size_train is None:
+                self.hparams.set('batch_size_train', self.hparams.batch_size)
 
-        if self.hparams.batch_size_eval is None:
-            self.hparams.set('batch_size_eval', self.hparams.batch_size)
+            if self.hparams.batch_size_eval is None:
+                self.hparams.set('batch_size_eval', self.hparams.batch_size)
 
-        if self.hparams.batch_size is None:
-            self.hparams.set('batch_size', self.hparams.batch_size_train)
+            if self.hparams.batch_size is None:
+                self.hparams.set('batch_size', self.hparams.batch_size_train)
 
         # build the hyperparamter class which will be sent to the dataset and algorithm classes
 
@@ -219,6 +219,7 @@ class Experiment(object):
             self.device_list = build_device_list(self.hparams)
 
         self.comet_exp = None
+        self.tensorboard_writer = None
         self.comet_writer = None
         self.mlflow_writer = None
         self.logs_path_is_built = False
@@ -327,7 +328,7 @@ class Experiment(object):
 
     def writer_control(self, networks=None, inputs=None):
 
-        if self.tensorboard_writer is None and self.hparams.tensorboard:
+        if self.tensorboard_writer is None and (self.hparams.tensorboard and self.log_experiment):
             if isinstance(self.tensorboard_dir, BeamPath):
                 from tensorboardX import SummaryWriter
                 self.tensorboard_writer = SummaryWriter(log_dir=str(self.tensorboard_dir.joinpath('logs')),
@@ -644,7 +645,7 @@ class Experiment(object):
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
             dataset_kwargs=None, **kwargs):
 
-        if not self.load_model and not self.logs_path_is_built:
+        if self.log_experiment and (not self.load_model and not self.logs_path_is_built):
             self.build_experiment_dir()
 
         if algorithm_generator is None:

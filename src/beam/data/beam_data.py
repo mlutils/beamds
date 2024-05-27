@@ -5,25 +5,25 @@ from functools import partial, cached_property
 
 import numpy as np
 import pandas as pd
-import torch
 
 from ..logger import beam_logger as logger
 from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
-from ..core import BeamBase
+from ..meta import BeamName
+from ..type import BeamType
 from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
-                     collate_chunks, retrieve_name, recursive_flatten, recursive_flatten_with_keys, recursive_device,
+                     collate_chunks, recursive_flatten, recursive_flatten_with_keys, recursive_device,
                      container_len, recursive_len, is_arange, recursive_size, divide_chunks,
                      recursive_hierarchical_keys,
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
-                     DataBatch, recursive_squeeze, recursive_same_device, recursive_concatenate, recursive_items,
-                     recursive_keys)
+                     DataBatch, recursive_same_device, recursive_concatenate, recursive_items,
+                     recursive_keys, concat_polars_horizontally)
 
 
-class BeamData(BeamBase):
+class BeamData(BeamName):
 
     # metadata files
     metadata_files = {'conf': '.conf.pkl', 'schema': '.schema.pkl',
@@ -38,8 +38,8 @@ class BeamData(BeamBase):
 
     def __init__(self, *args, data=None, path=None, name=None, all_paths=None,
                  index=None, label=None, columns=None, lazy=True, device=None, target_device=None, schema=None,
-                 override=True, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
-                 key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='columns', read_kwargs=None,
+                 override=False, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
+                 key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='index', read_kwargs=None,
                  write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None, synced=False,
                  write_metadata=True, read_metadata=True, metadata_path_prefix=None, key_fold_map=None, **kwargs):
 
@@ -431,6 +431,9 @@ class BeamData(BeamBase):
             path.mkdir()
         return cls(path=path, *args, **kwargs)
 
+    def to_path(self, path):
+        self.store(path=path)
+
     @classmethod
     def from_indexed_pandas(cls, data, *args, **kwargs):
 
@@ -442,12 +445,6 @@ class BeamData(BeamBase):
         kwargs['index'] = index
 
         return cls(data, *args, **kwargs)
-
-    @property
-    def name(self):
-        if self._name is None:
-            self._name = retrieve_name(self)
-        return self._name
 
     @property
     def objects_type(self):
@@ -543,14 +540,34 @@ class BeamData(BeamBase):
                 if not len(filtered_data):
                     self._info = None
                     return self._info
-                fold_index = np.concatenate([np.arange(len(d)) if hasattr(d, '__len__') else np.array([0]) for d in filtered_data])
-                fold = np.concatenate([np.full(len(d), k) if hasattr(d, '__len__')
-                                       else np.array([k]) for k, d in enumerate(filtered_data)])
 
+                # fold_index = np.concatenate([np.arange(len(d)) if hasattr(d, '__len__')
+                #                              else np.array([0]) for d in filtered_data])
+                # fold = np.concatenate([np.full(len(d), k) if hasattr(d, '__len__')
+                #                        else np.array([k]) for k, d in enumerate(filtered_data)])
+
+                fold_index = []
+                fold = []
+                lengths = []
+                for k, d in enumerate(filtered_data):
+                    if hasattr(d, '__len__') and BeamType.check(d, major=False, minor=True, element=False).is_data_array:
+                        fold_index.append(np.arange(len(d)))
+                        fold.append(np.full(len(d), k))
+                        lengths.append(len(d))
+                    else:
+                        fold_index.append(np.array([0]))
+                        fold.append(np.array([k]))
+                        lengths.append(1)
+
+                fold_index = np.concatenate(fold_index)
+                fold = np.concatenate(fold)
+                lengths = np.array(lengths)
                 # still not sure if we really need this column. if so, it should be fixed
                 # fold_key = np.concatenate([np.full(len(d), k) for k, d in self.flatten_items.items()])
-                lengths = np.array([len(d) if hasattr(d, '__len__') else 1
-                                    for d in self.flatten_data])
+
+                # lengths = np.array([len(d) if hasattr(d, '__len__') else 1
+                #                     for d in self.flatten_data])
+
                 offset = np.cumsum(lengths, axis=0) - lengths
                 offset = offset[fold] + fold_index
 
@@ -564,6 +581,7 @@ class BeamData(BeamBase):
                 # it is assumed that if orientation is in ['columns', 'simple'], then _index is a single array
                 index = np.concatenate([as_numpy(i) for i in recursive_flatten([self._index])])
             else:
+                # assert len(self) == len(offset)
                 index = np.arange(len(self))
 
             if self._label is not None:
@@ -580,6 +598,21 @@ class BeamData(BeamBase):
                 info['label'] = label
 
             self._info = pd.DataFrame(info, index=index)
+
+            # try:
+            #     self._info = pd.DataFrame(info, index=index)
+            # except Exception as e:
+            #     if self.orientation == 'packed':
+            #         logger.warning(f"Error creating info DataFrame: {e}, returning simplified version")
+            #         self._len = len(self.data)
+            #         self._info = pd.DataFrame({'fold': np.zeros(self._len, dtype=int),
+            #                                    'fold_index': np.arange(self._len),
+            #                                    'offset': np.arange(self._len),
+            #                                    'map': np.arange(self._len)},
+            #                                   index=np.arange(self._len))
+            #     else:
+            #         raise e
+
             return self._info
 
         self._info = None
@@ -615,15 +648,6 @@ class BeamData(BeamBase):
     @cached_property
     def label_type(self):
         return check_type(self.label)
-
-    @property
-    def index_mapper(self):
-
-        info = self.info
-        if 'map' in info.columns:
-            return info['map']
-
-        return None
 
     @staticmethod
     def normalize_key(key):
@@ -674,17 +698,23 @@ class BeamData(BeamBase):
         if self._len is not None:
             return self._len
 
+        if self._info is not None:
+            self._len = len(self._info)
+            return self._len
+
         if self.is_stored and self._conf is not None:
             self._len = self._conf['len']
             return self._len
 
         if self.is_cached:
             if self.orientation == 'columns':
-                self._len = container_len(self.data)
+                _len = container_len(self.data)
             else:
-                self._len = recursive_len(self.flatten_data)
-                if type(self._len) is list:
-                    self._len = sum(self._len)
+
+                _len = recursive_len(self.data, data_array_only=True)
+                _len = sum(recursive_flatten([_len], flat_array=True))
+
+            self._len = _len
             return self._len
 
         self._len = None
@@ -707,25 +737,16 @@ class BeamData(BeamBase):
 
             if not is_container(self.data):
                 self._orientation = 'simple'
-                if self.data_type.minor == 'pandas' and self.columns is None:
+                if self.data_type.minor in ['pandas', 'polars', 'cudf'] and self.columns is None:
                     self.columns = self.data.columns
-                if self.data_type.minor == 'pandas' and self._index is None:
+                if self.data_type.minor in ['pandas', 'cudf'] and self._index is None:
                     self._index = self.data.index
 
             else:
 
-                if self.preferred_orientation == 'columns':
-                    lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
-                    lens = list(filter(lambda x: x != 0, lens))
-
-                    lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
-                    lens_index = list(filter(lambda x: x is not None, lens_index))
-
-                    if len(set(lens)) == 1 and len(lens_index) <= 1:
-                        self._orientation = 'columns'
-                        return self._orientation
-
                 def shape_of(x):
+                    if not BeamType.check_if_data_array(x):
+                        return 'other'
                     if hasattr(x, 'shape'):
                         return tuple(x.shape[1:])
                     if x is None:
@@ -734,13 +755,32 @@ class BeamData(BeamBase):
                         return ()
                     return 'scalar'
 
-                shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                lens = recursive_flatten(recursive_len([self.data]), flat_array=True)
+                lens = set(list(filter(lambda x: x != 0, lens)))
 
-                shapes = list(filter(lambda x: x is not None, shapes))
-                if len(set(shapes)) == 1:
-                    self._orientation = 'index'
+                lens_index = recursive_flatten(recursive_len([self._index]), flat_array=True)
+                lens_index = set(list(filter(lambda x: x is not None, lens_index)))
+
+                if len(lens) == 1 and len(lens_index) <= 1:
+                    if self.preferred_orientation == 'columns':
+                        self._orientation = 'columns'
+                    else:
+                        shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                        shapes = set(list(filter(lambda x: x is not None, shapes)))
+                        if len(shapes) > 1 and 'other' not in shapes:
+                            self._orientation = 'columns'
+                        elif len(shapes) == 1:
+                            self._orientation = 'index'
+                        else:
+                            self._orientation = 'packed'
                 else:
-                    self._orientation = 'packed'
+                    shapes = recursive_flatten(recursive(shape_of)([self.data]))
+                    shapes = set(list(filter(lambda x: x is not None, shapes)))
+
+                    if len(shapes) == 1 and shapes[0] != 'other':
+                        self._orientation = 'index'
+                    else:
+                        self._orientation = 'packed'
 
         elif self.is_stored:
             self._orientation = self.conf['orientation']
@@ -984,7 +1024,7 @@ class BeamData(BeamBase):
         if schema is not None:
             kwargs = {**schema.read_schema, **kwargs}
 
-        if path.is_file():
+        if path.is_file() or path.suffix in ['.bmp', '.bmd']:
             logger.debug(f"Reading file: {path}")
             return path.read(**kwargs)
 
@@ -1019,8 +1059,9 @@ class BeamData(BeamBase):
         return None
 
     @staticmethod
-    def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9),
-                   chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None, **kwargs):
+    def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9), override=True,
+                   chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None,
+                   split=False, **kwargs):
 
         path = beam_path(path)
 
@@ -1046,21 +1087,22 @@ class BeamData(BeamBase):
                 BeamData.write_tree(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
                                     archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
                                     split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
-                                    file_type=file_type, schema=s, **kwargs)
+                                    file_type=file_type, schema=s, override=override, split=split, **kwargs)
 
         else:
 
             if root:
                 path = path.joinpath(BeamData.default_data_file_name)
 
-            BeamData.write_object(data, path, size=sizes, archive=False,
+            BeamData.write_object(data, path, size=sizes, archive=False, override=override,
                                         chunksize=chunksize, chunklen=chunklen, split_by=split_by,
                                         n_chunks=n_chunks, partition=partition, schema=schema,
-                                        file_type=file_type, **kwargs)
+                                        file_type=file_type, split=split, **kwargs)
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
-              chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None, split_by=None, **kwargs):
+                     chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None,
+                     split_by=None, split=True, **kwargs):
 
         path = beam_path(path)
 
@@ -1074,23 +1116,38 @@ class BeamData(BeamBase):
                                               schema=schema, **kwargs)
         else:
 
-            if split_by != 'keys':
+            if split and split_by != 'keys':
                 n_chunks = BeamData.get_n_chunks(data, chunksize=chunksize, chunklen=chunklen,
                                                  n_chunks=n_chunks, size=size)
+            else:
+                n_chunks = 1
 
             data_type = check_type(data)
             if partition is not None and data_type.minor == 'pandas':
                 priority = ['.parquet', '.fea', '.pkl']
+            elif partition is not None and data_type.minor == 'polars':
+                priority = ['.pl.parquet', '.pl.fea', '.pl.pkl']
             elif data_type.minor == 'pandas':
                 priority = ['.fea', '.parquet', '.pkl']
+            elif data_type.minor == 'polars':
+                priority = ['.pl.fea', '.pl.parquet', '.pl.pkl']
+            elif data_type.minor == 'cudf':
+                priority = ['.cf.fea', '.cf.parquet', '.cf.pkl']
             elif data_type.minor == 'numpy':
                 priority = ['.npy', '.pkl']
             elif data_type.minor == 'scipy_sparse':
-                priority = ['scipy_npz', '.pkl']
+                priority = ['.scipy_npz', '.pkl']
             elif data_type.minor == 'tensor':
-                priority = ['.pt']
+                if data.is_sparse_csr:
+                    priority = ['.pkl']
+                else:
+                    priority = ['.pt']
+            elif hasattr(data, 'beam_class_name') and 'BeamData' in data.beam_class_name:
+                priority = ['.bmd', '.pkl', '.dill']
+            elif hasattr(data, 'beam_class_name') and 'Processor' in data.beam_class_name:
+                priority = ['.bmp', '.pkl', '.dill']
             else:
-                priority = ['.pkl']
+                priority = ['.pkl', '.dill']
 
             if file_type is not None:
                 priority.insert(file_type, 0)
@@ -1136,7 +1193,7 @@ class BeamData(BeamBase):
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
 
                         elif ext == '.scipy_npz':
-                            if compress is False:
+                            if compress is True:
                                 kwargs['compressed'] = True
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
 
@@ -1176,8 +1233,20 @@ class BeamData(BeamBase):
         return self._columns_map
 
     def keys(self, level=1):
-        for k in recursive_keys(self.data, level=level):
-            yield k
+        if self.is_cached:
+            if type(self.data) is dict:
+                for k in recursive_keys(self.data, level=level):
+                    yield k
+            else:
+                for k in range(len(self.data)):
+                    yield k
+        else:
+            if type(self.all_paths) is dict:
+                for k in recursive_keys(self.all_paths, level=level):
+                    yield k
+            else:
+                for k in range(len(self.all_paths)):
+                    yield k
 
     def hierarchical_keys(self, recursive=False):
         if self.orientation is None:
@@ -1206,8 +1275,8 @@ class BeamData(BeamBase):
         return keys
 
     def items(self, level=1):
-        for k, v in recursive_items(self.data, level=1):
-            yield k, v
+        for k in self.keys(level=level):
+            yield k, self[k]
 
     @property
     def dtypes(self):
@@ -1245,11 +1314,24 @@ class BeamData(BeamBase):
             return data
 
         if objects_type == 'tensor':
-            func = torch.stack if dim==1 and dim >= len(v.shape) else torch.cat
+            import torch
+            func = torch.stack if dim == 1 and dim >= len(v.shape) else torch.cat
             kwargs = {'dim': dim}
         elif objects_type == 'pandas':
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
             func = pd.concat
+            kwargs = {'axis': dim}
+        elif objects_type == 'polars':
+            if dim == 0:
+                import polars as pl
+                func = pl.concat
+                kwargs = {'axis': dim}
+            else:
+                func = concat_polars_horizontally
+        elif objects_type == 'cudf':
+            import cudf
+            func = cudf.concat
+            data = [cudf.Series(v.values) if isinstance(v, cudf.Index) else v for v in data]
             kwargs = {'axis': dim}
         elif objects_type == 'numpy':
             func = np.stack if dim==1 and dim >= len(v.shape) else np.concatenate
@@ -1311,9 +1393,14 @@ class BeamData(BeamBase):
 
     def store(self, data=None, path=None, compress=None, chunksize=None,
               chunklen=None, n_chunks=None, partition=None, split_by=None,
-              archive_size=None, override=True, **kwargs):
+              archive_size=None, override=None, split=True, **kwargs):
+
+        override = override or self.override
+        path = beam_path(path)
 
         if path is not None:
+            if override:
+                path.clean()
             self.path = path
         else:
             path = self.path
@@ -1327,9 +1414,10 @@ class BeamData(BeamBase):
 
         kwargs = self.get_default_params(compress=compress, chunksize=chunksize, chunklen=chunklen, n_chunks=n_chunks,
                                          partition=partition, split_by=split_by, archive_size=archive_size,
-                                         override=override, **kwargs)
+                                         **kwargs)
 
-        BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, **kwargs)
+        BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, override=override,
+                            split=split, **kwargs)
 
         # store info and conf files
         if self.write_metadata:
@@ -1426,6 +1514,8 @@ class BeamData(BeamBase):
         else:
             return BeamData(data=data, index=self.index, label=self.label)
 
+        return self
+
     def reset_metadata(self, *args, avoid_reset=None):
 
         if avoid_reset is None:
@@ -1447,14 +1537,11 @@ class BeamData(BeamBase):
 
     def inverse_map(self, ind):
 
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        ind = slice_to_index(ind, sliced=self.index)
 
         index_type = check_type(ind)
         if index_type.major == 'scalar':
             ind = [ind]
-
-        if self.index_mapper is not None:
-            ind = self.index_mapper.loc[ind].values
 
         return ind
 
@@ -1485,12 +1572,10 @@ class BeamData(BeamBase):
         return self.__getitem__((key, ))
 
     def _loc(self, ind):
-        ind = self.inverse_map(ind)
         return self.slice_index(ind)
 
     def _iloc(self, ind):
-
-        ind = slice_to_index(ind, l=len(self), sliced=self.index)
+        ind = slice_to_index(ind, sliced=self.index)
         return self.slice_index(ind)
 
     def slice_data(self, index):
@@ -1696,7 +1781,7 @@ class BeamData(BeamBase):
     def slice_index(self, index, index_type=None):
 
         if index_type is None:
-            index_type = check_type(index, check_minor=False, check_element=False)
+            index_type = check_type(index, minor=False, element=False)
         if index_type.major == 'scalar':
             index = [index]
         #     squeeze = True
@@ -2297,12 +2382,12 @@ class BeamData(BeamBase):
 
             i_type = check_type(ind_i)
             # skip the first axis in these case
-            if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'slice', 'tensor']):
+            if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'slice', 'tensor', 'cudf']):
                 axes.pop(0)
             if axes[0] == 'keys' and (i_type.minor == 'list' and i_type.element == 'int'):
                 axes.pop(0)
             if (axes[0] == 'keys' and (i_type.major == 'scalar' and i_type.element == 'int')
-                    and check_type(list(self.hierarchical_keys()), check_minor=False).element == 'str'):
+                    and check_type(list(self.hierarchical_keys()), minor=False).element == 'str'):
                 axes.pop(0)
             # for orientation == 'simple' we skip the first axis if we slice over columns and index_type is not str
             if short_list and axes[0] == 'index' and i_type.element == 'str' and self.index_type.element != 'str':

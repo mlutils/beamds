@@ -7,7 +7,7 @@ import torch
 import os
 
 from ..logger import beam_logger as logger
-from ..core import Processor
+from ..processor import Processor
 from ..utils import has_kwargs, GPUManager
 
 

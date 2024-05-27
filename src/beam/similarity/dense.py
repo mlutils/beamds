@@ -1,10 +1,11 @@
 import math
+from typing import List, Union
+
 import torch
 import faiss
 import numpy as np
 from functools import cached_property
 
-from ..data import BeamData
 from ..logger import beam_logger as logger
 from ..path import beam_path, local_copy
 from ..utils import pretty_format_number, as_numpy, check_type, as_tensor, beam_device
@@ -140,9 +141,9 @@ class DenseSimilarity(BeamSimilarity):
             raise Exception
 
         self.vector_store = vector_store
-        self.index = None
-        if vector_store.ntotal and self.index is None:
-            self.index = BeamData(data=torch.arange(vector_store.ntotal, device=inference_device))
+        self.index = np.array([])
+        if vector_store.ntotal > 0:
+            self.index = np.arange(vector_store.ntotal)
 
         self.inference_device = inference_device
 
@@ -196,7 +197,6 @@ class DenseSimilarity(BeamSimilarity):
         if self.index is not None:
             I = self.index[I]
         if x_type.minor == 'tensor':
-            I = as_tensor(I, device=device)
             D = as_tensor(D, device=device)
 
         return Similarities(index=I, distance=D, model='faiss', metric=self.metric)
@@ -204,23 +204,12 @@ class DenseSimilarity(BeamSimilarity):
     def reduce(self, z):
         return self.reducer.fit_transform(z)
 
+    @classmethod
     @property
-    def exclude_pickle_attributes(self):
-        return ['index', 'vector_store', 'training_vs']
+    def excluded_attributes(cls):
+        return super().excluded_attributes + ['index', 'vector_store', 'training_vs']
 
-    def save_state(self, path, ext=None):
-
-        path = beam_path(path)
-        path.mkdir()
-
-        path.joinpath('index.npy').write(self.index)
-        with local_copy(path.joinpath('vectore_store.bin'), as_beam_path=False) as p:
-            faiss.write_index(self.vector_store, p)
-        if self.training_vs:
-            with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
-                faiss.write_index(self.training_vs, p)
-
-    def load_state(self, path):
+    def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
 
         path = beam_path(path)
 
@@ -230,3 +219,21 @@ class DenseSimilarity(BeamSimilarity):
         if path.joinpath('training_vs.bin').is_file():
             with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
                 self.training_vs = faiss.read_index(p)
+
+        exclude = exclude or []
+        exclude = exclude + ['index', 'vector_store', 'training_vs']
+        return super().load_state_dict(path, ext, exclude, **kwargs)
+
+    def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
+
+        exclude = exclude or []
+
+        path = beam_path(path)
+        super().save_state_dict(state, path, ext, exclude, **kwargs)
+
+        path.joinpath('index.npy').write(self.index)
+        with local_copy(path.joinpath('vectore_store.bin'), as_beam_path=False) as p:
+            faiss.write_index(self.vector_store, p)
+        if self.training_vs:
+            with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
+                faiss.write_index(self.training_vs, p)

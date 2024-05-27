@@ -6,7 +6,7 @@ from functools import cached_property
 from src.beam.config import BeamConfig, BeamParam
 from src.beam import beam_logger as logger
 from src.beam.distributed.celery_worker import CeleryWorker
-from src.beam.core import Processor
+from src.beam.processor import Processor
 
 
 class LLMServeConfig(BeamConfig):

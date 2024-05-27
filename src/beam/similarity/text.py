@@ -3,16 +3,17 @@ from typing import List
 from sentence_transformers import SentenceTransformer
 
 from ..utils import beam_device
-from ..core import Processor
+from ..processor import Processor
 from ..llm import default_tokenizer
 from .dense import DenseSimilarity
-from ..path import local_copy
+from ..path import local_copy, beam_path
 
 
 class TextSimilarity(DenseSimilarity):
     def __init__(self, *args, dense_model_path="BAAI/bge-base-en-v1.5", tokenizer_path=None,
                  use_dense_model_tokenizer=True, dense_model=None, tokenizer=None, cache_folder=None,
-                 device="cuda", batch_size=32, show_progress_bar=True, **kwargs):
+                 dense_model_device='cuda', vector_store_device="cpu", vector_store_training_device='cpu', batch_size=32, show_progress_bar=True,
+                 st_kwargs=None, **kwargs):
         """
         Initialize the RAG (Retrieval-Augmented Generation) retriever.
 
@@ -24,27 +25,31 @@ class TextSimilarity(DenseSimilarity):
         device (str): The device to run the models on (e.g., 'cuda:1' for GPU).
         """
 
-        Processor.__init__(self, *args, device=device, tokenizer_path=tokenizer_path,
+        Processor.__init__(self, *args, tokenizer_path=tokenizer_path, dense_model_device=dense_model_device,
                            dense_model_path=dense_model_path, use_dense_model_tokenizer=use_dense_model_tokenizer,
                            cache_folder=cache_folder, batch_size=batch_size, show_progress_bar=show_progress_bar,
                            **kwargs)
 
         # Device to run the model
-        self.device = beam_device(self.get_hparam('device'))
+        self.dense_model_device = beam_device(self.get_hparam('dense_model_device'))
         # Load the sentence transformer model for embeddings
         self.cache_folder = self.get_hparam('cache_folder', cache_folder)
         self.batch_size = self.get_hparam('batch_size', batch_size)
         self.show_progress_bar = self.get_hparam('show_progress_bar', show_progress_bar)
 
         if dense_model is None:
-            self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'), device=str(self.device))
+            st_kwargs = self.get_hparam('st_kwargs', st_kwargs)
+            st_kwargs = st_kwargs or {}
+            self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'),
+                                                   device=str(self.dense_model_device), **st_kwargs)
         else:
             self.dense_model = dense_model
-            self.dense_model.to(self.device)
+            self.dense_model.to(self.dense_model_device)
 
         d = self.dense_model.get_sentence_embedding_dimension()
 
-        super().__init__(*args, device=device, tokenizer_path=tokenizer_path,
+        super().__init__(*args, inference_device=vector_store_device,
+                         training_device=vector_store_training_device, tokenizer_path=tokenizer_path,
                          dense_model_path=dense_model_path, use_dense_model_tokenizer=use_dense_model_tokenizer,
                          d=d, **kwargs)
 
@@ -69,7 +74,7 @@ class TextSimilarity(DenseSimilarity):
 
     def add(self, x, index=None, **kwargs):
 
-        x, index = self.extract_data_and_index(x, index)
+        x, index = self.extract_data_and_index(x, index, convert_to=None)
         dense_vectors = self.encode(x)
         super().add(dense_vectors, index)
 
@@ -79,18 +84,22 @@ class TextSimilarity(DenseSimilarity):
 
     def search(self, x: List[str], k=1):
 
-        x, _ = self.extract_data_and_index(x)
+        x, _ = self.extract_data_and_index(x, convert_to=None)
         dense_vectors = self.encode(x)
         similarities = super().search(dense_vectors, k)
         return similarities
 
+    @classmethod
     @property
-    def exclude_pickle_attributes(self):
-        return super().exclude_pickle_attributes + ['dense_model', '_tokenizer']
+    def excluded_attributes(cls):
+        return super().excluded_attributes + ['_tokenizer', 'dense_model']
 
-    def save_state(self, path, ext=None):
+    def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
 
-        super().save_state(path, ext)
+        exclude = exclude or []
+
+        path = beam_path(path)
+        super().save_state_dict(state, path, ext, exclude, **kwargs)
 
         if self._tokenizer is not None:
             if hasattr(self._tokenizer, 'save_pretrained'):
@@ -101,14 +110,23 @@ class TextSimilarity(DenseSimilarity):
                 tokenizer_path = path.joinpath('tokenizer.pkl')
                 tokenizer_path.write(self._tokenizer)
 
-    def load_state(self, path):
+    def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
 
-        super().load_state(path)
-        self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'), device=str(self.device))
+        exclude = exclude or []
+        exclude = exclude + ['_tokenizer']
+
+        state = super().load_state_dict(path, ext, exclude, **kwargs)
+
+        path = beam_path(path)
+        self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'), device=str(self.dense_model_device))
         if path.joinpath('tokenizer.hf').exists():
             from transformers import PreTrainedTokenizerFast
             with local_copy(path.joinpath('tokenizer.hf')) as p:
                 self._tokenizer = PreTrainedTokenizerFast(tokenizer_file=p)
         elif path.joinpath('tokenizer.pkl').exists():
             self._tokenizer = path.joinpath('tokenizer.pkl').read()
+
+        return state
+
+
 

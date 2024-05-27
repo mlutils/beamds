@@ -1,11 +1,93 @@
 import os
 import sys
 import time
+from collections import Counter
 
 import torch
 import numpy as np
-from src.beam import resource
+from src.beam import resource, BeamData
 from beam import beam_logger as logger
+import pandas as pd
+
+
+def test_collate_transformer_chunks():
+
+    from src.beam import Transformer
+    def func(x):
+        return x + 1
+
+    df = pd.DataFrame(data=np.random.rand(16, 4), columns=['a', 'b', 'c', 'd'])
+    my_beautiful_transformer = Transformer(n_workers=1, chunksize=2, mp_method='joblib', func=func, use_dill=True)
+    res = my_beautiful_transformer(df, transform_kwargs=dict(store_path='/tmp/xx'))
+
+    add_token_transformer = Transformer(n_workers=1, chunksize=2, mp_method='joblib',
+                                        func=lambda x: [xi + ' bye' for xi in x], use_dill=True)
+
+    res = add_token_transformer(['hi how are you?', 'we are here', 'lets dance', 'it is fine'],
+                                transform_kwargs=dict(store_path='/tmp/yy'))
+
+    print(res)
+
+    bd = BeamData.from_path('/tmp/xx')
+    print(bd.stacked_values)
+    print(bd)
+
+
+def test_catboost():
+    from sklearn.datasets import load_wine
+    data = load_wine()
+
+    x = data['data']
+    y = data['target']
+
+    from src.beam.algorithm import CBAlgorithm
+    # from src.beam.config import CatboostConfig
+
+    cb = CBAlgorithm()
+
+    cb.fit(x, y)
+
+def test_slice_to_index():
+    from src.beam.utils import slice_to_index
+    n = np.arange(10)
+
+    print(slice_to_index(2, len(n), sliced=n))
+    print(slice_to_index(slice(1), sliced=n))
+    print(slice_to_index(slice(1, 3),  sliced=n))
+
+
+def test_recursive_len():
+    from src.beam.utils import recursive_len
+    # c = Counter({'a': 1, 'b': 2})
+    c = {'a': 1, 'b': 2}
+    # c = {'a': 1, 'b': 2, 'c': np.random.randn(10)}
+    print(recursive_len([c]))
+
+
+def test_config():
+    from src.beam.config import TransformerConfig
+
+    hparams = TransformerConfig(chunksize=33333)
+    hparams2 = TransformerConfig(hparams, chunksize=44444)
+
+    print(hparams2)
+
+
+def test_transformer():
+
+    from src.beam.transformer import Transformer
+
+    t = Transformer()
+    print(t)
+
+
+def test_mlflow_path():
+    path = resource('mlflow:///new-exp/new-run')
+    path.mkdir()
+    path.joinpath('aaa.pkl').write({'a': 1, 'b': 2})
+    print(path.joinpath('aaa.pkl').read())
+
+    print(list(path))
 
 
 def test_beam_data_keys():
@@ -435,6 +517,20 @@ if __name__ == '__main__':
 
     # test_beam_data_keys()
 
-    test_beam_parallel()
+    # test_beam_parallel()
+
+    # test_mlflow_path()
+
+    # test_transformer()
+
+    # test_config()
+
+    # test_recursive_len()
+
+    # test_slice_to_index()
+
+    # test_catboost()
+
+    test_collate_transformer_chunks()
 
     print('done')

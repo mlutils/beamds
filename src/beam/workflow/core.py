@@ -6,7 +6,7 @@ import datetime
 
 from ..path import beam_path
 from ..utils import beam_hash
-from ..core import Processor
+from ..processor import Processor
 from ..transformer import Transformer
 
 

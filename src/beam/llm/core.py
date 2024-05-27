@@ -5,12 +5,13 @@ from typing import Optional, Any, Dict, List, Mapping
 from uuid import uuid4 as uuid
 import pandas as pd
 from pydantic import BaseModel
-from functools import cached_property
+
+# from functools import cached_property
+from ..utils import lazy_property as cached_property
 
 from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
-# from ..core.processor import Processor
 from ..utils import (parse_text_to_protocol, get_edit_ratio, retry, BeamDict, NullClass,
                      pretty_print_dict)
 from ..path import BeamURL, BeamResource
@@ -94,6 +95,8 @@ class BeamLLM(PedanticBeamResource):
     adapter: Optional[str] = Field(None)
     _len_function: Any = PrivateAttr(default=None)
 
+    # To be used with pydantic classes and lazy_property
+    _lazy_cache: Any = PrivateAttr(default=None)
     _tokenizer: Any = PrivateAttr(default=None)
     _path_to_tokenizer: Any = PrivateAttr(default=None)
 

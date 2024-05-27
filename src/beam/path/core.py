@@ -11,7 +11,14 @@ import pandas as pd
 import numpy as np
 import re
 
+from ..type import check_type
+from ..meta import BeamName
+from ..type.utils import is_beam_data, is_beam_processor
+
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
+targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
+           'polars': 'polars', 'pandas': 'pandas', 'cudf': 'cudf', 'pyarrow': 'pyarrow',
+           'native': 'native'}
 
 
 def strip_prefix(text, prefix):
@@ -20,7 +27,18 @@ def strip_prefix(text, prefix):
     return text
 
 
-class BeamURL:
+def get_target(path, deep=1):
+    ext = path.suffix
+    if ext is None:
+        return None
+    if ext in targets:
+        return targets[ext]
+    if deep == 0:
+        return None
+    return get_target(path.parent.joinpath(path.stem), deep-1)
+
+
+class BeamURL(BeamName):
 
     def __init__(self, url=None, scheme=None, hostname=None, port=None, username=None, password=None, path=None,
                  fragment=None, params=None, **query):
@@ -159,7 +177,7 @@ def normalize_host(hostname, port=None, default='localhost'):
     return host
 
 
-class BeamResource:
+class BeamResource(BeamName):
     """
     Base class for all resources. Gets as an input a URI and the resource type and returns the resource.
     """
@@ -586,7 +604,7 @@ class PureBeamPath(BeamResource):
     def replace(self, target):
         return NotImplementedError
 
-    def read(self, ext=None, **kwargs):
+    def read(self, ext=None, target=None, **kwargs):
 
         """
 
@@ -598,6 +616,7 @@ class PureBeamPath(BeamResource):
         - .fea: Feather
         - .csv: CSV
         - .pkl, .pickle: Pickle
+        - .dill: Dill
         - .npy: Numpy
         - .json: JSON
         - .ndjson: Newline delimited JSON
@@ -631,6 +650,39 @@ class PureBeamPath(BeamResource):
         if ext is None:
             ext = self.suffix
 
+        target = target or get_target(self)
+        if target == 'pyarrow':
+            if ext == '.fea':
+                import pyarrow.feather as pdu
+            elif ext == '.orc':
+                import pyarrow.orc as pdu
+            elif ext == '.csv':
+                import pyarrow.csv as pdu
+            else:
+                pdu = pd
+
+        elif target == 'polars':
+            import polars as pdu
+        elif target == 'cudf':
+            import cudf as pdu
+        else:
+            pdu = pd
+
+        # read .bmd (beam-data) and .bmp (beam-processor) files
+
+        if ext == '.bmd':
+            from ..data import BeamData
+            lazy = kwargs.pop('lazy', False)
+            return BeamData.from_path(self, lazy=lazy)
+
+        if ext == '.bmp':
+            from ..processor import Processor
+            return Processor.from_path(self)
+
+        if ext == '.abm':
+            from ..auto import AutoBeam
+            return AutoBeam.from_bundle(self)
+
         with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
             if ext == '.fea':
@@ -648,9 +700,12 @@ class PureBeamPath(BeamResource):
                         break
 
             elif ext == '.csv':
-                x = pd.read_csv(fo, **kwargs)
+                x = pdu.read_csv(fo, **kwargs)
             elif ext in ['.pkl', '.pickle']:
                 x = pd.read_pickle(fo, **kwargs)
+            elif ext == '.dill':
+                import dill
+                x = dill.load(fo, **kwargs)
             elif ext in ['.npy', '.npz', '.npzc']:
                 if ext in ['.npz', '.npzc']:
                     self.close_fo_after_read = False
@@ -668,12 +723,17 @@ class PureBeamPath(BeamResource):
                 import soundfile
                 x = soundfile.read(fo, **kwargs)
             elif ext == '.parquet':
-                x = pd.read_parquet(fo, **kwargs)
+                target = target or get_target(self, deep=1)
+                if target == 'pyarrow':
+                    import pyarrow.parquet as pq
+                    x = pq.read_table(fo, **kwargs)
+                else:
+                    x = pdu.read_parquet(fo, **kwargs)
             elif ext == '.pt':
                 import torch
                 x = torch.load(fo, **kwargs)
             elif ext in ['.xls', '.xlsx', '.xlsm', '.xlsb', '.odf', '.ods', '.odt']:
-                x = pd.read_excel(fo, **kwargs)
+                x = pdu.read_excel(fo, **kwargs)
             elif ext == '.avro':
                 x = []
                 import fastavro
@@ -700,8 +760,7 @@ class PureBeamPath(BeamResource):
 
                 nd = ext == '.ndjson'
                 try:
-                    typ = kwargs.pop('typ', 'native')
-                    if (typ == 'native') or nd:
+                    if target == 'native' or nd:
                         x = json.load(fo, **kwargs)
                     else:
                         x = pd.read_json(fo, lines=nd, **kwargs)
@@ -838,37 +897,74 @@ class PureBeamPath(BeamResource):
         if ext is None:
             ext = self.suffix
 
-        path = str(self)
+        x_type = check_type(x)
+
+        # write .bmd (beam-data) and .bmp (beam-processor) files
+        if ext == '.bmd':
+            if is_beam_data(x):
+                x.to_path(self)
+            else:
+                from ..data import BeamData
+                BeamData(x).to_path(self)
+            return self
+
+        if ext == '.bmp':
+            assert is_beam_processor(x), f"Expected Processor, got {type(x)}"
+            x.to_path(self)
+            return self
+
+        if ext == '.abm':
+            from ..auto import AutoBeam
+            AutoBeam(x).to_bundle(self)
+            return self
 
         with self(mode=PureBeamPath.mode('write', ext)) as fo:
 
             if ext == '.fea':
 
-                if len(x.shape) == 1:
-                    x = pd.Series(x)
-                    if x.name is None:
-                        x.name = 'val'
+                if x_type.minor == 'polars':
+                    import polars as pl
+                    x.to_feather(fo, **kwargs)
+                elif x_type.minor == 'cudf':
+                    import cudf
+                    x.to_feather(fo, **kwargs)
+                else:
+                    if len(x.shape) == 1:
+                        x = pd.Series(x)
+                        if x.name is None:
+                            x.name = 'val'
 
-                x = pd.DataFrame(x)
+                    x = pd.DataFrame(x)
 
-                if isinstance(x.index, pd.MultiIndex):
-                    raise TypeError("MultiIndex not supported with feather extension.")
+                    if isinstance(x.index, pd.MultiIndex):
+                        raise TypeError("MultiIndex not supported with feather extension.")
 
-                x = x.rename({c: str(c) for c in x.columns}, axis=1)
+                    x = x.rename({c: str(c) for c in x.columns}, axis=1)
 
-                index_name = x.index.name if x.index.name is not None else 'index'
-                df = x.reset_index()
-                new_name = PureBeamPath.feather_index_mark + index_name
-                x = df.rename(columns={index_name: new_name})
-                x.to_feather(fo, **kwargs)
+                    index_name = x.index.name if x.index.name is not None else 'index'
+                    df = x.reset_index()
+                    new_name = PureBeamPath.feather_index_mark + index_name
+                    x = df.rename(columns={index_name: new_name})
+                    x.to_feather(fo, **kwargs)
+
             elif ext == '.csv':
-                x = pd.DataFrame(x)
-                x.to_csv(fo, **kwargs)
+
+                if x_type.minor == 'polars':
+                    x.write_csv(fo, **kwargs)
+                elif x_type.minor == 'cudf':
+                    x.to_csv(fo, **kwargs)
+                else:
+                    x = pd.DataFrame(x)
+                    x.to_csv(fo, **kwargs)
+
             elif ext == '.avro':
                 import fastavro
                 fastavro.writer(fo, x, **kwargs)
             elif ext in ['.pkl', '.pickle']:
                 pd.to_pickle(x, fo, **kwargs)
+            elif ext == '.dill':
+                import dill
+                dill.dump(x, fo, **kwargs)
             elif ext == '.npy':
                 np.save(fo, x, **kwargs)
             elif ext == '.json':
@@ -890,10 +986,15 @@ class PureBeamPath(BeamResource):
             elif ext == '.scipy_npz':
                 import scipy
                 scipy.sparse.save_npz(fo, x, **kwargs)
-                self.rename(f'{path}.npz', path)
+                # self.rename(f'{path}.npz', path)
             elif ext == '.parquet':
-                x = pd.DataFrame(x)
-                x.to_parquet(fo, **kwargs)
+                if x_type.minor == 'polars':
+                    x.write_parquet(fo, **kwargs)
+                elif x_type.minor == 'cudf':
+                    x.to_parquet(fo, **kwargs)
+                else:
+                    x = pd.DataFrame(x)
+                    x.to_parquet(fo, **kwargs)
             elif ext == '.pt':
                 import torch
                 torch.save(x, fo, **kwargs)

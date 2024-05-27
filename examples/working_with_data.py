@@ -26,7 +26,7 @@ class MyTransformer(Transformer):
     def __init__(self, *args, n_workers=0, n_chunks=None, chunksize=None, **kwargs):
         super().__init__(*args, n_workers=n_workers, n_chunks=n_chunks, chunksize=chunksize, **kwargs)
 
-    def transform_callback(self, x, key=None, is_chunk=True, **kwargs):
+    def transform_callback(self, x, _key=None, _is_chunk=True, **kwargs):
         return len(x)
 
 

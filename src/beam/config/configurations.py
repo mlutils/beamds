@@ -2,20 +2,58 @@ import argparse
 import os
 import math
 from pathlib import Path
-from .core import BeamConfig, BeamParam
+from .core_config import BeamConfig, BeamParam
 from .deepspeed import DeepspeedConfig
 from .utils import _beam_arguments
 
 
-class CatboostConfig(BeamConfig):
+class DeviceConfig(BeamConfig):
+
+    parameters = [
+        BeamParam('device', str, '0', 'GPU Number or cpu/cuda string'),
+        BeamParam('device_list', list, None,
+                  'Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
+                  'when passing --n-gpus=2 and will use GPUs 2 1 3 when passing --n-gpus=3. '
+                  'If None, will use an ascending order starting from the GPU passed in the --device parameter. '
+                  'e.g. when --device=1 will use GPUs 1,2,3,4 when --n-gpus=4'),
+        BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
+    ]
+
+
+class CacheConfig(BeamConfig):
+
+    parameters = [
+        BeamParam('cache_depth', int, None, 'The depth of the cache'),
+        BeamParam('cache_path', str, None, 'The path to the cache (if None, the cache is stored in memory)'),
+        BeamParam('cache_exception_keys', list, None, 'The keys to exclude from the cache'),
+        BeamParam('cache_store_suffix', str, None, 'The suffix to add to the stored file '
+                                                   '(if None, the cache is stored as BeamData)'),
+        BeamParam('silent_cache', bool, False, 'Whether to log cache operations'),
+    ]
+
+
+class CatboostConfig(DeviceConfig):
     # catboost
     parameters = [
-        BeamParam('cb_ranker', bool, False, 'Whether to use catboost ranker instead of regression', tags='model'),
-        BeamParam('cb_n_estimators', int, 1000, 'The number of trees in the catboost model', tags='tune'),
+        BeamParam('cb_task', str, 'classification', 'The task type for the catboost model '
+                                                    '[classification|regression|ranking]'),
+        BeamParam('cb_loss_function', str, 'Logloss', 'The loss function for the catboost model'),
+        # learning rate is drawn from other configurations
+        BeamParam('cb_n_estimators', int, 200, 'The number of trees in the catboost model', tags='tune'),
         BeamParam('cb_l2_leaf_reg', float, 1e-4, 'The L2 regularization for the catboost model', tags='tune'),
         BeamParam('cb_border_count', int, 128, 'The border count for the catboost model', tags='tune'),
-        BeamParam('cb_depth', int, 14, 'The depth of the trees in the catboost model', tags='tune'),
+        BeamParam('cb_depth', int, 6, 'The depth of the trees in the catboost model', tags='tune'),
         BeamParam('cb_random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
+        BeamParam('cb_lr', float, 1e-2, 'The learning rate for the catboost model', tags='tune'),
+        BeamParam('cb_eval_metric', str, None, 'The evaluation metric for the catboost model, '
+                                               'if None, it is set to RMSE for regression and '
+                                               'Accuracy for classification'),
+        BeamParam('cb_custom_metric', list, None, 'The custom metric for the catboost model, '
+                                                  'if None, it is set to MAE, MAPE for regression and '
+                                                  'Precision, Recall for classification'),
+
+        BeamParam('cb_log_resolution', int, 10, 'The resolution (in epochs) of the logging for the catboost model'),
+
     ]
 
 
@@ -93,12 +131,11 @@ class SWAConfig(BeamConfig):
     ]
 
 
-class FederatedTrainingConfig(BeamConfig):
+class FederatedTrainingConfig(DeviceConfig):
 
     parameters = [
         BeamParam('mp_ip', str, 'localhost', 'IP to be used for multiprocessing'),
         BeamParam('mp_port', str, None, 'Port to be used for multiprocessing'),
-        BeamParam('n_gpus', int, 1, 'Number of parallel gpu workers. Set <=1 for single process'),
         BeamParam('n_cpus_per_worker', int, 6, 'Number of cpus to use in each worker'),
         BeamParam('n_gpus_per_worker', int, 1, 'Number of gpus to use in each worker'),
         BeamParam('distributed_backend', str, 'nccl', 'The distributed backend to use. '
@@ -196,7 +233,7 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
         BeamParam('batch_size_eval', int, None, 'Batch Size for testing/evaluation iterations', tags='tune'),
         BeamParam('reduction', str, 'sum', 'whether to sum loss elements or average them [sum|mean|mean_batch|sqrt|mean_sqrt]',
                     tags='tune'),
-        BeamParam('lr_dense', float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
+        BeamParam(['lr_dense', 'lr'], float, 1e-3, 'learning rate for dense optimizers', tags='tune'),
         BeamParam('lr_sparse', float, 1e-2, 'learning rate for sparse optimizers', tags='tune'),
         BeamParam('stop_at', float, None, 'Early stopping when objective >= stop_at', tags='tune'),
         BeamParam('early_stopping_patience', int, None, 'Early stopping patience in epochs, '
@@ -215,6 +252,7 @@ class KeysConfig(BeamConfig):
         BeamParam('OPENAI_API_KEY', str, None, 'The openai api key to use for openai connections'),
         BeamParam('BEAM_USERNAME', str, None, 'The beam username to use for connections like smb/ftp/ssh etc'),
         BeamParam('BEAM_PASSWORD', str, None, 'The beam password to use for connections like smb/ftp/ssh etc'),
+        BeamParam('K8S_API_KEY', str, None, 'The k8s api key to use for k8s connections'),
     ]
 
 
@@ -248,7 +286,7 @@ class BeamProjectConfig(BeamConfig):
     ]
 
 
-class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfig):
+class ExperimentConfig(BeamProjectConfig, KeysConfig, CacheConfig):
     '''
 
         Arguments
@@ -276,12 +314,6 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
         BeamParam('cpu_workers', int, 0, 'How many CPUs will be used for the data loading'),
         BeamParam('data_fetch_timeout', float, 0., 'Timeout for the dataloader fetching. '
                                                    'set to 0 for no timeout.'),
-        BeamParam('device', str, '0', 'GPU Number or cpu/cuda string'),
-        BeamParam('device_list', list, None,
-                  'Set GPU priority for parallel execution e.g. --device-list 2 1 3 will use GPUs 2 and 1 '
-                  'when passing --n-gpus=2 and will use GPUs 2 1 3 when passing --n-gpus=3. '
-                  'If None, will use an ascending order starting from the GPU passed in the --device parameter. '
-                  'e.g. when --device=1 will use GPUs 1,2,3,4 when --n-gpus=4'),
 
         BeamParam('tensorboard', bool, True, 'Log results to tensorboard'),
         BeamParam('mlflow', bool, False, 'Log results to MLFLOW serve'),
@@ -304,6 +336,7 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
 
         # results printing and visualization
 
+        BeamParam('log_experiment', bool, True, 'Log experiment to the log directory'),
         BeamParam('print_results', bool, True, 'Print results after each epoch to screen'),
         BeamParam('visualize_weights', bool, False, 'Visualize network weights on tensorboard'),
         BeamParam('enable_tqdm', bool, True, 'Print tqdm progress bar when training'),
@@ -348,26 +381,36 @@ class ExperimentConfig(BeamProjectConfig, NNTrainingConfig, DDPConfig, KeysConfi
     ]
 
 
-class TransformerConfig(BeamConfig):
+class NNExperimentConfig(ExperimentConfig, NNTrainingConfig, DDPConfig):
+    pass
+
+
+class TransformerConfig(CacheConfig):
     # transformer arguments
 
     parameters = [
         BeamParam('mp_method', str, 'joblib', 'The multiprocessing method to use'),
         BeamParam('n_chunks', int, None, 'The number of chunks to split the dataset'),
-        BeamParam('name', str, None, 'The name of the dataset', tags='tune'),
+        BeamParam('name', str, None, 'The name of the dataset'),
         BeamParam('store_path', str, None, 'The path to store the results'),
         BeamParam('partition', str, None, 'The partition to use for splitting the dataset'),
         BeamParam('chunksize', int, None, 'The chunksize to use for splitting the dataset'),
         BeamParam('squeeze', bool, True, 'Whether to squeeze the results'),
         BeamParam('reduce', bool, True, 'Whether to reduce and collate the results'),
-        BeamParam('reduce_dim', int, None, 'The dimension to reduce the results'),
+        BeamParam('reduce_dim', int, 0, 'The dimension to reduce the results'),
         BeamParam('transform_strategy', str, None, 'The transform strategy to use can be [CC|CS|SC|SS]'),
+        BeamParam('store_chunk', bool, None, 'Whether to store the chunked results [None stores chunks if '
+                                             'n_chunks/chunksize is not None and store_path is not None]'),
         BeamParam('split_by', str, 'keys', 'The split strategy to use can be [keys|index|columns]'),
         BeamParam('store_suffix', str, None, 'The suffix to add to the stored file'),
+        BeamParam('override', bool, False, 'Whether to override the stored file if it exists'),
+        BeamParam('use-dill', bool, False, 'Whether to use dill for serialization'),
+        BeamParam('return-results', bool, None, 'Whether to return the results if None, it is set to True '
+                                                'if store_path is None'),
     ]
 
 
-class UniversalConfig(ExperimentConfig, TransformerConfig, CatboostConfig):
+class UniversalConfig(NNExperimentConfig, TransformerConfig, CatboostConfig):
     pass
 
 

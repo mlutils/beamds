@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import warnings
 
 from .utils import get_broker_url, get_backend_url
-from ..core import Processor
+from ..processor import Processor
 from ..logger import beam_logger as logger
 
 
@@ -77,8 +77,7 @@ class CeleryWorker(Processor):
         routes = self._routes
         if routes is None or len(routes) == 0:
             routes = [name for name, attr in inspect.getmembers(self.obj)
-                      if type(name) is str and not name.startswith('_') and
-                      (inspect.ismethod(attr) or inspect.isfunction(attr))]
+                      if type(name) is str and not name.startswith('_') and inspect.isroutine(attr)]
 
         return routes
 

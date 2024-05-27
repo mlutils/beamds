@@ -2,8 +2,6 @@ import itertools
 import os
 import sys
 from collections import defaultdict
-from functools import cached_property
-import random
 import numpy as np
 from fnmatch import filter
 from tqdm.notebook import tqdm as tqdm_notebook
@@ -21,54 +19,20 @@ import linecache
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 
-try:
-    import modin.pandas as mpd
-
-    has_modin = True
-except ImportError:
-    mpd = None
-    has_modin = False
-
-try:
-    import torch
-
-    has_torch = True
-except ImportError:
-    has_torch = False
-
-try:
-    import scipy
-
-    has_scipy = True
-except ImportError:
-    has_scipy = False
-
-try:
-    import polars as pl
-    has_polars = True
-except ImportError:
-    has_polars = False
-
-# try:
-#     import cudf
-#     has_cudf = True
-# except ImportError:
-#     has_cudf = False
-
 import socket
 from contextlib import closing
 from collections import namedtuple
 from timeit import default_timer as timer
 
-from pathlib import Path, PurePath, PurePosixPath
-from collections import Counter
 import inspect
 from argparse import Namespace
-from functools import wraps, partial
-from ..path import PureBeamPath
+from functools import wraps, partial, cached_property
+from collections import OrderedDict
+
+# do not delete this import (it is required as some modules import the following imported functions from this file)
+from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container
 
 
-TypeTuple = namedtuple('TypeTuple', 'major minor element')
 DataBatch = namedtuple("DataBatch", "index label data")
 
 
@@ -330,11 +294,12 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='none',
 
 def is_boolean(x):
     x_type = check_type(x)
-    if x_type.minor in ['numpy', 'pandas', 'tensor'] and 'bool' in str(x.dtype).lower():
+    if x_type.minor in ['numpy', 'pandas', 'tensor', 'cudf'] and 'bool' in str(x.dtype).lower():
+        return True
+    elif x_type.minor == 'polars' and 'Boolean' == str(next(iter(x.schema.values()))):
         return True
     if x_type.minor == 'list' and len(x) and isinstance(x[0], bool):
         return True
-
     return False
 
 
@@ -413,198 +378,51 @@ def pretty_print_timedelta(seconds):
     return f"{pretty_format_number(t_delta.seconds, short=True)} seconds"
 
 
-def check_element_type(x):
-    unknown = (check_minor_type(x) == 'other')
+def parse_string_number(x, time_units=None, unit_prefixes=None):
 
-    if not unknown and not np.isscalar(x) and (has_torch and not (torch.is_tensor(x) and (not len(x.shape)))):
-        return 'array'
+    try:
+        int_x = int(x)
+        if int_x == float(x):
+            return int_x
+    except:
+        pass
 
-    if pd.isna(x):
-        return 'none'
+    try:
+        float_x = float(x)
+        return float_x
+    except:
+        pass
 
-    if hasattr(x, 'dtype'):
-        # this case happens in custom classes that have a dtype attribute
-        if unknown:
-            return 'other'
+    # check for unit prefix or time format
+    match = re.match(r'^(?P<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?])(?P<unit>[a-zA-Z]+)$', x)
+    if match:
+        unit = match.group('unit')
 
-        t = str(x.dtype).lower()
-    else:
-        t = str(type(x)).lower()
+        val = int(match.group('value'))
+        if val != float(match.group('value')):
+            val = float(match.group('value'))
 
-    if 'int' in t:
-        return 'int'
-    if 'bool' in t:
-        return 'bool'
-    if 'float' in t:
-        return 'float'
-    if 'str' in t:
-        return 'str'
-    if 'complex' in t:
-        return 'complex'
+        # if time format return timedelta
+        if time_units is None:
+            time_units = {'s': 'seconds', 'm': 'minutes', 'h': 'hours', 'd': 'days',
+                          'ms': 'milliseconds', 'us': 'microseconds', 'ns': 'nanoseconds',
+                          'y': 'years', 'mo': 'months', 'w': 'weeks',
+                          'sec': 'seconds', 'min': 'minutes', 'hours': 'hours', 'days': 'days', 'weeks': 'weeks',
+                          'months': 'months', 'minutes': 'minutes', 'seconds': 'seconds', 'years': 'years'}
 
-    return 'object'
+        if unit in time_units.keys():
+            return timedelta(**{time_units[unit]: val})
 
+        if unit_prefixes is None:
+            # if in unit prefix return the value in the unit
+            unit_prefixes = {'k': int(1e3), 'M': int(1e6), 'Gi': int(1e9), 'T': int(1e12),
+                             'K': int(1e3), 'm': int(1e-3), 'u': int(1e-6), 'n': int(1e-9),
+                             'G': int(1e9), 'Mi': int(1e6), 'p': int(1e-12), 'f': int(1e-15)}
 
-def check_minor_type(x):
-    if has_torch and isinstance(x, torch.Tensor):
-        return 'tensor'
-    if isinstance(x, np.ndarray):
-        return 'numpy'
-    if isinstance(x, pd.core.base.PandasObject):
-        return 'pandas'
-    if isinstance(x, dict):
-        return 'dict'
-    if isinstance(x, list):
-        return 'list'
-    if isinstance(x, tuple):
-        return 'tuple'
-    if isinstance(x, set):
-        return 'set'
-    if has_modin and isinstance(x, mpd.base.BasePandasDataset):
-        return 'modin'
-    if has_scipy and scipy.sparse.issparse(x):
-        return 'scipy_sparse'
-    if has_polars and isinstance(x, pl.DataFrame):
-        return 'polars'
-    if isinstance(x, PurePath) or isinstance(x, PureBeamPath):
-        return 'path'
-    elif is_scalar(x):
-        return 'scalar'
-    else:
-        return 'other'
+        if unit in unit_prefixes.keys():
+            return val * unit_prefixes[unit]
 
-
-def elt_of_list(x):
-    if len(x) < 100:
-        sampled_indices = range(len(x))
-    else:
-        sampled_indices = np.random.randint(len(x), size=(100,))
-
-    elt0 = None
-    for i in sampled_indices:
-        elt = check_element_type(x[i])
-
-        if elt0 is None:
-            elt0 = elt
-
-        if elt != elt0:
-            return 'object'
-
-    return elt0
-
-
-def is_scalar(x):
-    return np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape)))
-
-
-def check_type(x, check_minor=True, check_element=True):
-    '''
-
-    returns:
-
-    <major type>, <minor type>, <elements type>
-
-    major type: container, array, scalar, none, other
-    minor type: dict, list, tuple, set, tensor, numpy, pandas, scipy_sparse, native, none
-    elements type: array, int, float, complex, bool, str, object, empty, none, unknown
-
-    '''
-
-    if is_scalar(x):
-        mjt = 'scalar'
-        if check_minor:
-            if type(x) in [int, float, str, complex, bool]:
-                mit = 'native'
-            else:
-                mit = check_minor_type(x)
-        else:
-            mit = 'na'
-        elt = check_element_type(x) if check_element else 'na'
-
-    elif isinstance(x, dict):
-        mjt = 'container'
-        mit = 'dict'
-
-        if check_element:
-            if len(x):
-                elt = check_element_type(next(iter(x.values())))
-            else:
-                elt = 'empty'
-        else:
-            elt = 'na'
-
-    elif x is None:
-        mjt = 'none'
-        mit = 'none'
-        elt = 'none'
-
-    elif isinstance(x, slice):
-        mjt = 'slice'
-        mit = 'slice'
-        elt = 'slice'
-
-    elif isinstance(x, Counter):
-        mjt = 'counter'
-        mit = 'counter'
-        elt = 'counter'
-
-    else:
-
-        elt = 'unknown'
-
-        if hasattr(x, '__len__'):
-            mjt = 'array'
-        else:
-            mjt = 'other'
-        if isinstance(x, list) or isinstance(x, tuple) or isinstance(x, set):
-            if not len(x):
-                elt = 'empty'
-            else:
-
-                if len(x) < 20:
-                    elts = [check_element_type(xi) for xi in x]
-
-                else:
-
-                    sample_size = 20
-                    try:
-                        ind = np.random.randint(len(x), size=(sample_size,))
-                        elts = [check_element_type(x[i]) for i in ind]
-                    except TypeError:
-                        # assuming we are in the case of a set
-                        random.sample(list(x), sample_size)
-
-                set_elts = set(elts)
-                if len(set_elts) == 1:
-                    elt = elts[0]
-                elif set_elts == {'int', 'float'}:
-                    elt = 'float'
-                else:
-                    elt = 'object'
-
-            if elt in ['array', 'object', 'none']:
-                mjt = 'container'
-
-        mit = check_minor_type(x) if check_minor else 'na'
-
-        if elt:
-            if mit in ['numpy', 'tensor', 'pandas', 'scipy_sparse']:
-                if mit == 'pandas':
-                    dt = str(x.values.dtype)
-                else:
-                    dt = str(x.dtype)
-                if 'float' in dt:
-                    elt = 'float'
-                elif 'int' in dt:
-                    elt = 'int'
-                else:
-                    elt = 'object'
-
-        if mit == 'other':
-            mjt = 'other'
-            elt = 'other'
-
-    return TypeTuple(major=mjt, minor=mit, element=elt)
+    return x
 
 
 def include_patterns(*patterns):
@@ -1044,13 +862,13 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
     else:
         indices_type = indices_type.minor
 
-    if indices_type == 'pandas':
+    if indices_type in ['pandas', 'cudf']:
         index = index.values
-    if indices_type == 'other': # the case where there is a scalar value with a dtype attribute
+    if indices_type == 'other':  # the case where there is a scalar value with a dtype attribute
         index = int(index)
-    if x_type == 'numpy':
+    if x_type in ['numpy', 'polars']:
         return x[index]
-    elif x_type == 'pandas':
+    elif x_type in ['pandas', 'cudf']:
         return x.iloc[index]
     elif x_type == 'tensor':
         if x.is_sparse:
@@ -1072,7 +890,7 @@ def is_arange(x, convert_str=True):
     x_type = check_type(x)
 
     if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
-        return False
+        return None, False
 
     if convert_str and x_type.element == 'str':
         pattern = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)(?P<suffix>.*?)$')
@@ -1288,3 +1106,56 @@ def pretty_print_dict(d, name):
     # Enclose in parentheses
     formatted_str = f"{name}({formatted_str})"
     return formatted_str
+
+
+def lazy_property(fn):
+
+    @property
+    def _lazy_property(self):
+        try:
+            cache = getattr(self, '_lazy_cache')
+            return cache[fn.__name__]
+        except KeyError:
+            v = fn(self)
+            cache[fn.__name__] = v
+            return v
+        except AttributeError:
+            v = fn(self)
+            setattr(self, '_lazy_cache', {fn.__name__: v})
+            return v
+
+    @_lazy_property.setter
+    def _lazy_property(self, value):
+        try:
+            cache = getattr(self, '_lazy_cache')
+            cache[fn.__name__] = value
+        except AttributeError:
+            setattr(self, '_lazy_cache', {fn.__name__: value})
+
+    return _lazy_property
+
+
+class LimitedSizeDict(OrderedDict):
+    def __init__(self, size_limit=None, on_removal=None):
+        super().__init__()
+        self.size_limit = size_limit
+        self.on_removal = on_removal  # Callback function to call on removal
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        OrderedDict.__setitem__(self, key, value)
+        if self.size_limit is not None and len(self) > self.size_limit:
+            oldest_key, oldest_value = self.popitem(last=False)
+            if self.on_removal:  # Check if a callback function is provided
+                self.on_removal(oldest_key, oldest_value)  # Call the callback with the removed key and value
+
+
+class LimitedSizeDictFactory:
+    def __init__(self, size_limit=None, on_removal=None):
+        self.size_limit = size_limit
+        self.on_removal = on_removal
+
+    def __call__(self):
+        return LimitedSizeDict(size_limit=self.size_limit, on_removal=self.on_removal)
+

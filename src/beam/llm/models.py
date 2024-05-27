@@ -3,7 +3,7 @@ import math
 from json import JSONDecodeError
 from typing import Optional, Any
 import requests
-from functools import cached_property
+from ..utils import lazy_property as cached_property
 
 from .hf_conversation import Conversation
 from ..logger import beam_logger as logger

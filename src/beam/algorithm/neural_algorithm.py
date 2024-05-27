@@ -18,30 +18,22 @@ from ..utils import (to_device, check_type, recursive_concatenate,
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
-from ..core import Processor, MetaBeamInit
 from ..logger import beam_kpi, BeamResult
+from ..processor import Processor
+from ..base import beam_cache
+
+from .core_algorithm import Algorithm
 
 
-class NeuralAlgorithm(Processor):
+class NeuralAlgorithm(Algorithm):
 
     def __init__(self, hparams, networks=None, optimizers=None, schedulers=None, processors=None, dataset=None,
-                 name=None, experiment=None, **kwargs):
+                 name=None, **kwargs):
 
         super().__init__(hparams, name=name, **kwargs)
 
-        self.clear_experiment_properties()
-        self._experiment = None
-        self._device = None
-        if experiment is not None:
-            self.experiment = experiment
-
-        self.trial = None
-
         # the following are set by the experiment
         # some experiment hyperparameters
-
-        self.epoch = 0
-        self.t0 = timer()
 
         self.scalers = {}
         self.networks = {}
@@ -62,13 +54,6 @@ class NeuralAlgorithm(Processor):
         self.persistent_dataloaders = defaultdict(dict)
         self.dataloaders = defaultdict(dict)
 
-        self.epoch_length = None
-        self.eval_subset = None
-        self.objective = None
-        self.best_objective = None
-        self.best_epoch = None
-        self.best_state = False
-
         self.add_components(networks=networks, optimizers=optimizers, schedulers=schedulers, processors=processors)
 
         if self.get_hparam('reload_path') is not None:
@@ -80,17 +65,7 @@ class NeuralAlgorithm(Processor):
         if dataset is not None:
             self.load_dataset(dataset)
 
-        self.cb_model = None
-        self.reporter = None
         self.training = False
-
-    @property
-    def elapsed_time(self):
-        return timer() - self.t0
-
-    @staticmethod
-    def no_experiment_message(property):
-        logger.warning(f"{property} is not supported without an active experiment. Set self.experiment = experiment")
 
     @cached_property
     def distributed_training(self):
@@ -107,13 +82,6 @@ class NeuralAlgorithm(Processor):
         return self.experiment.distributed_training_framework
 
     @cached_property
-    def hpo(self):
-        if self.experiment is None:
-            self.no_experiment_message('hpo')
-            return False
-        return self.experiment.hpo
-
-    @cached_property
     def rank(self):
         if self.experiment is None:
             self.no_experiment_message('rank')
@@ -126,15 +94,6 @@ class NeuralAlgorithm(Processor):
             self.no_experiment_message('world_size')
             return 1
         return self.experiment.world_size
-
-    @cached_property
-    def enable_tqdm(self):
-        return self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
-                                                              or not self.get_hparam('enable_tqdm')) else None
-
-    @cached_property
-    def n_epochs(self):
-        return self.get_hparam('n_epochs')
 
     @cached_property
     def batch_size_train(self):
@@ -240,15 +199,9 @@ class NeuralAlgorithm(Processor):
                 swa_epochs = int(np.round(self.get_hparam('swa') * self.n_epochs))
         return swa_epochs
 
-    def clear_experiment_properties(self):
-
-        self.clear_cache('device', 'distributed_training', 'distributed_training_framework', 'hpo', 'rank', 'world_size', 'enable_tqdm', 'n_epochs',
-                            'batch_size_train', 'batch_size_eval', 'pin_memory', 'autocast_device', 'model_dtype', 'amp',
-                            'scaler', 'swa_epochs')
-
     @cached_property
     def device(self):
-        if self.in_cache('accelerator') and self.accelerator.device_placement:
+        if self.in_cache('accelerator') and self.accelerator is not None and self.accelerator.device_placement:
             device = self.accelerator.device
         elif self._device is not None:
             device = self._device
@@ -322,23 +275,20 @@ class NeuralAlgorithm(Processor):
             self.clear_cache('device')
         return acc
 
+    @classmethod
     @property
-    def exclude_pickle_attributes(self):
-        return ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
+    def special_state_attributes(cls):
+        return (super().special_state_attributes +
+                ['networks', 'optimizers', 'schedulers', 'processors', 'datasets', 'scaler',
                 'swa_networks', 'swa_schedulers', 'schedulers_initial_state', 'optimizers_name_by_id',
-                'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps']
-
-    @cached_property
-    def train_reporter(self):
-        return BeamReport(objective=self.get_hparam('objective'), objective_mode=self.optimization_mode,
-                          aux_objectives=['loss'], aux_objectives_modes=['min'])
+                'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat', 'optimizers_steps'])
 
     def __getattr__(self, item):
         assert item != 'networks', 'Networks are not initialized yet'
         if item in self.networks:
             return self.networks[item]
         else:
-            raise AttributeError(f"Algorithm has no attribute {item}")
+            return super().__getattr__(item)
 
     @property
     def dataset(self):
@@ -347,23 +297,6 @@ class NeuralAlgorithm(Processor):
         if len(self.datasets) == 1:
             return list(self.datasets.values())[0]
         return self.datasets
-
-    def set_reporter(self, reporter=None):
-        self.reporter = reporter
-        self.reporter.reset_time(None)
-        self.reporter.reset_epoch(0, total_epochs=None)
-
-    def set_train_reporter(self, first_epoch, n_epochs=None):
-
-        if n_epochs is None:
-            n_epochs = self.n_epochs
-
-        self.reporter = self.train_reporter
-        self.reporter.reset_time(first_epoch=first_epoch, n_epochs=n_epochs)
-
-    @cached_property
-    def is_notebook(self):
-        return is_notebook()
 
     def to(self, device):
 
@@ -437,106 +370,6 @@ class NeuralAlgorithm(Processor):
 
     def add_scheduler(self, scheduler, name):
         self.add_components(schedulers={name: scheduler})
-
-    def report_scalar(self, name, val, subset=None, aggregation=None, append=None, **kwargs):
-        self.reporter.report_scalar(name, val, subset=subset, aggregation=aggregation, append=append, **kwargs)
-
-    def report_data(self, name, val, subset=None, data_type=None, **kwargs):
-
-        if '/' in name:
-            dt, name = name.split('/')
-
-            if data_type is None:
-                data_type = dt
-            else:
-                data_type = f"{dt}_{data_type}"
-
-        self.reporter.report_data(name, val, subset=subset, data_type=data_type, **kwargs)
-
-    def report_image(self, name, val, subset=None, **kwargs):
-        self.reporter.report_image(name, val, subset=subset, **kwargs)
-
-    def report_images(self, name, val, subset=None, **kwargs):
-        self.reporter.report_images(name, val, subset=subset, **kwargs)
-
-    def report_scalars(self, name, val, subset=None, **kwargs):
-        self.reporter.report_scalars(name, val, subset=subset, **kwargs)
-
-    def report_histogram(self, name, val, subset=None, **kwargs):
-        self.reporter.report_histogram(name, val, subset=subset, **kwargs)
-
-    def report_figure(self, name, val, subset=None, **kwargs):
-        self.reporter.report_figure(name, val, subset=subset, **kwargs)
-
-    def report_video(self, name, val, subset=None, **kwargs):
-        self.reporter.report_video(name, val, subset=subset, **kwargs)
-
-    def report_audio(self, name, val, subset=None, **kwargs):
-        self.reporter.report_audio(name, val, subset=subset, **kwargs)
-
-    def report_embedding(self, name, val, subset=None, **kwargs):
-        self.reporter.report_embedding(name, val, subset=subset, **kwargs)
-
-    def report_text(self, name, val, subset=None, **kwargs):
-        self.reporter.report_text(name, val, subset=subset, **kwargs)
-
-    def report_mesh(self, name, val, subset=None, **kwargs):
-        self.reporter.report_mesh(name, val, subset=subset, **kwargs)
-
-    def report_pr_curve(self, name, val, subset=None, **kwargs):
-        self.reporter.report_pr_curve(name, val, subset=subset, **kwargs)
-
-    def get_scalar(self, name, subset=None, aggregate=False):
-        v = self.reporter.get_scalar(name, subset=subset, aggregate=aggregate)
-        return self.reporter.stack_scalar(v)
-
-    def get_scalars(self, name, subset=None, aggregate=False):
-        d = self.reporter.get_scalars(name, subset=subset, aggregate=aggregate)
-        for k, v in d.items():
-            d[k] = self.reporter.stack_scalar(v)
-        return d
-
-    def get_data(self, name, subset=None, data_type=None):
-
-        if '/' in name:
-            dt, name = name.split('/')
-
-            if data_type is None:
-                data_type = dt
-            else:
-                data_type = f"{dt}_{data_type}"
-
-        return self.reporter.get_data(name, subset=subset, data_type=data_type)
-
-    def get_image(self, name, subset=None):
-        return self.reporter.get_image(name, subset=subset)
-
-    def get_images(self, name, subset=None):
-        return self.reporter.get_images(name, subset=subset)
-
-    def get_histogram(self, name, subset=None):
-        return self.reporter.get_histogram(name, subset=subset)
-
-    def get_figure(self, name, subset=None):
-        return self.reporter.get_figure(name, subset=subset)
-
-    def get_video(self, name, subset=None):
-        return self.reporter.get_video(name, subset=subset)
-
-    def get_audio(self, name, subset=None):
-        return self.reporter.get_audio(name, subset=subset)
-
-    def get_embedding(self, name, subset=None):
-        return self.reporter.get_embedding(name, subset=subset)
-
-    def get_text(self, name, subset=None):
-        return self.reporter.get_text(name, subset=subset)
-
-    def get_mesh(self, name, subset=None):
-        return self.reporter.get_mesh(name, subset=subset)
-
-    def get_pr_curve(self, name, subset=None):
-        return self.reporter.get_pr_curve(name, subset=subset)
 
     def add_components(self, networks=None, optimizers=None, schedulers=None, processors=None,
                        build_optimizers=True, build_schedulers=True, name='net'):
@@ -685,20 +518,6 @@ class NeuralAlgorithm(Processor):
         self.schedulers_flat = self.get_flat_schedulers()
         self.optimizers_flat = self.get_flat_optimizers()
 
-    @property
-    def experiment(self):
-        logger.debug(f"Fetching the experiment which is currently associated with the algorithm")
-        return self._experiment
-
-    # a setter function
-    @experiment.setter
-    def experiment(self, experiment):
-        logger.debug(f"The algorithm is now linked to an experiment directory: {experiment.experiment_dir}")
-        self.trial = experiment.trial
-        self.hparams = experiment.hparams
-        self.clear_experiment_properties()
-        self._experiment = experiment
-
     def apply(self, *losses, weights=None, training=None, optimizers=None, set_to_none=True, gradient=None,
               retain_graph=None, create_graph=False, inputs=None, iteration=None, reduction=None, name=None,
               report=True):
@@ -722,7 +541,7 @@ class NeuralAlgorithm(Processor):
         elif isinstance(weights, dict):
             pass
         else:
-            weights_type = check_type(weights, check_minor=False, check_element=False)
+            weights_type = check_type(weights, minor=False, element=False)
             if weights_type.major == 'scalar':
                 weights = {next(iter(losses.keys())): weights}
             else:
@@ -1409,104 +1228,6 @@ class NeuralAlgorithm(Processor):
         '''
         pass
 
-    def calculate_objective(self):
-        '''
-        This function calculates the optimization non-differentiable objective. It is used for hyperparameter optimization
-        and for ReduceOnPlateau scheduling. It is also responsible for tracking the best checkpoint
-        '''
-
-        self.best_objective = self.reporter.best_objective
-        self.best_epoch = self.reporter.best_epoch
-        self.objective = self.reporter.objective
-        self.best_state = self.reporter.best_state
-
-        return self.objective
-
-    def report(self, objective, epoch=None):
-        '''
-        Use this function to report results to hyperparameter optimization frameworks
-        also you can add key 'objective' to the results dictionary to report the final scores.
-        '''
-
-        if self.hpo == 'tune':
-
-            if self.get_hparam('objective') is not None:
-                metrics = {self.get_hparam('objective'): objective}
-            else:
-                metrics = {'objective': objective}
-            from ray import train
-            train.report(metrics)
-        elif self.hpo == 'optuna':
-            import optuna
-            self.trial.report(objective, epoch)
-            self.trial.set_user_attr('best_value', self.best_objective)
-            self.trial.set_user_attr('best_epoch', self.best_epoch)
-            if self.trial.should_prune():
-                raise optuna.TrialPruned()
-
-            train_timeout = self.get_hparam('train-timeout')
-            if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
-                raise optuna.exceptions.OptunaError(f"Trial timed out after {self.get_hparam('train-timeout')} seconds.")
-
-    @cached_property
-    def optimization_mode(self):
-        objective_mode = self.get_hparam('objective_mode')
-        objective_name = self.get_hparam('objective')
-        return self.get_optimization_mode(objective_mode, objective_name)
-
-    @staticmethod
-    def get_optimization_mode(mode, objective_name):
-        if mode is not None:
-            return mode
-        if any(n in objective_name.lower() for n in ['loss', 'error', 'mse']):
-            return 'min'
-        return 'max'
-
-    def early_stopping(self, epoch=None):
-        '''
-        Use this function to early stop your model based on the results or any other metric in the algorithm class
-        '''
-
-        if self.rank > 0:
-            return False
-
-        train_timeout = self.get_hparam('train-timeout')
-        if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
-            logger.info(f"Stopping training at epoch {self.epoch} - timeout {self.get_hparam('train-timeout')}")
-            return True
-
-        stop_at = self.get_hparam('stop_at')
-        early_stopping_patience = self.get_hparam('early_stopping_patience')
-        if self.objective is None and stop_at is not None:
-            logger.warning("Early stopping is enabled (stop_at is not None) but no objective is defined. "
-                           "set objective in the hparams")
-            return False
-        if self.objective is None and early_stopping_patience is not None:
-            logger.warning("Early stopping is enabled (early_stopping_patience is not None) "
-                           "but no objective is defined. set objective in the hparams")
-            return False
-
-        if stop_at is not None:
-            if self.best_objective is not None:
-
-                if self.optimization_mode == 'max':
-                    res = self.best_objective > stop_at
-                    if res:
-                        logger.info(f"Stopping training at {self.best_objective} > {stop_at}")
-                else:
-                    res = self.best_objective < stop_at
-                    if res:
-                        logger.info(f"Stopping training at {self.best_objective} < {stop_at}")
-                return res
-
-        if early_stopping_patience is not None and early_stopping_patience > 0:
-            res = self.epoch - self.best_epoch > early_stopping_patience
-            if res:
-                logger.info(f"Stopping training at epoch {self.epoch} - best epoch {self.best_epoch} > {early_stopping_patience}")
-            return res
-
-        return False
-
     def __call__(self, subset, dataset_name='dataset', predicting=False, enable_tqdm=None, max_iterations=None,
                  head=None, eval_mode=True, return_dataset=None, **kwargs):
 
@@ -1844,7 +1565,7 @@ class NeuralAlgorithm(Processor):
                 assert method=='compile', "Accelerate does not support other optimization methods than compile"
                 self.networks[k] = self.accelerator.prepare_model(net, evaluate=True)
 
-    def fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
+    def _fit(self, dataset=None, dataloaders=None, timeout=0, collate_fn=None,
                    worker_init_fn=None, multiprocessing_context=None, generator=None, prefetch_factor=2, **kwargs):
         '''
         For training purposes
@@ -1895,3 +1616,7 @@ class NeuralAlgorithm(Processor):
             return algorithm(sample, predicting=True, **kwargs)
 
         return predict_wrapper(dataset, algorithm=self, *args, **kwargs)
+
+    @beam_cache
+    def cached_predict(self, *args, **kwargs):
+        return self.predict(*args, **kwargs)

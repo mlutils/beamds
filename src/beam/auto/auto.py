@@ -3,7 +3,7 @@ import ast
 import sys
 from functools import cached_property
 
-from ..core import Processor
+from ..processor import Processor
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
 from ..path import beam_path
 
@@ -337,9 +337,9 @@ class AutoBeam(Processor):
                     if state_file.exists:
                         obj.load_state(state_file)
                 except:
-                    obj = cls_obj.from_state_path(state_file)
+                    obj = cls_obj.from_path(state_file)
             else:
-                obj = cls_obj.from_state_path(state_file)
+                obj = cls_obj.from_path(state_file)
 
             return obj
 
@@ -455,11 +455,11 @@ class AutoBeam(Processor):
             # Print build logs (optional)
             for line in build_logs:
                 if 'stream' in line:
-                    print(line['stream'].strip())
+                    logger.info(line['stream'].strip())
 
         except BuildError as e:
-            print("Error building Docker image:", e)
+            logger.error("Error building Docker image:", e)
         except Exception as e:
-            print("Error:", e)
+            logger.error("Error:", e)
         finally:
             client.close()

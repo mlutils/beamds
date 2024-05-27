@@ -1,5 +1,5 @@
 from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset,
-                     RedisPath, SMBPath)
+                     RedisPath, SMBPath, MLFlowPath)
 from .core import BeamKey, BeamURL, IOPath, DictPath
 
 
@@ -94,6 +94,10 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
         access_key = beam_key('COMET_API_KEY', access_key)
         return CometAsset(path, access_key=access_key, **kwargs)
+
+    elif url.protocol == 'mlflow':
+        return MLFlowPath(path, hostname=hostname, port=port, username=username, password=password,
+                          **kwargs)
 
     elif url.protocol == 'io':
         return IOPath(path, **kwargs)

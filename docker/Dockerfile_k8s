@@ -1,0 +1,64 @@
+# Use your desirsed base images
+FROM harbor.dt.local/public/beam:openshift
+
+# Install OpenSSH Server
+RUN apt-get purge -y openssh-server && \
+    apt-get clean && \
+    apt-get autoremove -y
+
+# Create a non-root user
+RUN useradd -m -s /bin/bash beam && \
+    echo 'beam:12345678' | chpasswd
+# USER beam
+
+RUN mkdir -p  /opt/ssh
+RUN mkdir -p  /opt/supervisor
+
+RUN apt-get update && apt-get install -y openssh-server supervisor
+
+RUN pip install -U "ray[default]"
+
+RUN ssh-keygen -q -N "" -t dsa -f /opt/ssh/ssh_host_dsa_key && \
+    ssh-keygen -q -N "" -t rsa -b 4096 -f /opt/ssh/ssh_host_rsa_key && \
+    ssh-keygen -q -N "" -t ecdsa -f /opt/ssh/ssh_host_ecdsa_key && \
+    ssh-keygen -q -N "" -t ed25519 -f /opt/ssh/ssh_host_ed25519_key
+
+COPY install/supervisord.conf /etc/supervisor/conf.d/
+#COPY supervisord.conf /etc/supervisor/
+
+COPY install/sshd_config /opt/ssh
+
+# Configure SSH for non-root public key authentication
+RUN mkdir -p /home/beam/.ssh && \
+    chmod 700 /home/beam/.ssh && \
+    chown beam:beam /home/beam/.ssh && \
+    chown -R beam. /opt/ssh
+
+# You can copy a public key from your host machine to the container for key-based authentication
+COPY id_rsa.pub /home/beam/.ssh/authorized_keys
+
+# Adjust file permissions for SSH
+RUN chmod 600 /home/beam/.ssh/authorized_keys && \
+     chown beam:beam /home/beam/.ssh/authorized_keys
+
+# SSH login fix. Otherwise, the user gets kicked off after login
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+
+
+
+RUN apt update && apt install lsof iproute2 -y
+# Copy entrypoint script into specified directory and make it executable
+COPY entrypoint.sh /workspace/install/entrypoint.sh
+RUN chmod +x /workspace/install/entrypoint.sh
+
+# Any additional setup like installing dependencies can go here
+
+
+
+# Set the working directory in the container
+WORKDIR /workspace
+
+# Command to run when starting the container
+ENTRYPOINT ["/workspace/install/entrypoint.sh"]
+#USER beam
+#ENTRYPOINT ["/usr/bin/supervisord"]

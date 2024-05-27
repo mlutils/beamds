@@ -5,27 +5,31 @@ from argparse import Namespace
 from collections import defaultdict
 from typing import List, Union
 from pprint import pformat
-
+import json
 from dataclasses import dataclass, field
+
 from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
 from ..path import beam_path
-import json
+from ..meta import MetaBeamInit
 
 
 @dataclass
 class BeamParam:
-    name: str
+    name: Union[str, List[str]]
     type: type
     default: any
     help: str
     tags: Union[List[str], str, None] = None
 
 
-class BeamConfig(Namespace):
+class BeamConfig(Namespace, metaclass=MetaBeamInit):
     parameters = []
     defaults = {}
 
-    def __init__(self, *args, config=None, tags=None, return_defaults=False, silent=False, strict=False, **kwargs):
+    def __init__(self, *args, config=None, tags=None, return_defaults=False, silent=False,
+                 strict=False, load_config_files=True, **kwargs):
+
+        self._init_is_done = False
 
         if tags is None:
             tags = defaultdict(set)
@@ -68,7 +72,8 @@ class BeamConfig(Namespace):
                 parser = self.update_parser(parser, defaults=d, parameters=h, source=ti.__name__)
 
             config, more_tags = _beam_arguments(parser, *args, return_defaults=return_defaults,
-                                                return_tags=True, silent=silent, strict=strict, **kwargs)
+                                                return_tags=True, silent=silent,
+                                                strict=strict, load_config_files=load_config_files, **kwargs)
 
             for k, v in more_tags.items():
                 tags[k] = tags[k].union(v)
@@ -99,6 +104,10 @@ class BeamConfig(Namespace):
         self._tags = tags
 
         super().__init__(**config)
+
+    @property
+    def is_initialized(self):
+        return hasattr(self, '_init_is_done') and self._init_is_done
 
     @classmethod
     def default_values(cls):
@@ -131,6 +140,19 @@ class BeamConfig(Namespace):
     @classmethod
     def set_default(cls, name, value):
         cls.defaults[name] = value
+
+    def pop(self, key, default=None):
+
+        value = default
+        if key in self:
+            value = getattr(self, key)
+            delattr(self, key)
+
+            for k, v in self._tags.items():
+                if key in v:
+                    v.remove(key)
+
+        return value
 
     def dict(self):
         return to_dict(self)
@@ -176,7 +198,10 @@ class BeamConfig(Namespace):
         if parameters is not None:
             for v in parameters:
 
-                name_to_parse = v.name.replace('_', '-').strip()
+                if type(v.name) is list:
+                    name_to_parse = [ni.replace('_', '-').strip() for ni in v.name]
+                else:
+                    name_to_parse = v.name.replace('_', '-').strip()
 
                 tags = v.tags
                 if tags is None:
@@ -190,14 +215,17 @@ class BeamConfig(Namespace):
 
                 if v.type is bool:
                     boolean_feature(parser, name_to_parse, v.default, v.help)
-                elif v.type is list:
-                    parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, nargs='+', metavar=tags,
-                                        help=v.help)
-                elif v.type is dict:
-                    parser.add_argument(f"--{name_to_parse}", type=json.loads, default=v.default, metavar=tags,
-                                        help=v.help)
                 else:
-                    parser.add_argument(f"--{name_to_parse}", type=v.type, default=v.default, metavar=tags, help=v.help)
+                    parse_kwargs = {'type': v.type, 'default': v.default, 'metavar': tags, 'help': v.help}
+                    if v.type is list:
+                        parse_kwargs['nargs'] = '+'
+                    elif v.type is dict:
+                        parse_kwargs['type'] = json.loads
+
+                    if type(v.name) is list:
+                        parser.add_argument(*[f"--{ni}" for ni in name_to_parse], **parse_kwargs)
+                    else:
+                        parser.add_argument(f"--{name_to_parse}", **parse_kwargs)
 
         return parser
 
@@ -228,9 +256,21 @@ class BeamConfig(Namespace):
     def __setitem__(self, key, value):
         self.set(key, value)
 
-    def update(self, hparams, tags=None):
+    def update(self, hparams, tags=None, exclude=None):
+        multi_tags = None
+        exclude = exclude or []
+        if hasattr(hparams, 'tags'):
+            multi_tags = vars(hparams.tags)
+            hparams = vars(hparams)
+            exclude.append('tags')
+
         for k, v in hparams.items():
-            self.set(k, v, tags=tags)
+            if k in exclude:
+                continue
+            t = tags
+            if multi_tags is not None:
+                t = [tk for tk, tv in multi_tags.items() if k in tv]
+            self.set(k, v, tags=t)
 
     def set(self, key, value, tags=None):
         key = key.replace('-', '_').strip()
@@ -246,7 +286,8 @@ class BeamConfig(Namespace):
         if key.startswith('_'):
             super().__setattr__(key, value)
         else:
-            self._tags['new'].add(key)
+            if self.is_initialized:
+                self._tags['new'].add(key)
             super().__setattr__(key, value)
 
     def get(self, key, default=None, preferred=None, specific=None):

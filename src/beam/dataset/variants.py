@@ -75,7 +75,7 @@ class TransformedDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, ind):
 
-        ind_type = check_type(ind, check_element=False)
+        ind_type = check_type(ind, element=False)
         if ind_type.major == 'scalar':
             ind = [ind]
 

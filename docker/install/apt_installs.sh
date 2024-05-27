@@ -93,6 +93,9 @@ apt install -y iptables
 echo "Installing smbclient"
 apt install -y smbclient
 
+echo "Installing tree"
+apt install -y tree
+
 #
 ## don't install libopenmpi as it messes up the pytorch geometric installation
 #apt install -y libopenmpi-dev

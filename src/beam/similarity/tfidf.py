@@ -102,10 +102,11 @@ class ChunkTF(Transformer):
                 tfidf.append(tfidfi)
 
             else:
-                ind = np.array(list(c.keys()))
-                counts = np.array(list(c.values()))
-                tfi, tfidfi = self.tf_tfidf_row(counts, idf=idf[ind], scheme=scheme, sparse_framework=self.sparse_framework,
-                               norm=norm, k=k, log_normalization=log_normalization)
+                ind = np.array(list(c.keys()), dtype=int)
+                counts = np.array(list(c.values()), dtype=float)
+                tfi, tfidfi = self.tf_tfidf_row(counts, idf=idf[ind], scheme=scheme,
+                                                sparse_framework=self.sparse_framework,
+                                                norm=norm, k=k, log_normalization=log_normalization)
 
                 cols.append(ind)
                 tf.append(tfi)
@@ -133,7 +134,7 @@ class ChunkDF(Transformer):
             self.preprocessor = preprocessor or TFIDF.default_preprocessor
             super().__init__(*args, **kwargs)
 
-        def transform_callback(self, x, key=None, is_chunk=False, fit=False, path=None, **kwargs):
+        def transform_callback(self, x, _key=None, _is_chunk=False, _fit=False, path=None, **kwargs):
             y = Counter()
             y_sum = Counter()
             for xi in x:
@@ -145,9 +146,9 @@ class ChunkDF(Transformer):
 
 class TFIDF(BeamSimilarity):
 
-    def __init__(self, *args, preprocessor=None, min_df=None, max_df=None, max_features=None, use_idf=True,
+    def __init__(self, *args, preprocessor=None, min_df=2, max_df=.95, max_features=None, use_idf=True,
                  smooth_idf=True, sublinear_tf=False, n_workers=0, mp_method='joblib', chunksize=None,
-                 n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
+                 use_dill=False, n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
                  metric='bm25', bm25_k1=1.5, bm25_b=0.75, bm25_epsilon=0.25, **kwargs):
 
         super().__init__(*args, min_df=min_df, max_df=max_df, max_features=max_features, use_idf=use_idf,
@@ -185,15 +186,35 @@ class TFIDF(BeamSimilarity):
         self.device = self.get_hparam('device', device)
 
         self.n_workers = self.get_hparam('n_workers', n_workers)
-        n_chunks = self.get_hparam('n_chunks', self.n_workers)
-        chunksize = self.get_hparam('chunksize', None)
-        mp_method = self.get_hparam('mp_method', mp_method)
+        self.n_chunks = self.get_hparam('n_chunks', self.n_workers)
+        self.chunksize = self.get_hparam('chunksize', None)
+        self.mp_method = self.get_hparam('mp_method', mp_method)
+        self.use_dill = self.get_hparam('use_dill', use_dill)
 
-        self.chunk_tf = ChunkTF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
-                                squeeze=False, reduce=False, sparse_framework=self.sparse_framework, device=self.device,
-                                preprocessor=self.preprocessor)
-        self.chunk_df = ChunkDF(n_workers=self.n_workers, n_chunks=n_chunks, chunksize=chunksize, mp_method=mp_method,
-                                squeeze=False, reduce=False, preprocessor=self.preprocessor)
+    @cached_property
+    def preprocessor_transformer(self):
+        return Transformer(func=self.preprocessor, n_workers=self.n_workers, n_chunks=self.n_chunks,
+                            chunksize=self.chunksize, mp_method=self.mp_method)
+
+    @cached_property
+    def chunk_tf(self):
+        return ChunkTF(n_workers=self.n_workers, n_chunks=self.n_chunks, chunksize=self.chunksize,
+                       mp_method=self.mp_method, use_dill=self.use_dill,
+                       squeeze=False, reduce=False, sparse_framework=self.sparse_framework, device=self.device,
+                       preprocessor=self.preprocessor)
+
+    @cached_property
+    def chunk_df(self):
+        return ChunkDF(n_workers=self.n_workers, n_chunks=self.n_chunks, chunksize=self.chunksize,
+                       mp_method=self.mp_method, use_dill=self.use_dill,
+                       squeeze=False, reduce=False, preprocessor=self.preprocessor)
+
+    def preprocess(self, x):
+        if self.chunksize is not None and len(x) <= self.chunksize:
+            return self.preprocessor(x)
+        if self.n_chunks is not None and self.n_chunks < 2:
+            return self.preprocessor(x)
+        return self.preprocessor_transformer.transform(x)
 
     @staticmethod
     def default_preprocessor(x):
@@ -251,10 +272,11 @@ class TFIDF(BeamSimilarity):
 
         return tf, tfidf
 
-    def bm25(self, q, k1=1.5, b=0.75, epsilon=.25):
+    def bm25(self, q, k1=1.5, b=0.75, epsilon=.25, **kwargs):
 
         idf = self.idf_bm25(epsilon=epsilon)
-        _, q_tfidf = self.tf_and_tfidf(q, scheme='counts_times_idf', idf=idf, norm='none', log_normalization=False)
+        _, q_tfidf = self.tf_and_tfidf(q, scheme='counts_times_idf', idf=idf, norm='none', log_normalization=False,
+                                       **kwargs)
 
         if self.sparse_framework == 'torch':
             len_norm_values = (1 - b) + (b / self.avg_doc_len) * self.doc_len_sparse.values()
@@ -274,21 +296,29 @@ class TFIDF(BeamSimilarity):
 
         return scores
 
-    def transform(self, x: Union[List, List[List], BeamData], index: Union[None, Any] = None,
-                  add_to_index: bool = False):
+    def as_container(self, x):
+        x_type = check_type(x)
+        if x_type.element == 'str':
+            if not x_type.major == 'array':
+                x = [x]
+        else:
+            if not x_type.major == 'container':
+                x = [x]
+        return x
 
-        x, index = self.extract_data_and_index(x, index)
+    def transform(self, x: Union[List, List[List], BeamData], index: Union[None, Any] = None,
+                  add_to_index: bool = False, **kwargs):
+
+        x, index = self.extract_data_and_index(x, index, convert_to=None)
         if add_to_index or self.index is None:
             self.add_index(x, index)
 
-        x_type = check_type(x)
-        if not x_type.major == 'container':
-            x = [x]
+        x = self.as_container(x)
 
-        tf, tfidf = self.tf_and_tfidf(x, scheme='raw_counts')
+        tf, tfidf = self.tf_and_tfidf(x, scheme='raw_counts', **kwargs)
         if self.tf is None:
             self.tf = tf
-        else:
+        elif add_to_index:
             if self.sparse_framework == 'torch':
                 self.tf = self.vstack_csr_tensors([self.tf, tf])
             else:
@@ -301,7 +331,7 @@ class TFIDF(BeamSimilarity):
         self.cf = Counter()
         self.n_docs = 0
         self.tf = None
-        self.index = None
+        self.index = np.array([])
         self._is_trained = False
         self.clear_cache('idf', 'tokens', 'n_tokens', 'avg_doc_len', 'idf_bm25', 'doc_len', 'doc_len_sparse',
                          'max_token')
@@ -317,7 +347,10 @@ class TFIDF(BeamSimilarity):
 
     @cached_property
     def n_tokens(self):
-        return max(list(self.tokens))
+        l = list(self.tokens)
+        if len(l) == 0:
+            return 0
+        return max(l) + 1
 
     @cached_property
     def idf(self):
@@ -444,6 +477,8 @@ class TFIDF(BeamSimilarity):
 
     def search(self, q, k=1, **kwargs):
 
+        q = self.as_container(q)
+
         if self.metric == 'bm25':
             scores = self.bm25(q, **kwargs)
             if self.sparse_framework == 'torch':
@@ -451,14 +486,21 @@ class TFIDF(BeamSimilarity):
                 I = topk.indices
                 D = topk.values
             else:
-                I = scores.argsort(axis=1)[:, -k:]
-                D = scores[np.arange(len(scores)), I]
+                scores = scores.toarray()
+                I = np.argsort(-scores, axis=1)[:, :k]
+                D = np.take_along_axis(scores, I, axis=1)
         else:
             raise ValueError(f"Unknown metric: {self.metric}")
 
         return Similarities(index=self.get_index(I), distance=D, metric=self.metric, model='tfidf')
 
+    @classmethod
     @property
-    def exclude_pickle_attributes(self):
-        return ['df', 'cf', 'n_docs', 'tf', 'index']
+    def special_state_attributes(cls):
+        return super().special_state_attributes + ['df', 'cf', 'n_docs', 'tf', 'index', 'idf']
+
+    @classmethod
+    @property
+    def excluded_attributes(cls):
+        return super().excluded_attributes + ['preprocessor_transformer', 'chunk_tf', 'chunk_df', 'preprocessor']
 

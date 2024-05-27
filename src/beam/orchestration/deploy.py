@@ -1,88 +1,30 @@
-from ..core import Processor
+from ..processor import Processor
 from .pod import BeamPod
-from dataclasses import dataclass, field
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
-from .units import K8SUnits
-from typing import List, Union
-
-
-@dataclass
-class ServiceConfig:
-    port: int
-    service_name: str
-    service_type: str  # NodePort, ClusterIP, LoadBalancer
-    port_name: str
-    create_route: bool = False  # Indicates whether to create a route for this service
-    route_protocol: str = 'http'  # Default to 'http', can be overridden to 'https' as needed
-    create_ingress: bool = False  # Indicates whether to create an ingress for this service
-    ingress_host: str = None  # Optional: specify a host for the ingress
-    ingress_path: str = '/'  # Default path for ingress, can be overridden
-    ingress_tls_secret: str = None  # Optional: specify a TLS secret for ingress TLS
-
-
-@dataclass
-class RayPortsConfig:
-    ray_ports: List[int] = field(default_factory=list)
-    enable_ray_ports: bool = False
-
-
-@dataclass
-class StorageConfig:
-    pvc_name: str
-    pvc_mount_path: str
-    create_pvc: bool = False  # Indicates whether to create a route for this service
-    pvc_size: Union[K8SUnits, str, int] = '1Gi'
-    pvc_access_mode: str = 'ReadWriteMany'
-
-    def __post_init__(self):
-        self.pvc_size = K8SUnits(self.pvc_size)
-
-
-@dataclass
-class MemoryStorageConfig:
-    name: str
-    mount_path: str
-    size_gb: Union[K8SUnits, str, int] = None  # Optional size in GB
-    enabled: bool = True  # Indicates whether this memory storage should be applied
-
-    def __post_init__(self):
-        self.size_gb = K8SUnits(self.size_gb)
-
-
-@dataclass
-class UserIdmConfig:
-    user_name: str
-    role_name: str
-    role_binding_name: str
-    project_name: str
-    role_namespace: str = 'default'  # Default to 'default' namespace
-    create_role_binding: bool = False  # Indicates whether to create a role_binding this project
-
-
-@dataclass
-class SecurityContextConfig:
-    add_capabilities: List[str] = field(default_factory=list)
-    enable_security_context: bool = False
+from .dataclasses import *
 
 
 class BeamDeploy(Processor):
 
-    def __init__(self, k8s=None, project_name=None, namespace=None,
+    def __init__(self, k8s=None, check_project_exists=False, project_name=None, namespace=None,
                  replicas=None, labels=None, image_name=None,
-                 deployment_name=None, use_scc=False, deployment=None,
+                 deployment_name=None, use_scc=False, deployment=None, create_service_account=False,
                  cpu_requests=None, cpu_limits=None, memory_requests=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
-                 service_configs=None, user_idm_configs=None, ray_ports_configs=None, memory_storage_configs=None,
-                 security_context_config=None, scc_name=None,
+                 service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
+                 memory_storage_configs=None,
+                 security_context_config=None, scc_name=None, node_selector=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None):
         super().__init__()
         self.k8s = k8s
         self.deployment = deployment
         self.entrypoint_args = entrypoint_args or []
         self.entrypoint_envs = entrypoint_envs or {}
+        self.check_project_exists = check_project_exists
         self.project_name = project_name
+        self.create_service_account = create_service_account
         self.namespace = namespace
         self.replicas = replicas
         self.labels = labels
@@ -91,6 +33,7 @@ class BeamDeploy(Processor):
         self.service_type = service_type
         self.service_account_name = f"svc{deployment_name}"
         self.use_scc = use_scc
+        self.node_selector = node_selector
         self.scc_name = scc_name if use_scc else None
         self.cpu_requests = cpu_requests
         self.cpu_limits = cpu_limits
@@ -99,6 +42,7 @@ class BeamDeploy(Processor):
         self.gpu_requests = gpu_requests
         self.gpu_limits = gpu_limits
         self.service_configs = service_configs or []
+        self.enable_ray_ports = enable_ray_ports
         self.ray_ports_configs = ray_ports_configs or RayPortsConfig()
         self.storage_configs = storage_configs or []
         self.memory_storage_configs = memory_storage_configs or []
@@ -109,9 +53,11 @@ class BeamDeploy(Processor):
         if replicas is None:
             replicas = self.replicas
 
-        self.k8s.create_project(self.namespace)
+        if self.check_project_exists is True:
+            self.k8s.create_project(self.namespace)
 
-        self.k8s.create_service_account(self.service_account_name, self.namespace)
+        if self.create_service_account is True:
+            self.k8s.create_service_account(self.service_account_name, self.namespace)
 
         if self.storage_configs:
             for storage_config in self.storage_configs:
@@ -166,8 +112,9 @@ class BeamDeploy(Processor):
 
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 
-        for ray_ports_config in self.ray_ports_configs:
-            extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
+        if self.enable_ray_ports is True:
+            for ray_ports_config in self.ray_ports_configs:
+                extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
@@ -180,6 +127,7 @@ class BeamDeploy(Processor):
             service_account_name=self.service_account_name,  # Pass this
             storage_configs=self.storage_configs,
             memory_storage_configs=enabled_memory_storages,
+            node_selector=self.node_selector,
             cpu_requests=self.cpu_requests,
             cpu_limits=self.cpu_limits,
             memory_requests=self.memory_requests,
@@ -190,25 +138,59 @@ class BeamDeploy(Processor):
             entrypoint_args=self.entrypoint_args,
             entrypoint_envs=self.entrypoint_envs,
         )
-        # self.k8s.apply_deployment(deployment, namespace=self.namespace)
-        pod_info = self.k8s.apply_deployment(deployment, namespace=self.namespace)
 
-        if pod_info is list:
-            # If the deployment was successfully applied, create and return a BeamPod instance
-            return [self.generate_beam_pod(pod) for pod in pod_info]
-        elif pod_info is not None:
-            # If the deployment was successfully applied, create and return a BeamPod instance
-            return self.generate_beam_pod(pod_info)
-        else:
-            # Handle the case where the deployment application failed
-            logger.error("Failed to apply deployment")
+        pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+
+        # Print the type and content of pod_infos for debugging
+        # print(f"Type of pod_infos: {type(pod_infos)}")
+        # print(f"Content of pod_infos: {pod_infos}")
+
+        beam_pod_instances = []
+
+        # Check if pod_infos is a list and iterate over it
+        if isinstance(pod_infos, list) and pod_infos:
+            for pod_info in pod_infos:
+                # Print each pod_info for debugging
+                print(f"Processing pod_info: {pod_info}")
+
+                # Extract the pod name from pod_info
+                pod_name = getattr(pod_info, 'name', None)
+                print(f"Extracted pod_name: {pod_name}")
+
+                if pod_name:
+                    # Fetch detailed Pod information using the name
+                    actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
+                    # print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
+
+                    # Create a BeamPod instance with the detailed Pod info
+                    beam_pod_instance = BeamPod(pod_infos=[actual_pod_info], namespace=self.namespace, k8s=self.k8s)
+                    beam_pod_instances.append(beam_pod_instance)
+                else:
+                    logger.warning("PodInfo object does not have a 'name' attribute.")
+
+        # If pod_infos is not a list but a single object with a name attribute
+        elif pod_infos and hasattr(pod_infos, 'name'):
+            pod_name = pod_infos.name
+            print(f"Single pod_info with pod_name: {pod_name}")
+
+            actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
+            print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
+
+            # Directly return the single BeamPod instance
+            return BeamPod(pod_infos=[actual_pod_info], namespace=self.namespace, k8s=self.k8s)
+
+        # Handle cases where deployment failed or no pods were returned
+        if not beam_pod_instances:
+            logger.error("Failed to apply deployment or no pods were returned.")
             return None
 
-    def generate_beam_pod(self, pod_info):
-        logger.info(f"Generating BeamPod for pod: '{pod_info}'")
-        # Assuming pod_info is an object, extract the pod name as a string
-        pod_name = pod_info.name  # Adjust this line based on the actual structure of pod_info
-        return BeamPod(pod_name, namespace=self.namespace, k8s=self.k8s)
+        # Return a single BeamPod instance or a list of them, based on the number of instances created
+        return beam_pod_instances if len(beam_pod_instances) > 1 else beam_pod_instances[0]
+
+    def generate_beam_pod(self, pod_infos):
+        # logger.info(f"Generating BeamPod for pods: '{pod_infos}'")
+        # Ensure pod_infos is a list of PodInfo objects
+        return BeamPod(pod_infos=pod_infos, k8s=self.k8s, namespace=self.namespace)
 
     def delete_deployment(self):
         # Delete deployment

@@ -123,7 +123,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if self.data_type == 'dict':
 
-            ind_type = check_type(ind, check_minor=False)
+            ind_type = check_type(ind, minor=False)
             if ind_type.element == 'str':
                 if ind_type.major == 'scalar':
                     return self.data[ind]
@@ -153,7 +153,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
             ind = slice_to_index(ind, l=self.index.index.max()+1)
 
-            ind_type = check_type(ind, check_element=False)
+            ind_type = check_type(ind, element=False)
             if ind_type.minor == 'tensor':
                 loc = as_numpy(ind)
             else:

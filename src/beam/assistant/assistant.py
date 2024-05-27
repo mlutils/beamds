@@ -2,7 +2,7 @@ import json
 from functools import cached_property
 
 from ..llm import beam_llm
-from ..core import MetaDispatcher
+from ..processor import MetaDispatcher
 from ..utils import check_type
 from ..logger import beam_logger as logger
 import inspect

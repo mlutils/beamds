@@ -23,4 +23,5 @@ jupyterlab-widgets
 ipywidgets>=8.0.0
 jupyter_client >= 8.3.0
 nbclient >= 0.8.0
+Werkzeug >= 3.0.0
 

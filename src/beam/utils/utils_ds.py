@@ -2,7 +2,6 @@ import copy
 import os
 import sys
 import subprocess
-from collections import defaultdict
 import numpy as np
 
 import random
@@ -16,13 +15,13 @@ from functools import partial
 import itertools
 import scipy
 import re
-from .utils_all import check_type, check_minor_type, slice_array, is_arange, DataObject, check_element_type
+from .utils_all import (check_type, check_minor_type, slice_array, is_arange, DataObject, is_container,
+                        jupyter_like_traceback)
+from ..type import BeamType
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
     if isinstance(s, slice):
-
-        f = torch.arange if arr_type == 'tensor' else np.arange
 
         if s == slice(None):
             if sliced is not None:
@@ -31,6 +30,8 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
                 return f(l)
             else:
                 return ValueError(f"Cannot slice: {s} without length info")
+
+        l = l or len(sliced) if sliced is not None else 0
 
         step = s.step
         if step is None:
@@ -48,7 +49,14 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
         elif stop < 0:
             stop = l + stop
 
+        if sliced is not None:
+            return slice_array(sliced, slice(start, stop, step))
+
+        f = torch.arange if arr_type == 'tensor' else np.arange
         return f(start, stop, step)
+
+    if sliced is not None:
+        return slice_array(sliced, s)
     return s
 
 
@@ -93,11 +101,11 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
               convert_scalar=False, **kwargs):
 
     if x_type is None:
-        x_type = check_type(x, check_element=False)
+        x_type = check_type(x, element=False)
 
-    if not convert_to_tensor and x_type.minor in ['numpy', 'pandas', 'scipy_sparse', 'native', 'modin']:
+    if not convert_to_tensor and x_type.is_data_array or x_type.is_scalar:
         return x
-    if not convert_scalar and x_type.minor == 'native':
+    if not convert_scalar and x_type.is_scalar:
         return x
 
     device = beam_device(device)
@@ -111,8 +119,11 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
         elif 'complex' in dtype:
             dtype = torch.complex32 if half else torch.complex64
 
-    if x_type.minor == 'pandas':
+    if x_type.minor in ['pandas', 'cudf']:
         x = x.values
+
+    elif x_type.minor == 'polars':
+        x = x.to_numpy()
 
     if copy:
         x = torch.tensor(x, device=device, dtype=dtype)
@@ -235,6 +246,15 @@ def to_device(data, device='cuda', half=False, dtype=None, brain=False):
     return as_tensor(data, device=device, half=half, convert_to_tensor=False, dtype=dtype, brain=brain)
 
 
+def concat_polars_horizontally(data, **kwargs):
+    import polars as pl
+    data = [v.with_column(pl.arange(0, v.height).alias("key")) for v in data]
+    d = data[0]
+    for v in data[1:]:
+        d = d.join(v, on="key", how="inner")
+    return d.drop_in_place("key")
+
+
 def recursive_concatenate(data, dim=0):
     d0 = data[0]
     if isinstance(d0, dict):
@@ -250,6 +270,18 @@ def recursive_concatenate(data, dim=0):
         elif minor_type == 'pandas':
             func = pd.concat
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
+            kwargs = {'axis': dim}
+        elif minor_type == 'polars':
+            if dim == 0:
+                import polars as pl
+                func = pl.concat
+                kwargs = {'axis': dim}
+            else:
+                func = concat_polars_horizontally
+        elif minor_type == 'cudf':
+            import cudf
+            func = cudf.concat
+            data = [cudf.Series(v.values) if isinstance(v, cudf.Index) else v for v in data]
             kwargs = {'axis': dim}
         elif minor_type == 'numpy':
             func = np.concatenate
@@ -330,9 +362,9 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
         torch.backends.cudnn.benchmark = True
 
 
-def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
+def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0, x_type=None):
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
-    x_type = check_type(x, check_element=False)
+    x_type = x_type or check_type(x, element=False)
 
     # assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
 
@@ -348,7 +380,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             chunksize = l // n_chunks
 
         if n_chunks is None:
-            n_chunks = int(np.round(l / chunksize))
+            n_chunks = max(int(np.round(l / chunksize)), 1)
 
         if x_type.minor == 'tensor':
             for i, c in enumerate(torch.tensor_split(x, n_chunks, dim=dim)):
@@ -357,7 +389,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
                 yield i, c
 
-        elif x_type.minor == 'pandas' and partition != None:
+        elif x_type.minor in ['pandas', 'cudf'] and partition != None:
 
             grouped = x.groupby(partition, sort=True)
             for k, g in grouped:
@@ -370,9 +402,15 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
                     c = c.squeeze()
                 yield i, c
 
-        elif x_type.minor == 'pandas':
+        elif x_type.minor in ['pandas', 'cudf']:
 
-            index_name = x.index.name
+            if x_type.minor == 'cudf':
+                import cudf as upd
+            else:
+                upd = pd
+
+            index_name = x.index.name or 'index'
+            is_series = x.ndim == 1
             x = x.reset_index()
             columns = x.columns
 
@@ -380,14 +418,25 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
                 if squeeze and len(c) == 1:
                     c = c.squeeze()
-                    c = pd.Series(c, index=columns)
+                    c = upd.Series(c, index=columns)
                     c.name = c[index_name]
                     c = c.drop(index_name)
 
                 else:
-                    c = pd.DataFrame(data=c, columns=columns)
+                    c = upd.DataFrame(data=c, columns=columns)
                     c = c.set_index(index_name)
 
+                    if is_series:
+                        c = c.squeeze()
+
+                yield i, c
+
+        elif x_type.minor == 'polars':
+
+            for i in range(n_chunks):
+                c = x.slice(i * chunksize, (i + 1) * chunksize)
+                if squeeze and len(c) == 1:
+                    c = c[0]
                 yield i, c
 
         else:
@@ -405,7 +454,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
                     yield k, v
             else:
                 items = list(x.items())
-                chunks = [items[i:i + chunksize] for i in range(0, len(items), chunksize)]
+                chunks = [items[i:i + chunksize] for i in range(0, len(items), n_chunks)]
                 for i, c in enumerate(chunks):
                     yield i, dict(c)
 
@@ -428,45 +477,15 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
         if len(c):
             yield i, c
 
-def stack_batched_results(results, batch_size=None):
-    # this step is done in order to be able to pickle the results
-    stacked_results = defaultdict(dict)
-    for n, res in results.items():
-        for k, v in res.items():
-            if type(v) == list:
-                v_minor = check_type(v[0]).minor
-                if v_minor == 'tensor':
-                    oprs = {'cat': torch.cat, 'stack': torch.stack}
-                elif v_minor == 'numpy':
-                    oprs = {'cat': np.concatenate, 'stack': np.stack}
-                elif v_minor == 'pandas':
-                    oprs = {'cat': pd.concat, 'stack': pd.concat}
-                elif v_minor == 'native':
-                    oprs = {'cat': torch.tensor, 'stack': torch.tensor}
-                else:
-                    oprs = {'cat': lambda x: x, 'stack': lambda x: x}
 
-                opr = oprs['cat']
-                if batch_size is not None and hasattr(v[0], '__len__') \
-                        and len(v[0]) != batch_size and len(v[0]) == len(v[-1]):
-                    opr = oprs['stack']
-
-                stacked_results[n][k] = opr(results[n][k])
-
-            else:
-                stacked_results[n][k] = results[n][k]
-
-    return stacked_results
-
-
-def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0):
-    x_type = check_type(x)
+def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0, x_type=None):
+    x_type = x_type or check_type(x)
 
     try:
 
         if dim is None:
             for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
-                                      squeeze=squeeze, dim=0):
+                                      squeeze=squeeze, dim=0, x_type=x_type):
                 yield k, c
 
         elif (x_type.major == 'container') and (x_type.minor == 'dict'):
@@ -499,7 +518,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
                 yield i, None
         else:
             for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
-                                      squeeze=squeeze, dim=dim):
+                                      squeeze=squeeze, dim=dim, x_type=x_type):
                 yield k, c
 
     except StopIteration:
@@ -537,7 +556,7 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
 
     x = list(xs)
 
-    x_type = check_type(x[0], check_element=False)
+    x_type = check_type(x[0], element=False)
 
     if x_type.major == 'container' and x_type.minor == 'dict':
         dictionary = {}
@@ -545,7 +564,7 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
             dictionary.update(xi)
         return dictionary
 
-    if (x_type.major not in ['array', 'other']) or (dim == 1 and x_type.minor not in ['tensor', 'numpy', 'pandas']):
+    if (x_type.major not in ['array', 'other']) or (dim == 1 and not x_type.is_data_array):
         return x
 
     if x_type.minor == 'tensor':
@@ -560,15 +579,28 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
             return scipy.sparse.vstack(x)
         return scipy.sparse.hstack(x)
 
-    elif x_type.minor == 'pandas':
-        if on is None or dim == 0:
+    elif x_type.minor in ['pandas', 'cudf']:
+
+        if x_type.minor == 'cudf':
+            import cudf as upd
+        else:
+            upd = pd
+
+        if dim == 0:
             if len(x[0].shape) == 1:
-                x = [pd.Series(xi) for xi in x]
-            return pd.concat(x, axis=dim)
+                x = [upd.Series(xi) for xi in x]
+            return upd.concat(x, axis=dim)
         elif on == 'index':
             return recursive_merge(x, method=method, how=how, left_index=True, right_index=True)
         else:
             return recursive_merge(x, method=method, how=how, on=on)
+
+    elif x_type.minor == 'polars':
+        if dim == 1:
+            return concat_polars_horizontally(x)
+        import polars as pl
+        return pl.concat(x)
+
     else:
 
         xc = []
@@ -633,7 +665,6 @@ def recursive_size(x):
         return object_size(x, x_type=x_type)
 
 
-
 def object_size(x, x_type=None):
     if x_type is None:
         x_type = check_type(x)
@@ -641,11 +672,13 @@ def object_size(x, x_type=None):
         return x.element_size() * x.nelement()
     elif x_type.minor in ['numpy', 'scipy_sparse']:
         return x.size * x.dtype.itemsize
-    elif x_type.minor == 'pandas':
+    elif x_type.minor in ['pandas', 'cudf']:
         try:
             return np.sum(x.memory_usage(index=True, deep=True))
         except:
             return x.size * x.dtype.itemsize
+    elif x_type.minor == 'polars':
+        return x.estimated_size()
     elif x_type.minor == 'list':
         if len(x) <= 1000:
             return np.sum([sys.getsizeof(i) for i in x])
@@ -653,33 +686,6 @@ def object_size(x, x_type=None):
         return len(x) * np.mean([sys.getsizeof(x[i]) for i in ind])
     else:
         return sys.getsizeof(x)
-
-
-def is_container(x):
-
-    if isinstance(x, dict):
-        return True
-    if isinstance(x, list) or isinstance(x, tuple):
-
-        if len(x) < 100:
-            sampled_indices = range(len(x))
-        else:
-            sampled_indices = np.random.randint(len(x), size=(100,))
-
-        elt0 = None
-        for i in sampled_indices:
-            elt = check_element_type(x[i])
-
-            if elt0 is None:
-                elt0 = elt
-
-            if elt != elt0:
-                return True
-
-            if elt in ['array', 'none', 'object']:
-                return True
-
-    return False
 
 
 def recursive(func):
@@ -777,11 +783,11 @@ def recursive_keys(x, level=1):
 @recursive
 def recursive_clone(x):
     x_minor = check_minor_type(x)
-    if x_minor == 'tensor':
+    if x_minor in ['tensor', 'polars']:
         return x.clone()
     elif x_minor == 'numpy':
         return x.copy()
-    elif x_minor == 'pandas':
+    elif x_minor in ['pandas', 'cudf']:
         return x.copy(deep=True)
     elif x_minor == 'scipy_sparse':
         return x.copy()
@@ -841,8 +847,8 @@ def recursive_batch(x, index):
 
 
 @recursive
-def recursive_len(x):
-    x_type = check_type(x)
+def recursive_len(x, data_array_only=False):
+    x_type = BeamType.check(x)
 
     if x_type.minor == 'scipy_sparse':
         return x.shape[0]
@@ -850,11 +856,17 @@ def recursive_len(x):
     if x_type.element == 'none':
         return 0
 
-    if hasattr(x, '__len__'):
-        try:
+    if data_array_only:
+        if x_type.is_data_array:
             return len(x)
-        except TypeError:
-            return 1
+        return 1
+    else:
+        if hasattr(x, '__len__'):
+            try:
+                return len(x)
+            except TypeError:
+                print(jupyter_like_traceback())
+                return 1
 
     if x is None:
         return 0
@@ -890,8 +902,10 @@ def recursive_slice_columns(x, columns, columns_index):
 
     if x is None:
         return None
-    elif x_type.minor == 'pandas':
+    elif x_type.minor in ['pandas', 'cudf']:
         return x[columns]
+    elif x_type.minor == 'polars':
+        return x.select(columns)
     else:
         return x[:, columns_index]
 
@@ -946,15 +960,25 @@ def container_len(x):
 def big_array_representation(x):
     n = 100
     nl = 1000
+    seed = 42
 
     metadata = None
     minor_type = check_minor_type(x)
-    if minor_type == 'pandas':
+    if minor_type in ['pandas', 'cudf']:
         metadata = x.columns
         x = x.values
-    if minor_type in ['numpy', 'tensor', 'pandas', 'modin']:
+    elif minor_type == 'scipy_sparse':
+        metadata = x.shape
+        x = x.data
+    if minor_type in ['numpy', 'tensor', 'pandas', 'scipy_sparse', 'cudf']:
         ind = tuple(slice(0, i, i // n) if i > n else slice(None) for i in x.shape)
         x = x.__getitem__(ind)
+
+    if minor_type == 'polars':
+        metadata = x.columns
+        import polars as pl
+        x = pl.concat([x.head(n // 2), x.sample(n=min(n, len(x) // nl), seed=seed), x.tail(n // 2)])
+
     if minor_type in ['list', 'tuple', 'set']:
         x = list(x)[::len(x) // nl]
 
@@ -1018,13 +1042,15 @@ def recursive_size_summary(x, mode='sum'):
             return x.size * x.dtype.itemsize
         elif x_type.minor == 'pandas':
             return np.sum(x.memory_usage(index=True, deep=True))
+        elif x_type.minor == 'polars':
+            return x.esitmate_size()
         else:
             return sys.getsizeof(x)
 
 
 @recursive
 def recursive_squeeze(x):
-    x_type = check_type(x, check_element=False)
+    x_type = check_type(x, element=False)
     if x_type.minor == 'tensor':
         return x.squeeze(0)
     elif x_type.minor == 'numpy':
@@ -1033,7 +1059,12 @@ def recursive_squeeze(x):
         if isinstance(x, pd.Index) and len(x) == 1:
             return x[0]
         return x.squeeze('index')
-    elif x_type.minor == 'scipy_sparse':
+    elif x_type.minor == 'cudf':
+        import cudf
+        if isinstance(x, cudf.Index) and len(x) == 1:
+            return x[0]
+        return x.squeeze('index')
+    elif x_type.minor in ['scipy_sparse', 'polars']:
         ValueError("Cannot squeeze scipy sparse matrix")
     elif x_type.minor == 'list' and len(x) == 1:
         return x[0]
@@ -1043,10 +1074,9 @@ def recursive_squeeze(x):
 
 def empty_element(x):
     x_type = check_type(x)
-    if x_type.minor in ['numpy', 'pandas', 'tensor', 'scipy_sparse']:
+    if x_type.minor in ['numpy', 'pandas', 'tensor', 'scipy_sparse', 'cudf']:
         return x.size == 0
-
-    if x_type.minor in ['list', 'tuple', 'set', 'dict']:
+    if x_type.minor in ['list', 'tuple', 'set', 'dict', 'polars']:
         return len(x) == 0
 
     if x_type.minor == 'native':
@@ -1074,7 +1104,10 @@ def is_chunk(path, chunk_pattern='_chunk'):
     return path.is_file() and bool(re.search(rf'\d{6}{chunk_pattern}\.', str(path.name)))
 
 
-def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True):
+def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True, depth=-1):
+
+    if depth == 0:
+        return [x]
 
     if x_type is None:
         x_type = check_type(x)
@@ -1082,7 +1115,7 @@ def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True)
     if x_type.major == 'container':
         l = []
         for i, xi in iter_container(x):
-            l.extend(recursive_flatten(xi, flat_array=flat_array, _root=False))
+            l.extend(recursive_flatten(xi, flat_array=flat_array, _root=False, tolist=tolist, depth=depth-1))
         return l
     else:
         if _root:

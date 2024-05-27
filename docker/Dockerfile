@@ -4,7 +4,7 @@
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
 #FROM nvidia/cuda:12.3.0-devel-ubuntu22.04
-FROM nvcr.io/nvidia/pytorch:24.03-py3
+FROM nvcr.io/nvidia/pytorch:24.04-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -86,7 +86,9 @@ RUN pip install -U -r /workspace/beam_image/requirements_0016.txt
 # RUN pip list
 COPY docker/install/requirements_0017.txt /workspace/beam_image
 RUN pip install -U -r /workspace/beam_image/requirements_0017.txt
-
+# RUN pip list
+COPY docker/install/requirements_0018.txt /workspace/beam_image
+RUN pip install -U -r /workspace/beam_image/requirements_0018.txt
 #install huggingface ecosystem
 # REMOVE FOR LITE VERSION
 COPY docker/install/install_huggingface_ecosystem.sh /workspace/beam_image
@@ -110,8 +112,10 @@ RUN bash /workspace/beam_image/install_torchsig.sh
 
 # install DGL from source
 # REMOVE FOR LITE VERSION
-COPY docker/install/install_dgl.sh /workspace/beam_image
-RUN bash /workspace/beam_image/install_dgl.sh
+# RUN bash /workspace/install/install_dgl.sh
+COPY docker/install_dgl_fixed.sh /workspace/install/install_dgl_fixed.sh
+RUN bash /workspace/install/install_dgl_fixed.sh
+
 
 # install RAPID framework
 # cannot install rapids as it does not support cuda 12.0 yet
@@ -123,7 +127,8 @@ RUN bash /workspace/beam_image/install_dgl.sh
 # RUN python /workspace/beam_image/downloader.py
 
 ## download nlp data
-# RUN python /workspace/beam_image/models_downloads.py
+COPY docker/install/models_downloads.py /workspace/beam_image
+RUN python /workspace/beam_image/models_downloads.py
 
 
 # no need to install RAPIDS as it comes with the image, except cusignal which is not found

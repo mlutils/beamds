@@ -1,7 +1,7 @@
 import time
 import random
 from faker import Faker
-from ..core import Processor
+from ..processor import Processor
 
 
 class BeamFakeAlg(Processor):

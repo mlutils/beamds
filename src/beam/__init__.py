@@ -19,7 +19,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            '__version__',
            'resource',
            'KeysConfig',
-           'tqdm',
+           'tqdm', 'Transformer'
            ]
 
 
@@ -40,6 +40,7 @@ if has_torch:
 from .config import UniversalConfig, beam_arguments, BeamConfig, BeamParam
 from .utils import check_type, Timer, pretty_format_number
 from .logger import beam_logger, beam_kpi
+from .transformer import Transformer
 
 from functools import partial
 Timer = partial(Timer, logger=beam_logger)
@@ -50,5 +51,5 @@ from ._version import __version__
 from .resource import resource
 
 from .config import KeysConfig
-beam_key.set_hparams(KeysConfig(silent=True, strict=True))
+beam_key.set_hparams(KeysConfig(silent=True, strict=True, load_config_files=False))
 
