@@ -146,7 +146,9 @@ RUN bash /workspace/beam_image/install_faiss.sh
 ENV ORACLE_HOME "/opt/oracle/instantclient"
 ENV LD_LIBRARY_PATH "$ORACLE_HOME:$LD_LIBRARY_PATH"
 
-COPY docker/install/install_oracle.sh /workspace/beam_image
+
+COPY docker/install/*.sh /workspace/beam_image
+#COPY docker/install/install_oracle.sh /workspace/beam_image
 RUN bash /workspace/beam_image/install_oracle.sh
 
 # install beam - from pip (see requirements_no_deps.txt file)
@@ -155,11 +157,11 @@ RUN bash /workspace/beam_image/install_oracle.sh
 #ENV PATH "$PATH:/workspace/beamds/notebooks/"
 
 # install odbc driver
-COPY docker/install/install_odbc.sh /workspace/beam_image
+#COPY docker/install/install_odbc.sh /workspace/beam_image
 RUN bash /workspace/beam_image/install_odbc.sh
 
 # install hadoop
-COPY docker/install/install_hadoop.sh /workspace/beam_image
+#COPY docker/install/install_hadoop.sh /workspace/beam_image
 RUN bash /workspace/beam_image/install_hadoop.sh
 
 # Set Hadoop environment variables
@@ -170,15 +172,15 @@ ENV PATH "$PATH:$HADOOP_HOME/bin"
 ENV JAVA_HOME "/usr/lib/jvm/default-java"
 
 # config jupyter notebook
-COPY docker/install/configure_jupyter.sh /workspace/beam_image
+#COPY docker/install/configure_jupyter.sh /workspace/beam_image
 RUN bash /workspace/beam_image/configure_jupyter.sh
 
 # install language servers
-COPY docker/install/language_servers.sh /workspace/beam_image
+#COPY docker/install/language_servers.sh /workspace/beam_image
 RUN bash /workspace/beam_image/language_servers.sh
 
 # install aux installs
-COPY docker/install/aux_installs.sh /workspace/beam_image
+#COPY docker/install/aux_installs.sh /workspace/beam_image
 RUN bash /workspace/beam_image/aux_installs.sh
 
 # Create a non-root user
@@ -210,8 +212,8 @@ RUN mkdir -p /home/beam/.ssh && \
 
 
 COPY docker/runs /workspace/beam_image/runs
-
 COPY docker/install/entrypoint.sh /workspace/beam_image
+
 RUN chmod +x /workspace/beam_image/entrypoint.sh
 ENTRYPOINT ["/workspace/beam_image/entrypoint.sh"]
 CMD ["10"]
