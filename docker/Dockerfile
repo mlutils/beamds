@@ -214,7 +214,7 @@ RUN mkdir -p /home/beam/.ssh && \
 
 
 COPY docker/runs /workspace/beam_image/runs
-COPY docker/install/entrypoint.sh /workspace/beam_image
+# COPY docker/install/entrypoint.sh /workspace/beam_image
 
 RUN chmod +x /workspace/beam_image/entrypoint.sh
 ENTRYPOINT ["/workspace/beam_image/entrypoint.sh"]
