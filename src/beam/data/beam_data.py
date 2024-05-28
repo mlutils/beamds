@@ -775,9 +775,9 @@ class BeamData(BeamName):
                             self._orientation = 'packed'
                 else:
                     shapes = recursive_flatten(recursive(shape_of)([self.data]))
-                    shapes = set(list(filter(lambda x: x is not None, shapes)))
+                    shapes = list(filter(lambda x: x is not None, shapes))
 
-                    if len(shapes) == 1 and shapes[0] != 'other':
+                    if len(set(shapes)) == 1 and shapes[0] != 'other':
                         self._orientation = 'index'
                     else:
                         self._orientation = 'packed'
@@ -994,7 +994,7 @@ class BeamData(BeamName):
     def values(self):
 
         if not self.is_cached:
-            bd = self.cache(in_place=False)
+            bd = self.cache(in_place=True)
         else:
             bd = self
 
@@ -1163,6 +1163,7 @@ class BeamData(BeamName):
                 data = [(0, data), ]
                 chunk_file_extension = ''
 
+            object_path = [None] * len(data)
             for i, di in data:
 
                 if len(data) > 1:
@@ -1172,9 +1173,8 @@ class BeamData(BeamName):
 
                 for ext in priority:
                     file_path = path_i.with_suffix(ext)
+                    object_path[i] = file_path.name
 
-                    if len(data) == 1:
-                        object_path = file_path
                     try:
                         kwargs = {}
                         if ext == '.parquet':
@@ -1213,6 +1213,9 @@ class BeamData(BeamName):
 
                 if error:
                     logger.error(f"Could not write file: {path_i.name}.")
+
+            if len(data) == 1:
+                object_path = object_path[0]
 
         return object_path
 
@@ -1328,6 +1331,7 @@ class BeamData(BeamName):
                 kwargs = {'axis': dim}
             else:
                 func = concat_polars_horizontally
+                kwargs = {}
         elif objects_type == 'cudf':
             import cudf
             func = cudf.concat
@@ -1630,7 +1634,7 @@ class BeamData(BeamName):
     def stacked_values(self):
 
         if not self.is_cached:
-            bd = self.cache(in_place=False)
+            bd = self.cache(in_place=True)
         else:
             bd = self
 
@@ -2187,8 +2191,7 @@ class BeamData(BeamName):
                 key = key[-1]
 
             path = path.joinpath(key)
-            path = BeamData.write_object(value, path, **kwargs)
-            all_paths[key] = str(path.relative_to(self.root_path))
+            all_paths[key] = BeamData.write_object(value, path, **kwargs)
             self._all_paths = all_paths
             self.update_all_paths_file()
 
