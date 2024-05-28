@@ -1102,7 +1102,7 @@ class BeamData(BeamName):
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
                      chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None,
-                     split_by=None, split=True, **kwargs):
+                     split_by=None, split=True, priority=None, **kwargs):
 
         path = beam_path(path)
 
@@ -1123,31 +1123,32 @@ class BeamData(BeamName):
                 n_chunks = 1
 
             data_type = check_type(data)
-            if partition is not None and data_type.minor == 'pandas':
-                priority = ['.parquet', '.fea', '.pkl']
-            elif partition is not None and data_type.minor == 'polars':
-                priority = ['.pl.parquet', '.pl.fea', '.pl.pkl']
-            elif data_type.minor == 'pandas':
-                priority = ['.fea', '.parquet', '.pkl']
-            elif data_type.minor == 'polars':
-                priority = ['.pl.fea', '.pl.parquet', '.pl.pkl']
-            elif data_type.minor == 'cudf':
-                priority = ['.cf.fea', '.cf.parquet', '.cf.pkl']
-            elif data_type.minor == 'numpy':
-                priority = ['.npy', '.pkl']
-            elif data_type.minor == 'scipy_sparse':
-                priority = ['.scipy_npz', '.pkl']
-            elif data_type.minor == 'tensor':
-                if data.is_sparse_csr:
-                    priority = ['.pkl']
+            if priority is None:
+                if partition is not None and data_type.minor == 'pandas':
+                    priority = ['.parquet', '.fea', '.pkl']
+                elif partition is not None and data_type.minor == 'polars':
+                    priority = ['.pl.parquet', '.pl.fea', '.pl.pkl']
+                elif data_type.minor == 'pandas':
+                    priority = ['.fea', '.parquet', '.pkl']
+                elif data_type.minor == 'polars':
+                    priority = ['.pl.fea', '.pl.parquet', '.pl.pkl']
+                elif data_type.minor == 'cudf':
+                    priority = ['.cf.fea', '.cf.parquet', '.cf.pkl']
+                elif data_type.minor == 'numpy':
+                    priority = ['.npy', '.pkl']
+                elif data_type.minor == 'scipy_sparse':
+                    priority = ['.scipy_npz', '.pkl']
+                elif data_type.minor == 'tensor':
+                    if data.is_sparse_csr:
+                        priority = ['.pkl']
+                    else:
+                        priority = ['.pt']
+                elif hasattr(data, 'beam_class_name') and 'BeamData' in data.beam_class_name:
+                    priority = ['.bmd', '.pkl', '.dill']
+                elif hasattr(data, 'beam_class_name') and 'Processor' in data.beam_class_name:
+                    priority = ['.bmp', '.pkl', '.dill']
                 else:
-                    priority = ['.pt']
-            elif hasattr(data, 'beam_class_name') and 'BeamData' in data.beam_class_name:
-                priority = ['.bmd', '.pkl', '.dill']
-            elif hasattr(data, 'beam_class_name') and 'Processor' in data.beam_class_name:
-                priority = ['.bmp', '.pkl', '.dill']
-            else:
-                priority = ['.pkl', '.dill']
+                    priority = ['.pkl', '.dill']
 
             if file_type is not None:
                 priority.insert(file_type, 0)

@@ -292,7 +292,7 @@ class Processor(BeamBase):
             if skeleton is True:
                 skeleton = Processor.skeleton_file
             with self.beam_pickle():
-                BeamData.write_object(self, path.joinpath(skeleton),
+                BeamData.write_object(self, path.joinpath(skeleton), priority=['.pkl', '.dill'],
                                       override=override, split=False, archive_size=0)
 
                 # if override or not path.joinpath(skeleton).exists():
