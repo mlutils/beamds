@@ -1,7 +1,6 @@
 import math
 from typing import List, Union
 
-import torch
 import faiss
 import numpy as np
 from functools import cached_property

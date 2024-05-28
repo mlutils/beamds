@@ -25,7 +25,7 @@ try:
 except ImportError:
     has_polars = False
 
-from .lazy_importer import lazy_importer as lzi
+from ..importer.lazy_importer import lazy_importer as lzi
 
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')

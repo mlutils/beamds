@@ -195,6 +195,8 @@ class Transformer(Processor):
 
         if return_results:
             return key, x
+        else:
+            return key, None
 
     def fit(self, x, **kwargs):
         raise NotImplementedError("Override the fit method to implement the fitting process.")
@@ -338,7 +340,7 @@ class Transformer(Processor):
                              **parallel_kwargs)
 
         if return_results is None:
-            return_results = store or store_chunk
+            return_results = not (store or store_chunk)
 
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")
