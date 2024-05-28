@@ -207,8 +207,10 @@ COPY docker/install/sshd_config /opt/ssh
 RUN mkdir -p /home/beam/.ssh && \
     chmod 700 /home/beam/.ssh && \
     chown beam:beam /home/beam/.ssh && \
-    chown -R beam. /opt/ssh && chmod 600 /home/beam/.ssh/authorized_keys && \
-    chown beam:beam /home/beam/.ssh/authorized_keys
+    chown -R beam. /opt/ssh
+
+#&& chmod 600 /home/beam/.ssh/authorized_keys && \
+#    chown beam:beam /home/beam/.ssh/authorized_keys
 
 
 COPY docker/runs /workspace/beam_image/runs
