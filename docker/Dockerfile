@@ -112,9 +112,9 @@ RUN bash /workspace/beam_image/install_torchsig.sh
 
 # install DGL from source
 # REMOVE FOR LITE VERSION
-RUN bash /workspace/install/install_dgl.sh
+RUN bash /workspace/beam_image/install_dgl.sh
 # COPY docker/install_dgl_fixed.sh /workspace/install/install_dgl_fixed.sh
-# RUN bash /workspace/install/install_dgl_fixed.sh
+# RUN bash /workspace/beam_image/install_dgl_fixed.sh
 
 
 # install RAPID framework
