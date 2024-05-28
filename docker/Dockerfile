@@ -182,9 +182,8 @@ COPY docker/install/aux_installs.sh /workspace/beam_image
 RUN bash /workspace/beam_image/aux_installs.sh
 
 # Create a non-root user
-RUN useradd -m -s /bin/bash beam && echo 'beam:12345678' | chpasswd
-
-RUN mkdir -p  /opt/ssh && mkdir -p  /opt/supervisor
+RUN useradd -m -s /bin/bash beam && echo 'beam:12345678' | chpasswd &&  \
+    mkdir -p  /opt/ssh && mkdir -p  /opt/supervisor
 
 COPY docker/install/supervisord.conf /etc/supervisor/conf.d/
 COPY docker/install/sshd_config /opt/ssh
@@ -206,14 +205,9 @@ COPY docker/install/sshd_config /opt/ssh
 RUN mkdir -p /home/beam/.ssh && \
     chmod 700 /home/beam/.ssh && \
     chown beam:beam /home/beam/.ssh && \
-    chown -R beam. /opt/ssh
+    chown -R beam. /opt/ssh && chmod 600 /home/beam/.ssh/authorized_keys && \
+    chown beam:beam /home/beam/.ssh/authorized_keys
 
-# You can copy a public key from your host machine to the container for key-based authentication
-# COPY id_rsa.pub /home/beam/.ssh/authorized_keys
-
-# Adjust file permissions for SSH
-RUN chmod 600 /home/beam/.ssh/authorized_keys && \
-     chown beam:beam /home/beam/.ssh/authorized_keys
 
 COPY docker/runs /workspace/beam_image/runs
 
