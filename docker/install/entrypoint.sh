@@ -100,7 +100,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "Root password was updated"
-ROOT_PASSWORD="12345678"
+ROOT_PASSWORD="qwerqwer"
 echo "Beam password was updated"
 BEAM_PASSWORD="12345678"
 
@@ -161,6 +161,7 @@ fi
 
 # run mlflow
 if [ "$RUN_MLFLOW" = true ]; then
+  MLFLOW_PORT="${INITIALS}80"
   echo "MLflow Port: $MLFLOW_PORT"
   export MLFLOW_PORT=$MLFLOW_PORT
   echo "mlflow_port, ${MLFLOW_PORT}" >> /workspace/configuration/config.csv
@@ -224,7 +225,7 @@ if [ "$RUN_SSH" = true ]; then
   echo "beam:$BEAM_PASSWORD" | chpasswd
   #  service ssh start
   #/usr/bin/
-  supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log
+  supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
   echo "SSH is running."
 else
   echo "SSH is disabled."

@@ -5,6 +5,7 @@ import numpy as np
 from ..utils import lazy_property as cached_property
 
 from ..logger import beam_logger as logger
+from ..path import normalize_host
 from .core import BeamLLM, CompletionObject
 from pydantic import Field, PrivateAttr
 from ..path import beam_key
@@ -15,13 +16,17 @@ class OpenAIBase(BeamLLM):
     api_key: Optional[str] = Field(None)
     api_base: Optional[str] = Field(None)
     organization: Optional[str] = Field(None)
+    _models: Any = PrivateAttr(default=None)
 
-    def __init__(self, api_key=None, api_base=None, organization=None, *args, **kwargs):
+    def __init__(self, model=None, api_key=None, api_base=None, organization=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.api_key = api_key
         self.api_base = api_base
         self.organization = organization
+
+        self.model = model
+        self._models = None
 
     @cached_property
     def client(self):
@@ -37,19 +42,17 @@ class OpenAIBase(BeamLLM):
             self.usage["completion_tokens"] += response["completion_tokens"]
             self.usage["total_tokens"] += response["prompt_tokens"] + response["completion_tokens"]
 
-    # def sync_openai(self):
-    #     openai.api_key = self.api_key
-    #     openai.api_base = self.api_base
-    #     openai.organization = self.organization
-
-    def _completion(self, prompt=None, **kwargs):
+    def _completion(self, prompt=None, guidance=None, **kwargs):
         # self.sync_openai()
+        if guidance is not None:
+            extra_body = kwargs.get('extra_body', {})
+            extra_body = {**extra_body, **guidance}
         res = self.client.completions.create(model=self.model, prompt=prompt, **kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
     def _chat_completion(self, messages=None, **kwargs):
         # self.sync_openai()
-        res = self.client.chat.completions.create(model=self.model, messages=messages, **kwargs)
+        res = self.client.chat.completions.create(model=self.model, messages=messages, guidance=None, **kwargs)
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 
     def verify_response(self, res):
@@ -84,21 +87,39 @@ class OpenAIBase(BeamLLM):
         res = res.response
         return res
 
+    def retrieve(self, model=None):
+        import openai
+        if model is None:
+            model = self.model
+        return openai.Engine.retrieve(id=model)
+
+    @property
+    def models(self):
+        if self._models is None:
+            import openai
+            models = openai.models.list()
+            models = {m.id: m for m in models.data}
+            self._models = models
+        return self._models
+
+    def embedding(self, text, model=None):
+        if model is None:
+            model = self.model
+        import openai
+        response = openai.Engine(model).embedding(input=text, model=model)
+        embedding = np.array(response.data[1]['embedding'])
+        return embedding
+
 
 class OpenAILLM(OpenAIBase):
-
-    _models: Any = PrivateAttr(default=None)
 
     def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
 
         api_key = beam_key('OPENAI_API_KEY', api_key)
 
         kwargs['scheme'] = 'openai'
-        super().__init__(api_key=api_key, api_base='https://api.openai.com/v1',
+        super().__init__(model=model, api_key=api_key, api_base='https://api.openai.com/v1',
                          organization=organization, *args, **kwargs)
-
-        self.model = model
-        self._models = None
 
     @property
     def is_chat(self):
@@ -138,26 +159,19 @@ class OpenAILLM(OpenAIBase):
 
         return path
 
-    def retrieve(self, model=None):
-        import openai
-        if model is None:
-            model = self.model
-        return openai.Engine.retrieve(id=model)
+
+class SamurOpenAI(OpenAIBase):
+
+    _is_chat: Any = PrivateAttr(default=None)
+
+    def __init__(self, model=None, hostname=None, api_key=None, port=None, chat=True, *args, **kwargs):
+
+        api_base = f"http://{normalize_host(hostname, port)}/openai/v1"
+        kwargs['scheme'] = 'samur-openai'
+        super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  **kwargs)
+        self._is_chat = chat
 
     @property
-    def models(self):
-        if self._models is None:
-            import openai
-            models = openai.models.list()
-            models = {m.id: m for m in models.data}
-            self._models = models
-        return self._models
-
-    def embedding(self, text, model=None):
-        if model is None:
-            model = self.model
-        import openai
-        response = openai.Engine(model).embedding(input=text, model=model)
-        embedding = np.array(response.data[1]['embedding'])
-        return embedding
+    def is_chat(self):
+        return self._is_chat
 

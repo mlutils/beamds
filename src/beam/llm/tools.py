@@ -234,3 +234,6 @@ class LLMGuidance(BaseModel):
         description=(
             "If specified, will override the default whitespace pattern "
             "for guided json decoding."))
+
+    def arguments(self):
+        return {k: v for k, v in self.dict().items() if v is not None}
