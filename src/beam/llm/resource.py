@@ -1,5 +1,5 @@
-from .models import TGILLM, FastChatLLM, BeamVLLM, HuggingFaceLLM, FastAPIDPLLM
-from .openai import OpenAILLM
+from .models import TGILLM, FastChatLLM, SamurAI, HuggingFaceLLM, FastAPIDPLLM
+from .openai import OpenAILLM, SamurOpenAI
 from ..path import beam_key, BeamURL
 
 
@@ -51,8 +51,11 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
     elif url.protocol == 'huggingface':
         return HuggingFaceLLM(model=model, **kwargs)
 
-    elif url.protocol == 'vllm':
-        return BeamVLLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
+    elif url.protocol == 'samuai':
+        return SamurAI(model=model, hostname=hostname, port=port, username=username, **kwargs)
+
+    elif url.protocol == 'samur-openai':
+        return SamurOpenAI(model=model, hostname=hostname, port=port, api_key=api_key, **kwargs)
 
     elif url.protocol == 'fastapi-dp':
         return FastAPIDPLLM(model=model, hostname=hostname, port=port, username=username, **kwargs)

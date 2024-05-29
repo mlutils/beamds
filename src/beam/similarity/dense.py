@@ -206,15 +206,16 @@ class DenseSimilarity(BeamSimilarity):
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes + ['index', 'vector_store', 'training_vs']
+        return super().excluded_attributes.update('index', 'vector_store', 'training_vs')
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
 
         path = beam_path(path)
 
         self.index = path.joinpath('index.npy').read()
-        with local_copy(path.joinpath('vectore_store.bin'), as_beam_path=False) as p:
+        with local_copy(path.joinpath('vector_store.bin'), as_beam_path=False) as p:
             self.vector_store = faiss.read_index(p)
+
         if path.joinpath('training_vs.bin').is_file():
             with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
                 self.training_vs = faiss.read_index(p)
@@ -231,7 +232,7 @@ class DenseSimilarity(BeamSimilarity):
         super().save_state_dict(state, path, ext, exclude, **kwargs)
 
         path.joinpath('index.npy').write(self.index)
-        with local_copy(path.joinpath('vectore_store.bin'), as_beam_path=False) as p:
+        with local_copy(path.joinpath('vector_store.bin'), as_beam_path=False) as p:
             faiss.write_index(self.vector_store, p)
         if self.training_vs:
             with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:

@@ -16,18 +16,23 @@ from ..utils import (parse_text_to_protocol, get_edit_ratio, retry, BeamDict, Nu
                      pretty_print_dict)
 from ..path import BeamURL, BeamResource
 
-LLM = BaseModel
-CallbackManagerForLLMRun = NullClass
-# import pydantic and check if its version is less than 2.0.0
-import pydantic
-if pydantic.__version__ < '2.0.0':
-    try:
-        from langchain.llms.base import LLM
-        from langchain.callbacks.manager import CallbackManagerForLLMRun
-    except ImportError:
-        logger.warning("langchain not found, using pydantic only as the LLM base")
-else:
-    logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
+from langchain.llms.base import LLM
+from langchain.callbacks.manager import CallbackManagerForLLMRun
+
+# LLM = BaseModel
+# CallbackManagerForLLMRun = NullClass
+# # import pydantic and check if its version is less than 2.0.0
+# import pydantic
+# if pydantic.__version__ < '2.0.0':
+#     try:
+#         from langchain.llms.base import LLM
+#         from langchain.callbacks.manager import CallbackManagerForLLMRun
+#     except ImportError:
+#         logger.warning("langchain not found, using pydantic only as the LLM base")
+# else:
+#     logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
+
+print('here!!!!')
 
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation

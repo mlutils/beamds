@@ -503,10 +503,10 @@ class TFIDF(BeamSimilarity):
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super().special_state_attributes + ['df', 'cf', 'n_docs', 'tf', 'index', 'idf']
+        return super().special_state_attributes.update('df', 'cf', 'n_docs', 'tf', 'index', 'idf')
 
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes + ['preprocessor_transformer', 'chunk_tf', 'chunk_df', 'preprocessor']
+        return super().excluded_attributes.update('preprocessor_transformer', 'chunk_tf', 'chunk_df', 'preprocessor')
 

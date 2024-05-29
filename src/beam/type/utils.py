@@ -5,30 +5,34 @@ import pandas as pd
 from collections import Counter
 from pathlib import PurePath
 
-try:
-    import torch
-
-    has_torch = True
-except ImportError:
-    has_torch = False
-
-try:
-    import scipy
-
-    has_scipy = True
-except ImportError:
-    has_scipy = False
-
-try:
-    import polars as pl
-    has_polars = True
-except ImportError:
-    has_polars = False
-
 from ..importer.lazy_importer import lazy_importer as lzi
 
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
+
+
+def is_polars(x):
+    pl = lzi.polars
+    return pl and isinstance(x, pl.DataFrame)
+
+
+def is_tensor(x):
+    torch = lzi.torch
+    return torch and torch.is_tensor(x)
+
+
+def is_torch_scalar(x):
+    return is_tensor(x) and (not len(x.shape))
+
+
+def is_scipy_sparse(x):
+    scipy = lzi.scipy
+    return scipy and scipy.sparse.issparse(x)
+
+
+def is_cudf(x):
+    cudf = lzi.cudf
+    return cudf and isinstance(x, cudf.DataFrame)
 
 
 def check_element_type(x, minor=None):
@@ -37,7 +41,7 @@ def check_element_type(x, minor=None):
         minor = check_minor_type(x)
     unknown = (minor == 'other')
 
-    if not unknown and not np.isscalar(x) and (has_torch and not (torch.is_tensor(x) and (not len(x.shape)))):
+    if not unknown and not np.isscalar(x) and not is_torch_scalar(x):
         if minor == 'path':
             return 'path'
         return 'array'
@@ -69,7 +73,7 @@ def check_element_type(x, minor=None):
 
 
 def check_minor_type(x):
-    if has_torch and isinstance(x, torch.Tensor):
+    if is_tensor(x):
         return 'tensor'
     if isinstance(x, np.ndarray):
         return 'numpy'
@@ -87,11 +91,11 @@ def check_minor_type(x):
         return 'slice'
     if isinstance(x, Counter):
         return 'counter'
-    if has_polars and isinstance(x, lzi.polars.DataFrame):
+    if is_polars(x):
         return 'polars'
-    if has_scipy and lzi.scipy.sparse.issparse(x):
+    if is_scipy_sparse(x):
         return 'scipy_sparse'
-    if lzi.is_loaded('cudf') and isinstance(x, lzi.cudf.DataFrame):
+    if is_cudf(x):
         return 'cudf'
     elif is_scalar(x):
         return 'scalar'
@@ -131,7 +135,7 @@ def elt_of_list(x, sample_size=20):
 
 
 def is_scalar(x):
-    return np.isscalar(x) or (has_torch and torch.is_tensor(x) and (not len(x.shape)))
+    return np.isscalar(x) or is_torch_scalar(x)
 
 
 def _check_type(x, minor=True, element=True):

@@ -17,7 +17,7 @@ from .utils_all import (check_type, check_minor_type, slice_array, is_arange, Da
 from ..type import BeamType
 
 from ..importer.safe_imports.torch import torch
-from ..importer.safe_imports.torchvision import transforms
+
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -298,6 +298,7 @@ def batch_augmentation_(x, augmentations):
 
 def batch_augmentation(augmentations):
     ba = partial(batch_augmentation_, augmentations=augmentations)
+    from torchvision import transforms
     return transforms.Lambda(ba)
 
 

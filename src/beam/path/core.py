@@ -638,6 +638,7 @@ class PureBeamPath(BeamResource):
         - .mat: MAT
         - .zip: ZIP
         - .msgpack: MessagePack
+        - .cloudpickle: Cloudpickle
         - .geojson: GeoJSON
         - .wav: Soundfile
         - .joblib, .z, .gz, .bz2, .xz, .lzma: Joblib
@@ -808,6 +809,10 @@ class PureBeamPath(BeamResource):
             elif ext == '.msgpack':
                 import msgpack
                 x = msgpack.unpackb(fo.read(), raw=False)
+
+            elif ext == '.cloudpickle':
+                import cloudpickle
+                x = cloudpickle.load(fo)
 
             # GeoJSON (.geojson)
             elif ext == '.geojson':
@@ -1035,6 +1040,10 @@ class PureBeamPath(BeamResource):
             elif ext == '.msgpack':
                 import msgpack
                 fo.write(msgpack.packb(x, use_bin_type=True))
+
+            elif ext == '.cloudpickle':
+                import cloudpickle
+                cloudpickle.dump(x, fo)
 
             # GeoJSON (.geojson)
             elif ext == '.geojson':

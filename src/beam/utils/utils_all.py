@@ -189,7 +189,7 @@ def get_public_ip():
         ip = response.json().get("ip")
         return ip
     except requests.RequestException:
-        return None
+        return "127.0.0.1"
 
 
 def rate_string_format(n, t):
