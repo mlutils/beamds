@@ -1,5 +1,5 @@
 # Create a non-root user
-RUN useradd -m -s /bin/bash beam
+useradd -m -s /bin/bash beam
 echo 'beam:12345678' | chpasswd
 mkdir -p  /opt/ssh
 mkdir -p  /opt/supervisor
