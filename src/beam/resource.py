@@ -17,7 +17,7 @@ def resource(uri, **kwargs):
     elif scheme in ['async-http', 'async-https']:
         from .distributed import async_client
         return async_client(uri, **kwargs)
-    elif scheme in ['openai', 'tgi', 'fastchat', 'huggingface', 'fastapi', 'fastapi-dp']:
+    elif scheme in ['openai', 'tgi', 'fastchat', 'huggingface', 'samurai', 'samur-openai', 'fastapi-dp']:
         from .llm import beam_llm
         return beam_llm(uri, **kwargs)
     elif scheme in ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs']:

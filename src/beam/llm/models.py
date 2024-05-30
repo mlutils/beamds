@@ -262,7 +262,7 @@ class SamurAI(FCConversationLLM):
         self.usage["completion_tokens"] += num_output_tokens
         self.usage["total_tokens"] += num_input_tokens + num_output_tokens
 
-    def process_kwargs(self, prompt, **kwargs):
+    def process_kwargs(self, prompt, **kwargs) -> dict:
 
         kwargs_processed = {}
 
@@ -297,7 +297,7 @@ class SamurAI(FCConversationLLM):
 
     def _stream_generator(self, d):
 
-        with requests.post(f"{self.protocol}://{self.normalized_hostname}/generate_stream",
+        with requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/generate_stream",
                            headers=self.headers, json=d, stream=True, verify=False) as response:
             for chunk in response.iter_content(chunk_size=1024):
 
@@ -317,15 +317,16 @@ class SamurAI(FCConversationLLM):
                  hyper_params=self.process_kwargs(prompt, **kwargs))
 
         if guidance is not None:
-            d = {**d, **guidance.arguments(filter=['guided_regex','guided_choice',
-                                                   'guided_grammar', 'guided_json'])}
+            d['hyper_params'] = {**d['hyper_params'],
+                                 **guidance.arguments(filter=['guided_regex','guided_choice',
+                                                              'guided_grammar', 'guided_json'])}
 
         if stream:
             res = self._stream_generator(d)
             return CompletionObject(prompt=d['input'], kwargs=d, response=res)
 
         else:
-            res = requests.post(f"{self.protocol}://{self.normalized_hostname}/generate", headers=self.headers, json=d,
+            res = requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/generate", headers=self.headers, json=d,
                                 verify=False)
             return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
@@ -336,10 +337,11 @@ class SamurAI(FCConversationLLM):
 
         try:
 
+            assert 'res' in res.response, f"Response does not contain 'res' key:\nresponse={res.response}"
+            assert 'is_done' in res.response, f"Response does not contain 'is_done' key:\nresponse={res.response}"
+
             if not res.response['is_done']:
                 logger.warning(f"Model {self.model} is_done=False.")
-
-            assert 'res' in res.response, f"Response does not contain 'res' key"
 
         except Exception as e:
             logger.error(f"Error in response: {res.response}")

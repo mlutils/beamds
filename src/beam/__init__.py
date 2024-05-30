@@ -16,7 +16,6 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'beam_server', 'beam_client',
            '__version__',
            'resource',
-           'KeysConfig',
            'tqdm', 'Transformer'
            ]
 
@@ -165,5 +164,4 @@ if len([]):
     from .serve import beam_server, beam_client
     from ._version import __version__
     from .resource import resource
-    from .config import KeysConfig
     from .transformer import Transformer

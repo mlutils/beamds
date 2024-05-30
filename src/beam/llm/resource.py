@@ -51,7 +51,7 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
     elif url.protocol == 'huggingface':
         return HuggingFaceLLM(model=model, **kwargs)
 
-    elif url.protocol == 'samuai':
+    elif url.protocol == 'samurai':
         return SamurAI(model=model, hostname=hostname, port=port, username=username, **kwargs)
 
     elif url.protocol == 'samur-openai':
