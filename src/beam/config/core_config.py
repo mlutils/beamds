@@ -256,9 +256,21 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
     def __setitem__(self, key, value):
         self.set(key, value)
 
-    def update(self, hparams, tags=None):
+    def update(self, hparams, tags=None, exclude=None):
+        multi_tags = None
+        exclude = exclude or []
+        if hasattr(hparams, 'tags'):
+            multi_tags = vars(hparams.tags)
+            hparams = vars(hparams)
+            exclude.append('tags')
+
         for k, v in hparams.items():
-            self.set(k, v, tags=tags)
+            if k in exclude:
+                continue
+            t = tags
+            if multi_tags is not None:
+                t = [tk for tk, tv in multi_tags.items() if k in tv]
+            self.set(k, v, tags=t)
 
     def set(self, key, value, tags=None):
         key = key.replace('-', '_').strip()

@@ -6,7 +6,7 @@ from ..utils import beam_device
 from ..processor import Processor
 from ..llm import default_tokenizer
 from .dense import DenseSimilarity
-from ..path import local_copy
+from ..path import local_copy, beam_path
 
 
 class TextSimilarity(DenseSimilarity):
@@ -89,13 +89,17 @@ class TextSimilarity(DenseSimilarity):
         similarities = super().search(dense_vectors, k)
         return similarities
 
+    @classmethod
     @property
-    def state_attributes(self):
-        return super().state_attributes + ['dense_model', '_tokenizer']
+    def excluded_attributes(cls):
+        return super().excluded_attributes + ['_tokenizer', 'dense_model']
 
-    def save_state(self, path, ext=None):
+    def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
 
-        super().save_state(path, ext)
+        exclude = exclude or []
+
+        path = beam_path(path)
+        super().save_state_dict(state, path, ext, exclude, **kwargs)
 
         if self._tokenizer is not None:
             if hasattr(self._tokenizer, 'save_pretrained'):
@@ -106,9 +110,14 @@ class TextSimilarity(DenseSimilarity):
                 tokenizer_path = path.joinpath('tokenizer.pkl')
                 tokenizer_path.write(self._tokenizer)
 
-    def load_state(self, path):
+    def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
 
-        super().load_state(path)
+        exclude = exclude or []
+        exclude = exclude + ['_tokenizer']
+
+        state = super().load_state_dict(path, ext, exclude, **kwargs)
+
+        path = beam_path(path)
         self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'), device=str(self.dense_model_device))
         if path.joinpath('tokenizer.hf').exists():
             from transformers import PreTrainedTokenizerFast
@@ -116,4 +125,8 @@ class TextSimilarity(DenseSimilarity):
                 self._tokenizer = PreTrainedTokenizerFast(tokenizer_file=p)
         elif path.joinpath('tokenizer.pkl').exists():
             self._tokenizer = path.joinpath('tokenizer.pkl').read()
+
+        return state
+
+
 

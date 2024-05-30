@@ -101,6 +101,8 @@ done
 
 echo "Root password was updated"
 ROOT_PASSWORD="12345678"
+echo "Beam password was updated"
+BEAM_PASSWORD="12345678"
 
 OPTIONAL_COMMAND=$2
 MORE_ARGS=${@:3}
@@ -151,7 +153,7 @@ if [ "$RUN_RABBITMQ" = true ]; then
       sed -i "s/listeners.tcp.default = .*/listeners.tcp.default = $RABBITMQ_PORT/" $RABBITMQ_CONF
   fi
 
-  service rabbitmq-server start
+  service rabbitmq-server start &
   echo "RabbitMQ is running."
 else
   echo "RabbitMQ is disabled."
@@ -216,9 +218,13 @@ if [ "$RUN_SSH" = true ]; then
   echo "SSH Port: $SSH_PORT"
   export SSH_PORT=$SSH_PORT
   echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
-  echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
+#  echo "Port $SSH_PORT" >>/etc/ssh/sshd_config
+  echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
   echo "root:$ROOT_PASSWORD" | chpasswd
-  service ssh start
+  echo "beam:$BEAM_PASSWORD" | chpasswd
+  #  service ssh start
+  #/usr/bin/
+  supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log
   echo "SSH is running."
 else
   echo "SSH is disabled."
@@ -230,7 +236,8 @@ if [ "$RUN_JUPYTER" = true ]; then
   echo "Jupyter Port: $JUPYTER_PORT"
   export JUPYTER_PORT=$JUPYTER_PORT
   echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
-  jupyter-lab &
+  #jupyter-lab &
+  su - beam -c jupyter-lab &
   echo "Jupyter is running."
 else
   echo "Jupyter is disabled."
@@ -238,6 +245,9 @@ fi
 
 service start avahi-daemon
 service enable avahi-daemon
+
+
+# finally run command or bash shell:
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
     # If OPTIONAL_COMMAND is empty, run bash
@@ -248,4 +258,5 @@ else
     # If OPTIONAL_COMMAND is provided, run it
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
+
 

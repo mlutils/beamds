@@ -239,3 +239,4 @@ def build_device_list(hparams):
         device_list = [beam_device(di + device.index) for di in range(hparams.n_gpus)]
 
     return device_list
+

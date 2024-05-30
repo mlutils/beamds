@@ -29,6 +29,7 @@ from argparse import Namespace
 from functools import wraps, partial, cached_property
 from collections import OrderedDict
 
+# do not delete this import (it is required as some modules import the following imported functions from this file)
 from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container
 
 

@@ -337,9 +337,9 @@ class AutoBeam(Processor):
                     if state_file.exists:
                         obj.load_state(state_file)
                 except:
-                    obj = cls_obj.from_state_path(state_file)
+                    obj = cls_obj.from_path(state_file)
             else:
-                obj = cls_obj.from_state_path(state_file)
+                obj = cls_obj.from_path(state_file)
 
             return obj
 

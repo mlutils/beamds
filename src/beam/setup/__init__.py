@@ -1,5 +1,7 @@
 # setup.py
 import importlib
+import sys
+import os
 
 
 class BeamImporter:
@@ -75,7 +77,7 @@ class BeamImporter:
         return imported_object
 
 
-def load_ipython_extension(ipython):
+def load_ipython_extension(ipython, beam_path=None):
     import sys
     import os
     import time
@@ -90,13 +92,17 @@ def load_ipython_extension(ipython):
         ipython.run_line_magic('load_ext', 'autoreload')
         ipython.run_line_magic('autoreload', '2')
 
-    beam_path = os.getenv('BEAM_PATH', None)
+    beam_path = beam_path or os.getenv('BEAM_PATH', None)
     if beam_path is not None:
         sys.path.insert(0, beam_path)
         sys.path.insert(0, os.path.join(beam_path, 'src'))
     else:
         sys.path.insert(0, '..')
         sys.path.insert(0, '../src')
+
+    for k in list(sys.modules.keys()):
+        if k.startswith('beam'):
+            del sys.modules[k]
 
     beam_importer = BeamImporter()
 
@@ -116,4 +122,12 @@ def load_ipython_extension(ipython):
 
 
 if __name__ == '__main__':
-    load_ipython_extension(None)
+
+    beam_path = None
+    if len(sys.argv) > 1:
+        beam_path = sys.argv[1]
+        # if not absolute path, make it absolute
+        if not os.path.isabs(beam_path):
+            beam_path = os.path.abspath(beam_path)
+
+    load_ipython_extension(None, beam_path=beam_path)

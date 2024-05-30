@@ -4,7 +4,7 @@
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
 #FROM nvidia/cuda:12.3.0-devel-ubuntu22.04
-FROM nvcr.io/nvidia/pytorch:24.04-py3
+FROM nvcr.io/nvidia/pytorch:24.05-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -86,7 +86,9 @@ RUN pip install -U -r /workspace/beam_image/requirements_0016.txt
 # RUN pip list
 COPY docker/install/requirements_0017.txt /workspace/beam_image
 RUN pip install -U -r /workspace/beam_image/requirements_0017.txt
-
+# RUN pip list
+COPY docker/install/requirements_0018.txt /workspace/beam_image
+RUN pip install -U -r /workspace/beam_image/requirements_0018.txt
 #install huggingface ecosystem
 # REMOVE FOR LITE VERSION
 COPY docker/install/install_huggingface_ecosystem.sh /workspace/beam_image
@@ -125,7 +127,8 @@ RUN bash /workspace/install/install_dgl_fixed.sh
 # RUN python /workspace/beam_image/downloader.py
 
 ## download nlp data
-# RUN python /workspace/beam_image/models_downloads.py
+COPY docker/install/models_downloads.py /workspace/beam_image
+RUN python /workspace/beam_image/models_downloads.py
 
 
 # no need to install RAPIDS as it comes with the image, except cusignal which is not found
@@ -178,9 +181,39 @@ RUN bash /workspace/beam_image/language_servers.sh
 COPY docker/install/aux_installs.sh /workspace/beam_image
 RUN bash /workspace/beam_image/aux_installs.sh
 
+# Create a non-root user
+RUN useradd -m -s /bin/bash beam && echo 'beam:12345678' | chpasswd
+
+RUN mkdir -p  /opt/ssh && mkdir -p  /opt/supervisor
+
+COPY install/supervisord.conf /etc/supervisor/conf.d/
+COPY install/sshd_config /opt/ssh
+
 # for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.
 # RUN pip install git+https://github.com/chaoleili/jupyterlab_tensorboard.git
+RUN ssh-keygen -q -N "" -t dsa -f /opt/ssh/ssh_host_dsa_key && \
+    ssh-keygen -q -N "" -t rsa -b 4096 -f /opt/ssh/ssh_host_rsa_key && \
+    ssh-keygen -q -N "" -t ecdsa -f /opt/ssh/ssh_host_ecdsa_key && \
+    ssh-keygen -q -N "" -t ed25519 -f /opt/ssh/ssh_host_ed25519_key
+
+COPY install/supervisord.conf /etc/supervisor/conf.d/
+#COPY supervisord.conf /etc/supervisor/
+
+COPY install/sshd_config /opt/ssh
+
+# Configure SSH for non-root public key authentication
+RUN mkdir -p /home/beam/.ssh && \
+    chmod 700 /home/beam/.ssh && \
+    chown beam:beam /home/beam/.ssh && \
+    chown -R beam. /opt/ssh
+
+# You can copy a public key from your host machine to the container for key-based authentication
+COPY id_rsa.pub /home/beam/.ssh/authorized_keys
+
+# Adjust file permissions for SSH
+RUN chmod 600 /home/beam/.ssh/authorized_keys && \
+     chown beam:beam /home/beam/.ssh/authorized_keys
 
 COPY docker/runs /workspace/beam_image/runs
 

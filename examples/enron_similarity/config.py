@@ -35,7 +35,7 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         'store_path': None,
         'store_suffix': '.parquet',
         'override': False,
-        # 'sparse_framework': 'scipy',
+        'sparse_framework': 'scipy',
     }
     parameters = [
         BeamParam('nlp-model', type=str, default="en_core_web_sm", help='Spacy NLP model'),
@@ -49,8 +49,9 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('preprocess-title', type=bool, default=False, help='Preprocess title text (subject)'),
         BeamParam('split-dataset', type=bool, default=False, help='Split the dataset'),
         BeamParam('build-dataset', type=bool, default=False, help='Build the dataset'),
-        BeamParam('calc-tfidf', type=bool, default=True, help='Calculate TFIDF training vectors'),
-        BeamParam('calc-dense', type=bool, default=True, help='Calculate Dense training vectors'),
+        BeamParam('calc-tfidf', type=bool, default=False, help='Calculate TFIDF training vectors'),
+        BeamParam('calc-dense', type=bool, default=False, help='Calculate Dense training vectors'),
+        BeamParam('build-features', type=bool, default=False, help='Build the classifier features'),
         BeamParam('tokenizer', type=str, default="BAAI/bge-base-en-v1.5", help='Tokenizer model'),
         BeamParam('dense-model-path', type=str,
                   default="BAAI/bge-base-en-v1.5", help='Dense model for text similarity'),
@@ -61,5 +62,10 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('model-state-path', str, model_state_path, 'Path to saved model state'),
         BeamParam('batch_size', int, 32, 'Batch size for dense model'),
         BeamParam('k-sparse', int, 50, 'Number of sparse similarities to include in the dataset'),
-        BeamParam('k-dense', int, 50, 'Number of dense similarities to include in the dataset')
+        BeamParam('k-dense', int, 50, 'Number of dense similarities to include in the dataset'),
+        BeamParam('svd-components', int, 64, 'Number of PCA components to use to compress the tfidf vectors'),
+        BeamParam('pca-components', int, 64, 'Number of PCA components to use to compress the dense vectors'),
+        BeamParam('pu-n-estimators', int, 20, 'Number of estimators for the PU classifier'),
+        BeamParam('pu-verbose', int, 10, 'Verbosity level for the PU classifier'),
+        BeamParam('classifier-type', str, None, 'can be one of [None, catboost, rf]'),
     ]

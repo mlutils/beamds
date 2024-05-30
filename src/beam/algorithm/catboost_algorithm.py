@@ -1,17 +1,19 @@
 import re
 from functools import cached_property
 
-from ..utils import parse_string_number
+from ..utils import parse_string_number, as_numpy
 from ..experiment.utils import build_device_list
+from ..config import CatboostConfig
 
 from .core_algorithm import Algorithm
+from ..logger import beam_logger as logger
 
 
 class CBAlgorithm(Algorithm):
 
-    def __init__(self, hparams, name=None, **kwargs):
+    def __init__(self, hparams=None, name=None, **kwargs):
 
-        super().__init__(hparams=hparams, name=name, **kwargs)
+        super().__init__(hparams=hparams, name=name, _config_scheme=CatboostConfig,  **kwargs)
 
     @property
     def device_type(self):
@@ -88,7 +90,6 @@ class CBAlgorithm(Algorithm):
         # Searching the string
         match = self.info_re_pattern.search(info)
 
-        metrics = dict()
         if match:
             # Extracting iteration number
             iteration = match.group('iteration')
@@ -100,11 +101,36 @@ class CBAlgorithm(Algorithm):
             # Converting metric parts into a dictionary
             metrics = {name: parse_string_number(value) for name, value in metrics_parts}
 
+            logger.info(metrics)
+
             for k, v in metrics.items():
                 self.report_scalar(k, v, subset='eval', epoch=iteration)
 
-    def fit(self, X, y):
-        self.model.fit(X, y, log_cout=self.postprocess_epoch)
+            self.experiment.save_model_results(self.model, None, iteration)
 
-    def predict(self, X):
-        return self.model.predict(X)
+            # post epoch
+            self.epoch += 1
+            self.reporter.reset_epoch(iteration, total_epochs=self.epoch)
+
+    def _fit(self, X, y, eval_set=None, beam_postprocess=True, **kwargs):
+
+        from catboost import Pool
+
+        log_cout = None
+        if beam_postprocess:
+            log_cout = self.postprocess_epoch
+
+        train_set = Pool(as_numpy(X), as_numpy(y))
+        if eval_set is not None:
+            eval_set = Pool(as_numpy(eval_set[0]), as_numpy(eval_set[1]))
+
+        self.set_train_reporter(first_epoch=0, n_epochs=self.get_hparam('cb_n_estimators'))
+
+        return self.model.fit(train_set, eval_set=eval_set, log_cout=log_cout, **kwargs)
+
+    def predict(self, X, **kwargs):
+        return self.model.predict(as_numpy(X), **kwargs)
+
+    def __sklearn_clone__(self):
+        # to be used with sklearn clone
+        return CBAlgorithm(self.hparams)
