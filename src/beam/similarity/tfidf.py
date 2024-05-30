@@ -4,7 +4,13 @@ from functools import cached_property
 from collections import Counter
 import scipy.sparse as sp
 import numpy as np
-import torch
+
+from ..importer.lazy_importer import lazy_importer as lzi
+if lzi.has('torch'):
+    import torch
+    default_sparse_framework = 'torch'
+else:
+    default_sparse_framework = 'scipy'
 
 from ..data import BeamData
 from ..transformer import Transformer
@@ -14,7 +20,7 @@ from .core import Similarities, BeamSimilarity
 
 class ChunkTF(Transformer):
 
-    def __init__(self, *args, sparse_framework='torch', device='cpu', preprocessor=None, **kwargs):
+    def __init__(self, *args, sparse_framework=default_sparse_framework, device='cpu', preprocessor=None, **kwargs):
         self.preprocessor = preprocessor or TFIDF.default_preprocessor
         self.sparse_framework = sparse_framework
         self._device = device
@@ -497,10 +503,10 @@ class TFIDF(BeamSimilarity):
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super().special_state_attributes + ['df', 'cf', 'n_docs', 'tf', 'index', 'idf']
+        return super().special_state_attributes.update('df', 'cf', 'n_docs', 'tf', 'index', 'idf')
 
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes + ['preprocessor_transformer', 'chunk_tf', 'chunk_df', 'preprocessor']
+        return super().excluded_attributes.update('preprocessor_transformer', 'chunk_tf', 'chunk_df', 'preprocessor')
 

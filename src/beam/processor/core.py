@@ -3,7 +3,7 @@ from collections import OrderedDict
 import inspect
 from contextlib import contextmanager
 from functools import cached_property
-from typing import List, Union
+from typing import List, Union, Set
 
 from ..path import beam_path, normalize_host
 from ..config import BeamConfig
@@ -42,31 +42,31 @@ class Processor(BeamBase):
 
     @classmethod
     @property
-    def special_state_attributes(cls):
+    def special_state_attributes(cls) -> set[str]:
         '''
         return of list of special class attributes that are stored individually in the state and not as part of the
         skeleton of the instance (i.e. a pickle object).
         override this function to add more attributes to the state and avoid pickling a large skeleton.
         @return:
         '''
-        return ['hparams']
+        return {'hparams'}
 
     @classmethod
     @property
-    def excluded_attributes(cls):
+    def excluded_attributes(cls) -> set[str]:
         '''
         return of list of class attributes should not be saved in the state. override this function to exclude some
         attributes from the state.
         @return:
         '''
-        return ['_init_args', '_skeleton']
+        return {'_init_args', '_skeleton'}
 
     def __getstate__(self):
         # Create a new state dictionary with only the skeleton attributes without the state attributes
         # this is a mislead name, as __getstate__ is used to get the skeleton of the instance and not the state
         if self.in_beam_pickle():
             with self.beam_pickle(on=False):
-                excliuded_attributes = [*self.excluded_attributes, *self.special_state_attributes]
+                excliuded_attributes = self.excluded_attributes.union(self.special_state_attributes)
                 state = {k: v for k, v in self.__dict__.items() if k not in excliuded_attributes}
                 state = state.copy()
         else:
@@ -98,11 +98,11 @@ class Processor(BeamBase):
 
     @classmethod
     def from_path(cls, path, skeleton: Union[bool, str] = True, init_args: Union[bool, str] = True,
-                  load_state_kwargs=None, exclude: List = None,  **kwargs):
+                  load_state_kwargs=None, exclude: Union[List, Set] = None,  **kwargs):
 
         load_state_kwargs = load_state_kwargs or {}
-        exclude = exclude or []
-        exclude = exclude + cls.excluded_attributes
+        exclude = exclude or set()
+        exclude = exclude.union(cls.excluded_attributes)
         path = beam_path(path)
 
         if skeleton:
@@ -225,10 +225,10 @@ class Processor(BeamBase):
     def hasattr(self, attr):
         return attr in self.__dict__
 
-    def load_state_dict(self, path, ext=None, exclude: List = None, hparams=True, exclude_hparams=None, **kwargs):
+    def load_state_dict(self, path, ext=None, exclude: Union[List, Set] = None, hparams=True, exclude_hparams=None, **kwargs):
 
-        exclude = exclude or []
-        exclude = [*exclude, *self.excluded_attributes]
+        exclude = set(exclude) if exclude is not None else set()
+        exclude = exclude.union(self.excluded_attributes)
         path = beam_path(path)
         ext = ext or path.suffix
 
@@ -260,12 +260,12 @@ class Processor(BeamBase):
             else:
                 setattr(self, k, v)
 
-    def save_state_dict(self, state, path, ext=None, exclude: List = None, override=False, **kwargs):
+    def save_state_dict(self, state, path, ext=None, exclude: Union[List, Set] = None, override=False, **kwargs):
 
         path = beam_path(path)
         ext = ext or path.suffix
-        exclude = exclude or []
-        exclude = [*exclude, *self.excluded_attributes]
+        exclude = set(exclude) if exclude is not None else set()
+        exclude = exclude.union(self.excluded_attributes)
 
         state = {k: v for k, v in state.items() if k not in exclude}
 
@@ -274,11 +274,11 @@ class Processor(BeamBase):
         else:
             BeamData.write_tree(state, path, override=override, split=False, archive_size=0)
 
-    def save_state(self, path, ext=None, exclude: List = None, skeleton: Union[bool, str] = True,
+    def save_state(self, path, ext=None, exclude: Union[List, Set] = None, skeleton: Union[bool, str] = True,
                    init_args: Union[bool, str] = False, override=False, **kwargs):
         state = {}
-        exclude = exclude or []
-        exclude = [*exclude, *self.excluded_attributes]
+        exclude = set(exclude) if exclude is not None else set()
+        exclude = exclude.union(self.excluded_attributes)
 
         for n in self.special_state_attributes:
             # save only cached_properties that are already computed
@@ -292,7 +292,7 @@ class Processor(BeamBase):
             if skeleton is True:
                 skeleton = Processor.skeleton_file
             with self.beam_pickle():
-                BeamData.write_object(self, path.joinpath(skeleton),
+                BeamData.write_object(self, path.joinpath(skeleton), priority=['.pkl', '.dill'],
                                       override=override, split=False, archive_size=0)
 
                 # if override or not path.joinpath(skeleton).exists():
@@ -324,14 +324,13 @@ class Processor(BeamBase):
 
         return path
 
-    def load_state(self, path=None, state=None, ext=None, exclude: List = None, skeleton: Union[bool,str] = True,
+    def load_state(self, path=None, state=None, ext=None, exclude: Union[List, Set] = None, skeleton: Union[bool,str] = True,
                    **kwargs):
-
 
         assert path or state, 'Either path or state must be provided'
 
-        exclude = exclude or []
-        exclude = [*exclude, *self.excluded_attributes]
+        exclude = set(exclude) if exclude is not None else set()
+        exclude = exclude.union(self.excluded_attributes)
         path = beam_path(path)
         if state is None:
             self.load_state_dict(path=path, ext=ext, exclude=exclude, **kwargs)

@@ -98,6 +98,13 @@ apt install -y smbclient
 echo "Installing tree"
 apt install -y tree
 
+echo "Installing snapd"
+apt install -y snapd
+
+
+echo "Installing nvtop"
+snap install nvtop
+
 #
 ## don't install libopenmpi as it messes up the pytorch geometric installation
 #apt install -y libopenmpi-dev

@@ -1,4 +1,6 @@
 Orange3
 feature-engine
 textstat
-outline
+outlines
+cloudpickle
+msgpack

@@ -16,18 +16,23 @@ from ..utils import (parse_text_to_protocol, get_edit_ratio, retry, BeamDict, Nu
                      pretty_print_dict)
 from ..path import BeamURL, BeamResource
 
-LLM = BaseModel
-CallbackManagerForLLMRun = NullClass
-# import pydantic and check if its version is less than 2.0.0
-import pydantic
-if pydantic.__version__ < '2.0.0':
-    try:
-        from langchain.llms.base import LLM
-        from langchain.callbacks.manager import CallbackManagerForLLMRun
-    except ImportError:
-        logger.warning("langchain not found, using pydantic only as the LLM base")
-else:
-    logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
+from langchain.llms.base import LLM
+from langchain.callbacks.manager import CallbackManagerForLLMRun
+
+# LLM = BaseModel
+# CallbackManagerForLLMRun = NullClass
+# # import pydantic and check if its version is less than 2.0.0
+# import pydantic
+# if pydantic.__version__ < '2.0.0':
+#     try:
+#         from langchain.llms.base import LLM
+#         from langchain.callbacks.manager import CallbackManagerForLLMRun
+#     except ImportError:
+#         logger.warning("langchain not found, using pydantic only as the LLM base")
+# else:
+#     logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
+
+print('here!!!!')
 
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
@@ -463,7 +468,7 @@ class BeamLLM(PedanticBeamResource):
     def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
              logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None, add_tools=True,
-             prompt_type='chat_completion', **kwargs):
+             prompt_type='chat_completion', guidance=None, **kwargs):
 
         '''
 
@@ -782,7 +787,8 @@ class BeamLLM(PedanticBeamResource):
 
     def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
-            parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', add_tools=True, **kwargs):
+            parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', add_tools=True,
+            guidance=None, **kwargs):
         """
 
         @param question:
@@ -822,7 +828,8 @@ class BeamLLM(PedanticBeamResource):
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
-            response = self.chat(question, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat', **kwargs)
+            response = self.chat(question, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat',
+                                 **kwargs)
         else:
             response = self.completion(prompt=question, logprobs=logprobs, echo=echo,
                                        prompt_type=prompt_type, **default_params)

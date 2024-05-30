@@ -8,8 +8,8 @@ from ..utils import lazy_property as cached_property
 from .hf_conversation import Conversation
 from ..logger import beam_logger as logger
 from .core import BeamLLM, CompletionObject
-from pydantic import BaseModel, Field, PrivateAttr
-from ..path import beam_key, normalize_host
+from pydantic import Field, PrivateAttr
+from ..path import normalize_host
 
 from .utils import get_conversation_template
 from ..utils import strip_suffix
@@ -208,7 +208,7 @@ class FastChatLLM(OpenAIBase):
         return True
 
 
-class FastAPILLM(FCConversationLLM):
+class SamurAI(FCConversationLLM):
 
     normalized_hostname: Optional[str] = Field(None)
     headers: Optional[dict] = Field(None)
@@ -218,7 +218,7 @@ class FastAPILLM(FCConversationLLM):
 
     def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
 
-        kwargs['scheme'] = 'fastapi'
+        kwargs['scheme'] = 'samurai'
         super().__init__(*args, hostname=hostname, port=port, model=model, **kwargs)
 
         self.consumer = username
@@ -245,6 +245,15 @@ class FastAPILLM(FCConversationLLM):
     @property
     def is_completions(self):
         return True
+
+    def update_usage(self, response):
+
+        num_output_tokens = response.get('num_output_tokens', 0)
+        num_input_tokens = response.get('num_input_tokens', 0)
+
+        self.usage["prompt_tokens"] += num_input_tokens
+        self.usage["completion_tokens"] += num_output_tokens
+        self.usage["total_tokens"] += num_input_tokens + num_output_tokens
 
     def process_kwargs(self, prompt, **kwargs):
 
@@ -283,8 +292,8 @@ class FastAPILLM(FCConversationLLM):
 
     def _stream_generator(self, d):
 
-        with requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/stream", headers=self.headers, json=d,
-                           stream=True, verify=False) as response:
+        with requests.post(f"{self.protocol}://{self.normalized_hostname}/generate_stream",
+                           headers=self.headers, json=d, stream=True, verify=False) as response:
             for chunk in response.iter_content(chunk_size=1024):
 
                 chunks = chunk.split("\0")
@@ -307,7 +316,7 @@ class FastAPILLM(FCConversationLLM):
             return CompletionObject(prompt=d['input'], kwargs=d, response=res)
 
         else:
-            res = requests.post(f"{self.protocol}://{self.normalized_hostname}/predict/once", headers=self.headers, json=d,
+            res = requests.post(f"{self.protocol}://{self.normalized_hostname}/generate", headers=self.headers, json=d,
                                 verify=False)
             return CompletionObject(prompt=d['input'], kwargs=d, response=res.json())
 
@@ -332,7 +341,7 @@ class FastAPILLM(FCConversationLLM):
         return res.response['res']
 
 
-class FastAPIDPLLM(FastAPILLM):
+class FastAPIDPLLM(SamurAI):
 
     stop_token_ids: Optional[list] = Field(None)
     stop: Optional[str] = Field(None)

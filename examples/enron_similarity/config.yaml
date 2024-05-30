@@ -1,0 +1,18 @@
+preprocess_body: false
+preprocess_title: false
+split_dataset: false
+build_dataset: false
+calc_tfidf: false
+calc_dense: false
+build_features: false
+reload_state: true
+save_state: false
+tokenizer: intfloat/multilingual-e5-base
+dense_model_path: intfloat/multilingual-e5-base
+model-state-path: /home/shared/data/results/enron/models/model_state_e5_base
+path_to_data: /home/hackathon_2023/data/enron/emails_dd.parquet
+model_state_path: /home/shared/data/results/enron/models/model_state_dd
+
+#root_path: /home/mlspeech/elads/data/enron/data/
+#path_to_data: /home/mlspeech/elads/data/enron/data/emails.parquet
+#model_state_path: /home/mlspeech/elads/data/enron/models/model_state

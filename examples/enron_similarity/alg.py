@@ -220,13 +220,12 @@ class TicketSimilarity(GroupExpansionAlgorithm):
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super().special_state_attributes + ['tfidf_sim', 'dense_sim', 'features']
+        return super().special_state_attributes.update('tfidf_sim', 'dense_sim', 'features')
 
     @classmethod
     @property
     def excluded_attributes(cls):
-        return (['dataset', 'metadata', 'nlp_model', 'subsets', 'x', 'y', 'ind'] +
-                super().excluded_attributes)
+        return super().excluded_attributes.update('dataset', 'metadata', 'nlp_model', 'subsets', 'x', 'y', 'ind')
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)

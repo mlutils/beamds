@@ -1,6 +1,5 @@
 #!/bin/bash
 SUFFIX=$1
-
 TAG=$(date '+%Y%m%d')${SUFFIX}
 
 echo "Building image with tag: ${TAG}"

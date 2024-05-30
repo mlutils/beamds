@@ -5,11 +5,8 @@ import subprocess
 import numpy as np
 
 import random
-import torch
 import pandas as pd
-
 import pickle
-from torchvision import transforms
 import hashlib
 from functools import partial
 import itertools
@@ -18,6 +15,9 @@ import re
 from .utils_all import (check_type, check_minor_type, slice_array, is_arange, DataObject, is_container,
                         jupyter_like_traceback)
 from ..type import BeamType
+
+from ..importer.safe_imports.torch import torch
+
 
 
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
@@ -298,6 +298,7 @@ def batch_augmentation_(x, augmentations):
 
 def batch_augmentation(augmentations):
     ba = partial(batch_augmentation_, augmentations=augmentations)
+    from torchvision import transforms
     return transforms.Lambda(ba)
 
 

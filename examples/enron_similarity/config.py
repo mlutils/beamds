@@ -4,25 +4,6 @@ from src.beam.config import BeamParam
 from src.beam.similarity import SimilarityConfig, TFIDFConfig
 
 
-def get_paths():
-
-    ip = get_public_ip()
-
-    if ip.startswith('199'):
-        root_path = '/home/shared/data/results/enron/'
-        path_to_data = '/home/hackathon_2023/data/enron/emails_dd.parquet'
-        model_state_path = '/home/shared/data/results/enron/models/model_state_dd'
-    else:
-        root_path = '/home/mlspeech/elads/data/enron/data/'
-        path_to_data = '/home/mlspeech/elads/data/enron/data/emails.parquet'
-        model_state_path = '/home/mlspeech/elads/data/enron/models/model_state'
-
-    return root_path, path_to_data, model_state_path
-
-
-root_path, path_to_data, model_state_path = get_paths()
-
-
 class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
 
     # "en_core_web_trf"
@@ -40,8 +21,8 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
     parameters = [
         BeamParam('nlp-model', type=str, default="en_core_web_sm", help='Spacy NLP model'),
         BeamParam('nlp-max-length', type=int, default=2000000, help='Spacy NLP max length'),
-        BeamParam('path-to-data', type=str, default=path_to_data, help='Path to emails.parquet data'),
-        BeamParam('root-path', type=str, default=root_path, help='Root path to store results'),
+        BeamParam('path-to-data', type=str, default=None, help='Path to emails.parquet data'),
+        BeamParam('root-path', type=str, default=None, help='Root path to store results'),
         BeamParam('train-ratio', type=float, default=0.4, help='Train ratio for split_dataset'),
         BeamParam('val-ratio', type=float, default=0.3, help='Validation ratio for split_dataset'),
         BeamParam('gap-days', type=int, default=3, help='Gap of days between subsets for split_dataset'),
@@ -59,7 +40,7 @@ class TicketSimilarityConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('tokenizer-chunksize', type=int, default=10000, help='Chunksize for tokenizer'),
         BeamParam('reload-state', bool, True, 'Load saved model'),
         BeamParam('save-state', bool, False, 'Save model state'),
-        BeamParam('model-state-path', str, model_state_path, 'Path to saved model state'),
+        BeamParam('model-state-path', str, None, 'Path to saved model state'),
         BeamParam('batch_size', int, 32, 'Batch size for dense model'),
         BeamParam('k-sparse', int, 50, 'Number of sparse similarities to include in the dataset'),
         BeamParam('k-dense', int, 50, 'Number of dense similarities to include in the dataset'),

@@ -1,6 +1,5 @@
 
 import torch
-from functools import cached_property
 
 from .core import BeamSimilarity, Similarities
 from ..utils import check_type, as_tensor, beam_device
