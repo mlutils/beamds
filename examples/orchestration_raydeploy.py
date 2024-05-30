@@ -4,7 +4,7 @@ from src.beam import resource
 import os
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-conf_path = resource(os.path.join(script_dir, 'ray_configuration.json')).str
+conf_path = resource(os.path.join(script_dir, 'orchestration_configuration.json')).str
 config = RayClusterConfig(conf_path)
 
 print('hello world')
