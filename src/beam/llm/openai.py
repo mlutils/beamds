@@ -42,12 +42,9 @@ class OpenAIBase(BeamLLM):
             self.usage["completion_tokens"] += response["completion_tokens"]
             self.usage["total_tokens"] += response["prompt_tokens"] + response["completion_tokens"]
 
-    def _completion(self, prompt=None, guidance=None, **kwargs):
+    def _completion(self, prompt=None, **kwargs):
         # self.sync_openai()
-        if guidance is not None:
-            extra_body = kwargs.get('extra_body', {})
-            extra_body = {**extra_body, **guidance}
-        res = self.client.completions.create(model=self.model, prompt=prompt, **kwargs)
+        res = self.client.completions.create(model=self.model, prompt=prompt,  **kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
     def _chat_completion(self, messages=None, **kwargs):
@@ -128,6 +125,10 @@ class OpenAILLM(OpenAIBase):
             return False
         return True
 
+    @staticmethod
+    def filter_keys(kwargs):
+        return {k: v for k, v in kwargs.items() if k not in ['guidance']}
+
     def file_list(self):
         import openai
         return openai.File.list()
@@ -159,6 +160,14 @@ class OpenAILLM(OpenAIBase):
 
         return path
 
+    def _completion(self, prompt=None, **kwargs):
+        kwargs = self.filter_keys(kwargs)
+        return super()._completion(prompt=prompt, **kwargs)
+
+    def _chat_completion(self, messages=None, **kwargs):
+        kwargs = self.filter_keys(kwargs)
+        return super()._chat_completion(messages=messages, **kwargs)
+
 
 class SamurOpenAI(OpenAIBase):
 
@@ -174,4 +183,32 @@ class SamurOpenAI(OpenAIBase):
     @property
     def is_chat(self):
         return self._is_chat
+
+    @staticmethod
+    def filter_keys(kwargs):
+        return {k: v for k, v in kwargs.items() if k in ['max_tokens', 'stream',
+                                                         'temperature', 'extra_body']}
+
+    @staticmethod
+    def add_guidance(kwargs, guidance=None):
+        if guidance is not None:
+            extra_body = kwargs.get('extra_body', {})
+            extra_body = {**extra_body, **guidance.arguments(filter=['guided_regex',
+                                                                     'guided_choice',
+                                                                     'guided_grammar',
+                                                                     'guided_json'])}
+            kwargs['extra_body'] = extra_body
+        return kwargs
+
+    def _completion(self, prompt=None, guidance=None, **kwargs):
+        kwargs = self.add_guidance(kwargs, guidance)
+        kwargs = self.filter_keys(kwargs)
+        return super()._completion(prompt=prompt, **kwargs)
+
+    def _chat_completion(self, messages=None, guidance=None, **kwargs):
+        kwargs = self.add_guidance(kwargs, guidance)
+        kwargs = self.filter_keys(kwargs)
+        return super()._chat_completion(messages=messages, **kwargs)
+
+
 

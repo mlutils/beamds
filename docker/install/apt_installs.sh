@@ -101,6 +101,8 @@ apt install -y tree
 echo "Installing snapd"
 apt install -y snapd
 
+echo "install kinit"
+apt install -y krb5-user
 
 echo "Installing nvtop"
 snap install nvtop

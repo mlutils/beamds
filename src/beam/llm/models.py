@@ -214,9 +214,11 @@ class SamurAI(FCConversationLLM):
     headers: Optional[dict] = Field(None)
     consumer: Optional[str] = Field(None)
     protocol: Optional[str] = Field(None)
+    network: Optional[str] = Field(None)
     _models: Any = PrivateAttr(default=None)
 
-    def __init__(self, *args, model=None, hostname=None, port=None, username=None, protocol='https', **kwargs):
+    def __init__(self, *args, model=None, hostname=None, port=None, username=None, api_key=None,
+                 network='NH', protocol='https', **kwargs):
 
         kwargs['scheme'] = 'samurai'
         super().__init__(*args, hostname=hostname, port=port, model=model, **kwargs)
@@ -224,8 +226,10 @@ class SamurAI(FCConversationLLM):
         self.consumer = username
         self.normalized_hostname = normalize_host(hostname, port)
         self._models = None
-        self.headers = {'Content-Type': 'application/json'}
+        self.headers = {'Content-Type': 'application/json', 'accept': 'application/json', 'apiKey': api_key,
+                        'network': network}
         self.protocol = protocol
+        self.network = network
 
         from requests.packages.urllib3.exceptions import InsecureRequestWarning
         # Suppress only the single InsecureRequestWarning from urllib3
@@ -273,10 +277,8 @@ class SamurAI(FCConversationLLM):
         if temperature is not None:
             kwargs_processed['temp'] = temperature
 
-        if 'stop_criteria' in kwargs:
-            kwargs_processed['stop_criteria'] = kwargs.pop('stop_criteria')
-
-        kwargs_processed['stream'] = kwargs.pop('stream', False)
+        # if 'stop_criteria' in kwargs:
+        #     kwargs_processed['stop_criteria'] = kwargs.pop('stop_criteria')
 
         return kwargs_processed
 
@@ -306,10 +308,14 @@ class SamurAI(FCConversationLLM):
                         logger.error(f"Bad chunk: {c}")
                         yield c
 
-    def _completion_internal(self, prompt, stream=False, **kwargs):
+    def _completion_internal(self, prompt, stream=False, guidance=None, **kwargs):
 
         d = dict(model_name=self.model, consumer=self.consumer, input=prompt,
                  hyper_params=self.process_kwargs(prompt, **kwargs))
+
+        if guidance is not None:
+            d = {**d, **guidance.arguments(filter=['guided_regex','guided_choice',
+                                                   'guided_grammar', 'guided_json'])}
 
         if stream:
             res = self._stream_generator(d)
@@ -347,7 +353,6 @@ class FastAPIDPLLM(SamurAI):
     stop: Optional[str] = Field(None)
     application: Optional[str] = Field(None)
     task: Optional[str] = Field(None)
-    network: Optional[str] = Field(None)
     cut_long_prompt: Optional[bool] = Field(None)
     echo: Optional[bool] = Field(None)
     worker_generate_stream_ep: Optional[str] = Field(None)
@@ -355,7 +360,7 @@ class FastAPIDPLLM(SamurAI):
     retrials: Optional[int] = Field(None)
     timeout: Optional[int] = Field(None)
 
-    def __init__(self, *args, application='Botson', task='None', network='NH', cut_long_prompt=False, echo=False,
+    def __init__(self, *args, application='Botson', task='None', cut_long_prompt=False, echo=False,
                  worker_generate_stream_ep='worker_generate_stream/', streaming_delimiter=b"\0",
                  retrials=None, stop_token_ids=None, protocol='http', stop=None, timeout=60, **kwargs):
 
@@ -364,7 +369,6 @@ class FastAPIDPLLM(SamurAI):
 
         self.application = application
         self.task = task
-        self.network = network
         self.cut_long_prompt = cut_long_prompt
         self.echo = echo
         self.worker_generate_stream_ep = worker_generate_stream_ep
