@@ -226,8 +226,11 @@ class SamurAI(FCConversationLLM):
         self.consumer = username
         self.normalized_hostname = normalize_host(hostname, port)
         self._models = None
-        self.headers = {'Content-Type': 'application/json', 'accept': 'application/json', 'apiKey': api_key,
+        self.headers = {'Content-Type': 'application/json', 'accept': 'application/json',
                         'network': network}
+        if api_key is not None:
+            self.headers['apiKey'] = api_key
+
         self.protocol = protocol
         self.network = network
 
