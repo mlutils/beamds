@@ -55,13 +55,10 @@ echo "Installing websocat"
 wget https://github.com/vi/websocat/releases/download/v1.8.0/websocat_amd64-linux -O websocat
 chmod +x websocat
 mv websocat /usr/local/bin/
-
 #apt install -y websocat
-
 # for now don't install binwalk as it messes up the python environment, consider adding virtualenv
 #echo "Installing binwalk"
 #apt install -y binwalk
-
 echo "Installing ncdu"
 apt install -y ncdu
 echo "Installing vim"
@@ -88,44 +85,31 @@ echo "Installing gnupg"
 apt install -y gnupg
 echo "Installing lsb-release"
 apt install -y lsb-release
-
 echo "Installing iptables"
 apt install -y iptables
-
 echo "Installing smbclient"
 apt install -y smbclient
-
 echo "Installing tree"
 apt install -y tree
-
 echo "Installing snapd"
 apt install -y snapd
-
-
 echo "Installing nvtop"
 snap install nvtop
-
 #
 ## don't install libopenmpi as it messes up the pytorch geometric installation
 #apt install -y libopenmpi-dev
-
 pip install pykerberos
-
-
 ## for hfds-fuse installation
 #apt install -y libprotobuf-c-dev
 #apt install -y protobuf-c-compiler
 #apt install -y libfuse-dev
 #apt install -y uncrustify
-
 # applications
-
 # ssh serve
 echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 echo "PermitUserEnvironment yes" >> /etc/ssh/sshd_config
 mkdir ~/.ssh
 touch ~/.ssh/environment
-
 # ssh connection immediately disconnects after session start with exit code 254:
 # https://unix.stackexchange.com/questions/148714/cant-ssh-connection-terminates-immediately-with-exit-status-254
 sed -i 's/UsePAM yes/UsePAM no/g' /etc/ssh/sshd_config

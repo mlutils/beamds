@@ -107,44 +107,36 @@ BEAM_PASSWORD="12345678"
 OPTIONAL_COMMAND=$2
 MORE_ARGS=${@:3}
 INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
-
 # Set Hadoop CLASSPATH
 CLASSPATH=$(/usr/local/hadoop/bin/hadoop classpath --glob)
-
 # Set environment variables
 bash /workspace/beam_image/runs/setup_env_vars.sh
 echo "parameters, value" >> /workspace/configuration/config.csv
 echo "initials, ${INITIALS}" >> /workspace/configuration/config.csv
-
 # write the beam configuration to a file
 mkdir /workspace/configuration
 touch /workspace/configuration/config.csv
-
 # run redis
 if [ "$RUN_REDIS" = true ]; then
   REDIS_PORT="${INITIALS}79"
   echo "Redis Port: $REDIS_PORT"
   export REDIS_PORT=$REDIS_PORT
   echo "redis_port, ${REDIS_PORT}" >> /workspace/configuration/config.csv
-
   # Update Redis configuration
   REDIS_CONF="/etc/redis/redis.conf"
   sed -i "s/^port .*/port $REDIS_PORT/" $REDIS_CONF
   sed -i 's/bind 127.0.0.1/bind 0.0.0.0/' $REDIS_CONF
-
   service redis-server start
   echo "Redis is running."
 else
   echo "Redis is disabled."
 fi
-
 # run rabbitmq
 if [ "$RUN_RABBITMQ" = true ]; then
   RABBITMQ_PORT="${INITIALS}72"
   echo "RabbitMQ Port: $RABBITMQ_PORT"
   export RABBITMQ_PORT=$RABBITMQ_PORT
   echo "rabbitmq_port, ${RABBITMQ_PORT}" >> /workspace/configuration/config.csv
-
   # Update RabbitMQ configuration
   RABBITMQ_CONF="/etc/rabbitmq/rabbitmq.conf"
   if [ ! -f "$RABBITMQ_CONF" ]; then
@@ -152,13 +144,11 @@ if [ "$RUN_RABBITMQ" = true ]; then
   else
       sed -i "s/listeners.tcp.default = .*/listeners.tcp.default = $RABBITMQ_PORT/" $RABBITMQ_CONF
   fi
-
   service rabbitmq-server start &
   echo "RabbitMQ is running."
 else
   echo "RabbitMQ is disabled."
 fi
-
 # run mlflow
 if [ "$RUN_MLFLOW" = true ]; then
   MLFLOW_PORT="${INITIALS}80"
@@ -171,7 +161,6 @@ if [ "$RUN_MLFLOW" = true ]; then
 else
   echo "MLflow is disabled."
 fi
-
 # run prefect server
 if [ "$RUN_PREFECT" = true ]; then
   PREFECT_PORT="${INITIALS}20"
@@ -183,7 +172,6 @@ if [ "$RUN_PREFECT" = true ]; then
 else
   echo "Prefect is disabled."
 fi
-
 # run mongodb
 if [ "$RUN_MONGO" = true ]; then
   MONGODB_PORT="${INITIALS}17"
@@ -195,7 +183,6 @@ if [ "$RUN_MONGO" = true ]; then
 else
   echo "MongoDB is disabled."
 fi
-
 # run ray serve
 if [ "$RUN_RAY" = true ]; then
   RAY_REDIS_PORT="${INITIALS}78"
@@ -212,7 +199,6 @@ if [ "$RUN_RAY" = true ]; then
 else
   echo "Ray is disabled."
 fi
-
 # run ssh server
 if [ "$RUN_SSH" = true ]; then
   SSH_PORT="${INITIALS}22"
@@ -230,7 +216,6 @@ if [ "$RUN_SSH" = true ]; then
 else
   echo "SSH is disabled."
 fi
-
 # Start jupyter lab
 if [ "$RUN_JUPYTER" = true ]; then
   JUPYTER_PORT="${INITIALS}88"
@@ -243,13 +228,9 @@ if [ "$RUN_JUPYTER" = true ]; then
 else
   echo "Jupyter is disabled."
 fi
-
 service start avahi-daemon
 service enable avahi-daemon
-
-
 # finally run command or bash shell:
-
 if [ -z "$OPTIONAL_COMMAND" ]; then
     # If OPTIONAL_COMMAND is empty, run bash
     bash
