@@ -14,6 +14,8 @@ fi
 INITIALS=$1
 shift
 
+echo "Initials set to: $INITIALS"
+
 # Initialize service flags
 RUN_MLFLOW=true
 RUN_JUPYTER=true
@@ -55,15 +57,16 @@ OPTIONAL_COMMAND=$2
 MORE_ARGS=${@:3}
 INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
 
-echo "Initials: ${INITIALS}"
+echo "Formatted INITIALS: ${INITIALS}"
 
 # Set environment variables
 bash /workspace/beam_image/runs/setup_env_vars.sh
-echo "parameters, value" >> /workspace/configuration/config.csv
-echo "initials, ${INITIALS}" >> /workspace/configuration/config.csv
 
 mkdir -p /workspace/configuration
 touch /workspace/configuration/config.csv
+
+echo "parameters, value" >> /workspace/configuration/config.csv
+echo "initials, ${INITIALS}" >> /workspace/configuration/config.csv
 
 if [ "$RUN_REDIS" = true ]; then
   REDIS_PORT="${INITIALS}79"
@@ -169,4 +172,21 @@ if [ "$RUN_JUPYTER" = true ]; then
   echo "Jupyter Port: $JUPYTER_PORT"
   export JUPYTER_PORT=$JUPYTER_PORT
   echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
-  su - beam -c "jupyter-lab --port
+  su - beam -c "jupyter-lab --port=$JUPYTER_PORT" &
+  echo "Jupyter is running."
+else
+  echo "Jupyter is disabled."
+fi
+
+service start avahi-daemon
+service enable avahi-daemon
+
+if [ -z "$OPTIONAL_COMMAND" ]; then
+    bash
+else
+    echo /etc/motd
+    echo "Running command: ${OPTIONAL_COMMAND} ${MORE_ARGS}"
+    eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
+fi
+
+echo "Entrypoint script completed."
