@@ -55,8 +55,10 @@ BEAM_PASSWORD="12345678"
 
 OPTIONAL_COMMAND=$2
 MORE_ARGS=${@:3}
-INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
 
+# Debug: Print INITIALS before and after formatting
+echo "INITIALS before formatting: $INITIALS"
+INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
 echo "Formatted INITIALS: ${INITIALS}"
 
 # Set environment variables
