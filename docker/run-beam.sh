@@ -5,9 +5,11 @@ INITIALS=$3
 INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
 HOME_DIR=$4
 MORE_ARGS=${@:5}
+echo "Formatted INITIALS: ${INITIALS}"
 echo "Running a new container named: $NAME, Based on image: $IMAGE"
 echo "Jupyter port will be available at: ${INITIALS}88"
 echo "$MORE_ARGS"
+echo "Additional arguments: ${MORE_ARGS}"
 # Get total system memory in kilobytes (kB)
 total_memory_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 # Calculate 90% backoff of total memory
