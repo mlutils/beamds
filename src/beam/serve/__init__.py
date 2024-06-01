@@ -2,7 +2,7 @@
 if len([]):
     from .remote import beam_server, beam_client, triton_client
 
-__all__ = ['beam_server', 'beam_client', 'triton_client']
+__all__ = ['beam_server', 'beam_client', 'triton_client', 'BeamServeConfig']
 
 
 def __getattr__(name):
@@ -15,5 +15,8 @@ def __getattr__(name):
     elif name == 'triton_client':
         from .remote import triton_client
         return triton_client
+    elif name == 'BeamServeConfig':
+        from .config import BeamServeConfig
+        return BeamServeConfig
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")

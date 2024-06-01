@@ -13,7 +13,7 @@ def local_copy(path, tmp_path='/tmp', as_beam_path=False, override=False, disabl
         if as_beam_path:
             yield path
         else:
-            yield str(path)
+            yield str(path) if path else None
         return
 
     path = beam_path(path)

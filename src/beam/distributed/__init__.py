@@ -10,11 +10,12 @@ if len([]):
     from .thread_dispatcher import ThreadedDispatcher
 
     from .async_client import AsyncClient
-    # from .async_server import AsyncRayServer, AsyncCeleryServer
+    from .async_server import AsyncRayServer, AsyncCeleryServer
 
 
 __all__ = ['beam_worker', 'beam_dispatcher_server', 'beam_dispatcher', 'async_client', 'ray_client',
-              'CeleryDispatcher', 'CeleryWorker', 'RayDispatcher', 'RayClient', 'ThreadedDispatcher', 'AsyncClient']
+           'CeleryDispatcher', 'CeleryWorker', 'RayDispatcher', 'RayClient', 'ThreadedDispatcher', 'AsyncClient',
+           'AsyncRayServer', 'AsyncCeleryServer']
 
 
 def __getattr__(name):
@@ -51,5 +52,11 @@ def __getattr__(name):
     elif name == 'AsyncClient':
         from .async_client import AsyncClient
         return AsyncClient
+    elif name == 'AsyncRayServer':
+        from .async_server import AsyncRayServer
+        return AsyncRayServer
+    elif name == 'AsyncCeleryServer':
+        from .async_server import AsyncCeleryServer
+        return AsyncCeleryServer
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
