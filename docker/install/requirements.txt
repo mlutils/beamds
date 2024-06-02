@@ -4,7 +4,7 @@ setuptools
 build
 johnnydep
 mpi4py
-
+protobuf==3.20.3 # resolve juperlab error  TypeError: Descriptors cannot not be created directly
 # jupyter ipywidgets
 jupyterhub
 # jupyterlab

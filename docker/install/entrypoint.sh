@@ -161,6 +161,7 @@ if [ "$RUN_SSH" = true ]; then
   export SSH_PORT=$SSH_PORT
   echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
   echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
+  cp /workspace/beam_image/sshd_config /opt/ssh/sshd_config
   echo "root:$ROOT_PASSWORD" | chpasswd
   echo "beam:$BEAM_PASSWORD" | chpasswd
   supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
