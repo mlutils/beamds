@@ -22,6 +22,6 @@ EOF
 # language servers -experimental for future use
 # see https://jupyterlab-lsp.readthedocs.io/en/latest/Language%20Servers.html
 
-# moved to requirements.txt
+# moved to requirements.txt for now
 #pip install -U jedi-language-server
 

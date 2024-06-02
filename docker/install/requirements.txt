@@ -1,4 +1,4 @@
-# utilities and documentation
+# utilities and documentationn
 jedi-language-server
 loguru
 setuptools
