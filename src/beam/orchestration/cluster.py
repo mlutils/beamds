@@ -9,13 +9,12 @@ from ..processor import Processor
 
 
 class RayCluster(Processor):
-    def __init__(self, deployment, config, *args, n_pods=2, **kwargs):
+    def __init__(self, deployment, config, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.deployment = deployment
         self.workers = []
         self.head = None
         self.config = config
-        self.n_pods = n_pods
         self.k8s = BeamK8S(
             api_url=config['api_url'],
             api_token=config['api_token'],
@@ -54,6 +53,7 @@ class RayCluster(Processor):
             service_configs=self.service_configs,
             storage_configs=self.storage_configs,
             ray_ports_configs=self.ray_ports_configs,
+            n_pods=self.config['n_pods'],
             memory_storage_configs=self.memory_storage_configs,
             security_context_config=self.security_context_config,
             entrypoint_args=self.config['entrypoint_args'],

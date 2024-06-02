@@ -1,6 +1,6 @@
 {
     "api_url": "https://api.kh-dev.dt.local:6443",
-    "api_token": "sha256~BBFErVOL_Rh8CwaEgtw-XoN77qTUp80xCJ8svsCgImw",
+    "api_token": "sha256~A1t4QBm5UFipMKDgY_oe9B7u-iIhew01Z-eRF6diI48",
     "check_project_exists": true,
     "project_name": "kh-dev",
     "create_service_account": true,
@@ -21,6 +21,7 @@
     "use_gpu": false,
     "gpu_requests": "1",
     "gpu_limits": "1",
+    "n_pods": 2,
     "enable_ray_ports": true,
   "ray_ports_configs": [{"ray_ports": [6379, 8265]}],
   "user_idm_configs": [{"user_name": "yos", "role_name": "admin", "role_binding_name": "yos",
