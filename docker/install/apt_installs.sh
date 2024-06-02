@@ -3,6 +3,8 @@
 apt update
 apt update
 
+echo "Installing sudo"
+apt install -y sudo
 echo "Installing openssh-server"
 apt install -y openssh-server
 echo "Installing libkrb5"

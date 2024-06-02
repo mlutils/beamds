@@ -160,8 +160,8 @@ if [ "$RUN_SSH" = true ]; then
   echo "SSH Port: $SSH_PORT"
   export SSH_PORT=$SSH_PORT
   echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
-  echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
   cp /workspace/beam_image/sshd_config /opt/ssh/sshd_config
+  echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
   echo "root:$ROOT_PASSWORD" | chpasswd
   echo "beam:$BEAM_PASSWORD" | chpasswd
   supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
@@ -175,7 +175,7 @@ if [ "$RUN_JUPYTER" = true ]; then
   echo "Jupyter Port: $JUPYTER_PORT"
   export JUPYTER_PORT=$JUPYTER_PORT
   echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
-  su - beam -c "jupyter-lab --port=$JUPYTER_PORT" &
+  su - beam -c "jupyter-lab --no-browser --ip=0.0.0.0 --port=$JUPYTER_PORT" &
   echo "Jupyter is running."
 else
   echo "Jupyter is disabled."

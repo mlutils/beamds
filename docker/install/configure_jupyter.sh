@@ -18,7 +18,6 @@ echo "c.ServerApp.ip = '0.0.0.0'" >> /home/beam/.jupyter/jupyter_lab_config.py
 echo "c.ServerApp.token = ''" >> /home/beam/.jupyter/jupyter_lab_config.py
 echo "c.ServerApp.allow_root = False" >> /home/beam/.jupyter/jupyter_lab_config.py
 echo "c.LabServerApp.open_browser = False" >> /home/beam/.jupyter/jupyter_lab_config.py
-echo "c.NotebookApp.open_browser = False" >> /home/beam/.jupyter/jupyter_lab_config.py
 EOF
 # language servers -experimental for future use
 # see https://jupyterlab-lsp.readthedocs.io/en/latest/Language%20Servers.html
