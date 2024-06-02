@@ -36,7 +36,7 @@ class Processor(BeamBase):
     @cached_property
     def llm(self):
         if type(self._llm) is str:
-            from ..resource import resource
+            from ..resources import resource
             self._llm = resource(self._llm)
         return self._llm
 
@@ -150,7 +150,7 @@ class Processor(BeamBase):
 
     @classmethod
     def from_nlp(cls, query, llm=None, ask_kwargs=None, **kwargs):
-        from ..resource import resource
+        from ..resources import resource
         from ..logger import beam_logger as logger
 
         llm = resource(llm)
@@ -357,7 +357,7 @@ class Processor(BeamBase):
         if llm is None:
             llm = self.llm
         elif type(llm) is str:
-            from ..resource import resource
+            from ..resources import resource
             llm = resource(llm)
 
         ask_kwargs = ask_kwargs or {}

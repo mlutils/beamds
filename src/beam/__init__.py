@@ -12,10 +12,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'UniversalConfig', 'beam_arguments', 'BeamConfig', 'BeamParam',
            'check_type', 'Timer',
            'beam_logger', 'beam_kpi',
-           'beam_path', 'beam_key', 'pretty_format_number',
-           'beam_server', 'beam_client',
-           '__version__',
-           'resource',
+           'beam_path', 'beam_key', 'pretty_format_number', 'resource',
            'tqdm', 'Transformer'
            ]
 
@@ -135,12 +132,9 @@ def __getattr__(name):
     elif name == 'beam_client':
         from .serve import beam_client
         return beam_client
-    elif name == '__version__':
-        from ._version import __version__
-        return __version__
     elif name == 'resource':
-        from .resource import resource
-        return resource
+        from .resources import resource as bea_resource
+        return bea_resource
     elif name == 'Transformer':
         from .transformer import Transformer
         return Transformer
@@ -163,5 +157,5 @@ if len([]):
     from .path import beam_path, beam_key
     from .serve import beam_server, beam_client
     from ._version import __version__
-    from .resource import resource
+    from .resources import resource
     from .transformer import Transformer
