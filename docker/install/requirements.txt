@@ -1,4 +1,5 @@
 # utilities and documentation
+jedi-language-server
 loguru
 setuptools
 build
