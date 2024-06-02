@@ -11,8 +11,9 @@ if [[ -f "$1" ]] && [[ $1 == *.sh ]]; then
     exit
 fi
 
-INITIALS=$1
-shift
+## this manipulates the initials to 10 if no argument is passed - initial is passed in docker run command as -e INITIALS=$INITIALS for now
+#INITIALS=$1
+#shift
 
 echo "Initials set to: $INITIALS"
 
