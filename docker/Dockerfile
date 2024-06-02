@@ -115,17 +115,13 @@ RUN pip install -U -r /workspace/beam_image/requirements.txt
 #RUN bash /workspace/beam_image/install_dgl.sh
 ## COPY docker/install_dgl_fixed.sh /workspace/install/install_dgl_fixed.sh
 ## RUN bash /workspace/beam_image/install_dgl_fixed.sh
-
-
 # install RAPID framework
 # cannot install rapids as it does not support cuda 12.0 yet
 # see https://rapids.ai/pip.html#install
 # RUN bash /workspace/beam_image/rapid_install.sh
-
 # download datasets and models
 # REMOVE FOR LITE VERSION
 # RUN python /workspace/beam_image/downloader.py
-
 ## download nlp data
 ## COPY docker/install/models_downloads.sh /workspace/beam_image
 #RUN bash /workspace/beam_image/models_downloads.sh
@@ -135,8 +131,6 @@ RUN pip install -U -r /workspace/beam_image/requirements.txt
 ## REMOVE FOR LITE VERSION
 ## COPY docker/install/install_cusignal.sh /workspace/beam_image
 #RUN bash /workspace/beam_image/install_cusignal.sh
-
-
 ## RUN pip install faiss-gpu
 ## REMOVE FOR LITE VERSION
 ## COPY docker/install/install_faiss.sh /workspace/beam_image
@@ -169,7 +163,6 @@ RUN pip install -U -r /workspace/beam_image/requirements.txt
 #ENV PATH "$PATH:$HADOOP_HOME/bin"
 ## set default java version
 #ENV JAVA_HOME "/usr/lib/jvm/default-java"
-
 ## install language servers
 ##COPY docker/install/language_servers.sh /workspace/beam_image
 #RUN bash /workspace/beam_image/language_servers.sh
@@ -177,17 +170,13 @@ RUN pip install -U -r /workspace/beam_image/requirements.txt
 ## install aux installs
 ##COPY docker/install/aux_installs.sh /workspace/beam_image
 #RUN bash /workspace/beam_image/aux_installs.sh
-
 ## configure usermode ssh server and home directory
 RUN bash /workspace/beam_image/usermode_ssh_server.sh
-
 # config jupyter notebook
 #COPY docker/install/configure_jupyter.sh /workspace/beam_image
 RUN bash /workspace/beam_image/configure_jupyter.sh
-
 COPY docker/runs /workspace/beam_image/runs
 # COPY docker/install/entrypoint.sh /workspace/beam_image
-
 RUN chmod +x /workspace/beam_image/entrypoint.sh
 ENTRYPOINT ["/workspace/beam_image/entrypoint.sh"]
 CMD ["10"]

@@ -191,5 +191,4 @@ else
     echo "Running command: ${OPTIONAL_COMMAND} ${MORE_ARGS}"
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
-
 echo "Entrypoint script completed."

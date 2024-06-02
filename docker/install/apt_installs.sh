@@ -1,10 +1,7 @@
 #!/bin/bash
 
+#apt update why we need to update twice?
 apt update
-apt update
-
-echo "Installing sudo"
-apt install -y sudo
 echo "Installing openssh-server"
 apt install -y openssh-server
 echo "Installing libkrb5"
@@ -97,6 +94,8 @@ echo "Installing snapd"
 apt install -y snapd
 echo "Installing nvtop"
 snap install nvtop
+echo "Installing sudo"
+apt install -y sudo
 #
 ## don't install libopenmpi as it messes up the pytorch geometric installation
 #apt install -y libopenmpi-dev
