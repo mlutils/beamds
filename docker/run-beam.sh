@@ -5,6 +5,7 @@ INITIALS=$3
 HOME_DIR=$4
 MORE_ARGS=${@:5}
 echo "Formatted INITIALS: ${INITIALS}"
+INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
 echo "Running a new container named: $NAME, Based on image: $IMAGE"
 echo "Jupyter port will be available at: ${INITIALS}88"
 echo "$MORE_ARGS"
