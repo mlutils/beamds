@@ -1,7 +1,7 @@
 # Create a non-root user
 useradd -m -s /bin/bash beam
 echo 'beam:12345678' | chpasswd
-usermod -aG sudo username
+usermod -aG sudo beam
 mkdir -p  /opt/ssh
 mkdir -p  /opt/supervisor
 cp /workspace/beam_image/supervisord.conf /etc/supervisor/conf.d/
