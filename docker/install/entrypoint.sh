@@ -58,7 +58,6 @@ MORE_ARGS=${@:3}
 
 # Debug: Print INITIALS before and after formatting
 echo "INITIALS before formatting: $INITIALS"
-INITIALS="${INITIALS}0"
 # INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
 echo "Formatted INITIALS: ${INITIALS}"
 
