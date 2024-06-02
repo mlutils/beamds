@@ -2,7 +2,6 @@
 IMAGE=$1
 NAME=$2
 INITIALS=$3
-INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
 HOME_DIR=$4
 MORE_ARGS=${@:5}
 echo "Formatted INITIALS: ${INITIALS}"
