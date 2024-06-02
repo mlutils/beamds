@@ -121,7 +121,7 @@ RUN bash /workspace/beam_image/install_dgl.sh
 # RUN bash /workspace/beam_image/rapid_install.sh
 # download datasets and models
 # REMOVE FOR LITE VERSION
- RUN python /workspace/beam_image/downloader.py
+RUN python /workspace/beam_image/downloader.py
 # download nlp data
 # COPY docker/install/models_downloads.sh /workspace/beam_image
 RUN bash /workspace/beam_image/models_downloads.sh
