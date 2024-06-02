@@ -2,6 +2,7 @@ from typing import List
 
 from sentence_transformers import SentenceTransformer
 
+from ..logger import beam_logger as logger
 from ..utils import beam_device
 from ..processor import Processor
 from ..llm import default_tokenizer
@@ -10,7 +11,7 @@ from ..path import local_copy, beam_path
 
 
 class TextSimilarity(DenseSimilarity):
-    def __init__(self, *args, dense_model_path="BAAI/bge-base-en-v1.5", tokenizer_path=None,
+    def __init__(self, *args, dense_model_path=None, tokenizer_path=None,
                  use_dense_model_tokenizer=True, dense_model=None, tokenizer=None, cache_folder=None,
                  dense_model_device='cuda', vector_store_device="cpu", vector_store_training_device='cpu', batch_size=32, show_progress_bar=True,
                  st_kwargs=None, **kwargs):
@@ -118,7 +119,16 @@ class TextSimilarity(DenseSimilarity):
         state = super().load_state_dict(path, ext, exclude, **kwargs)
 
         path = beam_path(path)
-        self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'), device=str(self.dense_model_device))
+        dense_model_path = self.get_hparam('dense_model_path')
+        if dense_model_path is not None:
+            st_kwargs = self.get_hparam('st_kwargs', {})
+            st_kwargs = st_kwargs or {}
+            self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'),
+                                                   device=str(self.dense_model_device), **st_kwargs)
+        else:
+            self.dense_model = None
+            logger.warning("No dense model path found in the state dictionary, please load the dense model manually.")
+
         if path.joinpath('tokenizer.hf').exists():
             from transformers import PreTrainedTokenizerFast
             with local_copy(path.joinpath('tokenizer.hf')) as p:
@@ -127,6 +137,11 @@ class TextSimilarity(DenseSimilarity):
             self._tokenizer = path.joinpath('tokenizer.pkl').read()
 
         return state
+
+    def set_dense_model(self, dense_model):
+        self.dense_model = dense_model
+        logger.info(f"Set dense model to {dense_model}")
+        return self
 
 
 

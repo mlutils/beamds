@@ -7,7 +7,6 @@ import pandas as pd
 import spacy
 
 from .. import resource, BeamData, Timer, as_numpy
-from ..transformer import Transformer
 from ..logger import beam_logger as logger
 from .core_algorithm import Algorithm
 from ..type import BeamType
@@ -57,12 +56,6 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     def metadata(self):
         df = resource(self.get_hparam('path-to-data')).read(target='pandas')
         return df
-
-    @cached_property
-    def nlp_model(self):
-        nlp = spacy.load(self.get_hparam('nlp-model'))
-        nlp.max_length = self.get_hparam('nlp-max-length')
-        return nlp
 
     @cached_property
     def svd_transformer(self):
@@ -116,19 +109,27 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         from src.beam.similarity import TFIDF
         # for now fix the metric as it is the only supported metric in tfidf sim
         sim = {}
-        for k in ['validation', 'test']:
+        for k in ['train', 'validation', 'test']:
             tokenizer = Tokenizer(self.hparams)
             sim[k] = TFIDF(preprocessor=tokenizer.tokenize, metric='bm25',
                         chunksize=self.get_hparam('tokenizer-chunksize'),
                         hparams=self.hparams)
         return sim
 
+    def build_dense_model(self):
+        from sentence_transformers import SentenceTransformer
+        st_kwargs = self.get_hparam('st_kwargs', {})
+        dense_model = SentenceTransformer(self.get_hparam('dense_model_path'),
+                                          device=str(self.dense_model_device), **st_kwargs)
+        return dense_model
+
     @cached_property
     def dense_sim(self):
         from src.beam.similarity import TextSimilarity
+        dense_model = self.build_dense_model()
         sim = {}
-        for k in ['validation', 'test']:
-            sim[k] = TextSimilarity(hparams=self.hparams)
+        for k in ['train', 'validation', 'test']:
+            sim[k] = TextSimilarity(dense_model=dense_model, hparams=self.hparams)
         return sim
 
     @cached_property
@@ -174,7 +175,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         return self.robust_scaler.transform(as_numpy(x))
 
     def reset(self):
-        for k in ['validation', 'test']:
+        for k in ['train', 'validation', 'test']:
             self.tfidf_sim[k].reset()
             self.dense_sim[k].reset()
 
@@ -200,13 +201,26 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes.update('dataset', 'metadata', 'nlp_model', 'subsets', 'x', 'y', 'ind')
+        return super().excluded_attributes.update('dataset', 'metadata', 'subsets', 'x', 'y', 'ind')
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)
         tokenizer = Tokenizer(self.hparams)
         for k in self.tfidf_sim.keys():
             self.tfidf_sim[k].preprocessor = tokenizer.tokenize
+
+        dense_model = self.build_dense_model()
+        for k in self.dense_sim.keys():
+            self.dense_sim[k].set_dense_model(dense_model)
+
+    def search_dual(self, query, subset='validation', k_sparse=5, k_dense=5):
+        res_sparse = self.search_tfidf(query, subset=subset, k=k_sparse)
+        res_dense = self.search_dense(query, subset=subset, k=k_dense)
+
+        ind_sparse = self.invmap[subset][res_sparse.index.flatten()]
+        ind_dense = self.invmap[subset][res_dense.index.flatten()]
+
+        return {'sparse': ind_sparse, 'dense': ind_dense}
 
     def build_group_dataset(self, group_label,
                             known_subset='train',
@@ -228,11 +242,8 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         x_pos = [v[i] for i in ind_pos]
         y_pos = np.ones(len(ind_pos), dtype=int)
 
-        res_sparse = self.search_tfidf(x_pos, subset=unknown_subset, k=k_sparse)
-        res_dense = self.search_dense(x_pos, subset=unknown_subset, k=k_dense)
-
-        ind_sparse = self.invmap[unknown_subset][res_sparse.index.flatten()]
-        ind_dense = self.invmap[unknown_subset][res_dense.index.flatten()]
+        ind_sparse, ind_dense = self.search_dual(x_pos, subset=known_subset,
+                                                 k_sparse=k_sparse, k_dense=k_dense).values()
 
         ind_unlabeled = np.unique(np.concatenate([ind_sparse, ind_dense], axis=0))
 
@@ -251,11 +262,6 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
     @cached_property
     def features(self):
-
-        # p = '/home/shared/data/results/enron/tmp/features'
-        # bd = BeamData.from_path(p)
-        # bd.cache()
-        # return bd.values
 
         f = {'validation': self._build_features(self.x['validation'], is_train=True),
              'train': self._build_features(self.x['train'], is_train=False),
@@ -341,6 +347,18 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         results = {'metrics': metrics, 'datasets': datasets, 'y_pred': y_pred}
 
         return results
+
+    def explainability(self, x, known_subset='train', k_sparse=None, k_dense=None):
+        if not self.tfidf_sim[known_subset].is_trained:
+            logger.warning(f"TFIDF model not fitted for {known_subset}. Fitting now")
+            self.fit_tfidf(subset=known_subset)
+
+        if not self.dense_sim[known_subset].is_trained:
+            logger.warning(f"Dense model not fitted for {known_subset}. Fitting now")
+            self.fit_dense(subset=known_subset)
+
+        res = self.search_dual(x, subset=known_subset, k_sparse=k_sparse, k_dense=k_dense)
+        return res
 
 
 class InvMap:
