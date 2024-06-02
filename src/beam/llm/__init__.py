@@ -10,11 +10,12 @@ if len([]):
     from .simulators import openai as openai_simulator
     from .simulators import text_generation as tgi_simulator
     from .simulators import openai_legacy as openai_legacy_simulator
+    from .tools import LLMGuidance
 
 
 __all__ = ['beam_llm', 'text_splitter', 'split_to_tokens', 'default_tokenizer', 'estimate_tokens',
            'get_conversation_template', 'LLMTool', 'LLMToolProperty', 'LLMTask', 'openai_simulator',
-           'tgi_simulator', 'openai_legacy_simulator']
+           'tgi_simulator', 'openai_legacy_simulator', 'LLMGuidance']
 
 
 def __getattr__(name):
@@ -54,5 +55,8 @@ def __getattr__(name):
     elif name == 'openai_legacy_simulator':
         from .simulators import openai_legacy as openai_legacy_simulator
         return openai_legacy_simulator
+    elif name == 'LLMGuidance':
+        from .tools import LLMGuidance
+        return LLMGuidance
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")

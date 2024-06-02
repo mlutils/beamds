@@ -1,7 +1,9 @@
 import json
 from functools import cached_property
+from typing import Dict, List, Any
 
 from ..llm import beam_llm
+from ..llm import LLMGuidance
 from ..processor import MetaDispatcher
 from ..utils import check_type
 from ..logger import beam_logger as logger
@@ -16,6 +18,17 @@ import numpy as np
 import pandas as pd
 # do not remove the above imports
 
+from pydantic import BaseModel
+
+
+class MethodSelection(BaseModel):
+    method: str
+
+
+class ArgumentsSelection(BaseModel):
+    args: List[Any]
+    kwargs: Dict[str, Any]
+
 
 class BeamAssistant(MetaDispatcher):
 
@@ -28,12 +41,15 @@ class BeamAssistant(MetaDispatcher):
         self.summary_len = self.get_hparam('summary_len', summary_len)
         self.eval_arguments = self.get_hparam('eval_arguments', eval_arguments)
         self.retries = self.get_hparam('retries', retries)
+        self.guidance = {'method_selection': LLMGuidance(guided_json=MethodSelection),
+                         'arguments_selection': LLMGuidance(guided_json=ArgumentsSelection)}
+
         llm = self.get_hparam('llm', llm)
         llm_kwargs = llm_kwargs or {}
 
-        self.llm = None
+        self._llm = None
         if llm is not None:
-            self.llm = beam_llm(llm, **llm_kwargs)
+            self._llm = beam_llm(llm, **llm_kwargs)
 
         self._summary_queue = queue.Queue()
         self._summarize_thread = None
@@ -139,7 +155,7 @@ class BeamAssistant(MetaDispatcher):
                   f"Your answer:\n\n")
 
         ask_kwargs = ask_kwargs or {}
-        response = self.ask(query, **ask_kwargs).json
+        response = self.ask(query, guidance=self.guidance['method_selection'], **ask_kwargs).json
 
         constructor_name = response['method']
 
@@ -164,7 +180,7 @@ class BeamAssistant(MetaDispatcher):
                   f"{json_output_example}\n"
                   f"Your answer:\n\n")
 
-        d = self.ask(query, **ask_kwargs).json
+        d = self.ask(query, guidance=self.guidance['arguments_selection'], **ask_kwargs).json
         args = d.get('args', [])
         kwargs = d.get('kwargs', {})
 
@@ -238,7 +254,7 @@ class BeamAssistant(MetaDispatcher):
                   f"{json.dumps(json_output_example)}\n"
                   f"Your answer:\n\n")
 
-        d = self.ask(prompt, **ask_kwargs).json
+        d = self.ask(prompt, guidance=self.guidance['arguments_selection'], **ask_kwargs).json
 
         args = d.get('args', [])
         kwargs = d.get('kwargs', {})
@@ -312,7 +328,7 @@ class BeamAssistant(MetaDispatcher):
                   f"{json_output_example}\n"
                   f"Your answer:\n\n")
 
-        response = self.ask(prompt, **ask_kwargs).json
+        response = self.ask(prompt, guidance=self.guidance['method_selection'], **ask_kwargs).json
         method_name = response['method']
 
         if method_name not in [m[0] for m in method_list]:
