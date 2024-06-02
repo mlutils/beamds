@@ -100,6 +100,8 @@ class Processor(BeamBase):
     def from_path(cls, path, skeleton: Union[bool, str] = True, init_args: Union[bool, str] = True,
                   load_state_kwargs=None, exclude: Union[List, Set] = None,  **kwargs):
 
+        print(cls)
+
         load_state_kwargs = load_state_kwargs or {}
         exclude = exclude or set()
         exclude = exclude.union(cls.excluded_attributes)

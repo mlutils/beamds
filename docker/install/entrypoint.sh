@@ -66,6 +66,9 @@ echo "Formatted INITIALS: ${INITIALS}"
 # Set environment variables
 bash /workspace/beam_image/runs/setup_env_vars.sh
 
+cp /workspace/beam_image/runs/motd /etc/motd
+# add the initials and the image name to the motd
+
 mkdir -p /workspace/configuration
 touch /workspace/configuration/config.csv
 

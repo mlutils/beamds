@@ -12,7 +12,7 @@ jupyter nbextension enable --py widgetsnbextension
 #echo "c.LabServerApp.open_browser = False" >> /root/.jupyter/jupyter_lab_config.py
 su - beam <<EOF
 jupyter-lab --generate-config
-echo "c.ServerApp.notebook_dir = '/home/beam/'" >> /home/beam/.jupyter/jupyter_lab_config.py
+echo "c.ServerApp.notebook_dir = '/home/'" >> /home/beam/.jupyter/jupyter_lab_config.py
 echo "c.ServerApp.allow_remote_access = True" >> /home/beam/.jupyter/jupyter_lab_config.py
 echo "c.ServerApp.ip = '0.0.0.0'" >> /home/beam/.jupyter/jupyter_lab_config.py
 echo "c.ServerApp.token = ''" >> /home/beam/.jupyter/jupyter_lab_config.py

@@ -13,7 +13,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'check_type', 'Timer',
            'beam_logger', 'beam_kpi',
            'beam_path', 'beam_key', 'pretty_format_number', 'resource',
-           'tqdm', 'Transformer'
+           'tqdm', 'Transformer', 'Processor',
            ]
 
 
@@ -138,6 +138,9 @@ def __getattr__(name):
     elif name == 'Transformer':
         from .transformer import Transformer
         return Transformer
+    elif name == 'Processor':
+        from .processor import Processor
+        return Processor
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 
@@ -159,3 +162,4 @@ if len([]):
     from ._version import __version__
     from .resources import resource
     from .transformer import Transformer
+    from .processor import Processor

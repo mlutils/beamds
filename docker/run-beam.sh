@@ -72,9 +72,10 @@ run_mode=""
 if [ "$MODE" == "it" ]; then
   run_mode="-it"
 elif [ "$MODE" == "d" ]; then
-  run_node="-d"
+  run_mode="-d"
 else
   run_mode="-itd"  # Default is interactive, tty, detached
 fi
 
+echo "docker run $port_mapping --ipc=host --ulimit memlock=-1 $gpu_option --shm-size=8g --memory=${backoff_memory_mb}m --ulimit stack=67108864 --restart unless-stopped $run_mode -v $HOME_DIR:$HOME_DIR -v /mnt/:/mnt/ -e INITIALS=${INITIALS} $MORE_ARGS --name $NAME --hostname $NAME $IMAGE $COMMAND"
 docker run $port_mapping --ipc=host --ulimit memlock=-1 $gpu_option --shm-size=8g --memory=${backoff_memory_mb}m --ulimit stack=67108864 --restart unless-stopped $run_mode -v $HOME_DIR:$HOME_DIR -v /mnt/:/mnt/ -e INITIALS=${INITIALS} $MORE_ARGS --name $NAME --hostname $NAME $IMAGE $COMMAND

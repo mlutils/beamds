@@ -5,7 +5,7 @@ from src.beam import Timer, resource
 from src.beam import beam_logger as logger
 import os
 
-from examples.enron_similarity.alg import TicketSimilarity
+from examples.enron_similarity.alg import EnronTicketSimilarity
 from examples.enron_similarity.config import TicketSimilarityConfig
 
 
