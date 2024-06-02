@@ -22,6 +22,4 @@ EOF
 # language servers -experimental for future use
 # see https://jupyterlab-lsp.readthedocs.io/en/latest/Language%20Servers.html
 pip install -U jedi-language-server
-apt install -y nodejs
-apt install -y npm
 /usr/bin/supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log

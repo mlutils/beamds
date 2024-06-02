@@ -4,6 +4,10 @@
 apt update
 echo "Installing openssh-server"
 apt install -y openssh-server
+echo "Installing nodejs"
+apt install -y nodejs
+echo "Installing npm"
+apt install -y npm
 echo "Installing libkrb5"
 apt install -y libkrb5
 echo "Installing libkrb5-dev"
