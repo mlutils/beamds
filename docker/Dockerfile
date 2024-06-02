@@ -170,10 +170,6 @@ RUN pip install -U -r /workspace/beam_image/requirements.txt
 ## set default java version
 #ENV JAVA_HOME "/usr/lib/jvm/default-java"
 
-# config jupyter notebook
-#COPY docker/install/configure_jupyter.sh /workspace/beam_image
-RUN bash /workspace/beam_image/configure_jupyter.sh
-
 ## install language servers
 ##COPY docker/install/language_servers.sh /workspace/beam_image
 #RUN bash /workspace/beam_image/language_servers.sh
@@ -182,7 +178,12 @@ RUN bash /workspace/beam_image/configure_jupyter.sh
 ##COPY docker/install/aux_installs.sh /workspace/beam_image
 #RUN bash /workspace/beam_image/aux_installs.sh
 
+## configure usermode ssh server and home directory
 RUN bash /workspace/beam_image/usermode_ssh_server.sh
+
+# config jupyter notebook
+#COPY docker/install/configure_jupyter.sh /workspace/beam_image
+RUN bash /workspace/beam_image/configure_jupyter.sh
 
 COPY docker/runs /workspace/beam_image/runs
 # COPY docker/install/entrypoint.sh /workspace/beam_image
