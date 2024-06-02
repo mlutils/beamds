@@ -1,6 +1,7 @@
 #!/bin/bash
 
 echo "Starting entrypoint script..."
+# shellcheck disable=SC2145
 echo "Initial arguments: $@"
 
 # Check if the first argument is a path to a shell script
