@@ -2,7 +2,7 @@
 
 # Function to display help
 show_help() {
-  echo "Usage: $0 IMAGE NAME INITIALS HOME_DIR [GPU_FLAG] [MODE] [COMMAND] [MORE_ARGS]"
+  echo "Usage: $0 IMAGE NAME INITIALS HOME_DIR [GPU_FLAG] [MODE] [COMMAND] [MORE_DOCKER_ARGS]"
   echo ""
   echo "  IMAGE           Docker image to use"
   echo "  NAME            Name of the Docker container"
@@ -11,10 +11,10 @@ show_help() {
   echo "  [GPU_FLAG]      'gpu-off' to disable GPU, default is GPU on"
   echo "  [MODE]          'it' for interactive mode, 'd' for detached mode, default is 'itd'"
   echo "  [COMMAND]       Command to run inside the container (optional)"
-  echo "  [MORE_ARGS]     Additional docker run arguments (optional)"
+  echo "  [MORE_DOCKER_ARGS]     Additional docker run arguments (optional)"
   echo ""
   echo "Examples:"
-  echo "  $0 my_image my_container 123 /home/user"
+  echo "  $0 my_image my_container 123 /home/user gpu-on ltd \"-v /path:/path\" bash"
   echo "  $0 my_image my_container 123 /home/user gpu-off 'echo Hello' '-p 1234:1234 --env KEY=value'"
 }
 
@@ -36,8 +36,8 @@ INITIALS=$3
 HOME_DIR=$4
 GPU_FLAG=${5:-"gpu-on"}
 MODE=${6:-"itd"}
-COMMAND=${7:-""}
-MORE_ARGS=${@:8}
+MORE_DOCKER_ARGS=${7:-""}
+COMMAND=${@:8}
 
 echo "before Formatted INITIALS: ${INITIALS}"
 # INITIALS=$(printf '%03d' $(echo $INITIALS | rev) | rev)
@@ -45,7 +45,7 @@ INITIALS=$(printf '%03d' "$(echo "$INITIALS" | rev)" | rev)
 echo "after Formatted INITIALS: ${INITIALS}"
 echo "Running a new container named: $NAME, Based on image: $IMAGE"
 echo "Jupyter port will be available at: ${INITIALS}88"
-echo "Additional arguments: ${MORE_ARGS}"
+echo "Additional arguments: ${MORE_DOCKER_ARGS}"
 
 # Get total system memory in kilobytes (kB)
 total_memory_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
@@ -61,7 +61,7 @@ if [ "$GPU_FLAG" == "gpu-off" ]; then
 fi
 
 port_mapping="-p ${INITIALS}00-${INITIALS}99:${INITIALS}00-${INITIALS}99"
-if echo $MORE_ARGS | grep "network=host"; then
+if echo "$MORE_DOCKER_ARGS" | grep "network=host"; then
   port_mapping=""
 fi
 
@@ -77,5 +77,8 @@ else
   run_mode="-itd"  # Default is interactive, tty, detached
 fi
 
-echo "docker run $port_mapping --ipc=host --ulimit memlock=-1 $gpu_option --shm-size=8g --memory=${backoff_memory_mb}m --ulimit stack=67108864 --restart unless-stopped $run_mode -v $HOME_DIR:$HOME_DIR -v /mnt/:/mnt/ -e INITIALS=${INITIALS} $MORE_ARGS --name $NAME --hostname $NAME $IMAGE $COMMAND"
-docker run $port_mapping --ipc=host --ulimit memlock=-1 $gpu_option --shm-size=8g --memory=${backoff_memory_mb}m --ulimit stack=67108864 --restart unless-stopped $run_mode -v $HOME_DIR:$HOME_DIR -v /mnt/:/mnt/ -e INITIALS=${INITIALS} $MORE_ARGS --name $NAME --hostname $NAME $IMAGE $COMMAND
+DOCKER_RUN_COMMAND="docker run $port_mapping --ipc=host --ulimit memlock=-1 $gpu_option --shm-size=8g --memory=${backoff_memory_mb}m --ulimit stack=67108864 --restart unless-stopped $run_mode -v $HOME_DIR:$HOME_DIR -v /mnt/:/mnt/ -e INITIALS=${INITIALS} $MORE_DOCKER_ARGS --name $NAME --hostname $NAME $IMAGE $COMMAND"
+
+# Print the final docker run command and execute it
+echo "$DOCKER_RUN_COMMAND"
+$DOCKER_RUN_COMMAND

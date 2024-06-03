@@ -473,7 +473,7 @@ class AutoBeam(Processor):
                 'BEAM_DS_VERSION': beam_version
             }
 
-            # Path to the directory containing the Dockerfile
+            # Path to the directory containing the dockerfile-beam
             path_to_dockerfile = tempdir.joinpath('dockerfile').str
 
             try:
