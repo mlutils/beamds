@@ -1,13 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
-
-from examples.example_utils import add_beam_to_path
-add_beam_to_path()
-
 import torch
-import torchvision
 import torch.nn.functional as F
 from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
@@ -15,14 +9,12 @@ import numpy as np
 import os
 
 from src.beam import beam_arguments, Experiment
-from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import NeuralAlgorithm, PackedFolds, as_numpy
-from src.beam import DataTensor, BeamOptimizer
+from src.beam import UniversalDataset
+from src.beam import NeuralAlgorithm, as_numpy
+from src.beam import BeamOptimizer
 from src.beam.data import BeamData
 
-from torchvision import transforms
 import torchvision
-from ray import tune
 import kornia
 from kornia.augmentation.container import AugmentationSequential
 from src.beam import beam_logger as logger

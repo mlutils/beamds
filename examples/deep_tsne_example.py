@@ -1,22 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
-from examples.example_utils import add_beam_to_path
-add_beam_to_path()
 
 import torch
 import torchvision
 import torch.nn.functional as F
-from torch import nn
-from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
-from src.beam import beam_arguments, Experiment, beam_algorithm_generator, BeamNN, BeamData
-from src.beam import UniversalDataset, UniversalBatchSampler
+from src.beam import Experiment, BeamNN, BeamData
+from src.beam import UniversalDataset
 from src.beam import NeuralAlgorithm
 from src.beam import LinearNet, as_numpy
-from src.beam import DataTensor
 from src.beam import UniversalConfig, BeamParam
 from functools import partial
 import math

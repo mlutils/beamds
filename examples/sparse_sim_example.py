@@ -1,7 +1,5 @@
 import torch
-from example_utils import add_beam_to_path
-add_beam_to_path()
-from src.beam.sparse import SparseSimilarity
+from src.beam.similarity import SparseSimilarity
 
 
 if __name__ == '__main__':

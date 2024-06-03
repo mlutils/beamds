@@ -1,33 +1,21 @@
-import rtdl
-
-try:
-    from examples.example_utils import add_beam_to_path
-except ModuleNotFoundError:
-    from example_utils import add_beam_to_path
-add_beam_to_path()
-
 import torch
 import torch.nn.functional as F
 from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
-import os
 
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
-from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import NeuralAlgorithm, PackedFolds, LinearNet
+from src.beam import UniversalDataset
+from src.beam import NeuralAlgorithm, LinearNet
 from src.beam.nn import PID
 from src.beam.config import basic_beam_parser
 from src.beam.nn import GBN, MHRuleLayer, mySequential
 
-from ray import tune
 from sklearn.datasets import fetch_covtype
 import pandas as pd
 from torch import Tensor
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
-import math
 from sklearn.preprocessing import QuantileTransformer
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
+from typing import Callable, Union
 import math
 from src.beam import beam_logger as logger
 

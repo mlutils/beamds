@@ -1,8 +1,3 @@
-from example_utils import add_beam_to_path
-add_beam_to_path()
-
-from src.beam.llm import beam_llm
-
 # llm = beam_llm('openai:///gpt-4')
 
 # res = llm.chat("hi how are you?", system="you had a bad day")

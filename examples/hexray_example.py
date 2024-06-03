@@ -1,7 +1,5 @@
 from functools import cached_property
 
-from examples.example_utils import add_beam_to_path
-add_beam_to_path()
 from src.beam.processor.core import Processor
 from src.beam.path import beam_path
 from src.beam.llm import beam_llm
