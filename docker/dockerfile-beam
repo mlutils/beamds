@@ -18,7 +18,7 @@ ENV CPATH "/usr/local/cuda/include:$CPATH"
 ENV PATH "/usr/local/cuda/bin:$PATH"
 ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 
-COPY docker/workspace/* /workspace/
+COPY docker/workspace/ /workspace/
 
 # apt installs
 RUN bash /workspace/bash-build-scripts/apt_installs.sh
