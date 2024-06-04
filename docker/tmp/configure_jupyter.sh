@@ -20,14 +20,12 @@ jupyter nbextension enable --py widgetsnbextension
 
 su - "$USER_NAME" << EOF
 jupyter-lab --generate-config
-CONF_FILE="$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
-echo "CONF_FILE: $CONF_FILE"
-echo "c.ServerApp.root_dir = '/home/'" >> "$CONF_FILE"
-echo "c.ServerApp.allow_remote_access = True" >> "$CONF_FILE"
-echo "c.ServerApp.ip = '0.0.0.0'" >> "$CONF_FILE"
-echo "c.IdentityProvider.token = ''" >> "$CONF_FILE"
-echo "c.ServerApp.allow_root = False" >> "$CONF_FILE"
-echo "c.LabServerApp.open_browser = False" >> "$CONF_FILE"
+echo "c.ServerApp.root_dir = '/home/'" >> "$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
+echo "c.ServerApp.allow_remote_access = True" >> "$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
+echo "c.ServerApp.ip = '0.0.0.0'" >> "$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
+echo "c.IdentityProvider.token = ''" >> "$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
+echo "c.ServerApp.allow_root = False" >> "$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
+echo "c.LabServerApp.open_browser = False" >> "$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
 EOF
 
 
