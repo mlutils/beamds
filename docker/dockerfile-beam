@@ -136,7 +136,6 @@ RUN bash /workspace/bash-build-scripts/language_servers.sh
 RUN bash /workspace/bash-build-scripts/aux_installs.sh
 RUN bash /workspace/bash-build-scripts/usermode_ssh_server.sh
 # config jupyter notebook
-COPY docker/tmp/configure_jupyter.sh /workspace/bash-build-scripts/configure_jupyter.sh
 RUN bash /workspace/bash-build-scripts/configure_jupyter.sh
 
 RUN chmod +x /workspace/bash-run-scripts/entrypoint.sh

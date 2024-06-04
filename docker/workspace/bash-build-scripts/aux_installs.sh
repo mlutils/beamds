@@ -15,3 +15,6 @@ python -c "from opencv_fixer import AutoFix; AutoFix()"
 git config --global http.sslVerify false
 echo "cd /home" >> ~/.bashrc
 
+# make a default home directory if does not exist
+mkdir -p /home
+

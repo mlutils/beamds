@@ -171,11 +171,10 @@ if [ "$RUN_SSH" = true ]; then
   supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
 
   ROOT_SSH_PORT="${INITIALS}24"
-  export ROOT_SSH_PORT=ROOT_SSH_PORT
+  export ROOT_SSH_PORT=$ROOT_SSH_PORT
   echo "root_ssh_port, ${ROOT_SSH_PORT}" >> /workspace/configuration/config.csv
   echo "Port $ROOT_SSH_PORT" >>/etc/ssh/sshd_config
   service ssh start
-
   echo "SSH is running."
 else
   echo "SSH is disabled."
@@ -192,8 +191,8 @@ else
   echo "Jupyter is disabled."
 fi
 
-service start avahi-daemon
-service enable avahi-daemon
+echo "Setting permissions to user flash"
+setfacl -R -m u:"$USER_NAME":rwx /home/
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
     bash
@@ -203,6 +202,3 @@ else
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
 echo "Entrypoint script completed."
-
-echo "Setting permissions to user flash"
-setfacl -R -m u:"$USER_NAME":rwx /home/
