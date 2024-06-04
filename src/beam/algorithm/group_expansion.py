@@ -120,7 +120,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         from sentence_transformers import SentenceTransformer
         st_kwargs = self.get_hparam('st_kwargs', {})
         dense_model = SentenceTransformer(self.get_hparam('dense_model_path'),
-                                          device=str(self.dense_model_device), **st_kwargs)
+                                          device=str(self.get_hparam('dense_model_device')), **st_kwargs)
         return dense_model
 
     @cached_property
@@ -196,12 +196,14 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super().special_state_attributes.update('tfidf_sim', 'dense_sim', 'features')
+        return super(TextGroupExpansionAlgorithm, cls).special_state_attributes.union(['tfidf_sim', 'dense_sim',
+                                                                                       'features'])
 
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes.update('dataset', 'metadata', 'subsets', 'x', 'y', 'ind')
+        return super(TextGroupExpansionAlgorithm, cls).excluded_attributes.union(['dataset', 'metadata', 'subsets', 'x',
+                                                                                  'y', 'ind'])
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)
@@ -242,7 +244,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         x_pos = [v[i] for i in ind_pos]
         y_pos = np.ones(len(ind_pos), dtype=int)
 
-        ind_sparse, ind_dense = self.search_dual(x_pos, subset=known_subset,
+        ind_sparse, ind_dense = self.search_dual(x_pos, subset=unknown_subset,
                                                  k_sparse=k_sparse, k_dense=k_dense).values()
 
         ind_unlabeled = np.unique(np.concatenate([ind_sparse, ind_dense], axis=0))
@@ -348,16 +350,16 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         return results
 
-    def explainability(self, x, known_subset='train', k_sparse=None, k_dense=None):
-        if not self.tfidf_sim[known_subset].is_trained:
-            logger.warning(f"TFIDF model not fitted for {known_subset}. Fitting now")
-            self.fit_tfidf(subset=known_subset)
+    def explainability(self, x, explain_with_subset='train', k_sparse=None, k_dense=None):
+        if not self.tfidf_sim[explain_with_subset].is_trained:
+            logger.warning(f"TFIDF model not fitted for {explain_with_subset}. Fitting now")
+            self.fit_tfidf(subset=explain_with_subset)
 
-        if not self.dense_sim[known_subset].is_trained:
-            logger.warning(f"Dense model not fitted for {known_subset}. Fitting now")
-            self.fit_dense(subset=known_subset)
+        if not self.dense_sim[explain_with_subset].is_trained:
+            logger.warning(f"Dense model not fitted for {explain_with_subset}. Fitting now")
+            self.fit_dense(subset=explain_with_subset)
 
-        res = self.search_dual(x, subset=known_subset, k_sparse=k_sparse, k_dense=k_dense)
+        res = self.search_dual(x, subset=explain_with_subset, k_sparse=k_sparse, k_dense=k_dense)
         return res
 
 

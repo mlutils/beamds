@@ -17,8 +17,15 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV CPATH "/usr/local/cuda/include:$CPATH"
 ENV PATH "/usr/local/cuda/bin:$PATH"
 ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+ENV TORCH_DATA_PATH "/usr/local/share/pytorch_data"
+ENV NLTK_DATA "/usr/local/share/nltk_data"
+ENV USER_NAME "flash"
+ENV USER_HOME_DIR "/$USER_NAME"
 
 COPY docker/workspace/ /workspace/
+
+# add beam user
+RUN bash /workspace/bash-build-scripts/add_beam_user.sh
 
 # apt installs
 RUN bash /workspace/bash-build-scripts/apt_installs.sh

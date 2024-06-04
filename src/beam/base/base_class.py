@@ -49,7 +49,9 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         return default
 
     def getattr(self, attr):
-        raise AttributeError(f"Attribute {attr} not found")
+        raise AttributeError(f"Attribute {attr} not found.\n"
+                             f"For cached_property attributes, it is possible to reach here if an AttributeError is "
+                             f"raised in the getter function.")
 
     def __getattr__(self, item):
         if item.startswith('_') or item == '_init_is_done' or not self.is_initialized:
