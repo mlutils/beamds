@@ -14,15 +14,18 @@ jupyter nbextension enable --py widgetsnbextension
 #echo "c.ServerApp.allow_root = True" >> /root/.jupyter/jupyter_lab_config.py
 #echo "c.LabServerApp.open_browser = False" >> /root/.jupyter/jupyter_lab_config.py
 
-su - beam <<EOF
+
+
+su - "$USER_NAME"
 jupyter-lab --generate-config
-echo "c.ServerApp.notebook_dir = '/home/'" >> /home/beam/.jupyter/jupyter_lab_config.py
-echo "c.ServerApp.allow_remote_access = True" >> /home/beam/.jupyter/jupyter_lab_config.py
-echo "c.ServerApp.ip = '0.0.0.0'" >> /home/beam/.jupyter/jupyter_lab_config.py
-echo "c.ServerApp.token = ''" >> /home/beam/.jupyter/jupyter_lab_config.py
-echo "c.ServerApp.allow_root = False" >> /home/beam/.jupyter/jupyter_lab_config.py
-echo "c.LabServerApp.open_browser = False" >> /home/beam/.jupyter/jupyter_lab_config.py
-EOF
+CONF_FILE="$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
+echo "c.ServerApp.root_dir = '/home/'" >> "$CONF_FILE"
+echo "c.ServerApp.allow_remote_access = True" >> "$CONF_FILE"
+echo "c.ServerApp.ip = '0.0.0.0'" >> "$CONF_FILE"
+echo "c.IdentityProvider.token = ''" >> "$CONF_FILE"
+echo "c.ServerApp.allow_root = False" >> "$CONF_FILE"
+echo "c.LabServerApp.open_browser = False" >> "$CONF_FILE"
+
 
 # language servers -experimental for future use
 # see https://jupyterlab-lsp.readthedocs.io/en/latest/Language%20Servers.html

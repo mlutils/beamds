@@ -11,11 +11,11 @@ pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}
 
 
 airflow users create \
-    --username beam \
-    --firstname beam \
-    --lastname beam \
+    --username "$USER_NAME" \
+    --firstname "$USER_NAME" \
+    --lastname "$USER_NAME" \
     --role Admin \
-    --email beam@example.com \
+    --email "$USER_NAME@example.com" \
     --password 12345678
 
 

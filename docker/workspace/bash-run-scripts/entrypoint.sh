@@ -51,9 +51,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "Root password was updated"
-ROOT_PASSWORD="qwerqwer"
-echo "Beam password was updated"
+ROOT_PASSWORD="12345678"
+echo "root:$ROOT_PASSWORD" | chpasswd
+
+echo "Beam user: $USER_NAME password was updated"
 BEAM_PASSWORD="12345678"
+echo "$USER_NAME:$BEAM_PASSWORD" | chpasswd
 
 OPTIONAL_COMMAND=$2
 MORE_ARGS=${@:3}
@@ -165,9 +168,14 @@ if [ "$RUN_SSH" = true ]; then
   echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
   cp /workspace/configuration/sshd_config /opt/ssh/sshd_config
   echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
-  echo "root:$ROOT_PASSWORD" | chpasswd
-  echo "beam:$BEAM_PASSWORD" | chpasswd
   supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
+
+  ROOT_SSH_PORT="${INITIALS}24"
+  export ROOT_SSH_PORT=ROOT_SSH_PORT
+  echo "root_ssh_port, ${ROOT_SSH_PORT}" >> /workspace/configuration/config.csv
+  echo "Port $ROOT_SSH_PORT" >>/etc/ssh/sshd_config
+  service ssh start
+
   echo "SSH is running."
 else
   echo "SSH is disabled."
@@ -178,7 +186,7 @@ if [ "$RUN_JUPYTER" = true ]; then
   echo "Jupyter Port: $JUPYTER_PORT"
   export JUPYTER_PORT=$JUPYTER_PORT
   echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
-  su - beam -c "jupyter-lab --port=$JUPYTER_PORT" &
+  su - "$USER_NAME" -c "jupyter-lab --port=$JUPYTER_PORT" &
   echo "Jupyter is running."
 else
   echo "Jupyter is disabled."
@@ -195,3 +203,6 @@ else
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
 echo "Entrypoint script completed."
+
+echo "Setting permissions to user flash"
+setfacl -R -m u:"$USER_NAME":rwx /home/
