@@ -2,6 +2,7 @@
 useradd -m -s /bin/bash beam
 echo 'beam:12345678' | chpasswd
 usermod -aG sudo beam
+echo "cat /etc/motd" >> /home/beam/.bashrc
 mkdir -p  /opt/ssh
 mkdir -p  /opt/supervisor
 cp /workspace/configuration/supervisord.conf /etc/supervisor/conf.d/
