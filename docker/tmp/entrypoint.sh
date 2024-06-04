@@ -185,7 +185,8 @@ if [ "$RUN_JUPYTER" = true ]; then
   echo "Jupyter Port: $JUPYTER_PORT"
   export JUPYTER_PORT=$JUPYTER_PORT
   echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
-  su - "$USER_NAME" -c "jupyter-lab --port=$JUPYTER_PORT" &
+#  su - "$USER_NAME" -c "jupyter-lab --port=$JUPYTER_PORT" &
+  jupyter-lab --port="$JUPYTER_PORT" &
   echo "Jupyter is running."
 else
   echo "Jupyter is disabled."
