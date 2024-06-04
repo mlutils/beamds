@@ -10,6 +10,9 @@ from beam import beam_logger as logger
 import pandas as pd
 
 
+def test_special_attributes():
+    pass
+
 def test_collate_transformer_chunks():
 
     from src.beam import Transformer
