@@ -16,7 +16,7 @@ jupyter nbextension enable --py widgetsnbextension
 
 
 
-su - "$USER_NAME" << EOF
+su - "$USER_NAME"
 jupyter-lab --generate-config
 CONF_FILE="$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
 echo "c.ServerApp.root_dir = '/home/'" >> "$CONF_FILE"
@@ -25,7 +25,7 @@ echo "c.ServerApp.ip = '0.0.0.0'" >> "$CONF_FILE"
 echo "c.IdentityProvider.token = ''" >> "$CONF_FILE"
 echo "c.ServerApp.allow_root = False" >> "$CONF_FILE"
 echo "c.LabServerApp.open_browser = False" >> "$CONF_FILE"
-EOF
+
 
 # language servers -experimental for future use
 # see https://jupyterlab-lsp.readthedocs.io/en/latest/Language%20Servers.html
