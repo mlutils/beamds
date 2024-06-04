@@ -292,14 +292,6 @@ def comet_path():
     print('done!')
 
 
-def add_beam_to_path():
-    beam_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '../src')
-    sys.path.insert(0, beam_path)
-
-
-add_beam_to_path()
-
-
 def build_hparams():
     from src.beam.tabular import TabularConfig
     hparams = TabularConfig(data_path='xxxxx')
@@ -531,6 +523,6 @@ if __name__ == '__main__':
 
     # test_catboost()
 
-    test_collate_transformer_chunks()
+    # test_collate_transformer_chunks()
 
     print('done')

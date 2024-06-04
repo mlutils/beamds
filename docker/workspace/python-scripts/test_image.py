@@ -21,3 +21,4 @@ import torch_geometric as tg
 f = tg.nn.GATConv(10, 10)
 f.to(0)
 
+

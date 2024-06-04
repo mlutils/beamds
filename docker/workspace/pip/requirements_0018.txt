@@ -4,3 +4,4 @@ textstat
 outlines
 cloudpickle
 msgpack
+pydantic

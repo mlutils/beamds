@@ -1,8 +1,6 @@
 import torch
-import torch.nn.functional as F
 from torch import nn
 import numpy as np
-import math
 
 import os
 import torchvision.models as models
@@ -11,22 +9,14 @@ from torchvision.models.feature_extraction import create_feature_extractor
 
 import kornia
 from kornia.augmentation.container import AugmentationSequential
-import torch_tensorrt
 
-from examples.example_utils import add_beam_to_path
-
-from src.beam import UniversalDataset, Experiment, NeuralAlgorithm, beam_arguments, PackedFolds, batch_augmentation
-from src.beam import tqdm, beam_logger, basic_beam_parser, beam_boolean_feature, BeamOptimizer
-from src.beam.ssl.models import BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
-from src.beam.ssl.beam_ssl import BeamSimilarity
-from src.beam.ssl.beam_similarity import BeamSimilarity
+from src.beam import UniversalDataset, Experiment, beam_arguments, PackedFolds, batch_augmentation
+from src.beam import beam_boolean_feature
 from src.beam.ssl import get_ssl_parser
 from src.beam import beam_logger as logger
 
 import requests
 from collections import namedtuple
-
-add_beam_to_path()
 
 Similarities = namedtuple("Similarities", "index distance")
 

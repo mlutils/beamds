@@ -12,12 +12,8 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'UniversalConfig', 'beam_arguments', 'BeamConfig', 'BeamParam',
            'check_type', 'Timer',
            'beam_logger', 'beam_kpi',
-           'beam_path', 'beam_key', 'pretty_format_number',
-           'beam_server', 'beam_client',
-           '__version__',
-           'resource',
-           'KeysConfig',
-           'tqdm', 'Transformer'
+           'beam_path', 'beam_key', 'pretty_format_number', 'resource',
+           'tqdm', 'Transformer', 'Processor',
            ]
 
 
@@ -136,15 +132,15 @@ def __getattr__(name):
     elif name == 'beam_client':
         from .serve import beam_client
         return beam_client
-    elif name == '__version__':
-        from ._version import __version__
-        return __version__
     elif name == 'resource':
-        from .resource import resource
-        return resource
+        from .resources import resource as bea_resource
+        return bea_resource
     elif name == 'Transformer':
         from .transformer import Transformer
         return Transformer
+    elif name == 'Processor':
+        from .processor import Processor
+        return Processor
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 
@@ -164,6 +160,6 @@ if len([]):
     from .path import beam_path, beam_key
     from .serve import beam_server, beam_client
     from ._version import __version__
-    from .resource import resource
-    from .config import KeysConfig
+    from .resources import resource
     from .transformer import Transformer
+    from .processor import Processor

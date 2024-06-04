@@ -1,6 +1,6 @@
 import inspect
 import json
-from typing import Any, Optional, Union, List
+from typing import Any, Optional, Union, List, Type
 from pydantic import BaseModel, Field
 from functools import cached_property
 
@@ -152,59 +152,8 @@ class ExecutedTool:
     unparsed_arguments: str = None
 
 
-    # echo: Optional[bool] = Field(
-    #     default=False,
-    #     description=(
-    #         "If true, the new message will be prepended with the last message "
-    #         "if they belong to the same role."),
-    # )
-    # add_generation_prompt: Optional[bool] = Field(
-    #     default=True,
-    #     description=
-    #     ("If true, the generation prompt will be added to the chat template. "
-    #      "This is a parameter used by chat template in tokenizer config of the "
-    #      "model."),
-    # )
-    # include_stop_str_in_output: Optional[bool] = Field(
-    #     default=False,
-    #     description=(
-    #         "Whether to include the stop string in the output. "
-    #         "This is only applied when the stop or stop_token_ids is set."),
-    # )
-    # guided_json: Optional[Union[str, dict, BaseModel]] = Field(
-    #     default=None,
-    #     description=("If specified, the output will follow the JSON schema."),
-    # )
-    # guided_regex: Optional[str] = Field(
-    #     default=None,
-    #     description=(
-    #         "If specified, the output will follow the regex pattern."),
-    # )
-    # guided_choice: Optional[List[str]] = Field(
-    #     default=None,
-    #     description=(
-    #         "If specified, the output will be exactly one of the choices."),
-    # )
-    # guided_grammar: Optional[str] = Field(
-    #     default=None,
-    #     description=(
-    #         "If specified, the output will follow the context free grammar."),
-    # )
-    # guided_decoding_backend: Optional[str] = Field(
-    #     default=None,
-    #     description=(
-    #         "If specified, will override the default guided decoding backend "
-    #         "of the server for this specific request. If set, must be either "
-    #         "'outlines' / 'lm-format-enforcer'"))
-    # guided_whitespace_pattern: Optional[str] = Field(
-    #     default=None,
-    #     description=(
-    #         "If specified, will override the default whitespace pattern "
-    #         "for guided json decoding."))
-
-
 class LLMGuidance(BaseModel):
-    guided_json: Optional[Union[str, dict, BaseModel]] = Field(
+    guided_json: Optional[Union[str, dict, Type[BaseModel]]] = Field(
         default=None,
         description=("If specified, the output will follow the JSON schema."),
     )
@@ -235,5 +184,11 @@ class LLMGuidance(BaseModel):
             "If specified, will override the default whitespace pattern "
             "for guided json decoding."))
 
-    def arguments(self):
-        return {k: v for k, v in self.dict().items() if v is not None}
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.guided_json is not None:
+            if isinstance(self.guided_json, type) and issubclass(self.guided_json, BaseModel):
+                self.guided_json = self.guided_json.model_json_schema()
+
+    def arguments(self, filter=None):
+        return {k: v for k, v in self.dict().items() if v is not None and (filter is None or k in filter)}

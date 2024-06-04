@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#apt update why we need to update twice?
+apt update
 apt update
 echo "Installing openssh-server"
 apt install -y openssh-server
@@ -96,6 +96,8 @@ echo "Installing tree"
 apt install -y tree
 echo "Installing snapd"
 apt install -y snapd
+echo "install kinit"
+apt install -y krb5-user
 echo "Installing nvtop"
 snap install nvtop
 echo "Installing sudo"

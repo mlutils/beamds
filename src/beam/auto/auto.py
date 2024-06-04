@@ -5,7 +5,7 @@ from functools import cached_property
 
 from ..processor import Processor
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
-from ..path import beam_path
+from ..path import beam_path, local_copy
 
 import importlib.metadata
 
@@ -13,6 +13,7 @@ import pkg_resources
 import os
 import importlib
 import warnings
+import tempfile
 
 from ..logger import beam_logger as logger
 from uuid import uuid4 as uuid
@@ -429,37 +430,65 @@ class AutoBeam(Processor):
                         tar.add(str(local_name), arcname=str(relative_name))
 
     @staticmethod
-    def _build_image(image_name, base_image, entry_point, path):
-        path = beam_path(path)
+    def _build_image(base_image, config, bundle_path, image_name=None,
+                     entrypoint='synchronous-server', copy_bundle=True, beam_version=None,
+                     dockerfile='simple-entrypoint'):
+
         import docker
         from docker.errors import BuildError
+
+        if image_name is None:
+            image_name = f"autobeam-{bundle_path.name}-{base_image}"
         # Initialize Docker client
+        current_dir = beam_path(__file__).parent
         client = docker.from_env()
+        tempdir = beam_path(tempfile.mkdtemp())
+        tempdir.joinpath('config.yaml').write(config)
+        reqs = beam_path(bundle_path).joinpath('requirements.txt').read()
+        tempdir.joinpath('requirements.txt').write(reqs)
+        if not copy_bundle:
+            bundle_path = tempfile.mkdtemp()
+        entrypoint = beam_path(entrypoint)
+        if entrypoint.is_file() and not entrypoint.suffix:
+            source_entrypoint = entrypoint.read()
+        else:
+            source_entrypoint = current_dir.joinpath(f'{entrypoint}.py').read()
+        tempdir.joinpath('entrypoint.py').write(source_entrypoint)
+        dockerfile = beam_path(dockerfile)
+        if dockerfile.is_file():
+            source_dockerfile = dockerfile.read(ext='.txt')
+        else:
+            source_dockerfile = current_dir.joinpath(f"dockerfile-{dockerfile}").read()
+        tempdir.joinpath('dockerfile').write(source_dockerfile, ext='.txt')
 
-        # Define build arguments
-        build_args = {
-            'BASE_IMAGE': base_image,
-            'REQUIREMENTS_FILE': path.joinpath('requirements.txt').str,
-            'ALGORITHM_DIR': path.str,
-            'ENTRYPOINT_SCRIPT': entry_point
-        }
+        with local_copy(bundle_path) as bundle_path:
 
-        # Path to the directory containing the Dockerfile
-        path_to_dockerfile = beam_path(__file__).parent.joinpath('Dockerfile').str
+            # Define build arguments
+            build_args = {
+                'BASE_IMAGE': base_image,
+                'REQUIREMENTS_FILE': tempdir.joinpath('requirements.txt').str,
+                'ALGORITHM_DIR': str(bundle_path),
+                'ENTRYPOINT_SCRIPT': entrypoint.str,
+                'CONFIG_FILE': tempdir.joinpath('config.yaml').str,
+                'BEAM_DS_VERSION': beam_version
+            }
 
-        try:
-            # Build the image
-            image, build_logs = client.images.build(path=path_to_dockerfile, buildargs=build_args,
-                                                    tag=image_name)
+            # Path to the directory containing the dockerfile-beam
+            path_to_dockerfile = tempdir.joinpath('dockerfile').str
 
-            # Print build logs (optional)
-            for line in build_logs:
-                if 'stream' in line:
-                    logger.info(line['stream'].strip())
+            try:
+                # Build the image
+                image, build_logs = client.images.build(path=path_to_dockerfile, buildargs=build_args,
+                                                        tag=image_name)
 
-        except BuildError as e:
-            logger.error("Error building Docker image:", e)
-        except Exception as e:
-            logger.error("Error:", e)
-        finally:
-            client.close()
+                # Print build logs (optional)
+                for line in build_logs:
+                    if 'stream' in line:
+                        logger.info(line['stream'].strip())
+
+            except BuildError as e:
+                logger.error("Error building Docker image:", e)
+            except Exception as e:
+                logger.error("Error:", e)
+            finally:
+                client.close()

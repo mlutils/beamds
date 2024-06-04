@@ -4,9 +4,10 @@ echo 'beam:12345678' | chpasswd
 usermod -aG sudo beam
 mkdir -p  /opt/ssh
 mkdir -p  /opt/supervisor
-cp /workspace/beam_image/supervisord.conf /etc/supervisor/conf.d/
-cp /workspace/beam_image/sshd_config /opt/ssh
-# for now this line throw unclear error when running in the Dockerfile, but it runs fine from the container
+cp /workspace/configuration/supervisord.conf /etc/supervisor/conf.d/
+cp /workspace/configuration/sshd_config /opt/ssh
+
+# for now this line throw unclear error when running in the dockerfile-beam, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.
 # RUN pip install git+https://github.com/chaoleili/jupyterlab_tensorboard.git
 ssh-keygen -q -N "" -t dsa -f /opt/ssh/ssh_host_dsa_key

@@ -1,6 +1,7 @@
 #!/bin/bash
 
 echo "Starting entrypoint script..."
+# shellcheck disable=SC2145
 echo "Initial arguments: $@"
 
 # Check if the first argument is a path to a shell script
@@ -63,9 +64,10 @@ echo "INITIALS before formatting: $INITIALS"
 echo "Formatted INITIALS: ${INITIALS}"
 
 # Set environment variables
-bash /workspace/beam_image/runs/setup_env_vars.sh
+bash /workspace/bash-run-scripts/setup_env_vars.sh
 
-mkdir -p /workspace/configuration
+# add the initials and the image name to the motd
+
 touch /workspace/configuration/config.csv
 
 echo "parameters, value" >> /workspace/configuration/config.csv
@@ -135,7 +137,7 @@ if [ "$RUN_MONGO" = true ]; then
   echo "MongoDB Port: $MONGODB_PORT"
   export MONGODB_PORT=$MONGODB_PORT
   echo "mongodb_port, ${MONGODB_PORT}" >> /workspace/configuration/config.csv
-  bash /workspace/beam_image/runs/run_mongo.sh $MONGODB_PORT
+  bash /workspace/bash-run-scripts/run_mongo.sh $MONGODB_PORT
   echo "MongoDB server is running."
 else
   echo "MongoDB is disabled."
@@ -161,7 +163,7 @@ if [ "$RUN_SSH" = true ]; then
   echo "SSH Port: $SSH_PORT"
   export SSH_PORT=$SSH_PORT
   echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
-  cp /workspace/beam_image/sshd_config /opt/ssh/sshd_config
+  cp /workspace/configuration/sshd_config /opt/ssh/sshd_config
   echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
   echo "root:$ROOT_PASSWORD" | chpasswd
   echo "beam:$BEAM_PASSWORD" | chpasswd

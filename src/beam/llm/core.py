@@ -32,8 +32,6 @@ from langchain.callbacks.manager import CallbackManagerForLLMRun
 # else:
 #     logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
 
-print('here!!!!')
-
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
 from .utils import get_conversation_template
@@ -526,7 +524,7 @@ class BeamLLM(PedanticBeamResource):
         if add_tools:
             self.add_tool_message_to_chat(messages)
 
-        response = self.chat_completion(messages=messages, prompt_type=prompt_type, **default_params)
+        response = self.chat_completion(messages=messages, prompt_type=prompt_type, guidance=guidance, **default_params)
 
         if stream:
             def gen():
@@ -829,10 +827,10 @@ class BeamLLM(PedanticBeamResource):
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
             response = self.chat(question, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat',
-                                 **kwargs)
+                                 guidance=guidance, **kwargs)
         else:
             response = self.completion(prompt=question, logprobs=logprobs, echo=echo,
-                                       prompt_type=prompt_type, **default_params)
+                                       prompt_type=prompt_type, guidance=guidance, **default_params)
 
         if stream:
             def gen():

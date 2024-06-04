@@ -112,9 +112,8 @@ def load_ipython_extension(ipython, beam_path=None):
         if ipython is not None:
             ipython.push({alias: module})
         if alias == 'beam':
-            for k in module.__dict__.keys():
-                if not k.startswith('_') and k in module.__all__:
-                    ipython.push({k: module.__dict__[k]})
+            for k in module.__all__:
+                ipython.push({k: getattr(module, k)})
 
     print(f"Done importing packages. It took: {time.time() - t0: .2} seconds")
     print(f"Beam library is loaded from path: {os.path.abspath(os.path.dirname(beam_importer.beam.__file__))}")

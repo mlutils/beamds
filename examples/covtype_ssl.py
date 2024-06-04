@@ -1,26 +1,18 @@
 import rtdl
 
-try:
-    from examples.example_utils import add_beam_to_path
-except ModuleNotFoundError:
-    from example_utils import add_beam_to_path
-add_beam_to_path()
-
 import torch
 import torch.nn.functional as F
 from torch import nn
 import numpy as np
 
 from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
-from src.beam import UniversalDataset, UniversalBatchSampler
+from src.beam import UniversalDataset
 from src.beam.ssl import get_ssl_parser
-from src.beam.config import basic_beam_parser
 
 from sklearn.datasets import fetch_covtype
 import pandas as pd
 from sklearn.preprocessing import QuantileTransformer, RobustScaler
-from src.beam.ssl import BeamSimilarity, Similarities, BeamSSL, BYOL, BeamVICReg, BarlowTwins, VICReg, SimCLR, SimSiam
-from src.beam import tqdm
+from src.beam.ssl import BeamSSL
 import faiss
 from src.beam import beam_logger as logger
 

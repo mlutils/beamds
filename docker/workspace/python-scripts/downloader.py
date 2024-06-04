@@ -71,8 +71,8 @@ downloaded['kddcup99'] = datasets.fetch_kddcup99(percent10=False, as_frame=True)
 
 
 pytorch_data = '/root/pytorch_data'
-
-pytorch_datasets = ['CIFAR10', 'CIFAR100', 'FashionMNIST', 'MNIST']
+# pytorch_datasets = ['CIFAR10', 'CIFAR100', 'FashionMNIST', 'MNIST']
+pytorch_datasets = ['CIFAR10', 'MNIST']
 
 for d in pytorch_datasets:
     print(d)
@@ -81,10 +81,11 @@ for d in pytorch_datasets:
     f(pytorch_data, train=False, download=True)
 
 
-model_names = ["bert-base-cased", "aubmindlab/bert-base-arabertv02", "xlm-roberta-base",
-               "bert-base-multilingual-cased", "asafaya/bert-mini-arabic",
-               "facebook/contriever"]
+# model_names = ["bert-base-cased", "aubmindlab/bert-base-arabertv02", "xlm-roberta-base",
+#                "bert-base-multilingual-cased", "asafaya/bert-mini-arabic",
+#                "facebook/contriever"]
 
+model_names = []
 
 for m in model_names:
     tokenizer = AutoTokenizer.from_pretrained(m)
@@ -96,8 +97,10 @@ for m in model_names:
         print(e)
 
 
-tv_models = {'resnet18': 'DEFAULT', 'resnet50': 'DEFAULT', 'convnext_base': 'DEFAULT',
-             'convnext_tiny': 'DEFAULT', 'swin_s': 'DEFAULT'}
+# tv_models = {'resnet18': 'DEFAULT', 'resnet50': 'DEFAULT', 'convnext_base': 'DEFAULT',
+#              'convnext_tiny': 'DEFAULT', 'swin_s': 'DEFAULT'}
+
+tv_models = {'resnet18': 'DEFAULT', 'resnet50': 'DEFAULT', 'convnext_tiny': 'DEFAULT'}
 
 for m, w in tv_models.items():
     getattr(torchvision.models, m)(weights=w)

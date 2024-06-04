@@ -36,7 +36,7 @@ class Processor(BeamBase):
     @cached_property
     def llm(self):
         if type(self._llm) is str:
-            from ..resource import resource
+            from ..resources import resource
             self._llm = resource(self._llm)
         return self._llm
 
@@ -100,6 +100,8 @@ class Processor(BeamBase):
     def from_path(cls, path, skeleton: Union[bool, str] = True, init_args: Union[bool, str] = True,
                   load_state_kwargs=None, exclude: Union[List, Set] = None,  **kwargs):
 
+        print(cls)
+
         load_state_kwargs = load_state_kwargs or {}
         exclude = exclude or set()
         exclude = exclude.union(cls.excluded_attributes)
@@ -150,7 +152,7 @@ class Processor(BeamBase):
 
     @classmethod
     def from_nlp(cls, query, llm=None, ask_kwargs=None, **kwargs):
-        from ..resource import resource
+        from ..resources import resource
         from ..logger import beam_logger as logger
 
         llm = resource(llm)
@@ -357,7 +359,7 @@ class Processor(BeamBase):
         if llm is None:
             llm = self.llm
         elif type(llm) is str:
-            from ..resource import resource
+            from ..resources import resource
             llm = resource(llm)
 
         ask_kwargs = ask_kwargs or {}

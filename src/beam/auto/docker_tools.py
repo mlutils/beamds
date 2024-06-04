@@ -12,7 +12,7 @@ build_args = {
     'ENTRYPOINT_SCRIPT': './path/to/script.py'
 }
 
-# Path to the directory containing the Dockerfile
+# Path to the directory containing the dockerfile-beam
 path_to_dockerfile = '.'
 
 try:

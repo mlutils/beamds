@@ -42,18 +42,19 @@ class OpenAIBase(BeamLLM):
             self.usage["completion_tokens"] += response["completion_tokens"]
             self.usage["total_tokens"] += response["prompt_tokens"] + response["completion_tokens"]
 
-    def _completion(self, prompt=None, guidance=None, **kwargs):
-        # self.sync_openai()
-        if guidance is not None:
-            extra_body = kwargs.get('extra_body', {})
-            extra_body = {**extra_body, **guidance}
-        res = self.client.completions.create(model=self.model, prompt=prompt, **kwargs)
+    def _completion(self, prompt=None, **kwargs):
+        kwargs = self.filter_keys(kwargs)
+        res = self.client.completions.create(model=self.model, prompt=prompt,  **kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
     def _chat_completion(self, messages=None, **kwargs):
-        # self.sync_openai()
-        res = self.client.chat.completions.create(model=self.model, messages=messages, guidance=None, **kwargs)
+        kwargs = self.filter_keys(kwargs)
+        res = self.client.chat.completions.create(model=self.model, messages=messages, **kwargs)
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
+
+    @staticmethod
+    def filter_keys(kwargs):
+        return {k: v for k, v in kwargs.items() if k not in ['guidance']}
 
     def verify_response(self, res):
         stream = res.stream
@@ -174,4 +175,46 @@ class SamurOpenAI(OpenAIBase):
     @property
     def is_chat(self):
         return self._is_chat
+
+    @staticmethod
+    def filter_keys(kwargs):
+        kwargs = {k: v for k, v in kwargs.items() if k in ['max_tokens', 'temperature', 'extra_body']}
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        return kwargs
+
+    @staticmethod
+    def add_guidance(kwargs, guidance=None):
+        if guidance is not None:
+            extra_body = kwargs.get('extra_body', {})
+            extra_body = {**extra_body, **guidance.arguments(filter=['guided_regex',
+                                                                     'guided_choice',
+                                                                     'guided_grammar',
+                                                                     'guided_json'])}
+            kwargs['extra_body'] = extra_body
+        return kwargs
+
+    def _completion(self, prompt=None, guidance=None, **kwargs):
+        kwargs = self.add_guidance(kwargs, guidance)
+        kwargs = self.filter_keys(kwargs)
+        return super()._completion(prompt=prompt, **kwargs)
+
+    def _chat_completion(self, messages=None, guidance=None, **kwargs):
+        kwargs = self.add_guidance(kwargs, guidance)
+        kwargs = self.filter_keys(kwargs)
+        return super()._chat_completion(messages=messages, **kwargs)
+
+
+class BeamVLLM(OpenAIBase):
+
+    def __init__(self, model=None, hostname=None, api_key=None, port=None, chat=True, *args, **kwargs):
+
+        api_base = f"http://{normalize_host(hostname, port)}/openai/v1"
+        kwargs['scheme'] = 'vllm'
+        super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  **kwargs)
+
+    @property
+    def is_chat(self):
+        return True
+
+
 

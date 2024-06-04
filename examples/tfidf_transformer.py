@@ -1,22 +1,9 @@
-from examples.example_utils import add_beam_to_path
-add_beam_to_path()
-
 from sklearn.feature_extraction.text import TfidfVectorizer
-
-import numpy as np
-import pandas as pd
-import string
-import random
-from pathlib import Path
-
-import sys
-import time
 
 from src.beam.data import BeamData
 from src.beam.transformer import Transformer
 
-from datasets import list_datasets, load_dataset
-from pprint import pprint
+from datasets import load_dataset
 
 
 class TFIDFTransformer(Transformer):
