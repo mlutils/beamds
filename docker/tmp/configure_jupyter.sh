@@ -1,3 +1,5 @@
+echo "IN A TEMPORARY FILE"
+
 # add the beam message
 cp /workspace/configuration/motd /etc/motd
 # todo: make sure it is not displayed twice
@@ -19,6 +21,7 @@ jupyter nbextension enable --py widgetsnbextension
 su - "$USER_NAME" << EOF
 jupyter-lab --generate-config
 CONF_FILE="$USER_HOME_DIR/.jupyter/jupyter_lab_config.py"
+echo "CONF_FILE: $CONF_FILE"
 echo "c.ServerApp.root_dir = '/home/'" >> "$CONF_FILE"
 echo "c.ServerApp.allow_remote_access = True" >> "$CONF_FILE"
 echo "c.ServerApp.ip = '0.0.0.0'" >> "$CONF_FILE"
