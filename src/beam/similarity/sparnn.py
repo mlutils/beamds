@@ -24,7 +24,7 @@ class SparnnSimilarity(BeamSimilarity):
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super().excluded_attributes + ['index', 'vectors', 'cluster']
+        return super(SparnnSimilarity, cls).special_state_attributes.union(['index', 'vectors', 'cluster'])
 
     def add(self, x, index=None, **kwargs):
 

@@ -196,12 +196,14 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super().special_state_attributes.update('tfidf_sim', 'dense_sim', 'features')
+        return super(TextGroupExpansionAlgorithm, cls).special_state_attributes.union(['tfidf_sim', 'dense_sim',
+                                                                                       'features'])
 
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes.update('dataset', 'metadata', 'subsets', 'x', 'y', 'ind')
+        return super(TextGroupExpansionAlgorithm, cls).excluded_attributes.union(['dataset', 'metadata', 'subsets', 'x',
+                                                                                  'y', 'ind'])
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)

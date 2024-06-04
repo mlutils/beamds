@@ -206,7 +206,7 @@ class DenseSimilarity(BeamSimilarity):
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes.update('index', 'vector_store', 'training_vs')
+        return super(DenseSimilarity, cls).excluded_attributes.union(['index', 'vector_store', 'training_vs'])
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
 

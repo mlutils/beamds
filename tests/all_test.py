@@ -6,12 +6,17 @@ from collections import Counter
 import torch
 import numpy as np
 from src.beam import resource, BeamData
-from beam import beam_logger as logger
+from src.beam import beam_logger as logger
 import pandas as pd
 
 
 def test_special_attributes():
-    pass
+    from examples.enron_similarity import EnronTicketSimilarity, TicketSimilarityConfig
+    from src.beam import Timer
+    hparams = TicketSimilarityConfig(model_state_path='/home/shared/data/results/enron/models/model_state_e5_base')
+    alg = EnronTicketSimilarity(hparams)
+    print(alg.excluded_attributes)
+
 
 def test_collate_transformer_chunks():
 
@@ -527,5 +532,7 @@ if __name__ == '__main__':
     # test_catboost()
 
     # test_collate_transformer_chunks()
+
+    test_special_attributes()
 
     print('done')
