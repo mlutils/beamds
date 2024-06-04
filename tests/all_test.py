@@ -13,9 +13,17 @@ import pandas as pd
 def test_special_attributes():
     from examples.enron_similarity import EnronTicketSimilarity, TicketSimilarityConfig
     from src.beam import Timer
-    hparams = TicketSimilarityConfig(model_state_path='/home/shared/data/results/enron/models/model_state_e5_base')
+    hparams = TicketSimilarityConfig(model_state_path='/home/shared/data/results/enron/models/model_state_e5_base',
+                                     )
     alg = EnronTicketSimilarity(hparams)
-    print(alg.excluded_attributes)
+    print(alg.root_path)
+    with Timer():
+        alg.load_state(hparams.get('model-state-path'), hparams=False, skeleton=False)
+
+    with Timer(name='evaluate end-to-end classifier'):
+        results = alg.evaluate(36, k_dense=10, k_sparse=10, threshold=0.8)
+
+    print(results)
 
 
 def test_collate_transformer_chunks():

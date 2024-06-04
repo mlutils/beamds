@@ -193,6 +193,7 @@ fi
 
 echo "Setting permissions to user flash"
 setfacl -R -m u:"$USER_NAME":rwx /home/
+setfacl -R -d -m u:"$USER_NAME":rwx /home/
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
     bash

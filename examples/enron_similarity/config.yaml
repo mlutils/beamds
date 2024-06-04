@@ -12,6 +12,7 @@ dense_model_path: intfloat/multilingual-e5-base
 model-state-path: /home/shared/data/results/enron/models/model_state_e5_base
 path_to_data: /home/hackathon_2023/data/enron/emails_dd.parquet
 model_state_path: /home/shared/data/results/enron/models/model_state_dd
+root-path: /home/shared/data/results/enron/dataset
 
 #root_path: /home/mlspeech/elads/data/enron/data/
 #path_to_data: /home/mlspeech/elads/data/enron/data/emails.parquet

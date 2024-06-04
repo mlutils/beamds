@@ -3,7 +3,7 @@ import copy
 import os
 from argparse import Namespace
 from collections import defaultdict
-from typing import List, Union
+from typing import List, Union, Set
 from pprint import pformat
 import json
 from dataclasses import dataclass, field
@@ -256,13 +256,13 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
     def __setitem__(self, key, value):
         self.set(key, value)
 
-    def update(self, hparams, tags=None, exclude=None):
+    def update(self, hparams, tags=None, exclude: Union[Set, List] = None):
         multi_tags = None
-        exclude = exclude or []
+        exclude = set(exclude) if exclude is not None else set()
         if hasattr(hparams, 'tags'):
             multi_tags = vars(hparams.tags)
             hparams = vars(hparams)
-            exclude.append('tags')
+            exclude.add('tags')
 
         for k, v in hparams.items():
             if k in exclude:

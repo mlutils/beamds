@@ -1,5 +1,3 @@
-echo "IN A TEMPORARY FILE"
-
 # add the beam message
 cp /workspace/configuration/motd /etc/motd
 # todo: make sure it is not displayed twice

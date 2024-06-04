@@ -100,10 +100,8 @@ class Processor(BeamBase):
     def from_path(cls, path, skeleton: Union[bool, str] = True, init_args: Union[bool, str] = True,
                   load_state_kwargs=None, exclude: Union[List, Set] = None,  **kwargs):
 
-        print(cls)
-
         load_state_kwargs = load_state_kwargs or {}
-        exclude = exclude or set()
+        exclude = set(exclude) if exclude is not None else set()
         exclude = exclude.union(cls.excluded_attributes)
         path = beam_path(path)
 
@@ -227,7 +225,8 @@ class Processor(BeamBase):
     def hasattr(self, attr):
         return attr in self.__dict__
 
-    def load_state_dict(self, path, ext=None, exclude: Union[List, Set] = None, hparams=True, exclude_hparams=None, **kwargs):
+    def load_state_dict(self, path, ext=None, exclude: Union[List, Set] = None, hparams=True, exclude_hparams=None,
+                        **kwargs):
 
         exclude = set(exclude) if exclude is not None else set()
         exclude = exclude.union(self.excluded_attributes)
@@ -326,8 +325,8 @@ class Processor(BeamBase):
 
         return path
 
-    def load_state(self, path=None, state=None, ext=None, exclude: Union[List, Set] = None, skeleton: Union[bool,str] = True,
-                   **kwargs):
+    def load_state(self, path=None, state=None, ext=None, exclude: Union[List, Set] = None,
+                   skeleton: Union[bool, str] = True, hparams=True, exclude_hparams=None, **kwargs):
 
         assert path or state, 'Either path or state must be provided'
 
@@ -335,7 +334,8 @@ class Processor(BeamBase):
         exclude = exclude.union(self.excluded_attributes)
         path = beam_path(path)
         if state is None:
-            self.load_state_dict(path=path, ext=ext, exclude=exclude, **kwargs)
+            self.load_state_dict(path=path, ext=ext, exclude=exclude, hparams=hparams, exclude_hparams=exclude_hparams,
+                                 **kwargs)
             path = self.base_dir(path, ext=ext)
 
         if skeleton:
