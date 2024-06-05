@@ -93,11 +93,11 @@ class TextSimilarity(DenseSimilarity):
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes + ['_tokenizer', 'dense_model']
+        return super(TextSimilarity, cls).excluded_attributes.union(['_tokenizer', 'dense_model'])
 
     def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
 
-        exclude = exclude or []
+        exclude = set(exclude) if exclude is not None else set()
 
         path = beam_path(path)
         super().save_state_dict(state, path, ext, exclude, **kwargs)
@@ -113,8 +113,8 @@ class TextSimilarity(DenseSimilarity):
 
     def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
 
-        exclude = exclude or []
-        exclude = exclude + ['_tokenizer']
+        exclude = set(exclude) if exclude is not None else set()
+        exclude = exclude.update(['_tokenizer'])
 
         state = super().load_state_dict(path, ext, exclude, **kwargs)
 

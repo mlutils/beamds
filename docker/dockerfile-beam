@@ -17,8 +17,15 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV CPATH "/usr/local/cuda/include:$CPATH"
 ENV PATH "/usr/local/cuda/bin:$PATH"
 ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+ENV TORCH_DATA_PATH "/usr/local/share/pytorch_data"
+ENV NLTK_DATA "/usr/local/share/nltk_data"
+ENV USER_NAME "flash"
+ENV USER_HOME_DIR "/$USER_NAME"
 
 COPY docker/workspace/ /workspace/
+
+# add beam user
+RUN bash /workspace/bash-build-scripts/add_beam_user.sh
 
 # apt installs
 RUN bash /workspace/bash-build-scripts/apt_installs.sh
@@ -129,8 +136,10 @@ RUN bash /workspace/bash-build-scripts/language_servers.sh
 RUN bash /workspace/bash-build-scripts/aux_installs.sh
 RUN bash /workspace/bash-build-scripts/usermode_ssh_server.sh
 # config jupyter notebook
+COPY docker/tmp/configure_jupyter.sh /workspace/bash-build-scripts/configure_jupyter.sh
 RUN bash /workspace/bash-build-scripts/configure_jupyter.sh
 
+COPY docker/tmp/entrypoint.sh /workspace/bash-run-scripts/entrypoint.sh
 RUN chmod +x /workspace/bash-run-scripts/entrypoint.sh
 ENTRYPOINT ["/workspace/bash-run-scripts/entrypoint.sh"]
 CMD ["10"]

@@ -1,5 +1,5 @@
 import math
-from typing import List, Union
+from typing import List, Union, Set
 
 import faiss
 import numpy as np
@@ -206,9 +206,9 @@ class DenseSimilarity(BeamSimilarity):
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes.update('index', 'vector_store', 'training_vs')
+        return super(DenseSimilarity, cls).excluded_attributes.union(['index', 'vector_store', 'training_vs'])
 
-    def load_state_dict(self, path, ext=None, exclude: List = None, **kwargs):
+    def load_state_dict(self, path, ext=None, exclude: Union[Set, List] = None, **kwargs):
 
         path = beam_path(path)
 
@@ -220,13 +220,13 @@ class DenseSimilarity(BeamSimilarity):
             with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
                 self.training_vs = faiss.read_index(p)
 
-        exclude = exclude or []
-        exclude = exclude + ['index', 'vector_store', 'training_vs']
+        exclude = set(exclude) if exclude is not None else set()
+        exclude = exclude.union(['index', 'vector_store', 'training_vs'])
         return super().load_state_dict(path, ext, exclude, **kwargs)
 
-    def save_state_dict(self, state, path, ext=None, exclude: List = None, **kwargs):
+    def save_state_dict(self, state, path, ext=None, exclude: Union[Set, List] = None, **kwargs):
 
-        exclude = exclude or []
+        exclude = set(exclude) if exclude is not None else set()
 
         path = beam_path(path)
         super().save_state_dict(state, path, ext, exclude, **kwargs)

@@ -278,11 +278,13 @@ class NeuralAlgorithm(Algorithm):
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super().special_state_attributes.update('networks', 'optimizers', 'schedulers', 'processors',
-                                                       'datasets', 'scaler','swa_networks', 'swa_schedulers',
-                                                       'schedulers_initial_state', 'optimizers_name_by_id',
-                                                       'schedulers_name_by_id', 'schedulers_flat', 'optimizers_flat',
-                                                       'optimizers_steps')
+        return super(NeuralAlgorithm, cls).special_state_attributes.union(['networks', 'optimizers', 'schedulers',
+                                                                           'processors','datasets', 'scaler',
+                                                                           'swa_networks', 'swa_schedulers',
+                                                                           'schedulers_initial_state',
+                                                                           'optimizers_name_by_id',
+                                                                           'schedulers_name_by_id', 'schedulers_flat',
+                                                                           'optimizers_flat', 'optimizers_steps'])
 
     def __getattr__(self, item):
         assert item != 'networks', 'Networks are not initialized yet'

@@ -18,6 +18,7 @@ class BeamFakeAlg(Processor):
         self.sleep_time = sleep_time
         self.variance = variance
         self.error_rate = error_rate
+        faker_fields = {f: v for f, v in faker_fields.items() if not f.startswith('_')}
         self.faker_fields = faker_fields if len(faker_fields) > 0 else {'name': 'name', 'email': 'email',
                                                                         'address': 'address'}
         self.fake = Faker()

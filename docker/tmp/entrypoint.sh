@@ -185,15 +185,16 @@ if [ "$RUN_JUPYTER" = true ]; then
   echo "Jupyter Port: $JUPYTER_PORT"
   export JUPYTER_PORT=$JUPYTER_PORT
   echo "jupyter_port, ${JUPYTER_PORT}" >> /workspace/configuration/config.csv
-  su - "$USER_NAME" -c "jupyter-lab --port=$JUPYTER_PORT" &
+#  su - "$USER_NAME" -c "jupyter-lab --port=$JUPYTER_PORT" &
+  jupyter-lab --port="$JUPYTER_PORT" &
   echo "Jupyter is running."
 else
   echo "Jupyter is disabled."
 fi
 
 echo "Setting permissions to user flash"
-setfacl -R -m u:"$USER_NAME":rwx /home/
-setfacl -R -d -m u:"$USER_NAME":rwx /home/
+#setfacl -R -m u:"$USER_NAME":rwx /home/
+#setfacl -R -d -m u:"$USER_NAME":rwx /home/
 
 if [ -z "$OPTIONAL_COMMAND" ]; then
     bash

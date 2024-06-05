@@ -78,8 +78,8 @@ class RayClient(Processor):
     def init_ray(address=None, num_cpus=None, num_gpus=None, resources=None, labels=None, object_store_memory=None,
                  ignore_reinit_error=False, include_dashboard=True, dashboard_host='0.0.0.0',
                  dashboard_port=None, job_config=None, configure_logging=True, logging_level=None, logging_format=None,
-                 log_to_driver=True, namespace=None, runtime_env=None, storage=None):
-        kwargs = {}
+                 log_to_driver=True, namespace=None, runtime_env=None, storage=None, **kwargs):
+
         if logging_level is not None:
             kwargs['logging_level'] = logging_level
 

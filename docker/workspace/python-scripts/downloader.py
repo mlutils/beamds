@@ -1,3 +1,5 @@
+import os
+
 from sklearn.datasets import fetch_openml
 from tqdm import tqdm
 from sklearn import datasets
@@ -62,7 +64,7 @@ downloaded['20newsgroups'] = datasets.fetch_20newsgroups()
 downloaded['20newsgroups_vectorized'] = datasets.fetch_20newsgroups_vectorized()
 downloaded['california_housing'] = datasets.fetch_california_housing()
 downloaded['covtype'] = datasets.fetch_covtype()
-downloaded['kddcup99'] = datasets.fetch_kddcup99(percent10=False, as_frame=True)
+# downloaded['kddcup99'] = datasets.fetch_kddcup99(percent10=False, as_frame=True)
 # downloaded['lfw_pairs'] = datasets.fetch_lfw_pairs()
 # downloaded['lfw_people'] = datasets.fetch_lfw_people()
 # downloaded['olivetti_faces'] = datasets.fetch_olivetti_faces()
@@ -70,9 +72,9 @@ downloaded['kddcup99'] = datasets.fetch_kddcup99(percent10=False, as_frame=True)
 # downloaded['species_distributions'] = datasets.fetch_species_distributions()
 
 
-pytorch_data = '/root/pytorch_data'
+pytorch_data = os.environ['TORCH_DATA_PATH']
 # pytorch_datasets = ['CIFAR10', 'CIFAR100', 'FashionMNIST', 'MNIST']
-pytorch_datasets = ['CIFAR10', 'MNIST']
+pytorch_datasets = ['MNIST']
 
 for d in pytorch_datasets:
     print(d)
@@ -100,7 +102,7 @@ for m in model_names:
 # tv_models = {'resnet18': 'DEFAULT', 'resnet50': 'DEFAULT', 'convnext_base': 'DEFAULT',
 #              'convnext_tiny': 'DEFAULT', 'swin_s': 'DEFAULT'}
 
-tv_models = {'resnet18': 'DEFAULT', 'resnet50': 'DEFAULT', 'convnext_tiny': 'DEFAULT'}
+tv_models = {'resnet18': 'DEFAULT', 'convnext_tiny': 'DEFAULT'}
 
 for m, w in tv_models.items():
     getattr(torchvision.models, m)(weights=w)

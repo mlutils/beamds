@@ -1,7 +1,4 @@
-# Create a non-root user
-useradd -m -s /bin/bash beam
-echo 'beam:12345678' | chpasswd
-usermod -aG sudo beam
+
 mkdir -p  /opt/ssh
 mkdir -p  /opt/supervisor
 cp /workspace/configuration/supervisord.conf /etc/supervisor/conf.d/
@@ -15,9 +12,14 @@ ssh-keygen -q -N "" -t rsa -b 4096 -f /opt/ssh/ssh_host_rsa_key
 ssh-keygen -q -N "" -t ecdsa -f /opt/ssh/ssh_host_ecdsa_key
 ssh-keygen -q -N "" -t ed25519 -f /opt/ssh/ssh_host_ed25519_key
 # Configure SSH for non-root public key authentication
-mkdir -p /home/beam/.ssh
-chmod 700 /home/beam/.ssh
-chown beam:beam /home/beam/.ssh
-chown -R beam. /opt/ssh
+
+mkdir -p "$USER_HOME_DIR/.ssh"
+chmod 700 "$USER_HOME_DIR/.ssh"
+chown "$USER_NAME":"$USER_NAME" "$USER_HOME_DIR/.ssh"
+chown -R "$USER_NAME". /opt/ssh
+
+# replace string USER_NAME in /etc/supervisor/conf.d/ with $USER_NAME
+sed -i "s/USER_NAME/$USER_NAME/g" /etc/supervisor/conf.d/supervisord.conf
+
 #&& chmod 600 /home/beam/.ssh/authorized_keys && \
 #  chown beam:beam /home/beam/.ssh/authorized_keys

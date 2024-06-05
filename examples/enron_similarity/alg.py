@@ -40,4 +40,5 @@ class EnronTicketSimilarity(TextGroupExpansionAlgorithm):
     @classmethod
     @property
     def excluded_attributes(cls):
-        return super().excluded_attributes.update('nlp_model')
+        return super(EnronTicketSimilarity, cls).excluded_attributes.union(['nlp_model'])
+

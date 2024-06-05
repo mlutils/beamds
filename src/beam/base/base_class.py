@@ -30,7 +30,7 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
             if not k.startswith('_'):
                 v_type = check_type(v)
                 if v_type.major in ['scalar', 'none']:
-                    if k in _init_args['kwargs'] or k not in self.hparams or self._default_value(k) != v:
+                    if k in _init_args.get('kwargs', {}) or k not in self.hparams or self._default_value(k) != v:
                         self.hparams[k] = v
 
     @cached_property
@@ -49,7 +49,9 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         return default
 
     def getattr(self, attr):
-        raise AttributeError(f"Attribute {attr} not found")
+        raise AttributeError(f"Attribute {attr} not found.\n"
+                             f"For cached_property attributes, it is possible to reach here if an AttributeError is "
+                             f"raised in the getter function.")
 
     def __getattr__(self, item):
         if item.startswith('_') or item == '_init_is_done' or not self.is_initialized:
