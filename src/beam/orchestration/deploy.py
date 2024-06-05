@@ -16,7 +16,7 @@ class BeamDeploy(Processor):
                  service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
                  memory_storage_configs=None, security_context_config=None, use_node_selector=False,
                  scc_name=None, node_selector=None,
-                 service_type=None, entrypoint_args=None, entrypoint_envs=None):
+                 service_type=None, entrypoint_args=None, entrypoint_envs=None, **kwargs):
         super().__init__()
         self.k8s = k8s
         self.deployment = deployment

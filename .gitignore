@@ -131,4 +131,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-/src/beam/orchestration/comp.py
+/src/beam/orchestration/comp1.py
+/src/beam/orchestration/comp2.py

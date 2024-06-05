@@ -1,6 +1,6 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
 from src.beam.orchestration import (RayClusterConfig, RayCluster)
-from src.beam import resource
+from src.beam.resource import resource
 import os
 
 script_dir = os.path.dirname(os.path.realpath(__file__))

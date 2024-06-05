@@ -34,7 +34,7 @@ class RayCluster(Processor):
             project_name=self.config['project_name'],
             check_project_exists=self.config['check_project_exists'],
             namespace=self.config['project_name'],
-            replicas=self.n_pods,
+            replicas=self.config['n_pods'],
             labels=self.config['labels'],
             image_name=self.config['image_name'],
             deployment_name=self.config['deployment_name'],
