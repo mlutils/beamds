@@ -1,8 +1,11 @@
 from functools import cached_property
 import spacy
+import pandas as pd
+import numpy as np
 
 from src.beam.transformer import Transformer
 from src.beam.algorithm import TextGroupExpansionAlgorithm
+from src.beam.algorithm.group_expansion import InvMap
 
 from .utils import (replace_entity_over_series, build_dataset, split_dataset)
 
@@ -49,7 +52,7 @@ class EnronTicketSimilarity(TextGroupExpansionAlgorithm):
                 'test': self.dataset['x_test'].values}
 
         if self.get_hparam('subset-labels', None):
-            vals = {k: [v[i] for i in self.ind[k]] for k, v in vals.items()}
+            vals = {k: [v[i] for i in self.full_invmap[k].loc[self.ind[k]]] for k, v in vals.items()}
 
         return vals
 
@@ -60,7 +63,7 @@ class EnronTicketSimilarity(TextGroupExpansionAlgorithm):
                 'test': self.dataset['y_test'].values}
 
         if self.get_hparam('subset-labels', None):
-            vals = {k: v[self.ind[k]] for k, v in vals.items()}
+            vals = {k: v[self.full_invmap[k].loc[self.ind[k]]] for k, v in vals.items()}
 
         return vals
 
@@ -83,3 +86,24 @@ class EnronTicketSimilarity(TextGroupExpansionAlgorithm):
                     'test': self.subsets['test'].values.index}
 
         return _ind
+
+
+    @cached_property
+    def _full_invmap(self):
+        im = {}
+        for k, v in self.full_ind.items():
+            s = pd.Series(np.arange(len(v.values)), index=v.values.index)
+            im[k] = s.sort_index()
+        return im
+
+    @cached_property
+    def full_invmap(self):
+
+        return {k: InvMap(v) for k, v in self._full_invmap.items()}
+
+
+    @cached_property
+    def full_ind(self):
+        return {'train': self.subsets['train'].values.index,
+                'validation': self.subsets['validation'].values.index,
+                'test': self.subsets['test'].values.index}

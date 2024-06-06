@@ -134,7 +134,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     @cached_property
     def _invmap(self):
         im = {}
-        for k, v in self.subsets.items():
+        for k, v in self.ind.items():
             s = pd.Series(np.arange(len(v.values)), index=v.values.index)
             im[k] = s.sort_index()
         return im

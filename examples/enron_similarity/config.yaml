@@ -1,7 +1,7 @@
-preprocess_body: true
-preprocess_title: true
-split_dataset: true
-build_dataset: true
+preprocess_body: false
+preprocess_title: false
+split_dataset: false
+build_dataset: false
 calc_tfidf: true
 calc_dense: true
 build_features: true
