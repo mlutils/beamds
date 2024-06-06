@@ -10,6 +10,26 @@ from src.beam import beam_logger as logger
 import pandas as pd
 
 
+def test_ray_actor():
+
+    from src.beam.distributed.ray_dispatcher import RayDispatcher, RayClient
+    class A:
+        def __init__(self, a):
+            self.a = a
+
+        def f(self, x):
+            return x * self.a
+
+    RayClient(ray_kwargs={'runtime_env': {"working_dir": "../src"}})
+
+    Ar = RayDispatcher(A)
+
+    ar = Ar(4)
+    res = Ar.f(5)
+
+    print(res.value)
+
+
 def test_special_attributes():
     from examples.enron_similarity import EnronTicketSimilarity, TicketSimilarityConfig
     from src.beam import Timer
