@@ -6,6 +6,8 @@ from collections import defaultdict
 from typing import List, Union, Set
 from pprint import pformat
 import json
+
+import yaml
 from dataclasses import dataclass, field
 
 from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
@@ -162,8 +164,13 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
         return self.__repr__()
 
     def __repr__(self):
-        return (f"{type(self).__name__}:\n\nParameters:\n\n{pformat(self.dict())}\n\n"
-                f"Tags:\n\n{pformat(vars(self.tags))}\n\n")
+
+        title = "->".join([f"{m.__name__}" for m in type(self).mro() if "beam." in str(m)])
+        yaml_repr = f"{title}:\n\nParameters:\n\n{yaml.dump(self.dict())}"
+        return yaml_repr
+
+        # return (f"{type(self).__name__}:\n\nParameters:\n\n{pformat(self.dict())}\n\n"
+        #         f"Tags:\n\n{pformat(vars(self.tags))}\n\n")
 
     @property
     def namespace(self):

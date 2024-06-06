@@ -6,7 +6,7 @@ from src.beam import beam_logger as logger
 import os
 
 from examples.enron_similarity.alg import EnronTicketSimilarity
-from examples.enron_similarity.config import TextGroupExpansionConfig
+from examples.enron_similarity.config import TicketSimilarityConfig
 
 
 def run_enron():
@@ -15,9 +15,9 @@ def run_enron():
     # bd.cache()
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    conf_path = resource(os.path.join(script_dir, 'conf.json')).str
-    hparams = TextGroupExpansionConfig(conf_path)
-    alg = TicketSimilarity(hparams=hparams)
+    conf_path = resource(os.path.join(script_dir, 'config.yaml')).str
+    hparams = TicketSimilarityConfig(conf_path)
+    alg = EnronTicketSimilarity(hparams=hparams)
 
     if hparams.get('reload-state') and hparams.get('model-state-path') is not None:
         logger.info(f"Loading state from {hparams.get('model-state-path')}")

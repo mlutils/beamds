@@ -42,3 +42,44 @@ class EnronTicketSimilarity(TextGroupExpansionAlgorithm):
     def excluded_attributes(cls):
         return super(EnronTicketSimilarity, cls).excluded_attributes.union(['nlp_model'])
 
+    @cached_property
+    def x(self):
+        vals = {'train': self.dataset[f'x_train'].values,
+                'validation': self.dataset['x_val'].values,
+                'test': self.dataset['x_test'].values}
+
+        if self.get_hparam('subset-labels', None):
+            vals = {k: [v[i] for i in self.ind[k]] for k, v in vals.items()}
+
+        return vals
+
+    @cached_property
+    def y(self):
+        vals = {'train': self.dataset[f'y_train'].values,
+                'validation': self.dataset['y_val'].values,
+                'test': self.dataset['y_test'].values}
+
+        if self.get_hparam('subset-labels', None):
+            vals = {k: v[self.ind[k]] for k, v in vals.items()}
+
+        return vals
+
+    @cached_property
+    def ind(self):
+
+        subset_labels = self.get_hparam('subset-labels', None)
+        if subset_labels:
+            _ind = {}
+            v = self.subsets['train'].values
+            _ind['train'] = v[v['label'].isin(subset_labels)].index
+            v = self.subsets['validation'].values
+            _ind['validation'] = v[v['label'].isin(subset_labels)].index
+            v = self.subsets['test'].values
+            _ind['test'] = v[v['label'].isin(subset_labels)].index
+
+        else:
+            _ind = {'train': self.subsets['train'].values.index,
+                    'validation': self.subsets['validation'].values.index,
+                    'test': self.subsets['test'].values.index}
+
+        return _ind

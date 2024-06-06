@@ -25,4 +25,5 @@ class TicketSimilarityConfig(TextGroupExpansionConfig):
         BeamParam('reload-state', bool, True, 'Load saved model'),
         BeamParam('save-state', bool, False, 'Save model state'),
         BeamParam('model-state-path', str, None, 'Path to saved model state'),
+        BeamParam('labels-subset', list, None, 'build features for a subset of labels'),
     ]
