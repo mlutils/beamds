@@ -30,7 +30,7 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
             if not k.startswith('_'):
                 v_type = check_type(v)
                 if v_type.major in ['scalar', 'none']:
-                    if k in _init_args['kwargs'] or k not in self.hparams or self._default_value(k) != v:
+                    if k in _init_args.get('kwargs', {}) or k not in self.hparams or self._default_value(k) != v:
                         self.hparams[k] = v
 
     @cached_property
