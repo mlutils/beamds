@@ -18,13 +18,16 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         _init_args = _init_args or {}
 
         config_scheme = _config_scheme or BeamConfig
-        if len(args) > 0 and (isinstance(args[0], BeamConfig) or isinstance(args[0], dict)):
-            self.hparams = config_scheme(args[0])
-        elif hparams is not None:
-            self.hparams = config_scheme(hparams)
+        if hparams is not None:
+            if isinstance(hparams, BeamConfig):
+                self.hparams = hparams
+            else:
+                self.hparams = config_scheme(hparams, load_script_arguments=False, load_config_files=False)
+        elif len(args) > 0 and (isinstance(args[0], BeamConfig) or isinstance(args[0], dict)):
+            self.hparams = config_scheme(args[0], load_script_arguments=False, load_config_files=False)
         else:
             if not hasattr(self, 'hparams'):
-                self.hparams = config_scheme()
+                self.hparams = config_scheme(load_script_arguments=False, load_config_files=False)
 
         for k, v in kwargs.items():
             if not k.startswith('_'):

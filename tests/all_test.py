@@ -10,6 +10,15 @@ from src.beam import beam_logger as logger
 import pandas as pd
 
 
+def test_beam_default_configuration():
+    import sys
+    # generate some random arguments
+    sys.argv = ['python', '--a', '1', '--b', '2', '--c', '3', '--d', '4', '--e', '5', '--f', '6', '--g', '7', '--h', '8']
+    from src.beam import Transformer
+    p = Transformer()
+    print(p.hparams)
+
+
 def test_ray_actor():
 
     from src.beam.distributed.ray_dispatcher import RayDispatcher, RayClient
@@ -25,7 +34,7 @@ def test_ray_actor():
     Ar = RayDispatcher(A)
 
     ar = Ar(4)
-    res = Ar.f(5)
+    res = ar.f(5)
 
     print(res.value)
 
@@ -561,6 +570,8 @@ if __name__ == '__main__':
 
     # test_collate_transformer_chunks()
 
-    test_special_attributes()
+    # test_special_attributes()
+
+    test_beam_default_configuration()
 
     print('done')
