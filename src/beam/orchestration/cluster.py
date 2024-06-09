@@ -82,7 +82,7 @@ class RayCluster(Processor):
 
     def get_head_pod_ip(self, head_pod_instance):
         head_pod_status = head_pod_instance.get_pod_status()
-        head_pod_name = head_pod_instance.pod_infos[0].metadata.name
+        head_pod_name = head_pod_instance.pod_infos[0].name
 
         if head_pod_status[0][1] == "Running":
             pod_info = self.k8s.get_pod_info(head_pod_name, namespace=self.config['project_name'])
@@ -107,7 +107,7 @@ class RayCluster(Processor):
             try:
                 head_pod_status = self.head.get_pod_status()
                 if head_pod_status[0][1] != "Running":
-                    logger.info(f"Head pod {self.head.pod_infos[0].metadata.name} is not running. Restarting...")
+                    logger.info(f"Head pod {self.head.pod_infos[0].name} is not running. Restarting...")
                     self.deploy_cluster()
                 time.sleep(3)
             except KeyboardInterrupt:
@@ -123,7 +123,7 @@ class RayCluster(Processor):
             self.workers.append(pod_instance)
             worker_command = "ray start --address={}:6379".format(self.get_head_pod_ip(self.head))
             pod_instance.execute(worker_command)
-            pod_suffix = pod_instance.pod_infos[0].metadata.name.split('-')[-1]
+            pod_suffix = pod_instance.pod_infos[0].name.split('-')[-1]
             # Re-use BeamDeploy to create services and routes for new worker nodes
             for svc_config in self.service_configs:
                 service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"

@@ -1,9 +1,10 @@
 from ..processor import Processor
-from .pod import BeamPod
+from .pod import BeamPod, PodInfos
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
 from .dataclasses import *
+from datetime import datetime
 import json
 
 
@@ -126,14 +127,14 @@ class BeamDeploy(Processor):
         )
 
         pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
-        self.pod_info_state = pod_infos
+        self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace)) for pod in pod_infos]
         self.beam_pod_instances = []
         print(f"pod_info_state line 131: {self.pod_info_state}")
         print(f"beam_pod_instances line 132: {self.beam_pod_instances}")
 
         if isinstance(pod_infos, list) and pod_infos:
             for pod_info in pod_infos:
-                pod_name = getattr(pod_info, 'name', None)
+                pod_name = pod_info.name
                 # Print each pod_info for debugging
                 print(f"Processing pod_info: {pod_info}")
                 # Extract the pod name from pod_info
@@ -142,7 +143,7 @@ class BeamDeploy(Processor):
                     actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
                     # print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
                     # Create a BeamPod instance with the detailed Pod info
-                    beam_pod_instance = BeamPod(pod_infos=[actual_pod_info], namespace=self.namespace, k8s=self.k8s)
+                    beam_pod_instance = BeamPod(pod_infos=[BeamPod.extract_pod_info(actual_pod_info)], namespace=self.namespace, k8s=self.k8s)
                     self.beam_pod_instances.append(beam_pod_instance)
                 else:
                     logger.warning("PodInfo object does not have a 'name' attribute.")
@@ -156,7 +157,7 @@ class BeamDeploy(Processor):
             print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
 
             # Directly return the single BeamPod instance
-            return BeamPod(pod_infos=[actual_pod_info], namespace=self.namespace, k8s=self.k8s)
+            return BeamPod(pod_infos=[BeamPod.extract_pod_info(actual_pod_info)], namespace=self.namespace, k8s=self.k8s)
 
         # Handle cases where deployment failed or no pods were returned
         if not self.beam_pod_instances:
@@ -164,7 +165,7 @@ class BeamDeploy(Processor):
             return None
 
         for pod_instance in self.beam_pod_instances:
-            pod_suffix = f"{self.deployment_name}-{pod_instance.pod_infos[0].metadata.name.split('-')[-1]}"
+            pod_suffix = f"{self.deployment_name}-{pod_instance.pod_infos[0].raw_pod_data['metadata']['name'].split('-')[-1]}"
             for svc_config in self.service_configs:
                 service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
                 self.k8s.create_service(
@@ -188,46 +189,35 @@ class BeamDeploy(Processor):
                         service_configs=[svc_config],
                     )
 
+        def convert_datetimes(data):
+            if isinstance(data, dict):
+                return {k: convert_datetimes(v) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [convert_datetimes(item) for item in data]
+            elif isinstance(data, datetime):
+                return data.isoformat()
+            else:
+                return data
+
         deployment_state = {
-            "pod_info_state": [self.pod_info_to_dict(pod_info) for pod_info in self.pod_info_state],
-            "beam_pod_instances": [self.pod_info_to_dict(beam_pod_instance.pod_infos[0]) for beam_pod_instance in self.beam_pod_instances]
+            "pod_info_state": [pod_info.raw_pod_data for pod_info in self.pod_info_state],
+            "beam_pod_instances": [pod_info.raw_pod_data for beam_pod_instance in self.beam_pod_instances for pod_info in beam_pod_instance.pod_infos]
         }
-        print(f"deployment_state: {deployment_state}")
+
+        # Convert datetime objects to strings in deployment_state
+        deployment_state_converted = convert_datetimes(deployment_state)
+
+        # print(f"deployment_state: {deployment_state_converted}")
+        # print(json.dumps(deployment_state_converted, indent=4))
         # Save the state to a file
         with open("deployment_state.json", "w") as f:
-            json.dump(deployment_state, f, indent=4)
-        # Print the state
-        print(json.dumps(deployment_state, indent=4))
+            json.dump(deployment_state_converted, f, indent=4)
 
         print(f"pod_info_state line 202: {self.pod_info_state}")
         print(f"beam_pod_instances line 203: {self.beam_pod_instances}")
 
         # Return a single BeamPod instance or a list of them, based on the number of instances created
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
-
-    @staticmethod
-    def pod_info_to_dict(pod_info):
-        return {
-            "name": pod_info.metadata.name,
-            "namespace": pod_info.metadata.namespace,
-            "uid": pod_info.metadata.uid,
-            "creation_timestamp": pod_info.metadata.creation_timestamp.isoformat(),
-            "labels": pod_info.metadata.labels,
-            "annotations": pod_info.metadata.annotations,
-            "node_name": pod_info.spec.node_name,
-            "host_ip": pod_info.status.host_ip,
-            "pod_ip": pod_info.status.pod_ip,
-            "phase": pod_info.status.phase,
-            "conditions": [
-                {
-                    "type": condition.type,
-                    "status": condition.status,
-                    "last_probe_time": condition.last_probe_time,
-                    "last_transition_time": condition.last_transition_time,
-                }
-                for condition in pod_info.status.conditions
-            ] if pod_info.status.conditions else [],
-        }
 
     def extract_ports(self):
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
@@ -237,12 +227,11 @@ class BeamDeploy(Processor):
         return extracted_ports
 
     def generate_beam_pod(self, pod_infos):
-        # logger.info(f"Generating BeamPod for pods: '{pod_infos}'")
+        logger.info(f"Generating BeamPod for pods: '{pod_infos}'")
         # Ensure pod_infos is a list of PodInfo objects
         return BeamPod(pod_infos=pod_infos, k8s=self.k8s, namespace=self.namespace)
 
     def delete_deployment(self):
-        # Delete deployment
         try:
             self.k8s.apps_v1_api.delete_namespaced_deployment(
                 name=self.deployment.metadata.name,

@@ -66,3 +66,14 @@ class UserIdmConfig:
 class SecurityContextConfig:
     add_capabilities: List[str] = field(default_factory=list)
     enable_security_context: bool = False
+
+
+@dataclass
+class PodMetadata:
+    name: str
+
+
+@dataclass
+class PodInfos:
+    raw_pod_data: dict
+    metadata: PodMetadata
