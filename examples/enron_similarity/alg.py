@@ -52,7 +52,7 @@ class EnronTicketSimilarity(TextGroupExpansionAlgorithm):
                 'test': self.dataset['x_test'].values}
 
         if self.get_hparam('subset-labels', None):
-            vals = {k: [v[i] for i in self.full_invmap[k].loc[self.ind[k]]] for k, v in vals.items()}
+            vals = {k: [v[i] for i in self.full_invmap[k][self.ind[k]]] for k, v in vals.items()}
 
         return vals
 
@@ -63,7 +63,7 @@ class EnronTicketSimilarity(TextGroupExpansionAlgorithm):
                 'test': self.dataset['y_test'].values}
 
         if self.get_hparam('subset-labels', None):
-            vals = {k: v[self.full_invmap[k].loc[self.ind[k]]] for k, v in vals.items()}
+            vals = {k: v[self.full_invmap[k][self.ind[k]]] for k, v in vals.items()}
 
         return vals
 
@@ -92,7 +92,7 @@ class EnronTicketSimilarity(TextGroupExpansionAlgorithm):
     def _full_invmap(self):
         im = {}
         for k, v in self.full_ind.items():
-            s = pd.Series(np.arange(len(v.values)), index=v.values.index)
+            s = pd.Series(np.arange(len(v.values)), index=v.values)
             im[k] = s.sort_index()
         return im
 

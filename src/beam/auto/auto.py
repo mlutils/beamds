@@ -1,10 +1,9 @@
 import inspect
 import ast
 import sys
-from functools import cached_property
 
-from ..processor import Processor
-from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
+from ..base import BeamBase
+from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib,get_origin, is_module_installed
 from ..path import beam_path, local_copy
 
 import importlib.metadata
@@ -16,15 +15,17 @@ import warnings
 import tempfile
 
 from ..logger import beam_logger as logger
+from ..utils import cached_property
 from uuid import uuid4 as uuid
 
 
-class AutoBeam(Processor):
+class AutoBeam(BeamBase):
 
     # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
     blacklisted_pip_package = ['sklearn']
 
-    def __init__(self, obj):
+    def __init__(self, obj, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._private_modules = None
         self._visited_modules = None
         self.obj = obj
@@ -145,7 +146,7 @@ class AutoBeam(Processor):
 
             elif type(a) is ast.ImportFrom:
 
-                root_name = a.module.split('.')[0]
+                root_name = a.module.split('.')[0] if a.module else ''
 
                 if a.level == 0 and (not is_std_lib(root_name)) and is_installed_package(root_name):
                     if root_name in self.loaded_modules:
@@ -167,7 +168,8 @@ class AutoBeam(Processor):
                         for i in range(a.level):
                             path = path.parent
 
-                        path = path.joinpath(f"{a.module.replace('.', os.sep)}")
+                        a_module = a.module if a.module else ''
+                        path = path.joinpath(f"{a_module.replace('.', os.sep)}")
                         if path.is_dir():
                             path = path.joinpath('__init__.py')
                         else:
@@ -184,13 +186,16 @@ class AutoBeam(Processor):
         modules = self.recursive_module_dependencies(module_path)
         return list(set(modules))
 
-
     @cached_property
     def top_levels(self):
 
         top_levels = {}
         for i, dist in enumerate(pkg_resources.working_set):
-            egg_info = beam_path(dist.egg_info).resolve()
+            try:
+                egg_info = beam_path(dist.egg_info).resolve()
+            except:
+                print(dist)
+                print('here')
             tp_file = egg_info.joinpath('top_level.txt')
             module_name = None
             project_name = dist.project_name

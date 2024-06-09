@@ -2,6 +2,8 @@ import itertools
 import os
 import sys
 from collections import defaultdict
+from typing import Any
+
 import numpy as np
 from fnmatch import filter
 from tqdm.notebook import tqdm as tqdm_notebook
@@ -26,7 +28,7 @@ from timeit import default_timer as timer
 
 import inspect
 from argparse import Namespace
-from functools import wraps, partial, cached_property
+from functools import wraps, partial, cached_property as native_cached_property
 from collections import OrderedDict
 
 # do not delete this import (it is required as some modules import the following imported functions from this file)
@@ -153,33 +155,6 @@ class nested_defaultdict(defaultdict):
         elif default_factory is dict:
             default_factory = self.default_factory_dict
         super().__init__(default_factory, **kwargs)
-
-
-# def lazy_property(fn):
-#
-#     @property
-#     def _lazy_property(self):
-#         try:
-#             cache = getattr(self, '_lazy_cache')
-#             return cache[fn.__name__]
-#         except KeyError:
-#             v = fn(self)
-#             cache[fn.__name__] = v
-#             return v
-#         except AttributeError:
-#             v = fn(self)
-#             setattr(self, '_lazy_cache', {fn.__name__: v})
-#             return v
-#
-#     @_lazy_property.setter
-#     def _lazy_property(self, value):
-#         try:
-#             cache = getattr(self, '_lazy_cache')
-#             cache[fn.__name__] = value
-#         except AttributeError:
-#             setattr(self, '_lazy_cache', {fn.__name__: value})
-#
-#     return _lazy_property
 
 
 def get_public_ip():
@@ -1091,7 +1066,7 @@ def get_class_properties(cls):
 def get_cached_properties(obj):
     cached_props = {}
     # Inspect the class dictionary for cached_property instances
-    for name, prop in inspect.getmembers(type(obj), lambda member: isinstance(member, cached_property)):
+    for name, prop in inspect.getmembers(type(obj), lambda member: isinstance(member, native_cached_property)):
         # Check if the instance dictionary has a cached value for this property
         if name in obj.__dict__:
             cached_props[name] = getattr(obj, name)
@@ -1158,4 +1133,19 @@ class LimitedSizeDictFactory:
 
     def __call__(self):
         return LimitedSizeDict(size_limit=self.size_limit, on_removal=self.on_removal)
+
+
+class CachedAttributeException(Exception):
+    """Custom exception to be raised instead of AttributeError in cached properties."""
+    pass
+
+
+class cached_property(native_cached_property):
+    def __get__(self, instance, owner=None):
+        try:
+            # Use super() to call the __get__ method of the parent cached_property class
+            return super().__get__(instance, owner)
+        except AttributeError as e:
+            # Change the AttributeError to BeamAttributeException
+            raise CachedAttributeException(f"An AttributeError occurred in cached_property: {self.attrname}") from e
 
