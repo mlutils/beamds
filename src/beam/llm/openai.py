@@ -206,9 +206,10 @@ class SamurOpenAI(OpenAIBase):
 
 class BeamVLLM(OpenAIBase):
 
-    def __init__(self, model=None, hostname=None, api_key=None, port=None, chat=True, *args, **kwargs):
+    def __init__(self, model=None, hostname=None, api_key=None, port=None, tls=False, *args, **kwargs):
 
-        api_base = f"http://{normalize_host(hostname, port)}/openai/v1"
+        http_scheme = 'http' if not tls else 'https'
+        api_base = f"{http_scheme}://{normalize_host(hostname, port)}/v1"
         kwargs['scheme'] = 'vllm'
         super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  **kwargs)
 

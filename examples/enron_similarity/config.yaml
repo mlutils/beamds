@@ -9,7 +9,6 @@ reload_state: false
 save_state: true
 tokenizer: intfloat/multilingual-e5-base
 dense_model_path: intfloat/multilingual-e5-base
-model-state-path: /home/shared/data/results/enron/models/model_state_e5_base
 path_to_data: /home/hackathon_2023/data/enron/emails_dd.parquet
 model_state_path: /home/shared/data/results/enron/models/model_state_subset
 root-path: /home/shared/data/results/enron/dataset_20240606

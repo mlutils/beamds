@@ -1,6 +1,7 @@
 import inspect
 from argparse import Namespace
 from functools import cached_property
+import traceback
 
 from ..type import check_type
 from ..meta import MetaBeamInit, BeamName
@@ -55,9 +56,16 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         return default
 
     def getattr(self, attr):
+        # Capture the full traceback
+        # tb = ''.join(traceback.format_stack())
+        # raise AttributeError(f"Attribute {attr} not found.\n"
+        #                      f"For cached_property attributes, it is possible to reach here if an AttributeError is "
+        #                      f"raised in the getter function.\n"
+        #                      f"Traceback:\n{tb}")
+
         raise AttributeError(f"Attribute {attr} not found.\n"
                              f"For cached_property attributes, it is possible to reach here if an AttributeError is "
-                             f"raised in the getter function.")
+                             f"raised in the getter function (to debug, set traceback in method: {attr}).")
 
     def __getattr__(self, item):
         if item.startswith('_') or item == '_init_is_done' or not self.is_initialized:

@@ -128,7 +128,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         dense_model = self.build_dense_model()
         sim = {}
         for k in ['train', 'validation', 'test']:
-            sim[k] = TextSimilarity(dense_model=dense_model, hparams=self.hparams)
+            sim[k] = TextSimilarity(dense_model=dense_model, hparams=self.hparams, metric='l2')
         return sim
 
     @cached_property
