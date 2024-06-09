@@ -4,18 +4,19 @@ from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logger import beam_logger as logger
 from .dataclasses import *
+import json
 
 
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, check_project_exists=False, project_name=None, namespace=None,
-                 replicas=None, labels=None, image_name=None,
+                 replicas=None, labels=None, image_name=None, beam_pod_instances=None,
                  deployment_name=None, use_scc=False, deployment=None, create_service_account=None,
                  cpu_requests=None, cpu_limits=None, memory_requests=None, use_gpu=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
                  service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
                  memory_storage_configs=None, security_context_config=None, use_node_selector=False,
-                 scc_name=None, node_selector=None,
+                 scc_name=None, node_selector=None, pod_info_state=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None, **kwargs):
         super().__init__()
         self.k8s = k8s
@@ -50,6 +51,8 @@ class BeamDeploy(Processor):
         self.memory_storage_configs = memory_storage_configs or []
         self.user_idm_configs = user_idm_configs or []
         self.security_context_config = security_context_config or []
+        self.pod_info_state = pod_info_state or []
+        self.beam_pod_instances = beam_pod_instances or []
 
     def launch(self, replicas=None):
         if replicas is None:
@@ -84,31 +87,6 @@ class BeamDeploy(Processor):
 
         enabled_memory_storages = [config for config in self.memory_storage_configs if config.enabled]
 
-        for svc_config in self.service_configs:
-            service_name = f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}"
-            # Unique name based on service name and port
-            self.k8s.create_service(
-                base_name=f"{self.deployment_name}-{svc_config.service_name}-{svc_config.port}",
-                namespace=self.namespace,
-                ports=[svc_config.port],
-                labels=self.labels,
-                service_type=svc_config.service_type
-            )
-
-            # Check if a route needs to be created for this service
-            if svc_config.create_route:
-                self.k8s.create_route(
-                    service_name=service_name,
-                    namespace=self.namespace,
-                    protocol=svc_config.route_protocol,
-                    port=svc_config.port
-                )
-
-            # Check if an ingress needs to be created for this service
-            if svc_config.create_ingress:
-                self.k8s.create_ingress(
-                    service_configs=[svc_config],  # Pass only the current ServiceConfig
-                )
         if self.user_idm_configs:
             self.k8s.create_role_bindings(self.user_idm_configs)
 
@@ -130,7 +108,7 @@ class BeamDeploy(Processor):
             replicas=replicas,
             ports=extracted_ports,
             create_service_account=self.create_service_account,
-            service_account_name=self.service_account_name,  # Pass this
+            service_account_name=self.service_account_name,
             storage_configs=self.storage_configs,
             memory_storage_configs=enabled_memory_storages,
             use_node_selector=self.node_selector,
@@ -148,7 +126,6 @@ class BeamDeploy(Processor):
         )
 
         pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
-
         beam_pod_instances = []
 
         if isinstance(pod_infos, list) and pod_infos:
@@ -183,8 +160,75 @@ class BeamDeploy(Processor):
             logger.error("Failed to apply deployment or no pods were returned.")
             return None
 
+        for pod_instance in beam_pod_instances:
+            pod_suffix = f"{self.deployment_name}-{pod_instance.pod_infos[0].metadata.name.split('-')[-1]}"
+            for svc_config in self.service_configs:
+                service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
+                self.k8s.create_service(
+                    base_name=service_name,
+                    namespace=self.namespace,
+                    ports=[svc_config.port],
+                    labels=self.labels,
+                    service_type=svc_config.service_type
+                )
+
+                # Create routes and ingress if configured
+                if svc_config.create_route:
+                    self.k8s.create_route(
+                        service_name=service_name,
+                        namespace=self.namespace,
+                        protocol=svc_config.route_protocol,
+                        port=svc_config.port
+                    )
+                if svc_config.create_ingress:
+                    self.k8s.create_ingress(
+                        service_configs=[svc_config],
+                    )
+
+        deployment_state = {
+            "pod_info_state": [self.pod_info_to_dict(pod_info) for pod_info in self.pod_info_state],
+            "beam_pod_instances": [self.pod_info_to_dict(beam_pod_instance.pod_infos[0]) for beam_pod_instance in self.beam_pod_instances]
+        }
+        print(f"deployment_state: {deployment_state}")
+        # Save the state to a file
+        # with open("deployment_state.json", "w") as f:
+        #     json.dump(deployment_state, f, indent=4)
+        # Print the state
+        print(json.dumps(deployment_state, indent=4))
+
         # Return a single BeamPod instance or a list of them, based on the number of instances created
         return beam_pod_instances if len(beam_pod_instances) > 1 else beam_pod_instances[0]
+
+    @staticmethod
+    def pod_info_to_dict(pod_info):
+        return {
+            "name": pod_info.metadata.name,
+            "namespace": pod_info.metadata.namespace,
+            "uid": pod_info.metadata.uid,
+            "creation_timestamp": pod_info.metadata.creation_timestamp.isoformat(),
+            "labels": pod_info.metadata.labels,
+            "annotations": pod_info.metadata.annotations,
+            "node_name": pod_info.spec.node_name,
+            "host_ip": pod_info.status.host_ip,
+            "pod_ip": pod_info.status.pod_ip,
+            "phase": pod_info.status.phase,
+            "conditions": [
+                {
+                    "type": condition.type,
+                    "status": condition.status,
+                    "last_probe_time": condition.last_probe_time,
+                    "last_transition_time": condition.last_transition_time,
+                }
+                for condition in pod_info.status.conditions
+            ] if pod_info.status.conditions else [],
+        }
+
+    def extract_ports(self):
+        extracted_ports = [svc_config.port for svc_config in self.service_configs]
+        if self.enable_ray_ports:
+            for ray_ports_config in self.ray_ports_configs:
+                extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
+        return extracted_ports
 
     def generate_beam_pod(self, pod_infos):
         # logger.info(f"Generating BeamPod for pods: '{pod_infos}'")

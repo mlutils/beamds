@@ -34,7 +34,7 @@ class RayCluster(Processor):
             project_name=self.config['project_name'],
             check_project_exists=self.config['check_project_exists'],
             namespace=self.config['project_name'],
-            replicas=self.config['n_pods'],
+            replicas=self.config['replicas'],
             labels=self.config['labels'],
             image_name=self.config['image_name'],
             deployment_name=self.config['deployment_name'],
@@ -71,31 +71,6 @@ class RayCluster(Processor):
         head_command = "ray start --head --port=6379 --disable-usage-stats --dashboard-host=0.0.0.0"
         self.head.execute(head_command)
 
-        # Apply naming convention to head node's services and routes
-        pod_suffix = self.head.pod_infos[0].metadata.name.split('-')[-1]
-        for svc_config in self.service_configs:
-            service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
-            self.deployment.k8s.create_service(
-                base_name=service_name,
-                namespace=self.config['project_name'],
-                ports=[svc_config.port],
-                labels=self.config['labels'],
-                service_type='ClusterIP'
-            )
-
-            # Create routes and ingress if configured
-            if svc_config.create_route:
-                self.deployment.k8s.create_route(
-                    service_name=service_name,
-                    namespace=self.config['project_name'],
-                    protocol=svc_config.route_protocol,
-                    port=svc_config.port
-                )
-            if svc_config.create_ingress:
-                self.deployment.k8s.create_ingress(
-                    service_configs=[svc_config],
-                )
-
         # TODO: implement reliable method that get ip from head pod when its ready instead of relying to "sleep"
         time.sleep(10)
         head_pod_ip = self.get_head_pod_ip(self.head)
@@ -104,30 +79,6 @@ class RayCluster(Processor):
 
         for pod_instance in pod_instances[1:]:
             pod_instance.execute(worker_command)
-            pod_suffix = pod_instance.pod_infos[0].metadata.name.split('-')[-1]
-            # Re-use BeamDeploy to create services and routes for worker nodes
-            for svc_config in self.service_configs:
-                service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
-                self.deployment.k8s.create_service(
-                    base_name=service_name,
-                    namespace=self.config['project_name'],
-                    ports=[svc_config.port],
-                    labels=self.config['labels'],
-                    service_type='ClusterIP'
-                )
-
-                # Create routes and ingress if configured
-                if svc_config.create_route:
-                    self.deployment.k8s.create_route(
-                        service_name=service_name,
-                        namespace=self.config['project_name'],
-                        protocol=svc_config.route_protocol,
-                        port=svc_config.port
-                    )
-                if svc_config.create_ingress:
-                    self.deployment.k8s.create_ingress(
-                        service_configs=[svc_config],
-                    )
 
     def get_head_pod_ip(self, head_pod_instance):
         head_pod_status = head_pod_instance.get_pod_status()

@@ -76,3 +76,12 @@ class BeamPod(Processor):
             status = self.k8s.get_pod_info(pod_name, self.namespace).status.phase
             statuses.append((pod_name, status))
         return statuses
+
+    def to_dict(self):
+        return {
+            "pod_name": self.pod_infos[0].metadata.name,
+            "pod_ip": self.pod_infos[0].status.pod_ip,
+            "namespace": self.namespace,
+            "services": [svc.to_dict() for svc in self.k8s.list_services(self.namespace)],
+            "routes": [route.to_dict() for route in self.k8s.list_routes(self.namespace)],
+        }
