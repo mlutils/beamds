@@ -9,11 +9,11 @@ reload_state: false
 save_state: true
 tokenizer: intfloat/multilingual-e5-base
 dense_model_path: intfloat/multilingual-e5-base
-path_to_data: /home/hackathon_2023/data/enron/emails_dd.parquet
-model_state_path: /home/shared/data/results/enron/models/model_state_subset
-root-path: /home/shared/data/results/enron/dataset_20240606
+#path_to_data: /home/hackathon_2023/data/enron/emails_dd.parquet
+#model_state_path: /home/shared/data/results/enron/models/model_state_subset
+#root_path: /home/shared/data/results/enron/dataset_20240606
+root_path: /home/mlspeech/elads/data/enron/data/
+path_to_data: /home/mlspeech/elads/data/enron/data/emails.parquet
+model_state_path: /home/mlspeech/elads/data/enron/models/model_state_subset
 subset-labels: [36,]
 
-#root_path: /home/mlspeech/elads/data/enron/data/
-#path_to_data: /home/mlspeech/elads/data/enron/data/emails.parquet
-#model_state_path: /home/mlspeech/elads/data/enron/models/model_state

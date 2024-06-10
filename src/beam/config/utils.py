@@ -231,7 +231,7 @@ def get_beam_llm(llm_uri=None, get_from_key=True):
         llm_uri = beam_key('BEAM_LLM', store=False)
     if llm_uri is not None:
         try:
-            from .llm import beam_llm
+            from ..llm import beam_llm
             llm = beam_llm(llm_uri)
         except ImportError:
             pass
