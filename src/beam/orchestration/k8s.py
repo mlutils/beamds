@@ -610,6 +610,33 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.error(
                 f"Error deleting services with label selector '{label_selector}' in namespace '{namespace}': {e}")
 
+    def get_services_info(self, namespace):
+        services_info = []
+        try:
+            services = self.core_v1_api.list_namespaced_service(namespace=namespace)
+            for service in services.items:
+                if service.spec.type == "NodePort":
+                    for port in service.spec.ports:
+                        service_info = {
+                            "service_name": service.metadata.name,
+                            "cluster_ip": service.spec.cluster_ip,
+                            "port": port.port,
+                            "node_port": port.node_port,
+                        }
+                        services_info.append(service_info)
+                else:
+                    for port in service.spec.ports:
+                        service_info = {
+                            "service_name": service.metadata.name,
+                            "cluster_ip": service.spec.cluster_ip,
+                            "port": port.port,
+                        }
+                        services_info.append(service_info)
+        except ApiException as e:
+            logger.error(f"Failed to get services info for namespace '{namespace}': {e}")
+            services_info = None
+        return services_info
+
     def create_route(self, service_name, namespace, protocol, port):
         from openshift.dynamic.exceptions import NotFoundError
         from openshift.dynamic import DynamicClient
@@ -667,6 +694,22 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.info(f"The DNS name of the created route is: {dns_name}")  # Log the DNS name
         except Exception as e:
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
+
+    def get_routes_info(self, namespace):
+        routes_info = []
+        try:
+            route_resource = self.dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
+            routes = route_resource.get(namespace=namespace)
+            for route in routes.items:
+                route_info = {
+                    "route_name": route.metadata.name,
+                    "host": route.spec.host,
+                }
+                routes_info.append(route_info)
+        except ApiException as e:
+            logger.error(f"Failed to get routes info for namespace '{namespace}': {e}")
+            routes_info = None
+        return routes_info
 
     def delete_route(self, route_name, namespace):
         from openshift.dynamic.exceptions import NotFoundError

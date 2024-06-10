@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Union
 from .units import K8SUnits
-
+from typing import Dict, Any
 
 @dataclass
 class ServiceConfig:
@@ -75,5 +75,9 @@ class PodMetadata:
 
 @dataclass
 class PodInfos:
-    raw_pod_data: dict
+    raw_pod_data: Dict[str, Any]
     metadata: PodMetadata
+
+    @property
+    def name(self):
+        return self.metadata.name

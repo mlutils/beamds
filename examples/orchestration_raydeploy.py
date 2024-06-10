@@ -16,6 +16,8 @@ ray_cluster = RayCluster(deployment=None, config=config)
 # Deploy the Ray cluster
 ray_cluster.deploy_cluster()
 
+print(ray_cluster.deployment.deployment_info)
+
 # run on daemon mode the monitor of the cluster
 # try:
 #     ray_cluster.monitor_cluster()
