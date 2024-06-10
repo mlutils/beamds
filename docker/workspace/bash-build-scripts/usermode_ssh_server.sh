@@ -18,8 +18,10 @@ chmod 700 "$USER_HOME_DIR/.ssh"
 chown "$USER_NAME":"$USER_NAME" "$USER_HOME_DIR/.ssh"
 chown -R "$USER_NAME". /opt/ssh
 
+## replace string USER_NAME in /etc/supervisor/conf.d/ with $USER_NAME
+#sed -i "s/USER_NAME/$USER_NAME/g" /etc/supervisor/conf.d/supervisord.conf
 # replace string USER_NAME in /etc/supervisor/conf.d/ with $USER_NAME
-sed -i "s/USER_NAME/$USER_NAME/g" /etc/supervisor/conf.d/supervisord.conf
+sed -i "s/USER_NAME/root/g" /etc/supervisor/conf.d/supervisord.conf
 
 #&& chmod 600 /home/beam/.ssh/authorized_keys && \
 #  chown beam:beam /home/beam/.ssh/authorized_keys
