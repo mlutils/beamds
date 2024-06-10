@@ -1,6 +1,6 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
 from src.beam.orchestration import (RayClusterConfig, RayCluster)
-from src.beam import resource
+from src.beam.resources import resource
 import os
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -16,9 +16,11 @@ ray_cluster = RayCluster(deployment=None, config=config)
 # Deploy the Ray cluster
 ray_cluster.deploy_cluster()
 
+print(ray_cluster.deployment.deployment_info)
+
 # run on daemon mode the monitor of the cluster
-try:
-    ray_cluster.monitor_cluster()
-except KeyboardInterrupt:
-    ray_cluster.stop_monitoring()
-    print("Monitoring stopped.")
+# try:
+#     ray_cluster.monitor_cluster()
+# except KeyboardInterrupt:
+#     ray_cluster.stop_monitoring()
+#     print("Monitoring stopped.")
