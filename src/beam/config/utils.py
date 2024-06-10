@@ -118,11 +118,13 @@ def add_unknown_arguments(args, unknown, silent=False):
 
 
 def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=False,
-                    strict=False, load_config_files=True, **kwargs):
+                    strict=False, load_config_files=True, load_script_arguments=True, **kwargs):
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
     '''
+
+    sys_argv_copy = sys.argv.copy()
 
     pr = args[0]
     args = args[1:]
@@ -134,7 +136,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
                 if o in d:
                     p.set_defaults(**{pi.dest: d[o]})
 
-    if is_notebook():
+    if is_notebook() or not load_script_arguments:
         sys.argv = sys.argv[:1]
 
     file_name = sys.argv[0] if len(sys.argv) > 0 else '/tmp/tmp.py'
@@ -210,6 +212,8 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
         tag_list = get_tags_from_action(pai)
         for tag in tag_list:
             tags[tag].add(pai.dest)
+
+    sys.argv = sys_argv_copy
 
     return args, tags
 

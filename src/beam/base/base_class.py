@@ -1,6 +1,7 @@
 import inspect
 from argparse import Namespace
 from functools import cached_property
+import traceback
 
 from ..type import check_type
 from ..meta import MetaBeamInit, BeamName
@@ -18,19 +19,25 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         _init_args = _init_args or {}
 
         config_scheme = _config_scheme or BeamConfig
-        if len(args) > 0 and (isinstance(args[0], BeamConfig) or isinstance(args[0], dict)):
-            self.hparams = config_scheme(args[0])
-        elif hparams is not None:
-            self.hparams = config_scheme(hparams)
+        if hparams is not None:
+            if isinstance(hparams, BeamConfig):
+                self.hparams = hparams
+            else:
+                self.hparams = config_scheme(hparams, load_script_arguments=False, load_config_files=False)
+        elif len(args) > 0 and isinstance(args[0], BeamConfig):
+            self.hparams = args[0]
+        elif len(args) > 0 and isinstance(args[0], (list, tuple, set, dict, Namespace)):
+            self.hparams = config_scheme(args[0], load_script_arguments=False, load_config_files=False)
         else:
             if not hasattr(self, 'hparams'):
-                self.hparams = config_scheme()
+                self.hparams = config_scheme(load_script_arguments=False, load_config_files=False)
 
+        _init_kwargs = _init_args.get('kwargs', {})
         for k, v in kwargs.items():
             if not k.startswith('_'):
                 v_type = check_type(v)
                 if v_type.major in ['scalar', 'none']:
-                    if k in _init_args.get('kwargs', {}) or k not in self.hparams or self._default_value(k) != v:
+                    if k in _init_kwargs or k not in self.hparams or self._default_value(k) != v:
                         self.hparams[k] = v
 
     @cached_property
@@ -49,9 +56,16 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         return default
 
     def getattr(self, attr):
+        # Capture the full traceback
+        # tb = ''.join(traceback.format_stack())
+        # raise AttributeError(f"Attribute {attr} not found.\n"
+        #                      f"For cached_property attributes, it is possible to reach here if an AttributeError is "
+        #                      f"raised in the getter function.\n"
+        #                      f"Traceback:\n{tb}")
+
         raise AttributeError(f"Attribute {attr} not found.\n"
                              f"For cached_property attributes, it is possible to reach here if an AttributeError is "
-                             f"raised in the getter function.")
+                             f"raised in the getter function (to debug, set traceback in method: {attr}).")
 
     def __getattr__(self, item):
         if item.startswith('_') or item == '_init_is_done' or not self.is_initialized:

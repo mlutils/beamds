@@ -4,7 +4,6 @@ from typing import List
 
 import numpy as np
 import pandas as pd
-import spacy
 
 from .. import resource, BeamData, Timer, as_numpy
 from ..logger import beam_logger as logger
@@ -129,13 +128,13 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         dense_model = self.build_dense_model()
         sim = {}
         for k in ['train', 'validation', 'test']:
-            sim[k] = TextSimilarity(dense_model=dense_model, hparams=self.hparams)
+            sim[k] = TextSimilarity(dense_model=dense_model, hparams=self.hparams, metric='l2')
         return sim
 
     @cached_property
     def _invmap(self):
         im = {}
-        for k, v in self.subsets.items():
+        for k, v in self.ind.items():
             s = pd.Series(np.arange(len(v.values)), index=v.values.index)
             im[k] = s.sort_index()
         return im
@@ -260,7 +259,31 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
                 'y_unlabeled': y_unlabeled, 'y_unlabeled_true': y_unlabeled_true, 'ind_unlabeled': ind_unlabeled}
 
     def _build_features(self, x, is_train=False, n_workers=None):
-        raise NotImplementedError
+
+        from ..misc.text_features import extract_textstat_features
+        transform_kwargs = {}
+        if n_workers is not None:
+            transform_kwargs['n_workers'] = n_workers
+        x_tfidf = self.tfidf_sim['validation'].transform(x, transform_kwargs=transform_kwargs)
+        x_dense = self.dense_sim['validation'].encode(x)
+        # x_textstat = extract_textstat_features(x, n_workers=self.get_hparam('n_workers'))
+        x_textstat = extract_textstat_features(x, n_workers=1)
+
+        if is_train:
+            with Timer(name='svd_transform', logger=logger):
+                x_svd = self.svd_fit_transform(x_tfidf)
+            with Timer(name='pca_transform', logger=logger):
+                x_pca = self.pca_fit_transform(x_dense)
+            with Timer(name='extract_textstat_features', logger=logger):
+                x_textstat = self.robust_scale_fit_transform(x_textstat)
+        else:
+            x_svd = self.svd_transform(x_tfidf)
+            x_pca = self.pca_transform(x_dense)
+            x_textstat = self.robust_scale_transform(x_textstat)
+
+        x = np.concatenate([x_pca, x_svd, x_textstat], axis=1)
+
+        return x
 
     @cached_property
     def features(self):

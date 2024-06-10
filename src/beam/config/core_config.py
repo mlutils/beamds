@@ -6,6 +6,8 @@ from collections import defaultdict
 from typing import List, Union, Set
 from pprint import pformat
 import json
+
+import yaml
 from dataclasses import dataclass, field
 
 from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
@@ -27,7 +29,7 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
     defaults = {}
 
     def __init__(self, *args, config=None, tags=None, return_defaults=False, silent=False,
-                 strict=False, load_config_files=True, **kwargs):
+                 strict=False, load_config_files=True, load_script_arguments=True, **kwargs):
 
         self._init_is_done = False
 
@@ -73,7 +75,8 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
 
             config, more_tags = _beam_arguments(parser, *args, return_defaults=return_defaults,
                                                 return_tags=True, silent=silent,
-                                                strict=strict, load_config_files=load_config_files, **kwargs)
+                                                strict=strict, load_config_files=load_config_files,
+                                                load_script_arguments=load_script_arguments, **kwargs)
 
             for k, v in more_tags.items():
                 tags[k] = tags[k].union(v)
@@ -161,8 +164,13 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
         return self.__repr__()
 
     def __repr__(self):
-        return (f"{type(self).__name__}:\n\nParameters:\n\n{pformat(self.dict())}\n\n"
-                f"Tags:\n\n{pformat(vars(self.tags))}\n\n")
+
+        title = "->".join([f"{m.__name__}" for m in type(self).mro() if "beam." in str(m)])
+        yaml_repr = f"{title}:\n\nParameters:\n\n{yaml.dump(self.dict())}"
+        return yaml_repr
+
+        # return (f"{type(self).__name__}:\n\nParameters:\n\n{pformat(self.dict())}\n\n"
+        #         f"Tags:\n\n{pformat(vars(self.tags))}\n\n")
 
     @property
     def namespace(self):
