@@ -1,6 +1,7 @@
 from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset,
                      RedisPath, SMBPath, MLFlowPath)
 from .core import BeamKey, BeamURL, IOPath, DictPath
+from pathlib import PurePath
 
 
 beam_key = BeamKey()
@@ -20,6 +21,13 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     @param path: URI syntax: [protocol://][username@][hostname][:port][/path/to/file]
     @return: BeamPath object
     """
+
+    if isinstance(path, BeamPath):
+        return path
+
+    if isinstance(path, BeamURL) or isinstance(path, PurePath):
+        path = str(path)
+
     if type(path) != str:
         return path
 

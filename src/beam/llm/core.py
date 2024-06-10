@@ -1,5 +1,4 @@
 import json
-from collections import namedtuple
 from dataclasses import dataclass
 from functools import partial
 from typing import Optional, Any, Dict, List, Mapping
@@ -36,7 +35,7 @@ else:
 from pydantic import Field, PrivateAttr
 from .hf_conversation import Conversation
 from .utils import get_conversation_template
-from .tools import LLMTool
+from .tools import LLMTool, ImageContent
 
 
 # CompletionObject = namedtuple("CompletionObject", "prompt kwargs response valid")
@@ -286,33 +285,47 @@ class BeamLLM(PedanticBeamResource):
 
     @property
     def conversation(self):
-        return self._chat_history
+        return self._chat_history['chat']
+
+    @property
+    def chat_images(self):
+        return self._chat_history['images']
 
     def extract_choices(self, response):
         raise NotImplementedError
 
     def reset_chat(self):
-        self._chat_history = Conversation()
+        self._chat_history = {'chat': Conversation(), 'images': []}
+
+    @staticmethod
+    def build_content(content, images=None):
+        if images is None:
+            return content
+        content = [{"type": "text", "text": "What’s in this image?"}]
+        for im in images:
+            content.append({"type": "image_url", "image_url": {"url": im.url}})
+        return content
 
     @property
     def chat_history(self):
-        ch = list(self._chat_history.iter_texts())
-        return [{'role': 'user' if m[0] else 'assistant', 'content': m[1]} for m in ch]
+        return [{'role': 'user' if m[0] else 'assistant', 'content': self.build_content(m[1], images=imi)}
+                for m, imi in zip(self.conversation.iter_texts(), self._chat_history['images'])]
 
     def add_to_chat(self, text, is_user=True, images=None):
 
         if images is None:
-            content = text
+            self.chat_images.append(None)
         else:
-            content = []
+            images = [ImageContent(image=im) for im in images]
+            self.chat_images.append(images)
 
         if is_user:
-            self._chat_history.add_user_input(text)
+            self.conversation.add_user_input(text)
         else:
-            self._chat_history.append_response(text)
-            self._chat_history.mark_processed()
+            self.conversation.append_response(text)
+            self.conversation.mark_processed()
 
-        return content
+        return self.chat_history
 
     @property
     def _llm_type(self) -> str:

@@ -1,9 +1,12 @@
+import base64
 import inspect
 import json
-from typing import Any, Optional, Union, List, Type
+from typing import Any, Optional, Union, List, Type, Literal
 from pydantic import BaseModel, Field
 from functools import cached_property
 
+from .. import beam_path
+from ..type import BeamType
 from ..utils import jupyter_like_traceback
 from dataclasses import dataclass
 import re
@@ -192,3 +195,50 @@ class LLMGuidance(BaseModel):
 
     def arguments(self, filter=None):
         return {k: v for k, v in self.dict().items() if v is not None and (filter is None or k in filter)}
+
+@dataclass
+class ImageContent:
+    image: Any
+    # options for file type: ['png', 'jpeg', 'jpg', 'gif', 'svg', 'bmp', 'tiff', 'webp']
+    file_type: Literal['png', 'jpeg'] = 'jpeg'
+    true_url: bool = False
+
+    @cached_property
+    def image_type(self):
+        return BeamType(self.image)
+
+    def pil_encode_base64(self, image):
+        from io import BytesIO
+        buffered = BytesIO()
+        image.save(buffered, format=self.file_type)
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+    def pil_convert(self, image):
+        from PIL import Image
+        if self.image_type.minor == 'numpy':
+            image = Image.fromarray(self.image)
+        elif self.image_type.minor == 'tensor':
+            image = Image.fromarray(self.image.cpu().numpy())
+        elif self.image_type.major == 'path':
+            image = Image.open(beam_path(self.image))
+        else:
+            raise ValueError(f"Cannot convert {self.image_type} to PIL Image.")
+
+    @cached_property
+    def base64_image(self):
+        if self.image_type.major == 'path' or self.image_type.major == 'native' and self.image_type.element == 'str':
+            path = beam_path(self.image)
+            return base64.b64encode(path.read_bytes()).decode('utf-8')
+        if self.image_type.minor == 'pil':
+            return self.pil_encode_base64(self.image)
+        else:
+            return self.pil_encode_base64(self.pil_convert(self.image))
+
+    @property
+    def url(self):
+        if self.true_url:
+            _url = {"url": self.image}
+        else:
+            _url = {"url": f"data:image/{self.file_type};base64,{self.base64_image}"}
+
+        return _url

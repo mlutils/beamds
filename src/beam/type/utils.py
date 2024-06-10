@@ -1,3 +1,4 @@
+from enum import Enum
 from collections import namedtuple
 import random
 import numpy as np
@@ -9,6 +10,34 @@ from ..importer.lazy_importer import lazy_importer as lzi
 
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
+
+
+class Types(Enum):
+    array = 'array'
+    scalar = 'scalar'
+    container = 'container'
+    none = 'none'
+    other = 'other'
+    native = 'native'
+    dict = 'dict'
+    list = 'list'
+    tuple = 'tuple'
+    set = 'set'
+    tensor = 'tensor'
+    numpy = 'numpy'
+    pandas = 'pandas'
+    scipy_sparse = 'scipy_sparse'
+    unknown = 'unknown'
+    slice = 'slice'
+    counter = 'counter'
+    object = 'object'
+    empty = 'empty'
+    path = 'path'
+    beam_data = 'beam_data'
+    beam_processor = 'beam_processor'
+    polars = 'polars'
+    cudf = 'cudf'
+    pil = 'pil'
 
 
 def is_polars(x):

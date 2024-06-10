@@ -1110,6 +1110,8 @@ class BeamData(BeamName):
             if path.exists() or (path.parent.is_dir() and any(p.stem == path.stem for p in path.parent.iterdir())):
                 logger.warning(f"path {path} exists. To override, specify override=True")
                 return
+        else:
+            path.clean()
 
         if archive:
             object_path = BeamData.write_file(data, path.with_suffix('.pkl'), override=override,
@@ -1210,7 +1212,7 @@ class BeamData(BeamName):
                         logger.debug(e)
                         error = True
                         if file_path.exists():
-                            file_path.unlink()
+                            file_path.clean()
 
                 if error:
                     logger.error(f"Could not write file: {path_i.name}.")

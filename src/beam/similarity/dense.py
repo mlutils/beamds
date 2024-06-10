@@ -216,6 +216,7 @@ class DenseSimilarity(BeamSimilarity):
         with local_copy(path.joinpath('vector_store.bin'), as_beam_path=False) as p:
             self.vector_store = faiss.read_index(p)
 
+        self.training_vs = None
         if path.joinpath('training_vs.bin').is_file():
             with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
                 self.training_vs = faiss.read_index(p)

@@ -8,7 +8,6 @@ from ..path import beam_path, local_copy
 
 import importlib.metadata
 
-import pkg_resources
 import os
 import importlib
 import warnings
@@ -190,27 +189,38 @@ class AutoBeam(BeamBase):
     def top_levels(self):
 
         top_levels = {}
-        for i, dist in enumerate(pkg_resources.working_set):
-            try:
-                egg_info = beam_path(dist.egg_info).resolve()
-            except:
-                print(dist)
-                print('here')
+        for i, dist in enumerate(importlib.metadata.distributions()):
+
+            egg_info = dist._path
+            project_name = dist.metadata['Name']
+
+            # if 'AML' in project_name:
+            #     print('here')
+
+            if egg_info is None:
+                logger.warning(f"Could not find egg info for package: {project_name}, skipping.")
+                continue
+
+            egg_info = beam_path(egg_info).resolve()
             tp_file = egg_info.joinpath('top_level.txt')
             module_name = None
-            project_name = dist.project_name
 
             if egg_info.parent.joinpath(project_name).is_dir():
                 module_name = project_name
+            elif egg_info.parent.joinpath(f"{project_name.replace('-', '_')}.py").is_file():
+                module_name = project_name.replace('-', '_')
             elif egg_info.parent.joinpath(project_name.replace('-', '_')).is_dir():
                 module_name = project_name.replace('-', '_')
             elif egg_info.joinpath('RECORD').is_file():
 
                 record = egg_info.joinpath('RECORD').read(ext='.txt', readlines=True)
+                module_name = []
                 for line in record:
                     if '__init__.py' in line:
-                        module_name = line.split('/')[0]
-                        break
+                        module_name.append(line.split('/')[0])
+                if not len(module_name):
+                    module_name = None
+
             if module_name is None and tp_file.is_file():
                 module_names = tp_file.read(ext='.txt', readlines=True)
                 module_names = list(filter(lambda x: len(x) >= 2 and (not x.startswith('_')), module_names))
@@ -223,18 +233,22 @@ class AutoBeam(BeamBase):
             if module_name is None:
                 # warnings.warn(f"Could not find top level module for package: {project_name}")
                 top_levels[module_name] = project_name
-            elif not (module_name):
+            elif not module_name:
                 warnings.warn(f"{project_name}: is empty")
             else:
-                if module_name in top_levels:
-                    if type(top_levels[module_name]) is list:
-                        v = top_levels[module_name]
+                if type(module_name) is not list:
+                    module_name = [module_name]
+
+                for module_name_i in module_name:
+                    if module_name_i in top_levels:
+                        if type(top_levels[module_name_i]) is list:
+                            v = top_levels[module_name_i]
+                        else:
+                            v = [top_levels[module_name_i]]
+                            v.append(dist)
+                        top_levels[module_name_i] = v
                     else:
-                        v = [top_levels[module_name]]
-                        v.append(dist)
-                    top_levels[module_name] = v
-                else:
-                    top_levels[module_name] = dist
+                        top_levels[module_name_i] = dist
 
         return top_levels
 
@@ -384,9 +398,9 @@ class AutoBeam(BeamBase):
                 if type(pip_package) is not list:
                     pip_package = [pip_package]
                 for pp in pip_package:
-                    if pp.project_name is AutoBeam.blacklisted_pip_package:
+                    if pp.metadata['Name'] is AutoBeam.blacklisted_pip_package:
                         continue
-                    requirements.append({'pip_package': pp.project_name, 'module_name': module_name,
+                    requirements.append({'pip_package': pp.metadata['Name'], 'module_name': module_name,
                                          'version': pp.version
                                          })
             else:

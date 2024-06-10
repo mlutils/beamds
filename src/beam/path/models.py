@@ -118,11 +118,6 @@ class BeamPath(PureBeamPath):
         path = self.path.replace(str(target))
         return BeamPath(path)
 
-    def resolve(self, strict=False):
-
-        path = self.path.resolve(strict=strict)
-        return self.gen(path)
-
     def rmdir(self):
         self.path.rmdir()
 
