@@ -6,3 +6,4 @@ cloudpickle
 msgpack
 pydantic
 jupyter-book
+mahotas

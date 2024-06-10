@@ -35,6 +35,11 @@ def is_cudf(x):
     return cudf and isinstance(x, cudf.DataFrame)
 
 
+def is_pil(x):
+    pil = lzi.PIL
+    return pil and isinstance(x, pil.Image.Image)
+
+
 def check_element_type(x, minor=None):
 
     if minor is None:
@@ -99,6 +104,8 @@ def check_minor_type(x):
         return 'cudf'
     elif is_scalar(x):
         return 'scalar'
+    elif is_pil(x):
+        return 'pil'
     elif isinstance(x, PurePath) or is_beam_path(x):
         return 'path'
     elif is_beam_data(x):

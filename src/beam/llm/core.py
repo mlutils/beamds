@@ -1,5 +1,6 @@
 import json
 from collections import namedtuple
+from dataclasses import dataclass
 from functools import partial
 from typing import Optional, Any, Dict, List, Mapping
 from uuid import uuid4 as uuid
@@ -38,7 +39,15 @@ from .utils import get_conversation_template
 from .tools import LLMTool
 
 
-CompletionObject = namedtuple("CompletionObject", "prompt kwargs response")
+# CompletionObject = namedtuple("CompletionObject", "prompt kwargs response valid")
+
+# make CompletionObject with dataclasses
+@dataclass
+class CompletionObject:
+    prompt: str
+    kwargs: Dict
+    response: Any
+    valid: bool = True
 
 
 class ChatCompletionChunk(BeamDict):
@@ -290,12 +299,20 @@ class BeamLLM(PedanticBeamResource):
         ch = list(self._chat_history.iter_texts())
         return [{'role': 'user' if m[0] else 'assistant', 'content': m[1]} for m in ch]
 
-    def add_to_chat(self, text, is_user=True):
+    def add_to_chat(self, text, is_user=True, images=None):
+
+        if images is None:
+            content = text
+        else:
+            content = []
+
         if is_user:
             self._chat_history.add_user_input(text)
         else:
             self._chat_history.append_response(text)
             self._chat_history.mark_processed()
+
+        return content
 
     @property
     def _llm_type(self) -> str:
@@ -408,7 +425,8 @@ class BeamLLM(PedanticBeamResource):
         completion_object = completion_function(**kwargs)
         response = LLMResponse(completion_object.response, self, chat=False, stream=stream,
                                parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
-                               prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
+                               prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt,
+                               verify=completion_object.valid)
         return response
 
     def _completion(self, **kwargs):
@@ -466,7 +484,7 @@ class BeamLLM(PedanticBeamResource):
     def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
              logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None, add_tools=True,
-             prompt_type='chat_completion', guidance=None, **kwargs):
+             prompt_type='chat_completion', guidance=None, image = None, images = None, **kwargs):
 
         '''
 
@@ -514,7 +532,12 @@ class BeamLLM(PedanticBeamResource):
 
             messages.extend(self.chat_history)
 
-        self.add_to_chat(message, is_user=True)
+        # images = self.extract_images(image, images)
+        images = images or []
+        if image is not None:
+            images.insert(0, image)
+
+        message = self.add_to_chat(message, is_user=True, images=images)
         message = {'role': 'user', 'content': message}
         if name is not None:
             message['name'] = name
@@ -526,7 +549,9 @@ class BeamLLM(PedanticBeamResource):
 
         response = self.chat_completion(messages=messages, prompt_type=prompt_type, guidance=guidance, **default_params)
 
-        if stream:
+        if not response.is_valid:
+            return response
+        elif stream:
             def gen():
 
                 generated_text = []
@@ -832,7 +857,9 @@ class BeamLLM(PedanticBeamResource):
             response = self.completion(prompt=question, logprobs=logprobs, echo=echo,
                                        prompt_type=prompt_type, guidance=guidance, **default_params)
 
-        if stream:
+        if not response.is_valid:
+            return response
+        elif stream:
             def gen():
                 for res in response:
                     yield res

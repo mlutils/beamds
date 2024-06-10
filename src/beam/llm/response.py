@@ -15,7 +15,7 @@ from ..utils import parse_text_to_protocol, retry
 
 class LLMResponse:
     def __init__(self, response, llm, prompt=None, prompt_kwargs=None, chat=False, stream=False, parse_retrials=3,
-                 sleep=1, prompt_type='completion', **kwargs):
+                 sleep=1, prompt_type='completion', verify=True, **kwargs):
         self.response = response
         self._prompt = prompt
         self._prompt_kwargs = prompt_kwargs
@@ -39,8 +39,13 @@ class LLMResponse:
         self._task_result = None
         self._task_success = None
 
-        if not inspect.isgenerator(self.response) and not isinstance(self.response, Iterator):
-            assert self.verify(), "Response is not valid"
+        self.is_valid = True
+        if verify:
+            if not inspect.isgenerator(self.response) and not isinstance(self.response, Iterator):
+                assert self.verify(), "Response is not valid"
+        else:
+            logger.error(f"Response is not verified: {self.response}, will not parse it.")
+            self.is_valid = False
 
     def __str__(self):
         return self.text

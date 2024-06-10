@@ -42,6 +42,10 @@ class SafeLazyImporter:
     def scipy(self):
         return self._getattr('scipy')
 
+    @cached_property
+    def PIL(self):
+        return self._getattr('PIL')
+
     def _getattr(self, module_name):
         if module_name not in self._modules_cache:
             self.has(module_name)
