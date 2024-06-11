@@ -27,6 +27,7 @@ RUN_RABBITMQ=true
 RUN_PREFECT=false
 RUN_RAY=true
 RUN_MONGO=false
+RUN_CHROMA=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --rabbitmq) RUN_RABBITMQ=true; shift ;;
         --prefect) RUN_PREFECT=true; shift ;;
         --ray) RUN_RAY=true; shift ;;
+        --chroma) RUN_CHROMA=true; shift ;;
         *) break ;;
     esac
 done
@@ -160,6 +162,13 @@ if [ "$RUN_RAY" = true ]; then
 else
   echo "Ray is disabled."
 fi
+
+if [ "$RUN_CHROMA" = true ]; then
+  CHROMA_PORT="${INITIALS}81"
+  echo "Chroma Port: $CHROMA_PORT"
+  export CHROMA_PORT=$CHROMA_PORT
+  echo "chroma_port, ${CHROMA_PORT}" >> /workspace/configuration/config.csv
+  chroma run --host localhost --port $CHROMA_PORT --path $HOME/.chroma_data &
 
 if [ "$RUN_SSH" = true ]; then
   SSH_PORT="${INITIALS}22"

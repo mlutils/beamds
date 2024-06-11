@@ -49,6 +49,8 @@ class OpenAIBase(BeamLLM):
 
     def _chat_completion(self, messages=None, **kwargs):
         kwargs = self.filter_keys(kwargs)
+        print('kwargs', kwargs)
+        print('messages', messages)
         res = self.client.chat.completions.create(model=self.model, messages=messages, **kwargs)
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 

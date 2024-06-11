@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from functools import partial
-from typing import Optional, Any, Dict, List, Mapping
+from typing import Optional, Any, Dict, List, Mapping, Union
 from uuid import uuid4 as uuid
 import pandas as pd
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ from ..utils import lazy_property as cached_property
 from ..logger import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
+from .chat import BeamChat
 from ..utils import (parse_text_to_protocol, get_edit_ratio, retry, BeamDict, NullClass,
                      pretty_print_dict)
 from ..path import BeamURL, BeamResource
@@ -172,7 +173,7 @@ class BeamLLM(PedanticBeamResource):
                       "completion_tokens": 0,
                       "total_tokens": 0}
 
-        self._chat_history = None
+        self._chat_history = BeamChat(messages=[])
 
         self._path_to_tokenizer = path_to_tokenizer
         self._tokenizer = tokenizer
@@ -181,6 +182,9 @@ class BeamLLM(PedanticBeamResource):
         self.reset_chat()
         self._lazy_cache = {}
         self._tools = tools
+
+    def reset_chat(self):
+        self._chat_history.reset()
 
     def add_tool(self, name=None, tool_type='function', func=None, description=None, tool=None, **kwargs):
         if self._tools is None:
@@ -283,49 +287,8 @@ class BeamLLM(PedanticBeamResource):
 
         return str(self._url)
 
-    @property
-    def conversation(self):
-        return self._chat_history['chat']
-
-    @property
-    def chat_images(self):
-        return self._chat_history['images']
-
     def extract_choices(self, response):
         raise NotImplementedError
-
-    def reset_chat(self):
-        self._chat_history = {'chat': Conversation(), 'images': []}
-
-    @staticmethod
-    def build_content(content, images=None):
-        if images is None:
-            return content
-        content = [{"type": "text", "text": "What’s in this image?"}]
-        for im in images:
-            content.append({"type": "image_url", "image_url": {"url": im.url}})
-        return content
-
-    @property
-    def chat_history(self):
-        return [{'role': 'user' if m[0] else 'assistant', 'content': self.build_content(m[1], images=imi)}
-                for m, imi in zip(self.conversation.iter_texts(), self._chat_history['images'])]
-
-    def add_to_chat(self, text, is_user=True, images=None):
-
-        if images is None:
-            self.chat_images.append(None)
-        else:
-            images = [ImageContent(image=im) for im in images]
-            self.chat_images.append(images)
-
-        if is_user:
-            self.conversation.add_user_input(text)
-        else:
-            self.conversation.append_response(text)
-            self.conversation.mark_processed()
-
-        return self.chat_history
 
     @property
     def _llm_type(self) -> str:
@@ -367,25 +330,6 @@ class BeamLLM(PedanticBeamResource):
 
     def _chat_completion(self, **kwargs):
         raise NotImplementedError
-
-    def add_tool_message_to_chat(self, messages=None):
-
-        if self.tools is None:
-            return messages
-
-        if messages is None:
-            messages = []
-
-        system_found = False
-        for m in messages:
-            if m['role'] == 'system':
-                m['content'] = f"{m['content']}\n\n{self.tool_message}"
-                system_found = True
-                break
-        if not system_found:
-            messages.insert(0, {'role': 'system', 'content': self.tool_message})
-
-        return messages
 
     def chat_completion(self, stream=False, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='chat_completion',
                         add_tools_message=False, **kwargs):
@@ -535,28 +479,7 @@ class BeamLLM(PedanticBeamResource):
             self.reset_chat()
             messages = message
         else:
-            messages = []
-
-            if system is not None:
-                system = {'role': 'system', 'content': system}
-                if system_name is not None:
-                    system['system_name'] = system_name
-                messages.append(system)
-
-            messages.extend(self.chat_history)
-
-        # images = self.extract_images(image, images)
-        images = images or []
-        if image is not None:
-            images.insert(0, image)
-
-        message = self.add_to_chat(message, is_user=True, images=images)
-        message = {'role': 'user', 'content': message}
-        if name is not None:
-            message['name'] = name
-
-        messages.append(message)
-
+            messages =
         if add_tools:
             self.add_tool_message_to_chat(messages)
 
