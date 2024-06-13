@@ -169,6 +169,10 @@ if [ "$RUN_CHROMA" = true ]; then
   export CHROMA_PORT=$CHROMA_PORT
   echo "chroma_port, ${CHROMA_PORT}" >> /workspace/configuration/config.csv
   chroma run --host localhost --port $CHROMA_PORT --path $HOME/.chroma_data &
+  echo "Chroma server is running."
+else
+  echo "Chroma is disabled."
+fi
 
 if [ "$RUN_SSH" = true ]; then
   SSH_PORT="${INITIALS}22"
@@ -213,6 +217,3 @@ else
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
 echo "Entrypoint script completed."
-
-
-Settings
