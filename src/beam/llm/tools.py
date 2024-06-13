@@ -10,6 +10,7 @@ from ..type import BeamType
 from ..utils import jupyter_like_traceback
 from dataclasses import dataclass
 import re
+from ..utils import recursive
 
 
 @dataclass
@@ -196,12 +197,24 @@ class LLMGuidance(BaseModel):
     def arguments(self, filter=None):
         return {k: v for k, v in self.dict().items() if v is not None and (filter is None or k in filter)}
 
+
+class LLMContent:
+    @property
+    def content(self):
+        raise NotImplementedError
+
+
 @dataclass
-class ImageContent:
+class ImageContent(LLMContent):
     image: Any
     # options for file type: ['png', 'jpeg', 'jpg', 'gif', 'svg', 'bmp', 'tiff', 'webp']
     file_type: Literal['png', 'jpeg'] = 'jpeg'
     true_url: bool = False
+
+    def __post_init__(self):
+        if type(self.image) == str:
+            if self.image.startswith('www.') or self.image.startswith('http://') or self.image.startswith('https://'):
+                self.true_url = True
 
     @cached_property
     def image_type(self):
@@ -213,28 +226,31 @@ class ImageContent:
         image.save(buffered, format=self.file_type)
         return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-    def pil_convert(self, image):
+    @property
+    def pil_format(self):
         from PIL import Image
         if self.image_type.minor == 'numpy':
             image = Image.fromarray(self.image)
         elif self.image_type.minor == 'tensor':
             image = Image.fromarray(self.image.cpu().numpy())
-        elif self.image_type.major == 'path':
+        elif (self.image_type.major == 'path' or
+              (self.image_type.major == 'native' and self.image_type.element == 'str')):
             image = Image.open(beam_path(self.image))
         else:
             raise ValueError(f"Cannot convert {self.image_type} to PIL Image.")
+        return image
 
     @cached_property
     def base64_image(self):
-        if self.image_type.major == 'path' or self.image_type.major == 'native' and self.image_type.element == 'str':
+        if self.image_type.major == 'path' or self.image_type.major == 'scalar' and self.image_type.element == 'str':
             path = beam_path(self.image)
             return base64.b64encode(path.read_bytes()).decode('utf-8')
         if self.image_type.minor == 'pil':
             return self.pil_encode_base64(self.image)
         else:
-            return self.pil_encode_base64(self.pil_convert(self.image))
+            return self.pil_encode_base64(self.pil_format)
 
-    @property
+    @cached_property
     def url(self):
         if self.true_url:
             _url = {"url": self.image}
@@ -242,3 +258,20 @@ class ImageContent:
             _url = {"url": f"data:image/{self.file_type};base64,{self.base64_image}"}
 
         return _url
+
+    @property
+    def content(self):
+        return self.url
+
+
+@recursive
+def build_content(message):
+    if isinstance(message, LLMContent):
+        return message.content
+    return message
+
+
+def image_content(image) -> ImageContent:
+    if isinstance(image, ImageContent):
+        return image
+    return ImageContent(image)

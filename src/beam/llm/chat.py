@@ -1,111 +1,92 @@
-from typing import List, Dict, Any
-
-from dataclasses import dataclass
-
-from .conversation import Conversation
-from ..utils import cached_property
+from typing import List, Dict, Any, Union
+from dataclasses import dataclass, field
+from .hf_conversation import Conversation
+from .utils import get_conversation_template
+from .tools import image_content, build_content
 
 
 @dataclass
 class BeamChat:
-    messages: List[Dict[str, Any]]
-
-    @cached_property
-    def conversation(self):
-        return Conversation()
+    scheme: str
+    messages: List[Dict[str, Any]] = field(default_factory=list)
+    adapter: str = 'unknown'
+    system_message: Union[str, None] = None
+    tool_message: Union[str, None] = None
 
     def reset(self):
         self.messages = []
-        self.conversation = Conversation()
+        self.system_message = None
+        self.tool_message = None
 
-    def add_message(self, message=None, images: List = None, name=None, role='user'):
-        if images is None:
+    def remove_tool_message(self):
+        self.tool_message = None
+
+    def remove_system_message(self):
+        self.system_message = None
+
+    def add_system_message(self, message, overwrite=False):
+
+        if overwrite or self.system_message is None:
+            self.system_message = message
+        else:
+            self.messages.append({'role': 'system', 'content': message})
+
+    def add_tool_message(self, message, overwrite=False):
+        if overwrite or self.tool_message is None:
+            self.tool_message = message
+        else:
+            self.messages.append({'role': 'system', 'content': message})
+
+    def add_user_message(self, message=None, images: List = None):
+        if not images:
             content = message
         else:
             content = []
             if message is not None:
                 content.append({"type": "text", "text": message})
+            for im in images:
+                im = image_content(im)
+                content.append({"type": "image_url", "image_url": im})
+        self.messages.append({"role": "user", "content": content})
 
-
-    @property
-    def conversation(self):
-        return self._chat_history['chat']
-
-    @property
-    def chat_images(self):
-        return self._chat_history['images']
-
-    def reset_chat(self):
-        self._chat_history = {'chat': Conversation(), 'images': []}
-
-    @staticmethod
-    def build_content(content, images=None):
-        if images is None:
-            return content
-        content = [{"type": "text", "text": "What’s in this image?"}]
-        for im in images:
-            content.append({"type": "image_url", "image_url": {"url": im.url}})
-        return content
+    def add_assistant_message(self, message=None):
+        self.messages.append({"role": "assistant", "content": message})
 
     @property
-    def chat_history(self):
-        return [{'role': 'user' if m[0] else 'assistant', 'content': self.build_content(m[1], images=imi)}
-                for m, imi in zip(self.conversation.iter_texts(), self._chat_history['images'])]
+    def openai_format(self):
+        messages = []
+        if self.system_message is not None:
+            messages.append({'role': 'system', 'content': self.system_message})
+        messages.extend(self.messages)
+        return build_content(messages)
 
-    def add_to_chat(self, text, is_user=True, images=None, name=None):
+    @property
+    def fastchat_format(self):
 
-        if images is None:
-            self.chat_images.append(None)
-        else:
-            images = [ImageContent(image=im) for im in images]
-            self.chat_images.append(images)
+        conversation = get_conversation_template(self.adapter)
 
-        if is_user:
-            self.conversation.add_user_input(text)
-        else:
-            self.conversation.append_response(text)
-            self.conversation.mark_processed()
+        if self.system_message is not None:
+            conversation.add_system_message(self.system_message)
+        if self.tool_message is not None:
+            conversation.add_system_message(self.tool_message)
 
-        if name is not None:
-            message['name'] = name
-        return self.chat_history
+        for m in self.messages:
+            if m['role'] == 'user':
+                conversation.add_user_message(m['content'])
+            elif m['role'] == 'assistant':
+                conversation.add_assistant_message(m['content'])
+            else:
+                conversation.add_system_message(m['content'])
 
+        return conversation.get_prompt()
 
-        # from def chat(...)
-        # if system is not None:
-        #     system = {'role': 'system', 'content': system}
-        #     if system_name is not None:
-        #         system['system_name'] = system_name
-        #     messages.append(system)
-        #
-        # messages.extend(self.chat_history)
-        #
-        # # images = self.extract_images(image, images)
-        #
-        #
-        # images = images or []
-        # if image is not None:
-        #     images.insert(0, image)
-        #
-        # message = self.add_to_chat(message, is_user=True, images=images, name=name)
-        #
-        # messages.append(message)
-
-    def add_tool_message_to_chat(self, messages=None):
-
-        if self.tools is None:
-            return messages
-
-        if messages is None:
-            messages = []
-
-        system_found = False
-        for m in messages:
-            if m['role'] == 'system':
-                m['content'] = f"{m['content']}\n\n{self.tool_message}"
-                system_found = True
-                break
-        if not system_found:
-            messages.insert(0, {'role': 'system', 'content': self.tool_message})
-
-        return messages
+    @property
+    def hf_format(self):
+        conversation = Conversation()
+        if self.system_message is not None:
+            conversation.add_message({"role": "system", "content": self.system_message})
+        if self.tool_message is not None:
+            conversation.add_message({"role": "system", "content": self.tool_message})
+        for m in self.messages:
+            conversation.add_message(m)
+        return conversation

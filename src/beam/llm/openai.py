@@ -1,5 +1,5 @@
 import json
-from typing import Optional, Any
+from typing import Optional, Any, ClassVar, List
 import pandas as pd
 import numpy as np
 from ..utils import lazy_property as cached_property
@@ -17,6 +17,17 @@ class OpenAIBase(BeamLLM):
     api_base: Optional[str] = Field(None)
     organization: Optional[str] = Field(None)
     _models: Any = PrivateAttr(default=None)
+
+    chat_kwargs: ClassVar[List[str]] = \
+                  ['frequency_penalty', 'function_call', 'functions', 'logit_bias', 'logprobs', 'max_tokens',
+                   'n', 'presence_penalty', 'response_format', 'seed', 'stop', 'stream', 'temperature',
+                   'tool_choice', 'tools', 'top_logprobs', 'top_p', 'user', 'extra_headers', 'extra_query',
+                   'extra_body', 'timeout']
+
+    completion_kwargs: ClassVar[List[str]] = \
+                        ['max_tokens', 'temperature', 'top_p', 'n', 'logprobs', 'stream', 'logit_bias',
+                         'stop', 'presence_penalty', 'frequency_penalty', 'best_of', 'echo', 'user', 'extra_headers',
+                         'extra_query', 'extra_body', 'timeout']
 
     def __init__(self, model=None, api_key=None, api_base=None, organization=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -42,21 +53,26 @@ class OpenAIBase(BeamLLM):
             self.usage["completion_tokens"] += response["completion_tokens"]
             self.usage["total_tokens"] += response["prompt_tokens"] + response["completion_tokens"]
 
-    def _completion(self, prompt=None, **kwargs):
-        kwargs = self.filter_keys(kwargs)
+    def _completion(self, prompt, **kwargs):
+        kwargs = self.filter_completion_kwargs(kwargs)
         res = self.client.completions.create(model=self.model, prompt=prompt,  **kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
-    def _chat_completion(self, messages=None, **kwargs):
-        kwargs = self.filter_keys(kwargs)
-        print('kwargs', kwargs)
-        print('messages', messages)
+    def _chat_completion(self, chat, **kwargs):
+        kwargs = self.filter_chat_kwargs(kwargs)
+        messages = chat.openai_format
         res = self.client.chat.completions.create(model=self.model, messages=messages, **kwargs)
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 
     @staticmethod
-    def filter_keys(kwargs):
-        return {k: v for k, v in kwargs.items() if k not in ['guidance']}
+    def filter_chat_kwargs(kwargs):
+        kwargs = {k: v for k, v in kwargs.items() if k in OpenAIBase.chat_kwargs}
+        return {k: v for k, v in kwargs.items() if v is not None}
+
+    @staticmethod
+    def filter_completion_kwargs(kwargs):
+        kwargs = {k: v for k, v in kwargs.items() if k in OpenAIBase.completion_kwargs}
+        return {k: v for k, v in kwargs.items() if v is not None}
 
     def verify_response(self, res):
         stream = res.stream
@@ -214,6 +230,24 @@ class BeamVLLM(OpenAIBase):
         api_base = f"{http_scheme}://{normalize_host(hostname, port)}/v1"
         kwargs['scheme'] = 'vllm'
         super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  **kwargs)
+
+    @property
+    def is_chat(self):
+        return True
+
+
+class FastChatLLM(OpenAIBase):
+
+    def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
+
+        api_base = f"http://{normalize_host(hostname, port)}/v1"
+        api_key = "EMPTY"  # Not support yet
+        organization = "EMPTY"  # Not support yet
+
+        kwargs['scheme'] = 'fastchat'
+        super().__init__(*args, api_key=api_key, api_base=api_base, organization=organization, model=model, **kwargs)
+
+        self.model = model
 
     @property
     def is_chat(self):

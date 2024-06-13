@@ -34,7 +34,6 @@ else:
     logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
 
 from pydantic import Field, PrivateAttr
-from .hf_conversation import Conversation
 from .utils import get_conversation_template
 from .tools import LLMTool, ImageContent
 
@@ -88,7 +87,7 @@ class BeamLLM(PedanticBeamResource):
     scheme: Optional[str] = Field(None)
     usage: Dict = Field(default_factory=dict)
     instruction_history: List = Field(default_factory=list)
-    _chat_history: Any = PrivateAttr(default=None)
+    _chat: Any = PrivateAttr(default=None)
     _url: Any = PrivateAttr(default=None)
     _debug_langchain: Any = PrivateAttr(default=None)
     temperature: float = Field(1.0, ge=0.0, le=1.0)
@@ -105,6 +104,7 @@ class BeamLLM(PedanticBeamResource):
     ask_retrials: int = Field(1, ge=1)
     sleep: float = Field(1.0, ge=0.0)
     adapter: Optional[str] = Field(None)
+    system: Optional[str] = Field(None)
     _len_function: Any = PrivateAttr(default=None)
 
     # To be used with pydantic classes and lazy_property
@@ -121,7 +121,7 @@ class BeamLLM(PedanticBeamResource):
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None, presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None, ask_retrials=1,
                  debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3, sleep=1,
-                 adapter=None, tools=None, **kwargs):
+                 adapter=None, tools=None, systerm=None, **kwargs):
         super().__init__(resource_type='llm', scheme=scheme, **kwargs)
 
         if temperature is not None:
@@ -153,6 +153,7 @@ class BeamLLM(PedanticBeamResource):
         self.sleep = float(sleep)
         self.logit_bias = logit_bias
         self.scheme = scheme
+        self.system = systerm
         self._url = None
         self._assistant_budget = None
         self._assistant_docstrings = None
@@ -173,7 +174,7 @@ class BeamLLM(PedanticBeamResource):
                       "completion_tokens": 0,
                       "total_tokens": 0}
 
-        self._chat_history = BeamChat(messages=[])
+        self._chat = BeamChat(scheme=self.scheme, adapter=self.adapter)
 
         self._path_to_tokenizer = path_to_tokenizer
         self._tokenizer = tokenizer
@@ -184,7 +185,7 @@ class BeamLLM(PedanticBeamResource):
         self._tools = tools
 
     def reset_chat(self):
-        self._chat_history.reset()
+        self._chat.reset()
 
     def add_tool(self, name=None, tool_type='function', func=None, description=None, tool=None, **kwargs):
         if self._tools is None:
@@ -223,13 +224,14 @@ class BeamLLM(PedanticBeamResource):
     def tools(self):
         return self._tools
 
-    @property
-    def tool_message(self):
-        if self.tools is None:
-            return ""
+    def tool_message(self, tools=None):
+
+        tools = tools or self.tools
+        if tools is None:
+            return None
 
         all_tools_message = ""
-        for tool in self.tools:
+        for tool in tools:
             all_tools_message = f"{all_tools_message}\n\n{tool.name}:\n{tool.dict()}\n"
 
         message = (f"\nBelow is a list of available tools:\n"
@@ -328,11 +330,11 @@ class BeamLLM(PedanticBeamResource):
     def is_completions(self):
         return not self.is_chat
 
-    def _chat_completion(self, **kwargs):
+    def _chat_completion(self, chat, **kwargs):
         raise NotImplementedError
 
-    def chat_completion(self, stream=False, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='chat_completion',
-                        add_tools_message=False, **kwargs):
+    def chat_completion(self, chat, stream=False, parse_retrials=3, sleep=1, ask_retrials=1,
+                        prompt_type='chat_completion', **kwargs):
 
         chat_completion_function = self._chat_completion
         if ask_retrials > 1:
@@ -340,37 +342,14 @@ class BeamLLM(PedanticBeamResource):
                                         sleep=sleep, logger=logger,
                                         name=f"LLM chat-completion with model: {self.model}")
 
-        tool_names = []
-        if self.scheme != 'openai' and add_tools_message and 'tools' in kwargs and kwargs['tools'] is not None:
-
-            # add tools
-            tools = kwargs.pop('tools')
-
-            for t in tools:
-                tool_type = t['type']
-                name = t[tool_type]['name']
-                description = t[tool_type]['description']
-                parameters = t[tool_type]['parameters']
-                tool_names.append(name)
-                self.add_tool(name=name, tool_type=tool_type, func=None, description=description, tool=None,
-                              **parameters)
-
-            # add tools message
-            self.add_tool_message_to_chat(kwargs.pop('messages', None))
-
-        kwargs['stream'] = stream
-        completion_object = chat_completion_function(**kwargs)
+        completion_object = chat_completion_function(chat, stream=stream, **kwargs)
         response = LLMResponse(completion_object.response, self, chat=True, stream=stream,
                                parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
 
-        if tool_names:
-            for tool_name in tool_names:
-                self.remove_tool(tool_name)
-
         return response
 
-    def completion(self, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', stream=False, **kwargs):
+    def completion(self, message, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', stream=False, **kwargs):
 
         completion_function = self._completion
         if ask_retrials > 1:
@@ -378,15 +357,14 @@ class BeamLLM(PedanticBeamResource):
                                         sleep=sleep, logger=logger,
                                         name=f"LLM completion with model: {self.model}")
 
-        kwargs['stream'] = stream
-        completion_object = completion_function(**kwargs)
+        completion_object = completion_function(message, stream=stream, **kwargs)
         response = LLMResponse(completion_object.response, self, chat=False, stream=stream,
                                parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt,
                                verify=completion_object.valid)
         return response
 
-    def _completion(self, **kwargs):
+    def _completion(self, message, **kwargs):
         raise NotImplementedError
 
     def get_default_params(self, temperature=None, top_p=None, n=None, stream=None, stop=None, max_tokens=None,
@@ -438,31 +416,39 @@ class BeamLLM(PedanticBeamResource):
 
         return kwargs
 
-    def chat(self, message, name=None, system=None, system_name=None, reset_chat=False, temperature=None,
+    def chat(self, message, system=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
-             logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None, add_tools=True,
-             prompt_type='chat_completion', guidance=None, image = None, images = None, **kwargs):
+             logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None, tools=None,
+             prompt_type='chat_completion', guidance=None, image=None, images=None,
+             overwrite_system_message=True, **kwargs):
 
-        '''
+        """
 
-        :param name:
-        :param system:
-        :param system_name:
-        :param reset_chat:
-        :param temperature:
-        :param top_p:
-        :param n:
-        :param stream:
-        :param stop:
-        :param max_tokens:
-        :param presence_penalty:
-        :param frequency_penalty:
-        :param logit_bias:
-        :return:
-
-        Args:
-            message:
-        '''
+        @param message:
+        @param system:
+        @param reset_chat:
+        @param temperature:
+        @param top_p:
+        @param n:
+        @param stream:
+        @param stop:
+        @param max_tokens:
+        @param presence_penalty:
+        @param frequency_penalty:
+        @param logit_bias:
+        @param max_new_tokens:
+        @param parse_retrials:
+        @param sleep:
+        @param ask_retrials:
+        @param tools:
+        @param prompt_type:
+        @param guidance:
+        @param image:
+        @param images:
+        @param overwrite_system_message:
+        @param kwargs:
+        @return:
+        """
 
         default_params = self.get_default_params(temperature=temperature,
                                                  top_p=top_p, n=n, stream=stream,
@@ -472,18 +458,26 @@ class BeamLLM(PedanticBeamResource):
                                                  logit_bias=logit_bias, max_new_tokens=max_new_tokens,
                                                  parse_retrials=parse_retrials, sleep=sleep, ask_retrials=ask_retrials)
 
+        system = system or self.system
+
         if reset_chat:
             self.reset_chat()
 
-        if type(message) is list:
-            self.reset_chat()
-            messages = message
-        else:
-            messages =
-        if add_tools:
-            self.add_tool_message_to_chat(messages)
+        if system:
+            self._chat.add_system_message(system, overwrite=overwrite_system_message)
 
-        response = self.chat_completion(messages=messages, prompt_type=prompt_type, guidance=guidance, **default_params)
+        images = images or []
+        if image is not None:
+            images.insert(0, image)
+
+        self._chat.add_user_message(message, images=images)
+
+        tools = tools or self.tools
+        if tools:
+            self._chat.add_tool_message(self.tool_message(tools), overwrite=True)
+
+        response = self.chat_completion(chat=self._chat, prompt_type=prompt_type, guidance=guidance, tools=tools,
+                                        system=system, **default_params)
 
         if not response.is_valid:
             return response
@@ -498,13 +492,13 @@ class BeamLLM(PedanticBeamResource):
 
                 generated_text = "".join(generated_text)
                 self.update_usage(res.response)
-                self.add_to_chat(generated_text, is_user=False)
+                self._chat.add_assistant_message(generated_text)
 
             return gen()
 
         else:
             self.update_usage(response.response)
-            self.add_to_chat(response.text, is_user=False)
+            self._chat.add_assistant_message(response.text)
             return response
 
     def chat_with_assistant(self, message=None, docstrings=None, budget=3, **kwargs):
@@ -744,13 +738,13 @@ class BeamLLM(PedanticBeamResource):
 
         return Class(**res)
 
-    def ask(self, question, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
+    def ask(self, prompt, system=None, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None, max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
-            parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', add_tools=True,
-            guidance=None, **kwargs):
+            parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', tools=None,
+            fastchat_format=True, guidance=None, **kwargs):
         """
 
-        @param question:
+        @param prompt:
         @param max_tokens:
         @param temperature:
         @param top_p:
@@ -767,9 +761,15 @@ class BeamLLM(PedanticBeamResource):
         @param sleep:
         @param ask_retrials:
         @param prompt_type:
+        @param tools:
+        @param guidance:
         @param kwargs:
         @return:
         """
+
+        system = system or self.system
+        tools = tools or self.tools
+
         default_params = self.get_default_params(temperature=temperature,
                                                  top_p=top_p, n=n, stream=stream,
                                                  stop=stop, max_tokens=max_tokens,
@@ -779,18 +779,22 @@ class BeamLLM(PedanticBeamResource):
                                                  max_new_tokens=max_new_tokens, ask_retrials=ask_retrials,
                                                  parse_retrials=parse_retrials, sleep=sleep)
 
-        # if response_format is not None:
-        #     question = f"{question}\nReplay with a valid {response_format} format"
-
-        if add_tools:
-            self.add_tool_message_to_prompt(question)
+        if fastchat_format:
+            chat = BeamChat(scheme=self.scheme, adapter=self.adapter, messages=[prompt],
+                            system_message=system, tool_message=self.tool_message(tools))
+            prompt = chat.fastchat_format
+        else:
+            if system is not None:
+                logger.warning("system is ignored, use fastchat_format=True to add system message to the prompt")
+            if tools is not None:
+                logger.warning("tools are ignored, use fastchat_format=True to add tools to the prompt")
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
-            response = self.chat(question, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat',
+            response = self.chat(prompt, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat',
                                  guidance=guidance, **kwargs)
         else:
-            response = self.completion(prompt=question, logprobs=logprobs, echo=echo,
+            response = self.completion(prompt=prompt, logprobs=logprobs, echo=echo,
                                        prompt_type=prompt_type, guidance=guidance, **default_params)
 
         if not response.is_valid:
@@ -803,13 +807,13 @@ class BeamLLM(PedanticBeamResource):
                 if not self.is_completions:
                     # currently openai stream does not support update usage
                     self.update_usage(res.response)
-                    self.instruction_history.append({'question': question, 'response': res.response, 'type': 'ask'})
+                    self.instruction_history.append({'question': prompt, 'response': res.response, 'type': 'ask'})
 
             return gen()
 
         else:
             self.update_usage(response.response)
-            self.instruction_history.append({'question': question, 'response': response, 'type': 'ask'})
+            self.instruction_history.append({'question': prompt, 'response': response, 'type': 'ask'})
             return response
 
     def reset_instruction_history(self):
@@ -1057,8 +1061,3 @@ class BeamLLM(PedanticBeamResource):
             return self.tokenizer.decode(tokens, skip_special_tokens=skip_special_tokens)
         else:
             return ''.join(split_to_tokens(message)[:n_tokens])
-
-    def add_tool_message_to_prompt(self, question):
-        if self.tools is not None:
-            question = f"{question}\n\n{self.tool_message}"
-        return question

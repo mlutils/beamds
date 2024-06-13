@@ -11,48 +11,10 @@ from .core import BeamLLM, CompletionObject
 from pydantic import Field, PrivateAttr
 from ..path import normalize_host
 
-from .utils import get_conversation_template
 from ..utils import strip_suffix
-from .openai import OpenAIBase
 
 
-class FCConversationLLM(BeamLLM):
-
-    def get_prompt(self, messages):
-
-        conv = get_conversation_template(self.adapter)
-        for m in messages:
-
-            if m['role'] == 'system':
-
-                role = m['system_name'] if 'system_name' in m else 'system'
-                content = m['content']
-
-            else:
-
-                if m['role'] == 'user':
-                    role = conv.roles[0]
-                else:
-                    role = conv.roles[1]
-
-                content = m['content']
-
-            conv.append_message(role, content)
-
-        conv.append_message(conv.roles[1], None)
-
-        return conv.get_prompt()
-
-    @property
-    def is_chat(self):
-        return True
-
-    @property
-    def is_completions(self):
-        return True
-
-
-class TGILLM(FCConversationLLM):
+class TGILLM(BeamLLM):
 
     _info: Any = PrivateAttr(default=None)
     _client: Any = PrivateAttr(default=None)
@@ -168,16 +130,15 @@ class TGILLM(FCConversationLLM):
 
         return processed_kwargs
 
-    def _completion(self, prompt=None, **kwargs):
+    def _completion(self, prompt, **kwargs):
 
-        prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         generate_kwargs = self.process_kwargs(prompt, **kwargs)
         res = self._client.generate(prompt, **generate_kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
-    def _chat_completion(self, messages=None, **kwargs):
+    def _chat_completion(self, chat, **kwargs):
 
-        prompt = self.get_prompt(messages)
+        prompt = chat.fastchat_format
         generate_kwargs = self.process_kwargs(prompt, **kwargs)
         res = self._client.generate(prompt, **generate_kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
@@ -190,25 +151,7 @@ class TGILLM(FCConversationLLM):
         return text
 
 
-class FastChatLLM(OpenAIBase):
-
-    def __init__(self, model=None, hostname=None, port=None, *args, **kwargs):
-
-        api_base = f"http://{normalize_host(hostname, port)}/v1"
-        api_key = "EMPTY"  # Not support yet
-        organization = "EMPTY"  # Not support yet
-
-        kwargs['scheme'] = 'fastchat'
-        super().__init__(*args, api_key=api_key, api_base=api_base, organization=organization, model=model, **kwargs)
-
-        self.model = model
-
-    @property
-    def is_chat(self):
-        return True
-
-
-class SamurAI(FCConversationLLM):
+class SamurAI(BeamLLM):
 
     normalized_hostname: Optional[str] = Field(None)
     headers: Optional[dict] = Field(None)
@@ -285,12 +228,13 @@ class SamurAI(FCConversationLLM):
 
         return kwargs_processed
 
-    def _chat_completion(self, messages=None, **kwargs):
+    def _chat_completion(self, chat, **kwargs):
 
+        messages = chat.fastchat_format
         prompt = self.get_prompt(messages)
         return self._completion_internal(prompt, **kwargs)
 
-    def _completion(self, prompt=None, **kwargs):
+    def _completion(self, prompt, **kwargs):
 
         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         return self._completion_internal(prompt, **kwargs)
@@ -397,14 +341,14 @@ class FastAPIDPLLM(SamurAI):
 
         return response
 
-    def _completion(self, prompt=None, **kwargs):
+    def _completion(self, prompt, **kwargs):
 
         prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         return self._completion_internal(prompt, **kwargs)
 
-    def _chat_completion(self, messages=None, **kwargs):
+    def _chat_completion(self, chat, **kwargs):
 
-        prompt = self.get_prompt(messages)
+        prompt = chat.fastchat_format
         return self._completion_internal(prompt, **kwargs)
 
     def _completion_internal(self, prompt, stop=None, stop_token_ids=None, cut_long_prompt=None,
@@ -534,23 +478,18 @@ class HuggingFaceLLM(BeamLLM):
     def is_completions(self):
         return True
 
-    def _completion(self, prompt=None, **kwargs):
-
-        # pipeline = transformers.pipeline('text-generation', model=self.model,
-        #                                  tokenizer=self.tokenizer, device=self.input_device, return_full_text=False)
+    def _completion(self, prompt, **kwargs):
 
         res = self._text_generation_pipeline(prompt, pad_token_id=self._text_generation_pipeline.tokenizer.eos_token_id,
                                              **self.pipline_kwargs)
 
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
-    def _chat_completion(self, **kwargs):
+    def _chat_completion(self, chat, **kwargs):
 
-        # pipeline = transformers.pipeline('conversational', model=self.model,
-        #                                  tokenizer=self.tokenizer, device=self.input_device)
-
-        res = self._conversational_pipeline(self.conversation,
-                                             pad_token_id=self._conversational_pipeline.tokenizer.eos_token_id,
-                                             **self.pipline_kwargs)
+        conversation = chat.hf_format
+        res = self._conversational_pipeline(conversation,
+                                            pad_token_id=self._conversational_pipeline.tokenizer.eos_token_id,
+                                            **self.pipline_kwargs)
 
         return CompletionObject(prompt=self.conversation, kwargs=kwargs, response=res)
