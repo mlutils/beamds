@@ -74,6 +74,11 @@ class Processor(BeamBase):
         return state
 
     def __setstate__(self, state):
+        for k in self.excluded_attributes:
+            if hasattr(type(self), k):
+                if not isinstance(getattr(type(self), k), cached_property):
+                    setattr(self, k, None)
+        state = {k: v for k, v in state.items() if k not in self.excluded_attributes}
         # Restore the skeleton attributes
         self.__dict__.update(state)
 

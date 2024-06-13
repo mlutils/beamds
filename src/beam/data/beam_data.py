@@ -11,7 +11,7 @@ from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
 from ..meta import BeamName
-from ..type import BeamType
+from ..type import BeamType, is_beam_processor, is_beam_data
 from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
                      collate_chunks, recursive_flatten, recursive_flatten_with_keys, recursive_device,
                      container_len, recursive_len, is_arange, recursive_size, divide_chunks,
@@ -1061,7 +1061,7 @@ class BeamData(BeamName):
     @staticmethod
     def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9), override=True,
                    chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None,
-                   split=False, **kwargs):
+                   split=False, textual_serialization=False, **kwargs):
 
         path = beam_path(path)
 
@@ -1087,7 +1087,8 @@ class BeamData(BeamName):
                 BeamData.write_tree(v, path.joinpath(BeamData.normalize_key(k)), sizes=sizes[k],
                                     archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
                                     split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
-                                    file_type=file_type, schema=s, override=override, split=split, **kwargs)
+                                    file_type=file_type, schema=s, override=override, split=split,
+                                    textual_serialization=textual_serialization, **kwargs)
 
         else:
 
@@ -1095,14 +1096,15 @@ class BeamData(BeamName):
                 path = path.joinpath(BeamData.default_data_file_name)
 
             BeamData.write_object(data, path, size=sizes, archive=False, override=override,
-                                        chunksize=chunksize, chunklen=chunklen, split_by=split_by,
-                                        n_chunks=n_chunks, partition=partition, schema=schema,
-                                        file_type=file_type, split=split, **kwargs)
+                                  chunksize=chunksize, chunklen=chunklen, split_by=split_by,
+                                  n_chunks=n_chunks, partition=partition, schema=schema,
+                                  file_type=file_type, split=split, textual_serialization=textual_serialization,
+                                  **kwargs)
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
                      chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None,
-                     split_by=None, split=True, priority=None, **kwargs):
+                     textual_serialization=False, split_by=None, split=True, priority=None, **kwargs):
 
         path = beam_path(path)
 
@@ -1126,6 +1128,9 @@ class BeamData(BeamName):
 
             data_type = check_type(data)
             if priority is None:
+                priority = []
+                if textual_serialization:
+                    priority = ['.json', '.yaml']
                 if partition is not None and data_type.minor == 'pandas':
                     priority = ['.parquet', '.fea', '.pkl']
                 elif partition is not None and data_type.minor == 'polars':
@@ -1133,7 +1138,7 @@ class BeamData(BeamName):
                 elif data_type.minor == 'pandas':
                     priority = ['.fea', '.parquet', '.pkl']
                 elif data_type.minor == 'polars':
-                    priority = ['.pl.fea', '.pl.parquet', '.pl.pkl']
+                    priority.extend(['.pl.fea', '.pl.parquet', '.pl.pkl'])
                 elif data_type.minor == 'cudf':
                     priority = ['.cf.fea', '.cf.parquet', '.cf.pkl']
                 elif data_type.minor == 'numpy':
@@ -1145,12 +1150,12 @@ class BeamData(BeamName):
                         priority = ['.pkl']
                     else:
                         priority = ['.pt']
-                elif hasattr(data, 'beam_class_name') and 'BeamData' in data.beam_class_name:
+                elif is_beam_data(data):
                     priority = ['.bmd', '.pkl', '.dill']
-                elif hasattr(data, 'beam_class_name') and 'Processor' in data.beam_class_name:
-                    priority = ['.bmp', '.pkl', '.dill']
+                elif is_beam_processor(data):
+                    priority = ['.bmp', '.pkl', '.dill', '.cloudpickle', '.joblib']
                 else:
-                    priority = ['.pkl', '.dill']
+                    priority.extend(['.pkl', '.dill', '.cloudpickle', '.joblib'])
 
             if file_type is not None:
                 priority.insert(file_type, 0)
@@ -1160,8 +1165,6 @@ class BeamData(BeamName):
                 data = list(divide_chunks(data, n_chunks=n_chunks, dim=dim))
                 chunk_file_extension = {'index': BeamData.index_chunk_file_extension,
                                         'columns': BeamData.columns_chunk_file_extension}[split_by]
-                object_path = path
-
             else:
                 data = [(0, data), ]
                 chunk_file_extension = ''

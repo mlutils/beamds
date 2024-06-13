@@ -2,6 +2,7 @@ import inspect
 import ast
 import sys
 
+from .. import BeamData
 from ..base import BeamBase
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib,get_origin, is_module_installed
 from ..path import beam_path, local_copy
@@ -14,6 +15,7 @@ import warnings
 import tempfile
 
 from ..logger import beam_logger as logger
+from ..type import is_beam_processor
 from ..utils import cached_property
 from uuid import uuid4 as uuid
 
@@ -194,9 +196,6 @@ class AutoBeam(BeamBase):
             egg_info = dist._path
             project_name = dist.metadata['Name']
 
-            # if 'AML' in project_name:
-            #     print('here')
-
             if egg_info is None:
                 logger.warning(f"Could not find egg info for package: {project_name}, skipping.")
                 continue
@@ -270,7 +269,7 @@ class AutoBeam(BeamBase):
     def to_bundle(obj, path=None):
 
         if path is None:
-            path = beam_path('..')
+            path = beam_path('.')
             if hasattr(obj, 'name'):
                 path = path.joinpath(obj.name)
             else:
@@ -288,21 +287,7 @@ class AutoBeam(BeamBase):
         ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'))
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
-        if hasattr(obj, 'save_state'):
-            obj.save_state(path.joinpath('state'))
-        else:
-            logger.warning(f"Object {obj} does not have a save_state method.")
-        try:
-            path.joinpath('skeleton.pkl').write(obj)
-        except Exception as e:
-            path.joinpath('skeleton.pkl').unlink()
-            logger.warning(f"Could not pickle object: {obj} ({e}), saving only the state.")
-
-        if not path.joinpath('skeleton.pkl').is_file() and \
-                not path.joinpath('state').exists():
-            logger.error(f"Could not save object {obj} to path {path}. "
-                         f"Make sure the object has a save_state method and/or "
-                         f"it is pickleable.")
+        BeamData.write_object(obj, path.joinpath('state'))
 
         return path
 
@@ -321,13 +306,7 @@ class AutoBeam(BeamBase):
         # 1. Check necessary files
         req_file = path.joinpath('requirements.json')
         modules_tar = path.joinpath('modules.tar.gz')
-        state_file = path.joinpath('state')
-        skeleton_file = path.joinpath('skeleton.pkl')
         metadata_file = path.joinpath('metadata.json')
-
-        if not all([file.exists() for file in [req_file, modules_tar, metadata_file]]) or \
-           not any([file.exists() for file in [state_file, skeleton_file]]):
-            raise ValueError(f"Path {path} does not contain all necessary files for reconstruction.")
 
         def load_obj():
 
@@ -351,17 +330,9 @@ class AutoBeam(BeamBase):
             # cls_obj = globals()[imported_class]
 
             # 7. Construct the object from its state using a hypothetical from_state method
-            if skeleton_file.is_file():
-                try:
-                    obj = skeleton_file.read()
-                    if state_file.exists:
-                        obj.load_state(state_file)
-                except:
-                    obj = cls_obj.from_path(state_file)
-            else:
-                obj = cls_obj.from_path(state_file)
+            _obj = BeamData.read(path.joinpath('state'))
 
-            return obj
+            return _obj
 
         try:
             obj = load_obj()
