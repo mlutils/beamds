@@ -10,13 +10,14 @@ import pickle
 import hashlib
 from functools import partial
 import itertools
-import scipy
+
 import re
 from .utils_all import (check_type, check_minor_type, slice_array, is_arange, DataObject, is_container,
                         jupyter_like_traceback)
 from ..type import BeamType
 
 from ..importer.safe_imports.torch import torch
+from ..importer.safe_imports.scipy import scipy
 
 
 

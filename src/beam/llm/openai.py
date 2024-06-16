@@ -211,15 +211,15 @@ class SamurOpenAI(OpenAIBase):
             kwargs['extra_body'] = extra_body
         return kwargs
 
-    def _completion(self, prompt=None, guidance=None, **kwargs):
+    def _completion(self, prompt, guidance=None, **kwargs):
         kwargs = self.add_guidance(kwargs, guidance)
         kwargs = self.filter_keys(kwargs)
-        return super()._completion(prompt=prompt, **kwargs)
+        return super()._completion(prompt, **kwargs)
 
-    def _chat_completion(self, messages=None, guidance=None, **kwargs):
+    def _chat_completion(self, chat, guidance=None, **kwargs):
         kwargs = self.add_guidance(kwargs, guidance)
         kwargs = self.filter_keys(kwargs)
-        return super()._chat_completion(messages=messages, **kwargs)
+        return super()._chat_completion(chat, **kwargs)
 
 
 class BeamVLLM(OpenAIBase):

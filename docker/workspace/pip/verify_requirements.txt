@@ -1,4 +1,6 @@
-pyarrow
+
+# TODO: remove the requirement for old version when a new release of cudf is out (currently -20240616- cudf supports only pyarrow<15.0.0)
+pyarrow<15.0.0
 six
 tqdm
 jupyter-tensorboard
@@ -25,4 +27,5 @@ jupyter_client >= 8.3.0
 nbclient >= 0.8.0
 Werkzeug >= 3.0.0
 setuptools < 70.0.0
+ml_dtypes >= 0.4.0
 

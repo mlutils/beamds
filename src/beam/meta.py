@@ -23,12 +23,13 @@ class MetaBeamInit(type):
 
 class BeamName:
 
-    def __init__(self, name=None):
+    def __init__(self, name=None, dynamic_name=True):
         self._name = name
+        self._dynamic_name = dynamic_name
 
     @property
     def name(self):
-        if self._name is None:
+        if self._name is None and self._dynamic_name:
             self._name = retrieve_name(self)
         return self._name
 

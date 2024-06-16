@@ -65,18 +65,17 @@ class BeamChat:
 
         conversation = get_conversation_template(self.adapter)
 
+        system_message = conversation.system_message
         if self.system_message is not None:
-            conversation.add_system_message(self.system_message)
+            system_message = self.system_message
+
         if self.tool_message is not None:
-            conversation.add_system_message(self.tool_message)
+            system_message = f"{system_message}\n{self.tool_message}\n"
+
+        conversation.set_system_message(system_message)
 
         for m in self.messages:
-            if m['role'] == 'user':
-                conversation.add_user_message(m['content'])
-            elif m['role'] == 'assistant':
-                conversation.add_assistant_message(m['content'])
-            else:
-                conversation.add_system_message(m['content'])
+            conversation.append_message(m['role'], m['content'])
 
         return conversation.get_prompt()
 

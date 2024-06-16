@@ -107,12 +107,12 @@ def check_element_type(x, minor=None):
 
 
 def check_minor_type(x):
-    if is_tensor(x):
-        return 'tensor'
     if isinstance(x, np.ndarray):
         return 'numpy'
     if isinstance(x, pd.core.base.PandasObject):
         return 'pandas'
+    if is_tensor(x):
+        return 'tensor'
     if isinstance(x, dict):
         return 'dict'
     if isinstance(x, list):
@@ -125,14 +125,12 @@ def check_minor_type(x):
         return 'slice'
     if isinstance(x, Counter):
         return 'counter'
+    elif is_scalar(x):
+        return 'scalar'
     if is_polars(x):
         return 'polars'
     if is_scipy_sparse(x):
         return 'scipy_sparse'
-    if is_cudf(x):
-        return 'cudf'
-    elif is_scalar(x):
-        return 'scalar'
     elif is_pil(x):
         return 'pil'
     elif isinstance(x, PurePath) or is_beam_path(x):
@@ -141,6 +139,8 @@ def check_minor_type(x):
         return 'beam_data'
     elif is_beam_processor(x):
         return 'beam_processor'
+    if is_cudf(x):
+        return 'cudf'
     else:
         return 'other'
 

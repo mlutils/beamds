@@ -19,6 +19,17 @@ def test_beam_default_configuration():
     print(p.hparams)
 
 
+def test_beam_parallel_with_silence():
+
+    from src.beam.parallel.utils import parallel, task
+    def func(i):
+        return i ** 2
+
+    res = parallel([task(func)(i) for i in range(10)], n_workers=2, method='threading', silence=True)
+
+    print(res)
+
+
 def test_ray_actor():
 
     from src.beam.distributed.ray_dispatcher import RayDispatcher, RayClient
@@ -572,6 +583,8 @@ if __name__ == '__main__':
 
     # test_special_attributes()
 
-    test_beam_default_configuration()
+    # test_beam_default_configuration()
+
+    test_beam_parallel_with_silence()
 
     print('done')

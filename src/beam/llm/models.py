@@ -229,14 +229,10 @@ class SamurAI(BeamLLM):
         return kwargs_processed
 
     def _chat_completion(self, chat, **kwargs):
-
-        messages = chat.fastchat_format
-        prompt = self.get_prompt(messages)
+        prompt = chat.fastchat_format
         return self._completion_internal(prompt, **kwargs)
 
     def _completion(self, prompt, **kwargs):
-
-        prompt = self.get_prompt([{'role': 'user', 'content': prompt}])
         return self._completion_internal(prompt, **kwargs)
 
     def _stream_generator(self, d):

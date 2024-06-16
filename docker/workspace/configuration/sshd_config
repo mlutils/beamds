@@ -28,8 +28,8 @@ HostKey /opt/ssh/ssh_host_ed25519_key
 
 # Logging
 #SyslogFacility AUTH
-#LogLevel INFO
-LogLevel DEBUG3
+LogLevel INFO
+#LogLevel DEBUG3
 
 ChallengeResponseAuthentication no
 

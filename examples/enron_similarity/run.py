@@ -65,14 +65,14 @@ def run_enron():
     logger.info(results)
 
     for i in results.index[0]:
-        logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
+        logger.info(alg.subsets['validation'].loc[i].values['body'].values[0])
 
     results = alg.search_dense([query], k=5)
     logger.info(f"Dense Results for query: {query}")
     logger.info(results)
 
     for i in results.index[0]:
-        logger.info(alg.subsets['train'].loc[i].values['body'].values[0])
+        logger.info(alg.subsets['validation'].loc[i].values['body'].values[0])
     logger.info('done enron_similarity example')
 
     alg.fitted_subset_dense = 'validation'

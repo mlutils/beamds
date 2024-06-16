@@ -2,13 +2,13 @@
 Copied from: https://raw.githubusercontent.com/lm-sys/FastChat/main/fastchat/model/model_adapter.py
 removed the transformer dependency and add local conversation dependency
 remove functions: get_generate_stream_function, load_model
+remove imports: psutils, math, torch
 
 Model adapter registration."""
 
 # add this line
 from .conversation import Conversation, get_conv_template
 
-import math
 import os
 import re
 import sys
@@ -19,8 +19,6 @@ if sys.version_info >= (3, 9):
     from functools import cache
 else:
     from functools import lru_cache as cache
-
-import psutil
 
 
 # Check an environment variable to check if we should be sharing Peft model

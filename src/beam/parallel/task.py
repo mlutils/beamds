@@ -72,7 +72,7 @@ class BeamTask(BeamName):
 
     def __init__(self, func, *args, name=None, silence=False, metadata=None, **kwargs):
 
-        super().__init__(name=name)
+        super().__init__(name=name, dynamic_name=False)
 
         self.func = func
         self.args = args
