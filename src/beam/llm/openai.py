@@ -115,8 +115,7 @@ class OpenAIBase(BeamLLM):
     @property
     def models(self):
         if self._models is None:
-            import openai
-            models = openai.models.list()
+            models = self.client.models.list()
             models = {m.id: m for m in models.data}
             self._models = models
         return self._models
@@ -135,7 +134,6 @@ class OpenAILLM(OpenAIBase):
     def __init__(self, model='gpt-3.5-turbo', api_key=None, organization=None, *args, **kwargs):
 
         api_key = beam_key('OPENAI_API_KEY', api_key)
-
         kwargs['scheme'] = 'openai'
         super().__init__(model=model, api_key=api_key, api_base='https://api.openai.com/v1',
                          organization=organization, *args, **kwargs)
@@ -246,8 +244,6 @@ class FastChatLLM(OpenAIBase):
 
         kwargs['scheme'] = 'fastchat'
         super().__init__(*args, api_key=api_key, api_base=api_base, organization=organization, model=model, **kwargs)
-
-        self.model = model
 
     @property
     def is_chat(self):

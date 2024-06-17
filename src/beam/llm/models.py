@@ -398,9 +398,7 @@ class HuggingFaceLLM(BeamLLM):
                  config_kwargs=None, pipline_kwargs=None, text_generation_kwargs=None, conversational_kwargs=None,
                  eos_pattern=None, **kwargs):
 
-        kwargs['scheme'] = 'huggingface'
-        kwargs['model'] = model
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, model=model, scheme='huggingface', **kwargs)
 
         import transformers
         transformers.logging.set_verbosity_error()

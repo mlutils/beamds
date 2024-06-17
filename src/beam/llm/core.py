@@ -92,7 +92,7 @@ class BeamLLM(PedanticBeamResource):
     top_p: float = Field(1.0, ge=0.0, le=1.0)
     n: int = Field(1, ge=1)
     message_stream: bool = Field(False)
-    stop: Optional[str] = Field(None)
+    stop: Optional[Union[str, List[str]]] = Field(None)
     max_tokens: Optional[int] = Field(None)
     max_new_tokens: Optional[int] = Field(None)
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
@@ -170,7 +170,7 @@ class BeamLLM(PedanticBeamResource):
         self.adapter = adapter
 
         self._conv = get_conversation_template(self.adapter)
-        self.stop = self.build_stop_sequences(stop)
+        self.stop = self.build_default_stop_sequences(stop)
 
         self.usage = {"prompt_tokens": 0,
                       "completion_tokens": 0,
@@ -186,26 +186,44 @@ class BeamLLM(PedanticBeamResource):
         self._lazy_cache = {}
         self._tools = tools
 
-    def build_stop_sequences(self, stop):
-        model_stop = self.stop_sequence
-        if type(model_stop) is not list:
-            model_stop = [model_stop]
-        if self.sep:
-            model_stop.append(self.sep)
-
-        if self._conv.name == 'unknown':
-            model_stop = stop or model_stop
-        else:
-            if type(stop) is list:
-                model_stop.extend(stop)
-            elif stop:
-                model_stop.append(stop)
-
-        model_stop = list(set(model_stop))
-        if len(model_stop) == 1:
-            model_stop = model_stop[0]
-
+    def build_default_stop_sequences(self, stop: Optional[Union[str, List[str]]] = None) -> Optional[List[str]]:
+        adapter_stop = self.stop_sequence
+        if type(adapter_stop) is not list:
+            adapter_stop = [adapter_stop]
+        adapter_stop.append(self.sep)
+        model_stop = self.build_stop_sequences(stop, default_stop=adapter_stop)
         return model_stop
+
+    def build_stop_sequences(self, stop, default_stop=None):
+
+        if default_stop is None:
+            default_stop = self.stop
+        if default_stop is None:
+            default_stop = []
+        elif type(default_stop) is not list:
+            default_stop = [default_stop]
+
+        all_stops = default_stop.copy()
+
+        if stop is None:
+            stop = []
+        elif type(stop) is not list:
+            stop = [stop]
+
+        all_stops.extend(stop)
+        all_stops = list(set(all_stops))
+
+        # filter out None values
+        all_stops = [i for i in all_stops if i is not None]
+        # filter out empty strings
+        all_stops = [i for i in all_stops if i.strip()]
+
+        if len(all_stops) == 0:
+            return None
+        elif len(all_stops) == 1:
+            return all_stops[0]
+        else:
+            return all_stops
 
     def reset_chat(self):
         self._chat.reset()
@@ -400,7 +418,9 @@ class BeamLLM(PedanticBeamResource):
         top_p = top_p or (self.top_p if self.top_p != self.__fields__['top_p'].default else None)
         n = n or (self.n if self.n != self.__fields__['n'].default else None)
         stream = stream or self.message_stream
-        stop = stop or self.stop
+
+        stop = self.build_stop_sequences(stop)
+
         presence_penalty = (presence_penalty or
                             (self.presence_penalty if self.presence_penalty
                              != self.__fields__['presence_penalty'].default else None))
