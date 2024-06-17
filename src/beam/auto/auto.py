@@ -426,70 +426,75 @@ class AutoBeam(BeamBase):
                         tar.add(str(local_name), arcname=str(relative_name))
 
     @staticmethod
-    def to_docker(obj, base_image='python:3.10-slim', config=None, bundle_path=None, image_name=None,
-                  entrypoint='synchronous-server', copy_bundle=True, beam_version=None, dockerfile='simple-entrypoint'):
+    def to_docker(obj=None, base_image='python:3.10-slim', config=None, bundle_path=None, image_name=None,
+                  entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
+                  **kwargs):
 
-        logger.info(f"Building an object bundle")
-        bundle_path = AutoBeam.to_bundle(obj, path=bundle_path)
+        if obj is not None:
+            logger.info(f"Building an object bundle")
+            bundle_path = AutoBeam.to_bundle(obj, path=bundle_path)
 
         logger.info(f"Building a Docker image with the requirements and the object bundle")
         AutoBeam._build_image(bundle_path, base_image, config=config, image_name=image_name,
-                              entrypoint=entrypoint, copy_bundle=copy_bundle, beam_version=beam_version,
-                              dockerfile=dockerfile)
+                              entrypoint=entrypoint, beam_version=beam_version,
+                              dockerfile=dockerfile, **kwargs)
 
     @staticmethod
     def _build_image(bundle_path, base_image, config=None, image_name=None,
                      entrypoint='synchronous-server', copy_bundle=True, beam_version=None,
-                     dockerfile='simple-entrypoint'):
+                     dockerfile='simple-entrypoint' ):
 
         import docker
         from docker.errors import BuildError
 
+        client = docker.from_env()
+
+        bundle_path = beam_path(bundle_path)
+        current_dir = beam_path(__file__).parent
+
         if image_name is None:
             image_name = f"autobeam-{bundle_path.name}-{base_image}"
-        # Initialize Docker client
-        current_dir = beam_path(__file__).parent
-        client = docker.from_env()
-        tempdir = beam_path(tempfile.mkdtemp())
 
-        config = config or {}
-        tempdir.joinpath('config.yaml').write(config)
-        reqs = beam_path(bundle_path).joinpath('requirements.txt').read()
-        tempdir.joinpath('requirements.txt').write(reqs)
-        if not copy_bundle:
-            bundle_path = tempfile.mkdtemp()
-        entrypoint = beam_path(entrypoint)
-        if entrypoint.is_file() and not entrypoint.suffix:
-            source_entrypoint = entrypoint.read()
-        else:
-            source_entrypoint = current_dir.joinpath(f'{entrypoint}.py').read()
-        tempdir.joinpath('entrypoint.py').write(source_entrypoint)
-        dockerfile = beam_path(dockerfile)
-        if dockerfile.is_file():
-            source_dockerfile = dockerfile.read(ext='.txt')
-        else:
-            source_dockerfile = current_dir.joinpath(f"dockerfile-{dockerfile}").read()
-        tempdir.joinpath('dockerfile').write(source_dockerfile, ext='.txt')
+        with local_copy(bundle_path, as_beam_path=True) as bundle_path:
 
-        with local_copy(bundle_path) as bundle_path:
+            docker_dir = bundle_path.joinpath('.docker')
+            docker_dir.clean()
+            docker_dir.mkdir()
+
+            config = config or {}
+            docker_dir.joinpath('config.yaml').write(config)
+
+            entrypoint = beam_path(entrypoint)
+            if entrypoint.is_file() and not entrypoint.suffix:
+                source_entrypoint = entrypoint.read()
+            else:
+                source_entrypoint = current_dir.joinpath(f'{entrypoint}.py').read()
+
+            entrypoint = docker_dir.joinpath('entrypoint.py')
+            entrypoint.write(source_entrypoint)
+
+            dockerfile = beam_path(dockerfile)
+            if dockerfile.is_file():
+                source_dockerfile = dockerfile.read(ext='.txt')
+            else:
+                source_dockerfile = current_dir.joinpath(f"dockerfile-{dockerfile}").read(ext='.txt')
+
+            docker_dir.joinpath('dockerfile').write(source_dockerfile, ext='.txt')
 
             # Define build arguments
             build_args = {
                 'BASE_IMAGE': base_image,
-                'REQUIREMENTS_FILE': tempdir.joinpath('requirements.txt').str,
-                'ALGORITHM_DIR': str(bundle_path),
-                'ENTRYPOINT_SCRIPT': entrypoint.str,
-                'CONFIG_FILE': tempdir.joinpath('config.yaml').str,
+                'REQUIREMENTS_FILE': 'requirements.txt',
+                'ALGORITHM_DIR': bundle_path.relative_to(bundle_path).str,
+                'ENTRYPOINT_SCRIPT': entrypoint.relative_to(bundle_path).str,
+                'CONFIG_FILE': '.docker/config.yaml',
                 'BEAM_DS_VERSION': beam_version
             }
 
-            # Path to the directory containing the dockerfile-beam
-            path_to_dockerfile = tempdir.joinpath('dockerfile').str
-
             try:
                 # Build the image
-                image, build_logs = client.images.build(path=path_to_dockerfile, buildargs=build_args,
-                                                        tag=image_name)
+                image, build_logs = client.images.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
+                                                        buildargs=build_args, tag=image_name, stream=True)
 
                 # Print build logs (optional)
                 for line in build_logs:
@@ -497,8 +502,10 @@ class AutoBeam(BeamBase):
                         logger.info(line['stream'].strip())
 
             except BuildError as e:
-                logger.error("Error building Docker image:", e)
+                logger.error(f"Error building Docker image: {e}")
+                raise e
             except Exception as e:
-                logger.error("Error:", e)
+                logger.error(f"Error building Docker image: {e}")
+                raise e
             finally:
                 client.close()

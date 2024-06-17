@@ -30,13 +30,11 @@ class OpenAIBase(BeamLLM):
                          'extra_query', 'extra_body', 'timeout']
 
     def __init__(self, model=None, api_key=None, api_base=None, organization=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, model=model, **kwargs)
 
         self.api_key = api_key
         self.api_base = api_base
         self.organization = organization
-
-        self.model = model
         self._models = None
 
     @cached_property
@@ -184,8 +182,7 @@ class SamurOpenAI(OpenAIBase):
     def __init__(self, model=None, hostname=None, api_key=None, port=None, chat=True, *args, **kwargs):
 
         api_base = f"http://{normalize_host(hostname, port)}/openai/v1"
-        kwargs['scheme'] = 'samur-openai'
-        super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  **kwargs)
+        super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  scheme='samur-openai', **kwargs)
         self._is_chat = chat
 
     @property
@@ -226,8 +223,7 @@ class BeamVLLM(OpenAIBase):
 
         http_scheme = 'http' if not tls else 'https'
         api_base = f"{http_scheme}://{normalize_host(hostname, port)}/v1"
-        kwargs['scheme'] = 'vllm'
-        super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  **kwargs)
+        super().__init__(*args, model=model, api_key=api_key, api_base=api_base, scheme='vllm',  **kwargs)
 
     @property
     def is_chat(self):
@@ -242,8 +238,8 @@ class FastChatLLM(OpenAIBase):
         api_key = "EMPTY"  # Not support yet
         organization = "EMPTY"  # Not support yet
 
-        kwargs['scheme'] = 'fastchat'
-        super().__init__(*args, api_key=api_key, api_base=api_base, organization=organization, model=model, **kwargs)
+        super().__init__(*args, api_key=api_key, api_base=api_base, organization=organization, model=model,
+                         scheme='fastchat', **kwargs)
 
     @property
     def is_chat(self):

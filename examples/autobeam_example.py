@@ -3,8 +3,8 @@ from src.beam.auto import AutoBeam
 
 
 def main():
-    # path_to_state = '/home/shared/data/results/enron/models/model_state_subset'
-    path_to_state = '/home/mlspeech/elads/data/enron/models/model_state_subset'
+    path_to_state = '/home/shared/data/results/enron/models/model_state_subset'
+    # path_to_state = '/home/mlspeech/elads/data/enron/models/model_state_subset'
     to_bundle = False
     from_bundle = False
     to_docker = True
@@ -29,10 +29,13 @@ def main():
 
     if to_docker:
         from examples.enron_similarity import EnronTicketSimilarity
-        alg = EnronTicketSimilarity.from_path(path_to_state)
 
-        path_to_bundle = f"{path_to_state}_bundle_docker"
-        AutoBeam.to_docker(alg, bundle_path=path_to_bundle)
+        # path_to_bundle = f"{path_to_state}_bundle_docker"
+        # alg = EnronTicketSimilarity.from_path(path_to_state)
+        # AutoBeam.to_docker(alg, bundle_path=path_to_bundle)
+
+        path_to_bundle = f"{path_to_state}_bundle"
+        AutoBeam.to_docker(bundle_path=path_to_bundle)
         print('Bundle saved at:', path_to_bundle)
 
 

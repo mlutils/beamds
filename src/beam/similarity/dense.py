@@ -234,6 +234,6 @@ class DenseSimilarity(BeamSimilarity):
         path.joinpath('index.npy').write(self.index)
         with local_copy(path.joinpath('vector_store.bin'), as_beam_path=False) as p:
             faiss.write_index(self.vector_store, p)
-        if self.training_vs:
+        if self.hasattr('training_vs') and self.training_vs:
             with local_copy(path.joinpath('training_vs.bin'), as_beam_path=False) as p:
                 faiss.write_index(self.training_vs, p)
