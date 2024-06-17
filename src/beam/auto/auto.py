@@ -262,7 +262,13 @@ class AutoBeam(BeamBase):
 
     @property
     def metadata(self):
-        return {'name': self.obj.name, 'type': type(self.obj).__name__,
+
+        if hasattr(self.obj, 'name'):
+            name = self.obj.name
+        else:
+            name = type(self.obj).__name__
+
+        return {'name': name, 'type': type(self.obj).__name__,
                 'import_statement': self.import_statement, 'module_name': type(self.obj).__module__}
 
     @staticmethod
@@ -420,7 +426,19 @@ class AutoBeam(BeamBase):
                         tar.add(str(local_name), arcname=str(relative_name))
 
     @staticmethod
-    def _build_image(base_image, config, bundle_path, image_name=None,
+    def to_docker(obj, base_image='python:3.10-slim', config=None, bundle_path=None, image_name=None,
+                  entrypoint='synchronous-server', copy_bundle=True, beam_version=None, dockerfile='simple-entrypoint'):
+
+        logger.info(f"Building an object bundle")
+        bundle_path = AutoBeam.to_bundle(obj, path=bundle_path)
+
+        logger.info(f"Building a Docker image with the requirements and the object bundle")
+        AutoBeam._build_image(bundle_path, base_image, config=config, image_name=image_name,
+                              entrypoint=entrypoint, copy_bundle=copy_bundle, beam_version=beam_version,
+                              dockerfile=dockerfile)
+
+    @staticmethod
+    def _build_image(bundle_path, base_image, config=None, image_name=None,
                      entrypoint='synchronous-server', copy_bundle=True, beam_version=None,
                      dockerfile='simple-entrypoint'):
 
@@ -433,6 +451,8 @@ class AutoBeam(BeamBase):
         current_dir = beam_path(__file__).parent
         client = docker.from_env()
         tempdir = beam_path(tempfile.mkdtemp())
+
+        config = config or {}
         tempdir.joinpath('config.yaml').write(config)
         reqs = beam_path(bundle_path).joinpath('requirements.txt').read()
         tempdir.joinpath('requirements.txt').write(reqs)
