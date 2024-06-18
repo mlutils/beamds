@@ -5,9 +5,9 @@ from src.beam.auto import AutoBeam
 def main():
     path_to_state = '/home/shared/data/results/enron/models/model_state_subset'
     # path_to_state = '/home/mlspeech/elads/data/enron/models/model_state_subset'
-    to_bundle = False
+    to_bundle = True
     from_bundle = False
-    to_docker = True
+    to_docker = False
 
     if to_bundle:
         from examples.enron_similarity import EnronTicketSimilarity

@@ -413,6 +413,18 @@ class AutoBeam(BeamBase):
         path.write(content, ext='.txt')
 
     def modules_to_tar(self, path):
+
+        """
+        This method is used to create a tarball of all the private modules used by the object.
+
+        Parameters:
+        path (str): The path where the tarball will be created.
+
+        Returns:
+        None
+
+        """
+
         path = beam_path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         import tarfile
@@ -447,7 +459,8 @@ class AutoBeam(BeamBase):
         import docker
         from docker.errors import BuildError
 
-        client = docker.from_env()
+        # client = docker.from_env()
+        client = docker.APIClient()
 
         bundle_path = beam_path(bundle_path)
         current_dir = beam_path(__file__).parent
@@ -493,13 +506,23 @@ class AutoBeam(BeamBase):
 
             try:
                 # Build the image
-                image, build_logs = client.images.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
-                                                        buildargs=build_args, tag=image_name, stream=True)
+                # image, build_logs = client.images.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
+                #                                         buildargs=build_args, tag=image_name, stream=True)
+                #
+                # # Print build logs (optional)
+                # for line in build_logs:
+                #     if 'stream' in line:
+                #         logger.info(line['stream'].strip())
 
-                # Print build logs (optional)
-                for line in build_logs:
+                # Start the build and stream logs
+                response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
+                                        buildargs=build_args, tag=image_name, rm=True, decode=True)
+
+                # Process and print each log entry
+                for line in response:
                     if 'stream' in line:
-                        logger.info(line['stream'].strip())
+                        print(line['stream'].strip())
+
 
             except BuildError as e:
                 logger.error(f"Error building Docker image: {e}")
