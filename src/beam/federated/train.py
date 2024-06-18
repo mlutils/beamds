@@ -7,7 +7,7 @@ import os
 
 from ..utils import (set_seed, is_notebook,)
 from ..path import beam_path
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..config import get_beam_llm, BeamConfig
 
 

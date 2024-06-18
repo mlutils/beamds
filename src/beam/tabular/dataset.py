@@ -4,7 +4,7 @@ from ..data import BeamData
 from ..dataset import UniversalDataset
 import numpy as np
 import pandas as pd
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 
 
 class TabularDataset(UniversalDataset):

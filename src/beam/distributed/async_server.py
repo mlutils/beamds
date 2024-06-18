@@ -8,7 +8,7 @@ from flask import request, jsonify, send_file
 
 from ..serve.http_server import HTTPServer
 from ..serve.server import BeamServer
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..utils import ThreadSafeDict, find_port
 
 

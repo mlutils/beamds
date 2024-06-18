@@ -1,5 +1,5 @@
 from ..processor import Processor
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from .dataclasses import PodInfos, PodMetadata

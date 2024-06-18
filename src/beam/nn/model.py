@@ -6,7 +6,7 @@ from collections import defaultdict
 import numpy as np
 import math
 from ..utils import slice_to_index, hash_tensor
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from .optim import BeamOptimizer
 from functools import partial
 import random

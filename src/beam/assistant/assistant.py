@@ -6,7 +6,7 @@ from ..llm import beam_llm
 from ..llm import LLMGuidance
 from ..processor import MetaDispatcher
 from ..utils import check_type
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 import inspect
 import threading
 import queue

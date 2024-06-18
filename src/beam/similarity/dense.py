@@ -5,7 +5,7 @@ import faiss
 import numpy as np
 from functools import cached_property
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..path import beam_path, local_copy
 from ..utils import pretty_format_number, as_numpy, check_type, as_tensor, beam_device
 from .core import BeamSimilarity, Similarities

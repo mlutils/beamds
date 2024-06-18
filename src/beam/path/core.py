@@ -763,8 +763,19 @@ class PureBeamPath(BeamResource):
                 try:
                     if target == 'native' or nd:
                         x = json.load(fo, **kwargs)
-                    else:
+                    elif target == 'pandas':
                         x = pd.read_json(fo, lines=nd, **kwargs)
+                    elif target == 'polars':
+                        import polars as pl
+                        x = pl.read_json(fo, **kwargs)
+                    elif target == 'cudf':
+                        import cudf
+                        x = cudf.read_json(fo, lines=nd, **kwargs)
+                    elif target == 'pyarrow':
+                        from pyarrow import json as pa
+                        x = pa.read_json(fo, **kwargs)
+                    else:
+                        x = json.load(fo, **kwargs)
                 except:
                     fo.seek(0)
                     if nd:

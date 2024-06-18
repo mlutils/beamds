@@ -156,7 +156,7 @@ class Processor(BeamBase):
     @classmethod
     def from_nlp(cls, query, llm=None, ask_kwargs=None, **kwargs):
         from ..resources import resource
-        from ..logger import beam_logger as logger
+        from ..logging import beam_logger as logger
 
         llm = resource(llm)
 
@@ -359,7 +359,7 @@ class Processor(BeamBase):
 
     def nlp(self, query, llm=None, ask_kwargs=None, **kwargs):
 
-        from ..logger import beam_logger as logger
+        from ..logging import beam_logger as logger
 
         if llm is None:
             llm = self.llm

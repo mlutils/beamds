@@ -198,7 +198,7 @@ def beam_service_port(service):
 
 
 def find_port(port=None, get_port_from_beam_port_range=True, application='none', blacklist=None, whitelist=None):
-    from ..logger import beam_logger as logger
+    from ..logging import beam_logger as logger
 
     if blacklist is None:
         blacklist = []

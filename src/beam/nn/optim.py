@@ -3,7 +3,7 @@ from torch import nn
 from collections import defaultdict
 import math
 from functools import partial
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from torch.optim.lr_scheduler import LRScheduler
 from torch.optim import Optimizer
 

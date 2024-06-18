@@ -9,6 +9,9 @@ def main():
     from_bundle = False
     to_docker = False
 
+    # from src.beam import logger
+    # logger.debug_mode()
+
     if to_bundle:
         from examples.enron_similarity import EnronTicketSimilarity
         alg = EnronTicketSimilarity.from_path(path_to_state)

@@ -4,7 +4,7 @@ from src.beam.processor.core import Processor
 from src.beam.path import beam_path
 from src.beam.llm import beam_llm
 import json
-from src.beam.logger import beam_logger as logger
+from src.beam.logging import beam_logger as logger
 
 
 class HexBeam(Processor):

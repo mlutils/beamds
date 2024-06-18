@@ -8,7 +8,7 @@ import warnings
 
 from .utils import get_broker_url, get_backend_url
 from ..processor import Processor
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 
 
 class CeleryWorker(Processor):

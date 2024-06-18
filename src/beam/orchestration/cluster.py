@@ -3,7 +3,7 @@ from .deploy import BeamDeploy
 from .pod import BeamPod
 from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig,
                           MemoryStorageConfig, SecurityContextConfig)
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 import time
 from ..processor import Processor
 

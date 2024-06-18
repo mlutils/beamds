@@ -3,7 +3,7 @@ from ..processor import Processor
 from .pod import BeamPod, PodInfos
 from kubernetes import client
 from kubernetes.client.rest import ApiException
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from .dataclasses import *
 from datetime import datetime
 import json

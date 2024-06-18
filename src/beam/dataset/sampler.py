@@ -6,7 +6,7 @@ import pandas as pd
 import math
 import hashlib
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..utils import as_tensor, check_type, as_numpy, beam_device
 
 

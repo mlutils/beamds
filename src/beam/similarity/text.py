@@ -2,7 +2,7 @@ from typing import List
 
 from sentence_transformers import SentenceTransformer
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..utils import beam_device
 from ..processor import Processor
 from ..llm import default_tokenizer
@@ -102,7 +102,7 @@ class TextSimilarity(DenseSimilarity):
         path = beam_path(path)
         super().save_state_dict(state, path, ext, exclude, **kwargs)
 
-        if self._tokenizer is not None:
+        if self.hasattr('_tokenizer') and self._tokenizer is not None:
             if hasattr(self._tokenizer, 'save_pretrained'):
                 tokenizer_path = path.joinpath('tokenizer.hf')
                 with local_copy(tokenizer_path) as p:

@@ -11,7 +11,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'slice_to_index', 'beam_device', 'as_tensor', 'batch_augmentation', 'as_numpy', 'DataBatch', 'beam_hash',
            'UniversalConfig', 'beam_arguments', 'BeamConfig', 'BeamParam',
            'check_type', 'Timer',
-           'beam_logger', 'beam_kpi',
+           'beam_logger', 'beam_kpi', 'logger',
            'beam_path', 'beam_key', 'pretty_format_number', 'resource',
            'tqdm', 'Transformer', 'Processor',
            ]
@@ -19,11 +19,12 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
 
 from ._version import __version__
 
+
 # Initialize timer with beam_logger
 def initialize_timer():
     from functools import partial
     from .utils import Timer
-    from .logger import beam_logger
+    from .logging import beam_logger
     return partial(Timer, logger=beam_logger)
 
 
@@ -115,10 +116,10 @@ def __getattr__(name):
     elif name == 'Timer':
         return initialize_timer()
     elif name in ['beam_logger', 'logger']:
-        from .logger import beam_logger
+        from .logging import beam_logger
         return beam_logger
     elif name == 'beam_kpi':
-        from .logger import beam_kpi
+        from .logging import beam_kpi
         return beam_kpi
     elif name == 'beam_path':
         from .path import beam_path
@@ -156,7 +157,7 @@ if len([]):
     from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch, beam_hash
     from .config import UniversalConfig, beam_arguments, BeamConfig, BeamParam
     from .utils import check_type, Timer, pretty_format_number
-    from .logger import beam_logger, beam_kpi
+    from .logging import beam_logger, beam_kpi, beam_logger as logger
     from .path import beam_path, beam_key
     from .serve import beam_server, beam_client
     from ._version import __version__

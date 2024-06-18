@@ -6,7 +6,7 @@ from ..experiment.utils import build_device_list
 from ..config import CatboostConfig
 
 from .core_algorithm import Algorithm
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 
 
 class CBAlgorithm(Algorithm):

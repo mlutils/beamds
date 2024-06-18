@@ -1,6 +1,6 @@
 import uuid
 from typing import Any, Dict, List, Union
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 
 
 class Conversation:

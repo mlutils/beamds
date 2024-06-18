@@ -7,7 +7,7 @@ from ..parallel import BeamParallel, BeamTask
 from ..data import BeamData
 from ..path import beam_path
 from ..utils import tqdm_beam as tqdm
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..processor.core import Processor
 from ..base import beam_cache
 from ..config import TransformerConfig

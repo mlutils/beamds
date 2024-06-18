@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .. import resource, BeamData, Timer, as_numpy
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from .core_algorithm import Algorithm
 from ..type import BeamType
 

@@ -4,7 +4,7 @@ import time
 from .params import HPOConfig
 from ..utils import find_port, check_type, is_notebook, beam_device
 from ..config import print_beam_hyperparameters
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..path import beam_path, BeamPath
 from ..processor import Processor
 from ..algorithm import NeuralAlgorithm

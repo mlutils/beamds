@@ -1,6 +1,9 @@
 import inspect
 import ast
 import sys
+from collections import defaultdict
+
+from packaging import version
 
 from .. import BeamData
 from ..base import BeamBase
@@ -14,7 +17,7 @@ import importlib
 import warnings
 import tempfile
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..type import is_beam_processor
 from ..utils import cached_property
 from uuid import uuid4 as uuid
@@ -368,21 +371,31 @@ class AutoBeam(BeamBase):
 
     @cached_property
     def requirements(self):
-        requirements = []
+
+        versions = defaultdict(lambda: version.parse('0.0.0'))
+        requirements = {}
+
         for module_name in self.module_dependencies:
             pip_package = self.get_pip_package(module_name)
             if pip_package is not None:
                 if type(pip_package) is not list:
                     pip_package = [pip_package]
                 for pp in pip_package:
-                    if pp.metadata['Name'] is AutoBeam.blacklisted_pip_package:
+
+                    name = pp.metadata['Name']
+                    if name is AutoBeam.blacklisted_pip_package:
                         continue
-                    requirements.append({'pip_package': pp.metadata['Name'], 'module_name': module_name,
-                                         'version': pp.version
-                                         })
+
+                    v = version.parse(pp.version)
+                    if v <= versions[name]:
+                        continue
+
+                    requirements[name] = {'pip_package': name, 'module_name': module_name, 'version': v,
+                                          'metadata': dict(pp.metadata)}
             else:
                 logger.warning(f"Could not find pip package for module: {module_name}")
-        return requirements
+
+        return list(requirements.values())
 
     @staticmethod
     def write_requirements(requirements, path, relation='~=', sim_type='major'):
@@ -401,9 +414,9 @@ class AutoBeam(BeamBase):
             content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements])
         elif relation == '~=':
             if sim_type == 'major':
-                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.'))[:2]}" for r in requirements])
+                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:2])}" for r in requirements])
             elif sim_type == 'minor':
-                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.'))[:3]}" for r in requirements])
+                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:3])}" for r in requirements])
             else:
                 raise ValueError(f"sim_type can be 'major' or 'minor'")
         else:

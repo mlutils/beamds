@@ -8,7 +8,7 @@ from queue import Queue, Empty
 from threading import Thread
 from uuid import uuid4 as uuid
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..utils import find_port
 from ..config import to_dict
 from ..processor import MetaDispatcher

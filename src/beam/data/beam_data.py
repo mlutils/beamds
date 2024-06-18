@@ -6,7 +6,7 @@ from functools import partial, cached_property
 import numpy as np
 import pandas as pd
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
@@ -20,7 +20,7 @@ from ..utils import (is_container, Slicer, recursive, iter_container, recursive_
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
                      DataBatch, recursive_same_device, recursive_concatenate, recursive_items,
-                     recursive_keys, concat_polars_horizontally)
+                     recursive_keys, concat_polars_horizontally, beam_traceback)
 
 
 class BeamData(BeamName):
@@ -1213,6 +1213,7 @@ class BeamData(BeamName):
                     except Exception as e:
                         logger.warning(f"Failed to write file: {file_path.name}. Trying with the next file extension")
                         logger.debug(e)
+                        logger.debug(beam_traceback())
                         error = True
                         if file_path.exists():
                             file_path.clean()

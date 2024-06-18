@@ -176,44 +176,6 @@ class BeamPath(PureBeamPath):
         return super().read(ext=ext, **kwargs)
 
 
-'''
-from smbclient._os import (
-    XATTR_CREATE,
-    XATTR_REPLACE,
-    SMBDirEntry,
-    SMBStatResult,
-    SMBStatVolumeResult,
-    copyfile,
-    getxattr,
-    link,
-    listdir,
-    listxattr,
-    lstat,
-    makedirs,
-    mkdir,
-    open_file,
-    readlink,
-    remove,
-    removedirs,
-    removexattr,
-    rename,
-    renames,
-    replace,
-    rmdir,
-    scandir,
-    setxattr,
-    stat,
-    stat_volume,
-    symlink,
-    truncate,
-    unlink,
-    utime,
-    walk,
-)
-
-'''
-
-
 class SMBPath(PureBeamPath):
 
     def __init__(self, *pathsegments, client=None, hostname=None, username=None, password=None, port=None,

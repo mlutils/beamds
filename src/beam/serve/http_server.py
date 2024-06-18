@@ -3,7 +3,7 @@ from queue import Queue, Empty
 from threading import Thread
 from flask import Flask, request, jsonify, send_file
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from .server import BeamServer
 
 try:

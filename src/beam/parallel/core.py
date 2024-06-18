@@ -4,7 +4,7 @@ import random
 from ..utils import tqdm_beam
 from ..utils import collate_chunks
 from ..meta import BeamName
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from .task import BeamTask, TaskResult, SyncedResults
 
 

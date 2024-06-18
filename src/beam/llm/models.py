@@ -6,7 +6,7 @@ import requests
 from ..utils import lazy_property as cached_property
 
 from .hf_conversation import Conversation
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from .core import BeamLLM, CompletionObject
 from pydantic import Field, PrivateAttr
 from ..path import normalize_host

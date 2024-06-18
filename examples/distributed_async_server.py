@@ -2,7 +2,7 @@ from threading import Thread
 
 from src.beam.misc import BeamFakeAlg
 from src.beam.distributed import AsyncServer
-from src.beam.logger import beam_logger as logger
+from src.beam import logger
 
 # async def websocket_handler(ws):
 #     # Wait for the client to send its client_id
@@ -43,7 +43,6 @@ if __name__ == '__main__':
     #
     # asyncio.get_event_loop().run_until_complete(ws)
     # asyncio.get_event_loop().run_forever()
-
 
     # def run_ws_server(host, port):
     #     loop = asyncio.new_event_loop()

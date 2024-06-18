@@ -3,7 +3,7 @@ import json
 from threading import Thread
 from uuid import uuid4 as uuid
 import websocket
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 
 from ..path import normalize_host
 from ..serve.http_client import HTTPClient

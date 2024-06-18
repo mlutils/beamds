@@ -12,7 +12,7 @@ from ..dataset import UniversalDataset
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support
 import pandas as pd
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..nn import BeamNN
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True

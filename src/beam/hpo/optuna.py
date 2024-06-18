@@ -1,7 +1,7 @@
 import copy
 
 from ..utils import find_port, check_type, is_notebook, beam_device
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..path import beam_path, BeamPath
 import pandas as pd
 import optuna

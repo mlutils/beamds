@@ -9,7 +9,7 @@ except ImportError:
     # assume python < 3.10
     from collections import Iterator
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..utils import parse_text_to_protocol, retry
 
 

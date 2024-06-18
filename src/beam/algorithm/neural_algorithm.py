@@ -9,7 +9,7 @@ import copy
 from functools import cached_property
 from timeit import default_timer as timer
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN, BeamDDP
 from ..utils import (to_device, check_type, recursive_concatenate,
                      beam_device, filter_dict,
@@ -18,7 +18,7 @@ from ..utils import (to_device, check_type, recursive_concatenate,
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset
 from ..experiment import Experiment, BeamReport
 from ..path import beam_path, local_copy
-from ..logger import beam_kpi, BeamResult
+from ..logging import beam_kpi, BeamResult
 from ..processor import Processor
 from ..base import beam_cache
 

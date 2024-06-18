@@ -2,7 +2,7 @@ from functools import cached_property
 
 from ..meta import BeamName
 from ..utils import Timer, jupyter_like_traceback, dict_to_list
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 
 
 class TaskResult:

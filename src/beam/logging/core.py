@@ -142,5 +142,20 @@ class BeamLogger:
 
         self.handlers['stdout'] = self.stdout_handler(level=level)
 
+    def debug_mode(self):
+        self.set_verbosity('DEBUG')
+
+    def info_mode(self):
+        self.set_verbosity('INFO')
+
+    def warning_mode(self):
+        self.set_verbosity('WARNING')
+
+    def error_mode(self):
+        self.set_verbosity('ERROR')
+
+    def critical_mode(self):
+        self.set_verbosity('CRITICAL')
+
 
 beam_logger = BeamLogger()

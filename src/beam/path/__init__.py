@@ -53,3 +53,4 @@ if len([]):
     from .utils import local_copy, FileSystem
     from .core import PureBeamPath, BeamURL, normalize_host, BeamResource, BeamFile
     from .models import BeamPath
+    from .resource import beam_key

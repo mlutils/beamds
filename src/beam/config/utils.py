@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from ..utils import is_notebook, check_type
 from ..path import beam_path, beam_key
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from .._version import __version__
 import re
 

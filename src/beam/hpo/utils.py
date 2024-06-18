@@ -1,5 +1,5 @@
 import time
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ray.tune.stopper import Stopper
 from typing import Union
 import datetime

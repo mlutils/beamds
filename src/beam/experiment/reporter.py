@@ -14,7 +14,7 @@ from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, rec
                      strip_prefix, recursive_detach, recursive_to_cpu)
 
 from ..utils import tqdm_beam as tqdm
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..data import BeamData
 
 

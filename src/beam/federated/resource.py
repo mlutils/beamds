@@ -4,7 +4,7 @@ from ..distributed import ThreadedDispatcher
 from ..distributed import RayDispatcher, RayClient
 from .federated import BeamFederated
 from ..utils import find_port, GPUManager
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 
 
 def federated_executor(func=None, world_size=1, framework='ddp', distributed_backend='nccl', host=None,

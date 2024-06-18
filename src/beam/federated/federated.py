@@ -6,7 +6,7 @@ import torch.distributed as dist
 import torch
 import os
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..processor import Processor
 from ..utils import has_kwargs, GPUManager
 

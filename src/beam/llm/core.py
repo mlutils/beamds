@@ -9,7 +9,7 @@ from pydantic import BaseModel
 # from functools import cached_property
 from ..utils import lazy_property as cached_property
 
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from .response import LLMResponse
 from .utils import estimate_tokens, split_to_tokens
 from .chat import BeamChat

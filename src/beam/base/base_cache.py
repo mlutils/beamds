@@ -4,7 +4,7 @@ from collections import defaultdict
 from ..utils import LimitedSizeDictFactory, beam_hash
 from ..path import beam_path
 from ..data import BeamData
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 
 
 def beam_cache(depth=None, cache_path=None, exception_keys=None, store_suffix=None, silent=False):

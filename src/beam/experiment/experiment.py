@@ -14,7 +14,7 @@ from functools import cached_property
 from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_notebook,
                      find_port, as_numpy, check_type, beam_device, beam_service_port)
 from ..path import beam_path, BeamPath, beam_key
-from ..logger import beam_logger as logger
+from ..logging import beam_logger as logger
 from ..config import print_beam_hyperparameters, BeamConfig, UniversalConfig
 from .utils import (path_depth, gen_hparams_string, beam_algorithm_generator, default_runner, run_worker,
                     build_device_list)
