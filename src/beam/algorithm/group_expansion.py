@@ -248,6 +248,13 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         ind_unlabeled = np.unique(np.concatenate([ind_sparse, ind_dense], axis=0))
 
+        if seed_subset == expansion_subset:
+            ind_unlabeled = np.setdiff1d(ind_unlabeled, ind_pos)
+
+        expansion_df = pd.DataFrame({'ind': ind_unlabeled})
+        expansion_df['sparse_expansion'] = expansion_df['ind'].isin(ind_sparse)
+        expansion_df['dense_expansion'] = expansion_df['ind'].isin(ind_dense)
+
         x_unlabeled = [self.x[expansion_subset][k] for k in ind_unlabeled]
 
         y_unlabeled = np.zeros(len(ind_unlabeled), dtype=int)
@@ -255,8 +262,9 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         y_unlabeled_true = self.y[expansion_subset][ind_unlabeled]
 
         return {'x_pos': x_pos, 'y_pos': y_pos, 'ind_pos': ind_pos,
-                'x_unlabeled': x_unlabeled,
-                'y_unlabeled': y_unlabeled, 'y_unlabeled_true': y_unlabeled_true, 'ind_unlabeled': ind_unlabeled}
+                'x_unlabeled': x_unlabeled, 'y_unlabeled': y_unlabeled,
+                'y_unlabeled_true': y_unlabeled_true, 'ind_unlabeled': ind_unlabeled,
+                'expansion_df': expansion_df}
 
     def _build_features(self, x, is_train=False, n_workers=None):
 
