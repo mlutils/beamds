@@ -14,7 +14,9 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
 
     def __init__(self, *args, name=None, hparams=None, _init_args=None, _config_scheme=None, **kwargs):
 
-        super().__init__(name=name)
+        # directly call the parent class __init__ method
+        super().__init__(name=name, **kwargs)
+
         self._init_is_done = False
         _init_args = _init_args or {}
 

@@ -10,3 +10,4 @@ mahotas
 
 chromadb
 pymilvus
+lmdeploy

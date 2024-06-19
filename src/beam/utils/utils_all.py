@@ -1149,3 +1149,10 @@ class cached_property(native_cached_property):
             # Change the AttributeError to BeamAttributeException
             raise CachedAttributeException(f"An AttributeError occurred in cached_property: {self.attrname}") from e
 
+
+def safe_getmembers(obj, predicate=None):
+
+    if predicate is None:
+        predicate = lambda x: True
+
+    return inspect.getmembers(obj, predicate=lambda x: predicate(x) and not x.__name__.startswith('_'))

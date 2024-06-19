@@ -11,7 +11,7 @@ class HTTPClient(BeamClient):
         from requests.packages.urllib3.exceptions import InsecureRequestWarning
         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
         self.protocol = 'https' if tls else 'http'
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, scheme='beam-http', **kwargs)
 
     def get_info(self):
         return requests.get(f'{self.protocol}://{self.host}/').json()

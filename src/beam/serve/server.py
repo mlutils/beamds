@@ -9,7 +9,7 @@ from threading import Thread
 from uuid import uuid4 as uuid
 
 from ..logging import beam_logger as logger
-from ..utils import find_port
+from ..utils import find_port, safe_getmembers
 from ..config import to_dict
 from ..processor import MetaDispatcher
 
@@ -226,7 +226,7 @@ class BeamServer(MetaDispatcher):
                 d['hparams'] = None
 
             attributes = self._predefined_attributes.copy()
-            for name, attr in inspect.getmembers(obj):
+            for name, attr in safe_getmembers(obj, lambda x: not x.startswith('_')):
                 if type(name) is not str:
                     continue
                 if not name.startswith('_') and inspect.isroutine(attr):

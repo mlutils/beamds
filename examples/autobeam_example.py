@@ -40,7 +40,9 @@ def main():
         print("Building docker image")
 
         path_to_bundle = f"{path_to_state}_bundle"
-        AutoBeam.to_docker(bundle_path=path_to_bundle, base_image='beam:20240616')
+        AutoBeam.to_docker(bundle_path=path_to_bundle, base_image='beam:20240616',
+                           dockerfile='/home/elad/sandbox/dockerfile-patched-entrypoint',
+                           beam_version='2.5.11', config={'path-to-bundle': '/app/algorithm'})
         print('Bundle saved at:', path_to_bundle)
 
 

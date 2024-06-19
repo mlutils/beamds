@@ -13,7 +13,7 @@ class GRPCClient(BeamClient):
         self.channel = grpc.insecure_channel(f'{host}:{port}')
         # Creating a stub (client)
         self.stub = BeamServiceStub(self.channel)
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, scheme='beam-grpc', **kwargs)
 
     def set_variable(self, name, value, client='beam'):
         """

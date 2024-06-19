@@ -302,8 +302,8 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
                                       expansion_subset='train',
                                       test_subset='validation',
                                       k_sparse=None, k_dense=None):
-        res_train = self.build_group_dataset(group_label, seed_subset=seed_subset, expansion_subset=expansion_subset,
-                                             k_sparse=k_sparse, k_dense=k_dense)
+        res_train = self.build_group_dataset(group_label, seed_subset=seed_subset,
+                                             expansion_subset=expansion_subset, k_sparse=k_sparse, k_dense=k_dense)
 
         ind = np.concatenate([res_train['ind_unlabeled'], res_train['ind_pos']])
         x_train = self.features[seed_subset][ind]

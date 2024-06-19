@@ -8,7 +8,7 @@ class BeamServeConfig(BeamConfig):
     parameters = [
         BeamParam('protocol', str, 'http', 'The serving protocol [http|grpc]'),
         BeamParam('http-backend', str, 'waitress', 'The HTTP server backend'),
-        BeamParam('path-to-bundle', str, '/workspace/serve/bundle', 'Where the algorithm bundle is stored'),
+        BeamParam('path-to-bundle', str, '/app/algorithm', 'Where the algorithm bundle is stored'),
         BeamParam('port', int, None, 'Default port number (set None to choose automatically)'),
         BeamParam('n-threads', int, 4, 'parallel threads'),
         BeamParam('use-torch', bool, False, 'Whether to use torch for pickling/unpickling'),

@@ -182,10 +182,11 @@ class BeamResource(BeamName):
     Base class for all resources. Gets as an input a URI and the resource type and returns the resource.
     """
 
-    def __init__(self, resource_type: str, url: Union[BeamURL, str] = None, scheme: str = None,
-                 hostname: str = None, port: int = None, username: str = None, password: str = None,
-                 fragment: str = None, params: str = None, path: str = None, **kwargs):
+    def __init__(self, resource_type: str = None, url: Union[BeamURL, str] = None, scheme: str = None, hostname: str = None,
+                 port: int = None, username: str = None, password: str = None, fragment: str = None, params: str = None,
+                 path: str = None, **kwargs):
 
+        super().__init__()
         if isinstance(url, str):
             url = BeamURL(url)
 
