@@ -224,35 +224,35 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         return {'sparse': ind_sparse, 'dense': ind_dense}
 
     def build_group_dataset(self, group_label,
-                            known_subset='train',
-                            unknown_subset='validation', k_sparse=None, k_dense=None):
+                            seed_subset='train',
+                            expansion_subset='validation', k_sparse=None, k_dense=None):
 
         k_sparse = k_sparse or self.get_hparam('k-sparse')
         k_dense = k_dense or self.get_hparam('k-dense')
 
-        if not self.tfidf_sim[unknown_subset].is_trained:
-            logger.warning(f"TFIDF model not fitted for {unknown_subset}. Fitting now")
-            self.fit_tfidf(subset=unknown_subset)
+        if not self.tfidf_sim[expansion_subset].is_trained:
+            logger.warning(f"TFIDF model not fitted for {expansion_subset}. Fitting now")
+            self.fit_tfidf(subset=expansion_subset)
 
-        if not self.dense_sim[unknown_subset].is_trained:
-            logger.warning(f"Dense model not fitted for {unknown_subset}. Fitting now")
-            self.fit_dense(subset=unknown_subset)
+        if not self.dense_sim[expansion_subset].is_trained:
+            logger.warning(f"Dense model not fitted for {expansion_subset}. Fitting now")
+            self.fit_dense(subset=expansion_subset)
 
-        ind_pos = np.where(self.y[known_subset] == group_label)[0]
-        v = self.x[known_subset]
+        ind_pos = np.where(self.y[seed_subset] == group_label)[0]
+        v = self.x[seed_subset]
         x_pos = [v[i] for i in ind_pos]
         y_pos = np.ones(len(ind_pos), dtype=int)
 
-        ind_sparse, ind_dense = self.search_dual(x_pos, subset=unknown_subset,
+        ind_sparse, ind_dense = self.search_dual(x_pos, subset=expansion_subset,
                                                  k_sparse=k_sparse, k_dense=k_dense).values()
 
         ind_unlabeled = np.unique(np.concatenate([ind_sparse, ind_dense], axis=0))
 
-        x_unlabeled = [self.x[unknown_subset][k] for k in ind_unlabeled]
+        x_unlabeled = [self.x[expansion_subset][k] for k in ind_unlabeled]
 
         y_unlabeled = np.zeros(len(ind_unlabeled), dtype=int)
 
-        y_unlabeled_true = self.y[unknown_subset][ind_unlabeled]
+        y_unlabeled_true = self.y[expansion_subset][ind_unlabeled]
 
         return {'x_pos': x_pos, 'y_pos': y_pos, 'ind_pos': ind_pos,
                 'x_unlabeled': x_unlabeled,
@@ -298,18 +298,19 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         _ = self.features
 
     def build_classification_datasets(self, group_label,
-                                  known_subset='train',
-                                  unknown_subset='validation',
-                                  test_subset='test',
-                                  k_sparse=None, k_dense=None):
-        res_train = self.build_group_dataset(group_label, known_subset=known_subset, unknown_subset=unknown_subset,
-                                       k_sparse=k_sparse, k_dense=k_dense)
+                                      seed_subset='train',
+                                      expansion_subset='train',
+                                      test_subset='validation',
+                                      k_sparse=None, k_dense=None):
+        res_train = self.build_group_dataset(group_label, seed_subset=seed_subset, expansion_subset=expansion_subset,
+                                             k_sparse=k_sparse, k_dense=k_dense)
+
         ind = np.concatenate([res_train['ind_unlabeled'], res_train['ind_pos']])
-        x_train = self.features[known_subset][ind]
+        x_train = self.features[seed_subset][ind]
         y_train = np.concatenate([res_train['y_unlabeled'], res_train['y_pos']])
 
-        res_test = self.build_group_dataset(group_label, known_subset=known_subset, unknown_subset=test_subset,
-                                      k_sparse=k_sparse, k_dense=k_dense)
+        res_test = self.build_group_dataset(group_label, seed_subset=seed_subset, expansion_subset=test_subset,
+                                            k_sparse=k_sparse, k_dense=k_dense)
 
         x_test = self.features[test_subset][res_test['ind_unlabeled']]
         y_test = (res_test['y_unlabeled_true'] == group_label).astype(int)
@@ -320,12 +321,12 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
                 'y_test_true': res_test['y_unlabeled_true']}
 
     def calculate_evaluation_metrics(self, group_label, datasets, y_pred_train, y_pred_test,
-                                     unknown_subset='validation', test_subset='test'):
+                                     expansion_subset='validation', test_subset='test'):
 
         y_pred = {'train': y_pred_train, 'test': y_pred_test}
         # calculate metrics:
         results = defaultdict(dict)
-        for part, org_set in (('train', unknown_subset), ('test', test_subset)):
+        for part, org_set in (('train', expansion_subset), ('test', test_subset)):
 
             results[part]['original_pool'] = len(self.y[org_set])
             results[part]['prevalence_count'] = (self.y[org_set] == group_label).sum()
@@ -351,12 +352,12 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         return results
 
-    def evaluate(self, group_label, known_subset='train', unknown_subset='validation',
+    def evaluate(self, group_label, seed_subset='train', expansion_subset='validation',
                  test_subset='test', k_sparse=None, k_dense=None, threshold=0.5):
 
-        datasets = self.build_classification_datasets(group_label, known_subset=known_subset,
-                                                unknown_subset=unknown_subset, test_subset=test_subset,
-                                                k_sparse=k_sparse, k_dense=k_dense)
+        datasets = self.build_classification_datasets(group_label, seed_subset=seed_subset,
+                                                      expansion_subset=expansion_subset, test_subset=test_subset,
+                                                      k_sparse=k_sparse, k_dense=k_dense)
 
         self.pu_classifier.fit(datasets['x_train'], datasets['y_train'])
 
@@ -366,7 +367,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         metrics = self.calculate_evaluation_metrics(group_label, datasets, y_pred['train'] > threshold,
                                                     y_pred['test'] > threshold,
-                                                    unknown_subset=unknown_subset,
+                                                    expansion_subset=expansion_subset,
                                                     test_subset=test_subset)
 
         results = {'metrics': metrics, 'datasets': datasets, 'y_pred': y_pred}

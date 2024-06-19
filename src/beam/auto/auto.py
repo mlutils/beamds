@@ -377,25 +377,32 @@ class AutoBeam(BeamBase):
 
         for module_name in self.module_dependencies:
             pip_package = self.get_pip_package(module_name)
+
             if pip_package is not None:
                 if type(pip_package) is not list:
                     pip_package = [pip_package]
                 for pp in pip_package:
 
                     name = pp.metadata['Name']
+                    name = name.lower().replace('_', '-')
+
                     if name is AutoBeam.blacklisted_pip_package:
                         continue
 
                     v = version.parse(pp.version)
                     if v <= versions[name]:
                         continue
+                    else:
+                        versions[name] = v
 
-                    requirements[name] = {'pip_package': name, 'module_name': module_name, 'version': v,
-                                          'metadata': dict(pp.metadata)}
+                    requirements[name] = {'pip_package': name, 'module_name': module_name, 'version': str(v),
+                                          'metadata': {k: str(v) for k, v in pp.metadata.items()}}
             else:
                 logger.warning(f"Could not find pip package for module: {module_name}")
 
-        return list(requirements.values())
+        requirements = [requirements[k] for k in sorted(requirements.keys())]
+
+        return requirements
 
     @staticmethod
     def write_requirements(requirements, path, relation='~=', sim_type='major'):
@@ -459,7 +466,7 @@ class AutoBeam(BeamBase):
             logger.info(f"Building an object bundle")
             bundle_path = AutoBeam.to_bundle(obj, path=bundle_path)
 
-        logger.info(f"Building a Docker image with the requirements and the object bundle")
+        logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         AutoBeam._build_image(bundle_path, base_image, config=config, image_name=image_name,
                               entrypoint=entrypoint, beam_version=beam_version,
                               dockerfile=dockerfile, **kwargs)
@@ -472,7 +479,6 @@ class AutoBeam(BeamBase):
         import docker
         from docker.errors import BuildError
 
-        # client = docker.from_env()
         client = docker.APIClient()
 
         bundle_path = beam_path(bundle_path)
@@ -505,7 +511,10 @@ class AutoBeam(BeamBase):
             else:
                 source_dockerfile = current_dir.joinpath(f"dockerfile-{dockerfile}").read(ext='.txt')
 
+            docker_tools_dir = current_dir.joinpath('docker-tools')
+
             docker_dir.joinpath('dockerfile').write(source_dockerfile, ext='.txt')
+            docker_tools_dir.copy(docker_dir.joinpath('docker-tools'))
 
             # Define build arguments
             build_args = {
@@ -514,20 +523,12 @@ class AutoBeam(BeamBase):
                 'ALGORITHM_DIR': bundle_path.relative_to(bundle_path).str,
                 'ENTRYPOINT_SCRIPT': entrypoint.relative_to(bundle_path).str,
                 'CONFIG_FILE': '.docker/config.yaml',
-                'BEAM_DS_VERSION': beam_version
+                'BEAM_DS_VERSION': beam_version,
+                'DOCKER_TOOLS_DIR': '.docker/docker-tools',
             }
 
             try:
-                # Build the image
-                # image, build_logs = client.images.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
-                #                                         buildargs=build_args, tag=image_name, stream=True)
-                #
-                # # Print build logs (optional)
-                # for line in build_logs:
-                #     if 'stream' in line:
-                #         logger.info(line['stream'].strip())
 
-                # Start the build and stream logs
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
                                         buildargs=build_args, tag=image_name, rm=True, decode=True)
 
@@ -535,7 +536,6 @@ class AutoBeam(BeamBase):
                 for line in response:
                     if 'stream' in line:
                         print(line['stream'].strip())
-
 
             except BuildError as e:
                 logger.error(f"Error building Docker image: {e}")

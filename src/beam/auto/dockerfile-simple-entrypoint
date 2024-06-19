@@ -8,10 +8,13 @@ ARG CONFIG_FILE
 ARG ALGORITHM_DIR
 ARG ENTRYPOINT_SCRIPT
 ARG BEAM_DS_VERSION
+ARG DOCKER_TOOLS_DIR
 
+COPY ${DOCKER_TOOLS_DIR} /app/docker-tools
 # Copy the requirements.txt file and install Python dependencies
-COPY ${REQUIREMENTS_FILE} /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+COPY ${REQUIREMENTS_FILE} /app/requirements.txt
+# RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN python /app/docker-tools/gracefull-pip.py /app/requirements.txt
 
 RUN if [ -z "${BEAM_DS_VERSION}" ]; then \
         pip install beam-ds; \

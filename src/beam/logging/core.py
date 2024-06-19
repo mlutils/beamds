@@ -1,4 +1,6 @@
 import sys
+from contextlib import contextmanager
+
 import loguru
 from ..utils import running_platform
 from ..path import beam_path
@@ -156,6 +158,41 @@ class BeamLogger:
 
     def critical_mode(self):
         self.set_verbosity('CRITICAL')
+
+    @contextmanager
+    def debug_mode(self):
+        mode = self.logger.level
+        self.debug_mode()
+        yield
+        self.set_verbosity(mode)
+
+    @contextmanager
+    def info_mode(self):
+        mode = self.logger.level
+        self.info_mode()
+        yield
+        self.set_verbosity(mode)
+
+    @contextmanager
+    def warning_mode(self):
+        mode = self.logger.level
+        self.warning_mode()
+        yield
+        self.set_verbosity(mode)
+
+    @contextmanager
+    def error_mode(self):
+        mode = self.logger.level
+        self.error_mode()
+        yield
+        self.set_verbosity(mode)
+
+    @contextmanager
+    def critical_mode(self):
+        mode = self.logger.level
+        self.critical_mode()
+        yield
+        self.set_verbosity(mode)
 
 
 beam_logger = BeamLogger()
