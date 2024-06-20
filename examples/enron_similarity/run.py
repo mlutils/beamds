@@ -10,9 +10,6 @@ from examples.enron_similarity.config import TicketSimilarityConfig
 
 
 def run_enron():
-    # from src.beam import BeamData
-    # bd = BeamData.from_path('/home/shared/data/results/enron/enron_mails_without_entities', read_metadata=False)
-    # bd.cache()
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
     conf_path = resource(os.path.join(script_dir, 'config.yaml')).str
@@ -57,6 +54,9 @@ def run_enron():
         logger.info(f"Saving state to {hparams.get('model-state-path')}")
         alg.save_state(hparams.get('model-state-path'), override=False)
 
+    df = alg.search_dual('I need to know about the project', k_sparse=5, k_dense=5)
+    print(df)
+
     # alg.tfidf_sim.metric = 'bm25'
     query = "I need to know about the project"
     results = alg.search_tfidf(query, k=5)
@@ -80,7 +80,7 @@ def run_enron():
     alg.tfidf_sim.metric = 'bm25'
     pd.Series(alg.y['validation']).value_counts().head(20)
     l = 36
-    res = alg.build_group_dataset(l, k_sparse=50, k_dense=50)
+    res = alg.build_expansion_dataset(l, k_sparse=50, k_dense=50)
     tp = (res['y_unlabeled_true'] == l).sum()
     fp = len(res['y_unlabeled_true']) - tp
     p = (alg.y['validation'] == l).sum()

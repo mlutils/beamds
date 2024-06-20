@@ -20,8 +20,10 @@ from ..importer.safe_imports.torch import torch
 from ..importer.safe_imports.scipy import scipy
 
 
-
 def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
+
+    f = torch.arange if arr_type == 'tensor' else np.arange
+
     if isinstance(s, slice):
 
         if s == slice(None):
@@ -53,7 +55,6 @@ def slice_to_index(s, l=None, arr_type='tensor', sliced=None):
         if sliced is not None:
             return slice_array(sliced, slice(start, stop, step))
 
-        f = torch.arange if arr_type == 'tensor' else np.arange
         return f(start, stop, step)
 
     if sliced is not None:

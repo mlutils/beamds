@@ -226,7 +226,7 @@ class BeamServer(MetaDispatcher):
                 d['hparams'] = None
 
             attributes = self._predefined_attributes.copy()
-            for name, attr in safe_getmembers(obj, lambda x: not x.startswith('_')):
+            for name, attr in safe_getmembers(obj):
                 if type(name) is not str:
                     continue
                 if not name.startswith('_') and inspect.isroutine(attr):

@@ -1001,9 +1001,11 @@ class BeamData(BeamName):
         return bd.data
 
     @staticmethod
-    def read(paths, schema=None, **kwargs):
+    def read(paths, schema=None, strict=False, **kwargs):
 
         if paths is None:
+            if strict:
+                raise ValueError("No path provided")
             return None
 
         if is_container(paths):
@@ -1055,8 +1057,11 @@ class BeamData(BeamName):
                 if p.stem == path.stem:
                     return p.read(**kwargs)
 
-        logger.warning(f"No object found in path: {path}")
-        return None
+        if strict:
+            raise ValueError(f"No object found in path: {path}")
+        else:
+            logger.warning(f"No object found in path: {path}")
+            return None
 
     @staticmethod
     def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9), override=True,

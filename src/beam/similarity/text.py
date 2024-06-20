@@ -1,13 +1,11 @@
 from typing import List
-
-from sentence_transformers import SentenceTransformer
-
 from ..logging import beam_logger as logger
 from ..utils import beam_device
 from ..processor import Processor
 from ..llm import default_tokenizer
 from .dense import DenseSimilarity
 from ..path import local_copy, beam_path
+from ..resources import resource
 
 
 class TextSimilarity(DenseSimilarity):
@@ -37,15 +35,12 @@ class TextSimilarity(DenseSimilarity):
         self.cache_folder = self.get_hparam('cache_folder', cache_folder)
         self.batch_size = self.get_hparam('batch_size', batch_size)
         self.show_progress_bar = self.get_hparam('show_progress_bar', show_progress_bar)
+        st_kwargs = self.get_hparam('st_kwargs', {})
 
-        if dense_model is None:
-            st_kwargs = self.get_hparam('st_kwargs', st_kwargs)
-            st_kwargs = st_kwargs or {}
-            self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'),
-                                                   device=str(self.dense_model_device), **st_kwargs)
-        else:
-            self.dense_model = dense_model
-            self.dense_model.to(self.dense_model_device)
+        self.dense_model = self.load_dense_model(dense_model=dense_model,
+                                                 dense_model_path=dense_model_path,
+                                                 dense_model_device=self.dense_model_device,
+                                                 **st_kwargs)
 
         d = self.dense_model.get_sentence_embedding_dimension()
 
@@ -61,6 +56,20 @@ class TextSimilarity(DenseSimilarity):
                 self._tokenizer = PreTrainedTokenizerFast(tokenizer_file=self.get_hparam('tokenizer_path'))
         else:
             self._tokenizer = tokenizer
+
+    @staticmethod
+    def load_dense_model(dense_model_path=None, dense_model=None, dense_model_device=None, **st_kwargs):
+
+        if dense_model is None:
+            if dense_model_path.startswith('beam'):
+                dense_model = resource(dense_model_path)
+            else:
+                from sentence_transformers import SentenceTransformer
+                dense_model = SentenceTransformer(dense_model_path, device=str(dense_model_device), **st_kwargs)
+        else:
+            dense_model.to(dense_model_device)
+
+        return dense_model
 
     @property
     def tokenizer(self):
@@ -119,15 +128,8 @@ class TextSimilarity(DenseSimilarity):
         state = super().load_state_dict(path, ext, exclude, **kwargs)
 
         path = beam_path(path)
-        dense_model_path = self.get_hparam('dense_model_path')
-        if dense_model_path is not None:
-            st_kwargs = self.get_hparam('st_kwargs', {})
-            st_kwargs = st_kwargs or {}
-            self.dense_model = SentenceTransformer(self.get_hparam('dense_model_path'),
-                                                   device=str(self.dense_model_device), **st_kwargs)
-        else:
-            self.dense_model = None
-            logger.warning("No dense model path found in the state dictionary, please load the dense model manually.")
+        self.dense_model = None
+        logger.warning("Dense model is not loaded. Use set_dense_model to manually set the dense model.")
 
         if path.joinpath('tokenizer.hf').exists():
             from transformers import PreTrainedTokenizerFast

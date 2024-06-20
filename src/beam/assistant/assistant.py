@@ -5,7 +5,7 @@ from typing import Dict, List, Any
 from ..llm import beam_llm
 from ..llm import LLMGuidance
 from ..processor import MetaDispatcher
-from ..utils import check_type
+from ..utils import check_type, safe_getmembers
 from ..logging import beam_logger as logger
 import inspect
 import threading
@@ -312,8 +312,7 @@ class BeamAssistant(MetaDispatcher):
                          f"(their names do not necessarily match to the method signature):\n"
                          f"{self.arguments_repr(**user_kwargs)}\n")
 
-        method_list = inspect.getmembers(self.real_object, predicate=inspect.isroutine)
-        method_list = [m for m in method_list if not m[0].startswith('_')]
+        method_list = safe_getmembers(self.real_object, predicate=inspect.isroutine)
         json_output_example = json.dumps({'method': 'method_name'})
         class_doc = inspect.getdoc(self)
         class_doc = f"{class_doc}\n" if class_doc else ""

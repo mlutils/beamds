@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from collections import Counter
 from pathlib import PurePath
+from functools import cached_property
 
 from ..importer.lazy_importer import lazy_importer as lzi
 
@@ -38,6 +39,12 @@ class Types(Enum):
     polars = 'polars'
     cudf = 'cudf'
     pil = 'pil'
+
+
+def is_cached_property(obj, attribute_name):
+    # Access the class attribute directly without triggering the property
+    attr = getattr(type(obj), attribute_name, None)
+    return isinstance(attr, cached_property)
 
 
 def is_polars(x):

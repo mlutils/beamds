@@ -2,6 +2,7 @@ import inspect
 from functools import cached_property
 
 from .core import Processor
+from ..utils import safe_getmembers
 
 
 class MetaAsyncResult:
@@ -89,8 +90,7 @@ class MetaDispatcher(Processor):
     def routes(self):
         routes = self._routes
         if routes is None or len(routes) == 0:
-            routes = [name for name, attr in inspect.getmembers(self.real_object)
-                      if type(name) is str and not name.startswith('_') and inspect.isroutine(attr)]
+            routes = [name for name, attr in safe_getmembers(self.real_object, predicate=inspect.isroutine)]
         return routes
 
     @cached_property

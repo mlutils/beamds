@@ -2,7 +2,7 @@ import itertools
 import os
 import sys
 from collections import defaultdict
-from typing import Any
+import types
 
 import numpy as np
 from fnmatch import filter
@@ -19,7 +19,7 @@ import threading
 import traceback
 import linecache
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
-
+from inspect import isclass, getmro
 
 import socket
 from contextlib import closing
@@ -32,7 +32,7 @@ from functools import wraps, partial, cached_property as native_cached_property
 from collections import OrderedDict
 
 # do not delete this import (it is required as some modules import the following imported functions from this file)
-from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container
+from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container, is_cached_property
 
 
 DataBatch = namedtuple("DataBatch", "index label data")
@@ -1150,9 +1150,56 @@ class cached_property(native_cached_property):
             raise CachedAttributeException(f"An AttributeError occurred in cached_property: {self.attrname}") from e
 
 
+def getmembers(object, predicate=None):
+    """Return all members of an object as (name, value) pairs sorted by name.
+    Optionally, only return members that satisfy a given predicate."""
+    if isclass(object):
+        mro = (object,) + getmro(object)
+    else:
+        mro = ()
+    results = []
+    processed = set()
+    names = dir(object)
+    # :dd any DynamicClassAttributes to the list of names if object is a class;
+    # this may result in duplicate entries if, for example, a virtual
+    # attribute with the same name as a DynamicClassAttribute exists
+    try:
+        for base in object.__bases__:
+            for k, v in base.__dict__.items():
+                if isinstance(v, types.DynamicClassAttribute):
+                    names.append(k)
+    except AttributeError:
+        pass
+    for key in names:
+        # First try to get the value via getattr.  Some descriptors don't
+        # like calling their __get__ (see bug #1785), so fall back to
+        # looking in the __dict__.
+        try:
+            if is_cached_property(object, key) and key not in object.__dict__.keys():
+                continue
+            value = getattr(object, key)
+            # handle the duplicate key
+            if key in processed:
+                raise AttributeError
+        except AttributeError:
+            for base in mro:
+                if key in base.__dict__:
+                    value = base.__dict__[key]
+                    break
+            else:
+                # could be a (currently) missing slot member, or a buggy
+                # __dir__; discard and move on
+                continue
+        if not predicate or predicate(key, value):
+            results.append((key, value))
+        processed.add(key)
+    results.sort(key=lambda pair: pair[0])
+    return results
+
+
 def safe_getmembers(obj, predicate=None):
 
     if predicate is None:
-        predicate = lambda x: True
+        predicate = lambda value: True
 
-    return inspect.getmembers(obj, predicate=lambda x: predicate(x) and not x.__name__.startswith('_'))
+    return getmembers(obj, predicate=lambda key, value: predicate(value) and not key.startswith('_'))

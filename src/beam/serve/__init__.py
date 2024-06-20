@@ -1,6 +1,7 @@
 # Explicit imports for IDE
 if len([]):
     from .remote import beam_server, beam_client, triton_client
+    from .config import BeamServeConfig
 
 __all__ = ['beam_server', 'beam_client', 'triton_client', 'BeamServeConfig']
 
@@ -20,3 +21,4 @@ def __getattr__(name):
         return BeamServeConfig
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
+
