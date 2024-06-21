@@ -103,7 +103,8 @@ class Processor(BeamBase):
 
     @classmethod
     def from_path(cls, path, skeleton: Union[bool, str] = True, init_args: Union[bool, str] = True,
-                  load_state_kwargs=None, exclude: Union[List, Set] = None, overwrite_hparams=None, **kwargs):
+                  load_state_kwargs=None, exclude: Union[List, Set] = None,
+                  overwrite_hparams=None, overwrite_attributes=None, **kwargs):
 
         load_state_kwargs = load_state_kwargs or {}
         overwrite_hparams = overwrite_hparams or {}
@@ -116,9 +117,6 @@ class Processor(BeamBase):
             if skeleton is True:
                 skeleton = Processor.skeleton_file
             obj = BeamData.read(path.joinpath(skeleton))
-            if obj is not None:
-                for k, v in overwrite_hparams.items():
-                    obj.hparams.set(k, v)
 
         if obj is None:
             if init_args:
@@ -148,7 +146,7 @@ class Processor(BeamBase):
                 obj = cls(*init_args, **init_kwargs)
 
         obj.load_state(path, skeleton=False, exclude=exclude, overwrite_hparams=overwrite_hparams,
-                       **load_state_kwargs)
+                       overwrite_attributes=overwrite_attributes, **load_state_kwargs)
         return obj
 
     @classmethod
@@ -261,11 +259,12 @@ class Processor(BeamBase):
                 if hparams:
                     exclude_hparams = exclude_hparams or []
                     self.hparams.update(v, exclude=exclude_hparams)
-                    overwrite_hparams = overwrite_hparams or {}
-                    for kh, vh in overwrite_hparams.items():
-                        self.hparams.set(kh, vh)
             else:
                 setattr(self, k, v)
+
+            overwrite_hparams = overwrite_hparams or {}
+            for kh, vh in overwrite_hparams.items():
+                self.hparams.set(kh, vh)
 
     def save_state_dict(self, state, path, ext=None, exclude: Union[List, Set] = None, override=False, **kwargs):
 
@@ -333,16 +332,14 @@ class Processor(BeamBase):
 
     def load_state(self, path=None, state=None, ext=None, exclude: Union[List, Set] = None,
                    skeleton: Union[bool, str] = False, hparams=True, exclude_hparams=None, overwrite_hparams=None,
-                   **kwargs):
+                   overwrite_attributes=None, **kwargs):
 
         assert path or state, 'Either path or state must be provided'
 
         exclude = set(exclude) if exclude is not None else set()
         exclude = exclude.union(self.excluded_attributes)
         overwrite_hparams = overwrite_hparams or {}
-
-        for k, v in overwrite_hparams.items():
-            self.hparams.set(k, v)
+        overwrite_attributes = overwrite_attributes or {}
 
         path = beam_path(path)
         if state is None:
@@ -359,6 +356,9 @@ class Processor(BeamBase):
 
         for k, v in overwrite_hparams.items():
             self.hparams.set(k, v)
+
+        for k, v in overwrite_attributes.items():
+            setattr(self, k, v)
 
     def to_path(self, path, **kwargs):
         self.save_state(path, **kwargs)

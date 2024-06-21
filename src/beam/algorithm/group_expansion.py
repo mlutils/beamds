@@ -212,16 +212,19 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         for k in self.dense_sim.keys():
             self.dense_sim[k].set_dense_model(dense_model)
 
-    def search_dual(self, query, subset='validation', k_sparse=5, k_dense=5):
+    def search_dual(self, query, index=None, subset='validation', k_sparse=5, k_dense=5):
         res_sparse = self.search_tfidf(query, subset=subset, k=k_sparse)
         res_dense = self.search_dense(query, subset=subset, k=k_dense)
+
+        if index is None:
+            index = np.arange(len(query))
 
         loc_sparse = res_sparse.index.flatten()
         loc_dense = res_dense.index.flatten()
         iloc_sparse = self.invmap[subset][loc_sparse]
         iloc_dense = self.invmap[subset][loc_dense]
-        source_sparse = np.repeat(np.arange(len(query))[:, None], k_sparse, axis=1).flatten()
-        source_dense = np.repeat(np.arange(len(query))[:, None], k_dense, axis=1).flatten()
+        source_sparse = np.repeat(index[:, None], k_sparse, axis=1).flatten()
+        source_dense = np.repeat(index[:, None], k_dense, axis=1).flatten()
         val_sparse = res_sparse.values.flatten()
         val_dense = res_dense.values.flatten()
 
@@ -237,6 +240,8 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         df = pd.merge(df_sparse, df_dense, how='outer', left_index=True, right_index=True,
                       suffixes=('_sparse', '_dense'), indicator=True)
+
+        df['label'] = self.y[subset][df.index]
 
         return df
 
@@ -260,6 +265,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         x_seed = []
         x_seed_features = []
         iloc_seed = {}
+        loc_seed = []
 
         for seed_subset in seed_subsets:
 
@@ -267,32 +273,25 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
             x_seed.extend([self.x[seed_subset][i] for i in iloc_seed_j])
             x_seed_features.append(self.features[seed_subset][iloc_seed_j])
             iloc_seed[seed_subset] = iloc_seed_j
+            loc_seed.append(self.ind[seed_subset][iloc_seed_j])
 
         y_seed = np.ones(len(x_seed), dtype=int)
         x_seed_features = np.concatenate(x_seed_features, axis=0)
+        loc_seed = np.concatenate(loc_seed, axis=0)
 
-        dual_search = self.search_dual(x_seed, subset=expansion_subset, k_sparse=k_sparse, k_dense=k_dense)
-
-        ind_expansion = np.unique(np.concatenate([dual_search['iloc_sparse'], dual_search['iloc_dense']], axis=0))
+        expansion_df = self.search_dual(x_seed, index=loc_seed, subset=expansion_subset, k_sparse=k_sparse, k_dense=k_dense)
 
         if expansion_subset in seed_subsets:
-            ind_expansion = np.setdiff1d(ind_expansion, loc_seed)
+            expansion_df = expansion_df.loc[~expansion_df.index.isin(iloc_seed[expansion_subset])]
 
-        expansion_df = pd.DataFrame({'ind': ind_expansion})
-        expansion_df['sparse_expansion'] = expansion_df['ind'].isin(ind_sparse)
-        expansion_df['dense_expansion'] = expansion_df['ind'].isin(ind_dense)
-        expansion_df['label'] = self.y[expansion_subset][ind_expansion]
+        x_expansion = [self.x[expansion_subset][k] for k in expansion_df.index]
+        x_expansion_features = self.features[expansion_subset][expansion_df.index]
 
-        x_expansion = [self.x[expansion_subset][k] for k in ind_expansion]
-        x_expansion_features = self.features[expansion_subset][ind_expansion]
-
-        y_expansion = np.zeros(len(ind_expansion), dtype=int)
+        y_expansion = np.zeros(len(x_expansion), dtype=int)
         x = np.concatenate([x_seed_features, x_expansion_features], axis=0)
         y = np.concatenate([y_seed, y_expansion], axis=0)
-        ind = np.concatenate([loc_seed, ind_expansion], axis=0)
 
-        return {'x': x, 'y': y, 'ind': ind, 'expansion_df': expansion_df}
-
+        return {'x': x, 'y': y, 'expansion_df': expansion_df}
 
         # return {'x_seed': x_seed, 'y_seed': y_seed, 'ind_seed': ind_seed,
         #         'x_expansion': x_expansion, 'y_expansion': y_expansion,
@@ -343,28 +342,19 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         dataset_train = self.build_expansion_dataset(group_label, seed_subsets='train', expansion_subset='train',
                                                      k_sparse=k_sparse, k_dense=k_dense)
 
-        ind = np.concatenate([dataset_train['ind_unlabeled'], dataset_train['ind_pos']])
-        x_train = self.features['train'][ind]
-        y_train = np.concatenate([dataset_train['y_unlabeled'], dataset_train['y_pos']])
+        dataset_validation = self.build_expansion_dataset(group_label, seed_subsets='train',
+                                                          expansion_subset='validation', k_sparse=k_sparse,
+                                                          k_dense=k_dense)
 
-        dataset_validation = self.build_expansion_dataset(group_label, seed_subsets='train', expansion_subset='validation',
-                                                          k_sparse=k_sparse, k_dense=k_dense)
+        res_test = self.build_expansion_dataset(group_label, seed_subsets=['train', 'validation'],
+                                                expansion_subset='test', k_sparse=k_sparse, k_dense=k_dense)
 
-        ind = np.concatenate([dataset_validation['ind_unlabeled'], dataset_validation['ind_pos']])
-        x_val = self.features['validation'][ind]
-        y_val = np.concatenate([dataset_validation['y_unlabeled'], dataset_validation['y_pos']])
-
-
-        res_test = self.build_expansion_dataset(group_label, seed_subsets=['train', 'validation'], expansion_subset='test',
-                                                k_sparse=k_sparse, k_dense=k_dense)
-
-        x_test = self.features[test_subset][res_test['ind_unlabeled']]
-        y_test = (res_test['y_unlabeled_true'] == group_label).astype(int)
-
-        return {'x_train': x_train, 'y_train': y_train, 'ind_train': ind,
-                'y_train_true': dataset_train['y_unlabeled_true'],
-                'x_test': x_test, 'y_test': y_test, 'ind_test': res_test['ind_unlabeled'],
-                'y_test_true': res_test['y_unlabeled_true']}
+        return {'x_train': dataset_train['x'], 'y_train': dataset_train['y'],
+                'x_validation': dataset_validation['x'], 'y_validation': dataset_validation['y'],
+                'x_test': res_test['x'], 'y_test': res_test['y'],
+                'train_expansion_df': dataset_train['expansion_df'],
+                'validation_expansion_df': dataset_validation['expansion_df'],
+                'test_expansion_df': res_test['expansion_df']}
 
     def calculate_evaluation_metrics(self, group_label, datasets, y_pred_train, y_pred_test,
                                      expansion_subset='validation', test_subset='test'):
