@@ -15,12 +15,14 @@ ray_cluster = RayCluster(deployment=None, config=config)
 
 # Deploy the Ray cluster
 ray_cluster.deploy_cluster()
+print(ray_cluster.deployment.cluster_info)
 
-print(ray_cluster.deployment.deployment_info)
+
 
 # run on daemon mode the monitor of the cluster
-# try:
-#     ray_cluster.monitor_cluster()
-# except KeyboardInterrupt:
-#     ray_cluster.stop_monitoring()
-#     print("Monitoring stopped.")
+try:
+    ray_cluster.monitor_cluster()
+    print(ray_cluster.get_cluster_logs())
+except KeyboardInterrupt:
+    ray_cluster.stop_monitoring()
+    print("Monitoring stopped.")

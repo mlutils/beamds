@@ -5,6 +5,7 @@ from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from .dataclasses import *
+from ..resources import resource
 from datetime import datetime
 import json
 
@@ -155,7 +156,8 @@ class BeamDeploy(Processor):
             print(f"Fetched actual_pod_info for pod_name '{pod_name}': {actual_pod_info}")
 
             # Directly return the single BeamPod instance
-            return BeamPod(pod_infos=[BeamPod.extract_pod_info(actual_pod_info)], namespace=self.namespace, k8s=self.k8s)
+            return BeamPod(pod_infos=[BeamPod.extract_pod_info(actual_pod_info)], namespace=self.namespace,
+                           k8s=self.k8s)
 
         # Handle cases where deployment failed or no pods were returned
         if not self.beam_pod_instances:
@@ -188,27 +190,6 @@ class BeamDeploy(Processor):
                         service_configs=[svc_config],
                     )
 
-        # deployment_state = {
-        #     "pod_info_state": [pod_info.raw_pod_data for pod_info in self.pod_info_state],
-        #     "beam_pod_instances": [pod_info.raw_pod_data for beam_pod_instance in
-        #                            self.beam_pod_instances for pod_info in beam_pod_instance.pod_infos]
-        # }
-
-        # Convert datetime objects to strings in deployment_state
-        # deployment_state_converted = convert_datetimes(deployment_state)
-        # self.deployment_state = deployment_state_converted
-
-        # Save the state to a file
-        # with open("deployment_state.json", "w") as f:
-        #     json.dump(deployment_state_converted, f, indent=4)
-
-        # TODO: Implement the following code snippet
-        # resource("deployment_state.yaml").write(deployment_state_converted)
-
-        # Gather cluster information
-        # self.gather_deployment_info()
-
-        # Return a single BeamPod instance or a list of them, based on the number of instances created
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
 
     def extract_ports(self):
@@ -258,64 +239,33 @@ class BeamDeploy(Processor):
         except ApiException as e:
             logger.error(f"Error deleting service for deployment '{self.deployment_name}': {e}")
 
-    # def gather_deployment_info(self):
-    #     services_info = self.k8s.get_services_info(self.namespace)
-    #     routes_info = self.k8s.get_routes_info(self.namespace)
-    #
-    #     service_info_lines = []
-    #     for service_info in services_info:
-    #         if 'node_port' in service_info:
-    #             service_line = f"{service_info['service_name']} + {service_info['cluster_ip']} + {service_info['port']} " \
-    #                            f"that mapped to Host IP + {service_info['node_port']} + ingress access"
-    #         else:
-    #             service_line = f"{service_info['service_name']} + {service_info['cluster_ip']} + {service_info['port']}"
-    #         service_info_lines.append(service_line)
-    #
-    #     route_info_lines = [f"Route link: {route_info['host']}" for route_info in routes_info]
-    #
-    #     self.cluster_info = {
-    #         "services": service_info_lines,
-    #         "routes": route_info_lines
-    #     }
-    #
-    #     # Save the state to a file
-    #     deployment_state = {
-    #         "pod_info_state": [pod_info.raw_pod_data for pod_info in self.pod_info_state],
-    #         "beam_pod_instances": [pod_info.raw_pod_data for beam_pod_instance in self.beam_pod_instances for pod_info
-    #                                in beam_pod_instance.pod_infos],
-    #         "cluster_info": self.cluster_info
-    #     }
-    #     with open("deployment_state.json", "w") as f:
-    #         json.dump(deployment_state, f, indent=4)
-    #
-    #     return self.cluster_info
-
     @property
     def cluster_info(self):
-
         services_info = self.k8s.get_services_info(self.namespace)
         routes_info = self.k8s.get_routes_info(self.namespace)
+        host_ip = self.beam_pod_instances[0].pod_infos[0].raw_pod_data['status'].get('host_ip') or 'Host IP NONE'
+        service_info_lines = []
+        route_info_lines = []
 
-        if services_info is not None and routes_info is not None:
+        if services_info:
 
-            service_info_lines = []
             for service_info in services_info:
+
                 if 'node_port' in service_info:
-                    service_line = f"{service_info['service_name']} + {service_info['cluster_ip']} + {service_info['port']} " \
-                                   f"that mapped to Host IP + {service_info['node_port']} + ingress access"
+                    service_line = f"Service: {service_info['service_name']} | Cluster IP: {service_info['cluster_ip']} | Port: {service_info['port']} | Host IP: {host_ip} | NodePort: {service_info['node_port']} | Ingress Access"
                 else:
-                    service_line = f"{service_info['service_name']} + {service_info['cluster_ip']} + {service_info['port']}"
+                    service_line = f"Service: {service_info['service_name']} | Cluster IP: {service_info['cluster_ip']} | Port: {service_info['port']}"
                 service_info_lines.append(service_line)
 
+        if routes_info:
             route_info_lines = [f"Route link: {route_info['host']}" for route_info in routes_info]
 
-            cluster_info = {
-                "services": service_info_lines,
-                "routes": route_info_lines
-            }
+        cluster_info = "\n".join(service_info_lines + route_info_lines)
+        resource("deployment_state.yaml").write(cluster_info)
 
-        else:
-            cluster_info = None
+        # Write the formatted lines to a file
+        with open("cluster_info.txt", "w") as file:
+            file.write(cluster_info)
 
         return cluster_info
 

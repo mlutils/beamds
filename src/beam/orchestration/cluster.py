@@ -1,6 +1,5 @@
 from .k8s import BeamK8S
 from .deploy import BeamDeploy
-from .pod import BeamPod
 from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig,
                           MemoryStorageConfig, SecurityContextConfig)
 from ..logging import beam_logger as logger
@@ -101,7 +100,6 @@ class RayCluster(Processor):
 
     # Todo: run over all nodes and get info from pod, if pod is dead, relaunch the pod
 
-
     def monitor_cluster(self):
         while True:
             try:
@@ -116,6 +114,9 @@ class RayCluster(Processor):
     @staticmethod
     def stop_monitoring():
         logger.info("Stopped monitoring the Ray cluster.")
+
+    def get_cluster_logs(self):
+        return self.deployment.k8s.get_pod_logs()
 
     def add_nodes(self, n=1):
         new_pods = self.deployment.launch(replicas=n)
