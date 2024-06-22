@@ -67,6 +67,7 @@ class RayCluster(Processor):
             raise Exception("Pod deployment failed")
 
         self.head = pod_instances[0]
+        self.workers = pod_instances[1:]
         head_command = "ray start --head --port=6379 --disable-usage-stats --dashboard-host=0.0.0.0"
         self.head.execute(head_command)
 
@@ -116,7 +117,28 @@ class RayCluster(Processor):
         logger.info("Stopped monitoring the Ray cluster.")
 
     def get_cluster_logs(self):
-        return self.deployment.k8s.get_pod_logs()
+        logger.info("Getting logs from head and worker nodes...")
+        head_logs = self.head.get_logs()  # Retrieve head node logs
+        worker_logs = self.workers[0].get_logs()  # Retrieve worker node logs
+        try:
+            logger.info("Logs from head node:")
+            for pod_name, log_entries in head_logs:
+                logger.info(f"Logs for {pod_name}:")
+                for line in log_entries.split('\n'):
+                    if line.strip():
+                        logger.info(line.strip())
+
+            logger.info("Logs from worker node:")
+            for pod_name, log_entries in worker_logs:
+                logger.info(f"Logs for {pod_name}:")
+                for line in log_entries.split('\n'):
+                    if line.strip():
+                        logger.info(line.strip())
+
+        except Exception as e:
+            logger.exception("Failed to retrieve or process cluster logs", exception=e)
+
+        return head_logs, worker_logs
 
     def add_nodes(self, n=1):
         new_pods = self.deployment.launch(replicas=n)
