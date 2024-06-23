@@ -33,8 +33,6 @@ ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs'
 user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
 command = CommandConfig(**config.get('command', {}))
 
-# k8s = BeamK8S(hparams)
-
 deployment = BeamDeploy(
     k8s=k8s,
     project_name=config['project_name'],
