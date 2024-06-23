@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
-from typing import List, Union
+from typing import List, Union, Optional
 from .units import K8SUnits
 from typing import Dict, Any
+
 
 @dataclass
 class ServiceConfig:
@@ -21,6 +22,16 @@ class ServiceConfig:
 class SecurityContextConfig:
     add_capabilities: List[str] = field(default_factory=list)
     enable_security_context: bool = False
+
+
+@dataclass
+class CommandConfig:
+    executable: str
+    arguments: List[str] = field(default_factory=list)
+
+    def as_list(self) -> List[str]:
+        """Converts the command configuration to a list format suitable for Kubernetes containers."""
+        return [self.executable] + self.arguments
 
 
 @dataclass

@@ -103,7 +103,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
-                         cpu_requests=None, cpu_limits=None, memory_requests=None,
+                         cpu_requests=None, cpu_limits=None, memory_requests=None, command=None,
                          memory_limits=None, gpu_requests=None, memory_storage_configs=None,
                          use_gpu=False, gpu_limits=None, security_context_config=None,
                          security_context=None, entrypoint_args=None, entrypoint_envs=None):
@@ -119,6 +119,11 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             env_vars.append(client.V1EnvVar(name=f"ARG_{arg}", value=str(arg)))
         for key, value in entrypoint_envs.items():
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
+
+        if command:
+            command = command.as_list()
+        else:
+            command = None
 
         # Preparing volume mounts
         volume_mounts = []
@@ -162,6 +167,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return client.V1Container(
             name=container_name,
             image=image_name,
+            command=command,
             ports=[client.V1ContainerPort(container_port=port) for port in ports] if ports else [],
             env=env_vars,
             volume_mounts=volume_mounts,
@@ -200,7 +206,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return env_vars
 
     @staticmethod
-    def create_pod_template(image_name, labels=None, deployment_name=None, project_name=None,
+    def create_pod_template(image_name, command, labels=None, deployment_name=None, project_name=None,
                             ports=None, create_service_account=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
                             memory_limits=None, use_gpu=False, gpu_requests=None,
@@ -227,21 +233,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 else:
                     memory_volume_spec = client.V1EmptyDirVolumeSource()
 
-
-        # if memory_storage_configs:
-        #     for mem_storage in memory_storage_configs:
-        #         if mem_storage.enabled is True:
-        #             memory_volume_spec = client.V1EmptyDirVolumeSource(medium="Memory")
-        #             if mem_storage.size_gb is not None:
-        #                 memory_volume_spec.size_limit = mem_storage.size_gb.as_str
-        #         else:
-        #             memory_volume_spec = client.V1EmptyDirVolumeSource()
-        #
-        #         volumes.append(client.V1Volume(
-        #             name=mem_storage.name,
-        #             empty_dir=memory_volume_spec
-        #         ))
-
         # Handle PVC mounts
         if pvc_mounts:
             for mount in pvc_mounts:
@@ -253,6 +244,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Call the create_container static method
         container = BeamK8S.create_container(
             image_name=image_name,
+            command=command,
             deployment_name=deployment_name,
             project_name=project_name,
             ports=ports,
@@ -305,7 +297,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                                cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=False,
                                node_selector=False, memory_limits=None, use_gpu=False,
                                gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
-                               security_context_config=None, entrypoint_args=None,
+                               security_context_config=None, command=None, entrypoint_args=None,
                                entrypoint_envs=None):
         # Ensure pvc_mounts are prepared correctly from storage_configs if needed
         pvc_mounts = [{
@@ -316,6 +308,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the pod template with correct arguments
         pod_template = self.create_pod_template(
             image_name=image_name,
+            command=command,
             labels=labels,
             deployment_name=deployment_name,
             project_name=project_name,
@@ -346,7 +339,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         )
 
     # TODO: why the method recieves all vars with "none" as default value? It should be a dict with the values
-    def create_deployment(self, image_name, labels=None, deployment_name=None, namespace=None, project_name=None,
+    def create_deployment(self, image_name, command=None, labels=None, deployment_name=None,
+                          namespace=None, project_name=None,
                           replicas=None, ports=None, create_service_account=None, service_account_name=None,
                           storage_configs=None, cpu_requests=None, cpu_limits=None, memory_requests=None,
                           use_node_selector=False, node_selector=False, memory_storage_configs=None,
@@ -370,7 +364,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         deployment_name = self.generate_unique_deployment_name(deployment_name, namespace)
 
         deployment_spec = self.create_deployment_spec(
-            image_name, labels=labels, deployment_name=deployment_name,
+            image_name, command=command, labels=labels, deployment_name=deployment_name,
             project_name=project_name, replicas=replicas, ports=ports, create_service_account=create_service_account,
             service_account_name=service_account_name, use_node_selector=use_node_selector, node_selector=node_selector,
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,

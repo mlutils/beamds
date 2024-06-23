@@ -13,7 +13,7 @@ import json
 class BeamDeploy(Processor):
 
     def __init__(self, k8s=None, check_project_exists=False, project_name=None, namespace=None,
-                 replicas=None, labels=None, image_name=None, beam_pod_instances=None,
+                 replicas=None, labels=None, image_name=None, command=None, beam_pod_instances=None,
                  deployment_name=None, use_scc=False, deployment=None, create_service_account=None,
                  cpu_requests=None, cpu_limits=None, memory_requests=None, use_gpu=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
@@ -34,6 +34,7 @@ class BeamDeploy(Processor):
         self.replicas = replicas
         self.labels = labels
         self.image_name = image_name
+        self.command = command
         self.deployment_name = deployment_name
         self.service_type = service_type
         self.service_account_name = f"{deployment_name}svc"
@@ -115,6 +116,7 @@ class BeamDeploy(Processor):
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
+            command=self.command,
             labels=self.labels,
             deployment_name=self.deployment_name,
             namespace=self.namespace,
