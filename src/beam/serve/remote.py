@@ -50,6 +50,7 @@ def beam_client(uri, hostname=None, port=None, username=None, api_key=None, **kw
     if api_key is None and 'api_key' in kwargs:
         api_key = kwargs.pop('api_key')
 
+    scheme = uri.scheme
     if 'http' in scheme:
         if 'tls' not in kwargs:
             kwargs['tls'] = True if scheme == 'https' else False

@@ -11,6 +11,7 @@ class BeamLogger:
 
     def __init__(self, path=None, print=True):
         self.logger = loguru.logger
+        self._level = None
         self.logger.remove()
         self.handlers_queue = []
         self.running_platform = running_platform()
@@ -23,6 +24,8 @@ class BeamLogger:
         self.path = None
         if path is not None:
             self.add_file_handlers(path)
+
+        self.set_verbosity('INFO')
 
         atexit.register(self.cleanup)
 
@@ -132,12 +135,17 @@ class BeamLogger:
         return self.logger.add(sys.stdout, level=level, colorize=True, format=
         '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
 
+    @property
+    def level(self):
+        return self._level
+
     def set_verbosity(self, level):
         """
         Sets the log level for all handlers to the specified level.
         """
         # Convert the level string to uppercase to match Loguru's expected levels
         level = level.upper()
+        self._level = level
 
         if 'stdout' in self.handlers:
             self.logger.remove(self.handlers['stdout'])
@@ -160,35 +168,35 @@ class BeamLogger:
         self.set_verbosity('CRITICAL')
 
     @contextmanager
-    def debug_mode(self):
+    def as_debug_mode(self):
         mode = self.logger.level
         self.debug_mode()
         yield
         self.set_verbosity(mode)
 
     @contextmanager
-    def info_mode(self):
+    def as_info_mode(self):
         mode = self.logger.level
         self.info_mode()
         yield
         self.set_verbosity(mode)
 
     @contextmanager
-    def warning_mode(self):
+    def as_warning_mode(self):
         mode = self.logger.level
         self.warning_mode()
         yield
         self.set_verbosity(mode)
 
     @contextmanager
-    def error_mode(self):
+    def as_error_mode(self):
         mode = self.logger.level
         self.error_mode()
         yield
         self.set_verbosity(mode)
 
     @contextmanager
-    def critical_mode(self):
+    def as_critical_mode(self):
         mode = self.logger.level
         self.critical_mode()
         yield

@@ -19,6 +19,13 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
 
 from ._version import __version__
 
+from .config import BeamConfig
+from .logging import beam_logger
+
+conf = BeamConfig()
+if conf.debug:
+    beam_logger.debug_mode()
+
 
 # Initialize timer with beam_logger
 def initialize_timer():
