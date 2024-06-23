@@ -91,8 +91,16 @@ class BeamDeploy(Processor):
                     else:
                         logger.info(f"Skipping PVC creation for: {storage_config.pvc_name} as create_pvc is False")
 
-        enabled_memory_storages = [config for config in self.memory_storage_configs if config.enabled]
+        # if self.memory_storage_configs:
+        #     for memory_storage_config in self.memory_storage_configs:
+        #         self.k8s.create_memory_storage(
+        #             name=memory_storage_config.name,
+        #             mount_path=memory_storage_config.mount_path,
+        #             size_gb=memory_storage_config.size_gb.as_str,
+        #             namespace=self.namespace
+        #         )
 
+        # enabled_memory_storages = [config for config in self.memory_storage_configs if config.enabled]
         if self.user_idm_configs:
             self.k8s.create_role_bindings(self.user_idm_configs)
 
@@ -116,7 +124,7 @@ class BeamDeploy(Processor):
             create_service_account=self.create_service_account,
             service_account_name=self.service_account_name,
             storage_configs=self.storage_configs,
-            memory_storage_configs=enabled_memory_storages,
+            memory_storage_configs=self.memory_storage_configs,
             use_node_selector=self.node_selector,
             node_selector=self.node_selector,
             cpu_requests=self.cpu_requests,

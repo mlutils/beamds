@@ -83,15 +83,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             self.core_v1_api.read_namespaced_service_account(name, namespace)
             logger.info(f"Service Account {name} already exists in namespace {namespace}.")
         except ApiException as e:
-                if e.status == 404:
-                    metadata = client.V1ObjectMeta(name=name)
-                    service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount",
-                                                              metadata=metadata)
-                    self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
-                    logger.info(f"Service Account {name} created in namespace {namespace}.")
-                else:
-                    logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
-                    raise
+            if e.status == 404:
+                metadata = client.V1ObjectMeta(name=name)
+                service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount",
+                                                          metadata=metadata)
+                self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
+                logger.info(f"Service Account {name} created in namespace {namespace}.")
+            else:
+                logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
+                raise
 
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
@@ -135,7 +135,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 volume_mounts.append(client.V1VolumeMount(
                     name=mem_storage.name,
                     mount_path=mem_storage.mount_path
-                    # Ensure this matches the attribute name in your memory_storage_configs items
                 ))
 
         resources = {
@@ -218,13 +217,30 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Handle memory_storage_configs
         if memory_storage_configs:
             for mem_storage in memory_storage_configs:
-                memory_volume_spec = client.V1EmptyDirVolumeSource(medium="Memory")
-                if mem_storage.size_gb is not None:
+                if mem_storage.enabled is True:
+                    memory_volume_spec = client.V1EmptyDirVolumeSource(medium="Memory")
                     memory_volume_spec.size_limit = mem_storage.size_gb.as_str
-                volumes.append(client.V1Volume(
-                    name=mem_storage.name,
-                    empty_dir=memory_volume_spec
-                ))
+                    volumes.append(client.V1Volume(
+                        name=mem_storage.name,
+                        empty_dir=memory_volume_spec
+                    ))
+                else:
+                    memory_volume_spec = client.V1EmptyDirVolumeSource()
+
+
+        # if memory_storage_configs:
+        #     for mem_storage in memory_storage_configs:
+        #         if mem_storage.enabled is True:
+        #             memory_volume_spec = client.V1EmptyDirVolumeSource(medium="Memory")
+        #             if mem_storage.size_gb is not None:
+        #                 memory_volume_spec.size_limit = mem_storage.size_gb.as_str
+        #         else:
+        #             memory_volume_spec = client.V1EmptyDirVolumeSource()
+        #
+        #         volumes.append(client.V1Volume(
+        #             name=mem_storage.name,
+        #             empty_dir=memory_volume_spec
+        #         ))
 
         # Handle PVC mounts
         if pvc_mounts:
@@ -245,6 +261,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             cpu_limits=cpu_limits,
             memory_requests=memory_requests,
             memory_limits=memory_limits,
+            memory_storage_configs=memory_storage_configs,
             use_gpu=use_gpu,
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
