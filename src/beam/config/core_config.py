@@ -4,7 +4,6 @@ import os
 from argparse import Namespace
 from collections import defaultdict
 from typing import List, Union, Set
-from pprint import pformat
 import json
 
 import yaml
@@ -25,7 +24,9 @@ class BeamParam:
 
 
 class BeamConfig(Namespace, metaclass=MetaBeamInit):
-    parameters = []
+    parameters = [
+        BeamParam('debug', bool, False, 'Whether to run in debug mode (logger is set to DEBUG level)'),
+    ]
     defaults = {}
 
     def __init__(self, *args, config=None, tags=None, return_defaults=False, silent=False,
@@ -168,9 +169,6 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
         title = "->".join([f"{m.__name__}" for m in type(self).mro() if "beam." in str(m)])
         yaml_repr = f"{title}:\n\nParameters:\n\n{yaml.dump(self.dict())}"
         return yaml_repr
-
-        # return (f"{type(self).__name__}:\n\nParameters:\n\n{pformat(self.dict())}\n\n"
-        #         f"Tags:\n\n{pformat(vars(self.tags))}\n\n")
 
     @property
     def namespace(self):

@@ -5,4 +5,9 @@
 
 import src.beam as beam
 
+
+from src.beam import logger
+
 print(beam.__version__)
+
+print(logger.level)

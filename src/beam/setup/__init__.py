@@ -100,6 +100,11 @@ def load_ipython_extension(ipython, beam_path=None):
         sys.path.insert(0, '..')
         sys.path.insert(0, '../src')
 
+    beam_args = os.getenv('BEAM_ARGS', '')
+    sys.argv.append('---')
+    if beam_args:
+        sys.argv.extend(beam_args.split(' '))
+
     for k in list(sys.modules.keys()):
         if k.startswith('beam'):
             del sys.modules[k]

@@ -13,7 +13,7 @@ class BeamServeConfig(BeamConfig):
         BeamParam('n-threads', int, 4, 'parallel threads'),
         BeamParam('use-torch', bool, False, 'Whether to use torch for pickling/unpickling'),
         BeamParam('batch', str, None, 'A function to parallelize with batching'),
-        BeamParam('tls', bool, True, 'Whether to use tls encryption'),
+        BeamParam('tls', bool, False, 'Whether to use tls encryption'),
         BeamParam('max-batch-size', int, 10, 'Maximal batch size (execute function when reaching this number)'),
         BeamParam('max-wait-time', float, 1., 'execute function if reaching this timeout'),
         BeamParam('non-blocking', bool, False, 'Run the server in a non-blocking mode'),

@@ -137,7 +137,13 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
                     p.set_defaults(**{pi.dest: d[o]})
 
     if is_notebook() or not load_script_arguments:
-        sys.argv = sys.argv[:1]
+
+        if '---' in sys.argv:
+            file_name = sys.argv[0]
+            sys.argv = sys.argv[sys.argv.index('---') + 1:]
+            sys.argv.insert(0, file_name)
+        else:
+            sys.argv = sys.argv[:1]
 
     file_name = sys.argv[0] if len(sys.argv) > 0 else '/tmp/tmp.py'
     sys_args = sys.argv[1:]
