@@ -16,3 +16,7 @@ cd ../
 echo "Current directory: $(pwd)"
 ln -s -f src/beam beam
 
+cd notebooks
+echo "Current directory: $(pwd)"
+ln -s -f ../src/beam/setup beam_setup
+
