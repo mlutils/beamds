@@ -6,13 +6,12 @@ from collections import defaultdict
 from torch import nn
 import torch
 import copy
-from functools import cached_property
 from timeit import default_timer as timer
 
 from ..logging import beam_logger as logger
 from ..nn import BeamOptimizer, BeamScheduler, MultipleScheduler, BeamNN, BeamDDP
 from ..utils import (to_device, check_type, recursive_concatenate,
-                     beam_device, filter_dict,
+                     beam_device, filter_dict, cached_property,
                      is_notebook, DataBatch, dictionary_iterator, recursive_clone, set_item_with_tuple_key,
                      check_nvlink)
 from ..dataset import UniversalBatchSampler, UniversalDataset, TransformedDataset

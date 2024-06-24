@@ -1,5 +1,6 @@
 from typing import List
 from ..logging import beam_logger as logger
+from ..type.utils import is_beam_resource
 from ..utils import beam_device
 from ..processor import Processor
 from ..llm import default_tokenizer
@@ -9,8 +10,8 @@ from ..resources import resource
 
 
 class TextSimilarity(DenseSimilarity):
-    def __init__(self, *args, dense_model_path=None, tokenizer_path=None,
-                 use_dense_model_tokenizer=True, dense_model=None, tokenizer=None, cache_folder=None,
+    def __init__(self, *args, dense_model=None, tokenizer_path=None,
+                 use_dense_model_tokenizer=True, tokenizer=None, cache_folder=None,
                  dense_model_device='cuda', vector_store_device="cpu", vector_store_training_device='cpu', batch_size=32, show_progress_bar=True,
                  st_kwargs=None, **kwargs):
         """
@@ -25,9 +26,8 @@ class TextSimilarity(DenseSimilarity):
         """
 
         Processor.__init__(self, *args, tokenizer_path=tokenizer_path, dense_model_device=dense_model_device,
-                           dense_model_path=dense_model_path, use_dense_model_tokenizer=use_dense_model_tokenizer,
-                           cache_folder=cache_folder, batch_size=batch_size, show_progress_bar=show_progress_bar,
-                           **kwargs)
+                           use_dense_model_tokenizer=use_dense_model_tokenizer, cache_folder=cache_folder,
+                           batch_size=batch_size, show_progress_bar=show_progress_bar, **kwargs)
 
         # Device to run the model
         self.dense_model_device = beam_device(self.get_hparam('dense_model_device'))
@@ -35,10 +35,9 @@ class TextSimilarity(DenseSimilarity):
         self.cache_folder = self.get_hparam('cache_folder', cache_folder)
         self.batch_size = self.get_hparam('batch_size', batch_size)
         self.show_progress_bar = self.get_hparam('show_progress_bar', show_progress_bar)
-        st_kwargs = self.get_hparam('st_kwargs', {})
+        st_kwargs = st_kwargs or {}
 
         self.dense_model = self.load_dense_model(dense_model=dense_model,
-                                                 dense_model_path=dense_model_path,
                                                  dense_model_device=self.dense_model_device,
                                                  **st_kwargs)
 
@@ -46,7 +45,7 @@ class TextSimilarity(DenseSimilarity):
 
         super().__init__(*args, inference_device=vector_store_device,
                          training_device=vector_store_training_device, tokenizer_path=tokenizer_path,
-                         dense_model_path=dense_model_path, use_dense_model_tokenizer=use_dense_model_tokenizer,
+                         dense_model=dense_model, use_dense_model_tokenizer=use_dense_model_tokenizer,
                          d=d, **kwargs)
 
         self._tokenizer = None
@@ -58,15 +57,15 @@ class TextSimilarity(DenseSimilarity):
             self._tokenizer = tokenizer
 
     @staticmethod
-    def load_dense_model(dense_model_path=None, dense_model=None, dense_model_device=None, **st_kwargs):
+    def load_dense_model(dense_model=None, dense_model_device=None, **st_kwargs):
 
-        if dense_model is None:
-            if dense_model_path.startswith('beam'):
-                dense_model = resource(dense_model_path)
+        if type(dense_model) is str:
+            if dense_model.startswith('beam'):
+                dense_model = resource(dense_model)
             else:
                 from sentence_transformers import SentenceTransformer
-                dense_model = SentenceTransformer(dense_model_path, device=str(dense_model_device), **st_kwargs)
-        else:
+                dense_model = SentenceTransformer(dense_model, device=str(dense_model_device), **st_kwargs)
+        elif not is_beam_resource(dense_model):
             dense_model.to(dense_model_device)
 
         return dense_model

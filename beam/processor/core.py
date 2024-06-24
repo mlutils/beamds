@@ -2,9 +2,9 @@ import json
 from collections import OrderedDict
 import inspect
 from contextlib import contextmanager
-from functools import cached_property
 from typing import List, Union, Set
 
+from ..utils import cached_property
 from ..path import beam_path, normalize_host
 from ..config import BeamConfig
 from ..base import BeamBase

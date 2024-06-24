@@ -132,9 +132,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-/src/beam/orchestration/comp1.py
-/src/beam/orchestration/comp2.py
-/src/beam/orchestration/compare1.py
+/beam/orchestration/comp1.py
+/beam/orchestration/comp2.py
+/beam/orchestration/compare1.py
 
 /docs/jupyter_book/_build
 /.run/

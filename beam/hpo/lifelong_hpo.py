@@ -1,5 +1,5 @@
 import datetime
-from functools import cached_property
+from ..utils import cached_property
 from typing import Container
 
 from optuna import Study

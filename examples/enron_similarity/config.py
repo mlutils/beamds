@@ -1,4 +1,3 @@
-from beam.utils import get_public_ip
 
 from beam.config import BeamParam
 from beam.algorithm.config import TextGroupExpansionConfig

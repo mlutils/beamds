@@ -1,6 +1,5 @@
 from contextlib import contextmanager
 from datetime import datetime
-from functools import cached_property
 from pathlib import PurePath, Path
 from .core import PureBeamPath, normalize_host
 from io import StringIO, BytesIO, TextIOWrapper

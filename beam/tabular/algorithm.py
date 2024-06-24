@@ -1,5 +1,4 @@
 import torch
-from functools import cached_property
 
 from ..algorithm import NeuralAlgorithm
 from ..utils import as_numpy, as_tensor

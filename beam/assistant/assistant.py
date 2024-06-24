@@ -1,11 +1,10 @@
 import json
-from functools import cached_property
 from typing import Dict, List, Any
 
 from ..llm import beam_llm
 from ..llm import LLMGuidance
 from ..processor import MetaDispatcher
-from ..utils import check_type, safe_getmembers
+from ..utils import check_type, safe_getmembers, cached_property
 from ..logging import beam_logger as logger
 import inspect
 import threading

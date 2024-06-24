@@ -1,12 +1,10 @@
 import inspect
 from argparse import Namespace
-from functools import cached_property
-import traceback
 
 from ..type import check_type
 from ..meta import MetaBeamInit, BeamName
 
-from ..utils import get_cached_properties, is_notebook
+from ..utils import get_cached_properties, is_notebook, cached_property
 from ..config import BeamConfig
 
 

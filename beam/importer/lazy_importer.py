@@ -46,6 +46,10 @@ class SafeLazyImporter:
     def PIL(self):
         return self._getattr('PIL')
 
+    @cached_property
+    def pil_image(self):
+        return self._getattr('PIL.Image')
+
     def _getattr(self, module_name):
         if module_name not in self._modules_cache:
             self.has(module_name)

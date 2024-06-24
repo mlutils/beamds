@@ -1,7 +1,6 @@
-from functools import cached_property
 
 from ..meta import BeamName
-from ..utils import Timer, jupyter_like_traceback, dict_to_list
+from ..utils import Timer, jupyter_like_traceback, dict_to_list, cached_property
 from ..logging import beam_logger as logger
 
 

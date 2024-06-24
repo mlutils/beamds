@@ -1,7 +1,6 @@
-from ..utils import jupyter_like_traceback
+from ..utils import jupyter_like_traceback, cached_property
 from .resource import beam_llm
 from ..processor import Processor
-from functools import cached_property
 
 
 class LLMTask(Processor):

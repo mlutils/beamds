@@ -1,4 +1,3 @@
-from functools import cached_property
 import spacy
 import pandas as pd
 import numpy as np
@@ -6,6 +5,7 @@ import numpy as np
 from beam.transformer import Transformer
 from beam.algorithm import TextGroupExpansionAlgorithm
 from beam.algorithm.group_expansion import InvMap
+from beam.utils import cached_property
 
 from .utils import (replace_entity_over_series, build_dataset, split_dataset)
 

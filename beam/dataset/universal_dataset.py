@@ -3,7 +3,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import torch
-from functools import cached_property
+from ..utils import cached_property
 
 from .sampler import UniversalBatchSampler
 from ..utils import (recursive_batch, to_device, recursive_device, container_len, beam_device, as_tensor, check_type,

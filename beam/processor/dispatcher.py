@@ -1,8 +1,7 @@
 import inspect
-from functools import cached_property
 
 from .core import Processor
-from ..utils import safe_getmembers
+from ..utils import safe_getmembers, cached_property
 
 
 class MetaAsyncResult:

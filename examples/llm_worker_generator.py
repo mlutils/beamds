@@ -1,7 +1,7 @@
 import threading
 from queue import Queue
 from uuid import uuid4 as uuid
-from functools import cached_property
+from beam.utils import cached_property
 
 from beam.config import BeamConfig, BeamParam
 from beam import beam_logger as logger

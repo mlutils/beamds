@@ -8,7 +8,7 @@ import torch
 import copy
 import pandas as pd
 import torch.multiprocessing as mp
-from functools import cached_property
+from ..utils import cached_property
 
 
 from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_notebook,

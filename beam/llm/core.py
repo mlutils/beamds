@@ -6,7 +6,6 @@ from uuid import uuid4 as uuid
 import pandas as pd
 from pydantic import BaseModel
 
-# from functools import cached_property
 from ..utils import lazy_property as cached_property
 
 from ..logging import beam_logger as logger

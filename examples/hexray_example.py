@@ -1,4 +1,4 @@
-from functools import cached_property
+from beam.utils import cached_property
 
 from beam.processor.core import Processor
 from beam.path import beam_path

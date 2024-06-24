@@ -1,11 +1,12 @@
 from collections import defaultdict
-from functools import cached_property
 from typing import List, Union
 
 import numpy as np
 import pandas as pd
 
-from .. import resource, BeamData, Timer, as_numpy
+from ..resources import resource
+from ..utils import cached_property, Timer, as_numpy
+from ..data import BeamData
 from ..logging import beam_logger as logger
 from .core_algorithm import Algorithm
 from ..type import BeamType
@@ -117,7 +118,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
     def build_dense_model(self):
         from beam.similarity import TextSimilarity
-        return TextSimilarity.load_dense_model(dense_model_path=self.get_hparam('dense-model-path'),
+        return TextSimilarity.load_dense_model(dense_model=self.get_hparam('dense-model'),
                                                dense_model_device=self.get_hparam('dense_model_device'),
                                                **self.get_hparam('st_kwargs', {}))
 

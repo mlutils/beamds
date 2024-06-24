@@ -3,7 +3,7 @@ import inspect
 import json
 from typing import Any, Optional, Union, List, Type, Literal
 from pydantic import BaseModel, Field
-from functools import cached_property
+from ..utils import cached_property
 
 from .. import beam_path
 from ..type import BeamType

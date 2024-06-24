@@ -1,5 +1,5 @@
 from typing import List, Union, Any
-from functools import cached_property
+from ..utils import cached_property
 
 from collections import Counter
 import scipy.sparse as sp

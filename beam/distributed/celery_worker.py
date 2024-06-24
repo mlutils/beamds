@@ -2,7 +2,7 @@ import inspect
 from typing import Tuple, Dict, Any
 from uuid import uuid4 as uuid
 from multiprocessing import Process
-from functools import cached_property
+from ..utils import cached_property
 from dataclasses import dataclass, field
 import warnings
 

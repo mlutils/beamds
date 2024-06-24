@@ -1,5 +1,5 @@
 import ray
-from functools import cached_property
+from ..utils import cached_property
 
 from ..utils import get_class_properties
 from ..processor import Processor

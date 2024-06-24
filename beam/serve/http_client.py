@@ -1,5 +1,4 @@
 import io
-from functools import cached_property
 import requests
 
 from .client import BeamClient

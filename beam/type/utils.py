@@ -71,9 +71,13 @@ def is_cudf(x):
     return cudf and isinstance(x, cudf.DataFrame)
 
 
+# def is_pil(x):
+#     pil = lzi.PIL
+#     return pil and isinstance(x, pil.Image.Image)
+
 def is_pil(x):
-    pil = lzi.PIL
-    return pil and isinstance(x, pil.Image.Image)
+    pil = lzi.pil_image
+    return pil and isinstance(x, pil.Image)
 
 
 def check_element_type(x, minor=None):
@@ -327,5 +331,11 @@ def is_beam_path(x):
 
 def is_beam_config(x):
     if hasattr(x, 'beam_class_name') and 'BeamConfig' in x.beam_class_name:
+        return True
+    return False
+
+
+def is_beam_resource(x):
+    if hasattr(x, 'beam_class_name') and 'BeamResource' in x.beam_class_name:
         return True
     return False

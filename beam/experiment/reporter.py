@@ -7,7 +7,7 @@ import pandas as pd
 from contextlib import contextmanager
 from timeit import default_timer as timer
 import threading
-from functools import cached_property
+from ..utils import cached_property
 
 from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, recursive_flatten, rate_string_format,
                      nested_defaultdict, as_tensor, squeeze_scalar, check_type, check_element_type,

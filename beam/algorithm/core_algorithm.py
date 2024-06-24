@@ -1,5 +1,5 @@
-from functools import cached_property
 from timeit import default_timer as timer
+from ..utils import cached_property
 from ..processor import Processor
 from ..logging import beam_logger as logger
 from ..experiment import BeamReport

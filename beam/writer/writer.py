@@ -4,7 +4,7 @@ from typing import List
 from ..base import BeamBase
 from ..path import beam_path
 from ..logging import beam_logger as logger
-from functools import cached_property
+from ..utils import cached_property
 
 
 class BeamWriter(BeamBase):

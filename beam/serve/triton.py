@@ -1,6 +1,6 @@
 from collections import defaultdict
 from functools import partial
-from functools import cached_property
+from ..utils import cached_property
 
 from ..processor import Processor
 from ..utils import as_numpy, check_type, as_tensor

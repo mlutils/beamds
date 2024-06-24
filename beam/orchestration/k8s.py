@@ -1,9 +1,9 @@
-from functools import cached_property
 from dataclasses import make_dataclass
 from kubernetes import client, watch
 from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
+from ..utils import cached_property
 from ..processor import Processor
 from .units import K8SUnits
 from .dataclasses import *

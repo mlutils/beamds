@@ -18,7 +18,7 @@ class TextGroupExpansionConfig(SimilarityConfig, TFIDFConfig):
     }
     parameters = [
         BeamParam('tokenizer', type=str, default="BAAI/bge-base-en-v1.5", help='Tokenizer model'),
-        BeamParam('dense-model-path', type=str, default="BAAI/bge-base-en-v1.5", help='Dense model for text similarity'),
+        BeamParam('dense-model', type=str, default="BAAI/bge-base-en-v1.5", help='Dense model for text similarity'),
         BeamParam('dense_model_device', type=str, default='cuda', help='Device for dense model'),
         BeamParam('tokenizer-chunksize', type=int, default=10000, help='Chunksize for tokenizer'),
         BeamParam('batch_size', int, 32, 'Batch size for dense model'),

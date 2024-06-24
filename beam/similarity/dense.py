@@ -3,7 +3,7 @@ from typing import List, Union, Set
 
 import faiss
 import numpy as np
-from functools import cached_property
+from ..utils import cached_property
 
 from ..logging import beam_logger as logger
 from ..path import beam_path, local_copy
