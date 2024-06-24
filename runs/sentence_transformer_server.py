@@ -4,8 +4,14 @@ from beam.serve import BeamServeConfig
 from beam.serve import beam_server
 
 
+import beam
+
+print(f"beam version: {beam.__version__}")
+
+
 class SentenceTransformerServer(BeamServeConfig):
-    parameters = [BeamParam('tokenizer', type=str, default="BAAI/bge-base-en-v1.5", help='Tokenizer model'),
+    parameters = [
+                  BeamParam('tokenizer', type=str, default="BAAI/bge-base-en-v1.5", help='Tokenizer model'),
                   BeamParam('st-model-path', type=str, default="BAAI/bge-base-en-v1.5",
                             help='Dense model for text similarity'),
                   BeamParam('st-model-device', type=str, default='cuda', help='Device for dense model'),
@@ -15,6 +21,8 @@ class SentenceTransformerServer(BeamServeConfig):
 
 def main():
     config = SentenceTransformerServer()
+    print(config)
+
     device = str(beam_device(config.get('st-model-device')))
 
     from sentence_transformers import SentenceTransformer

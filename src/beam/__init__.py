@@ -22,7 +22,7 @@ from ._version import __version__
 from .config import BeamConfig
 from .logging import beam_logger
 
-conf = BeamConfig()
+conf = BeamConfig(silent=True, load_config_files=False, load_script_arguments=False)
 if conf.debug:
     beam_logger.debug_mode()
 
