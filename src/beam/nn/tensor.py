@@ -1,11 +1,13 @@
-import torch
-import pandas as pd
+import pickletools
 import warnings
 from collections import namedtuple
+
 import numpy as np
-from ..utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy, beam_device
+import pandas as pd
+import torch
+
 from ..path import beam_path
-import pickletools
+from ..utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy, beam_device
 
 
 class LazyTensor:

@@ -1,15 +1,16 @@
 import copy
+import math
+import random
+from collections import defaultdict
+from functools import partial
 
+import numpy as np
 import torch
 from torch import nn
-from collections import defaultdict
-import numpy as np
-import math
-from ..utils import slice_to_index, hash_tensor
-from ..logging import beam_logger as logger
+
 from .optim import BeamOptimizer
-from functools import partial
-import random
+from ..logging import beam_logger as logger
+from ..utils import slice_to_index, hash_tensor
 
 
 class PackedSet(object):

@@ -1,11 +1,13 @@
+import math
+from collections import defaultdict
+from functools import partial
+
 import torch
 from torch import nn
-from collections import defaultdict
-import math
-from functools import partial
-from ..logging import beam_logger as logger
-from torch.optim.lr_scheduler import LRScheduler
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
+
+from ..logging import beam_logger as logger
 
 
 class MultipleScheduler(LRScheduler):

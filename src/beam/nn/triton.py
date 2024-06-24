@@ -2,8 +2,8 @@ import json
 import re
 
 from dataclasses import dataclass, field
-from ..path import beam_path, local_copy, BeamURL
 
+from ..path import beam_path
 
 pytorch_to_triton_dtype_dict = {
         'float32': 'TYPE_FP32',

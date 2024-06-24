@@ -1,8 +1,10 @@
-import time
-from ..logging import beam_logger as logger
-from ray.tune.stopper import Stopper
-from typing import Union
 import datetime
+import time
+from typing import Union
+
+from ray.tune.stopper import Stopper
+
+from ..logging import beam_logger as logger
 
 
 class TimeoutStopper(Stopper):

@@ -1,12 +1,13 @@
-from typing import Container
 import datetime
+from functools import cached_property
+from typing import Container
+
 from optuna import Study
 from optuna.trial import TrialState, FrozenTrial
 
 from .optuna import OptunaBase
-from ..processor import Processor
 from .params import HPOConfig
-from functools import cached_property
+from ..processor import Processor
 
 
 class FiniteMemoryStudy(Study):
