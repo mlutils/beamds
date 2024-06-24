@@ -1,17 +1,16 @@
 import copy
 import time
+from functools import partial
 
 from .params import HPOConfig
-from ..utils import find_port, check_type, is_notebook, beam_device
+from .._version import __version__
+from ..algorithm import NeuralAlgorithm
 from ..config import print_beam_hyperparameters
+from ..experiment import beam_algorithm_generator
 from ..logging import beam_logger as logger
 from ..path import beam_path, BeamPath
 from ..processor import Processor
-from ..algorithm import NeuralAlgorithm
-from functools import partial
-from ..experiment import beam_algorithm_generator
-
-from .._version import __version__
+from ..utils import beam_device
 
 
 class BeamHPO(Processor):

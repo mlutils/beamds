@@ -1,5 +1,6 @@
-from ..config import BeamConfig, BeamParam
 import os
+
+from ..config import BeamConfig, BeamParam
 
 
 class RayConfig(BeamConfig):

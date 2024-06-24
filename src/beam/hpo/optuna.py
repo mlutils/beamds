@@ -1,16 +1,15 @@
-import copy
-
-from ..utils import find_port, check_type, is_notebook, beam_device
-from ..logging import beam_logger as logger
-from ..path import beam_path, BeamPath
-import pandas as pd
-import optuna
 from functools import partial
-from ..experiment import Experiment
 
 import numpy as np
+import optuna
+import pandas as pd
 from scipy.special import erfinv
+
 from .core import BeamHPO
+from ..experiment import Experiment
+from ..logging import beam_logger as logger
+from ..path import beam_path
+from ..utils import check_type
 
 
 class OptunaBase:

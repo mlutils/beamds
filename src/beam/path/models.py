@@ -1,12 +1,13 @@
+import os
+import stat
 from contextlib import contextmanager
 from datetime import datetime
-from functools import cached_property
-from pathlib import PurePath, Path
-from .core import PureBeamPath, normalize_host
 from io import StringIO, BytesIO, TextIOWrapper
-import os
+from pathlib import PurePath, Path
+
 import urllib3
-import stat
+
+from .core import PureBeamPath, normalize_host
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd

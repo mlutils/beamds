@@ -1,23 +1,19 @@
 import copy
-
-import ray
-from ray.air import RunConfig
-from ray.tune.schedulers import ASHAScheduler
-from ray.tune.search.optuna import OptunaSearch
-
-from .utils import TimeoutStopper
-from ..utils import find_port, check_type, is_notebook, beam_device
-from ..logging import beam_logger as logger
-from ..path import beam_path, BeamPath
-from ..distributed.ray_dispatcher import RayClient
-
-from ray.tune import JupyterNotebookReporter, TuneConfig
-from ray import tune, train
 from functools import partial
-from ..experiment import Experiment
 
 import numpy as np
+from ray import tune, train
+from ray.air import RunConfig
+from ray.tune import JupyterNotebookReporter, TuneConfig
+from ray.tune.search.optuna import OptunaSearch
+
 from .core import BeamHPO
+from .utils import TimeoutStopper
+from ..distributed.ray_dispatcher import RayClient
+from ..experiment import Experiment
+from ..logging import beam_logger as logger
+from ..path import beam_path
+from ..utils import find_port, is_notebook
 
 
 class RayHPO(BeamHPO, RayClient):

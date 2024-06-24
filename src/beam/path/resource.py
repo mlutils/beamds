@@ -1,8 +1,8 @@
-from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset,
-                     RedisPath, SMBPath, MLFlowPath)
-from .core import BeamKey, BeamURL, IOPath, DictPath
 from pathlib import PurePath
 
+from .core import BeamKey, BeamURL, IOPath, DictPath
+from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset,
+                     RedisPath, SMBPath, MLFlowPath)
 
 beam_key = BeamKey()
 

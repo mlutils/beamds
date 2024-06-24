@@ -1,18 +1,19 @@
 import fnmatch
 import json
 import os
+import re
 from collections import namedtuple
 from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import PurePosixPath, PureWindowsPath, Path
 from typing import Union
 from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
-import pandas as pd
-import numpy as np
-import re
 
-from ..type import check_type
+import numpy as np
+import pandas as pd
+
 from ..meta import BeamName
+from ..type import check_type
 from ..type.utils import is_beam_data, is_beam_processor
 
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
