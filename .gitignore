@@ -137,3 +137,4 @@ dmypy.json
 /src/beam/orchestration/compare1.py
 
 /docs/jupyter_book/_build
+/.run/

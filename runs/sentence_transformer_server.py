@@ -2,11 +2,12 @@ from beam import beam_device
 from beam.config import BeamParam
 from beam.serve import BeamServeConfig
 from beam.serve import beam_server
+from beam import logger
 
 
 import beam
 
-print(f"beam version: {beam.__version__}")
+logger.info(f"beam version: {beam.__version__}")
 
 
 class SentenceTransformerServer(BeamServeConfig):
@@ -21,7 +22,7 @@ class SentenceTransformerServer(BeamServeConfig):
 
 def main():
     config = SentenceTransformerServer()
-    print(config)
+    logger.info(config)
 
     device = str(beam_device(config.get('st-model-device')))
 
