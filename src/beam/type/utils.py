@@ -323,3 +323,9 @@ def is_beam_path(x):
     if hasattr(x, 'beam_class_name') and 'PureBeamPath' in x.beam_class_name:
         return True
     return False
+
+
+def is_beam_config(x):
+    if hasattr(x, 'beam_class_name') and 'BeamConfig' in x.beam_class_name:
+        return True
+    return False

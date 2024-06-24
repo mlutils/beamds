@@ -29,7 +29,6 @@ def beam_server(obj, protocol='http', host=None, port=None, backend=None, non_bl
 
 def beam_client(uri, hostname=None, port=None, username=None, api_key=None, **kwargs):
 
-    scheme = uri.split(':')[0]
     uri = uri.removeprefix('beam-')
 
     uri = BeamURL.from_string(uri)

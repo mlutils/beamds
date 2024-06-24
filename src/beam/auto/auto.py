@@ -472,9 +472,8 @@ class AutoBeam(BeamBase):
                               dockerfile=dockerfile, **kwargs)
 
     @staticmethod
-    def _build_image(bundle_path, base_image, config=None, image_name=None,
-                     entrypoint='synchronous-server', copy_bundle=True, beam_version=None,
-                     dockerfile='simple-entrypoint' ):
+    def _build_image(bundle_path, base_image, config=None, image_name=None, entrypoint='synchronous-server',
+                     copy_bundle=False, beam_version=None, dockerfile='simple-entrypoint'):
 
         import docker
         from docker.errors import BuildError
@@ -487,13 +486,13 @@ class AutoBeam(BeamBase):
         if image_name is None:
             image_name = f"autobeam-{bundle_path.name}-{base_image}"
 
-        with local_copy(bundle_path, as_beam_path=True) as bundle_path:
+        with local_copy(bundle_path, as_beam_path=True, disable=not copy_bundle) as bundle_path:
 
             docker_dir = bundle_path.joinpath('.docker')
             docker_dir.clean()
             docker_dir.mkdir()
 
-            config = config or {}
+            config = dict(config) or {}
             docker_dir.joinpath('config.yaml').write(config)
 
             entrypoint = beam_path(entrypoint)

@@ -170,6 +170,7 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
         yaml_repr = f"{title}:\n\nParameters:\n\n{yaml.dump(self.dict())}"
         return yaml_repr
 
+
     @property
     def namespace(self):
         return Namespace(**self.__dict__)
@@ -313,3 +314,7 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
             return getattr(self, key)
 
         return default
+
+    @property
+    def beam_class_name(self):
+        return [c.__name__ for c in self.__class__.mro()]
