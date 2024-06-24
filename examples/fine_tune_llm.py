@@ -1,8 +1,8 @@
 
-from src.beam.fine_tune import FineTuneLLM, FTLLMConfig, FineTuneHFDataset
-from src.beam import Experiment
+from beam.fine_tune import FineTuneLLM, FTLLMConfig, FineTuneHFDataset
+from beam import Experiment
 
-from src.beam.utils import get_public_ip
+from beam.utils import get_public_ip
 
 
 def get_paths():

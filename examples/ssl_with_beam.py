@@ -10,10 +10,10 @@ from torchvision.models.feature_extraction import create_feature_extractor
 import kornia
 from kornia.augmentation.container import AugmentationSequential
 
-from src.beam import UniversalDataset, Experiment, beam_arguments, PackedFolds, batch_augmentation
-from src.beam import beam_boolean_feature
-from src.beam.ssl import get_ssl_parser
-from src.beam import beam_logger as logger
+from beam import UniversalDataset, Experiment, beam_arguments, PackedFolds, batch_augmentation
+from beam import beam_boolean_feature
+from beam.ssl import get_ssl_parser
+from beam import beam_logger as logger
 
 import requests
 from collections import namedtuple

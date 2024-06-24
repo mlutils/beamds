@@ -1,6 +1,6 @@
-from src.beam.misc import BeamFakeAlg
-from src.beam.serve import BeamServeConfig
-from src.beam.serve import beam_server
+from beam.misc import BeamFakeAlg
+from beam.serve import BeamServeConfig
+from beam.serve import beam_server
 
 
 def main():

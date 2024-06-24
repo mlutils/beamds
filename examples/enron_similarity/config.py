@@ -1,7 +1,7 @@
-from src.beam.utils import get_public_ip
+from beam.utils import get_public_ip
 
-from src.beam.config import BeamParam
-from src.beam.algorithm.config import TextGroupExpansionConfig
+from beam.config import BeamParam
+from beam.algorithm.config import TextGroupExpansionConfig
 
 
 class TicketSimilarityConfig(TextGroupExpansionConfig):

@@ -13,9 +13,9 @@ n_jobs = 4
 
 
 from examples.tabular_example import get_paths
-from src.beam.hpo import HPOConfig, RayHPO
-from src.beam.tabular import TabularDataset, TabularTransformer, TabularConfig, DeepTabularAlg
-from src.beam import beam_logger as logger, beam_path
+from beam.hpo import HPOConfig, RayHPO
+from beam.tabular import TabularDataset, TabularTransformer, TabularConfig, DeepTabularAlg
+from beam import beam_logger as logger, beam_path
 
 if __name__ == '__main__':
 

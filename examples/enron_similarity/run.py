@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from src.beam import Timer, resource
-from src.beam import beam_logger as logger
+from beam import Timer, resource
+from beam import beam_logger as logger
 import os
 
 from examples.enron_similarity.alg import EnronTicketSimilarity
@@ -102,8 +102,8 @@ def run_enron():
         pu_estimator.fit(v, y)
 
     # dataset = alg.build_train_test_datasets(l, k_sparse=10, k_dense=10, test_subset='test')
-    # from src.beam.config import CatboostConfig
-    # from src.beam.algorithm import CBAlgorithm
+    # from beam.config import CatboostConfig
+    # from beam.algorithm import CBAlgorithm
     # conf = CatboostConfig(cb_depth=8, cb_n_estimators=500, cb_log_resolution=50)
     # cb = CBAlgorithm(conf)
     # from sklearn.model_selection import train_test_split

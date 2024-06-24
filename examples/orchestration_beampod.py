@@ -1,5 +1,5 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
-from src.beam.orchestration import BeamK8S, BeamPod
+from beam.orchestration import BeamK8S, BeamPod
 
 api_url = "https://api.kh-dev.dt.local:6443"
 api_token = "sha256~y4xvFJcBdK_MckDxoeMh48v4gdsQ1CQUpky2RTI2gHs"

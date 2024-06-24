@@ -20,7 +20,7 @@ class GroupExpansionAlgorithm(Algorithm):
             from sklearn.ensemble import RandomForestClassifier
             alg = RandomForestClassifier(n_estimators=100)
         elif self.get_hparam('classifier') == 'catboost':
-            from src.beam.algorithm import CBAlgorithm
+            from beam.algorithm import CBAlgorithm
             alg = CBAlgorithm(self.hparams)
         return alg
 
@@ -105,7 +105,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
     @cached_property
     def tfidf_sim(self):
-        from src.beam.similarity import TFIDF
+        from beam.similarity import TFIDF
         # for now fix the metric as it is the only supported metric in tfidf sim
         sim = {}
         for k in ['train', 'validation', 'test']:
@@ -116,14 +116,14 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         return sim
 
     def build_dense_model(self):
-        from src.beam.similarity import TextSimilarity
+        from beam.similarity import TextSimilarity
         return TextSimilarity.load_dense_model(dense_model_path=self.get_hparam('dense-model-path'),
                                                dense_model_device=self.get_hparam('dense_model_device'),
                                                **self.get_hparam('st_kwargs', {}))
 
     @cached_property
     def dense_sim(self):
-        from src.beam.similarity import TextSimilarity
+        from beam.similarity import TextSimilarity
         dense_model = self.build_dense_model()
         sim = {}
         for k in ['train', 'validation', 'test']:

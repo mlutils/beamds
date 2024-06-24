@@ -1,9 +1,9 @@
-from src.beam.similarity import TFIDF
+from beam.similarity import TFIDF
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers import AutoTokenizer
-from src.beam import beam_logger as logger
-from src.beam.utils import Timer
+from beam import beam_logger as logger
+from beam.utils import Timer
 
 
 if __name__ == '__main__':

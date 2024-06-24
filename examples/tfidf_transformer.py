@@ -1,7 +1,7 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from src.beam.data import BeamData
-from src.beam.transformer import Transformer
+from beam.data import BeamData
+from beam.transformer import Transformer
 
 from datasets import load_dataset
 

@@ -1,10 +1,10 @@
 from functools import cached_property
 
-from src.beam.processor.core import Processor
-from src.beam.path import beam_path
-from src.beam.llm import beam_llm
+from beam.processor.core import Processor
+from beam.path import beam_path
+from beam.llm import beam_llm
 import json
-from src.beam.logging import beam_logger as logger
+from beam.logging import beam_logger as logger
 
 
 class HexBeam(Processor):

@@ -3,10 +3,10 @@ from queue import Queue
 from uuid import uuid4 as uuid
 from functools import cached_property
 
-from src.beam.config import BeamConfig, BeamParam
-from src.beam import beam_logger as logger
-from src.beam.distributed.celery_worker import CeleryWorker
-from src.beam.processor import Processor
+from beam.config import BeamConfig, BeamParam
+from beam import beam_logger as logger
+from beam.distributed.celery_worker import CeleryWorker
+from beam.processor import Processor
 
 
 class LLMServeConfig(BeamConfig):

@@ -4,12 +4,12 @@ from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
-from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
-from src.beam import UniversalDataset
-from src.beam import NeuralAlgorithm, LinearNet
-from src.beam.nn import PID
-from src.beam.config import basic_beam_parser
-from src.beam.nn import GBN, MHRuleLayer, mySequential
+from beam import beam_arguments, Experiment, as_tensor, as_numpy
+from beam import UniversalDataset
+from beam import NeuralAlgorithm, LinearNet
+from beam.nn import PID
+from beam.config import basic_beam_parser
+from beam.nn import GBN, MHRuleLayer, mySequential
 
 from sklearn.datasets import fetch_covtype
 import pandas as pd
@@ -17,7 +17,7 @@ from torch import Tensor
 from sklearn.preprocessing import QuantileTransformer
 from typing import Callable, Union
 import math
-from src.beam import beam_logger as logger
+from beam import beam_logger as logger
 
 ModuleType = Union[str, Callable[..., nn.Module]]
 

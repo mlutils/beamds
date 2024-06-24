@@ -5,16 +5,16 @@ import torch.nn.functional as F
 from torch import nn
 import numpy as np
 
-from src.beam import beam_arguments, Experiment, as_tensor, as_numpy
-from src.beam import UniversalDataset
-from src.beam.ssl import get_ssl_parser
+from beam import beam_arguments, Experiment, as_tensor, as_numpy
+from beam import UniversalDataset
+from beam.ssl import get_ssl_parser
 
 from sklearn.datasets import fetch_covtype
 import pandas as pd
 from sklearn.preprocessing import QuantileTransformer, RobustScaler
-from src.beam.ssl import BeamSSL
+from beam.ssl import BeamSSL
 import faiss
-from src.beam import beam_logger as logger
+from beam import beam_logger as logger
 
 
 class EmbeddingCovtypeDataset(UniversalDataset):

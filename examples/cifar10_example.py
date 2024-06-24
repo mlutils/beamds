@@ -8,16 +8,16 @@ from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 import os
 
-from src.beam import beam_arguments, Experiment
-from src.beam import UniversalDataset
-from src.beam import NeuralAlgorithm, as_numpy
-from src.beam import BeamOptimizer
-from src.beam.data import BeamData
+from beam import beam_arguments, Experiment
+from beam import UniversalDataset
+from beam import NeuralAlgorithm, as_numpy
+from beam import BeamOptimizer
+from beam.data import BeamData
 
 import torchvision
 import kornia
 from kornia.augmentation.container import AugmentationSequential
-from src.beam import beam_logger as logger
+from beam import beam_logger as logger
 
 
 class ReBlock(nn.Module):

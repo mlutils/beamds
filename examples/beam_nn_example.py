@@ -1,6 +1,6 @@
-from src.beam.nn import LinearNet
-from src.beam.nn.core import BeamNN
-from src.beam import beam_path
+from beam.nn import LinearNet
+from beam.nn.core import BeamNN
+from beam import beam_path
 import torch
 
 

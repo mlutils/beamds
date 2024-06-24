@@ -3,9 +3,9 @@ import spacy
 import pandas as pd
 import numpy as np
 
-from src.beam.transformer import Transformer
-from src.beam.algorithm import TextGroupExpansionAlgorithm
-from src.beam.algorithm.group_expansion import InvMap
+from beam.transformer import Transformer
+from beam.algorithm import TextGroupExpansionAlgorithm
+from beam.algorithm.group_expansion import InvMap
 
 from .utils import (replace_entity_over_series, build_dataset, split_dataset)
 

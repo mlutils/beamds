@@ -1,4 +1,4 @@
-from src.beam import resource
+from beam import resource
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
-from src.beam import beam_device
-from src.beam.config import BeamParam
-from src.beam.serve import BeamServeConfig
-from src.beam.serve import beam_server
+from beam import beam_device
+from beam.config import BeamParam
+from beam.serve import BeamServeConfig
+from beam.serve import beam_server
 
 
 class SentenceTransformerServer(BeamServeConfig):
