@@ -1,6 +1,5 @@
 cd "$(dirname "${BASH_SOURCE[0]}")"
 cd ../
-rm -f beam
 
 cd runs
 echo "Current directory: $(pwd)"
