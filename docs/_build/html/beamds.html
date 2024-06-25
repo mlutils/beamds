@@ -1,0 +1,854 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>beamds package &#8212; Beam-DS  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+<link href="_static/styles/bootstrap.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+
+  
+  <link href="_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=a746c00c" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=3ee479438cf8b5e0d341" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=3ee479438cf8b5e0d341" />
+  <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=3ee479438cf8b5e0d341"></script>
+
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9a2dae69"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'beamds';</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="beamds.beam package" href="beamds.beam.html" />
+    <link rel="prev" title="beamds" href="modules.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">Beam-DS  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item pst-header-nav-item current active">
+  <a class="nav-link nav-internal" href="modules.html">
+    beamds
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <button class="sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item pst-header-nav-item current active">
+  <a class="nav-link nav-internal" href="modules.html">
+    beamds
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">beamds package</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="beamds.beam.html">beamds.beam package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.algorithm.html">beamds.beam.algorithm package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.assistant.html">beamds.beam.assistant package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.auto.html">beamds.beam.auto package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.base.html">beamds.beam.base package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.config.html">beamds.beam.config package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.data.html">beamds.beam.data package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.dataset.html">beamds.beam.dataset package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.distributed.html">beamds.beam.distributed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.experiment.html">beamds.beam.experiment package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.federated.html">beamds.beam.federated package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.fine_tune.html">beamds.beam.fine_tune package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.hpo.html">beamds.beam.hpo package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="beamds.beam.importer.html">beamds.beam.importer package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.importer.safe_imports.html">beamds.beam.importer.safe_imports package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="beamds.beam.llm.html">beamds.beam.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.simulators.html">beamds.beam.llm.simulators package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.logging.html">beamds.beam.logging package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.misc.html">beamds.beam.misc package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.nn.html">beamds.beam.nn package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.orchestration.html">beamds.beam.orchestration package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.parallel.html">beamds.beam.parallel package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.path.html">beamds.beam.path package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.processor.html">beamds.beam.processor package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.serve.html">beamds.beam.serve package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.setup.html">beamds.beam.setup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.similarity.html">beamds.beam.similarity package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.sql.html">beamds.beam.sql package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.ssl.html">beamds.beam.ssl package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.tabular.html">beamds.beam.tabular package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.transformer.html">beamds.beam.transformer package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.type.html">beamds.beam.type package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.utils.html">beamds.beam.utils package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.workflow.html">beamds.beam.workflow package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.writer.html">beamds.beam.writer package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="beamds.examples.html">beamds.examples package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="beamds.examples.enron_similarity.html">beamds.examples.enron_similarity package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.runs.html">beamds.runs package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.tests.html">beamds.tests package</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">beamds</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">beamds package</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="beamds-package">
+<h1>beamds package<a class="headerlink" href="#beamds-package" title="Link to this heading">#</a></h1>
+<section id="subpackages">
+<h2>Subpackages<a class="headerlink" href="#subpackages" title="Link to this heading">#</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="beamds.beam.html">beamds.beam package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="beamds.beam.html#subpackages">Subpackages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.algorithm.html">beamds.beam.algorithm package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.algorithm.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.algorithm.html#beamds-beam-algorithm-catboost-algorithm-module">beamds.beam.algorithm.catboost_algorithm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.algorithm.html#beamds-beam-algorithm-config-module">beamds.beam.algorithm.config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.algorithm.html#beamds-beam-algorithm-core-algorithm-module">beamds.beam.algorithm.core_algorithm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.algorithm.html#beamds-beam-algorithm-group-expansion-module">beamds.beam.algorithm.group_expansion module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.algorithm.html#beamds-beam-algorithm-neural-algorithm-module">beamds.beam.algorithm.neural_algorithm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.algorithm.html#beamds-beam-algorithm-sklearn-algorithm-module">beamds.beam.algorithm.sklearn_algorithm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.algorithm.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.assistant.html">beamds.beam.assistant package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.assistant.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.assistant.html#beamds-beam-assistant-assistant-module">beamds.beam.assistant.assistant module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.assistant.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.auto.html">beamds.beam.auto package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.auto.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.auto.html#beamds-beam-auto-auto-module">beamds.beam.auto.auto module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.auto.html#beamds-beam-auto-synchronous-server-module">beamds.beam.auto.synchronous-server module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.auto.html#beamds-beam-auto-utils-module">beamds.beam.auto.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.auto.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.base.html">beamds.beam.base package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.base.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.base.html#beamds-beam-base-base-cache-module">beamds.beam.base.base_cache module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.base.html#beamds-beam-base-base-class-module">beamds.beam.base.base_class module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.base.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.config.html">beamds.beam.config package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.config.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.config.html#beamds-beam-config-configurations-module">beamds.beam.config.configurations module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.config.html#beamds-beam-config-core-config-module">beamds.beam.config.core_config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.config.html#beamds-beam-config-deepspeed-module">beamds.beam.config.deepspeed module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.config.html#beamds-beam-config-utils-module">beamds.beam.config.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.config.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.data.html">beamds.beam.data package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.data.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.data.html#beamds-beam-data-beam-data-module">beamds.beam.data.beam_data module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.data.html#beamds-beam-data-beam-schema-module">beamds.beam.data.beam_schema module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.data.html#beamds-beam-data-elements-module">beamds.beam.data.elements module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.data.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.dataset.html">beamds.beam.dataset package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.dataset.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.dataset.html#beamds-beam-dataset-sampler-module">beamds.beam.dataset.sampler module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.dataset.html#beamds-beam-dataset-universal-dataset-module">beamds.beam.dataset.universal_dataset module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.dataset.html#beamds-beam-dataset-variants-module">beamds.beam.dataset.variants module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.dataset.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.distributed.html">beamds.beam.distributed package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#beamds-beam-distributed-async-client-module">beamds.beam.distributed.async_client module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#beamds-beam-distributed-async-server-module">beamds.beam.distributed.async_server module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#beamds-beam-distributed-celery-dispatcher-module">beamds.beam.distributed.celery_dispatcher module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#beamds-beam-distributed-celery-worker-module">beamds.beam.distributed.celery_worker module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#beamds-beam-distributed-ray-dispatcher-module">beamds.beam.distributed.ray_dispatcher module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#beamds-beam-distributed-resource-module">beamds.beam.distributed.resource module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#beamds-beam-distributed-thread-dispatcher-module">beamds.beam.distributed.thread_dispatcher module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#beamds-beam-distributed-utils-module">beamds.beam.distributed.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.distributed.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.experiment.html">beamds.beam.experiment package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.experiment.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.experiment.html#beamds-beam-experiment-beam-mlflow-module">beamds.beam.experiment.beam_mlflow module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.experiment.html#beamds-beam-experiment-experiment-module">beamds.beam.experiment.experiment module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.experiment.html#beamds-beam-experiment-reporter-module">beamds.beam.experiment.reporter module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.experiment.html#beamds-beam-experiment-utils-module">beamds.beam.experiment.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.experiment.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.federated.html">beamds.beam.federated package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.federated.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.federated.html#beamds-beam-federated-federated-module">beamds.beam.federated.federated module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.federated.html#beamds-beam-federated-resource-module">beamds.beam.federated.resource module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.federated.html#beamds-beam-federated-train-module">beamds.beam.federated.train module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.federated.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.fine_tune.html">beamds.beam.fine_tune package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.fine_tune.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.fine_tune.html#beamds-beam-fine-tune-algorithm-module">beamds.beam.fine_tune.algorithm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.fine_tune.html#beamds-beam-fine-tune-dataset-module">beamds.beam.fine_tune.dataset module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.fine_tune.html#beamds-beam-fine-tune-hparams-module">beamds.beam.fine_tune.hparams module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.fine_tune.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.hpo.html">beamds.beam.hpo package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#beamds-beam-hpo-core-module">beamds.beam.hpo.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#beamds-beam-hpo-lifelong-hpo-module">beamds.beam.hpo.lifelong_hpo module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#beamds-beam-hpo-optuna-module">beamds.beam.hpo.optuna module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#beamds-beam-hpo-params-module">beamds.beam.hpo.params module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#beamds-beam-hpo-ray-module">beamds.beam.hpo.ray module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#beamds-beam-hpo-resource-module">beamds.beam.hpo.resource module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#beamds-beam-hpo-utils-module">beamds.beam.hpo.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.hpo.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.importer.html">beamds.beam.importer package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.importer.html#subpackages">Subpackages</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.importer.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.importer.html#beamds-beam-importer-lazy-importer-module">beamds.beam.importer.lazy_importer module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.importer.html#beamds-beam-importer-no-module-module">beamds.beam.importer.no_module module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.importer.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.llm.html">beamds.beam.llm package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#subpackages">Subpackages</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-chat-module">beamds.beam.llm.chat module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-conversation-module">beamds.beam.llm.conversation module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-core-module">beamds.beam.llm.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-hf-conversation-module">beamds.beam.llm.hf_conversation module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-model-adapter-module">beamds.beam.llm.model_adapter module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-models-module">beamds.beam.llm.models module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-openai-module">beamds.beam.llm.openai module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-resource-module">beamds.beam.llm.resource module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-response-module">beamds.beam.llm.response module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-task-module">beamds.beam.llm.task module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-tools-module">beamds.beam.llm.tools module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#beamds-beam-llm-utils-module">beamds.beam.llm.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.llm.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.logging.html">beamds.beam.logging package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.logging.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.logging.html#beamds-beam-logging-core-module">beamds.beam.logging.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.logging.html#beamds-beam-logging-kpi-module">beamds.beam.logging.kpi module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.logging.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.misc.html">beamds.beam.misc package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.misc.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.misc.html#beamds-beam-misc-fake-module">beamds.beam.misc.fake module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.misc.html#beamds-beam-misc-text-features-module">beamds.beam.misc.text_features module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.misc.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.nn.html">beamds.beam.nn package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.nn.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.nn.html#beamds-beam-nn-core-module">beamds.beam.nn.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.nn.html#beamds-beam-nn-model-module">beamds.beam.nn.model module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.nn.html#beamds-beam-nn-optim-module">beamds.beam.nn.optim module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.nn.html#beamds-beam-nn-tensor-module">beamds.beam.nn.tensor module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.nn.html#beamds-beam-nn-triton-module">beamds.beam.nn.triton module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.nn.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.orchestration.html">beamds.beam.orchestration package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#beamds-beam-orchestration-cluster-module">beamds.beam.orchestration.cluster module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#beamds-beam-orchestration-config-module">beamds.beam.orchestration.config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#beamds-beam-orchestration-dataclasses-module">beamds.beam.orchestration.dataclasses module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#beamds-beam-orchestration-deploy-module">beamds.beam.orchestration.deploy module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#beamds-beam-orchestration-k8s-module">beamds.beam.orchestration.k8s module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#beamds-beam-orchestration-pod-module">beamds.beam.orchestration.pod module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#beamds-beam-orchestration-units-module">beamds.beam.orchestration.units module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#beamds-beam-orchestration-utils-module">beamds.beam.orchestration.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.orchestration.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.parallel.html">beamds.beam.parallel package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.parallel.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.parallel.html#beamds-beam-parallel-core-module">beamds.beam.parallel.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.parallel.html#beamds-beam-parallel-task-module">beamds.beam.parallel.task module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.parallel.html#beamds-beam-parallel-utils-module">beamds.beam.parallel.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.parallel.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.path.html">beamds.beam.path package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.path.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.path.html#beamds-beam-path-core-module">beamds.beam.path.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.path.html#beamds-beam-path-models-module">beamds.beam.path.models module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.path.html#beamds-beam-path-resource-module">beamds.beam.path.resource module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.path.html#beamds-beam-path-utils-module">beamds.beam.path.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.path.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.processor.html">beamds.beam.processor package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.processor.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.processor.html#beamds-beam-processor-core-module">beamds.beam.processor.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.processor.html#beamds-beam-processor-dispatcher-module">beamds.beam.processor.dispatcher module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.processor.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.serve.html">beamds.beam.serve package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-beam-grpc-pb2-module">beamds.beam.serve.beam_grpc_pb2 module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-beam-grpc-pb2-grpc-module">beamds.beam.serve.beam_grpc_pb2_grpc module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-client-module">beamds.beam.serve.client module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-config-module">beamds.beam.serve.config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-grpc-client-module">beamds.beam.serve.grpc_client module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-grpc-server-module">beamds.beam.serve.grpc_server module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-http-client-module">beamds.beam.serve.http_client module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-http-server-module">beamds.beam.serve.http_server module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-remote-module">beamds.beam.serve.remote module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-server-module">beamds.beam.serve.server module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#beamds-beam-serve-triton-module">beamds.beam.serve.triton module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.serve.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.setup.html">beamds.beam.setup package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.setup.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.similarity.html">beamds.beam.similarity package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#beamds-beam-similarity-config-module">beamds.beam.similarity.config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#beamds-beam-similarity-core-module">beamds.beam.similarity.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#beamds-beam-similarity-dense-module">beamds.beam.similarity.dense module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#beamds-beam-similarity-sparnn-module">beamds.beam.similarity.sparnn module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#beamds-beam-similarity-sparse-module">beamds.beam.similarity.sparse module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#beamds-beam-similarity-text-module">beamds.beam.similarity.text module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#beamds-beam-similarity-tfidf-module">beamds.beam.similarity.tfidf module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.similarity.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.sql.html">beamds.beam.sql package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.sql.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.sql.html#beamds-beam-sql-core-module">beamds.beam.sql.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.sql.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.ssl.html">beamds.beam.ssl package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.ssl.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.ssl.html#beamds-beam-ssl-beam-ssl-module">beamds.beam.ssl.beam_ssl module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.ssl.html#beamds-beam-ssl-models-module">beamds.beam.ssl.models module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.ssl.html#beamds-beam-ssl-parser-module">beamds.beam.ssl.parser module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.ssl.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.tabular.html">beamds.beam.tabular package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.tabular.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.tabular.html#beamds-beam-tabular-algorithm-module">beamds.beam.tabular.algorithm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.tabular.html#beamds-beam-tabular-dataset-module">beamds.beam.tabular.dataset module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.tabular.html#beamds-beam-tabular-params-module">beamds.beam.tabular.params module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.tabular.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.transformer.html">beamds.beam.transformer package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.transformer.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.transformer.html#beamds-beam-transformer-reducer-module">beamds.beam.transformer.reducer module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.transformer.html#beamds-beam-transformer-transformer-module">beamds.beam.transformer.transformer module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.transformer.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.type.html">beamds.beam.type package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.type.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.type.html#beamds-beam-type-core-module">beamds.beam.type.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.type.html#beamds-beam-type-utils-module">beamds.beam.type.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.type.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.utils.html">beamds.beam.utils package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.utils.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.utils.html#beamds-beam-utils-utils-all-module">beamds.beam.utils.utils_all module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.utils.html#beamds-beam-utils-utils-ds-module">beamds.beam.utils.utils_ds module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.utils.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.workflow.html">beamds.beam.workflow package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.workflow.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.workflow.html#beamds-beam-workflow-core-module">beamds.beam.workflow.core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.workflow.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="beamds.beam.writer.html">beamds.beam.writer package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.writer.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.writer.html#beamds-beam-writer-mlflow-module">beamds.beam.writer.mlflow module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.writer.html#beamds-beam-writer-writer-module">beamds.beam.writer.writer module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.beam.writer.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.beam.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.beam.html#beamds-beam-meta-module">beamds.beam.meta module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.beam.html#beamds-beam-resources-module">beamds.beam.resources module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.beam.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="beamds.examples.html">beamds.examples package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#subpackages">Subpackages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="beamds.examples.enron_similarity.html">beamds.examples.enron_similarity package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="beamds.examples.enron_similarity.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.examples.enron_similarity.html#beamds-examples-enron-similarity-alg-module">beamds.examples.enron_similarity.alg module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.examples.enron_similarity.html#beamds-examples-enron-similarity-config-module">beamds.examples.enron_similarity.config module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.examples.enron_similarity.html#beamds-examples-enron-similarity-preprocess-module">beamds.examples.enron_similarity.preprocess module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.examples.enron_similarity.html#beamds-examples-enron-similarity-run-module">beamds.examples.enron_similarity.run module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.examples.enron_similarity.html#beamds-examples-enron-similarity-utils-module">beamds.examples.enron_similarity.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="beamds.examples.enron_similarity.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-autobeam-example-module">beamds.examples.autobeam_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-beam-nn-example-module">beamds.examples.beam_nn_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-catboost-example-module">beamds.examples.catboost_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-cifar10-example-module">beamds.examples.cifar10_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-covtype-example-module">beamds.examples.covtype_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-covtype-ssl-module">beamds.examples.covtype_ssl module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-cpp-modifier-module">beamds.examples.cpp_modifier module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-deep-tsne-example-module">beamds.examples.deep_tsne_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-distributed-async-server-module">beamds.examples.distributed_async_server module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-fine-tune-llm-module">beamds.examples.fine_tune_llm module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-hexray-example-module">beamds.examples.hexray_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-inference-server-module">beamds.examples.inference_server module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-llm-example-module">beamds.examples.llm_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-llm-worker-generator-module">beamds.examples.llm_worker_generator module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-load-beam-module">beamds.examples.load_beam module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-mnist-accelerate-module">beamds.examples.mnist_accelerate module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-mnist-example-module">beamds.examples.mnist_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-orchestration-beamdeploy-module">beamds.examples.orchestration_beamdeploy module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-orchestration-beamdeploy-config-params-module">beamds.examples.orchestration_beamdeploy_config_params module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-orchestration-beampod-module">beamds.examples.orchestration_beampod module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-orchestration-raydeploy-module">beamds.examples.orchestration_raydeploy module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-serve-in-1click-module">beamds.examples.serve_in_1click module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-sparse-sim-example-module">beamds.examples.sparse_sim_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-ssl-with-beam-module">beamds.examples.ssl_with_beam module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-streamlit-with-beam-module">beamds.examples.streamlit_with_beam module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-tabular-example-module">beamds.examples.tabular_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-tabular-hpo-module">beamds.examples.tabular_hpo module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-tfidf-example-module">beamds.examples.tfidf_example module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-tfidf-transformer-module">beamds.examples.tfidf_transformer module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-working-with-data-module">beamds.examples.working_with_data module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#beamds-examples-working-with-prefect-module">beamds.examples.working_with_prefect module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.examples.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="beamds.runs.html">beamds.runs package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="beamds.runs.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.runs.html#beamds-runs-sentence-transformer-server-module">beamds.runs.sentence_transformer_server module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.runs.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="beamds.tests.html">beamds.tests package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="beamds.tests.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.tests.html#beamds-tests-all-test-module">beamds.tests.all_test module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.tests.html#beamds-tests-beam-http-client-module">beamds.tests.beam-http-client module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.tests.html#beamds-tests-beam-http-server-module">beamds.tests.beam-http-server module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.tests.html#beamds-tests-import-beam-module">beamds.tests.import_beam module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="beamds.tests.html#module-contents">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">#</a></h2>
+</section>
+<section id="beamds-setup-module">
+<h2>beamds.setup module<a class="headerlink" href="#beamds-setup-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-contents">
+<h2>Module contents<a class="headerlink" href="#module-contents" title="Link to this heading">#</a></h2>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#subpackages">Subpackages</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submodules">Submodules</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#beamds-setup-module">beamds.setup module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-contents">Module contents</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/mlutils/beamds/edit/main/docs/beamds.rst">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="_sources/beamds.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="_static/scripts/bootstrap.js?digest=3ee479438cf8b5e0d341"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=3ee479438cf8b5e0d341"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Elad Sarafian.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.3.7.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.3.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
