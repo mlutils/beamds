@@ -10,6 +10,11 @@ from beam import beam_logger as logger
 import pandas as pd
 
 
+def test_minio_connection():
+    path = resource('s3://172.17.0.1:9000/sandbox/?access-key=myaccesskey&secret-key=mysecretkey')
+    print(list(path))
+
+
 def test_beam_default_configuration():
     import sys
     # generate some random arguments
@@ -585,6 +590,8 @@ if __name__ == '__main__':
 
     # test_beam_default_configuration()
 
-    test_beam_parallel_with_silence()
+    # test_beam_parallel_with_silence()
+
+    test_minio_connection()
 
     print('done')

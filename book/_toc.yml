@@ -5,5 +5,4 @@ format: jb-book
 root: intro
 chapters:
 - file: readme
-- file: beam_resource
-- file: markdown-notebooks
+- file: beam-resource

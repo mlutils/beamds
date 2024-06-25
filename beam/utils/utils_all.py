@@ -30,6 +30,8 @@ import inspect
 from argparse import Namespace
 from functools import wraps, partial, cached_property as native_cached_property
 from collections import OrderedDict
+import yaml
+
 
 # do not delete this import (it is required as some modules import the following imported functions from this file)
 from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container, is_cached_property
@@ -1073,14 +1075,27 @@ def get_cached_properties(obj):
     return cached_props
 
 
-def pretty_print_dict(d, name):
+def pretty_print_dict(d, name=None, dense=True):
 
     # Convert each key-value pair to 'k=v' format and join them with commas
-    formatted_str = ", ".join(f"{k}={v}" for k, v in d.items())
+    if dense:
+        separator = ', '
+    else:
+        separator = ',\n'
+    formatted_str = f"{separator}".join(f"{k}={v}" for k, v in d.items())
 
     # Enclose in parentheses
-    formatted_str = f"{name}({formatted_str})"
+    if name is None:
+        formatted_str = f"{formatted_str}"
+    else:
+        formatted_str = f"{name}:({formatted_str})"
+
     return formatted_str
+
+
+def pprint(obj):
+    # print with dump to yaml
+    print(yaml.dump(obj))
 
 
 def lazy_property(fn):
@@ -1203,3 +1218,5 @@ def safe_getmembers(obj, predicate=None):
         predicate = lambda value: True
 
     return getmembers(obj, predicate=lambda key, value: predicate(value) and not key.startswith('_'))
+
+# pretty_print_dict()

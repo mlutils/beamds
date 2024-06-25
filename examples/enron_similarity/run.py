@@ -51,8 +51,10 @@ def run_enron():
             alg.build_features()
 
     if hparams.get('save-state') and hparams.get('model-state-path') is not None:
+
+        override = hparams.get('reload-state')
         logger.info(f"Saving state to {hparams.get('model-state-path')}")
-        alg.save_state(hparams.get('model-state-path'), override=False)
+        alg.save_state(hparams.get('model-state-path'), override=override)
 
     df = alg.search_dual('I need to know about the project', k_sparse=5, k_dense=5)
     print(df)

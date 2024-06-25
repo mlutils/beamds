@@ -135,7 +135,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     def _invmap(self):
         im = {}
         for k, v in self.ind.items():
-            s = pd.Series(np.arange(len(v.values)), index=v.values.index)
+            s = pd.Series(np.arange(len(v)), index=v)
             im[k] = s.sort_index()
         return im
 

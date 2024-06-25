@@ -54,7 +54,7 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
 
     query = url.query
     for k, v in query.items():
-        kwargs[k] = v
+        kwargs[k.replace('-', '_')] = v
 
     if access_key is None and 'access_key' in kwargs:
         access_key = kwargs.pop('access_key')

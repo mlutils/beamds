@@ -45,7 +45,7 @@ class BeamImporter:
             'copy': 'copy',
             'warnings': 'warnings',
             'deepcopy': 'copy.deepcopy',
-
+            'yaml': 'yaml',
 
         }
         self.__all__ = list(self.aliases.keys())  # Iterable of attribute names
