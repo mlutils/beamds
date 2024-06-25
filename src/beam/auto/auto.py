@@ -481,7 +481,10 @@ class AutoBeam(BeamBase):
         from docker.errors import BuildError
 
         # client = docker.APIClient()
-        client = docker.APIClient(base_url='unix:///var/run/docker.sock')
+        # client = docker.APIClient(base_url='unix:///var/run/docker.sock')
+        # client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+        # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
+        client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
 
         bundle_path = beam_path(bundle_path)
         current_dir = beam_path(__file__).parent
@@ -530,7 +533,10 @@ class AutoBeam(BeamBase):
             }
 
             try:
-                client = docker.APIClient(base_url='unix://var/run/docker.sock')
+                # client = docker.APIClient(base_url='unix://var/run/docker.sock')
+                # client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+                # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
+                client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
                 print(client.version())
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
                                         buildargs=build_args, tag=image_name, rm=True, decode=True)
