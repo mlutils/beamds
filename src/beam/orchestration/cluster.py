@@ -88,7 +88,6 @@ class HTTPServeCluster(Processor):
         return cls(pods, config)
 
 
-
 class RayCluster(Processor):
     def __init__(self, deployment, config, *args, **kwargs):
         super().__init__(*args, **kwargs)
