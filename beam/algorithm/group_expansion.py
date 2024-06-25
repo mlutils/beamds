@@ -194,7 +194,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     @classmethod
     @property
     def special_state_attributes(cls):
-        return super(TextGroupExpansionAlgorithm, cls).special_state_attributes.union(['tfidf_sim', 'dense_sim'
+        return super(TextGroupExpansionAlgorithm, cls).special_state_attributes.union(['tfidf_sim', 'dense_sim',
                                                                                        'features'])
 
     @classmethod
@@ -213,7 +213,10 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         for k in self.dense_sim.keys():
             self.dense_sim[k].set_dense_model(dense_model)
 
-    def search_dual(self, query, index=None, subset='validation', k_sparse=5, k_dense=5):
+    def search_dual(self, query: Union[List, str], index=None, subset='validation', k_sparse=5, k_dense=5):
+        if isinstance(query, str):
+            query = [query]
+
         res_sparse = self.search_tfidf(query, subset=subset, k=k_sparse)
         res_dense = self.search_dense(query, subset=subset, k=k_dense)
 
@@ -226,18 +229,16 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         iloc_dense = self.invmap[subset][loc_dense]
         source_sparse = np.repeat(index[:, None], k_sparse, axis=1).flatten()
         source_dense = np.repeat(index[:, None], k_dense, axis=1).flatten()
-        val_sparse = res_sparse.values.flatten()
-        val_dense = res_dense.values.flatten()
+        val_sparse = as_numpy(res_sparse.distance.flatten())
+        val_dense = as_numpy(res_dense.distance.flatten())
 
-        df_sparse = pd.DataFrame({'val': val_sparse, 'source': source_sparse,
-                                 'loc': loc_sparse, 'iloc': iloc_sparse})
+        df_sparse = pd.DataFrame({'val': val_sparse, 'source': source_sparse, 'loc': loc_sparse, 'iloc': iloc_sparse})
 
         df_sparse = df_sparse.groupby('iloc').agg({'val': 'max', 'source': list, 'loc': 'first'})
 
-        df_dense = pd.DataFrame({'val': val_dense, 'source': source_dense,
-                                'loc': loc_dense, 'iloc': iloc_dense})
+        df_dense = pd.DataFrame({'val': val_dense, 'source': source_dense, 'loc': loc_dense, 'iloc': iloc_dense})
 
-        df_dense = df_dense.groupby('iloc').agg({'val': 'max', 'source': 'list', 'loc': 'first'})
+        df_dense = df_dense.groupby('iloc').agg({'val': 'max', 'source': list, 'loc': 'first'})
 
         df = pd.merge(df_sparse, df_dense, how='outer', left_index=True, right_index=True,
                       suffixes=('_sparse', '_dense'), indicator=True)

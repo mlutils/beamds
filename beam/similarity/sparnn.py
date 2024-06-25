@@ -46,7 +46,7 @@ class SparnnSimilarity(BeamSimilarity):
         self.cluster = ci.MultiClusterIndex(self.vectors, np.arange(len(self.index)), num_indexes=self.num_indexes,
                                             matrix_size=self.matrix_size)
 
-    def search(self, x, k=1):
+    def search(self, x, k=1) -> Similarities:
         x, _ = self.extract_data_and_index(x, convert_to='scipy_csr')
         if self.cluster is None:
             self.fit()

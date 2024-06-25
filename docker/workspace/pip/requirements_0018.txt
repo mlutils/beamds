@@ -11,3 +11,5 @@ mahotas
 chromadb
 pymilvus
 lmdeploy
+
+pydata-sphinx-theme

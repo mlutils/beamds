@@ -185,7 +185,7 @@ class DenseSimilarity(BeamSimilarity):
 
         self.vector_store.add(x)
 
-    def search(self, x, k=1):
+    def search(self, x, k=1) -> Similarities:
 
         x_type = check_type(x)
         device = x.device if x_type.minor == 'tensor' else None

@@ -1,8 +1,10 @@
+import copy
 import inspect
 from argparse import Namespace
 
 from ..type import check_type
 from ..meta import MetaBeamInit, BeamName
+from ..type.utils import is_beam_config
 
 from ..utils import get_cached_properties, is_notebook, cached_property
 from ..config import BeamConfig
@@ -20,12 +22,12 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
 
         config_scheme = _config_scheme or BeamConfig
         if hparams is not None:
-            if isinstance(hparams, BeamConfig):
-                self.hparams = hparams
+            if is_beam_config(hparams):
+                self.hparams = copy.deepcopy(hparams)
             else:
                 self.hparams = config_scheme(hparams, load_script_arguments=False, load_config_files=False)
-        elif len(args) > 0 and isinstance(args[0], BeamConfig):
-            self.hparams = args[0]
+        elif len(args) > 0 and is_beam_config(args[0]):
+            self.hparams = copy.deepcopy(args[0])
         elif len(args) > 0 and isinstance(args[0], (list, tuple, set, dict, Namespace)):
             self.hparams = config_scheme(args[0], load_script_arguments=False, load_config_files=False)
         else:

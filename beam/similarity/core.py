@@ -13,7 +13,6 @@ from ..utils import as_scipy_csr, as_scipy_coo, as_numpy, as_tensor
 class Similarities:
     index: Any
     distance: Any
-    values: Any = None
     sparse_scores: Any = None
     metric: str = None
     model: str = None
@@ -64,7 +63,7 @@ class BeamSimilarity(Processor):
     def add(self, x, index=None, **kwargs):
         raise NotImplementedError
 
-    def search(self, x, k=1):
+    def search(self, x, k=1) -> Similarities:
         raise NotImplementedError
 
     def train(self, x):

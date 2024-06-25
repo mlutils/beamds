@@ -481,7 +481,7 @@ class TFIDF(BeamSimilarity):
     def train(self, x):
         self.fit(x)
 
-    def search(self, q, k=1, **kwargs):
+    def search(self, q, k=1, **kwargs) -> Similarities:
 
         q = self.as_container(q)
 

@@ -164,7 +164,7 @@ class SparseSimilarity(BeamSimilarity):
     def train(self, x=None):
         raise NotImplementedError
 
-    def search(self, x, k=1, **kwargs):
+    def search(self, x, k=1, **kwargs) -> Similarities:
 
         x = self.to_sparse(x)
 
