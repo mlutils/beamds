@@ -470,6 +470,7 @@ class AutoBeam(BeamBase):
         AutoBeam._build_image(bundle_path, base_image, config=config, image_name=image_name,
                               entrypoint=entrypoint, beam_version=beam_version,
                               dockerfile=dockerfile, **kwargs)
+        logger.info(f"breakpoint")
 
     @staticmethod
     def _build_image(bundle_path, base_image, config=None, image_name=None,
@@ -479,7 +480,8 @@ class AutoBeam(BeamBase):
         import docker
         from docker.errors import BuildError
 
-        client = docker.APIClient()
+        # client = docker.APIClient()
+        client = docker.APIClient(base_url='unix:///var/run/docker.sock')
 
         bundle_path = beam_path(bundle_path)
         current_dir = beam_path(__file__).parent
@@ -528,7 +530,8 @@ class AutoBeam(BeamBase):
             }
 
             try:
-
+                client = docker.APIClient(base_url='unix://var/run/docker.sock')
+                print(client.version())
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
                                         buildargs=build_args, tag=image_name, rm=True, decode=True)
 
