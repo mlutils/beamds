@@ -106,7 +106,7 @@ PrintMotd no
 #ClientAliveCountMax 3
 #UseDNS no
 #PidFile /run/sshd.pid
-PidFile /opt/ssh/sshd.pid
+PidFile /opt/ssh_user/sshd.pid
 #MaxStartups 10:30:100
 #PermitTunnel no
 #ChrootDirectory none

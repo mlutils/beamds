@@ -3,8 +3,8 @@ mkdir -p  /opt/ssh_user
 mkdir -p  /opt/ssh_root
 mkdir -p  /opt/supervisor
 cp /workspace/configuration/supervisord.conf /etc/supervisor/conf.d/
-cp /workspace/configuration/sshd_config /opt/ssh_root
-cp /workspace/configuration/sshd_config /opt/ssh_user
+cp /workspace/configuration/sshd_config_root /opt/ssh_root/sshd_config
+cp /workspace/configuration/sshd_config_user /opt/ssh_user/sshd_config
 
 # for now this line throw unclear error when running in the dockerfile-beam, but it runs fine from the container
 # so for now, we will run it from the container and commit the container to a modified image.
