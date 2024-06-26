@@ -192,15 +192,16 @@ if [ "$RUN_SSH" = true ]; then
   echo "SSH Port: $SSH_PORT"
   export SSH_PORT=$SSH_PORT
   echo "ssh_port, ${SSH_PORT}" >> /workspace/configuration/config.csv
-  cp /workspace/configuration/sshd_config /opt/ssh/sshd_config
-  echo "Port $SSH_PORT" >>/opt/ssh/sshd_config
-  supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
+  cp /workspace/configuration/sshd_config /opt/ssh_user/sshd_config
+  echo "Port $SSH_PORT" >> /opt/ssh_user/sshd_config
+  #supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
 
   ROOT_SSH_PORT="${INITIALS}24"
   export ROOT_SSH_PORT=$ROOT_SSH_PORT
   echo "root_ssh_port, ${ROOT_SSH_PORT}" >> /workspace/configuration/config.csv
-  echo "Port $ROOT_SSH_PORT" >>/etc/ssh/sshd_config
-  service ssh start
+  cp /workspace/configuration/sshd_config /opt/ssh_root/sshd_config
+  echo "Port $ROOT_SSH_PORT" >> /opt/ssh_root/sshd_config
+  supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
   echo "SSH is running."
 else
   echo "SSH is disabled."
