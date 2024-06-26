@@ -1,15 +1,15 @@
-from src.beam.data import BeamData
-from src.beam.path import beam_path
-from src.beam.transformer import Transformer
-from src.beam.nn.tensor import LazyTensor
-from src.beam import Timer
+from beam.data import BeamData
+from beam.path import beam_path
+from beam.transformer import Transformer
+from beam.nn.tensor import LazyTensor
+from beam import Timer
 import numpy as np
 import pandas as pd
 import torch
 
 import string
 import random
-from src.beam import check_type
+from beam import check_type
 
 
 def rand_column(n=4):

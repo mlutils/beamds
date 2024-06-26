@@ -6,7 +6,7 @@
 import src.beam as beam
 
 
-from src.beam import logger
+from beam import logger
 
 print(beam.__version__)
 

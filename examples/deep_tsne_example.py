@@ -7,11 +7,11 @@ import torchvision
 import torch.nn.functional as F
 import numpy as np
 
-from src.beam import Experiment, BeamNN, BeamData
-from src.beam import UniversalDataset
-from src.beam import NeuralAlgorithm
-from src.beam import LinearNet, as_numpy
-from src.beam import UniversalConfig, BeamParam
+from beam import Experiment, BeamNN, BeamData
+from beam import UniversalDataset
+from beam import NeuralAlgorithm
+from beam import LinearNet, as_numpy
+from beam import UniversalConfig, BeamParam
 from functools import partial
 import math
 import matplotlib.pyplot as plt

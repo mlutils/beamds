@@ -10,4 +10,4 @@ apt install -y tesseract-ocr-ara
 apt install -y libtesseract5
 
 echo "Installing pytesseract client packages"
-pip install pytesseract tesserocr
+pip install pytesseract tesserocr craft-text-detector

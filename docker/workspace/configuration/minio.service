@@ -1,0 +1,17 @@
+[Unit]
+Description=MinIO
+Documentation=https://docs.min.io
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=minio-user
+Group=minio-user
+ProtectSystem=full
+Environment="MINIO_ACCESS_KEY=minio-access-key"
+Environment="MINIO_SECRET_KEY=minio-secret-key"
+ExecStart=/usr/local/bin/minio server /usr/local/share/minio --address :MINIO_PORT --config-dir /etc/minio
+
+
+[Install]
+WantedBy=multi-user.target

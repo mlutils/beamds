@@ -1,5 +1,5 @@
 import re
-from src.beam import resource
+from beam import resource
 import pandas as pd
 
 

@@ -1,86 +1,63 @@
 # Configuration file for the Sphinx documentation builder.
 #
-# This file only contains a selection of the most common options. For a full
-# list see the documentation:
+# For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-# -- Path setup --------------------------------------------------------------
-
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-import os
-import sys
-sys.path.insert(0, os.path.abspath('../src'))
-
-
 # -- Project information -----------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Beam-DS'
-copyright = '2022, elad'
-author = 'elad'
-
+copyright = '2024, Elad Sarafian'
+author = 'Elad Sarafian'
 
 # -- General configuration ---------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
+# Add any Sphinx extension module names here, as strings.
 extensions = [
-]
+            'sphinx.ext.autodoc',  # Include documentation from docstrings
+            'sphinx.ext.napoleon',  # Support for Google-style docstrings
+            'sphinx.ext.viewcode',  # Add links to source code
+            'sphinx.ext.githubpages',  # Publish HTML files to GitHub Pages
+             ]
 
-# Add any paths that contain templates here, relative to this directory.
+
+
 templates_path = ['_templates']
-
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files.
-# This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 
+
 # -- Options for HTML output -------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
 html_theme = 'alabaster'
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
-html_theme = 'sphinx_rtd_theme'
 
-source_suffix = {
-    '.rst': 'restructuredtext',
-    # '.txt': 'restructuredtext',
-    '.md': 'markdown',
-}
+# The theme to use for HTML and HTML Help pages.
+html_theme = 'pydata_sphinx_theme'
 
-extensions = ['myst_parser',
-              'sphinx.ext.autodoc',
-    'sphinx.ext.doctest',
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
-    'sphinx.ext.mathjax',
-    'sphinx.ext.ifconfig',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.githubpages',
-    'sphinx.ext.napoleon',
-              "nbsphinx",]
+# Configuration for the theme
+html_theme_options = {
+            "github_url": "https://github.com/mlutils/beamds",
+                "use_edit_page_button": True,
+                    "show_prev_next": False
+                    }
 
-# Napoleon settings
-napoleon_google_docstring = True
-napoleon_numpy_docstring = True
-napoleon_include_init_with_doc = True
-napoleon_include_private_with_doc = True
-napoleon_include_special_with_doc = True
-napoleon_use_admonition_for_examples = False
-napoleon_use_admonition_for_notes = False
-napoleon_use_admonition_for_references = False
-napoleon_use_ivar = False
-napoleon_use_param = True
-napoleon_use_rtype = True
+# Optionally set the base URL for the documentation, which will require this to be set if you use GitHub Pages, for example.
+# html_baseurl = 'https://your-username.github.io/your-repo/'
+
+
+html_theme_options = {
+            "use_edit_page_button": True,
+                "show_prev_next": False
+                }
+
+html_context = {
+            "github_user": "mlutils",  # Your GitHub username or organization
+                "github_repo": "beamds",  # Your repository
+                    "github_version": "main",  # The branch containing your docs
+                        "doc_path": "docs",  # Path within the repository to your documentation source
+                        }
+

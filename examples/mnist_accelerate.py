@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.beam import Experiment, BeamConfig
+from beam import Experiment, BeamConfig
 from examples.mnist_example import MNISTDataset, MNISTAlgorithm
 
 
@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     examples = alg.dataset[np.random.choice(len(alg.dataset), size=50000, replace=True)]
 
-    from src.beam.auto import AutoBeam
+    from beam.auto import AutoBeam
 
     AutoBeam.to_bundle(alg, '/tmp/mnist_bundle')
 

@@ -28,6 +28,7 @@ RUN_PREFECT=false
 RUN_RAY=true
 RUN_MONGO=false
 RUN_CHROMA=true
+RUN_MINIO=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -147,6 +148,18 @@ if [ "$RUN_MONGO" = true ]; then
 else
   echo "MongoDB is disabled."
 fi
+
+#if [ "$RUN_MINIO" = true ]; then
+#  MINIO_PORT="${INITIALS}92"
+#  echo "Minio Port: $MINIO_PORT"
+#  export MINIO_PORT=$MINIO_PORT
+#  echo "minio_port, ${MINIO_PORT}" >> /workspace/configuration/config.csv
+#  sed -i "s/MINIO_PORT/${MINIO_PORT}/g" /etc/systemd/system/minio.service
+#  bash /workspace/bash-run-scripts/run_minio.sh $MINIO_PORT
+#  echo "Minio server is running."
+#else
+#  echo "Minio is disabled."
+#fi
 
 if [ "$RUN_RAY" = true ]; then
   RAY_REDIS_PORT="${INITIALS}78"

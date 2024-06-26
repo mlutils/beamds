@@ -5,8 +5,8 @@ import pandas as pd
 import spacy
 import re
 
-from src.beam import resource, Timer, BeamData
-from src.beam import beam_logger as logger
+from beam import resource, Timer, BeamData
+from beam import beam_logger as logger
 import textstat
 
 

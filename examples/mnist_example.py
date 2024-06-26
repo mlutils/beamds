@@ -5,13 +5,13 @@ from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
-from src.beam import beam_arguments, Experiment, beam_algorithm_generator
-from src.beam import UniversalDataset, UniversalBatchSampler
-from src.beam import NeuralAlgorithm
-from src.beam import LinearNet
-from src.beam import DataTensor, PackedFolds, as_numpy
-from src.beam.data import BeamData
-from src.beam.utils import DataBatch
+from beam import beam_arguments, Experiment, beam_algorithm_generator
+from beam import UniversalDataset, UniversalBatchSampler
+from beam import NeuralAlgorithm
+from beam import LinearNet
+from beam import DataTensor, PackedFolds, as_numpy
+from beam.data import BeamData
+from beam.utils import DataBatch
 
 
 class MNISTDataset(UniversalDataset):

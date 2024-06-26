@@ -1,5 +1,5 @@
 
-from src.beam.auto import AutoBeam
+from beam.auto import AutoBeam
 
 
 def main():
@@ -9,7 +9,7 @@ def main():
     from_bundle = False
     to_docker = True
 
-    # from src.beam import logger
+    # from beam import logger
     # logger.debug_mode()
 
     if to_bundle:

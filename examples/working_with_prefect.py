@@ -6,10 +6,10 @@ import datetime
 from dataclasses import dataclass
 
 
-from src.beam.processor import Processor
-from src.beam.transformer import Transformer
-from src.beam.utils import check_type
-from src.beam import beam_path, beam_hash
+from beam.processor import Processor
+from beam.transformer import Transformer
+from beam.utils import check_type
+from beam import beam_path, beam_hash
 
 
 class DummyTransformer(Transformer):

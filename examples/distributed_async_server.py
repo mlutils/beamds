@@ -1,8 +1,8 @@
 from threading import Thread
 
-from src.beam.misc import BeamFakeAlg
-from src.beam.distributed import AsyncServer
-from src.beam import logger
+from beam.misc import BeamFakeAlg
+from beam.distributed import AsyncServer
+from beam import logger
 
 # async def websocket_handler(ws):
 #     # Wait for the client to send its client_id

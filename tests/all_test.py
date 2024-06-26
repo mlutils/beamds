@@ -5,23 +5,28 @@ from collections import Counter
 
 import torch
 import numpy as np
-from src.beam import resource, BeamData
-from src.beam import beam_logger as logger
+from beam import resource, BeamData
+from beam import beam_logger as logger
 import pandas as pd
+
+
+def test_minio_connection():
+    path = resource('s3://172.17.0.1:9000/sandbox/?access-key=myaccesskey&secret-key=mysecretkey')
+    print(list(path))
 
 
 def test_beam_default_configuration():
     import sys
     # generate some random arguments
     sys.argv = ['python', '--a', '1', '--b', '2', '--c', '3', '--d', '4', '--e', '5', '--f', '6', '--g', '7', '--h', '8']
-    from src.beam import Transformer
+    from beam import Transformer
     p = Transformer()
     print(p.hparams)
 
 
 def test_beam_parallel_with_silence():
 
-    from src.beam.parallel.utils import parallel, task
+    from beam.parallel.utils import parallel, task
     def func(i):
         return i ** 2
 
@@ -32,7 +37,7 @@ def test_beam_parallel_with_silence():
 
 def test_ray_actor():
 
-    from src.beam.distributed.ray_dispatcher import RayDispatcher, RayClient
+    from beam.distributed.ray_dispatcher import RayDispatcher, RayClient
     class A:
         def __init__(self, a):
             self.a = a
@@ -52,7 +57,7 @@ def test_ray_actor():
 
 def test_special_attributes():
     from examples.enron_similarity import EnronTicketSimilarity, TicketSimilarityConfig
-    from src.beam import Timer
+    from beam import Timer
     hparams = TicketSimilarityConfig(model_state_path='/home/shared/data/results/enron/models/model_state_e5_base',
                                      )
     alg = EnronTicketSimilarity(hparams)
@@ -68,7 +73,7 @@ def test_special_attributes():
 
 def test_collate_transformer_chunks():
 
-    from src.beam import Transformer
+    from beam import Transformer
     def func(x):
         return x + 1
 
@@ -96,15 +101,15 @@ def test_catboost():
     x = data['data']
     y = data['target']
 
-    from src.beam.algorithm import CBAlgorithm
-    # from src.beam.config import CatboostConfig
+    from beam.algorithm import CBAlgorithm
+    # from beam.config import CatboostConfig
 
     cb = CBAlgorithm()
 
     cb.fit(x, y)
 
 def test_slice_to_index():
-    from src.beam.utils import slice_to_index
+    from beam.utils import slice_to_index
     n = np.arange(10)
 
     print(slice_to_index(2, len(n), sliced=n))
@@ -113,7 +118,7 @@ def test_slice_to_index():
 
 
 def test_recursive_len():
-    from src.beam.utils import recursive_len
+    from beam.utils import recursive_len
     # c = Counter({'a': 1, 'b': 2})
     c = {'a': 1, 'b': 2}
     # c = {'a': 1, 'b': 2, 'c': np.random.randn(10)}
@@ -121,7 +126,7 @@ def test_recursive_len():
 
 
 def test_config():
-    from src.beam.config import TransformerConfig
+    from beam.config import TransformerConfig
 
     hparams = TransformerConfig(chunksize=33333)
     hparams2 = TransformerConfig(hparams, chunksize=44444)
@@ -131,7 +136,7 @@ def test_config():
 
 def test_transformer():
 
-    from src.beam.transformer import Transformer
+    from beam.transformer import Transformer
 
     t = Transformer()
     print(t)
@@ -147,7 +152,7 @@ def test_mlflow_path():
 
 
 def test_beam_data_keys():
-    from src.beam import BeamData
+    from beam import BeamData
     bd = BeamData({'a': [1, 2, 3], 'b': {'x': 1, 'y': 2}})
     print(list(bd.keys()))
     print(list(bd.keys(level=2)))
@@ -156,7 +161,7 @@ def test_beam_data_keys():
 
 def simple_server():
 
-    from src.beam.serve import beam_server
+    from beam.serve import beam_server
     def func(x):
         return sorted(x)
 
@@ -170,8 +175,8 @@ def simple_server():
 
 
 def grpc_server():
-    from src.beam.serve.grpc_server import GRPCServer
-    from src.beam.misc import BeamFakeAlg
+    from beam.serve.grpc_server import GRPCServer
+    from beam.misc import BeamFakeAlg
 
     fake_alg = BeamFakeAlg(sleep_time=1., variance=0.5, error_rate=0.1)
 
@@ -192,8 +197,8 @@ def distributed_client():
 
 
 def distributed_server():
-    from src.beam.misc import BeamFakeAlg
-    from src.beam.distributed import AsyncRayServer, AsyncCeleryServer
+    from beam.misc import BeamFakeAlg
+    from beam.distributed import AsyncRayServer, AsyncCeleryServer
 
     fake_alg = BeamFakeAlg(sleep_time=1., variance=0.5, error_rate=0.1)
 
@@ -218,7 +223,7 @@ def sftp_example():
 
 
 def load_index():
-    from src.beam.similarity import TextSimilarity
+    from beam.similarity import TextSimilarity
     from sklearn.datasets import fetch_20newsgroups
 
     logger.info(f"Loaded dataset: newsgroups_train")
@@ -236,7 +241,7 @@ def load_index():
 
 
 def save_index():
-    from src.beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
+    from beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
     from sklearn.datasets import fetch_20newsgroups
 
     logger.info(f"Loaded dataset: newsgroups_train")
@@ -257,7 +262,7 @@ def save_index():
 
 
 def nlp_example():
-    from src.beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
+    from beam.similarity import TFIDF, SparnnSimilarity, DenseSimilarity, TextSimilarity
     from sklearn.datasets import fetch_20newsgroups
 
     logger.info(f"Loaded dataset: newsgroups_train")
@@ -271,7 +276,7 @@ def nlp_example():
 
 def sparnn_example():
     from scipy.sparse import csr_matrix
-    from src.beam.similarity import SparnnSimilarity
+    from beam.similarity import SparnnSimilarity
 
     features = np.random.binomial(1, 0.01, size=(1000, 20000))
     features = csr_matrix(features)
@@ -294,7 +299,7 @@ def get_name():
 
 def beam_data_slice():
 
-    from src.beam import BeamData
+    from beam import BeamData
     # bd = BeamData(['hi how are you?', 'I am fine, thank you very much', 'the yellow submarine is here'],
     #               index=['a', 'b', 'c'])
 
@@ -306,21 +311,21 @@ def beam_data_slice():
 
 def load_algorithm():
     path = '/dsi/shared/elads/elads/data/tabular/results/deep_tabular/debug_reporter/covtype/0000_20240111_200041'
-    from src.beam.tabular import DeepTabularAlg
+    from beam.tabular import DeepTabularAlg
     alg = DeepTabularAlg.from_pretrained(path)
     print(alg)
 
 
 def load_model():
 
-    from src.beam.auto import AutoBeam
+    from beam.auto import AutoBeam
     alg = AutoBeam.from_bundle('/tmp/mnist_bundle')
     print(alg)
 
 
 def test_beam_parallel():
 
-    from src.beam.parallel import parallel, task
+    from beam.parallel import parallel, task
 
     def func(i):
         print(f'func {i}\n')
@@ -349,7 +354,7 @@ def comet_path():
 
 
 def build_hparams():
-    from src.beam.tabular import TabularConfig
+    from beam.tabular import TabularConfig
     hparams = TabularConfig(data_path='xxxxx')
 
     print(hparams.__dict__)
@@ -358,7 +363,7 @@ def build_hparams():
 
 def text_beam_data():
 
-    from src.beam import BeamData
+    from beam import BeamData
 
     bd = BeamData.from_path('/tmp/example')
 
@@ -380,9 +385,9 @@ def text_beam_data():
 
 def write_bundle_tabular(path):
 
-    from src.beam import beam_logger as logger
+    from beam import beam_logger as logger
 
-    from src.beam.tabular import TabularTransformer, TabularConfig, DeepTabularAlg
+    from beam.tabular import TabularTransformer, TabularConfig, DeepTabularAlg
 
     kwargs_base = dict(algorithm='debug_reporter',
                        # data_path='/dsi/shared/elads/elads/data/tabular/dataset/data/',
@@ -408,7 +413,7 @@ def write_bundle_tabular(path):
     net = TabularTransformer(hparams, 10, [4, 4, 4], [0, 0, 1])
     alg = DeepTabularAlg(hparams, networks=net)
 
-    from src.beam.auto import AutoBeam
+    from beam.auto import AutoBeam
 
     ab = AutoBeam(alg)
 
@@ -429,9 +434,9 @@ def write_bundle_tabular(path):
 
 def write_bundle_cifar(path):
 
-    from src.beam import beam_arguments
+    from beam import beam_arguments
     from cifar10_example import CIFAR10Algorithm
-    from src.beam.auto import AutoBeam
+    from beam.auto import AutoBeam
 
     path.rmtree()
 
@@ -455,7 +460,7 @@ def write_bundle_cifar(path):
 
 
 def load_bundle(path):
-    from src.beam.auto import AutoBeam
+    from beam.auto import AutoBeam
     alg = AutoBeam.from_bundle(path)
     print(alg)
     print(alg.hparams)
@@ -487,7 +492,7 @@ def test_data_apply():
     s2 = gen_coo_vectors(k2)
     s3 = gen_coo_vectors(k2)
 
-    from src.beam import BeamData
+    from beam import BeamData
     from uuid import uuid4 as uuid
     from beam.serve.client import BeamClient
 
@@ -518,8 +523,8 @@ if __name__ == '__main__':
     # alg = load_bundle(path)
 
 
-    # from src.beam.config import BeamHparams
-    # from src.beam.tabular import TabularHparams
+    # from beam.config import BeamHparams
+    # from beam.tabular import TabularHparams
     #
     # hparams = BeamHparams(identifier='test', project_name='test', algorithm='test', device=1)
     #
@@ -585,6 +590,8 @@ if __name__ == '__main__':
 
     # test_beam_default_configuration()
 
-    test_beam_parallel_with_silence()
+    # test_beam_parallel_with_silence()
+
+    test_minio_connection()
 
     print('done')

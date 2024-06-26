@@ -1,5 +1,5 @@
 import torch
-from src.beam.similarity import SparseSimilarity
+from beam.similarity import SparseSimilarity
 
 
 if __name__ == '__main__':
