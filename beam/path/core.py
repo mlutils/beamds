@@ -13,7 +13,7 @@ import re
 
 from ..type import check_type
 from ..meta import BeamName
-from ..type.utils import is_beam_data, is_beam_processor
+from ..type.utils import is_beam_data, is_beam_processor, is_pil
 
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
@@ -862,6 +862,15 @@ class PureBeamPath(BeamResource):
                 from safetensors.torch import load
                 x = load(fo.read())
 
+            elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif']:
+                if target == 'cv2':
+                    import cv2
+                    x = cv2.imread(fo, **kwargs)
+                elif target in ['PIL', 'pillow'] or target is None:
+                    from PIL import Image
+                    x = Image.open(fo, **kwargs)
+                else:
+                    raise ValueError(f"Unknown target: {target}")
             else:
                 x = fo.read()
 
@@ -1112,6 +1121,13 @@ class PureBeamPath(BeamResource):
                 x.read_dict(x)
                 x.write(fo)
 
+            elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif']:
+                if is_pil(x):
+                    from PIL import Image
+                    x.save(fo, **kwargs)
+                else:
+                    import cv2
+                    cv2.imwrite(fo, x, **kwargs)
             elif ext in PureBeamPath.textual_extensions:
                 assert isinstance(x, str), f"Expected str, got {type(x)}"
                 fo.write(x)

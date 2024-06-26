@@ -227,7 +227,7 @@ class BeamParallel(BeamName):
             threads.append(thread)
 
         # Optionally, you can wait for all threads to complete
-        for thread in threads:
+        for thread in self.progressbar(threads):
             thread.join()
 
         results = [results_queue.get() for _ in range(len(self.queue))]
