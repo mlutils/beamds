@@ -1,10 +1,8 @@
 
 mkdir -p  /opt/ssh_user
-mkdir -p  /opt/ssh_root
 mkdir -p  /opt/supervisor
 cp /workspace/configuration/supervisord_user.conf /etc/supervisor/conf.d/
-cp /workspace/configuration/supervisord_root.conf /etc/supervisor/conf.d/
-cp /workspace/configuration/sshd_config_root /opt/ssh_root/sshd_config
+cp /workspace/configuration/sshd_config_root /etc/ssh/sshd_config
 cp /workspace/configuration/sshd_config_user /opt/ssh_user/sshd_config
 
 # for now this line throw unclear error when running in the dockerfile-beam, but it runs fine from the container
@@ -17,11 +15,6 @@ ssh-keygen -q -N "" -t rsa -b 4096 -f /opt/ssh_user/ssh_host_rsa_key
 ssh-keygen -q -N "" -t ecdsa -f /opt/ssh_user/ssh_host_ecdsa_key
 ssh-keygen -q -N "" -t ed25519 -f /opt/ssh_user/ssh_host_ed25519_key
 # Configure SSH for non-root public key authentication
-# Keys for SSH_ROOT
-ssh-keygen -q -N "" -t dsa -f /opt/ssh_root/ssh_host_dsa_key
-ssh-keygen -q -N "" -t rsa -b 4096 -f /opt/ssh_root/ssh_host_rsa_key
-ssh-keygen -q -N "" -t ecdsa -f /opt/ssh_root/ssh_host_ecdsa_key
-ssh-keygen -q -N "" -t ed25519 -f /opt/ssh_root/ssh_host_ed25519_key
 
 mkdir -p "$USER_HOME_DIR/.ssh"
 chmod 700 "$USER_HOME_DIR/.ssh"
