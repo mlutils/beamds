@@ -24,7 +24,11 @@ html_static_path = ['_static']  # Ensure this directory exists if you use it
 html_theme_options = {
     "github_url": "https://github.com/mlutils/beamds",
     "use_edit_page_button": True,
-    "show_prev_next": False
+    "show_prev_next": False,
+    "logo": {
+            "image_light": "_static/logo.png",  # Path to the light mode logo
+            "image_dark": "_static/logo.png"    # Path to the dark mode logo, if different
+        }
 }
 
 html_context = {
@@ -33,3 +37,4 @@ html_context = {
     "github_version": "main",
     "doc_path": "docs",
 }
+
