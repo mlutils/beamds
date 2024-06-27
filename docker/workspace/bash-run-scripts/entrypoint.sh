@@ -195,7 +195,7 @@ if [ "$RUN_SSH" = true ]; then
   cp /workspace/configuration/sshd_config_user /opt/ssh_user/sshd_config
   echo "Port $SSH_PORT" >> /opt/ssh_user/sshd_config
   echo "starting supervisor and unprivileged ssh"
-  /usr/bin/supervisord -c /etc/supervisor/supervisord_user.conf &> /tmp/supervisor.log &
+  /usr/bin/supervisord -c /etc/supervisor/supervisord.conf &> /tmp/supervisor.log &
 
   ROOT_SSH_PORT="${INITIALS}24"
   export ROOT_SSH_PORT=$ROOT_SSH_PORT
