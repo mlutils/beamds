@@ -13,3 +13,4 @@ pymilvus
 lmdeploy
 
 pydata-sphinx-theme
+grex
