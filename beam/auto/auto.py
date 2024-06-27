@@ -492,7 +492,7 @@ class AutoBeam(BeamBase):
             docker_dir.clean()
             docker_dir.mkdir()
 
-            config = dict(config) or {}
+            config = dict(config) if config else {}
             docker_dir.joinpath('config.yaml').write(config)
 
             entrypoint = beam_path(entrypoint)
