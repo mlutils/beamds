@@ -2,7 +2,7 @@ name: Deploy Documentation to GitHub Pages
 
 on:
   push:
-    branches: ["dev"]  # Runs on pushes to the 'dev' branch
+    branches: ["main", "doc"]  # Runs on pushes to the 'dev' branch
   workflow_dispatch:  # Allows manual triggering from GitHub Actions tab
 
 permissions:

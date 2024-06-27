@@ -66,6 +66,25 @@ def normalize_value(v):
     return v
 
 
+# Function to compare parsed args with defaults
+def args_that_were_provided_explicitly(parser, args):
+    # Collect all argument strings (flags) for each action
+    action_to_flags = {}
+    for action in parser._actions:
+        if action.option_strings:
+            action_to_flags[action.dest] = action.option_strings
+
+    # Check which of these were actually used in sys.argv
+    passed_actions = set()
+    for arg in sys.argv[1:]:  # skip the first element, which is the script name
+        for dest, flags in action_to_flags.items():
+            if arg in flags:
+                passed_actions.add(dest)
+                break
+
+    return passed_actions
+
+
 def add_unknown_arguments(args, unknown, silent=False):
     args = copy.deepcopy(args)
 
@@ -178,17 +197,29 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
 
     if return_defaults:
         args = pr.parse_args([])
+        keys_with_non_default_values = set()
+        config_files_should_be_loaded = False
+
     else:
         args, unknown = pr.parse_known_args()
+        config_files_should_be_loaded = hasattr(args, 'config_files') and args.config_files and load_config_files
+
+        if config_files_should_be_loaded:
+            keys_with_non_default_values = set(args_that_were_provided_explicitly(pr, args))
+        else:
+            keys_with_non_default_values = set()
+
         if not strict:
-            args = add_unknown_arguments(args, unknown, silent=silent)
+            args_with_unknowns = add_unknown_arguments(args, unknown, silent=silent)
+            if config_files_should_be_loaded:
+                keys_with_non_default_values.update(set(vars(args_with_unknowns).keys()).difference(vars(args).keys()))
 
     for k, v in kwargs.items():
         if k not in args:
             setattr(args, k, v)
 
     tags = defaultdict(set)
-    if hasattr(args, 'config_files') and args.config_files and load_config_files:
+    if config_files_should_be_loaded:
         config_files = args.config_files
         delattr(args, 'config_files')
 
@@ -202,9 +233,12 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
                 del cf['_tags']
             config_args.update(cf)
 
-        # the config files have higher priority than the arguments
-        # this is since the config files are loaded only after the parser is parsed
-        # therefore one cannot override a param which exists in the config file with the arguments
+        # remove from config_args all the keys with non-default values s.t. the arguments passed in the command line
+        # have higher priority
+
+        for k in keys_with_non_default_values:
+            config_args.pop(k, None)
+
         args = Namespace(**{**to_dict(args), **config_args})
     elif hasattr(args, 'config_files'):
         delattr(args, 'config_files')
