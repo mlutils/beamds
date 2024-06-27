@@ -5,6 +5,14 @@ declare -a vars=("NVIDIA_VISIBLE_DEVICES" "NVIDIA_REQUIRE_CUDA" "CUDA_VERSION"
                  "LD_LIBRARY_PATH" "PATH" "CUDA_HOME" "CUDA_DRIVER_VERSION"
                  "OMPI_MCA_coll_hcoll_enable" "OPAL_PREFIX")
 
+# Loop through each environment variable in the array
+for var in "${vars[@]}"; do
+    # Print the variable name
+    echo "Variable name: $var"
+    # Print the variable value
+    echo "Variable value: ${!var}"
+done
+
 # List of users
 users=("root" "$USER_NAME")
 
