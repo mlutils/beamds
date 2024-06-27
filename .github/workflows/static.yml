@@ -34,6 +34,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install jupyter-book sphinx  # Install both Jupyter Book and Sphinx
 
+      - name: Install dependencies and package
+        run: |
+          pip install sphinx-autobuild pydata-sphinx-theme
+          pip install .  # Install your package and its dependencies from setup.cfg
+
       - name: Build Jupyter Book
         run: |
           cd book
