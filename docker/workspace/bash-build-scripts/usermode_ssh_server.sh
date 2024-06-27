@@ -24,7 +24,7 @@ chown -R "$USER_NAME". /opt/ssh_user
 ## replace string USER_NAME in /etc/supervisor/conf.d/ with $USER_NAME
 #sed -i "s/USER_NAME/$USER_NAME/g" /etc/supervisor/conf.d/supervisord_user.conf
 # replace string USER_NAME in /etc/supervisor/conf.d/ with $USER_NAME
-# sed -i "s/USER_NAME/root/g" /etc/supervisor/conf.d/supervisord_user.conf
+sed -i "s/USER_NAME/$USER_NAME/g" /etc/supervisor/conf.d/supervisord_user.conf
 
 #&& chmod 600 /home/beam/.ssh/authorized_keys && \
 #  chown beam:beam /home/beam/.ssh/authorized_keys
