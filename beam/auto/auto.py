@@ -290,7 +290,7 @@ class AutoBeam(BeamBase):
 
         path = path.resolve()
 
-        ab = AutoBeam(obj)
+        ab = AutoBeam(push_image=False, registry_url=None, obj=obj)
         path.clean()
         path.mkdir()
         logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
@@ -618,6 +618,3 @@ class AutoBeam(BeamBase):
         finally:
             client.close()
 
-    # Usage example
-    _push_image('my-image:latest', 'http://myregistry.example.com:5000', username='myuser', password='mypass',
-                insecure_registry=True)
