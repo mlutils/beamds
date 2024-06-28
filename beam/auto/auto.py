@@ -28,11 +28,13 @@ class AutoBeam(BeamBase):
     # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
     blacklisted_pip_package = ['sklearn']
 
-    def __init__(self, obj, *args, **kwargs):
+    def __init__(self, push_image, registry_url,  obj, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._private_modules = None
         self._visited_modules = None
         self.obj = obj
+        self.registry_url = registry_url
+        self.push_image = push_image
 
     @cached_property
     def self_path(self):
@@ -460,7 +462,7 @@ class AutoBeam(BeamBase):
     @staticmethod
     def to_docker(obj=None, base_image='python:3.10-slim', config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
-                  **kwargs):
+                  registry_url=None, push_image=None, **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
@@ -468,22 +470,23 @@ class AutoBeam(BeamBase):
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         AutoBeam._build_image(bundle_path, base_image, config=config, image_name=image_name,
-                              entrypoint=entrypoint, beam_version=beam_version,
+                              entrypoint=entrypoint, beam_version=beam_version, push_image=push_image, registry_url=registry_url,
                               dockerfile=dockerfile, **kwargs)
         logger.info(f"breakpoint")
 
     @staticmethod
     def _build_image(bundle_path, base_image, config=None, image_name=None, entrypoint='synchronous-server',
-                     copy_bundle=False, beam_version=None, dockerfile='simple-entrypoint'):
+                     copy_bundle=False, push_image=False, registry_url=None,
+                     beam_version=None, dockerfile='simple-entrypoint'):
 
         import docker
         from docker.errors import BuildError
 
         # client = docker.APIClient()
         # client = docker.APIClient(base_url='unix:///var/run/docker.sock')
-        # client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+        client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
         # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
-        client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
+        # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
 
         bundle_path = beam_path(bundle_path)
         current_dir = beam_path(__file__).parent
@@ -497,7 +500,11 @@ class AutoBeam(BeamBase):
             docker_dir.clean()
             docker_dir.mkdir()
 
-            config = dict(config) or {}
+            if config is None:
+                config = {}
+            else:
+                config = dict(config)
+
             docker_dir.joinpath('config.yaml').write(config)
 
             entrypoint = beam_path(entrypoint)
@@ -533,9 +540,9 @@ class AutoBeam(BeamBase):
 
             try:
                 # client = docker.APIClient(base_url='unix://var/run/docker.sock')
-                # client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+                client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
                 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
-                client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
+                # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
                 print(client.version())
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
                                         buildargs=build_args, tag=image_name, rm=True, decode=True)
@@ -545,6 +552,9 @@ class AutoBeam(BeamBase):
                     if 'stream' in line:
                         print(line['stream'].strip())
 
+                if push_image is True:
+                    AutoBeam._push_image(image_name, registry_url)
+
             except BuildError as e:
                 logger.error(f"Error building Docker image: {e}")
                 raise e
@@ -553,3 +563,61 @@ class AutoBeam(BeamBase):
                 raise e
             finally:
                 client.close()
+
+    @staticmethod
+    def _push_image(image_name, registry_url, username=None, password=None, insecure_registry=True,
+                    project_name="public", dockercfg_path=None):
+        import docker
+        from docker.errors import APIError
+
+        # Default docker configuration path
+        if dockercfg_path is None:
+            dockercfg_path = os.path.expanduser("~/.docker")
+
+        # Set up Docker client
+        client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+
+        # Extract registry name from URL, remove the protocol for tagging purposes
+        if '://' in registry_url:
+            _, registry_name = registry_url.split('://', 1)
+        else:
+            registry_name = registry_url
+
+        # Ensure the registry name does not end with a slash for consistency
+        registry_name = registry_name.rstrip('/')
+
+        # Construct the full image name including the project_name
+        full_image_name = f"{registry_name}/{project_name}/{image_name}"
+
+        try:
+            # Tag the image to include the registry path
+            if client.tag(image_name, full_image_name):
+                print(f"Successfully tagged {image_name} as {full_image_name}")
+
+            # Log into the registry if credentials are provided
+            if username and password:
+                login_response = client.login(username=username, password=password, registry=registry_url,
+                                              dockercfg_path=dockercfg_path, reauth=True)
+                print(f"Login response: {login_response}")
+
+            # Push the image to the registry
+            # response = client.push(full_image_name, stream=True, decode=True, insecure_registry=insecure_registry)
+            response = client.push(full_image_name, stream=True, decode=True)
+            for line in response:
+                if 'status' in line:
+                    print(line['status'])
+                elif 'error' in line:
+                    print(f"Error during push: {line['error']}")
+                    raise APIError(line['error'])
+                elif 'progress' in line:
+                    print(line['progress'])
+
+        except APIError as e:
+            print(f"Error pushing Docker image: {e}")
+            raise e
+        finally:
+            client.close()
+
+    # Usage example
+    _push_image('my-image:latest', 'http://myregistry.example.com:5000', username='myuser', password='mypass',
+                insecure_registry=True)

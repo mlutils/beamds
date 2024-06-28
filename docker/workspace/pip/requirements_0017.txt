@@ -9,7 +9,7 @@ pycombo
 bayanpy
 pyclustering
 
-docker
+docker==7.1.0
 prefect
 kubernetes
 openshift
