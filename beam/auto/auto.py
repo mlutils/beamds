@@ -462,7 +462,7 @@ class AutoBeam(BeamBase):
     @staticmethod
     def to_docker(obj=None, base_image='python:3.10-slim', config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
-                  registry_url=None, push_image=None, **kwargs):
+                  registry_url=None, push_image=None, username=None, password=None, **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
@@ -470,13 +470,14 @@ class AutoBeam(BeamBase):
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         AutoBeam._build_image(bundle_path, base_image, config=config, image_name=image_name,
-                              entrypoint=entrypoint, beam_version=beam_version, push_image=push_image, registry_url=registry_url,
+                              entrypoint=entrypoint, beam_version=beam_version, username=username, password=password,
+                              push_image=push_image, registry_url=registry_url,
                               dockerfile=dockerfile, **kwargs)
         logger.info(f"breakpoint")
 
     @staticmethod
     def _build_image(bundle_path, base_image, config=None, image_name=None, entrypoint='synchronous-server',
-                     copy_bundle=False, push_image=False, registry_url=None,
+                     copy_bundle=False, push_image=False, registry_url=None, username=None, password=None,
                      beam_version=None, dockerfile='simple-entrypoint'):
 
         import docker
@@ -553,7 +554,7 @@ class AutoBeam(BeamBase):
                         print(line['stream'].strip())
 
                 if push_image is True:
-                    AutoBeam._push_image(image_name, registry_url)
+                    AutoBeam._push_image(image_name, registry_url, username=username, password=password)
 
             except BuildError as e:
                 logger.error(f"Error building Docker image: {e}")
@@ -592,25 +593,25 @@ class AutoBeam(BeamBase):
         try:
             # Tag the image to include the registry path
             if client.tag(image_name, full_image_name):
-                print(f"Successfully tagged {image_name} as {full_image_name}")
+                logger.info(f"Successfully tagged {image_name} as {full_image_name}")
 
             # Log into the registry if credentials are provided
             if username and password:
                 login_response = client.login(username=username, password=password, registry=registry_url,
                                               dockercfg_path=dockercfg_path, reauth=True)
-                print(f"Login response: {login_response}")
+                logger.info(f"Login response: {login_response}")
 
             # Push the image to the registry
             # response = client.push(full_image_name, stream=True, decode=True, insecure_registry=insecure_registry)
             response = client.push(full_image_name, stream=True, decode=True)
             for line in response:
                 if 'status' in line:
-                    print(line['status'])
+                    logger.info(line['status'])
                 elif 'error' in line:
-                    print(f"Error during push: {line['error']}")
+                    logger.error(f"Error during push: {line['error']}")
                     raise APIError(line['error'])
                 elif 'progress' in line:
-                    print(line['progress'])
+                    logger.info(line['progress'])
 
         except APIError as e:
             print(f"Error pushing Docker image: {e}")

@@ -19,7 +19,8 @@ config = BeamServeConfig(port=44044, **{'path-to-bundle': '/app/algorithm'})
 
 
 AutoBeam.to_docker(obj=fake_alg, base_image='eladsar/beam:20240605', image_name='fake-alg-http-server',
-                   beam_version='2.5.11', config=config, push_image=True, registry_url='harbor.dt.local')
+                   beam_version='2.5.11', config=config, push_image=True,
+                   registry_url='harbor.dt.local', username='admin', password='Har@123')
 
 
 # script_dir = os.path.dirname(os.path.realpath(__file__))
