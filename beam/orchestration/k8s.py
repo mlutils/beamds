@@ -6,6 +6,9 @@ from ..logging import beam_logger as logger
 from ..utils import cached_property
 from ..processor import Processor
 from .units import K8SUnits
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from .dataclasses import *
 import time
 import json
@@ -1009,3 +1012,22 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.info(f"Pod {pod_name} in {namespace} started successfully.")
         except ApiException as e:
             logger.error(f"Failed to create pod {pod_name} in {namespace}: {e}")
+
+    @staticmethod
+    def send_email(subject, body, to_email, from_email, from_email_password):
+        msg = MIMEMultipart()
+        msg['Subject'] = subject
+        msg['From'] = from_email
+        msg['To'] = to_email
+        msg.attach(MIMEText(body, 'plain'))
+
+        try:
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.set_debuglevel(1)
+            server.starttls()
+            server.login(from_email, from_email_password)
+            server.sendmail(from_email, to_email, msg.as_string())
+            server.quit()
+            logger.info("Email sent successfully!")
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")

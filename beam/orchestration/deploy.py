@@ -19,8 +19,7 @@ class BeamDeploy(Processor):
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
                  service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
                  memory_storage_configs=None, security_context_config=None, use_node_selector=False,
-                 scc_name=None, node_selector=None, pod_info_state=None, deployment_state=None,
-                 cluster_info=None,
+                 scc_name=None, node_selector=None, pod_info_state=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None, **kwargs):
         super().__init__()
         self.k8s = k8s
@@ -92,16 +91,6 @@ class BeamDeploy(Processor):
                     else:
                         logger.info(f"Skipping PVC creation for: {storage_config.pvc_name} as create_pvc is False")
 
-        # if self.memory_storage_configs:
-        #     for memory_storage_config in self.memory_storage_configs:
-        #         self.k8s.create_memory_storage(
-        #             name=memory_storage_config.name,
-        #             mount_path=memory_storage_config.mount_path,
-        #             size_gb=memory_storage_config.size_gb.as_str,
-        #             namespace=self.namespace
-        #         )
-
-        # enabled_memory_storages = [config for config in self.memory_storage_configs if config.enabled]
         if self.user_idm_configs:
             self.k8s.create_role_bindings(self.user_idm_configs)
 

@@ -460,7 +460,7 @@ class AutoBeam(BeamBase):
                         tar.add(str(local_name), arcname=str(relative_name))
 
     @staticmethod
-    def to_docker(obj=None, base_image='python:3.10-slim', config=None, bundle_path=None, image_name=None,
+    def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
                   registry_url=None, push_image=None, username=None, password=None, **kwargs):
 
@@ -469,11 +469,13 @@ class AutoBeam(BeamBase):
             bundle_path = AutoBeam.to_bundle(obj, path=bundle_path)
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
-        AutoBeam._build_image(bundle_path, base_image, config=config, image_name=image_name,
+        full_image_name = (
+            AutoBeam._build_image(bundle_path, base_image, config=serve_config, image_name=image_name,
                               entrypoint=entrypoint, beam_version=beam_version, username=username, password=password,
                               push_image=push_image, registry_url=registry_url,
-                              dockerfile=dockerfile, **kwargs)
-        logger.info(f"breakpoint")
+                              dockerfile=dockerfile, **kwargs))
+        logger.info(f"full_image_name: {full_image_name}")
+        return full_image_name
 
     @staticmethod
     def _build_image(bundle_path, base_image, config=None, image_name=None, entrypoint='synchronous-server',
@@ -554,7 +556,10 @@ class AutoBeam(BeamBase):
                         print(line['stream'].strip())
 
                 if push_image is True:
-                    AutoBeam._push_image(image_name, registry_url, username=username, password=password)
+                    full_image_name = AutoBeam._push_image(image_name, registry_url,
+                                                           username=username, password=password)
+                    logger.info(f"full_image_name: {full_image_name}")
+                return full_image_name
 
             except BuildError as e:
                 logger.error(f"Error building Docker image: {e}")
@@ -587,6 +592,9 @@ class AutoBeam(BeamBase):
         # Ensure the registry name does not end with a slash for consistency
         registry_name = registry_name.rstrip('/')
 
+        if ':' not in image_name:
+            image_name += ':latest'
+
         # Construct the full image name including the project_name
         full_image_name = f"{registry_name}/{project_name}/{image_name}"
 
@@ -612,6 +620,7 @@ class AutoBeam(BeamBase):
                     raise APIError(line['error'])
                 elif 'progress' in line:
                     logger.info(line['progress'])
+            return full_image_name  # Return the full image name on success
 
         except APIError as e:
             print(f"Error pushing Docker image: {e}")
