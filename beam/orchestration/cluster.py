@@ -111,8 +111,7 @@ class HTTPServeCluster(Processor):
             to_email = config['to_email']
             from_email = config['from_email']
             from_email_password = config['from_email_password']
-            gmail_debug = k8s.send_email(subject, body, to_email, from_email, from_email_password)
-            logger.info(f"gmail debug: {gmail_debug}")
+            k8s.send_email(subject, body, to_email, from_email, from_email_password)
             get_cluster_info = deployment.cluster_info
             logger.info(f"Cluster info: {get_cluster_info}")
             if not pods:
