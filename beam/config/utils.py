@@ -91,7 +91,7 @@ def add_unknown_arguments(args, unknown, silent=False):
     i = 0
 
     if len(unknown) > 0 and not silent:
-        logger.warning(f"Parsing unkown arguments: {unknown}. Please check for typos")
+        logger.warning(f"Parsing unknown arguments: {unknown}. Please check for typos")
 
     while i < len(unknown):
 
@@ -226,7 +226,14 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
         config_args = {}
 
         for config_file in config_files:
-            cf = beam_path(config_file).read()
+            try:
+                cf = beam_path(config_file).read()
+            except FileNotFoundError as e:
+                logger.error(f"Config file {config_file} not found. make sure you follow the pattern --arg=value "
+                             f"(--arg value would lead to errors like this). If you want to load a config file, "
+                             f"make sure it exists in the path.")
+                raise e
+
             if '_tags' in cf:
                 for k, v in cf['_tags'].items():
                     tags[k].add(v)
