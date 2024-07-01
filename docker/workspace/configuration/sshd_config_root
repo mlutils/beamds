@@ -15,13 +15,13 @@ Include /etc/ssh/sshd_config.d/*.conf
 #ListenAddress 0.0.0.0
 #ListenAddress ::
 
-#HostKey /etc/ssh/ssh_host_rsa_key
-#HostKey /etc/ssh/ssh_host_ecdsa_key
-#HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
 
-HostKey /opt/ssh/ssh_host_rsa_key
-HostKey /opt/ssh/ssh_host_ecdsa_key
-HostKey /opt/ssh/ssh_host_ed25519_key
+#HostKey /opt/ssh_root/ssh_host_rsa_key
+#HostKey /opt/ssh_root/ssh_host_ecdsa_key
+#HostKey /opt/ssh_root/ssh_host_ed25519_key
 
 # Ciphers and keying
 #RekeyLimit default none
@@ -105,8 +105,8 @@ PrintMotd no
 #ClientAliveInterval 0
 #ClientAliveCountMax 3
 #UseDNS no
-#PidFile /run/sshd.pid
-PidFile /opt/ssh/sshd.pid
+# PidFile /run/sshd.pid
+PidFile /opt/ssh_root/sshd.pid
 #MaxStartups 10:30:100
 #PermitTunnel no
 #ChrootDirectory none

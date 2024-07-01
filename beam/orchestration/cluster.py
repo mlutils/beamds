@@ -9,16 +9,24 @@ from ..processor import Processor
 
 class HTTPServeCluster(Processor):
 
-    def __init__(self, pods, config, *args, **kwargs):
+    def __init__(self, alg, deployment, serve_config, pods, config, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.alg = alg
         self.pods = pods
+        self.deployment = deployment
         self.config = config
+        self.serve_config = serve_config
         self.k8s = BeamK8S(
             api_url=config['api_url'],
             api_token=config['api_token'],
             project_name=config['project_name'],
             namespace=config['project_name'],
         )
+        self.subject = config['subject']
+        self.body = config['body']
+        self.to_email = config['to_email']
+        self.from_email = config['from_email']
+        self.from_email_password = config['from_email_password']
         self.security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
         self.memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
         self.service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
@@ -28,12 +36,23 @@ class HTTPServeCluster(Processor):
         self.entrypoint_args = config['entrypoint_args']
         self.entrypoint_envs = config['entrypoint_envs']
 
-    @classmethod
-    def from_algorithm(cls, alg, config):
 
-        # to docker
+    @classmethod
+    def deploy_from_algorithm(cls, alg, config, serve_config):
+
         from ..auto import AutoBeam
-        AutoBeam.to_docker(alg)
+
+        logger.info(alg.run(123))
+
+        logger.info(f"base_image: {config['base_image']}")
+
+        full_image_name = (
+            AutoBeam.to_docker(obj=alg, base_image=config['base_image'], image_name=config['alg_image_name'],
+                               beam_version=config['beam_version'], serve_config=serve_config,
+                               push_image=config['push_image'], registry_url=config['registry_url'],
+                               username=config['registry_username'], password=config['registry_password']))
+
+        logger.info(f"Image {full_image_name} created successfully")
 
         # to deployment
         k8s = BeamK8S(
@@ -45,9 +64,10 @@ class HTTPServeCluster(Processor):
 
         security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
         memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
-        service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
+        # service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
+        service_configs = [ServiceConfig(service_name='fake-alg', port=serve_config.port, port_name='http',
+                                         service_type='NodePort', create_route=True, create_ingress=False)]
         storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
-
 
         deployment = BeamDeploy(
             k8s=k8s,
@@ -56,7 +76,7 @@ class HTTPServeCluster(Processor):
             namespace=config['project_name'],
             replicas=config['replicas'],
             labels=config['labels'],
-            image_name=config['image_name'],
+            image_name=full_image_name,
             deployment_name=config['deployment_name'],
             create_service_account=config['create_service_account'],
             use_scc=config['use_scc'],
@@ -81,12 +101,27 @@ class HTTPServeCluster(Processor):
             enable_ray_ports=False
         )
 
-        # Launch deployment and obtain pod instances
-        pods = deployment.launch(replicas=1)
-
-
-        return cls(pods, config)
-
+        try:
+            pods = deployment.launch(replicas=config['replicas'])
+            if pods:
+                logger.info("Pod deployment successful")
+            get_cluster_info = deployment.cluster_info  # Assume this method returns the formatted cluster info string
+            subject = "Cluster Deployment Information"
+            body = f"{config['body']}\n{get_cluster_info}"
+            to_email = config['to_email']
+            from_email = config['from_email']
+            from_email_password = config['from_email_password']
+            k8s.send_email(subject, body, to_email, from_email, from_email_password)
+            get_cluster_info = deployment.cluster_info
+            logger.info(f"Cluster info: {get_cluster_info}")
+            if not pods:
+                logger.error("Pod deployment failed")
+                return None  # Or handle the error as needed
+            return cls(alg=alg, get_cluster_info=get_cluster_info, deployment=deployment,
+                       serve_config=serve_config, pods=pods, config=config)
+        except Exception as e:
+            logger.error(f"Error during deployment: {str(e)}")
+            return None
 
 
 class RayCluster(Processor):
