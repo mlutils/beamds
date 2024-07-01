@@ -2,7 +2,7 @@
 # install pre-requisites
 
 # do not install docker.io as it is an unofficial package (https://docs.docker.com/engine/install/ubuntu/)
-apt install -y apt-transport-https software-properties-common
+# apt install -y apt-transport-https software-properties-common
 
 # Add Docker’s official GPG key:
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
