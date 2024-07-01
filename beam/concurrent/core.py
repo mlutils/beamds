@@ -5,7 +5,7 @@ from ..utils import tqdm_beam
 from ..utils import collate_chunks
 from ..meta import BeamName
 from ..logging import beam_logger as logger
-from .task import BeamTask, TaskResult, SyncedResults
+from .tasks import BeamTask, TaskResult, SyncedResults
 
 
 class BeamAsync(BeamName):

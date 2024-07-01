@@ -1,5 +1,5 @@
 from ..path import beam_path
-from .task import BeamTask
+from .tasks import BeamTask
 from .core import BeamParallel
 
 
