@@ -1,6 +1,6 @@
 {
     "api_url": "https://api.kh-dev.dt.local:6443",
-    "api_token": "sha256~_mGINQW3XcmSXikGSovarRl8lEkz-6opu9RyUkhM4Zk",
+    "api_token": "sha256~aItF5Zke6cw41U9DtcjacSUfTHK_7cwWXnI5wLV4m_8",
     "check_project_exists": true,
     "project_name": "kh-1click",
     "create_service_account": true,

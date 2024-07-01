@@ -249,22 +249,27 @@ class BeamDeploy(Processor):
         if services_info:
             for service_info in services_info:
                 if 'node_port' in service_info:
-                    service_line = f"Service: {service_info['service_name']} | Cluster IP: {service_info['cluster_ip']} | Port: {service_info['port']} | Host IP: {host_ip} | NodePort: {service_info['node_port']} | Ingress Access"
+                    service_line = f"Service: {service_info['service_name']}   | Host IP: {host_ip} | NodePort: {service_info['node_port']} "
+                    # service_line = f"Service: {service_info['service_name']} | Cluster IP: {service_info['cluster_ip']} | Port: {service_info['port']} | Host IP: {host_ip} | NodePort: {service_info['node_port']} | Ingress Access"
                 else:
-                    service_line = f"Service: {service_info['service_name']} | Cluster IP: {service_info['cluster_ip']} | Port: {service_info['port']}"
+                    service_line = f"Service: {service_info['service_name']}  | Port: {service_info['port']}"
+                    # service_line = f"Service: {service_info['service_name']} | Cluster IP: {service_info['cluster_ip']} | Port: {service_info['port']}"
                 service_info_lines.append(service_line)
 
         if routes_info:
-            route_info_lines = [f"Route link: <a href='http://{route_info['host']}'>{route_info['host']}</a>" for
+            # route_info_lines = [f"Route link: <a href='http://{route_info['host']}</a>" for
+             route_info_lines = [f"Route link: <a href='http://{route_info['host']}'>{route_info['host']}</a>" for
                                 route_info in routes_info]
 
-        cluster_info = "<br>".join(service_info_lines + route_info_lines)
+        # cluster_info = "<br>".join(service_info_lines + route_info_lines)
+        cluster_info = "\n\n".join(service_info_lines) + "\n\n" + "\n\n".join(route_info_lines)
         resource("deployment_state.yaml").write(cluster_info)
 
         # Write the formatted lines to a file
         with open("cluster_info.txt", "w") as file:
             file.write(cluster_info.replace("<br>", "\n"))
 
+        cluster_info = cluster_info.replace("\n", "<br>")
         return cluster_info
     # def cluster_info(self):
     #     services_info = self.k8s.get_services_info(self.namespace)

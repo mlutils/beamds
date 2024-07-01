@@ -7,7 +7,7 @@ from packaging import version
 
 from .. import BeamData
 from ..base import BeamBase
-from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib,get_origin, is_module_installed
+from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
 from ..path import beam_path, local_copy
 
 import importlib.metadata
@@ -28,11 +28,13 @@ class AutoBeam(BeamBase):
     # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
     blacklisted_pip_package = ['sklearn']
 
-    def __init__(self, obj, *args, **kwargs):
+    def __init__(self, push_image, registry_url, obj, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._private_modules = None
         self._visited_modules = None
         self.obj = obj
+        self.registry_url = registry_url
+        self.push_image = push_image
 
     @cached_property
     def self_path(self):
@@ -70,7 +72,7 @@ class AutoBeam(BeamBase):
     def module_spec(self):
         module_spec = importlib.util.find_spec(type(self.obj).__module__)
         root_module = module_spec.name.split('.')[0]
-        return  importlib.util.find_spec(root_module)
+        return importlib.util.find_spec(root_module)
 
     @staticmethod
     def module_walk(root_path):
@@ -289,7 +291,7 @@ class AutoBeam(BeamBase):
 
         path = path.resolve()
 
-        ab = AutoBeam(obj)
+        ab = AutoBeam(push_image=False, registry_url=None, obj=obj)
         path.clean()
         path.mkdir()
         logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
@@ -422,9 +424,11 @@ class AutoBeam(BeamBase):
             content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements])
         elif relation == '~=':
             if sim_type == 'major':
-                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:2])}" for r in requirements])
+                content = '\n'.join(
+                    [f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:2])}" for r in requirements])
             elif sim_type == 'minor':
-                content = '\n'.join([f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:3])}" for r in requirements])
+                content = '\n'.join(
+                    [f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:3])}" for r in requirements])
             else:
                 raise ValueError(f"sim_type can be 'major' or 'minor'")
         else:
@@ -462,27 +466,38 @@ class AutoBeam(BeamBase):
                             tar.add(str(local_name), arcname=str(relative_name))
 
     @staticmethod
-    def to_docker(obj=None, base_image='python:3.10-slim', config=None, bundle_path=None, image_name=None,
+    def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
-                  **kwargs):
+                  registry_url=None, push_image=None, base_url=None,
+                  username=None, password=None, **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
             bundle_path = AutoBeam.to_bundle(obj, path=bundle_path)
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
-        AutoBeam._build_image(bundle_path, base_image, config=config, image_name=image_name,
-                              entrypoint=entrypoint, beam_version=beam_version,
-                              dockerfile=dockerfile, **kwargs)
+        full_image_name = (
+            AutoBeam._build_image(bundle_path, base_image, config=serve_config, image_name=image_name,
+                                  entrypoint=entrypoint, beam_version=beam_version, username=username,
+                                  password=password, base_url=base_url,
+                                  push_image=push_image, registry_url=registry_url,
+                                  dockerfile=dockerfile, **kwargs))
+        logger.info(f"full_image_name: {full_image_name}")
+        return full_image_name
 
     @staticmethod
     def _build_image(bundle_path, base_image, config=None, image_name=None, entrypoint='synchronous-server',
-                     copy_bundle=False, beam_version=None, dockerfile='simple-entrypoint'):
+                     copy_bundle=False, push_image=False, registry_url=None, username=None, password=None,
+                     beam_version=None, base_url=None, dockerfile='simple-entrypoint'):
 
         import docker
         from docker.errors import BuildError
 
-        client = docker.APIClient()
+        # client = docker.APIClient()
+        # client = docker.APIClient(base_url='unix:///var/run/docker.sock')
+        client = docker.APIClient(base_url=base_url)
+        # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
+        # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
 
         bundle_path = beam_path(bundle_path)
         current_dir = beam_path(__file__).parent
@@ -531,7 +546,8 @@ class AutoBeam(BeamBase):
             }
 
             try:
-
+                client = docker.APIClient(base_url=base_url)
+                logger.debug(f"Docker client version: {client.version()}")
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
                                         buildargs=build_args, tag=image_name, rm=True, decode=True)
 
@@ -539,6 +555,12 @@ class AutoBeam(BeamBase):
                 for line in response:
                     if 'stream' in line:
                         print(line['stream'].strip())
+
+                if push_image is True:
+                    full_image_name = AutoBeam._push_image(image_name, registry_url,
+                                                           username=username, password=password)
+                    logger.info(f"Full image name: {full_image_name}")
+                return full_image_name
 
             except BuildError as e:
                 logger.error(f"Error building Docker image: {e}")
@@ -548,3 +570,61 @@ class AutoBeam(BeamBase):
                 raise e
             finally:
                 client.close()
+
+    @staticmethod
+    def _push_image(image_name, registry_url, username=None, password=None,
+                    project_name="public", dockercfg_path=None, base_url=None):
+        import docker
+        from docker.errors import APIError
+
+        # Default docker configuration path
+        if dockercfg_path is None:
+            dockercfg_path = os.path.expanduser("~/.docker")
+
+        # Set up Docker client
+        client = docker.APIClient(base_url=base_url)
+
+        # Extract registry name from URL, remove the protocol for tagging purposes
+        if '://' in registry_url:
+            _, registry_name = registry_url.split('://', 1)
+        else:
+            registry_name = registry_url
+
+        # Ensure the registry name does not end with a slash for consistency
+        registry_name = registry_name.rstrip('/')
+
+        if ':' not in image_name:
+            image_name += ':latest'
+
+        # Construct the full image name including the project_name
+        full_image_name = f"{registry_name}/{project_name}/{image_name}"
+
+        try:
+            # Tag the image to include the registry path
+            if client.tag(image_name, full_image_name):
+                logger.info(f"Successfully tagged {image_name} as {full_image_name}")
+
+            # Log into the registry if credentials are provided
+            if username and password:
+                login_response = client.login(username=username, password=password, registry=registry_url,
+                                              dockercfg_path=dockercfg_path, reauth=True)
+                logger.info(f"Login response: {login_response}")
+
+            # Push the image to the registry
+            # response = client.push(full_image_name, stream=True, decode=True, insecure_registry=insecure_registry)
+            response = client.push(full_image_name, stream=True, decode=True)
+            for line in response:
+                if 'status' in line:
+                    logger.info(line['status'])
+                elif 'error' in line:
+                    logger.error(f"Error during push: {line['error']}")
+                    raise APIError(line['error'])
+                elif 'progress' in line:
+                    logger.info(line['progress'])
+            return full_image_name  # Return the full image name on success
+
+        except APIError as e:
+            print(f"Error pushing Docker image: {e}")
+            raise e
+        finally:
+            client.close()
