@@ -27,13 +27,14 @@ class AutoBeam(BeamBase):
     # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
     blacklisted_pip_package = ['sklearn']
 
-    def __init__(self, push_image, registry_url, obj, *args, **kwargs):
+    def __init__(self, push_image, registry_project_name, registry_url, obj, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._private_modules = None
         self._visited_modules = None
         self.obj = obj
         self.registry_url = registry_url
         self.push_image = push_image
+        self.registry_project_name = registry_project_name
 
     @cached_property
     def self_path(self):
@@ -289,7 +290,7 @@ class AutoBeam(BeamBase):
 
         path = path.resolve()
 
-        ab = AutoBeam(push_image=False, registry_url=None, obj=obj)
+        ab = AutoBeam(push_image=False, registry_url=None, registry_project_name=None, obj=obj)
         path.clean()
         path.mkdir()
         logger.info(
@@ -464,7 +465,7 @@ class AutoBeam(BeamBase):
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
-                  registry_url=None, push_image=None, base_url=None,
+                  registry_url=None, push_image=None, base_url=None, registry_project_name=None,
                   username=None, password=None, **kwargs):
 
         if obj is not None:
@@ -475,7 +476,7 @@ class AutoBeam(BeamBase):
         full_image_name = (
             AutoBeam._build_image(bundle_path, base_image, config=serve_config, image_name=image_name,
                                   entrypoint=entrypoint, beam_version=beam_version, username=username,
-                                  password=password, base_url=base_url,
+                                  password=password, base_url=base_url, registry_project_name=registry_project_name,
                                   push_image=push_image, registry_url=registry_url,
                                   dockerfile=dockerfile, **kwargs))
         logger.info(f"full_image_name: {full_image_name}")
@@ -483,7 +484,8 @@ class AutoBeam(BeamBase):
 
     @staticmethod
     def _build_image(bundle_path, base_image, config=None, image_name=None, entrypoint='synchronous-server',
-                     copy_bundle=False, push_image=False, registry_url=None, username=None, password=None,
+                     copy_bundle=False, push_image=False, registry_project_name=None,
+                     registry_url=None, username=None, password=None,
                      beam_version=None, base_url=None, dockerfile='simple-entrypoint'):
 
         import docker
@@ -558,6 +560,7 @@ class AutoBeam(BeamBase):
 
                 if push_image is True:
                     full_image_name = AutoBeam._push_image(image_name, registry_url,
+                                                           registry_project_name=registry_project_name,
                                                            username=username, password=password)
                     logger.info(f"full_image_name: {full_image_name}")
                 return full_image_name
@@ -572,8 +575,8 @@ class AutoBeam(BeamBase):
                 client.close()
 
     @staticmethod
-    def _push_image(image_name, registry_url, username=None, password=None,
-                    project_name="public", dockercfg_path=None, base_url=None):
+    def _push_image(image_name, registry_url, username=None, password=None, registry_project_name=None,
+                    dockercfg_path=None, base_url=None):
         import docker
         from docker.errors import APIError
 
@@ -597,7 +600,7 @@ class AutoBeam(BeamBase):
             image_name += ':latest'
 
         # Construct the full image name including the project_name
-        full_image_name = f"{registry_name}/{project_name}/{image_name}"
+        full_image_name = f"{registry_name}/{registry_project_name}/{image_name}"
 
         try:
             # Tag the image to include the registry path
