@@ -4,24 +4,26 @@ from beam.misc.fake import BeamFakeAlg
 import os
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-conf_path = resource(os.path.join(script_dir, 'Server_in_1click_config.json')).str
-config = HTTPServeClusterConfig(conf_path)
+
+conf_path = resource(os.path.join(script_dir, 'Server_in_1click_config.yaml')).str
+
+config = HTTPServeClusterConfig(conf_path, port=44044, **{'path-to-bundle': '/app/algorithm'})
 
 print('hello world')
-print("API URL:", config['api_url'])
-print("API Token:", config['api_token'])
+print("API URL:", config.api_url)
+print("API Token:", config.api_token)
 
-serve_config = HTTPServeClusterConfig(port=44044, **{'path-to-bundle': '/app/algorithm'})
-pods = []
+
 alg = BeamFakeAlg(sleep_time=1)
 
 # to_email = input("Enter the email address to receive the cluster info: ")
 to_email = 'yossi@dayo-tech.com'
 
 
-serve_cluster = HTTPServeCluster(deployment=None, alg=alg, config=config, pods=pods, serve_config=serve_config)
+serve_cluster = HTTPServeCluster(deployment=None, alg=alg, config=config, pods=config.pods,
+                                 base_url=config.base_url, to_email=config.to_email)
 
-serve_cluster.deploy_from_algorithm(alg, config, serve_config)
+serve_cluster.deploy_from_algorithm(alg, config)
 
 
 

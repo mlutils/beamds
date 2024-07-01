@@ -9,13 +9,12 @@ from ..processor import Processor
 
 class HTTPServeCluster(Processor):
 
-    def __init__(self, alg, deployment, serve_config, pods, config, *args, **kwargs):
+    def __init__(self, alg, deployment, pods, config, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.alg = alg
         self.pods = pods
         self.deployment = deployment
         self.config = config
-        self.serve_config = serve_config
         self.k8s = BeamK8S(
             api_url=config['api_url'],
             api_token=config['api_token'],
@@ -38,19 +37,18 @@ class HTTPServeCluster(Processor):
 
 
     @classmethod
-    def deploy_from_algorithm(cls, alg, config, serve_config):
+    def deploy_from_algorithm(cls, alg, config):
 
         from ..auto import AutoBeam
-
-        logger.info(alg.run(123))
 
         logger.info(f"base_image: {config['base_image']}")
 
         full_image_name = (
-            AutoBeam.to_docker(obj=alg, base_image=config['base_image'], image_name=config['alg_image_name'],
-                               beam_version=config['beam_version'], serve_config=serve_config,
-                               push_image=config['push_image'], registry_url=config['registry_url'],
-                               username=config['registry_username'], password=config['registry_password']))
+            AutoBeam.to_docker(obj=alg, base_image=config.base_image, image_name=config.alg_image_name,
+                               beam_version=config.beam_version, base_url=config.base_url,
+                               push_image=config.push_image, registry_url=config.registry_url,
+                               username=config.registry_username, password=config.registry_password,
+                               serve_config=config))
 
         logger.info(f"Image {full_image_name} created successfully")
 
@@ -120,7 +118,7 @@ class HTTPServeCluster(Processor):
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed
             return cls(alg=alg, get_cluster_info=get_cluster_info, deployment=deployment,
-                       serve_config=serve_config, pods=pods, config=config)
+                       pods=pods, config=config)
         except Exception as e:
             logger.error(f"Error during deployment: {str(e)}")
             return None
