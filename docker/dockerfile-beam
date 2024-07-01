@@ -4,7 +4,7 @@
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
 #FROM nvidia/cuda:12.3.0-devel-ubuntu22.04
-FROM nvcr.io/nvidia/pytorch:24.05-py3
+FROM nvcr.io/nvidia/pytorch:24.06-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -82,6 +82,10 @@ RUN bash /workspace/bash-build-scripts/install_huggingface_ecosystem.sh
 RUN pip install -U --no-deps -r /workspace/pip/requirements_no_deps.txt
 #RUN pip list
 RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
+
+#install pytesseract
+# REMOVE FOR LITE VERSION
+RUN bash /workspace/bash-build-scripts/install_tesseract.sh
 
 #install pytorch geometric
 # REMOVE FOR LITE VERSION

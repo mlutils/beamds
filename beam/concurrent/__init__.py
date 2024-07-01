@@ -1,7 +1,7 @@
 # Explicit imports for IDE
 if len([]):
     from .utils import parallel_copy_path, parallel, task
-    from .task import BeamTask, TaskResult
+    from .tasks import BeamTask, TaskResult
     from .core import BeamParallel, BeamAsync
 
 __all__ = ['BeamTask', 'TaskResult', 'BeamParallel', 'BeamAsync', 'parallel_copy_path', 'parallel', 'task']
@@ -9,10 +9,10 @@ __all__ = ['BeamTask', 'TaskResult', 'BeamParallel', 'BeamAsync', 'parallel_copy
 
 def __getattr__(name):
     if name == 'BeamTask':
-        from .task import BeamTask
+        from .tasks import BeamTask
         return BeamTask
     elif name == 'TaskResult':
-        from .task import TaskResult
+        from .tasks import TaskResult
         return TaskResult
     elif name == 'BeamParallel':
         from .core import BeamParallel

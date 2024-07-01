@@ -12,7 +12,7 @@ import pandas as pd
 
 def test_parallel_treading():
 
-    from beam.parallel.utils import parallel, task
+    from beam.concurrent.utils import parallel, task
 
     def func(i):
         # print(f'func {i}\n')
@@ -42,7 +42,7 @@ def test_beam_default_configuration():
 
 def test_beam_parallel_with_silence():
 
-    from beam.parallel.utils import parallel, task
+    from beam.concurrent.utils import parallel, task
     def func(i):
         return i ** 2
 
@@ -341,7 +341,7 @@ def load_model():
 
 def test_beam_parallel():
 
-    from beam.parallel import parallel, task
+    from beam.concurrent import parallel, task
 
     def func(i):
         print(f'func {i}\n')

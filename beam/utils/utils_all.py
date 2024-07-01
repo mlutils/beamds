@@ -1093,9 +1093,12 @@ def pretty_print_dict(d, name=None, dense=True):
     return formatted_str
 
 
-def pprint(obj):
+def pprint(obj, logger=None, level='info'):
     # print with dump to yaml
-    print(yaml.dump(obj))
+    if logger is None:
+        print(yaml.dump(obj))
+    else:
+        getattr(logger, level)(yaml.dump(obj))
 
 
 def lazy_property(fn):
