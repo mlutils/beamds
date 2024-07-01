@@ -369,7 +369,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
             results[part]['original_pool'] = len(self.y[org_set])
             results[part]['prevalence_count'] = (self.y[org_set] == group_label).sum()
             results[part]['prevalence'] = results[part]['prevalence_count'] / results[part]['original_pool']
-            results[part]['expansion_recall_count'] = (datasets[f'y_{part}_true'] == group_label).sum()
+            results[part]['expansion_recall_count'] = (datasets[f'{part}_expansion_df'].label == group_label).sum()
             results[part]['expansion_recall'] = (results[part]['expansion_recall_count']
                                                  / results[part]['prevalence_count'])
             results[part]['expansion_pool'] = (datasets[f'y_{part}'] == 0).sum()
@@ -377,10 +377,10 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
                                                     results[part]['expansion_pool'])
 
             if part == 'train':
-                y_train_true = datasets[f'y_{part}_true'] == group_label
+                y_train_true = datasets[f'{part}_expansion_df'].label == group_label
                 results[part]['final_recall_count'] = (y_pred['train'] * y_train_true == 1).sum()
             else:
-                results[part]['final_recall_count'] = (y_pred['test'] * datasets[f'y_test'] == 1).sum()
+                results[part]['final_recall_count'] = (y_pred['test'] * datasets[f'y_{org_set}'] == 1).sum()
 
             results[part]['final_recall'] = (results[part]['final_recall_count']
                                              / results[part]['prevalence_count'])
@@ -390,23 +390,20 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         return results
 
-    def evaluate(self, group_label, seed_subset='train', expansion_subset='validation',
-                 test_subset='test', k_sparse=None, k_dense=None, threshold=0.5):
+    def evaluate(self, group_label, k_sparse=None, k_dense=None, threshold=0.5):
 
-        datasets = self.build_classification_datasets(group_label, seed_subset=seed_subset,
-                                                      expansion_subset=expansion_subset, test_subset=test_subset,
-                                                      k_sparse=k_sparse, k_dense=k_dense)
+        datasets = self.build_classification_datasets(group_label, k_sparse=k_sparse, k_dense=k_dense)
 
         self.pu_classifier.fit(datasets['x_train'], datasets['y_train'])
 
         x_train_unlabeled = datasets['x_train'][datasets['y_train'] == 0]
         y_pred = {'train': self.pu_classifier.predict_proba(x_train_unlabeled)[:, 1],
-                  'test': self.pu_classifier.predict_proba(datasets['x_test'])[:, 1]}
+                  'validation': self.pu_classifier.predict_proba(datasets['x_validation'])[:, 1]}
 
         metrics = self.calculate_evaluation_metrics(group_label, datasets, y_pred['train'] > threshold,
-                                                    y_pred['test'] > threshold,
-                                                    expansion_subset=expansion_subset,
-                                                    test_subset=test_subset)
+                                                    y_pred['validation'] > threshold,
+                                                    expansion_subset='train',
+                                                    test_subset='validation')
 
         results = {'metrics': metrics, 'datasets': datasets, 'y_pred': y_pred}
 
