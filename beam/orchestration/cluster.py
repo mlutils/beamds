@@ -64,9 +64,9 @@ class HTTPServeCluster(Processor):
 
         security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
         memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
-        # service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
-        service_configs = [ServiceConfig(service_name='fake-alg', port=serve_config.port, port_name='http',
-                                         service_type='NodePort', create_route=True, create_ingress=False)]
+        service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
+        # service_configs = [ServiceConfig(service_name='fake-alg', port=serve_config.port, port_name='http',
+        #                                  service_type='NodePort', create_route=True, create_ingress=False)]
         storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
 
         deployment = BeamDeploy(
@@ -107,13 +107,15 @@ class HTTPServeCluster(Processor):
                 logger.info("Pod deployment successful")
             get_cluster_info = deployment.cluster_info  # Assume this method returns the formatted cluster info string
             subject = "Cluster Deployment Information"
-            body = f"{config['body']}\n{get_cluster_info}"
+            # body = f"{config['body']}\n{get_cluster_info}"
+            body = f"{config['body']}<br>{deployment.cluster_info}"
             to_email = config['to_email']
             from_email = config['from_email']
             from_email_password = config['from_email_password']
             k8s.send_email(subject, body, to_email, from_email, from_email_password)
-            get_cluster_info = deployment.cluster_info
-            logger.info(f"Cluster info: {get_cluster_info}")
+            # get_cluster_info = deployment.cluster_info
+            # logger.info(f"Cluster info: {get_cluster_info}")
+            logger.info(f"Cluster info: {deployment.cluster_info}")
             if not pods:
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed

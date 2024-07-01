@@ -1019,7 +1019,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         msg['Subject'] = subject
         msg['From'] = from_email
         msg['To'] = to_email
-        msg.attach(MIMEText(body, 'plain'))
+        # msg.attach(MIMEText(body, 'plain'))
+        msg.attach(MIMEText(body, 'html'))
 
         try:
             server = smtplib.SMTP('smtp.gmail.com', 587)
