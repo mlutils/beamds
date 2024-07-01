@@ -10,7 +10,7 @@ mahotas
 
 chromadb
 pymilvus
-lmdeploy
+# lmdeploy (has too many dependencies which violates our environment setup)
 
 pydata-sphinx-theme
 grex
