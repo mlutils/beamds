@@ -1,6 +1,8 @@
 
 mkdir -p  /opt/ssh_user
 mkdir -p  /opt/supervisor
+mkdir -p  /run/sshd
+
 cp /workspace/configuration/supervisord_user.conf /etc/supervisor/conf.d/
 cp /workspace/configuration/sshd_config_root /etc/ssh/sshd_config
 cp /workspace/configuration/sshd_config_user /opt/ssh_user/sshd_config
