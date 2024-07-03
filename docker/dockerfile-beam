@@ -19,7 +19,8 @@ ENV PATH "/usr/local/cuda/bin:$PATH"
 ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 ENV TORCH_DATA_PATH "/usr/local/share/pytorch_data"
 ENV NLTK_DATA "/usr/local/share/nltk_data"
-ENV USER_NAME "flash"
+#ENV USER_NAME "flash"
+ENV USER_NAME "root"
 ENV USER_HOME_DIR "/$USER_NAME"
 
 COPY docker/workspace/ /workspace/
@@ -30,110 +31,110 @@ RUN bash /workspace/bash-build-scripts/add_beam_user.sh
 # apt installs
 RUN bash /workspace/bash-build-scripts/apt_installs.sh
 
-# install docker
-RUN bash /workspace/bash-build-scripts/install_docker.sh
+## install docker
+#RUN bash /workspace/bash-build-scripts/install_docker.sh
+#
+## pip installs
+#RUN pip install --upgrade pip setuptools wheel
+#
+#RUN pip install -U -r /workspace/pip/requirements.txt
 
-# pip installs
-RUN pip install --upgrade pip setuptools wheel
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0001.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0002.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0003.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0004.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0005.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0006.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0007.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0008.txt
+##RUN pip list
+#RUN pip install -r /workspace/pip/requirements_0009.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0010.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0011.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0012.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0014.txt
+##RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0015.txt
+## RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0016.txt
+## RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0017.txt
+## RUN pip list
+#RUN pip install -U -r /workspace/pip/requirements_0018.txt
 
-RUN pip install -U -r /workspace/pip/requirements.txt
+##install huggingface ecosystem
+## REMOVE FOR LITE VERSION
+#RUN bash /workspace/bash-build-scripts/install_huggingface_ecosystem.sh
+#
+#RUN pip install -U --no-deps -r /workspace/pip/requirements_no_deps.txt
+##RUN pip list
+#RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
+#
+##install pytorch geometric
+## REMOVE FOR LITE VERSION
+#RUN bash /workspace/bash-build-scripts/install_pyg.sh
+#
+##install torchsig
+## REMOVE FOR LITE VERSION
+#RUN bash /workspace/bash-build-scripts/install_torchsig.sh
+#
+## install DGL from source
+## REMOVE FOR LITE VERSION
+#RUN bash /workspace/bash-build-scripts/install_dgl.sh
+#
+## RAPID framework is already installed in the image
+#
+## download datasets and models
+## REMOVE FOR LITE VERSION
+#RUN python /workspace/python-scripts/downloader.py
+## download nlp data
+#RUN bash /workspace/bash-build-scripts/models_downloads.sh
+#
+#
+## no need to install RAPIDS as it comes with the image, except cusignal which is not found
+## REMOVE FOR LITE VERSION
+#RUN bash /workspace/bash-build-scripts/install_cusignal.sh
+## RUN pip install faiss-gpu
+## REMOVE FOR LITE VERSION
+#RUN bash /workspace/bash-build-scripts/install_faiss.sh
 
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0001.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0002.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0003.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0004.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0005.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0006.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0007.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0008.txt
-#RUN pip list
-RUN pip install -r /workspace/pip/requirements_0009.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0010.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0011.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0012.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0014.txt
-#RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0015.txt
-# RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0016.txt
-# RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0017.txt
-# RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0018.txt
-
-#install huggingface ecosystem
-# REMOVE FOR LITE VERSION
-RUN bash /workspace/bash-build-scripts/install_huggingface_ecosystem.sh
-
-RUN pip install -U --no-deps -r /workspace/pip/requirements_no_deps.txt
-#RUN pip list
-RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
-
-#install pytorch geometric
-# REMOVE FOR LITE VERSION
-RUN bash /workspace/bash-build-scripts/install_pyg.sh
-
-#install torchsig
-# REMOVE FOR LITE VERSION
-RUN bash /workspace/bash-build-scripts/install_torchsig.sh
-
-# install DGL from source
-# REMOVE FOR LITE VERSION
-RUN bash /workspace/bash-build-scripts/install_dgl.sh
-
-# RAPID framework is already installed in the image
-
-# download datasets and models
-# REMOVE FOR LITE VERSION
-RUN python /workspace/python-scripts/downloader.py
-# download nlp data
-RUN bash /workspace/bash-build-scripts/models_downloads.sh
-
-
-# no need to install RAPIDS as it comes with the image, except cusignal which is not found
-# REMOVE FOR LITE VERSION
-RUN bash /workspace/bash-build-scripts/install_cusignal.sh
-# RUN pip install faiss-gpu
-# REMOVE FOR LITE VERSION
-RUN bash /workspace/bash-build-scripts/install_faiss.sh
-
-# Install cx_oracle
-ENV ORACLE_HOME "/opt/oracle/instantclient"
-ENV LD_LIBRARY_PATH "$ORACLE_HOME:$LD_LIBRARY_PATH"
-
-RUN bash /workspace/bash-build-scripts/install_oracle.sh
-
-# install odbc driver
-RUN bash /workspace/bash-build-scripts/install_odbc.sh
-
-# install hadoop
-RUN bash /workspace/bash-build-scripts/install_hadoop.sh
-
-# Set Hadoop environment variables
-ENV HADOOP_HOME "/usr/local/hadoop"
-ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:$HADOOP_HOME/lib/native"
-ENV PATH "$PATH:$HADOOP_HOME/bin"
-# set default java version
-ENV JAVA_HOME "/usr/lib/jvm/default-java"
-# install language servers
-RUN bash /workspace/bash-build-scripts/language_servers.sh
-
-# install aux installs
-RUN bash /workspace/bash-build-scripts/aux_installs.sh
+## Install cx_oracle
+#ENV ORACLE_HOME "/opt/oracle/instantclient"
+#ENV LD_LIBRARY_PATH "$ORACLE_HOME:$LD_LIBRARY_PATH"
+#
+#RUN bash /workspace/bash-build-scripts/install_oracle.sh
+#
+## install odbc driver
+#RUN bash /workspace/bash-build-scripts/install_odbc.sh
+#
+## install hadoop
+#RUN bash /workspace/bash-build-scripts/install_hadoop.sh
+#
+## Set Hadoop environment variables
+#ENV HADOOP_HOME "/usr/local/hadoop"
+#ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:$HADOOP_HOME/lib/native"
+#ENV PATH "$PATH:$HADOOP_HOME/bin"
+## set default java version
+#ENV JAVA_HOME "/usr/lib/jvm/default-java"
+## install language servers
+#RUN bash /workspace/bash-build-scripts/language_servers.sh
+#
+## install aux installs
+#RUN bash /workspace/bash-build-scripts/aux_installs.sh
 RUN bash /workspace/bash-build-scripts/usermode_ssh_server.sh
 # config jupyter notebook
 RUN bash /workspace/bash-build-scripts/configure_jupyter.sh

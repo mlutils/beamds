@@ -202,7 +202,7 @@ if [ "$RUN_SSH" = true ]; then
   echo "root_ssh_port, ${ROOT_SSH_PORT}" >> /workspace/configuration/config.csv
   cp /workspace/configuration/sshd_config_root /etc/ssh/sshd_config
   echo "Port $ROOT_SSH_PORT" >> /etc/ssh/sshd_config
-  service ssh start #adding root
+#  service ssh start #adding root
   echo "SSH is running."
 else
   echo "SSH is disabled."
