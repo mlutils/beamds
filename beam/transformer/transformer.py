@@ -3,7 +3,7 @@ from enum import Enum
 
 from ..utils import (collate_chunks, recursive_chunks, iter_container,
                         build_container_from_tupled_keys, is_empty, check_type)
-from ..parallel import BeamParallel, BeamTask
+from ..concurrent import BeamParallel, BeamTask
 from ..data import BeamData
 from ..path import beam_path
 from ..utils import tqdm_beam as tqdm

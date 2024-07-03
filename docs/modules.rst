@@ -1,7 +1,10 @@
-beamds
-======
+Beam-DS Modules
+===============
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
 
-   beamds
+   beamds/beam
+   beamds/runs
+   beamds/tests
+   beamds/examples

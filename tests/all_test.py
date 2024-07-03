@@ -10,9 +10,25 @@ from beam import beam_logger as logger
 import pandas as pd
 
 
+def test_parallel_treading():
+
+    from beam.concurrent.utils import parallel, task
+
+    def func(i):
+        # print(f'func {i}\n')
+        import time
+        time.sleep(1)
+        return i ** 2
+
+    res = parallel([task(func, silence=True)(i) for i in range(100)], n_workers=2, method='threading')
+    print(res)
+    return res
+
+
 def test_minio_connection():
     path = resource('s3://172.17.0.1:9000/sandbox/?access-key=myaccesskey&secret-key=mysecretkey')
     print(list(path))
+    return True
 
 
 def test_beam_default_configuration():
@@ -26,7 +42,7 @@ def test_beam_default_configuration():
 
 def test_beam_parallel_with_silence():
 
-    from beam.parallel.utils import parallel, task
+    from beam.concurrent.utils import parallel, task
     def func(i):
         return i ** 2
 
@@ -325,7 +341,7 @@ def load_model():
 
 def test_beam_parallel():
 
-    from beam.parallel import parallel, task
+    from beam.concurrent import parallel, task
 
     def func(i):
         print(f'func {i}\n')
@@ -592,6 +608,8 @@ if __name__ == '__main__':
 
     # test_beam_parallel_with_silence()
 
-    test_minio_connection()
+    # test_minio_connection()
+
+    test_parallel_treading()
 
     print('done')

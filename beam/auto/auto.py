@@ -24,6 +24,7 @@ from uuid import uuid4 as uuid
 
 
 class AutoBeam(BeamBase):
+
     # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
     blacklisted_pip_package = ['sklearn']
 
@@ -79,9 +80,6 @@ class AutoBeam(BeamBase):
 
         root_path = beam_path(root_path).resolve()
         module_walk = {}
-        # if root_path.is_file():
-        #     module_walk = {'..': {root_path.name: root_path.read()}}
-        #     return module_walk
 
         for r, dirs, files in root_path.walk():
 
@@ -102,7 +100,11 @@ class AutoBeam(BeamBase):
         private_modules_walk = {}
         root_paths = set(sum([get_module_paths(m) for m in self.private_modules if m is not None], []))
         for root_path in root_paths:
-            private_modules_walk[root_path] = self.module_walk(root_path)
+            root_path = beam_path(root_path)
+            if root_path.is_file():
+                private_modules_walk[root_path.str] = root_path.read()
+            else:
+                private_modules_walk[root_path.str] = self.module_walk(root_path.str)
 
         return private_modules_walk
 
@@ -293,8 +295,7 @@ class AutoBeam(BeamBase):
         ab = AutoBeam(push_image=False, registry_url=None, registry_project_name=None, obj=obj)
         path.clean()
         path.mkdir()
-        logger.info(
-            f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
+        logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
         path.joinpath('requirements.json').write(ab.requirements)
         ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'))
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
@@ -455,12 +456,15 @@ class AutoBeam(BeamBase):
         import tarfile
         with tarfile.open(str(path), "w:gz") as tar:
             for i, (root_path, sub_paths) in enumerate(self.private_modules_walk.items()):
-                root_path = beam_path(root_path)
-                for sub_path, files in sub_paths.items():
-                    for file_name, _ in files.items():
-                        local_name = root_path.joinpath(sub_path, file_name)
-                        relative_name = local_name.relative_to(root_path.parent)
-                        tar.add(str(local_name), arcname=str(relative_name))
+                if root_path.is_file():
+                    tar.add(str(root_path), arcname=root_path.name)
+                else:
+                    root_path = beam_path(root_path)
+                    for sub_path, files in sub_paths.items():
+                        for file_name, _ in files.items():
+                            local_name = root_path.joinpath(sub_path, file_name)
+                            relative_name = local_name.relative_to(root_path.parent)
+                            tar.add(str(local_name), arcname=str(relative_name))
 
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
@@ -509,11 +513,7 @@ class AutoBeam(BeamBase):
             docker_dir.clean()
             docker_dir.mkdir()
 
-            if config is None:
-                config = {}
-            else:
-                config = dict(config)
-
+            config = dict(config) if config else {}
             docker_dir.joinpath('config.yaml').write(config)
 
             entrypoint = beam_path(entrypoint)
@@ -549,7 +549,7 @@ class AutoBeam(BeamBase):
 
             try:
                 client = docker.APIClient(base_url=base_url)
-                print(client.version())
+                logger.debug(f"Docker client version: {client.version()}")
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
                                         buildargs=build_args, tag=image_name, rm=True, decode=True)
 
@@ -562,7 +562,7 @@ class AutoBeam(BeamBase):
                     full_image_name = AutoBeam._push_image(image_name, registry_url,
                                                            registry_project_name=registry_project_name,
                                                            username=username, password=password)
-                    logger.info(f"full_image_name: {full_image_name}")
+                    logger.info(f"Full image name: {full_image_name}")
                 return full_image_name
 
             except BuildError as e:
