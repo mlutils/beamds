@@ -83,7 +83,8 @@ class Processor(BeamBase):
         self.__dict__.update(state)
 
     @classmethod
-    def from_remote(cls, hostname, *args, port=None,  **kwargs):
+    def from_remote(cls, hostname, *args, port=None, black_list: List[str] = None, white_list: List[str] = None,
+                    **kwargs):
 
         hostname = normalize_host(hostname, port=port)
         from ..serve.client import BeamClient
@@ -91,6 +92,15 @@ class Processor(BeamBase):
         self = cls(*args, remote=remote, **kwargs)
 
         def detour(self, attr):
+
+            if white_list:
+                if attr not in white_list:
+                    return super().__getattribute__(attr)
+
+            if black_list:
+                if attr in black_list:
+                    return super().__getattribute__(attr)
+
             return getattr(self.remote, attr)
 
         setattr(self, '__getattribute__', detour)
