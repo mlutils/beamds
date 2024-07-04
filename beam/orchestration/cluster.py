@@ -35,7 +35,6 @@ class HTTPServeCluster(Processor):
         self.entrypoint_args = config['entrypoint_args']
         self.entrypoint_envs = config['entrypoint_envs']
 
-
     @classmethod
     def deploy_from_algorithm(cls, alg, config):
 
@@ -48,7 +47,7 @@ class HTTPServeCluster(Processor):
                                beam_version=config.beam_version, base_url=config.base_url,
                                push_image=config.push_image, registry_url=config.registry_url,
                                username=config.registry_username, password=config.registry_password,
-                               serve_config=config))
+                               serve_config=config, registry_project_name=config.registry_project_name))
 
         logger.info(f"Image {full_image_name} created successfully")
 
@@ -104,16 +103,19 @@ class HTTPServeCluster(Processor):
             if pods:
                 logger.info("Pod deployment successful")
             get_cluster_info = deployment.cluster_info  # Assume this method returns the formatted cluster info string
-            subject = "Cluster Deployment Information"
-            # body = f"{config['body']}\n{get_cluster_info}"
-            body = f"{config['body']}<br>{deployment.cluster_info}"
-            to_email = config['to_email']
-            from_email = config['from_email']
-            from_email_password = config['from_email_password']
-            k8s.send_email(subject, body, to_email, from_email, from_email_password)
+            if config.send_email is True:
+                subject = "Cluster Deployment Information"
+                # body = f"{config['body']}\n{get_cluster_info}"
+                body = f"{config['body']}<br>{deployment.cluster_info}"
+                to_email = config['to_email']
+                from_email = config['from_email']
+                from_email_password = config['from_email_password']
+                k8s.send_email(subject, body, to_email, from_email, from_email_password)
+            else:
+                logger.info(f"Skipping email - printing Cluster info: {get_cluster_info}")
             # get_cluster_info = deployment.cluster_info
             # logger.info(f"Cluster info: {get_cluster_info}")
-            logger.info(f"Cluster info: {deployment.cluster_info}")
+            # logger.info(f"Cluster info: {deployment.cluster_info}")
             if not pods:
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed

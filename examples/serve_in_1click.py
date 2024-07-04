@@ -21,7 +21,8 @@ to_email = 'yossi@dayo-tech.com'
 
 
 serve_cluster = HTTPServeCluster(deployment=None, alg=alg, config=config, pods=config.pods,
-                                 base_url=config.base_url, to_email=config.to_email)
+                                 base_url=config.base_url, to_email=config.to_email, send_mail=config.send_email,
+                                 registry_project_name=config.registry_project_name,)
 
 serve_cluster.deploy_from_algorithm(alg, config)
 

@@ -116,7 +116,7 @@ class BeamDeploy(Processor):
             service_account_name=self.service_account_name,
             storage_configs=self.storage_configs,
             memory_storage_configs=self.memory_storage_configs,
-            use_node_selector=self.node_selector,
+            use_node_selector=self.use_node_selector,
             node_selector=self.node_selector,
             cpu_requests=self.cpu_requests,
             cpu_limits=self.cpu_limits,
