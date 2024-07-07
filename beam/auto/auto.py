@@ -292,7 +292,7 @@ class AutoBeam(BeamBase):
 
         path = path.resolve()
 
-        ab = AutoBeam(push_image=False, registry_url=None, registry_project_name=None, obj=obj)
+        ab = AutoBeam(push_image=False, registry_project_name=None, registry_url=None, obj=obj)
         path.clean()
         path.mkdir()
         logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
@@ -470,7 +470,7 @@ class AutoBeam(BeamBase):
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
                   registry_url=None, push_image=None, base_url=None, registry_project_name=None,
-                  username=None, password=None, **kwargs):
+                  username=None, password=None, copy_bundle=False, **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
@@ -481,16 +481,17 @@ class AutoBeam(BeamBase):
             AutoBeam._build_image(bundle_path, base_image, config=serve_config, image_name=image_name,
                                   entrypoint=entrypoint, beam_version=beam_version, username=username,
                                   password=password, base_url=base_url, registry_project_name=registry_project_name,
-                                  push_image=push_image, registry_url=registry_url,
-                                  dockerfile=dockerfile, **kwargs))
+                                  push_image=push_image, registry_url=registry_url, copy_bundle=copy_bundle,
+                                  dockerfile=dockerfile))
         logger.info(f"full_image_name: {full_image_name}")
         return full_image_name
 
     @staticmethod
-    def _build_image(bundle_path, base_image, config=None, image_name=None, entrypoint='synchronous-server',
-                     copy_bundle=False, push_image=False, registry_project_name=None,
-                     registry_url=None, username=None, password=None,
-                     beam_version=None, base_url=None, dockerfile='simple-entrypoint'):
+    def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint='synchronous-server',
+                     copy_bundle=False, push_image=False,  registry_url=None, username=None, password=None,
+                     beam_version=None, base_url=None, registry_project_name=None, dockerfile='simple-entrypoint'):
+
+        assert base_image is not None, "You must provide a base_image."
 
         import docker
         from docker.errors import BuildError
@@ -507,7 +508,7 @@ class AutoBeam(BeamBase):
         if image_name is None:
             image_name = f"autobeam-{bundle_path.name}-{base_image}"
 
-        with local_copy(bundle_path, as_beam_path=True, disable=not copy_bundle) as bundle_path:
+        with local_copy(bundle_path, as_beam_path=True, disable=not copy_bundle, override=True) as bundle_path:
 
             docker_dir = bundle_path.joinpath('.docker')
             docker_dir.clean()
@@ -559,7 +560,7 @@ class AutoBeam(BeamBase):
                         print(line['stream'].strip())
 
                 if push_image is True:
-                    full_image_name = AutoBeam._push_image(image_name, registry_url,
+                    full_image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
                                                            registry_project_name=registry_project_name,
                                                            username=username, password=password)
                     logger.info(f"Full image name: {full_image_name}")
@@ -575,8 +576,8 @@ class AutoBeam(BeamBase):
                 client.close()
 
     @staticmethod
-    def _push_image(image_name, registry_url, username=None, password=None, registry_project_name=None,
-                    dockercfg_path=None, base_url=None):
+    def _push_image(image_name, registry_url, username=None, password=None,
+                    registry_project_name=None, dockercfg_path=None, base_url=None):
         import docker
         from docker.errors import APIError
 
@@ -600,14 +601,17 @@ class AutoBeam(BeamBase):
             image_name += ':latest'
 
         # Construct the full image name including the project_name
-        full_image_name = f"{registry_name}/{registry_project_name}/{image_name}"
-
+        # full_image_name = f"{registry_name}/{registry_project_name}/{image_name}"
+        repository = f"{registry_name}/{registry_project_name}"
+        full_image_name = f"{repository}/{image_name}"
         try:
             # Tag the image to include the registry path
+            # if client.tag(image_name, full_image_name):
             if client.tag(image_name, full_image_name):
                 logger.info(f"Successfully tagged {image_name} as {full_image_name}")
 
             # Log into the registry if credentials are provided
+            # TODO: Add True/False flag use or not use credentials with the registry
             if username and password:
                 login_response = client.login(username=username, password=password, registry=registry_url,
                                               dockercfg_path=dockercfg_path, reauth=True)

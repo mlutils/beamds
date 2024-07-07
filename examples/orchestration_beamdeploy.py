@@ -1,6 +1,7 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
 from beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, SecurityContextConfig, MemoryStorageConfig,
-                                    ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig, CommandConfig)
+                                ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig, CommandConfig)
+from beam.logging import beam_logger as logger
 import time
 from beam.resources import resource
 from beam.orchestration.config import K8SConfig
@@ -9,7 +10,7 @@ import os
 # hparams = K8SConfig()
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-conf_path = resource(os.path.join(script_dir, 'orchestration_configuration.json')).str
+conf_path = resource(os.path.join(script_dir, 'orchestration_configuration.yaml')).str
 config = K8SConfig(conf_path)
 
 print('hello world')

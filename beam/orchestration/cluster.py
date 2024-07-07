@@ -9,9 +9,8 @@ from ..processor import Processor
 
 class HTTPServeCluster(Processor):
 
-    def __init__(self, alg, deployment, pods, config, *args, **kwargs):
+    def __init__(self, deployment, pods, config, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.alg = alg
         self.pods = pods
         self.deployment = deployment
         self.config = config
@@ -36,14 +35,15 @@ class HTTPServeCluster(Processor):
         self.entrypoint_envs = config['entrypoint_envs']
 
     @classmethod
-    def deploy_from_algorithm(cls, alg, config):
+    def _deploy_and_launch(cls, bundle_path=None, obj=None, config=None):
 
         from ..auto import AutoBeam
 
         logger.info(f"base_image: {config['base_image']}")
 
         full_image_name = (
-            AutoBeam.to_docker(obj=alg, base_image=config.base_image, image_name=config.alg_image_name,
+            AutoBeam.to_docker(obj=obj, bundle_path=bundle_path, base_image=config.base_image,
+                               image_name=config.alg_image_name, copy_bundle=config.copy_bundle,
                                beam_version=config.beam_version, base_url=config.base_url,
                                push_image=config.push_image, registry_url=config.registry_url,
                                username=config.registry_username, password=config.registry_password,
@@ -112,18 +112,26 @@ class HTTPServeCluster(Processor):
                 from_email_password = config['from_email_password']
                 k8s.send_email(subject, body, to_email, from_email, from_email_password)
             else:
-                logger.info(f"Skipping email - printing Cluster info: {get_cluster_info}")
-            # get_cluster_info = deployment.cluster_info
-            # logger.info(f"Cluster info: {get_cluster_info}")
-            # logger.info(f"Cluster info: {deployment.cluster_info}")
+                logger.info(f"Skipping email - printing Cluster info:")
+                logger.info(f"Skipping email - printing Cluster info: {deployment.get_cluster_info}")
+            get_cluster_info = deployment.cluster_info
+            logger.info(f"Cluster info: {get_cluster_info}")
+            logger.info(f"Cluster info: {deployment.cluster_info}")
             if not pods:
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed
-            return cls(alg=alg, get_cluster_info=get_cluster_info, deployment=deployment,
-                       pods=pods, config=config)
+            return cls(deployment=deployment, pods=pods, config=config)
         except Exception as e:
             logger.error(f"Error during deployment: {str(e)}")
             return None
+
+    @classmethod
+    def deploy_from_bundle(cls, bundle_path, config):
+        return cls._deploy_and_launch(bundle_path=bundle_path, obj=None, config=config)
+
+    @classmethod
+    def deploy_from_algorithm(cls, alg, config):
+        return cls._deploy_and_launch(bundle_path=None, obj=alg, config=config)
 
 
 class RayCluster(Processor):

@@ -12,13 +12,13 @@ import json
 
 class BeamDeploy(Processor):
 
-    def __init__(self, k8s=None, check_project_exists=False, project_name=None, namespace=None,
-                 replicas=None, labels=None, image_name=None, command=None, beam_pod_instances=None,
-                 deployment_name=None, use_scc=False, deployment=None, create_service_account=None,
+    def __init__(self, k8s=None, check_project_exists=None, project_name=None, os_namespace=None,
+                 replicas=None, labels=None, image_name=None, use_command=None, command=None,  beam_pod_instances=None,
+                 deployment_name=None, use_scc=None, deployment=None, create_service_account=None,
                  cpu_requests=None, cpu_limits=None, memory_requests=None, use_gpu=None,
                  gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
                  service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
-                 memory_storage_configs=None, security_context_config=None, use_node_selector=False,
+                 memory_storage_configs=None, security_context_config=None, use_node_selector=None,
                  scc_name=None, node_selector=None, pod_info_state=None,
                  service_type=None, entrypoint_args=None, entrypoint_envs=None, **kwargs):
         super().__init__()
@@ -29,10 +29,11 @@ class BeamDeploy(Processor):
         self.check_project_exists = check_project_exists
         self.project_name = project_name
         self.create_service_account = create_service_account
-        self.namespace = namespace
+        self.namespace = project_name
         self.replicas = replicas
         self.labels = labels
         self.image_name = image_name
+        self.use_command = use_command
         self.command = command
         self.deployment_name = deployment_name
         self.service_type = service_type
@@ -105,6 +106,7 @@ class BeamDeploy(Processor):
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
+            use_command=self.use_command,
             command=self.command,
             labels=self.labels,
             deployment_name=self.deployment_name,
