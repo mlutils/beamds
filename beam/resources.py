@@ -2,8 +2,7 @@
 resource_names = {
     'path': ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp', 'comet', 'io', 'dict', 'redis', 'smb', 'nt',
              'mlflow'],
-    'serve': ['beam-http', 'beam-https', 'beam-grpc', 'triton', 'triton-http', 'triton-grpc', 'triton-https',
-              'triton-grpcs'],
+    'serve': ['beam-http', 'beam-https', 'beam-grpc', 'beam-grpcs', 'http', 'https', 'grpc', 'grpcs'],
     'distributed': ['async-http', 'async-https'],
     'llm': ['openai', 'vllm', 'tgi', 'fastchat', 'huggingface', 'samurai', 'samur-openai', 'fastapi-dp'],
     'triton': ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs'],

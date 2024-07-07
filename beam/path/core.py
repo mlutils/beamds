@@ -1,4 +1,5 @@
 import fnmatch
+import io
 import json
 import os
 from collections import namedtuple
@@ -867,8 +868,11 @@ class PureBeamPath(BeamResource):
                     import cv2
                     x = cv2.imread(fo, **kwargs)
                 elif target in ['PIL', 'pillow'] or target is None:
+
+                    x = fo.read()
+                    x = io.BytesIO(x)
                     from PIL import Image
-                    x = Image.open(fo, **kwargs)
+                    x = Image.open(x, **kwargs)
                 else:
                     raise ValueError(f"Unknown target: {target}")
             else:
