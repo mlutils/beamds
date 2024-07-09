@@ -10,7 +10,7 @@ if __name__ == '__main__':
 
     if config.path_to_state is not None:
         logger.info(f"Loading state from {config.path_to_state} (assuming code+requirements are already loaded")
-        obj = resource(config.path_to_state).read(ext='.bmp')
+        obj = resource(config.path_to_state).read(ext='.bmpr')
     else:
         logger.info(f"Loading algorithm bundle (code+state+requirements) from {config.path_to_bundle}")
         obj = resource(config.path_to_bundle).read(ext='.abm')

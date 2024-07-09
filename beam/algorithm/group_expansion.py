@@ -246,6 +246,8 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)
         tokenizer = Tokenizer(self.hparams)
         for k in self.tfidf_sim.keys():
+            print(type(self.tfidf_sim[k]))
+            print(self.tfidf_sim[k])
             self.tfidf_sim[k].preprocessor = tokenizer.tokenize
 
         dense_model = self.build_dense_model()
