@@ -19,7 +19,7 @@ class BeamParam:
     name: Union[str, List[str]]
     type: type
     default: any
-    help: str
+    help: Union[str, None] = None
     tags: Union[List[str], str, None] = None
 
 
@@ -118,7 +118,7 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
         return cls(return_defaults=True)
 
     @classmethod
-    def add_argument(cls, name, type, default, help, tags=None):
+    def add_argument(cls, name, type, default, help=None, tags=None):
         if tags is None:
             tags = []
         cls.parameters.append(BeamParam(name, type, default, help, tags=tags))

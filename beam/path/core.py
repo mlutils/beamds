@@ -1,4 +1,5 @@
 import fnmatch
+import io
 import json
 import os
 from collections import namedtuple
@@ -670,20 +671,20 @@ class PureBeamPath(BeamResource):
         else:
             pdu = pd
 
-        # read .bmd (beam-data) and .bmp (beam-processor) files
+        # read .bmd (beam-data) and .bmpr (beam-processor) files
 
         if ext == '.bmd':
             from ..data import BeamData
             lazy = kwargs.pop('lazy', False)
-            return BeamData.from_path(self, lazy=lazy)
+            return BeamData.from_path(self, lazy=lazy, **kwargs)
 
-        if ext == '.bmp':
+        if ext == '.bmpr':
             from ..processor import Processor
-            return Processor.from_path(self)
+            return Processor.from_path(self, **kwargs)
 
         if ext == '.abm':
             from ..auto import AutoBeam
-            return AutoBeam.from_bundle(self)
+            return AutoBeam.from_bundle(self, **kwargs)
 
         with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
@@ -867,8 +868,11 @@ class PureBeamPath(BeamResource):
                     import cv2
                     x = cv2.imread(fo, **kwargs)
                 elif target in ['PIL', 'pillow'] or target is None:
+
+                    x = fo.read()
+                    x = io.BytesIO(x)
                     from PIL import Image
-                    x = Image.open(fo, **kwargs)
+                    x = Image.open(x, **kwargs)
                 else:
                     raise ValueError(f"Unknown target: {target}")
             else:
@@ -925,7 +929,7 @@ class PureBeamPath(BeamResource):
 
         x_type = check_type(x)
 
-        # write .bmd (beam-data) and .bmp (beam-processor) files
+        # write .bmd (beam-data) and .bmpr (beam-processor) files
         if ext == '.bmd':
             if is_beam_data(x):
                 x.to_path(self)
@@ -934,7 +938,7 @@ class PureBeamPath(BeamResource):
                 BeamData(x).to_path(self)
             return self
 
-        if ext == '.bmp':
+        if ext == '.bmpr':
             assert is_beam_processor(x), f"Expected Processor, got {type(x)}"
             x.to_path(self)
             return self
