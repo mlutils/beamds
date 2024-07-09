@@ -31,6 +31,8 @@ from argparse import Namespace
 from functools import wraps, partial, cached_property as native_cached_property
 from collections import OrderedDict
 import yaml
+import json
+from dataclasses import asdict, is_dataclass
 
 
 # do not delete this import (it is required as some modules import the following imported functions from this file)
@@ -1222,4 +1224,9 @@ def safe_getmembers(obj, predicate=None):
 
     return getmembers(obj, predicate=lambda key, value: predicate(value) and not key.startswith('_'))
 
-# pretty_print_dict()
+
+class DataClassEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if is_dataclass(obj):
+            return asdict(obj)
+        return json.JSONEncoder.default(self, obj)

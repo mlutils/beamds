@@ -10,7 +10,6 @@ from uuid import uuid4 as uuid
 
 from ..logging import beam_logger as logger
 from ..utils import find_port, safe_getmembers
-from ..config import to_dict
 from ..processor import MetaDispatcher
 
 try:
@@ -23,7 +22,7 @@ except ImportError:
 class BeamServer(MetaDispatcher):
 
     def __init__(self, obj, *args, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
-                 tls=False, n_threads=4, application=None, predefined_attributes=None, **kwargs):
+                 tls=False, n_threads=4, application=None, **kwargs):
 
         super().__init__(obj, *args, asynchronous=False, **kwargs)
 
@@ -66,9 +65,10 @@ class BeamServer(MetaDispatcher):
 
         atexit.register(self._cleanup)
 
-        if predefined_attributes is None:
-            predefined_attributes = {}
-        self._predefined_attributes = predefined_attributes
+    def get_info(self):
+        info = super().get_info()
+        info.serialization = self.serialization_method
+        return info
 
     def set_variable(self, client, name, value, *args, **kwargs):
 
@@ -204,52 +204,6 @@ class BeamServer(MetaDispatcher):
     @property
     def metadata(self):
         return None
-
-    def get_info(self):
-
-        obj = self.real_object
-
-        d = {'name': None, 'obj': self.type, 'serialization': self.serialization_method}
-
-        if obj is None:
-            d['attributes'] = self._predefined_attributes.copy()
-            d['hparams'] = None
-            d['vars_args'] = None
-
-        elif self.type == 'function':
-            d['vars_args'] = obj.__code__.co_varnames
-        else:
-            d['vars_args'] = obj.__init__.__code__.co_varnames
-            if hasattr(obj, 'hparams'):
-                d['hparams'] = to_dict(obj.hparams)
-            else:
-                d['hparams'] = None
-
-            attributes = self._predefined_attributes.copy()
-            for name, attr in safe_getmembers(obj):
-                if type(name) is not str:
-                    continue
-                if not name.startswith('_') and inspect.isroutine(attr):
-                    attributes[name] = 'method'
-                elif not name.startswith('_') and not inspect.isbuiltin(attr):
-                    attributes[name] = 'variable'
-
-            properties = inspect.getmembers(type(obj), lambda m: isinstance(m, property))
-            for name, attr in properties:
-                if not name.startswith('_'):
-                    attributes[name] = 'property'
-
-            d['attributes'] = attributes
-
-        if hasattr(obj, 'name'):
-            d['name'] = obj.name
-
-        if hasattr(self, 'metadata'):
-            metadata = self.metadata
-            if metadata is not None:
-                d['metadata'] = self.metadata
-
-        return d
 
     def batched_query_algorithm(self, method, args, kwargs):
 
