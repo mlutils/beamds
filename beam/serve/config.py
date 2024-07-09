@@ -18,4 +18,5 @@ class BeamServeConfig(BeamConfig):
         BeamParam('max-batch-size', int, 10, 'Maximal batch size (execute function when reaching this number)'),
         BeamParam('max-wait-time', float, 1., 'execute function if reaching this timeout'),
         BeamParam('non-blocking', bool, False, 'Run the server in a non-blocking mode'),
+        BeamParam('load-kwargs', dict, {}, 'Additional kwargs to pass to the load function'),
     ]
