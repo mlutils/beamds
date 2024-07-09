@@ -1026,7 +1026,7 @@ class BeamData(BeamName):
         if schema is not None:
             kwargs = {**schema.read_schema, **kwargs}
 
-        if path.is_file() or path.suffix in ['.bmp', '.bmd']:
+        if path.is_file() or path.suffix in ['.bmpr', '.bmd']:
             logger.debug(f"Reading file: {path}")
             return path.read(**kwargs)
 
@@ -1158,7 +1158,7 @@ class BeamData(BeamName):
                 elif is_beam_data(data):
                     priority = ['.bmd', '.pkl', '.dill']
                 elif is_beam_processor(data):
-                    priority = ['.bmp', '.pkl', '.dill', '.cloudpickle', '.joblib']
+                    priority = ['.bmpr', '.pkl', '.dill', '.cloudpickle', '.joblib']
                 else:
                     priority.extend(['.pkl', '.dill', '.cloudpickle', '.joblib'])
 

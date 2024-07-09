@@ -220,7 +220,7 @@ else
   echo "Jupyter is disabled."
 fi
 
-echo "Setting permissions to user flash"
+# echo "Setting permissions to user flash"
 #setfacl -R -m u:"$USER_NAME":rwx /home/
 #setfacl -R -d -m u:"$USER_NAME":rwx /home/
 

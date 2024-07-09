@@ -22,6 +22,7 @@ class Processor(BeamBase):
         super().__init__(*args, name=name, llm=llm, **kwargs)
         self._llm = self.get_hparam('llm', llm)
         self._beam_pickle = False
+        self._peak_usage_stats = None
 
     @contextmanager
     def beam_pickle(self, on=True):
@@ -220,21 +221,9 @@ class Processor(BeamBase):
 
         return constructor(*args, **kwargs)
 
-    def get_hparam(self, hparam, default=None, preferred=None, specific=None):
-        return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
-
-    def set_hparam(self, hparam, value, tags=None):
-        self.hparams.set(hparam, value, tags=tags)
-
-    def update_hparams(self, hparams, tags=None):
-        self.hparams.update(hparams, tags=tags)
-
     def to_bundle(self, path):
         from ..auto import AutoBeam
         AutoBeam.to_bundle(self, path)
-
-    def hasattr(self, attr):
-        return attr in self.__dict__
 
     def load_state_dict(self, path, ext=None, exclude: Union[List, Set] = None, hparams=True, exclude_hparams=None,
                         overwrite_hparams=None, **kwargs):
@@ -245,7 +234,7 @@ class Processor(BeamBase):
         ext = ext or path.suffix
 
         state = {}
-        if ext and ext != '.bmp':
+        if ext and ext != '.bmpr':
             state = path.read(ext=ext, **kwargs)
         else:
             if path.is_dir() and path.suffix not in ['.bmd']:
@@ -273,8 +262,9 @@ class Processor(BeamBase):
                 setattr(self, k, v)
 
             overwrite_hparams = overwrite_hparams or {}
-            for kh, vh in overwrite_hparams.items():
-                self.hparams.set(kh, vh)
+            if self.hasattr('hparams'):
+                for kh, vh in overwrite_hparams.items():
+                    self.hparams.set(kh, vh)
 
     def save_state_dict(self, state, path, ext=None, exclude: Union[List, Set] = None, override=False, **kwargs):
 
@@ -285,7 +275,7 @@ class Processor(BeamBase):
 
         state = {k: v for k, v in state.items() if k not in exclude}
 
-        if ext and ext != '.bmp':
+        if ext and ext != '.bmpr':
             path.write(state, ext=ext, **kwargs)
         else:
             BeamData.write_tree(state, path, override=override, split=False, archive_size=0)
@@ -334,7 +324,7 @@ class Processor(BeamBase):
     def base_dir(path, ext=None):
         path = beam_path(path)
         ext = ext or path.suffix
-        if ext and ext != '.bmp':
+        if ext and ext != '.bmpr':
             # to load the skeleton and the init_args in the same directory as the state file
             path = path.parent.joinpath(f".{path.stem}")
 
@@ -430,6 +420,17 @@ class Processor(BeamBase):
 
         return method(*args, **kwargs)
 
+    @contextmanager
+    def profile(self, interval=0.1, percentile=.99):
+        from ..auto import BeamProfiler
+        profiler = BeamProfiler(percentile=percentile)
+        try:
+            profiler.start(interval=interval)
+            yield
+        finally:
+            profiler.stop()
+            self._peak_usage_stats = profiler.stats
+
 
 class Pipeline(Processor):
 
@@ -459,4 +460,5 @@ class Pipeline(Processor):
                 self.steps[i] = x
 
         return x
+
 

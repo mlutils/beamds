@@ -1,5 +1,6 @@
 import io
 import requests
+from ..logging import beam_logger as logger
 
 from .client import BeamClient
 
@@ -13,7 +14,12 @@ class HTTPClient(BeamClient):
         super().__init__(*args, scheme='beam-http', **kwargs)
 
     def get_info(self):
-        return requests.get(f'{self.protocol}://{self.host}/').json()
+        try:
+            return requests.get(f'{self.protocol}://{self.host}/info').json()
+        except requests.exceptions.JSONDecodeError:
+            logger.debug(f"Could not get info from {self.protocol}://{self.host}/info "
+                         f"(probably backward compatibility issue)")
+            return requests.get(f'{self.protocol}://{self.host}/').json()
 
     def get(self, path, **kwargs):
 

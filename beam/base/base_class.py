@@ -57,6 +57,9 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
                 break
         return default
 
+    def hasattr(self, attr):
+        return attr in self.__dict__
+
     def getattr(self, attr):
         # Capture the full traceback
         # tb = ''.join(traceback.format_stack())
@@ -93,3 +96,12 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
     @cached_property
     def is_notebook(self):
         return is_notebook()
+
+    def get_hparam(self, hparam, default=None, preferred=None, specific=None):
+        return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
+
+    def set_hparam(self, hparam, value, tags=None):
+        self.hparams.set(hparam, value, tags=tags)
+
+    def update_hparams(self, hparams, tags=None):
+        self.hparams.update(hparams, tags=tags)
