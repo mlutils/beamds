@@ -4,11 +4,11 @@
 <img src="resources/beam_icon.png" width="200">
 </p>
 
-## What is Beam for?
+## What is Beam for? ✨
 
 Beam was created by data-science practitioners for data-science practitioners. It is designed as an ecosystem for developing and deploying data-driven algorithms in Python. It aims to increase productivity, efficiency, and performance in the research phase and to provide production-grade tools in the deployment part.
 
-## Our Guiding Principles
+## Our Guiding Principles ✍
 
 1. Support all phases of data-driven algorithm development:
     1. Data exploration
@@ -29,7 +29,7 @@ Beam was created by data-science practitioners for data-science practitioners. I
 10. Beam is the Swiss army knife that gets into your pocket: it is easy to install and maintain and it comes with the Beam Docker Image s.t. you can start developing and creating with zero effort even without an internet connection.
 
 
-## Installation
+## Installation 🧷
 
 To install the full package from PyPi use:
 ```shell
@@ -46,7 +46,7 @@ pip install beam-ds[llm]
 
 The prerequisite packages will be installed automatically, they can be found in the setup.cfg file.
 
-## Build from source
+## Build from source 🚂
 
 This BeamDS implementation follows the guide at 
 https://packaging.python.org/tutorials/packaging-projects/
@@ -68,7 +68,7 @@ python -m build
 pip install dist/*.whl --force-reinstall
 ```
 
-## Getting Started
+## Getting Started 🚀
 
 There are several examples both in .py files (in the examples folder) and in jupyter notebooks (in the notebooks folder).
 Specifically, you can start by looking into the beam_resources.ipynb notebook which makes you familiar the different
@@ -76,7 +76,7 @@ resources available in Beam.
 
 [Go To the beam_resource.ipynb page](/notebooks/beam_resource.ipynb)
 
-## The Beam-DS Docker Image
+## The Beam-DS Docker Image 🛸
 
 We provide a Docker Image which contains all the necessary packages to run Beam-DS 
 as well as many other data-science related packages which are useful for data-science development.
@@ -89,7 +89,7 @@ docker pull eladsar/beam:20240708
 ```
 
 
-## Building the Beam-DS docker image from source
+## Building the Beam-DS docker image from source 🌱
 
 The docker image is based on the latest official NVIDIA pytorch image.
 To build the docker image from Ubuntu host, you need to:
@@ -118,7 +118,7 @@ To analyze your code with Scalene use the following arguments:
 scalene --reduced-profile --outfile OUTFILE.html --html --- your_prog.py <your additional arguments>
 ```
 
-## Uploading the package to PyPi
+## Uploading the package to PyPi 🌏
 
 1. Install twine:
 ```shell
