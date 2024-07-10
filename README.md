@@ -76,7 +76,20 @@ resources available in Beam.
 
 [Go To the beam_resource.ipynb page](/notebooks/beam_resource.ipynb)
 
-## Building the Beam-DS docker image
+## The Beam-DS Docker Image
+
+We provide a Docker Image which contains all the necessary packages to run Beam-DS 
+as well as many other data-science related packages which are useful for data-science development.
+We use it as our base image in our daily development process. 
+It is based on the official NVIDIA PyTorch image.
+
+To pull the image from Docker Hub use:
+```shell
+docker pull eladsar/beam:20240708
+```
+
+
+## Building the Beam-DS docker image from source
 
 The docker image is based on the latest official NVIDIA pytorch image.
 To build the docker image from Ubuntu host, you need to:
