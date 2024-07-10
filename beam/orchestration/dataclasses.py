@@ -92,3 +92,19 @@ class PodInfos:
     @property
     def name(self):
         return self.metadata.name
+
+
+#Todo: build configuration classes according to the deployment layer structure
+# Todo: check online existing packages that have these configurations
+@dataclass
+class PodConfig:
+    pass
+
+@dataclass
+class ContainerConfig:
+    pass
+
+@dataclass
+class DeploymentConfig:
+    container: ContainerConfig
+    pod: PodConfig
