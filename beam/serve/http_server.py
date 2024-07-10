@@ -1,16 +1,28 @@
 import copy
+import inspect
+import json
 from queue import Queue, Empty
 from threading import Thread
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, render_template_string
+from flask.json.provider import DefaultJSONProvider
 
 from ..logging import beam_logger as logger
 from .server import BeamServer
+from ..utils import DataClassEncoder
 
 try:
     import torch
     has_torch = True
 except ImportError:
     has_torch = False
+
+
+class CustomJSONProvider(DefaultJSONProvider):
+    def dumps(self, obj, **kwargs):
+        return json.dumps(obj, cls=DataClassEncoder, **kwargs)
+
+    def loads(self, s, **kwargs):
+        return json.loads(s, **kwargs)
 
 
 class HTTPServer(BeamServer):
@@ -69,7 +81,9 @@ class HTTPServer(BeamServer):
         application = 'flask' or application
         super().__init__(*args, application=application, **kwargs)
         self.app = Flask(__name__)
-        self.app.add_url_rule('/', view_func=self.get_info)
+        self.app.json_provider_class = CustomJSONProvider
+        self.app.add_url_rule('/', view_func=self.homepage)
+        self.app.add_url_rule('/info', view_func=self.get_info)
 
         if self.type == 'function':
             self.app.add_url_rule('/call/<client>', view_func=self.call, methods=['POST'])
@@ -120,7 +134,8 @@ class HTTPServer(BeamServer):
 
     def get_info(self):
         d = super().get_info()
-        return jsonify(d)
+        response = jsonify(d)
+        return response
 
     @staticmethod
     def request_metadata(client='beam', method=None):
@@ -252,3 +267,98 @@ class HTTPServer(BeamServer):
 
         http_server = WSGIServer((host, port), self.app, ssl_context=context)
         http_server.serve_forever()
+
+    def homepage(self):
+        info = self.get_info().get_json()
+        methods = info.get('attributes', {})
+        obj_name = info.get('name', 'Unknown')
+        obj_type = info.get('obj', 'Unknown')
+        base_url = request.base_url
+
+        html = f"""
+        <html>
+        <head>
+            <title>Beam Server API Documentation</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; }}
+                .container {{ width: 80%; margin: auto; }}
+                h1 {{ text-align: center; }}
+                .method, .property {{ margin-bottom: 20px; }}
+                .method h2, .property h2 {{ margin-bottom: 5px; }}
+                .method pre, .property pre {{ background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>API Documentation</h1>
+                <h2>Object: {obj_name}</h2>
+                <p>Object Type: {obj_type}</p>
+                <hr/>
+        """
+
+        for attribute_name, attribute_type in methods.items():
+            if attribute_type == 'method':
+                method = getattr(self.obj, attribute_name)
+                args_info = inspect.signature(method)
+                args_list = [str(param) for param in args_info.parameters.values()]
+
+                example_python_usage = f"""
+                <pre>
+                import requests
+                response = requests.post(
+                    '{base_url}alg/client/{attribute_name}', 
+                    json={{'args': [], 'kwargs': {{}}}}
+                )
+                print(response.json())
+                </pre>
+                """
+
+                example_curl_usage = f"""
+                <pre>
+                curl -X POST {base_url}alg/client/{attribute_name} \\
+                -H "Content-Type: application/json" \\
+                -d '{{"args": [], "kwargs": {{}}}}'
+                </pre>
+                """
+
+                args_description = f"""
+                <h3>Arguments:</h3>
+                <ul>
+                """
+                for arg in args_list:
+                    args_description += f"<li>{arg}</li>"
+                args_description += "</ul>"
+
+                html += f"""
+                <div class="method">
+                    <h2>Method: {attribute_name}</h2>
+                    <p>Type: {attribute_type}</p>
+                    {args_description}
+                    <h3>Example Usage:</h3>
+                    <h4>Python with requests:</h4>
+                    {example_python_usage}
+                    <h4>With curl command:</h4>
+                    {example_curl_usage}
+                </div>
+                <hr/>
+                """
+            elif attribute_type == 'property':
+                prop = getattr(type(self.obj), attribute_name)
+                prop_type = str(prop.fget.__annotations__.get('return', 'Unknown'))
+
+                html += f"""
+                <div class="property">
+                    <h2>Property: {attribute_name}</h2>
+                    <p>Type: {attribute_type}</p>
+                    <p>Return Type: {prop_type}</p>
+                </div>
+                <hr/>
+                """
+
+        html += """
+            </div>
+        </body>
+        </html>
+        """
+
+        return render_template_string(html)

@@ -152,7 +152,7 @@ class ChunkDF(Transformer):
 
 class TFIDF(BeamSimilarity):
 
-    def __init__(self, *args, preprocessor=None, min_df=2, max_df=.95, max_features=None, use_idf=True,
+    def __init__(self, *args, preprocessor=None, max_df=1.0, min_df=1, max_features=None, use_idf=True,
                  smooth_idf=True, sublinear_tf=False, n_workers=0, mp_method='joblib', chunksize=None,
                  use_dill=False, n_chunks=None, sparse_framework='torch', device='cpu', norm='l2',
                  metric='bm25', bm25_k1=1.5, bm25_b=0.75, bm25_epsilon=0.25, **kwargs):
@@ -469,7 +469,7 @@ class TFIDF(BeamSimilarity):
 
         if self.max_df is not None:
             max_df = self.max_df
-            if self.max_df < 1:
+            if self.max_df <= 1:
                 max_df = int(self.max_df * n)
             self.df = {k: v for k, v in self.df.items() if v <= max_df}
 

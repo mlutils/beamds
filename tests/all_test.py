@@ -10,6 +10,20 @@ from beam import beam_logger as logger
 import pandas as pd
 
 
+def test_configuration_priority():
+    from beam.config import BeamConfig, BeamParam
+
+    class AConfig(BeamConfig):
+        defaults = {'a': 1}
+        parameters = [BeamParam('a', type=int, default=2),
+                      BeamParam('b', type=int, default=3)]
+
+    path = resource(__file__).parent.joinpath('test_config.yaml')
+    config = AConfig(path.str, b=5)
+
+    print(config)
+
+
 def test_parallel_treading():
 
     from beam.concurrent.utils import parallel, task
@@ -610,6 +624,8 @@ if __name__ == '__main__':
 
     # test_minio_connection()
 
-    test_parallel_treading()
+    # test_parallel_treading()
+
+    test_configuration_priority()
 
     print('done')

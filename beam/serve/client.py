@@ -80,11 +80,14 @@ class BeamClient(BeamBase, BeamResource):
         if item not in self.attributes:
             self.info = self.get_info()
 
-        attribute_type = self.attributes[item]
+        attribute_type = self.attributes[item]['type']
         if attribute_type in ['variable', 'property']:
             return self.get(f'getvar/beam/{item}')
         elif attribute_type == 'method':
-            return partial(self.post, f'alg/beam/{item}')
+            func = partial(self.post, f'alg/beam/{item}')
+            func.__name__ = item
+            func.__doc__ = self.attributes[item]['description']
+            return func
         raise ValueError(f"Unknown attribute type: {attribute_type}")
 
     def __setattr__(self, key, value):

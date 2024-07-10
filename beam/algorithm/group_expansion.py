@@ -10,6 +10,45 @@ from ..data import BeamData
 from ..logging import beam_logger as logger
 from .core_algorithm import Algorithm
 from ..type import BeamType
+from dataclasses import dataclass
+
+
+@dataclass
+class ExpansionDataset:
+    x: List[str]
+    y: np.ndarray
+    expansion_df: pd.DataFrame
+    seed_subsets: List[str]
+    expansion_subset: str
+    group: int
+
+
+@dataclass
+class EvaluationMetrics:
+    original_pool: int
+    prevalence_count: int
+    prevalence: float
+    expansion_recall_count: int
+    expansion_recall: float
+    expansion_pool: int
+    expansion_precision: float
+    expansion_gain: float
+    final_recall_count: int
+    final_recall: float
+    final_pool: int
+    final_precision: float
+
+
+@dataclass
+class GroupExpansionResults:
+    metrics: EvaluationMetrics
+    dataset: ExpansionDataset
+    y_pred: np.ndarray
+    group_label: int
+    k_sparse: int
+    k_dense: int
+    threshold: float
+    pu_classifier: object
 
 
 class GroupExpansionAlgorithm(Algorithm):
@@ -207,6 +246,8 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)
         tokenizer = Tokenizer(self.hparams)
         for k in self.tfidf_sim.keys():
+            print(type(self.tfidf_sim[k]))
+            print(self.tfidf_sim[k])
             self.tfidf_sim[k].preprocessor = tokenizer.tokenize
 
         dense_model = self.build_dense_model()
@@ -247,7 +288,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         return df
 
-    def build_expansion_dataset(self, group_label, seed_subsets: Union[str, List[str]] = 'train',
+    def build_expansion_dataset(self, group, seed_subsets: Union[str, List[str]] = 'train',
                                 expansion_subset='validation', k_sparse=None, k_dense=None):
 
         if isinstance(seed_subsets, str):
@@ -271,7 +312,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         for seed_subset in seed_subsets:
 
-            iloc_seed_j = np.where(self.y[seed_subset] == group_label)[0]
+            iloc_seed_j = np.where(self.y[seed_subset] == group)[0]
             x_seed.extend([self.x[seed_subset][i] for i in iloc_seed_j])
             x_seed_features.append(self.features[seed_subset][iloc_seed_j])
             iloc_seed[seed_subset] = iloc_seed_j
@@ -293,12 +334,8 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         x = np.concatenate([x_seed_features, x_expansion_features], axis=0)
         y = np.concatenate([y_seed, y_expansion], axis=0)
 
-        return {'x': x, 'y': y, 'expansion_df': expansion_df}
-
-        # return {'x_seed': x_seed, 'y_seed': y_seed, 'ind_seed': ind_seed,
-        #         'x_expansion': x_expansion, 'y_expansion': y_expansion,
-        #         'y_unlabeled_true': y_unlabeled_true, 'ind_expansion': ind_expansion,
-        #         'expansion_df': expansion_df}
+        return ExpansionDataset(x=x, y=y, expansion_df=expansion_df, seed_subsets=seed_subsets,
+                                expansion_subset=expansion_subset, group=group)
 
     def _build_features(self, x, is_train=False, n_workers=None):
 
@@ -339,7 +376,35 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     def build_features(self):
         _ = self.features
 
-    def build_classification_datasets(self, group_label, k_sparse=None, k_dense=None):
+    def calculate_evaluation_metrics(self, group_label, dataset, y_pred, _eps=1e-8):
+
+        # use the dataclasses to perform the calculations
+        original_pool = len(self.y[dataset.expansion_subset])
+        prevalence_count = (self.y[dataset.expansion_subset] == group_label).sum()
+        prevalence = prevalence_count / original_pool
+        expansion_recall_count = (dataset.expansion_df.label == group_label).sum()
+        expansion_recall = expansion_recall_count / (prevalence_count + _eps)
+        expansion_pool = (dataset.y == 0).sum()
+        expansion_precision = expansion_recall_count / (expansion_pool + _eps)
+        expansion_gain = expansion_precision / (prevalence + _eps)
+        y_train_true = dataset.expansion_df.label == group_label
+        final_recall_count = (y_pred * y_train_true == 1).sum()
+        final_recall = final_recall_count / (prevalence_count + _eps)
+        final_pool = (y_pred == 1).sum()
+        final_precision = final_recall_count / (final_pool + _eps)
+
+        return EvaluationMetrics(original_pool, prevalence_count, prevalence, expansion_recall_count, expansion_recall,
+                                 expansion_pool, expansion_precision, expansion_gain, final_recall_count, final_recall,
+                                 final_pool, final_precision)
+
+    def fit_group(self, group_label, k_sparse=None, k_dense=None, threshold=None, pu_classifier=None):
+
+        if pu_classifier is None:
+            pu_classifier = self.pu_classifier
+        if k_sparse is None:
+            k_sparse = self.get_hparam('k-sparse')
+        if k_dense is None:
+            k_dense = self.get_hparam('k-dense')
 
         dataset_train = self.build_expansion_dataset(group_label, seed_subsets='train', expansion_subset='train',
                                                      k_sparse=k_sparse, k_dense=k_dense)
@@ -348,65 +413,36 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
                                                           expansion_subset='validation', k_sparse=k_sparse,
                                                           k_dense=k_dense)
 
-        res_test = self.build_expansion_dataset(group_label, seed_subsets=['train', 'validation'],
+        pu_classifier.fit(dataset_train.x, dataset_train.y)
+        x_validation_unlabeled = dataset_validation.x[dataset_validation.y == 0]
+        y_pred = pu_classifier.predict_proba(x_validation_unlabeled)[:, 1]
+
+        metrics = self.calculate_evaluation_metrics(group_label, dataset_validation, y_pred > threshold)
+
+        return GroupExpansionResults(metrics=metrics, dataset=dataset_validation, y_pred=y_pred,
+                                     group_label=group_label, k_sparse=k_sparse, k_dense=k_sparse, threshold=threshold,
+                                     pu_classifier=pu_classifier)
+
+    def evaluate_group(self, group_label, k_sparse=None, k_dense=None, threshold=None, pu_classifier=None):
+
+        if pu_classifier is None:
+            pu_classifier = self.pu_classifier
+        if k_sparse is None:
+            k_sparse = self.get_hparam('k-sparse')
+        if k_dense is None:
+            k_dense = self.get_hparam('k-dense')
+
+        dataset = self.build_expansion_dataset(group_label, seed_subsets=['train', 'validation'],
                                                 expansion_subset='test', k_sparse=k_sparse, k_dense=k_dense)
 
-        return {'x_train': dataset_train['x'], 'y_train': dataset_train['y'],
-                'x_validation': dataset_validation['x'], 'y_validation': dataset_validation['y'],
-                'x_test': res_test['x'], 'y_test': res_test['y'],
-                'train_expansion_df': dataset_train['expansion_df'],
-                'validation_expansion_df': dataset_validation['expansion_df'],
-                'test_expansion_df': res_test['expansion_df']}
+        x_test_unlabeled = dataset.x[dataset.y == 0]
+        y_pred = pu_classifier.predict_proba(x_test_unlabeled)[:, 1]
 
-    def calculate_evaluation_metrics(self, group_label, datasets, y_pred_train, y_pred_test,
-                                     expansion_subset='validation', test_subset='test'):
+        metrics = self.calculate_evaluation_metrics(group_label, dataset, y_pred)
 
-        y_pred = {'train': y_pred_train, 'test': y_pred_test}
-        # calculate metrics:
-        results = defaultdict(dict)
-        for part, org_set in (('train', expansion_subset), ('test', test_subset)):
-
-            results[part]['original_pool'] = len(self.y[org_set])
-            results[part]['prevalence_count'] = (self.y[org_set] == group_label).sum()
-            results[part]['prevalence'] = results[part]['prevalence_count'] / results[part]['original_pool']
-            results[part]['expansion_recall_count'] = (datasets[f'{org_set}_expansion_df'].label == group_label).sum()
-            results[part]['expansion_recall'] = (results[part]['expansion_recall_count']
-                                                 / results[part]['prevalence_count'])
-            results[part]['expansion_pool'] = (datasets[f'y_{org_set}'] == 0).sum()
-            results[part]['expansion_precision'] = (results[part]['expansion_recall_count'] /
-                                                    results[part]['expansion_pool'])
-            results[part]['expansion_gain'] = (results[part]['expansion_precision'] / results[part]['prevalence'])
-
-            y_train_true = datasets[f'{org_set}_expansion_df'].label == group_label
-            results[part]['final_recall_count'] = (y_pred[part] * y_train_true == 1).sum()
-
-            results[part]['final_recall'] = (results[part]['final_recall_count']
-                                             / results[part]['prevalence_count'])
-            results[part]['final_pool'] = (y_pred[part] == 1).sum()
-            results[part]['final_precision'] = (results[part]['final_recall_count'] /
-                                                results[part]['final_pool'])
-
-        return results
-
-    def fit_group(self, group_label, k_sparse=None, k_dense=None, threshold=None):
-
-        datasets = self.build_classification_datasets(group_label, k_sparse=k_sparse, k_dense=k_dense)
-
-        self.pu_classifier.fit(datasets['x_train'], datasets['y_train'])
-
-        x_train_unlabeled = datasets['x_train'][datasets['y_train'] == 0]
-        x_validation_unlabeled = datasets['x_validation'][datasets['y_validation'] == 0]
-        y_pred = {'train': self.pu_classifier.predict_proba(x_train_unlabeled)[:, 1],
-                  'validation': self.pu_classifier.predict_proba(x_validation_unlabeled)[:, 1]}
-
-        metrics = self.calculate_evaluation_metrics(group_label, datasets, y_pred['train'] > threshold,
-                                                    y_pred['validation'] > threshold,
-                                                    expansion_subset='train',
-                                                    test_subset='validation')
-
-        results = {'metrics': metrics, 'datasets': datasets, 'y_pred': y_pred}
-
-        return results
+        return GroupExpansionResults(metrics=metrics, dataset=dataset, y_pred=y_pred, group_label=group_label,
+                                     k_sparse=k_sparse, k_dense=k_sparse, threshold=threshold,
+                                     pu_classifier=pu_classifier)
 
     def explainability(self, x, explain_with_subset='train', k_sparse=None, k_dense=None):
         if not self.tfidf_sim[explain_with_subset].is_trained:
