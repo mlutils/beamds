@@ -1230,3 +1230,54 @@ class DataClassEncoder(json.JSONEncoder):
         if is_dataclass(obj):
             return asdict(obj)
         return json.JSONEncoder.default(self, obj)
+
+
+def serialize_annotation(annotation):
+    """Convert annotation to a serializable format."""
+    if annotation is inspect.Parameter.empty:
+        return None
+    if isinstance(annotation, type):
+        return annotation.__name__
+    if isinstance(annotation, str):
+        return annotation
+    return repr(annotation)
+
+def deserialize_annotation(annotation_str, global_ns=None):
+    """Convert serialized annotation back to its original format."""
+    if annotation_str is None:
+        return inspect.Parameter.empty
+    if global_ns is None:
+        global_ns = globals()
+    try:
+        return eval(annotation_str, global_ns)
+    except Exception:
+        return annotation_str
+
+def signature_to_dict(signature):
+    """Convert a Signature object to a dictionary representation."""
+    return {
+        'parameters': [
+            {
+                'name': param.name,
+                'kind': param.kind.name,
+                'default': param.default if param.default is not inspect.Parameter.empty else None,
+                'annotation': serialize_annotation(param.annotation)
+            }
+            for param in signature.parameters.values()
+        ],
+        'return_annotation': serialize_annotation(signature.return_annotation)
+    }
+
+def dict_to_signature(d, global_ns=None):
+    """Convert a dictionary representation back to a Signature object."""
+    parameters = [
+        inspect.Parameter(
+            name=param['name'],
+            kind=getattr(inspect.Parameter, param['kind']),
+            default=param['default'] if param['default'] is not None else inspect.Parameter.empty,
+            annotation=deserialize_annotation(param['annotation'], global_ns)
+        )
+        for param in d['parameters']
+    ]
+    return_annotation = deserialize_annotation(d['return_annotation'], global_ns)
+    return inspect.Signature(parameters, return_annotation=return_annotation)

@@ -1,3 +1,5 @@
+from typing import Union, Dict, List
+
 from ..path import beam_path
 from .tasks import BeamTask
 from .core import BeamParallel
@@ -36,7 +38,7 @@ def parallel_copy_path(src, dst, chunklen=10, **kwargs):
     parallel(jobs, **kwargs)
 
 
-def parallel(tasks, n_workers=0, func=None, method='joblib', progressbar='beam', reduce=False, reduce_dim=0,
+def parallel(tasks: Union[Dict, List], n_workers=0, func=None, method='threading', progressbar='beam', reduce=False, reduce_dim=0,
              use_dill=False, **kwargs):
     bp = BeamParallel(func=func, n_workers=n_workers, method=method, progressbar=progressbar,
                       reduce=reduce, reduce_dim=reduce_dim, use_dill=use_dill, **kwargs)

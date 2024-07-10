@@ -1,8 +1,10 @@
 import inspect
+from typing import Dict
+
 from dataclasses import dataclass
 
 from ..base import BeamBase
-from ..utils import safe_getmembers, cached_property
+from ..utils import safe_getmembers, cached_property, signature_to_dict
 from ..config import to_dict
 
 
@@ -11,6 +13,7 @@ class ObjectAttribute:
     name: str
     type: str
     description: str = None
+    signature: Dict[str, str] = None
 
 
 @dataclass
@@ -208,7 +211,8 @@ class MetaDispatcher(BeamBase):
                 if not name.startswith('_') and inspect.isroutine(attr):
                     # attributes[name] = ObjectAttribute(name=name, type='method')
                     # add docstring to the ObjectAttribute
-                    attributes[name] = ObjectAttribute(name=name, type='method', description=attr.__doc__)
+                    attributes[name] = ObjectAttribute(name=name, type='method', description=attr.__doc__,
+                                                       signature=signature_to_dict(inspect.signature(attr)))
                 elif not name.startswith('_') and not inspect.isbuiltin(attr):
                     attributes[name] = ObjectAttribute(name=name, type='variable')
 
