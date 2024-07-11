@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Welcome to Your Services</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 50px;
+      }
+      .service {
+        margin: 20px;
+      }
+      .service img {
+        width: 50px;
+        height: 50px;
+      }
+      .service a {
+        display: block;
+        margin-top: 10px;
+        text-decoration: none;
+        color: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <img src="{{ root_icon }}" alt="Root Icon" style="width:100px;height:100px;">
+    <h1>Welcome to Your Services</h1>
+    <p>Here are the available services running in your Docker container:</p>
+    <div>
+      {% for service in services %}
+        <div class="service">
+          <img src="{{ service.icon }}" alt="{{ service.name }} Icon">
+          <a href="{{ service.url }}">{{ service.name }}</a>
+        </div>
+      {% endfor %}
+    </div>
+  </body>
+</html>

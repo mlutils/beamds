@@ -224,11 +224,15 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
     def fit_dense(self, subset='validation'):
         self.dense_sim[subset].add(self.x[subset], index=self.ind[subset])
 
-    def search_tfidf(self, query, subset='validation', k=5):
-        return self.tfidf_sim[subset].search(query, k=k)
+    def search_tfidf(self, query, subset='validation', k=5, tfidf_sim=None):
+        if tfidf_sim is None:
+            tfidf_sim = self.tfidf_sim
+        return tfidf_sim[subset].search(query, k=k)
 
-    def search_dense(self, query, subset='validation', k=5):
-        return self.dense_sim[subset].search(query, k=k)
+    def search_dense(self, query, subset='validation', k=5, dense_sim=None):
+        if dense_sim is None:
+            dense_sim = self.dense_sim
+        return dense_sim[subset].search(query, k=k)
 
     @classmethod
     @property
@@ -254,12 +258,13 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         for k in self.dense_sim.keys():
             self.dense_sim[k].set_dense_model(dense_model)
 
-    def search_dual(self, query: Union[List, str], index=None, subset='validation', k_sparse=5, k_dense=5):
+    def search_dual(self, query: Union[List, str], index=None, subset='validation', k_sparse=5, k_dense=5,
+                    tfidf_sim=None, dense_sim=None):
         if isinstance(query, str):
             query = [query]
 
-        res_sparse = self.search_tfidf(query, subset=subset, k=k_sparse)
-        res_dense = self.search_dense(query, subset=subset, k=k_dense)
+        res_sparse = self.search_tfidf(query, subset=subset, k=k_sparse, tfidf_sim=tfidf_sim)
+        res_dense = self.search_dense(query, subset=subset, k=k_dense, dense_sim=dense_sim)
 
         if index is None:
             index = np.arange(len(query))
@@ -289,19 +294,20 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         return df
 
     def build_expansion_dataset(self, group, seed_subsets: Union[str, List[str]] = 'train',
-                                expansion_subset='validation', k_sparse=None, k_dense=None):
+                                expansion_subset='validation', k_sparse=None, k_dense=None, features=True,
+                                tfidf_sim=None, dense_sim=None):
 
         if isinstance(seed_subsets, str):
             seed_subsets = [seed_subsets]
 
-        k_sparse = k_sparse or self.get_hparam('k-sparse')
-        k_dense = k_dense or self.get_hparam('k-dense')
+        k_sparse = self.get_hparam('k-sparse', preferred=k_sparse)
+        k_dense = self.get_hparam('k-dense', preferred=k_dense)
 
-        if not self.tfidf_sim[expansion_subset].is_trained:
+        if tfidf_sim is None and k_sparse and not self.tfidf_sim[expansion_subset].is_trained:
             logger.warning(f"TFIDF model not fitted for {expansion_subset}. Fitting now")
             self.fit_tfidf(subset=expansion_subset)
 
-        if not self.dense_sim[expansion_subset].is_trained:
+        if dense_sim is None and k_dense and not self.dense_sim[expansion_subset].is_trained:
             logger.warning(f"Dense model not fitted for {expansion_subset}. Fitting now")
             self.fit_dense(subset=expansion_subset)
 
@@ -314,24 +320,32 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
             iloc_seed_j = np.where(self.y[seed_subset] == group)[0]
             x_seed.extend([self.x[seed_subset][i] for i in iloc_seed_j])
-            x_seed_features.append(self.features[seed_subset][iloc_seed_j])
+            if features:
+                x_seed_features.append(self.features[seed_subset][iloc_seed_j])
             iloc_seed[seed_subset] = iloc_seed_j
             loc_seed.append(self.ind[seed_subset][iloc_seed_j])
 
         y_seed = np.ones(len(x_seed), dtype=int)
-        x_seed_features = np.concatenate(x_seed_features, axis=0)
+        if features:
+            x_seed_features = np.concatenate(x_seed_features, axis=0)
         loc_seed = np.concatenate(loc_seed, axis=0)
 
-        expansion_df = self.search_dual(x_seed, index=loc_seed, subset=expansion_subset, k_sparse=k_sparse, k_dense=k_dense)
+        expansion_df = self.search_dual(x_seed, index=loc_seed, subset=expansion_subset, k_sparse=k_sparse,
+                                        k_dense=k_dense, tfidf_sim=tfidf_sim, dense_sim=dense_sim)
 
         if expansion_subset in seed_subsets:
             expansion_df = expansion_df.loc[~expansion_df.index.isin(iloc_seed[expansion_subset])]
 
         x_expansion = [self.x[expansion_subset][k] for k in expansion_df.index]
-        x_expansion_features = self.features[expansion_subset][expansion_df.index]
-
         y_expansion = np.zeros(len(x_expansion), dtype=int)
-        x = np.concatenate([x_seed_features, x_expansion_features], axis=0)
+
+        if features:
+            x_expansion_features = self.features[expansion_subset][expansion_df.index]
+            x = np.concatenate([x_seed_features, x_expansion_features], axis=0)
+        else:
+            x = x_seed
+            x.extend(x_expansion)
+
         y = np.concatenate([y_seed, y_expansion], axis=0)
 
         return ExpansionDataset(x=x, y=y, expansion_df=expansion_df, seed_subsets=seed_subsets,
@@ -397,7 +411,8 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
                                  expansion_pool, expansion_precision, expansion_gain, final_recall_count, final_recall,
                                  final_pool, final_precision)
 
-    def fit_group(self, group_label, k_sparse=None, k_dense=None, threshold=None, pu_classifier=None):
+    def fit_group(self, group_label, k_sparse=None, k_dense=None, threshold=None, pu_classifier=None,
+                  build_model=True, tfidf_sim=None, dense_sim=None):
 
         if pu_classifier is None:
             pu_classifier = self.pu_classifier
@@ -407,15 +422,19 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
             k_dense = self.get_hparam('k-dense')
 
         dataset_train = self.build_expansion_dataset(group_label, seed_subsets='train', expansion_subset='train',
-                                                     k_sparse=k_sparse, k_dense=k_dense)
+                                                     k_sparse=k_sparse, k_dense=k_dense, features=build_model,
+                                                     tfidf_sim=tfidf_sim, dense_sim=dense_sim)
 
         dataset_validation = self.build_expansion_dataset(group_label, seed_subsets='train',
                                                           expansion_subset='validation', k_sparse=k_sparse,
                                                           k_dense=k_dense)
 
-        pu_classifier.fit(dataset_train.x, dataset_train.y)
-        x_validation_unlabeled = dataset_validation.x[dataset_validation.y == 0]
-        y_pred = pu_classifier.predict_proba(x_validation_unlabeled)[:, 1]
+        if build_model:
+            pu_classifier.fit(dataset_train.x, dataset_train.y)
+            x_validation_unlabeled = dataset_validation.x[dataset_validation.y == 0]
+            y_pred = pu_classifier.predict_proba(x_validation_unlabeled)[:, 1]
+        else:
+            y_pred = np.ones(len(dataset_validation.y))
 
         metrics = self.calculate_evaluation_metrics(group_label, dataset_validation, y_pred > threshold)
 
