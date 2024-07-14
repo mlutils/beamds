@@ -1,17 +1,28 @@
 import copy
 import inspect
+import json
 from queue import Queue, Empty
 from threading import Thread
 from flask import Flask, request, jsonify, send_file, render_template_string
+from flask.json.provider import DefaultJSONProvider
 
 from ..logging import beam_logger as logger
 from .server import BeamServer
+from ..utils import DataClassEncoder
 
 try:
     import torch
     has_torch = True
 except ImportError:
     has_torch = False
+
+
+class CustomJSONProvider(DefaultJSONProvider):
+    def dumps(self, obj, **kwargs):
+        return json.dumps(obj, cls=DataClassEncoder, **kwargs)
+
+    def loads(self, s, **kwargs):
+        return json.loads(s, **kwargs)
 
 
 class HTTPServer(BeamServer):
@@ -70,6 +81,7 @@ class HTTPServer(BeamServer):
         application = 'flask' or application
         super().__init__(*args, application=application, **kwargs)
         self.app = Flask(__name__)
+        self.app.json_provider_class = CustomJSONProvider
         self.app.add_url_rule('/', view_func=self.homepage)
         self.app.add_url_rule('/info', view_func=self.get_info)
 
@@ -122,7 +134,8 @@ class HTTPServer(BeamServer):
 
     def get_info(self):
         d = super().get_info()
-        return jsonify(d)
+        response = jsonify(d)
+        return response
 
     @staticmethod
     def request_metadata(client='beam', method=None):

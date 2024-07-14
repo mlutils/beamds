@@ -14,14 +14,14 @@ ENV DEBIAN_FRONTEND noninteractive
 
 # pytorch geometric
 
-ENV CPATH "/usr/local/cuda/include:$CPATH"
-ENV PATH "/usr/local/cuda/bin:$PATH"
-ENV LD_LIBRARY_PATH "/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
-ENV TORCH_DATA_PATH "/usr/local/share/pytorch_data"
-ENV NLTK_DATA "/usr/local/share/nltk_data"
+ENV CPATH="/usr/local/cuda/include:$CPATH"
+ENV PATH="/usr/local/cuda/bin:$PATH"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+ENV TORCH_DATA_PATH="/usr/local/share/pytorch_data"
+ENV NLTK_DATA="/usr/local/share/nltk_data"
 # you can choose the user name root is the default
-ENV USER_NAME "root"
-ENV USER_HOME_DIR "/$USER_NAME"
+ENV USER_NAME="root"
+ENV USER_HOME_DIR="/$USER_NAME"
 
 COPY docker/workspace/ /workspace/
 
@@ -117,8 +117,8 @@ RUN bash /workspace/bash-build-scripts/install_cusignal.sh
 RUN bash /workspace/bash-build-scripts/install_faiss.sh
 
 # Install cx_oracle
-ENV ORACLE_HOME "/opt/oracle/instantclient"
-ENV LD_LIBRARY_PATH "$ORACLE_HOME:$LD_LIBRARY_PATH"
+ENV ORACLE_HOME="/opt/oracle/instantclient"
+ENV LD_LIBRARY_PATH="$ORACLE_HOME:$LD_LIBRARY_PATH"
 
 RUN bash /workspace/bash-build-scripts/install_oracle.sh
 
@@ -129,12 +129,12 @@ RUN bash /workspace/bash-build-scripts/install_odbc.sh
 RUN bash /workspace/bash-build-scripts/install_hadoop.sh
 
 # Set Hadoop environment variables
-ENV HADOOP_HOME "/usr/local/hadoop"
-ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:$HADOOP_HOME/lib/native"
-ENV PATH "$PATH:$HADOOP_HOME/bin"
+ENV HADOOP_HOME="/usr/local/hadoop"
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HADOOP_HOME/lib/native"
+ENV PATH="$PATH:$HADOOP_HOME/bin"
 # set default java version
-ENV JAVA_HOME "/usr/lib/jvm/default-java"
-ENV NODE_OPTIONS ""
+ENV JAVA_HOME="/usr/lib/jvm/default-java"
+ENV NODE_OPTIONS=""
 # install language servers
 RUN bash /workspace/bash-build-scripts/language_servers.sh
 
