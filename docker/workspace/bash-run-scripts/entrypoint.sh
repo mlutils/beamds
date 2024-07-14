@@ -4,8 +4,15 @@ echo "Starting entrypoint script..."
 # shellcheck disable=SC2145
 echo "Initial arguments: $@"
 
+# if no arguments are passed, the default is to run the shell
+if [ $# -eq 0 ]; then
+    echo "No arguments passed. Running the default Beam entrypoint..."
+    bash
+    exit
+fi
+
 # Check if the first argument is a path to a shell script
-if [[ -f "$1" ]] && [[ $1 == *.sh ]]; then
+if [[ -f "$1" ]] && [[ "$1" == *.sh ]]; then
     echo "Detected custom shell script as the first argument. Executing it instead of the default Beam entrypoint..."
     chmod +x "$1"
     "$@"
