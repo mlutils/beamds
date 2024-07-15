@@ -954,26 +954,6 @@ class HDFSPAPath(PyArrowPath):
         self.client = client
 
 
-@contextmanager
-def temp_local_file(content, tmp_path='/tmp', name=None, ext=None, binary=True, as_beam_path=True):
-    tmp_path = BeamPath(tmp_path).joinpath(uuid())
-    tmp_path.mkdir(exist_ok=True, parents=True)
-    if name is None:
-        name = uuid()
-    if ext is not None:
-        name = f"{name}{ext}"
-    tmp_path = tmp_path.joinpath(name)
-    try:
-        if binary:
-            tmp_path.write_bytes(content)
-        else:
-            tmp_path.write_text(content)
-        yield tmp_path if as_beam_path else str(tmp_path)
-    finally:
-        tmp_path.unlink()
-        tmp_path.parent.rmdir()
-
-
 class CometAsset(PureBeamPath):
     # a pathlib/beam_path api for comet artifacts
 
