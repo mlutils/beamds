@@ -559,11 +559,12 @@ class AutoBeam(BeamBase):
                     if 'stream' in line:
                         print(line['stream'].strip())
 
-                full_image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
-                                                       registry_project_name=registry_project_name,
-                                                       username=username, password=password)
-                logger.info(f"Full image name: {full_image_name}")
-                return full_image_name
+                if registry_url is not None:
+                    image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
+                                                           registry_project_name=registry_project_name,
+                                                           username=username, password=password)
+                logger.info(f"Full image name: {image_name}")
+                return image_name
 
             except BuildError as e:
                 logger.error(f"Error building Docker image: {e}")
