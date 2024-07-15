@@ -28,13 +28,12 @@ class AutoBeam(BeamBase):
     # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
     blacklisted_pip_package = ['sklearn']
 
-    def __init__(self, push_image, registry_project_name, registry_url, obj, *args, **kwargs):
+    def __init__(self, registry_project_name, registry_url, obj, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._private_modules = None
         self._visited_modules = None
         self.obj = obj
         self.registry_url = registry_url
-        self.push_image = push_image
         self.registry_project_name = registry_project_name
 
     @cached_property
@@ -292,7 +291,7 @@ class AutoBeam(BeamBase):
 
         path = path.resolve()
 
-        ab = AutoBeam(push_image=False, registry_project_name=None, registry_url=None, obj=obj)
+        ab = AutoBeam(registry_project_name=None, registry_url=None, obj=obj)
         path.clean()
         path.mkdir()
         logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
@@ -470,7 +469,7 @@ class AutoBeam(BeamBase):
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
-                  registry_url=None, push_image=None, base_url=None, registry_project_name=None,
+                  registry_url=None, base_url=None, registry_project_name=None,
                   username=None, password=None, copy_bundle=False, **kwargs):
 
         if obj is not None:
@@ -482,14 +481,13 @@ class AutoBeam(BeamBase):
             AutoBeam._build_image(bundle_path, base_image, config=serve_config, image_name=image_name,
                                   entrypoint=entrypoint, beam_version=beam_version, username=username,
                                   password=password, base_url=base_url, registry_project_name=registry_project_name,
-                                  push_image=push_image, registry_url=registry_url, copy_bundle=copy_bundle,
-                                  dockerfile=dockerfile))
+                                  registry_url=registry_url, copy_bundle=copy_bundle, dockerfile=dockerfile))
         logger.info(f"full_image_name: {full_image_name}")
         return full_image_name
 
     @staticmethod
     def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint='synchronous-server',
-                     copy_bundle=False, push_image=False,  registry_url=None, username=None, password=None,
+                     copy_bundle=False, registry_url=None, username=None, password=None,
                      beam_version=None, base_url=None, registry_project_name=None, dockerfile='simple-entrypoint'):
 
         assert base_image is not None, "You must provide a base_image."
@@ -560,11 +558,10 @@ class AutoBeam(BeamBase):
                     if 'stream' in line:
                         print(line['stream'].strip())
 
-                if push_image is True:
-                    full_image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
-                                                           registry_project_name=registry_project_name,
-                                                           username=username, password=password)
-                    logger.info(f"Full image name: {full_image_name}")
+                full_image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
+                                                       registry_project_name=registry_project_name,
+                                                       username=username, password=password)
+                logger.info(f"Full image name: {full_image_name}")
                 return full_image_name
 
             except BuildError as e:
