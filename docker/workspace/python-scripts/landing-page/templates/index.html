@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>The Beam-DS Container</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='beam-logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
     <style>
       @font-face {
         font-family: 'Montserrat';
@@ -119,11 +120,12 @@
           <div class="icon-container">
             <img src="{{ service.icon }}" alt="{{ service.name }} Icon" class="{{ 'large-icon' if service.name in ['Redis', 'MongoDB', 'Prefect'] else '' }}">
           </div>
-          <a href="{{ service.url }}">{{ service.name }}</a>
+          <a href="{{ service.url }}" download="{{ 'ssh_connection.sh' if service.name == 'SSH' else '' }}">{{ service.name }}</a>
           <p>{{ service.description }}</p>
           <small>{{ service.url }}</small>
         </div>
       {% endfor %}
     </div>
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
   </body>
 </html>
