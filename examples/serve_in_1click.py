@@ -7,7 +7,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 
 conf_path = resource(os.path.join(script_dir, 'Server_in_1click_config.yaml')).str
 
-config = HTTPServeClusterConfig(conf_path, port=44044, **{'path-to-bundle': '/app/algorithm'})
+config = HTTPServeClusterConfig(conf_path, conf_bundle=True, port=44044, **{'path-to-bundle': '/app/algorithm'})
 
 print('hello world')
 print("API URL:", config.api_url)
@@ -15,17 +15,20 @@ print("API Token:", config.api_token)
 
 
 alg = BeamFakeAlg(sleep_time=1)
-
+# image_name = "harbor.dt.local/public/fake-alg-http-server:latest"
+image_name = None
 # to_email = input("Enter the email address to receive the cluster info: ")
 to_email = 'yossi@dayo-tech.com'
 
 
-serve_cluster = HTTPServeCluster(deployment=None, alg=alg, config=config, pods=config.pods,
-                                 base_url=config.base_url, to_email=config.to_email, send_mail=config.send_email,
-                                 registry_project_name=config.registry_project_name,)
+# serve_cluster = HTTPServeCluster(deployment=None, alg=alg, config=config, pods=config.pods,
+#                                  base_url=config.base_url, to_email=config.to_email, send_mail=config.send_email,
+#                                  registry_project_name=config.registry_project_name,)
 
-serve_cluster.deploy_from_algorithm(alg, config)
-
+# HTTPServeCluster.deploy_from_bundle('/app/algorithm', config)
+# serve_cluster.deploy_from_algorithm(alg, config)
+HTTPServeCluster.deploy_from_algorithm(alg, config)
+# HTTPServeCluster.deploy_from_image(image_name, config)
 
 
 

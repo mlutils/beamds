@@ -11,6 +11,7 @@ class K8SConfig(BeamConfig):
         BeamParam('deployment_name', str, None, 'Name of the deployment'),
         BeamParam('labels', dict, {}, 'Labels for the deployment'),
         BeamParam('image_name', str, None, 'Name of the image to deploy'),
+        BeamParam('use_command', bool, False, 'command configuration for the deployment'),
         BeamParam('command', dict, {}, 'Command configuration for the deployment'),
         BeamParam('os_namespace', str, None, 'Namespace for the deployment'),
         BeamParam('replicas', int, 1, 'Number of replicas for the deployment'),
@@ -39,7 +40,6 @@ class K8SConfig(BeamConfig):
         BeamParam('check_project_exists', bool, True, 'Check if project exists')
     ]
 
-
 class RayClusterConfig(K8SConfig):
     parameters = [
         BeamParam('n-pods', int, 1, 'Number of Ray worker pods'),
@@ -51,8 +51,8 @@ class HTTPServeClusterConfig(K8SConfig, BeamServeConfig):
     defaults = dict(n_threads=16)
 
     parameters = [
-        BeamParam('alg_image_name', str, 'fake-alg-http-server:latest', 'Algorithm image name'),
-        BeamParam('base_image', str, 'eladsar/beam:20240605', 'Base image'),
+        BeamParam('alg_image_name', str, None, 'Algorithm image name'),
+        BeamParam('base_image', str, None, 'Base image'),
         BeamParam('base_url', str, 'tcp://10.0.7.55:2375', 'Base URL'),
         BeamParam('beam_version', str, '2.5.11', 'Beam version'),
         BeamParam('send_email', bool, False, 'Send email'),
@@ -60,16 +60,18 @@ class HTTPServeClusterConfig(K8SConfig, BeamServeConfig):
         BeamParam('from_email', str, 'dayotech2018@gmail.com', 'From email address'),
         BeamParam('from_email_password', str, 'mkhdokjqwwmazyrf', 'From email password'),
         BeamParam('to_email', str, None, 'To email address'),
+        BeamParam('send_email', bool, False, 'Send email or not'),
         BeamParam('smtp_server', str, 'smtp.gmail.com', 'SMTP server'),
         BeamParam('smtp_port', int, 587, 'SMTP port'),
-        BeamParam('registry_project_name', str, 'public1', 'Registry project name'),
         BeamParam('subject', str, 'Cluster Deployment Information', 'Email subject'),
         BeamParam('registry_url', str, 'harbor.dt.local', 'Registry URL'),
         BeamParam('registry_username', str, 'admin', 'Registry username'),
         BeamParam('registry_password', str, 'Har@123', 'Registry password'),
+        BeamParam('registry_project_name', str, 'public', 'Registry project name'),
         BeamParam('push_image', bool, True, 'Push image to registry'),
         BeamParam('pods', list, [], 'List of pods'),
-        BeamParam('alg', object, None, 'Algorithm object')
+        BeamParam('alg', object, None, 'Algorithm object'),
+        BeamParam('copy-bundle', bool, False, 'Copy bundle to tmp directory'),
     ]
 
 

@@ -1,6 +1,7 @@
 # This is an example of how to use the BeamDeploy class to deploy a container to an OpenShift cluster.
 from beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, SecurityContextConfig, MemoryStorageConfig,
-                                    ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig, CommandConfig)
+                                ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig, CommandConfig)
+from beam.logging import beam_logger as logger
 import time
 from beam.resources import resource
 from beam.orchestration.config import K8SConfig
@@ -9,7 +10,7 @@ import os
 # hparams = K8SConfig()
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-conf_path = resource(os.path.join(script_dir, 'orchestration_configuration.json')).str
+conf_path = resource(os.path.join(script_dir, 'orchestration_beamdeploy.yaml')).str
 config = K8SConfig(conf_path)
 
 print('hello world')
@@ -25,47 +26,36 @@ k8s = BeamK8S(
     namespace=config['project_name'],
 )
 
-security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
-memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
-service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
-storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
-ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs', [])]
-user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
-command = CommandConfig(**config.get('command', {}))
+# security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
+# memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
+# service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
+# storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
+# ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs', [])]
+# user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
+# command = CommandConfig(**config.get('command', {}))
 
-deployment = BeamDeploy(
-    k8s=k8s,
-    project_name=config['project_name'],
-    check_project_exists=config['check_project_exists'],
-    namespace=config['project_name'],
-    replicas=config['replicas'],
-    labels=config['labels'],
-    image_name=config['image_name'],
-    command=command,
-    deployment_name=config['deployment_name'],
-    create_service_account=config['create_service_account'],
-    use_scc=config['use_scc'],
-    use_node_selector=config['use_node_selector'],
-    node_selector=config['node_selector'],
-    scc_name=config['scc_name'],
-    cpu_requests=config['cpu_requests'],
-    cpu_limits=config['cpu_limits'],
-    memory_requests=config['memory_requests'],
-    memory_limits=config['memory_limits'],
-    use_gpu=config['use_gpu'],
-    gpu_requests=config['gpu_requests'],
-    gpu_limits=config['gpu_limits'],
-    service_configs=service_configs,
-    storage_configs=storage_configs,
-    ray_ports_configs=ray_ports_configs,
-    n_pods=config['n_pods'],
-    memory_storage_configs=memory_storage_configs,
-    security_context_config=security_context_config,
-    entrypoint_args=config['entrypoint_args'],
-    entrypoint_envs=config['entrypoint_envs'],
-    user_idm_configs=user_idm_configs,
-    enable_ray_ports=False
-)
+# where the config should be? either:
+# 1. first argument of the BeamDeploy class
+# 2. hparams=config
+
+# deployment = BeamDeploy(config, k8s, command=command,
+#                         service_configs=service_configs,
+#                         storage_configs=storage_configs,
+#                         ray_ports_configs=ray_ports_configs,
+#                         memory_storage_configs=memory_storage_configs,
+#                         security_context_config=security_context_config,
+#                         user_idm_configs=user_idm_configs,
+#                         # example of overwriting an argument using kwargs:
+#                         # base_url='xxxxx',
+#                         # this would overwrite the base_url from the config
+#                         enable_ray_ports=False)
+
+deployment = BeamDeploy(config, k8s,
+                        # example of overwriting an argument using kwargs:
+                        # base_url='xxxxx',
+                        # this would overwrite the base_url from the config
+                        enable_ray_ports=False)
+
 
 # Launch deployment and obtain pod instances
 deployment.launch(replicas=1)

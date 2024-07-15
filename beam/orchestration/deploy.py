@@ -1,71 +1,80 @@
 from .utils import convert_datetimes
-from ..processor import Processor
+from ..base import BeamBase
 from .pod import BeamPod, PodInfos
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from .dataclasses import *
 from ..resources import resource
+from .config import K8SConfig
 from datetime import datetime
 import json
 
 
-class BeamDeploy(Processor):
+class BeamDeploy(BeamBase):
 
-    def __init__(self, k8s=None, check_project_exists=False, project_name=None, namespace=None,
-                 replicas=None, labels=None, image_name=None, command=None, beam_pod_instances=None,
-                 deployment_name=None, use_scc=False, deployment=None, create_service_account=None,
-                 cpu_requests=None, cpu_limits=None, memory_requests=None, use_gpu=None,
-                 gpu_requests=None, gpu_limits=None, memory_limits=None, storage_configs=None,
-                 service_configs=None, user_idm_configs=None, enable_ray_ports=False, ray_ports_configs=None,
-                 memory_storage_configs=None, security_context_config=None, use_node_selector=False,
-                 scc_name=None, node_selector=None, pod_info_state=None,
-                 service_type=None, entrypoint_args=None, entrypoint_envs=None, **kwargs):
-        super().__init__()
+    def __init__(self, hparams, k8s, *args, enable_ray_ports=False, **kwargs):
+
+        super().__init__(hparams, *args, _config_scheme=K8SConfig, **kwargs)
+
+        security_context_config = SecurityContextConfig(**self.get_hparam('security_context_config', {}))
+        memory_storage_configs = [MemoryStorageConfig(**v) for v in self.get_hparam('memory_storage_configs', [])]
+        service_configs = [ServiceConfig(**v) for v in self.get_hparam('service_configs', [])]
+        storage_configs = [StorageConfig(**v) for v in self.get_hparam('storage_configs', [])]
+        ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
+        user_idm_configs = [UserIdmConfig(**v) for v in self.get_hparam('user_idm_configs', [])]
+
+        command = self.get_hparam('command', None)
+        if command:
+            command = CommandConfig(**command)
+
+        self.entrypoint_args = self.get_hparam('entrypoint_args') or []
+        # self.hparams.entrypoint_args
+
+        self.entrypoint_envs = self.get_hparam('entrypoint_envs') or {}
+        # self.check_project_exists = self.get_hparam('check_project_exists')
+        self.project_name = self.get_hparam('project_name')
+        self.create_service_account = self.get_hparam('create_service_account')
+        self.namespace = self.project_name
+        self.replicas = self.get_hparam('replicas')
+        self.labels = self.get_hparam('labels')
+        self.image_name = self.get_hparam('image_name')
+        self.use_command = self.get_hparam('use_command')
+        self.deployment_name = self.get_hparam('deployment_name')
+        self.service_type = self.get_hparam('service_type')
+        self.service_account_name = f"{self.deployment_name}svc"
+        self.use_scc = self.get_hparam('use_scc')
+        self.use_node_selector = self.get_hparam('use_node_selector')
+        self.node_selector = self.get_hparam('node_selector')
+        self.scc_name = self.get_hparam('scc_name') if self.use_scc else None
+        self.cpu_requests = self.get_hparam('cpu_requests')
+        self.cpu_limits = self.get_hparam('cpu_limits')
+        self.memory_requests = self.get_hparam('memory_requests')
+        self.memory_limits = self.get_hparam('memory_limits')
+        self.use_gpu = self.get_hparam('use_gpu')
+        self.gpu_requests = self.get_hparam('gpu_requests')
+        self.gpu_limits = self.get_hparam('gpu_limits')
+        self.pod_info_state = self.get_hparam('pod_info_state') or []
+        self.beam_pod_instances = self.get_hparam('beam_pod_instances') or []
+        # self.deployment_state = self.get_hparam('deployment_state') or {}
+        # self.cluster_info = self.get_hparam('cluster_info') or []
+
         self.k8s = k8s
-        self.deployment = deployment
-        self.entrypoint_args = entrypoint_args or []
-        self.entrypoint_envs = entrypoint_envs or {}
-        self.check_project_exists = check_project_exists
-        self.project_name = project_name
-        self.create_service_account = create_service_account
-        self.namespace = namespace
-        self.replicas = replicas
-        self.labels = labels
-        self.image_name = image_name
         self.command = command
-        self.deployment_name = deployment_name
-        self.service_type = service_type
-        self.service_account_name = f"{deployment_name}svc"
-        self.use_scc = use_scc
-        self.use_node_selector = use_node_selector
-        self.node_selector = node_selector
-        self.scc_name = scc_name if use_scc else None
-        self.cpu_requests = cpu_requests
-        self.cpu_limits = cpu_limits
-        self.memory_requests = memory_requests
-        self.memory_limits = memory_limits
-        self.use_gpu = use_gpu
-        self.gpu_requests = gpu_requests
-        self.gpu_limits = gpu_limits
         self.service_configs = service_configs or []
-        self.enable_ray_ports = enable_ray_ports
         self.ray_ports_configs = ray_ports_configs or RayPortsConfig()
-        self.storage_configs = storage_configs or []
         self.memory_storage_configs = memory_storage_configs or []
+        self.storage_configs = storage_configs or []
         self.user_idm_configs = user_idm_configs or []
+        self.enable_ray_ports = enable_ray_ports
         self.security_context_config = security_context_config or []
-        self.pod_info_state = pod_info_state or []
-        self.beam_pod_instances = beam_pod_instances or []
-        # self.deployment_state = deployment_state or {}
-        # self.cluster_info = cluster_info or []
 
     def launch(self, replicas=None):
         if replicas is None:
             replicas = self.replicas
 
-        if self.check_project_exists is True:
-            self.k8s.create_project(self.namespace)
+        # if self.check_project_exists is True:
+        self.k8s.create_project(self.namespace)
 
         if self.create_service_account is True:
             self.k8s.create_service_account(self.service_account_name, self.namespace)
@@ -105,6 +114,7 @@ class BeamDeploy(Processor):
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
+            use_command=self.use_command,
             command=self.command,
             labels=self.labels,
             deployment_name=self.deployment_name,
