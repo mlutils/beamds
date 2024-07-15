@@ -100,6 +100,7 @@ class AutoBeam(BeamBase):
         private_modules_walk = {}
         root_paths = set(sum([get_module_paths(m) for m in self.private_modules if m is not None], []))
         for root_path in root_paths:
+            # todo: fix it
             root_path = beam_path(root_path)
             if root_path.is_file():
                 private_modules_walk[root_path.str] = root_path.read()
@@ -456,6 +457,7 @@ class AutoBeam(BeamBase):
         import tarfile
         with tarfile.open(str(path), "w:gz") as tar:
             for i, (root_path, sub_paths) in enumerate(self.private_modules_walk.items()):
+                root_path = beam_path(root_path)
                 if root_path.is_file():
                     tar.add(str(root_path), arcname=root_path.name)
                 else:
