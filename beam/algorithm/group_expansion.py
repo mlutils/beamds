@@ -289,6 +289,13 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         df = pd.merge(df_sparse, df_dense, how='outer', left_index=True, right_index=True,
                       suffixes=('_sparse', '_dense'), indicator=True)
 
+        df['target'] = df.loc_sparse.fillna(df.loc_dense)
+
+        # Replace values in the _merge column
+        df['source_type'] = df['_merge'].replace({'left_only': 'sparse', 'right_only': 'dense', 'both': 'both'})
+
+        df = df.drop(columns=['loc_sparse', 'loc_dense', '_merge'])
+
         df['label'] = self.y[subset][df.index]
 
         return df

@@ -1,4 +1,5 @@
 
+
 resource_names = {
     'path': ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp', 'comet', 'io', 'dict', 'redis', 'smb', 'nt',
              'mlflow'],
@@ -38,3 +39,22 @@ def resource(uri, **kwargs):
         return ray_client(uri, **kwargs)
     else:
         raise Exception(f'Unknown resource scheme: {scheme}')
+
+
+def this_file():
+    import inspect
+    # Get the current call stack
+    stack = inspect.stack()
+
+    # Iterate over the stack frames to find the first one outside the current module
+    for frame in stack:
+        caller_file_path = frame.filename
+        if not caller_file_path.endswith('/resources.py'):
+            return resource(caller_file_path).resolve()
+
+    # If no such frame is found (very unlikely), return the first frame
+    return resource(stack[0].filename).resolve()
+
+
+def this_dir():
+    return this_file().parent

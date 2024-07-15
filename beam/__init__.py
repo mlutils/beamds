@@ -14,7 +14,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'beam_logger', 'beam_kpi', 'logger',
            'beam_path', 'beam_key', 'pretty_format_number', 'resource',
            'tqdm', 'Transformer', 'Processor',
-           'parallel', 'task'
+           'parallel', 'task', 'this_dir'
            ]
 
 
@@ -156,6 +156,9 @@ def __getattr__(name):
     elif name == 'task':
         from .concurrent import task
         return task
+    elif name == 'this_dir':
+        from .resources import this_dir
+        return this_dir
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 
@@ -175,7 +178,7 @@ if len([]):
     from .path import beam_path, beam_key
     from .serve import beam_server, beam_client
     from ._version import __version__
-    from .resources import resource
+    from .resources import resource, this_dir
     from .transformer import Transformer
     from .processor import Processor
     from .concurrent import parallel, task
