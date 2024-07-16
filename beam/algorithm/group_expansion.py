@@ -250,8 +250,6 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         super().load_state_dict(path, ext=ext, exclude=exclude, **kwargs)
         tokenizer = Tokenizer(self.hparams)
         for k in self.tfidf_sim.keys():
-            print(type(self.tfidf_sim[k]))
-            print(self.tfidf_sim[k])
             self.tfidf_sim[k].preprocessor = tokenizer.tokenize
 
         dense_model = self.build_dense_model()
@@ -464,7 +462,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         x_test_unlabeled = dataset.x[dataset.y == 0]
         y_pred = pu_classifier.predict_proba(x_test_unlabeled)[:, 1]
 
-        metrics = self.calculate_evaluation_metrics(group_label, dataset, y_pred)
+        metrics = self.calculate_evaluation_metrics(group_label, dataset, y_pred > threshold)
 
         return GroupExpansionResults(metrics=metrics, dataset=dataset, y_pred=y_pred, group_label=group_label,
                                      k_sparse=k_sparse, k_dense=k_sparse, threshold=threshold,

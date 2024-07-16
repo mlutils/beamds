@@ -14,7 +14,10 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'beam_logger', 'beam_kpi', 'logger',
            'beam_path', 'beam_key', 'pretty_format_number', 'resource',
            'tqdm', 'Transformer', 'Processor',
-           'parallel', 'task', 'this_dir'
+           'parallel', 'task', 'this_dir',
+           # Orchestration
+           'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
+           'HTTPServeClusterConfig', 'HTTPServeCluster', 'RayCluster'
            ]
 
 
@@ -159,6 +162,34 @@ def __getattr__(name):
     elif name == 'this_dir':
         from .resources import this_dir
         return this_dir
+    # Orchestration
+    elif name == 'BeamDeploy':
+        from .orchestration import BeamDeploy
+        return BeamDeploy
+    elif name == 'BeamK8S':
+        from .orchestration import BeamK8S
+        return BeamK8S
+    elif name == 'BeamPod':
+        from .orchestration import BeamPod
+        return BeamPod
+    elif name == 'K8SUnits':
+        from .orchestration import K8SUnits
+        return K8SUnits
+    elif name == 'K8SConfig':
+        from .orchestration import K8SConfig
+        return K8SConfig
+    elif name == 'RayClusterConfig':
+        from .orchestration import RayClusterConfig
+        return RayClusterConfig
+    elif name == 'HTTPServeClusterConfig':
+        from .orchestration import HTTPServeClusterConfig
+        return HTTPServeClusterConfig
+    elif name == 'HTTPServeCluster':
+        from .orchestration import HTTPServeCluster
+        return HTTPServeCluster
+    elif name == 'RayCluster':
+        from .orchestration import RayCluster
+        return RayCluster
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 
@@ -182,3 +213,5 @@ if len([]):
     from .transformer import Transformer
     from .processor import Processor
     from .concurrent import parallel, task
+    from .orchestration import (BeamDeploy, BeamK8S, BeamPod, K8SUnits, K8SConfig, RayClusterConfig,
+                                HTTPServeClusterConfig, HTTPServeCluster, RayCluster)
