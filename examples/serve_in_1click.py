@@ -15,7 +15,8 @@ print("API Token:", config.api_token)
 
 
 alg = BeamFakeAlg(sleep_time=1)
-
+# image_name = "harbor.dt.local/public/fake-alg-http-server:latest"
+image_name = None
 # to_email = input("Enter the email address to receive the cluster info: ")
 to_email = 'yossi@dayo-tech.com'
 
@@ -27,7 +28,7 @@ to_email = 'yossi@dayo-tech.com'
 # HTTPServeCluster.deploy_from_bundle('/app/algorithm', config)
 # serve_cluster.deploy_from_algorithm(alg, config)
 HTTPServeCluster.deploy_from_algorithm(alg, config)
-
+# HTTPServeCluster.deploy_from_image(image_name, config)
 
 
 

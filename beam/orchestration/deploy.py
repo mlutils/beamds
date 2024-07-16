@@ -13,10 +13,6 @@ import json
 
 class BeamDeploy(BeamBase):
 
-    # def __init__(self, hparams, k8s, *args, service_configs=None, storage_configs=None, ray_ports_configs=None,
-    #              memory_storage_configs=None, security_context_config=None, user_idm_configs=None, command=None,
-    #              enable_ray_ports=False, **kwargs):
-
     def __init__(self, hparams, k8s, *args, enable_ray_ports=False, **kwargs):
 
         super().__init__(hparams, *args, _config_scheme=K8SConfig, **kwargs)
@@ -27,13 +23,16 @@ class BeamDeploy(BeamBase):
         storage_configs = [StorageConfig(**v) for v in self.get_hparam('storage_configs', [])]
         ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
         user_idm_configs = [UserIdmConfig(**v) for v in self.get_hparam('user_idm_configs', [])]
-        command = CommandConfig(**self.get_hparam('command', {}))
+
+        command = self.get_hparam('command', None)
+        if command:
+            command = CommandConfig(**command)
 
         self.entrypoint_args = self.get_hparam('entrypoint_args') or []
         # self.hparams.entrypoint_args
 
         self.entrypoint_envs = self.get_hparam('entrypoint_envs') or {}
-        self.check_project_exists = self.get_hparam('check_project_exists')
+        # self.check_project_exists = self.get_hparam('check_project_exists')
         self.project_name = self.get_hparam('project_name')
         self.create_service_account = self.get_hparam('create_service_account')
         self.namespace = self.project_name
@@ -74,8 +73,8 @@ class BeamDeploy(BeamBase):
         if replicas is None:
             replicas = self.replicas
 
-        if self.check_project_exists is True:
-            self.k8s.create_project(self.namespace)
+        # if self.check_project_exists is True:
+        self.k8s.create_project(self.namespace)
 
         if self.create_service_account is True:
             self.k8s.create_service_account(self.service_account_name, self.namespace)
