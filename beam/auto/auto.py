@@ -29,13 +29,11 @@ class AutoBeam(BeamBase):
     # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
     blacklisted_pip_package = ['sklearn']
 
-    def __init__(self, registry_project_name, registry_url, obj, *args, **kwargs):
+    def __init__(self, obj, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._private_modules = None
         self._visited_modules = None
         self.obj = obj
-        self.registry_url = registry_url
-        self.registry_project_name = registry_project_name
 
     @cached_property
     def self_path(self):

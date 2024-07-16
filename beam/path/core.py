@@ -945,7 +945,7 @@ class PureBeamPath(BeamResource):
 
         if ext == '.abm':
             from ..auto import AutoBeam
-            AutoBeam(x).to_bundle(self)
+            AutoBeam.to_bundle(x, self)
             return self
 
         with self(mode=PureBeamPath.mode('write', ext)) as fo:
