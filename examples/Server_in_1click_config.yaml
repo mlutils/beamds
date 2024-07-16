@@ -1,0 +1,110 @@
+alg_image_name: fake-alg-http-server:latest
+api_token: sha256~RPNTod9i6nAjevzvRxt_FcKB18Ypyv7Z5YHceYP9yvQ
+api_url: https://api.kh-dev.dt.local:6443
+base_image: eladsar/beam:20240605
+base_url: tcp://10.0.7.55:2375
+# client = docker.APIClient(base_url='unix://var/run/docker.sock')
+#client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+# client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
+# client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
+beam_version: 2.6.1b
+body: 'Here is the cluster information:'
+check_project_exists: true
+command:
+  arguments:
+  - -c
+  - sleep infinity
+  executable: /bin/bash
+cpu_limits: '4'
+cpu_requests: '4'
+create_service_account: true
+deployment_name: oneclick
+enable_ray_ports: false
+entrypoint_args:
+- '63'
+entrypoint_envs:
+  TEST: test
+from_email: dayotech2018@gmail.com
+from_email_password: mkhdokjqwwmazyrf
+gpu_limits: '1'
+gpu_requests: '1'
+# image_name: harbor.dt.local/public/fake-alg-http-server:latest
+image_name: None
+labels:
+  app: oneclick
+memory_limits: '12'
+memory_requests: '12'
+memory_storage_configs:
+- enabled: true
+  mount_path: /dev/shm
+  name: dshm
+  size_gb: 8
+new_image: harbor.dt.local/public/fake-alg-http-server:test1
+n_pods: '2'
+node_selector:
+  gpu-type: tesla-a100
+project_name: oneclick
+# push_image: false - this is removed
+ray_ports_configs:
+- ray_ports:
+  - 6379
+  - 8265
+registry_password: Har@123
+registry_url: harbor.dt.local
+registry_username: admin
+registry_project_name: public
+replicas: '1'
+send_mail: false
+scc_name: anyuid
+security_context_config:
+  add_capabilities:
+  - SYS_CHROOT
+  - CAP_AUDIT_CONTROL
+  - CAP_AUDIT_WRITE
+  enable_security_context: false
+service_configs:
+- create_ingress: false
+  create_route: false
+  ingress_host: ssh.example.com
+  port: 2222
+  port_name: ssh-port
+  service_name: ssh
+  service_type: NodePort
+- create_ingress: false
+  create_route: true
+  ingress_host: jupyter.example.com
+  port: 8888
+  port_name: jupyter-port
+  service_name: jupyter
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: jupyter.example.com
+  port: 44044
+  port_name: fake-alg-http
+  service_name: fake-alg
+  service_type: ClusterIP
+smtp_port: 587
+smtp_server: smtp.gmail.com
+storage_configs:
+- create_pvc: false
+  pvc_access_mode: ReadWriteMany
+  pvc_mount_path: /data-pvc
+  pvc_name: data-pvc
+  pvc_size: '500'
+subject: Cluster Deployment Information
+to_email: yossi@dayo-tech.com
+use_gpu: false
+use_node_selector: false
+use_scc: true
+user_idm_configs:
+- create_role_binding: false
+  project_name: ben-guryon
+  role_binding_name: yos
+  role_name: admin
+  user_name: yos
+- create_role_binding: false
+  project_name: ben-guryon
+  role_binding_name: asafe
+  role_name: admin
+  user_name: asafe
