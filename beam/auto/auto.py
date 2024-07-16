@@ -5,7 +5,8 @@ from collections import defaultdict
 
 from packaging import version
 
-from .. import BeamData
+from ..data import BeamData
+from ..resources import this_dir
 from ..base import BeamBase
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
 from ..path import beam_path, local_copy
@@ -503,7 +504,7 @@ class AutoBeam(BeamBase):
         # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
 
         bundle_path = beam_path(bundle_path)
-        current_dir = beam_path(__file__).parent
+        current_dir = this_dir()
 
         if image_name is None:
             image_name = f"autobeam-{bundle_path.name}-{base_image}"

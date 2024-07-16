@@ -170,6 +170,8 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
     args_str = []
     args_dict = []
 
+    config_files = []
+
     for ar in args:
 
         ar_type = check_type(ar)
@@ -178,6 +180,8 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
             args_dict.append(to_dict(ar))
         elif ar_type.minor == 'dict':
             args_dict.append(ar)
+        elif ar_type.minor == 'path':
+            config_files.append(ar)
         elif ar_type.major == 'scalar' and ar_type.element == 'str':
             args_str.append(ar)
         else:
@@ -220,7 +224,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
 
     tags = defaultdict(set)
     if config_files_should_be_loaded:
-        config_files = args.config_files
+        config_files.extend(args.config_files)
         delattr(args, 'config_files')
 
         config_args = {}

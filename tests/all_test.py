@@ -10,6 +10,11 @@ from beam import beam_logger as logger
 import pandas as pd
 
 
+def text_http_config():
+    from beam import HTTPServeClusterConfig
+    config = HTTPServeClusterConfig(config)
+
+
 def test_configuration_priority():
     from beam.config import BeamConfig, BeamParam
 
