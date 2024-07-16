@@ -19,7 +19,7 @@ alg = BeamFakeAlg(sleep_time=1)
 image_name = None
 # to_email = input("Enter the email address to receive the cluster info: ")
 to_email = 'yossi@dayo-tech.com'
-
+new_image = "harbor.dt.local/public/fake-alg-http-server:test1"
 
 # serve_cluster = HTTPServeCluster(deployment=None, alg=alg, config=config, pods=config.pods,
 #                                  base_url=config.base_url, to_email=config.to_email, send_mail=config.send_email,
@@ -27,7 +27,8 @@ to_email = 'yossi@dayo-tech.com'
 
 # HTTPServeCluster.deploy_from_bundle('/app/algorithm', config)
 # serve_cluster.deploy_from_algorithm(alg, config)
-HTTPServeCluster.deploy_from_algorithm(alg, config)
+# HTTPServeCluster.deploy_from_algorithm(alg, config)
+HTTPServeCluster.commit_pod_to_image_and_push(new_image, config)
 # HTTPServeCluster.deploy_from_image(image_name, config)
 
 
