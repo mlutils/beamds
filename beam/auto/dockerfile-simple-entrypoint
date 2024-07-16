@@ -17,9 +17,9 @@ COPY ${REQUIREMENTS_FILE} /app/requirements.txt
 RUN python /app/docker-tools/gracefull-pip.py /app/requirements.txt
 
 RUN if [ -z "${BEAM_DS_VERSION}" ]; then \
-        pip install beam-ds; \
+        pip install beam-ds[serve]; \
     else \
-        pip install beam-ds==${BEAM_DS_VERSION}; \
+        pip install beam-ds[serve]==${BEAM_DS_VERSION}; \
     fi
 
 # Copy the algorithm bundle directory
