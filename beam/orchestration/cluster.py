@@ -2,6 +2,7 @@ from .k8s import BeamK8S
 from .deploy import BeamDeploy
 from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig,
                           MemoryStorageConfig, SecurityContextConfig)
+import docker
 from ..logging import beam_logger as logger
 import time
 from ..base import BeamBase
@@ -103,6 +104,7 @@ class HTTPServeCluster(BeamBase):
         return cls._deploy_and_launch(bundle_path=None, obj=None, image_name=image_name, config=config)
 
 
+
 class RayCluster(BeamBase):
     def __init__(self, deployment, config, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -197,32 +199,6 @@ class RayCluster(BeamBase):
 
     # Todo: run over all nodes and get info from pod, if pod is dead, relaunch the pod
 
-    def commit_pod_to_image(self, deployment_name, new_image):
-        """
-        Update the image of all containers in the specified deployment to the new image.
-
-        Args:
-            deployment_name (str): The name of the deployment to update.
-            new_image (str): The new image name to use.
-
-        Returns:
-            bool: True if the update was successful, False otherwise.
-        """
-        try:
-            # Get the deployment using BeamDeploy
-            deployment = self.k8s.api_instance.read_namespaced_deployment(deployment_name, self.config['project_name'])
-
-            # Update the image of all containers
-            for container in deployment.spec.template.spec.containers:
-                container.image = new_image
-
-            # Apply the changes to the deployment
-            self.k8s.api_instance.patch_namespaced_deployment(deployment_name, self.config['project_name'], deployment)
-            logger.info(f"Deployment {deployment_name} in {self.config['project_name']} updated to image {new_image}")
-            return True
-        except self.k8s.client.exceptions.ApiException as e:
-            logger.error(f"Failed to update deployment {deployment_name}: {e}")
-            return False
 
     def monitor_cluster(self):
         while True:
