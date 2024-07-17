@@ -22,6 +22,7 @@ class ServiceConfig:
 class SecurityContextConfig:
     add_capabilities: List[str] = field(default_factory=list)
     enable_security_context: bool = False
+    privileged: bool = False
 
 
 @dataclass
