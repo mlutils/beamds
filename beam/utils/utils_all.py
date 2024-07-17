@@ -36,7 +36,7 @@ from dataclasses import asdict, is_dataclass
 
 
 # do not delete this import (it is required as some modules import the following imported functions from this file)
-from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container, is_cached_property
+from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container, is_cached_property, Types
 
 
 DataBatch = namedtuple("DataBatch", "index label data")
@@ -464,7 +464,7 @@ def squeeze_scalar(x, x_type=None):
             x = x[0]
             x_type = check_type(x)
 
-    if x_type.major == 'scalar':
+    if x_type.major == Types.scalar:
         if x_type.element == 'int':
             return int(x)
         elif x_type.element == 'float':
@@ -513,7 +513,7 @@ def get_closest_item_with_tuple_key(x, key):
             x = x[k]
         elif x_type.minor == 'list' and k < len(x):
             x = x[k]
-        elif x_type.major == 'container':
+        elif x_type.major == Types.container:
             return None
         else:
             return x
@@ -671,7 +671,7 @@ def filter_dict(d, keys):
 
     keys_type = check_type(keys)
 
-    if keys_type.major == 'scalar':
+    if keys_type.major == Types.scalar:
         keys = [keys]
 
     elif keys_type.minor in ['list', 'tuple']:
@@ -843,7 +843,7 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
 
     if indices_type in ['pandas', 'cudf']:
         index = index.values
-    if indices_type == 'other':  # the case where there is a scalar value with a dtype attribute
+    if indices_type == Types.other:  # the case where there is a scalar value with a dtype attribute
         index = int(index)
     if x_type in ['numpy', 'polars']:
         return x[index]
@@ -868,7 +868,7 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
 def is_arange(x, convert_str=True):
     x_type = check_type(x)
 
-    if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
+    if x_type.element in [Types.array, 'object', 'empty', Types.none, 'unknown']:
         return None, False
 
     if convert_str and x_type.element == 'str':

@@ -3,6 +3,8 @@ import warnings
 import numpy as np
 import pandas as pd
 import torch
+
+from ..type import Types
 from ..utils import cached_property
 
 from .sampler import UniversalBatchSampler
@@ -125,7 +127,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
             ind_type = check_type(ind, minor=False)
             if ind_type.element == 'str':
-                if ind_type.major == 'scalar':
+                if ind_type.major == Types.scalar:
                     return self.data[ind]
                 return [self.data[k] for k in ind]
 
@@ -160,7 +162,7 @@ class UniversalDataset(torch.utils.data.Dataset):
                 loc = ind
                 ind = as_tensor(ind)
 
-            if ind_type.major == 'scalar':
+            if ind_type.major == Types.scalar:
                 loc = [loc]
 
             iloc = self.index.loc[loc].values
@@ -272,7 +274,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if test is None:
             pass
-        elif check_type(test).major == 'array':
+        elif check_type(test).major == Types.array:
             self.indices['test'] = as_tensor(test, dtype=torch.long)
             indices = np.sort(list(set(indices).difference(set(as_numpy(test)))))
 
@@ -309,7 +311,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         if validation is None:
             pass
-        elif check_type(validation).major == 'array':
+        elif check_type(validation).major == Types.array:
             self.indices['validation'] = as_tensor(validation, dtype=torch.long)
             indices = np.sort(list(set(indices).difference(set(as_numpy(validation)))))
 
@@ -358,7 +360,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if oversample and subset in self.labels_split and self.labels_split[subset] is not None:
             probs = compute_sample_weight('balanced', y=self.labels_split[subset]) ** weight_factor
             probs_normalization = 'sum'
-        elif subset is None and check_type(self.probs).major == 'array':
+        elif subset is None and check_type(self.probs).major == Types.array:
             probs = self.probs
         elif subset in self.probs:
             probs = self.probs[subset]

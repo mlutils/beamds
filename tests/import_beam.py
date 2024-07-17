@@ -3,9 +3,7 @@
 # import sys
 # sys.path.insert(0, '../src')
 
-import src.beam as beam
-
-
+import beam
 from beam import logger
 
 print(beam.__version__)

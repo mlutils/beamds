@@ -1,4 +1,4 @@
-from ..config import boolean_feature, basic_beam_parser
+from ..config.utils import boolean_feature, empty_beam_parser as basic_beam_parser
 
 
 def get_ssl_parser():

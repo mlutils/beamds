@@ -8,6 +8,7 @@ from collections import defaultdict
 
 from ..utils import is_notebook, check_type
 from ..path import beam_path, beam_key
+from ..type import Types
 from ..logging import beam_logger as logger
 from .._version import __version__
 import re
@@ -182,7 +183,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
             args_dict.append(ar)
         elif ar_type.minor == 'path':
             config_files.append(ar)
-        elif ar_type.major == 'scalar' and ar_type.element == 'str':
+        elif ar_type.major == Types.scalar and ar_type.element == 'str':
             args_str.append(ar)
         else:
             raise ValueError

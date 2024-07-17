@@ -4,6 +4,7 @@ import torch
 from ..utils import check_type, as_tensor, as_numpy
 from ..utils import check_type
 from .universal_dataset import UniversalDataset
+from ..type import Types
 
 
 class LazyReplayBuffer(UniversalDataset):
@@ -76,7 +77,7 @@ class TransformedDataset(torch.utils.data.Dataset):
     def __getitem__(self, ind):
 
         ind_type = check_type(ind, element=False)
-        if ind_type.major == 'scalar':
+        if ind_type.major == Types.scalar:
             ind = [ind]
 
         ind, data = self.dataset[ind]

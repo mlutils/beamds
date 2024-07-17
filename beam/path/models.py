@@ -7,6 +7,8 @@ import os
 import urllib3
 import stat
 
+from .utils import temp_local_file
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 import warnings

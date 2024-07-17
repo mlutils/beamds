@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from ..utils import cached_property
 
 from .. import beam_path
-from ..type import BeamType
+from ..type import BeamType, Types
 from ..utils import jupyter_like_traceback
 from dataclasses import dataclass
 import re
@@ -242,7 +242,7 @@ class ImageContent(LLMContent):
 
     @cached_property
     def base64_image(self):
-        if self.image_type.major == 'path' or self.image_type.major == 'scalar' and self.image_type.element == 'str':
+        if self.image_type.major == 'path' or self.image_type.major == Types.scalar and self.image_type.element == 'str':
             path = beam_path(self.image)
             return base64.b64encode(path.read_bytes()).decode('utf-8')
         if self.image_type.minor == 'pil':

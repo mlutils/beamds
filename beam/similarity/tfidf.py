@@ -1,4 +1,6 @@
 from typing import List, Union, Any
+
+from ..type import Types
 from ..utils import cached_property
 
 from collections import Counter
@@ -305,10 +307,10 @@ class TFIDF(BeamSimilarity):
     def as_container(self, x):
         x_type = check_type(x)
         if x_type.element == 'str':
-            if not x_type.major == 'array':
+            if not x_type.major == Types.array:
                 x = [x]
         else:
-            if not x_type.major == 'container':
+            if not x_type.major == Types.container:
                 x = [x]
         return x
 

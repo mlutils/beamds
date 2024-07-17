@@ -11,7 +11,7 @@ from ..path import beam_path
 
 from .elements import Groups, Iloc, Loc, Key, return_none
 from ..meta import BeamName
-from ..type import BeamType, is_beam_processor, is_beam_data
+from ..type import BeamType, is_beam_processor, is_beam_data, Types
 from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
                      collate_chunks, recursive_flatten, recursive_flatten_with_keys, recursive_device,
                      container_len, recursive_len, is_arange, recursive_size, divide_chunks,
@@ -453,7 +453,7 @@ class BeamData(BeamName):
             return self._objects_type
 
         objects_types = recursive_flatten(self.data_types)
-        objects_types = [v.minor for v in objects_types if v.minor != 'none']
+        objects_types = [v.minor for v in objects_types if v.minor != Types.none]
 
         u = set(objects_types)
 
@@ -838,7 +838,7 @@ class BeamData(BeamName):
             s = schema[key]
         elif schema_type.minor == 'list' and key < len(schema):
             s = schema[key]
-        elif schema_type.major == 'container':
+        elif schema_type.major == Types.container:
             s = None
         else:
             s = schema
@@ -1556,7 +1556,7 @@ class BeamData(BeamName):
         ind = slice_to_index(ind, sliced=self.index)
 
         index_type = check_type(ind)
-        if index_type.major == 'scalar':
+        if index_type.major == Types.scalar:
             ind = [ind]
 
         return ind
@@ -1798,7 +1798,7 @@ class BeamData(BeamName):
 
         if index_type is None:
             index_type = check_type(index, minor=False, element=False)
-        if index_type.major == 'scalar':
+        if index_type.major == Types.scalar:
             index = [index]
         #     squeeze = True
         # else:
@@ -1941,7 +1941,7 @@ class BeamData(BeamName):
         if keys_type is None:
             keys_type = check_type(keys)
 
-        if keys_type.major == 'scalar':
+        if keys_type.major == Types.scalar:
             if replace_missing:
                 if keys not in data:
                     return None
@@ -1965,7 +1965,7 @@ class BeamData(BeamName):
         if keys_type is None:
             keys_type = check_type(keys)
 
-        if keys_type.major == 'scalar':
+        if keys_type.major == Types.scalar:
             keys = [keys]
 
         ind = [self.info['map'].loc[self.info['fold'] == self.key_fold_map[k]].values for k in keys]
@@ -2003,7 +2003,7 @@ class BeamData(BeamName):
         keys_type = check_type(keys)
         schema_type = check_type(self.schema)
 
-        if schema_type.major == 'container' and not self.quick_getitem:
+        if schema_type.major == Types.container and not self.quick_getitem:
             schema = BeamData.slice_scalar_or_list(self.schema, keys, keys_type=keys_type,
                                                    data_type=schema_type, replace_missing=True)
         else:
@@ -2095,7 +2095,7 @@ class BeamData(BeamName):
     def inverse_columns_map(self, columns):
 
         columns_map = self.columns_map
-        if check_type(columns).major == 'scalar':
+        if check_type(columns).major == Types.scalar:
             columns = columns_map[columns]
         else:
             columns = [columns_map[i] for i in columns]
@@ -2182,7 +2182,7 @@ class BeamData(BeamName):
             elif self.all_paths is None:
                 all_paths = {}
 
-            if key_type.major != 'scalar':
+            if key_type.major != Types.scalar:
 
                 for i, k in enumerate(key[:-1]):
 
@@ -2401,7 +2401,7 @@ class BeamData(BeamName):
                 axes.pop(0)
             if axes[0] == 'keys' and (i_type.minor == 'list' and i_type.element == 'int'):
                 axes.pop(0)
-            if (axes[0] == 'keys' and (i_type.major == 'scalar' and i_type.element == 'int')
+            if (axes[0] == 'keys' and (i_type.major == Types.scalar and i_type.element == 'int')
                     and check_type(list(self.hierarchical_keys()), minor=False).element == 'str'):
                 axes.pop(0)
             # for orientation == 'simple' we skip the first axis if we slice over columns and index_type is not str

@@ -84,20 +84,20 @@ def check_element_type(x, minor=None):
 
     if minor is None:
         minor = check_minor_type(x)
-    unknown = (minor == 'other')
+    unknown = (minor == Types.other)
 
     if not unknown and not np.isscalar(x) and not is_torch_scalar(x):
         if minor == 'path':
             return 'path'
-        return 'array'
+        return Types.array
 
     if pd.isna(x):
-        return 'none'
+        return Types.none
 
     if hasattr(x, 'dtype'):
         # this case happens in custom classes that have a dtype attribute
         if unknown:
-            return 'other'
+            return Types.other
 
         t = str(x.dtype).lower()
     else:
@@ -137,7 +137,7 @@ def check_minor_type(x):
     if isinstance(x, Counter):
         return 'counter'
     elif is_scalar(x):
-        return 'scalar'
+        return Types.scalar
     if is_polars(x):
         return 'polars'
     if is_scipy_sparse(x):
@@ -153,7 +153,7 @@ def check_minor_type(x):
     if is_cudf(x):
         return 'cudf'
     else:
-        return 'other'
+        return Types.other
 
 
 def elt_of_list(x, sample_size=20):
@@ -199,7 +199,7 @@ def _check_type(x, minor=True, element=True):
     '''
 
     if is_scalar(x):
-        mjt = 'scalar'
+        mjt = Types.scalar
         if minor:
             if type(x) in [int, float, str, complex, bool]:
                 mit = 'native'
@@ -216,7 +216,7 @@ def _check_type(x, minor=True, element=True):
             mit = 'counter'
             elt = 'counter'
         else:
-            mjt = 'container'
+            mjt = Types.container
             mit = 'dict'
 
             if element:
@@ -228,9 +228,9 @@ def _check_type(x, minor=True, element=True):
                 elt = 'na'
 
     elif x is None:
-        mjt = 'none'
-        mit = 'none'
-        elt = 'none'
+        mjt = Types.none
+        mit = Types.none
+        elt = Types.none
 
     elif isinstance(x, slice):
         mjt = 'slice'
@@ -247,17 +247,17 @@ def _check_type(x, minor=True, element=True):
         elt = 'unknown'
 
         if hasattr(x, '__len__'):
-            mjt = 'array'
+            mjt = Types.array
         else:
-            mjt = 'other'
+            mjt = Types.other
         if isinstance(x, list) or isinstance(x, tuple) or isinstance(x, set):
             if not len(x):
                 elt = 'empty'
             else:
                 elt = elt_of_list(x)
 
-            if elt in ['array', 'object', 'none']:
-                mjt = 'container'
+            if elt in [Types.array, 'object', Types.none]:
+                mjt = Types.container
 
         mit = check_minor_type(x) if minor else 'na'
 
@@ -274,9 +274,9 @@ def _check_type(x, minor=True, element=True):
                 else:
                     elt = 'object'
 
-        if mit == 'other':
-            mjt = 'other'
-            elt = 'other'
+        if mit == Types.other:
+            mjt = Types.other
+            elt = Types.other
 
     return TypeTuple(major=mjt, minor=mit, element=elt)
 
@@ -305,7 +305,7 @@ def is_container(x):
                 return True
 
             # path is needed here since we want to consider a list of paths as a container
-            if elt in ['array', 'none', 'object', 'path']:
+            if elt in [Types.array, Types.none, 'object', 'path']:
                 return True
 
     return False

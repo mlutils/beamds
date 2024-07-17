@@ -8,10 +8,9 @@ import torch
 import copy
 import pandas as pd
 import torch.multiprocessing as mp
-from ..utils import cached_property
 
-
-from ..utils import (set_seed, find_free_port, check_if_port_is_available, is_notebook,
+from ..type import Types
+from ..utils import (cached_property, set_seed, find_free_port, check_if_port_is_available, is_notebook,
                      find_port, as_numpy, check_type, beam_device, beam_service_port)
 from ..path import beam_path, BeamPath, beam_key
 from ..logging import beam_logger as logger
@@ -64,7 +63,7 @@ class Experiment(object):
         self.vars_args = dict(args.items())
         for k, v in self.vars_args.items():
             param_type = check_type(v)
-            if param_type.major == 'scalar' and param_type.element in ['bool', 'str', 'int', 'float']:
+            if param_type.major == Types.scalar and param_type.element in ['bool', 'str', 'int', 'float']:
                 self.tensorboard_hparams[k] = v
 
         self.hparams = copy.deepcopy(args)

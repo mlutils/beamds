@@ -14,7 +14,7 @@ import itertools
 import re
 from .utils_all import (check_type, check_minor_type, slice_array, is_arange, DataObject, is_container,
                         jupyter_like_traceback)
-from ..type import BeamType
+from ..type import BeamType, Types
 
 from ..importer.safe_imports.torch import torch
 from ..importer.safe_imports.scipy import scipy
@@ -74,13 +74,13 @@ def beam_device(device):
 def as_something_recursively(as_something_func):
     def as_func_recursively(x, **kwargs):
         x_type = check_type(x)
-        if x_type.major == 'container' and x_type.minor == 'dict':
+        if x_type.major == Types.container and x_type.minor == 'dict':
             return {k: as_func_recursively(v, **kwargs) for k, v in x.items()}
-        elif x_type.major == 'other':
+        elif x_type.major == Types.other:
             for k, v in x.__dict__.items():
                 setattr(x, k, as_func_recursively(v, **kwargs))
             return x
-        elif x_type.major == 'container' and x_type.minor in ['list', 'tuple']:
+        elif x_type.major == Types.container and x_type.minor in ['list', 'tuple']:
             if x_type.element not in ['object', 'unknown']:
                 try:
                     return as_something_func(x, x_type=x_type, **kwargs)
@@ -369,13 +369,13 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = x_type or check_type(x, element=False)
 
-    # assert x_type.major in ['array', 'other'], "divide_chunks supports only array types"
+    # assert x_type.major in [Types.array, 'other'], "divide_chunks supports only array types"
 
     if n_chunks is not None and hasattr(x, '__len__'):
         n_chunks = min(len(x), n_chunks)
         chunksize = len(x) // n_chunks
 
-    if x_type.major == 'array':
+    if x_type.major == Types.array:
 
         l = len(x)
 
@@ -450,7 +450,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
                     v = v[0]
                 yield j, v
 
-    elif x_type.major == 'container' and x_type.minor =='dict':
+    elif x_type.major == Types.container and x_type.minor =='dict':
 
             if chunksize == 1:
                 for k, v in x.items():
@@ -491,7 +491,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
                                       squeeze=squeeze, dim=0, x_type=x_type):
                 yield k, c
 
-        elif (x_type.major == 'container') and (x_type.minor == 'dict'):
+        elif (x_type.major == Types.container) and (x_type.minor == 'dict'):
             gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks,
                                        partition=partition, squeeze=squeeze, dim=dim) for k, v in x.items()}
 
@@ -503,7 +503,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
 
                 yield i, d
 
-        elif x_type.major == 'container':
+        elif x_type.major == Types.container:
 
             gen = [recursive_chunks(s, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
                                     squeeze=squeeze, dim=dim) for s in x]
@@ -530,7 +530,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
 
 def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree'):
     x_type = check_type(xs[0])
-    if x_type.major == 'container':
+    if x_type.major == Types.container:
 
         values = []
         keys = []
@@ -561,13 +561,13 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
 
     x_type = check_type(x[0], element=False)
 
-    if x_type.major == 'container' and x_type.minor == 'dict':
+    if x_type.major == Types.container and x_type.minor == 'dict':
         dictionary = {}
         for xi in x:
             dictionary.update(xi)
         return dictionary
 
-    if (x_type.major not in ['array', 'other']) or (dim == 1 and not x_type.is_data_array):
+    if (x_type.major not in [Types.array, Types.other]) or (dim == 1 and not x_type.is_data_array):
         return x
 
     if x_type.minor == 'tensor':
@@ -649,7 +649,7 @@ def get_chunks(x, chunksize=None, n_chunks=None, partition=None, dim=0):
 
 def recursive_size(x):
     x_type = check_type(x)
-    if x_type.major == 'container':
+    if x_type.major == Types.container:
 
         keys = []
         values = []
@@ -711,7 +711,7 @@ def recursive(func):
 
             return values
 
-        elif in_place and check_minor_type(x) == 'other':
+        elif in_place and check_minor_type(x) == Types.other:
             if hasattr(x, '__dict__'):
                 for k, v in x.__dict__.items():
                     setattr(x, k, apply_recursively(v, *args, **kwargs))
@@ -746,7 +746,7 @@ def recursive_yield(func, keys=True, values=True, level=-1):
                     yield vv
             return
 
-        elif _level and check_minor_type(x) == 'other':
+        elif _level and check_minor_type(x) == Types.other:
             if hasattr(x, '__dict__'):
                 for k, v in x.__dict__.items():
                     for vv in _apply(k, v):
@@ -856,7 +856,7 @@ def recursive_len(x, data_array_only=False):
     if x_type.minor == 'scipy_sparse':
         return x.shape[0]
 
-    if x_type.element == 'none':
+    if x_type.element == Types.none:
         return 0
 
     if data_array_only:
@@ -929,7 +929,7 @@ def recursive_device(x):
                 # case of None
                 pass
 
-    elif check_minor_type(x) == 'other':
+    elif check_minor_type(x) == Types.other:
         for k, v in x.__dict__.items():
             try:
                 return recursive_device(v)
@@ -990,7 +990,7 @@ def big_array_representation(x):
 
 def recursive_hierarchical_keys(x):
     x_type = check_type(x)
-    if x_type.major == 'container':
+    if x_type.major == Types.container:
 
         keys = []
         values = []
@@ -1027,7 +1027,7 @@ def recursive_size_summary(x, mode='sum'):
         else:
             raise NotImplementedError
 
-    elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', 'other']:
+    elif (x_type.minor in ['list', 'tuple']) and x_type.element in ['object', 'unknown', Types.other]:
 
         if mode == 'sum':
             return sum([recursive_size_summary(s, mode=mode) for s in x])
@@ -1115,20 +1115,20 @@ def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True,
     if x_type is None:
         x_type = check_type(x)
 
-    if x_type.major == 'container':
+    if x_type.major == Types.container:
         l = []
         for i, xi in iter_container(x):
             l.extend(recursive_flatten(xi, flat_array=flat_array, _root=False, tolist=tolist, depth=depth-1))
         return l
     else:
         if _root:
-            if flat_array and x_type.major == 'array':
+            if flat_array and x_type.major == Types.array:
                 return recursive_flat_array(x, x_type=x_type, tolist=tolist)
             else:
                 return [x]
         if isinstance(x, DataObject):
             return [x.data]
-        elif not flat_array or x_type.major == 'scalar':
+        elif not flat_array or x_type.major == Types.scalar:
             return [x]
         else:
             return recursive_flat_array(x, x_type=x_type, tolist=tolist)
@@ -1137,7 +1137,7 @@ def recursive_flatten(x, flat_array=False, x_type=None, tolist=True, _root=True,
 def recursive_flatten_with_keys(x):
     x_type = check_type(x)
 
-    if x_type.major == 'container':
+    if x_type.major == Types.container:
         d = {}
         for i, xi in iter_container(x):
             di = recursive_flatten_with_keys(xi)
@@ -1168,7 +1168,7 @@ def recursive_flat_array(x, x_type=None, tolist=True):
             x = x.tolist()
         return x
     elif x_type.minor in ['list', 'tuple']:
-        if x_type.element != 'array':
+        if x_type.element != Types.array:
             return list(x)
 
         l = []

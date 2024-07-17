@@ -4,7 +4,7 @@ from argparse import Namespace
 
 from ..type import check_type
 from ..meta import MetaBeamInit, BeamName
-from ..type.utils import is_beam_config
+from ..type.utils import is_beam_config, Types
 
 from ..utils import get_cached_properties, is_notebook, cached_property
 from ..config import BeamConfig
@@ -38,7 +38,7 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
         for k, v in kwargs.items():
             if not k.startswith('_'):
                 v_type = check_type(v)
-                if v_type.major in ['scalar', 'none']:
+                if v_type.major in [Types.scalar, Types.none]:
                     if k in _init_kwargs or k not in self.hparams or self._default_value(k) != v:
                         self.hparams[k] = v
 

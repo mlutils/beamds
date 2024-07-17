@@ -8,8 +8,9 @@ from beam import beam_arguments, Experiment, as_tensor, as_numpy
 from beam import UniversalDataset
 from beam import NeuralAlgorithm, LinearNet
 from beam.nn import PID
-from beam.config import basic_beam_parser
+from beam.config.utils import empty_beam_parser
 from beam.nn import GBN, MHRuleLayer, mySequential
+from beam.type import Types
 
 from sklearn.datasets import fetch_covtype
 import pandas as pd
@@ -483,9 +484,9 @@ class CovtypeAlgorithm(NeuralAlgorithm):
         # x_num, x_cat, y = sample['x_num'], sample['x_cat'], sample['y']
 
         if training:
-            self.last_train_loss = float(torch.mean(results['scalar']['loss']))
+            self.last_train_loss = float(torch.mean(results[Types.scalar]['loss']))
         else:
-            val_loss = float(torch.mean(results['scalar']['loss']))
+            val_loss = float(torch.mean(results[Types.scalar]['loss']))
             self.networks['net'].emb.step(self.last_train_loss, val_loss)
 
         return results
@@ -504,7 +505,7 @@ class CovtypeAlgorithm(NeuralAlgorithm):
         self.apply(loss, results=results, training=training)
 
         # add scalar measurements
-        results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
+        results[Types.scalar]['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
 
         return results
 
@@ -535,7 +536,7 @@ class CovtypeAlgorithm(NeuralAlgorithm):
         results['predictions']['y_pred'].append(y_hat.detach())
 
         if with_labels:
-            results['scalar']['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
+            results[Types.scalar]['acc'].append(float((y_hat.argmax(1) == y).float().mean()))
             results['predictions']['target'].append(y)
             return {'y': y, 'y_hat': y_hat}, results
 

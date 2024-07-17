@@ -20,6 +20,7 @@ from ..path import beam_path, local_copy
 from ..logging import beam_kpi, BeamResult
 from ..processor import Processor
 from ..base import beam_cache
+from ..type import Types
 
 from .core_algorithm import Algorithm
 
@@ -544,7 +545,7 @@ class NeuralAlgorithm(Algorithm):
             pass
         else:
             weights_type = check_type(weights, minor=False, element=False)
-            if weights_type.major == 'scalar':
+            if weights_type.major == Types.scalar:
                 weights = {next(iter(losses.keys())): weights}
             else:
                 weights = {f'{name}_{i}': l for i, l in enumerate(weights)}
