@@ -49,8 +49,7 @@ class HTTPServeCluster(BeamBase):
                                             registry_url=config.registry_url, username=config.registry_username,
                                             password=config.registry_password, serve_config=config,
                                             registry_project_name=config.registry_project_name,
-                                            entrypoint=config.entrypoint, dockerfile=config.dockerfile,
-                                            **config.get('docker_kwargs', {})
+                                            entrypoint=config.entrypoint, dockerfile=config.dockerfile
                                             )
             logger.info(f"Image {image_name} created successfully")
 
