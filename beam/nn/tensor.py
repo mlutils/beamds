@@ -113,7 +113,7 @@ class LazyTensor:
     def __getitem__(self, item):
 
         item_type = check_type(item)
-        if item_type.minor != 'tuple':
+        if item_type.minor != Types.tuple:
             item = (item,)
 
         offset = self.offset
@@ -218,7 +218,7 @@ class DataTensor(object):
             self.index_map = None
             self.mapping_method = 'simple'
         else:
-            if index_type.minor == 'tensor':
+            if index_type.minor == Types.tensor:
                 index = as_numpy(index)
             elif index_type.major == Types.scalar:
                 index = [index]
@@ -301,7 +301,7 @@ class DataTensor(object):
         if self.mapping_method == 'simple':
             pass
         elif self.mapping_method == 'series':
-            if index_type.minor == 'tensor':
+            if index_type.minor == Types.tensor:
                 ind = as_numpy(ind)
             ind = as_tensor(self.index_map[ind].values, return_vector=True)
         else:

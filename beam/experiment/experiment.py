@@ -519,7 +519,7 @@ class Experiment(object):
         filters = {'project': None, 'algorithm': None, 'identifier': None, 'experiment':None}
         if project is not None:
             path_type = check_type(project)
-            if path_type.minor == 'list':
+            if path_type.minor == Types.list:
                 filters['project'] = project
             else:
                 filters['project'] = [project]
@@ -530,7 +530,7 @@ class Experiment(object):
 
         if algorithm is not None:
             path_type = check_type(algorithm)
-            if path_type.minor == 'list':
+            if path_type.minor == Types.list:
                 filters['algorithm'] = algorithm
             else:
                 filters['algorithm'] = [algorithm]
@@ -541,7 +541,7 @@ class Experiment(object):
 
         if identifier is not None:
             path_type = check_type(identifier)
-            if path_type.minor == 'list':
+            if path_type.minor == Types.list:
                 filters['identifier'] = identifier
             else:
                 filters['identifier'] = [identifier]
@@ -551,7 +551,7 @@ class Experiment(object):
                     depth = 1
         if experiment is not None:
             path_type = check_type(experiment)
-            if path_type.minor == 'list':
+            if path_type.minor == Types.list:
                 filters['experiment'] = experiment
             else:
                 filters['experiment'] = [experiment]

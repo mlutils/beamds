@@ -61,21 +61,22 @@ class UniversalDataset(torch.utils.data.Dataset):
                 d = args[0]
                 if isinstance(d, dict):
                     self.data = {k: as_tensor(v, device=device) for k, v in d.items()}
-                    self.data_type = 'dict'
+                    self._data_type = 'dict'
                 elif isinstance(d, list) or isinstance(d, tuple):
                     self.data = [as_tensor(v, device=device) for v in d]
-                    self.data_type = 'list'
+                    self._data_type = 'list'
                 else:
                     self.data = d
-                    self.data_type = 'simple'
+                    self._data_type = 'simple'
             elif len(args):
                 self.data = [as_tensor(v, device=device) for v in args]
-                self.data_type = 'list'
+                self._data_type = 'list'
             elif len(kwargs):
                 self.data = {k: as_tensor(v, device=device) for k, v in kwargs.items()}
-                self.data_type = 'dict'
+                self._data_type = 'dict'
             else:
                 self.data = None
+                self._data_type = None
 
         self.label = as_tensor(label, device=self.device)
 
@@ -97,7 +98,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.index = None
         if index is not None:
             index_type = check_type(index)
-            if index_type.minor == 'tensor':
+            if index_type.minor == Types.tensor:
                 index = as_numpy(index)
             if mapping == 'backward':
                 index = pd.Series(data=np.arange(len(index)), index=index)
@@ -110,16 +111,16 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 raise NotImplementedError(f"Mapping type: {mapping} not supported")
 
-
     def train(self):
         self.training = True
 
     def eval(self):
         self.training = False
 
-    @cached_property
-    def data_type(self):
-        return check_type(self.data).minor
+    @property
+    def data_type(self) -> str:
+        # return check_type(self.data).minor
+        return self._data_type
 
     def getitem(self, ind):
 
@@ -156,7 +157,7 @@ class UniversalDataset(torch.utils.data.Dataset):
             ind = slice_to_index(ind, l=self.index.index.max()+1)
 
             ind_type = check_type(ind, element=False)
-            if ind_type.minor == 'tensor':
+            if ind_type.minor == Types.tensor:
                 loc = as_numpy(ind)
             else:
                 loc = ind

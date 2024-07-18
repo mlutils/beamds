@@ -9,7 +9,7 @@ from ..utils import cached_property, Timer, as_numpy
 from ..data import BeamData
 from ..logging import beam_logger as logger
 from .core_algorithm import Algorithm
-from ..type import BeamType
+from ..type import BeamType, Types
 from dataclasses import dataclass
 
 
@@ -113,7 +113,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         x_type = BeamType.check_minor(x)
 
-        if x_type.minor == 'tensor':
+        if x_type.minor == Types.tensor:
             crow_indices = x.crow_indices().numpy()
             col_indices = x.col_indices().numpy()
             values = x.values().numpy()

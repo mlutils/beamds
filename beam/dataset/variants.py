@@ -13,7 +13,7 @@ class LazyReplayBuffer(UniversalDataset):
         self.max_size = size
         self.size = 0
         self.ptr = 0
-        self.target_device = device
+        self._target_device = device
         super().__init__(device=device)
 
     def build_buffer(self, x):
@@ -31,13 +31,13 @@ class LazyReplayBuffer(UniversalDataset):
         if self.data is None:
             if isinstance(d, dict):
                 self.data = {k: self.build_buffer(v) for k, v in d.items()}
-                self.data_type = 'dict'
+                self._data_type = 'dict'
             elif isinstance(d, list) or isinstance(d, tuple):
                 self.data = [self.build_buffer(v) for v in d]
-                self.data_type = 'list'
+                self._data_type = 'list'
             else:
                 self.data = self.build_buffer(d)
-                self.data_type = 'simple'
+                self._data_type = 'simple'
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")

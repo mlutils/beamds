@@ -382,7 +382,7 @@ class NeuralAlgorithm(Algorithm):
         else:
             if isinstance(networks, nn.Module):
                 networks = {name: networks}
-            elif check_type(networks).minor == 'dict':
+            elif check_type(networks).minor == Types.dict:
                 pass
             else:
                 raise NotImplementedError("Network type is unsupported")
@@ -1017,9 +1017,9 @@ class NeuralAlgorithm(Algorithm):
 
             if 'DataBatch' in str(type(subset)):
                 dataset = UniversalDataset(subset.data, index=subset.index, label=subset.label)
-            elif subset_type.minor in ['list', 'tuple']:
+            elif subset_type.minor in [Types.list, Types.tuple]:
                 dataset = UniversalDataset(*subset)
-            elif subset_type.minor in ['dict']:
+            elif subset_type.minor in [Types.dict]:
                 dataset = UniversalDataset(**subset)
             else:
                 dataset = UniversalDataset(subset)

@@ -395,7 +395,7 @@ class BeamReport(object):
     #             pass
     #         elif val_type.element == 'int':
     #             val = int(val)
-    #     elif val_type.minor == 'tensor':
+    #     elif val_type.minor == Types.tensor:
     #         val = val.detach().cpu()
     #     elif val_type.major == Types.container:
     #         val = as_tensor(val, device='cpu')
@@ -407,16 +407,16 @@ class BeamReport(object):
 
         val_type = check_type(val)
 
-        if val_type.major == Types.container and val_type.minor == 'list':
+        if val_type.major == Types.container and val_type.minor == Types.list:
 
             v_minor = check_type(val[0]).minor
-            if v_minor == 'tensor':
+            if v_minor == Types.tensor:
                 oprs = {'cat': torch.cat, 'stack': torch.stack}
-            elif v_minor == 'numpy':
+            elif v_minor == Types.numpy:
                 oprs = {'cat': np.concatenate, 'stack': np.stack}
             elif v_minor == 'pandas':
                 oprs = {'cat': pd.concat, 'stack': pd.concat}
-            elif v_minor == 'native':
+            elif v_minor == Types.native:
                 oprs = {'cat': torch.tensor, 'stack': torch.tensor}
             elif v_minor == 'cudf':
                 import cudf
@@ -434,7 +434,7 @@ class BeamReport(object):
 
             val = opr(val)
 
-        elif val_type.major == Types.array and val_type.minor == 'list' and val_type.element in ['int', 'float']:
+        elif val_type.major == Types.array and val_type.minor == Types.list and val_type.element in ['int', 'float']:
             val = as_tensor(val, device='cpu')
 
         val = squeeze_scalar(val)
@@ -467,7 +467,7 @@ class BeamReport(object):
         elif val_type.minor == 'polars':
             val = val.to_numpy()
             val = agg_dict['numpy'][aggregation](val)
-        elif val_type.minor == 'tensor':
+        elif val_type.minor == Types.tensor:
             val = agg_dict['tensor'][aggregation](val)
         else:
             val = agg_dict['numpy'][aggregation](val)

@@ -48,7 +48,10 @@ class HTTPServeCluster(BeamBase):
                                             beam_version=config.beam_version, base_url=config.base_url,
                                             registry_url=config.registry_url, username=config.registry_username,
                                             password=config.registry_password, serve_config=config,
-                                            registry_project_name=config.registry_project_name)
+                                            registry_project_name=config.registry_project_name,
+                                            entrypoint=config.entrypoint, dockerfile=config.dockerfile,
+                                            **config.get('docker_kwargs', {})
+                                            )
             logger.info(f"Image {image_name} created successfully")
 
         # to deployment
@@ -102,7 +105,6 @@ class HTTPServeCluster(BeamBase):
     @classmethod
     def deploy_from_image(cls, image_name, config):
         return cls._deploy_and_launch(bundle_path=None, obj=None, image_name=image_name, config=config)
-
 
 
 class RayCluster(BeamBase):

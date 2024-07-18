@@ -273,11 +273,11 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='none',
 
 def is_boolean(x):
     x_type = check_type(x)
-    if x_type.minor in ['numpy', 'pandas', 'tensor', 'cudf'] and 'bool' in str(x.dtype).lower():
+    if x_type.minor in [Types.numpy, 'pandas', Types.tensor, 'cudf'] and 'bool' in str(x.dtype).lower():
         return True
     elif x_type.minor == 'polars' and 'Boolean' == str(next(iter(x.schema.values()))):
         return True
-    if x_type.minor == 'list' and len(x) and isinstance(x[0], bool):
+    if x_type.minor == Types.list and len(x) and isinstance(x[0], bool):
         return True
     return False
 
@@ -459,7 +459,7 @@ def squeeze_scalar(x, x_type=None):
     if x_type is None:
         x_type = check_type(x)
 
-    if x_type.minor == 'list':
+    if x_type.minor == Types.list:
         if len(x) == 1:
             x = x[0]
             x_type = check_type(x)
@@ -509,9 +509,9 @@ def get_closest_item_with_tuple_key(x, key):
 
     for k in key:
         x_type = check_type(x)
-        if x_type.minor == 'dict' and k in x:
+        if x_type.minor == Types.dict and k in x:
             x = x[k]
-        elif x_type.minor == 'list' and k < len(x):
+        elif x_type.minor == Types.list and k < len(x):
             x = x[k]
         elif x_type.major == Types.container:
             return None
@@ -674,7 +674,7 @@ def filter_dict(d, keys):
     if keys_type.major == Types.scalar:
         keys = [keys]
 
-    elif keys_type.minor in ['list', 'tuple']:
+    elif keys_type.minor in [Types.list, Types.tuple]:
         keys = set(keys)
     else:
         raise ValueError(f"keys must be a scalar, list or tuple. Got {keys_type}")
@@ -845,15 +845,15 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
         index = index.values
     if indices_type == Types.other:  # the case where there is a scalar value with a dtype attribute
         index = int(index)
-    if x_type in ['numpy', 'polars']:
+    if x_type in [Types.numpy, 'polars']:
         return x[index]
     elif x_type in ['pandas', 'cudf']:
         return x.iloc[index]
-    elif x_type == 'tensor':
+    elif x_type == Types.tensor:
         if x.is_sparse:
             x = x.to_dense()
         return x[index]
-    elif x_type == 'list':
+    elif x_type == Types.list:
         return [x[i] for i in index]
     else:
         try:
@@ -910,7 +910,7 @@ def dict_to_list(x, convert_str=True):
     if not x:
         return []
 
-    if x_type.minor != 'dict':
+    if x_type.minor != Types.dict:
         return x
 
     keys = np.array(list(x.keys()))

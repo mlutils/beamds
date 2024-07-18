@@ -179,7 +179,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
 
         if isinstance(ar, Namespace):
             args_dict.append(to_dict(ar))
-        elif ar_type.minor == 'dict':
+        elif ar_type.minor == Types.dict:
             args_dict.append(ar)
         elif ar_type.minor == 'path':
             config_files.append(ar)

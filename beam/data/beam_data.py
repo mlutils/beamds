@@ -303,7 +303,7 @@ class BeamData(BeamName):
             else:
                 raise ValueError(f"Unknown orientation: {self.orientation}")
 
-        if self._index is not None and self.objects_type == 'tensor':
+        if self._index is not None and self.objects_type == Types.tensor:
             self._index = as_tensor(self._index, device=self.device or 'cpu')
 
         return self._index
@@ -323,7 +323,7 @@ class BeamData(BeamName):
                         self._label = path.read()
                         return self._label
 
-        if self._label is not None and self.objects_type == 'tensor':
+        if self._label is not None and self.objects_type == Types.tensor:
             self._label = as_tensor(self._label, device=self.device or 'cpu')
 
         return self._label
@@ -681,7 +681,7 @@ class BeamData(BeamName):
         if self._device is not None:
             return self._device
 
-        if self.objects_type == 'tensor':
+        if self.objects_type == Types.tensor:
             # "All tensors should be on the same device"
             if recursive_same_device(self.data):
                 self._device = recursive_device(self.data)
@@ -834,9 +834,9 @@ class BeamData(BeamName):
         if schema_type is None:
             schema_type = check_type(schema)
 
-        if schema_type.minor == 'dict' and key in schema:
+        if schema_type.minor == Types.dict and key in schema:
             s = schema[key]
-        elif schema_type.minor == 'list' and key < len(schema):
+        elif schema_type.minor == Types.list and key < len(schema):
             s = schema[key]
         elif schema_type.major == Types.container:
             s = None
@@ -971,7 +971,7 @@ class BeamData(BeamName):
         self.data = recursive(func)(self.data)
         self._index = func(self._index)
         self._label = func(self._label)
-        self._objects_type = 'tensor'
+        self._objects_type = Types.tensor
 
         return self
 
@@ -986,7 +986,7 @@ class BeamData(BeamName):
         self.data = recursive(func)(self.data)
         self._index = func(self._index)
         self._label = func(self._label)
-        self._objects_type = 'numpy'
+        self._objects_type = Types.numpy
 
         return self
 
@@ -1146,11 +1146,11 @@ class BeamData(BeamName):
                     priority.extend(['.pl.fea', '.pl.parquet', '.pl.pkl'])
                 elif data_type.minor == 'cudf':
                     priority = ['.cf.fea', '.cf.parquet', '.cf.pkl']
-                elif data_type.minor == 'numpy':
+                elif data_type.minor == Types.numpy:
                     priority = ['.npy', '.pkl']
                 elif data_type.minor == 'scipy_sparse':
                     priority = ['.scipy_npz', '.pkl']
-                elif data_type.minor == 'tensor':
+                elif data_type.minor == Types.tensor:
                     if data.is_sparse_csr:
                         priority = ['.pkl']
                     else:
@@ -1328,7 +1328,7 @@ class BeamData(BeamName):
         else:
             return data
 
-        if objects_type == 'tensor':
+        if objects_type == Types.tensor:
             import torch
             func = torch.stack if dim == 1 and dim >= len(v.shape) else torch.cat
             kwargs = {'dim': dim}
@@ -1349,7 +1349,7 @@ class BeamData(BeamName):
             func = cudf.concat
             data = [cudf.Series(v.values) if isinstance(v, cudf.Index) else v for v in data]
             kwargs = {'axis': dim}
-        elif objects_type == 'numpy':
+        elif objects_type == Types.numpy:
             func = np.stack if dim==1 and dim >= len(v.shape) else np.concatenate
             kwargs = {'axis': dim}
         else:
@@ -1781,7 +1781,7 @@ class BeamData(BeamName):
 
                 if xi is None:
                     return None, None, None, flat_key + 1
-                elif x_type.minor == 'native':
+                elif x_type.minor == Types.native:
                     return index, [xi], label, flat_key + 1
                 else:
                     xi_slicer = Slicer(xi, x_type=x_type, wrap_object=True)
@@ -1946,12 +1946,12 @@ class BeamData(BeamName):
                 if keys not in data:
                     return None
             return data[keys]
-        elif keys_type.minor == 'tuple':
+        elif keys_type.minor == Types.tuple:
             if replace_missing:
                 return get_closest_item_with_tuple_key(data, keys)
             return get_item_with_tuple_key(data, keys)
         else:
-            sliced = [] if data_type.minor == 'list' else {}
+            sliced = [] if data_type.minor == Types.list else {}
             for k in keys:
                 if replace_missing:
                     if keys not in data:
@@ -2397,9 +2397,9 @@ class BeamData(BeamName):
 
             i_type = check_type(ind_i)
             # skip the first axis in these case
-            if axes[0] == 'keys' and (i_type.minor in ['pandas', 'numpy', 'slice', 'tensor', 'cudf']):
+            if axes[0] == 'keys' and (i_type.minor in ['pandas', Types.numpy, 'slice', Types.tensor, 'cudf']):
                 axes.pop(0)
-            if axes[0] == 'keys' and (i_type.minor == 'list' and i_type.element == 'int'):
+            if axes[0] == 'keys' and (i_type.minor == Types.list and i_type.element == 'int'):
                 axes.pop(0)
             if (axes[0] == 'keys' and (i_type.major == Types.scalar and i_type.element == 'int')
                     and check_type(list(self.hierarchical_keys()), minor=False).element == 'str'):

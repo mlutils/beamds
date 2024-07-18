@@ -16,10 +16,8 @@ import importlib.metadata
 import os
 import importlib
 import warnings
-import tempfile
 
 from ..logging import beam_logger as logger
-from ..type import is_beam_processor
 from ..utils import cached_property
 from uuid import uuid4 as uuid
 

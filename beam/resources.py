@@ -17,6 +17,9 @@ def resource(uri, **kwargs):
     if ':' not in uri:
         from .path import beam_path
         return beam_path(uri, **kwargs)
+    elif uri[1] == ':':  # windows path
+        from .path import beam_path
+        return beam_path(uri, **kwargs)
 
     scheme = uri.split(':')[0]
     if scheme in resource_names['path']:

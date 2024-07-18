@@ -72,6 +72,8 @@ class BeamImporter:
                 # print(f"Info: module_name: {module_name}, object_name: {object_name}, imported_object: {imported_object}")
             except:
                 print(f"Warning: Could not import {actual_name}, {e}, Skipping...")
+                # from ..utils import beam_traceback
+                # print(beam_traceback())
                 imported_object = None
 
         return imported_object

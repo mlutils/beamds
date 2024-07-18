@@ -231,7 +231,7 @@ class TFIDF(BeamSimilarity):
 
         if x_type.minor == 'torch':
             x = as_numpy(x).tolist()
-        elif x_type.minor == 'numpy':
+        elif x_type.minor == Types.numpy:
             x = x.tolist()
         else:
             x = list(x)

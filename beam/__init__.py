@@ -17,7 +17,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'parallel', 'task', 'this_dir',
            # Orchestration
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
-           'HTTPServeClusterConfig', 'HTTPServeCluster', 'RayCluster'
+           'HTTPServeClusterConfig', 'HTTPServeCluster', 'RayCluster', 'deploy_server'
            ]
 
 
@@ -190,6 +190,9 @@ def __getattr__(name):
     elif name == 'RayCluster':
         from .orchestration import RayCluster
         return RayCluster
+    elif name == 'deploy_server':
+        from .orchestration import deploy_server
+        return deploy_server
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 
@@ -214,4 +217,4 @@ if len([]):
     from .processor import Processor
     from .concurrent import parallel, task
     from .orchestration import (BeamDeploy, BeamK8S, BeamPod, K8SUnits, K8SConfig, RayClusterConfig,
-                                HTTPServeClusterConfig, HTTPServeCluster, RayCluster)
+                                HTTPServeClusterConfig, HTTPServeCluster, RayCluster, deploy_server)

@@ -229,12 +229,12 @@ class ImageContent(LLMContent):
     @property
     def pil_format(self):
         from PIL import Image
-        if self.image_type.minor == 'numpy':
+        if self.image_type.minor == Types.numpy:
             image = Image.fromarray(self.image)
-        elif self.image_type.minor == 'tensor':
+        elif self.image_type.minor == Types.tensor:
             image = Image.fromarray(self.image.cpu().numpy())
         elif (self.image_type.major == 'path' or
-              (self.image_type.major == 'native' and self.image_type.element == 'str')):
+              (self.image_type.major == Types.native and self.image_type.element == 'str')):
             image = Image.open(beam_path(self.image))
         else:
             raise ValueError(f"Cannot convert {self.image_type} to PIL Image.")
