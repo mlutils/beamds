@@ -19,13 +19,6 @@ class ServiceConfig:
 
 
 @dataclass
-class SecurityContextConfig:
-    add_capabilities: List[str] = field(default_factory=list)
-    enable_security_context: bool = False
-    privileged: bool = False
-
-
-@dataclass
 class CommandConfig:
     executable: str
     arguments: List[str] = field(default_factory=list)
@@ -76,6 +69,8 @@ class UserIdmConfig:
 
 @dataclass
 class SecurityContextConfig:
+    privileged: bool = False
+    runAsUser: str = None
     add_capabilities: List[str] = field(default_factory=list)
     enable_security_context: bool = False
 

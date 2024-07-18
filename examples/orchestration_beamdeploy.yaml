@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~Dmcb6IvZvhQt7n3DudGC0fTlERvOPh4ZbqLVJN5BPHs
+api_token: sha256~6e18Ednq4o7rlRRebsV-PakASXETQRKVpBCEsffnEfI
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -61,6 +61,7 @@ security_context_config:
 #  - CAP_AUDIT_WRITE
   enable_security_context: true
   privileged: true
+  runAsUser: 0
 service_configs:
 - create_ingress: false
   create_route: false
