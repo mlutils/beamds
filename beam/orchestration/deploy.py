@@ -281,34 +281,6 @@ class BeamDeploy(BeamBase):
 
         cluster_info = cluster_info.replace("\n", "<br>")
         return cluster_info
-    # def cluster_info(self):
-    #     services_info = self.k8s.get_services_info(self.namespace)
-    #     routes_info = self.k8s.get_routes_info(self.namespace)
-    #     host_ip = self.beam_pod_instances[0].pod_infos[0].raw_pod_data['status'].get('host_ip') or 'Host IP NONE'
-    #     service_info_lines = []
-    #     route_info_lines = []
-    #
-    #     if services_info:
-    #
-    #         for service_info in services_info:
-    #
-    #             if 'node_port' in service_info:
-    #                 service_line = f"Service: {service_info['service_name']} | Cluster IP: {service_info['cluster_ip']} | Port: {service_info['port']} | Host IP: {host_ip} | NodePort: {service_info['node_port']} | Ingress Access"
-    #             else:
-    #                 service_line = f"Service: {service_info['service_name']} | Cluster IP: {service_info['cluster_ip']} | Port: {service_info['port']}"
-    #             service_info_lines.append(service_line)
-    #
-    #     if routes_info:
-    #         route_info_lines = [f"Route link: {route_info['host']}" for route_info in routes_info]
-    #
-    #     cluster_info = "\n".join(service_info_lines + route_info_lines)
-    #     resource("deployment_state.yaml").write(cluster_info)
-    #
-    #     # Write the formatted lines to a file
-    #     with open("cluster_info.txt", "w") as file:
-    #         file.write(cluster_info)
-    #
-    #     return cluster_info
 
     @property
     def pods_state(self):

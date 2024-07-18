@@ -39,7 +39,7 @@ class CBAlgorithm(Algorithm):
         return self.get_hparam('eval_metric', em)
 
     @property
-    def custom_metric(self):
+    def  custom_metric(self):
         if self.task_type == 'regression':
             cm = []
         else:

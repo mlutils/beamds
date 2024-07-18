@@ -8,6 +8,7 @@ import torch
 
 from ..path import beam_path
 from ..utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy, beam_device
+from ..type import Types
 
 
 class LazyTensor:
@@ -101,10 +102,10 @@ class LazyTensor:
         ind_type = check_type(ind)
         if ind_type.major == 'slice':
             return ind.step is None or ind.step == 1
-        elif ind_type.major == 'array':
+        elif ind_type.major == Types.array:
             ind = as_tensor(ind)
             return bool(torch.all(torch.diff(ind) == 1))
-        elif ind_type.major == 'scalar' and ind_type.minor == 'int':
+        elif ind_type.major == Types.scalar and ind_type.minor == 'int':
             return True
 
         return False
@@ -112,14 +113,14 @@ class LazyTensor:
     def __getitem__(self, item):
 
         item_type = check_type(item)
-        if item_type.minor != 'tuple':
+        if item_type.minor != Types.tuple:
             item = (item,)
 
         offset = self.offset
 
         for i, ind in enumerate(item):
             ind_type = check_type(ind)
-            if ind_type.major == 'scalar':
+            if ind_type.major == Types.scalar:
                 assert ind_type.element == 'int', "Index must be integer"
                 count = self.shape[i + 1:].prod() if i < len(self.shape) - 1 else 1
                 offset += ind * self.element_size * count
@@ -217,9 +218,9 @@ class DataTensor(object):
             self.index_map = None
             self.mapping_method = 'simple'
         else:
-            if index_type.minor == 'tensor':
+            if index_type.minor == Types.tensor:
                 index = as_numpy(index)
-            elif index_type.major == 'scalar':
+            elif index_type.major == Types.scalar:
                 index = [index]
 
             self.index_map = pd.Series(index=index, data=np.arange(len(index)))
@@ -236,12 +237,12 @@ class DataTensor(object):
                 columns = [int(i) for i in torch.arange(n_columns)]
                 self.columns_format = 'int'
 
-        elif columns_type.major == 'array' and columns_type.element == 'int':
+        elif columns_type.major == Types.array and columns_type.element == 'int':
 
             columns = [int(i) for i in columns]
             self.columns_format = 'int'
 
-        elif columns_type.major == 'array':
+        elif columns_type.major == Types.array:
 
             columns = [str(i) for i in columns]
             self.columns_format = 'str'
@@ -284,7 +285,7 @@ class DataTensor(object):
 
         cast = int if self.columns_format == 'int' else str
 
-        if check_type(columns).major == 'scalar':
+        if check_type(columns).major == Types.scalar:
             columns = self.columns_map[cast(columns)]
         else:
             columns = [self.columns_map[cast(i)] for i in columns]
@@ -300,7 +301,7 @@ class DataTensor(object):
         if self.mapping_method == 'simple':
             pass
         elif self.mapping_method == 'series':
-            if index_type.minor == 'tensor':
+            if index_type.minor == Types.tensor:
                 ind = as_numpy(ind)
             ind = as_tensor(self.index_map[ind].values, return_vector=True)
         else:
@@ -354,7 +355,7 @@ class DataTensor(object):
         ind = slice_to_index(ind, l=self.data.shape[0])
         index_type = check_type(ind)
 
-        if index_type.major == 'scalar':
+        if index_type.major == Types.scalar:
             ind = [ind]
 
         index = self.inverse_map(ind)
@@ -419,7 +420,7 @@ class DataTensor(object):
 
             if len(existing_columns):
 
-                if check_type(columns).major == 'scalar':
+                if check_type(columns).major == Types.scalar:
 
                     data = data.unsqueeze(1)
                     columns = [columns]
@@ -445,7 +446,7 @@ class DataTensor(object):
             columns = ind[1]
 
             ind_columns = self.inverse_columns_map(columns)
-            if check_type(ind_columns).major == 'scalar':
+            if check_type(ind_columns).major == Types.scalar:
                 ind_columns = [int(ind_columns)]
                 columns = [columns]
                 series = True
@@ -457,7 +458,7 @@ class DataTensor(object):
             ind_columns = slice(None)
 
         index = slice_to_index(index, l=len(self), sliced=self.index)
-        if check_type(index).major == 'scalar':
+        if check_type(index).major == Types.scalar:
             index = [index]
 
         ind_index = self.inverse_map(index)
@@ -481,7 +482,7 @@ class DataTensor(object):
 
         columns = ind
         ind_columns = self.inverse_columns_map(columns)
-        if check_type(ind_columns).major == 'scalar':
+        if check_type(ind_columns).major == Types.scalar:
             ind_columns = [int(ind_columns)]
             columns = [columns]
             series = True

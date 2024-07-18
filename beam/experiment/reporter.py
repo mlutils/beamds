@@ -16,6 +16,7 @@ from ..utils import (pretty_format_number, as_numpy, pretty_print_timedelta, rec
 from ..utils import tqdm_beam as tqdm
 from ..logging import beam_logger as logger
 from ..data import BeamData
+from ..type import Types
 
 
 class BeamReport(object):
@@ -198,16 +199,16 @@ class BeamReport(object):
                 stats = data_keys['stats']
                 self.info('| '.join([f"{k}: {BeamReport.format(self.aux['stats'][f'{subset}/{k}'])} " for k in stats]))
 
-            if 'scalar' in data_keys:
+            if Types.scalar in data_keys:
                 scalars = data_keys['scalar']
                 for k in scalars:
                     v = self.scalar[f'{subset}/{k}']
 
                     v_type = check_type(v)
-                    if v_type.major != 'scalar' and np.var(as_numpy(v)) > 0:
+                    if v_type.major != Types.scalar and np.var(as_numpy(v)) > 0:
                         stat = pd.Series(v, dtype=np.float32).describe()
                     else:
-                        if v_type.major != 'scalar':
+                        if v_type.major != Types.scalar:
                             v = v[0]
                         v = int(v) if v_type.element == 'int' else float(v)
                         stat = {'val': v}
@@ -388,15 +389,15 @@ class BeamReport(object):
     # @staticmethod
     # def detach_scalar(val):
     #     val_type = check_type(val)
-    #     if val_type.major == 'scalar':
+    #     if val_type.major == Types.scalar:
     #         if val_type.element == 'float':
     #             val = float(val)
     #             pass
     #         elif val_type.element == 'int':
     #             val = int(val)
-    #     elif val_type.minor == 'tensor':
+    #     elif val_type.minor == Types.tensor:
     #         val = val.detach().cpu()
-    #     elif val_type.major == 'container':
+    #     elif val_type.major == Types.container:
     #         val = as_tensor(val, device='cpu')
     #
     #     return val
@@ -406,16 +407,16 @@ class BeamReport(object):
 
         val_type = check_type(val)
 
-        if val_type.major == 'container' and val_type.minor == 'list':
+        if val_type.major == Types.container and val_type.minor == Types.list:
 
             v_minor = check_type(val[0]).minor
-            if v_minor == 'tensor':
+            if v_minor == Types.tensor:
                 oprs = {'cat': torch.cat, 'stack': torch.stack}
-            elif v_minor == 'numpy':
+            elif v_minor == Types.numpy:
                 oprs = {'cat': np.concatenate, 'stack': np.stack}
             elif v_minor == 'pandas':
                 oprs = {'cat': pd.concat, 'stack': pd.concat}
-            elif v_minor == 'native':
+            elif v_minor == Types.native:
                 oprs = {'cat': torch.tensor, 'stack': torch.tensor}
             elif v_minor == 'cudf':
                 import cudf
@@ -433,7 +434,7 @@ class BeamReport(object):
 
             val = opr(val)
 
-        elif val_type.major == 'array' and val_type.minor == 'list' and val_type.element in ['int', 'float']:
+        elif val_type.major == Types.array and val_type.minor == Types.list and val_type.element in ['int', 'float']:
             val = as_tensor(val, device='cpu')
 
         val = squeeze_scalar(val)
@@ -456,7 +457,7 @@ class BeamReport(object):
 
         val = recursive_flatten(val, flat_array=True, tolist=False)
         val_type = check_type(val)
-        if val_type.major == 'scalar':
+        if val_type.major == Types.scalar:
             val = float(val)
         elif val_type.minor in ['pandas', 'cudf']:
             val = val.values
@@ -466,7 +467,7 @@ class BeamReport(object):
         elif val_type.minor == 'polars':
             val = val.to_numpy()
             val = agg_dict['numpy'][aggregation](val)
-        elif val_type.minor == 'tensor':
+        elif val_type.minor == Types.tensor:
             val = agg_dict['tensor'][aggregation](val)
         else:
             val = agg_dict['numpy'][aggregation](val)

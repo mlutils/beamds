@@ -16,10 +16,8 @@ import importlib.metadata
 import os
 import importlib
 import warnings
-import tempfile
 
 from ..logging import beam_logger as logger
-from ..type import is_beam_processor
 from ..utils import cached_property
 from uuid import uuid4 as uuid
 
@@ -486,9 +484,9 @@ class AutoBeam(BeamBase):
         return full_image_name
 
     @staticmethod
-    def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint='synchronous-server',
+    def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint=None,
                      copy_bundle=False, registry_url=None, username=None, password=None,
-                     beam_version=None, base_url=None, registry_project_name=None, dockerfile='simple-entrypoint'):
+                     beam_version=None, base_url=None, registry_project_name=None, dockerfile=None):
 
         assert base_image is not None, "You must provide a base_image."
 
@@ -501,8 +499,12 @@ class AutoBeam(BeamBase):
         # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
         # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
 
+        entrypoint = entrypoint or 'synchronous-server'
+        dockerfile = dockerfile or 'simple-entrypoint'
+
         bundle_path = beam_path(bundle_path)
-        current_dir = this_dir()
+        # current_dir = this_dir()
+        current_dir = beam_path(__file__).parent
 
         if image_name is None:
             image_name = f"autobeam-{bundle_path.name}-{base_image}"

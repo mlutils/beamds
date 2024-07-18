@@ -164,7 +164,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             security_context = {
                 "capabilities": {
                     "add": security_context_config.add_capabilities
-                }
+                },
+                "privileged": security_context_config.privileged  # Setting the privileged status
             }
 
         return client.V1Container(

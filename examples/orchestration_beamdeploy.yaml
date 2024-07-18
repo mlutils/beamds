@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~RPNTod9i6nAjevzvRxt_FcKB18Ypyv7Z5YHceYP9yvQ
+api_token: sha256~Dmcb6IvZvhQt7n3DudGC0fTlERvOPh4ZbqLVJN5BPHs
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -7,7 +7,7 @@ base_url: tcp://10.0.7.55:2375
 #client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: 2.5.11
+beam_version: 2.6.4
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:
@@ -15,10 +15,10 @@ command:
   - -c
   - sleep infinity
   executable: /bin/bash
-cpu_limits: '4'
-cpu_requests: '4'
+cpu_limits: '2'
+cpu_requests: '2'
 create_service_account: true
-deployment_name: oneclick
+deployment_name: 1clickmanager
 enable_ray_ports: true
 entrypoint_args:
 - '63'
@@ -28,11 +28,11 @@ from_email: dayotech2018@gmail.com
 from_email_password: mkhdokjqwwmazyrf
 gpu_limits: '1'
 gpu_requests: '1'
-image_name: harbor.dt.local/public/beam:openshift-180524a
+image_name: harbor.dt.local/public/nerdctl:v2.0.0-rc.0
 labels:
-  app: oneclick
-memory_limits: '12'
-memory_requests: '12'
+  app: 1clickmanager
+memory_limits: '6'
+memory_requests: '6'
 memory_storage_configs:
 - enabled: true
   mount_path: /dev/shm
@@ -56,10 +56,11 @@ send_mail: false
 scc_name: anyuid
 security_context_config:
   add_capabilities:
-  - SYS_CHROOT
-  - CAP_AUDIT_CONTROL
-  - CAP_AUDIT_WRITE
-  enable_security_context: false
+#  - SYS_CHROOT
+#  - CAP_AUDIT_CONTROL
+#  - CAP_AUDIT_WRITE
+  enable_security_context: true
+  privileged: true
 service_configs:
 - create_ingress: false
   create_route: false

@@ -1126,6 +1126,7 @@ class CometAsset(PureBeamPath):
         if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
             content = self.file_object.getvalue()
+            from .utils import temp_local_file
             with temp_local_file(content, name=self.name, as_beam_path=True, binary='b' in self.mode) as tmp_path:
                 cwd = os.getcwd()
                 try:

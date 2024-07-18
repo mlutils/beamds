@@ -3,6 +3,7 @@ import torch
 
 from .core import BeamSimilarity, Similarities
 from ..utils import check_type, as_tensor, beam_device
+from ..type import Types
 
 
 class SparseSimilarity(BeamSimilarity):
@@ -118,9 +119,9 @@ class SparseSimilarity(BeamSimilarity):
             r, c, v = self.scipy_to_row_col_val(x)
             x = self.sparse_tensor(r, c, v)
 
-        elif x_type.minor in ['tensor', 'numpy']:
+        elif x_type.minor in [Types.tensor, Types.numpy]:
 
-            if x_type.minor == 'numpy':
+            if x_type.minor == Types.numpy:
                 x = as_tensor(x)
 
             if self.layout == 'coo':
@@ -130,10 +131,10 @@ class SparseSimilarity(BeamSimilarity):
             else:
                 raise ValueError(f"Unknown format: {self.layout}")
 
-        elif x_type.minor == 'dict':
+        elif x_type.minor == Types.dict:
             x = self.sparse_tensor(x['row'], x['col'], x['val'])
 
-        elif x_type.minor == 'tuple':
+        elif x_type.minor == Types.tuple:
             x = self.sparse_tensor(x[0], x[1], x[2])
 
         else:

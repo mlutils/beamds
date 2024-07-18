@@ -101,24 +101,24 @@ class BeamSSL(NeuralAlgorithm):
 
             bst = self.evaluate_downstream_task(z, y)
 
-            results['scalar']['encoder_acc'] = 1 - bst.best_score['valid_0']['multi_error']
-            results['scalar']['encoder_loss'] = bst.best_score['valid_0']['multi_logloss']
+            results[Types.scalar]['encoder_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+            results[Types.scalar]['encoder_loss'] = bst.best_score['valid_0']['multi_logloss']
 
             if 'z' in features.values:
 
                 z = as_numpy(features.values['z'])
                 bst = self.evaluate_downstream_task(z, y)
 
-                results['scalar']['projection_acc'] = 1 - bst.best_score['valid_0']['multi_error']
-                results['scalar']['projection_loss'] = bst.best_score['valid_0']['multi_logloss']
+                results[Types.scalar]['projection_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+                results[Types.scalar]['projection_loss'] = bst.best_score['valid_0']['multi_logloss']
 
                 if 'p' in features.values:
 
                     z = as_numpy(features.values['p'])
                     bst = self.evaluate_downstream_task(z, y)
 
-                    results['scalar']['prediction_acc'] = 1 - bst.best_score['valid_0']['multi_error']
-                    results['scalar']['prediction_loss'] = bst.best_score['valid_0']['multi_logloss']
+                    results[Types.scalar]['prediction_acc'] = 1 - bst.best_score['valid_0']['multi_error']
+                    results[Types.scalar]['prediction_loss'] = bst.best_score['valid_0']['multi_logloss']
 
         return results
 
@@ -222,8 +222,8 @@ class BeamSSL(NeuralAlgorithm):
             mu = representations.mean(dim=0)
             std = representations.std(dim=0)
 
-            results['scalar']['mu'] = mu
-            results['scalar']['std'] = std
+            results[Types.scalar]['mu'] = mu
+            results[Types.scalar]['std'] = std
 
         if add_to_sim:
             if self.sim is not None:

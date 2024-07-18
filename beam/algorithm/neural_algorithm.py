@@ -20,6 +20,7 @@ from ..path import beam_path, local_copy
 from ..logging import beam_kpi, BeamResult
 from ..processor import Processor
 from ..base import beam_cache
+from ..type import Types
 
 from .core_algorithm import Algorithm
 
@@ -381,7 +382,7 @@ class NeuralAlgorithm(Algorithm):
         else:
             if isinstance(networks, nn.Module):
                 networks = {name: networks}
-            elif check_type(networks).minor == 'dict':
+            elif check_type(networks).minor == Types.dict:
                 pass
             else:
                 raise NotImplementedError("Network type is unsupported")
@@ -544,7 +545,7 @@ class NeuralAlgorithm(Algorithm):
             pass
         else:
             weights_type = check_type(weights, minor=False, element=False)
-            if weights_type.major == 'scalar':
+            if weights_type.major == Types.scalar:
                 weights = {next(iter(losses.keys())): weights}
             else:
                 weights = {f'{name}_{i}': l for i, l in enumerate(weights)}
@@ -1016,9 +1017,9 @@ class NeuralAlgorithm(Algorithm):
 
             if 'DataBatch' in str(type(subset)):
                 dataset = UniversalDataset(subset.data, index=subset.index, label=subset.label)
-            elif subset_type.minor in ['list', 'tuple']:
+            elif subset_type.minor in [Types.list, Types.tuple]:
                 dataset = UniversalDataset(*subset)
-            elif subset_type.minor in ['dict']:
+            elif subset_type.minor in [Types.dict]:
                 dataset = UniversalDataset(**subset)
             else:
                 dataset = UniversalDataset(subset)

@@ -1,6 +1,6 @@
 from beam.serve import beam_server
 # from examples.ssl_with_beam import my_ssl_algorithm
-from beam.sparse import SparseSimilarity
+from beam.similarity import SparseSimilarity
 
 
 if __name__ == '__main__':

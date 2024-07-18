@@ -4,15 +4,6 @@ import time
 from collections import Counter
 
 import torch
-import numpy as np
-from beam import resource, BeamData
-from beam import beam_logger as logger
-import pandas as pd
-
-
-def text_http_config():
-    from beam import HTTPServeClusterConfig
-    config = HTTPServeClusterConfig(config)
 
 
 def test_configuration_priority():

@@ -156,7 +156,7 @@ if __name__ == '__main__':
         # alg.set_best_masking()
         #
         # predictions = alg.evaluate('validation')
-        # logger.info(f"Validation objective: {predictions.statistics['validation']['scalar']['objective'].values}")
+        # logger.info(f"Validation objective: {predictions.statistics['validation'][Types.scalar]['objective'].values}")
         # exp.results_dir.joinpath('predictions.pt').write(predictions)
         #
         # # store to bundle

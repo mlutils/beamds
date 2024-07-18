@@ -38,7 +38,7 @@ t0 = time.time()
 # import warnings
 # import copy
 # from copy import deepcopy
-from src import beam
+import beam
 
 print("Beam loading time: ", time.time() - t0, " seconds")
 print(beam.__version__)

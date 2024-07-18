@@ -9,7 +9,7 @@ from ..utils import cached_property, Timer, as_numpy
 from ..data import BeamData
 from ..logging import beam_logger as logger
 from .core_algorithm import Algorithm
-from ..type import BeamType
+from ..type import BeamType, Types
 from dataclasses import dataclass
 
 
@@ -60,7 +60,7 @@ class GroupExpansionAlgorithm(Algorithm):
             from sklearn.ensemble import RandomForestClassifier
             alg = RandomForestClassifier(n_estimators=100)
         elif self.get_hparam('classifier') == 'catboost':
-            from beam.algorithm import CBAlgorithm
+            from .catboost_algorithm import CBAlgorithm
             alg = CBAlgorithm(self.hparams)
         return alg
 
@@ -113,7 +113,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
         x_type = BeamType.check_minor(x)
 
-        if x_type.minor == 'tensor':
+        if x_type.minor == Types.tensor:
             crow_indices = x.crow_indices().numpy()
             col_indices = x.col_indices().numpy()
             values = x.values().numpy()
@@ -145,7 +145,7 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
 
     @cached_property
     def tfidf_sim(self):
-        from beam.similarity import TFIDF
+        from ..similarity import TFIDF
         # for now fix the metric as it is the only supported metric in tfidf sim
         sim = {}
         for k in ['train', 'validation', 'test']:
@@ -156,14 +156,14 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         return sim
 
     def build_dense_model(self):
-        from beam.similarity import TextSimilarity
+        from ..similarity import TextSimilarity
         return TextSimilarity.load_dense_model(dense_model=self.get_hparam('dense-model'),
                                                dense_model_device=self.get_hparam('dense_model_device'),
                                                **self.get_hparam('st_kwargs', {}))
 
     @cached_property
     def dense_sim(self):
-        from beam.similarity import TextSimilarity
+        from ..similarity import TextSimilarity
         dense_model = self.build_dense_model()
         sim = {}
         for k in ['train', 'validation', 'test']:
