@@ -6,6 +6,17 @@ from collections import Counter
 import torch
 
 
+def test_k8s_configurations():
+
+    from beam import HTTPServeClusterConfig
+    from beam import resource
+    config_path = resource('../examples/Server_in_1click_config.yaml')
+    config = HTTPServeClusterConfig(config_path.str, conf_bundle=True, port=44044,
+                                    path_to_bundle='/app/algorithm',
+                                    api_token='sha256~Z3uD_QjNwupN51L2sA6gJ1jeKVBYMZCV9Gws1lujkec')
+    print(config)
+
+
 def test_configuration_priority():
     from beam.config import BeamConfig, BeamParam
 
