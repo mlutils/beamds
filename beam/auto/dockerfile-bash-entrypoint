@@ -1,0 +1,38 @@
+# ARG instruction to define the base image
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# ARG instructions for other parameters
+ARG REQUIREMENTS_FILE
+ARG CONFIG_FILE
+ARG ALGORITHM_DIR
+ARG ENTRYPOINT_SCRIPT
+ARG BEAM_DS_VERSION
+ARG DOCKER_TOOLS_DIR
+
+COPY ${DOCKER_TOOLS_DIR} /app/docker-tools
+# Copy the requirements.txt file and install Python dependencies
+COPY ${REQUIREMENTS_FILE} /app/requirements.txt
+# RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN python /app/docker-tools/gracefull-pip.py /app/requirements.txt
+
+RUN if [ -z "${BEAM_DS_VERSION}" ]; then \
+        pip install beam-ds[serve]; \
+    else \
+        pip install beam-ds[serve]==${BEAM_DS_VERSION}; \
+    fi
+
+# Copy the algorithm bundle directory
+COPY ${ALGORITHM_DIR} /app/algorithm
+
+# copy the config file
+COPY ${CONFIG_FILE} /app/config.yaml
+
+# Copy the entry point script
+COPY ${ENTRYPOINT_SCRIPT} /app/entrypoint.py
+
+# Set the working directory
+WORKDIR /app
+
+# Set the entry point script as the entry point for the Docker container
+ENTRYPOINT ["bash"]
