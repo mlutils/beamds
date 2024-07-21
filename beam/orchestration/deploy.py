@@ -76,7 +76,7 @@ class BeamDeploy(BeamBase):
         # if self.check_project_exists is True:
         self.k8s.create_project(self.namespace)
 
-        if self.create_service_account is True:
+        if self.create_service_account:
             self.k8s.create_service_account(self.service_account_name, self.namespace)
         else:
             self.service_account_name = 'default'
