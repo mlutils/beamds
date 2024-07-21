@@ -99,52 +99,61 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     #             logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")ddd
     #             raise
 
-    def create_service_account(self, name, namespace=None):
-        namespace = namespace or self.namespace
-
-        # Attempt to read the service account, create it if it does not exist
+    def create_service_account(self, name, namespace):
+        from kubernetes.client import V1ServiceAccount, V1ObjectMeta
         try:
+            # Attempt to read the service account
             self.core_v1_api.read_namespaced_service_account(name, namespace)
             logger.info(f"Service Account {name} already exists in namespace {namespace}.")
+            return False  # Service account exists, no need to create a new one
         except ApiException as e:
             if e.status == 404:
-                # Create the service account
-                metadata = client.V1ObjectMeta(name=name)
-                service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount",
-                                                          metadata=metadata)
+                # Create the service account if it does not exist
+                service_account = V1ServiceAccount(metadata=V1ObjectMeta(name=name))
                 self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
                 logger.info(f"Service Account {name} created in namespace {namespace}.")
-
-                # Create the role binding to give admin privileges
-                self.bind_service_account_to_role(name, namespace)
-
-                # Optionally create a secret for the service account to generate a persistent token
-                self.create_service_account_secret(name, namespace)
+                # Wait for Kubernetes to potentially auto-create the secret
+                time.sleep(10)
+                return True
             else:
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
 
     def bind_service_account_to_role(self, service_account_name, namespace, role='admin'):
-        role_binding = V1RoleBinding(
-            metadata=V1ObjectMeta(name=f"{service_account_name}-admin-binding"),
-            subjects=[RbacV1Subject(kind="ServiceAccount", name=service_account_name, namespace=namespace)],
-            role_ref=V1RoleRef(api_group="rbac.authorization.k8s.io", kind="ClusterRole", name=role)
-        )
+        from kubernetes.client import V1RoleBinding, V1RoleRef, V1ObjectMeta
         try:
-            self.rbac_api.create_namespaced_role_binding(namespace, role_binding)
-            logger.info(f"Role binding {role_binding.metadata.name} created for {service_account_name}.")
+            # Attempt to read the role binding
+            self.rbac_api.read_namespaced_role_binding(f"{service_account_name}-admin-binding", namespace)
+            logger.info(f"Role binding {service_account_name}-admin-binding already exists in namespace {namespace}.")
+            return False  # Role binding exists, no need to create a new one
         except ApiException as e:
-            logger.error(f"Failed to create role binding for {service_account_name}: {e}")
-            raise
+            if e.status == 404:
+                # Create the role binding if it does not exist
+                role_binding = V1RoleBinding(
+                    metadata=V1ObjectMeta(name=f"{service_account_name}-admin-binding"),
+                    subjects=[{"kind": "ServiceAccount", "name": service_account_name, "namespace": namespace}],
+                    role_ref={"api_group": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": role}
+                )
+                self.rbac_api.create_namespaced_role_binding(namespace, role_binding)
+                logger.info(f"Role binding {service_account_name}-admin-binding created in namespace {namespace}.")
+                return True
+            else:
+                logger.error(
+                    f"Failed to check or create role binding {service_account_name}-admin-binding in namespace {namespace}: {e}")
+                raise
 
     def create_service_account_secret(self, service_account_name, namespace):
-        from kubernetes.client import V1Secret
+        from kubernetes.client import V1Secret, V1ObjectMeta
+        # Proper annotations are needed to link the secret with the service account
+        annotations = {
+            'kubernetes.io/service-account.name': service_account_name
+        }
         secret = V1Secret(
-            metadata=client.V1ObjectMeta(name=f"{service_account_name}-token"),
-            type="kubernetes.io/service-account-token",
-            data={
-                'service_account_name': service_account_name.encode()
-            }
+            metadata=V1ObjectMeta(
+                name=f"{service_account_name}-token",
+                annotations=annotations
+            ),
+            type="kubernetes.io/service-account-token"
         )
         try:
             self.core_v1_api.create_namespaced_secret(namespace, secret)
