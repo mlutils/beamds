@@ -142,6 +142,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
+    priority order: script arguments > non default kwargs+args > config files > default values
     '''
 
     sys_argv_copy = sys.argv.copy()
@@ -249,6 +250,14 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
         # have higher priority
 
         for k in keys_with_non_default_values:
+            logger.debug(f"loading {k} from command line instead of config files {config_files}. "
+                         f"command line arguments have higher priority over config files")
+            config_args.pop(k, None)
+
+        kwargs_non_default_values = set(args_that_were_provided_explicitly(pr, kwargs))
+        for k in kwargs_non_default_values:
+            logger.debug(f"loading {k} from kwargs instead of config files {config_files}. "
+                         f"non default kwargs has higher priority over config files")
             config_args.pop(k, None)
 
         args = Namespace(**{**to_dict(args), **config_args})

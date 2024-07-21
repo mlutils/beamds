@@ -2,15 +2,18 @@ import os
 import sys
 import time
 from collections import Counter
-
+from beam import resource
+from beam import logger
+import numpy as np
+import pandas as pd
 import torch
 
 
 def test_k8s_configurations():
 
     from beam import HTTPServeClusterConfig
-    from beam import resource
-    config_path = resource('../examples/Server_in_1click_config.yaml')
+    from beam import this_dir
+    config_path = this_dir().parent.joinpath('examples/Server_in_1click_config.yaml')
     config = HTTPServeClusterConfig(config_path.str, conf_bundle=True, port=44044,
                                     path_to_bundle='/app/algorithm',
                                     api_token='sha256~Z3uD_QjNwupN51L2sA6gJ1jeKVBYMZCV9Gws1lujkec')
@@ -110,7 +113,7 @@ def test_special_attributes():
 
 def test_collate_transformer_chunks():
 
-    from beam import Transformer
+    from beam import Transformer, BeamData
     def func(x):
         return x + 1
 
@@ -327,7 +330,7 @@ def sparnn_example():
 
 
 def get_name():
-    from beam.core import Processor
+    from beam.processor import Processor
 
     abcd = Processor()
 
@@ -633,6 +636,8 @@ if __name__ == '__main__':
 
     # test_parallel_treading()
 
-    test_configuration_priority()
+    # test_configuration_priority()
+
+    test_k8s_configurations()
 
     print('done')

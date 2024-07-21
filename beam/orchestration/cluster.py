@@ -2,7 +2,6 @@ from .k8s import BeamK8S
 from .deploy import BeamDeploy
 from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig,
                           MemoryStorageConfig, SecurityContextConfig)
-import docker
 from ..logging import beam_logger as logger
 import time
 from ..base import BeamBase
@@ -68,7 +67,6 @@ class HTTPServeCluster(BeamBase):
             pods = deployment.launch(replicas=config['replicas'])
             if pods:
                 logger.info("Pod deployment successful")
-            cluster_info = deployment.cluster_info  # Assume this method returns the formatted cluster info string
             if config.send_email is True:
                 subject = "Cluster Deployment Information"
                 # body = f"{config['body']}\n{get_cluster_info}"
@@ -78,11 +76,8 @@ class HTTPServeCluster(BeamBase):
                 from_email_password = config['from_email_password']
                 k8s.send_email(subject, body, to_email, from_email, from_email_password)
             else:
-                logger.info(f"Skipping email - printing Cluster info:")
-                logger.info(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
-            get_cluster_info = deployment.cluster_info
-            logger.info(f"Cluster info: {get_cluster_info}")
-            logger.info(f"Cluster info: {deployment.cluster_info}")
+                logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
+            logger.debug(f"Cluster info: {deployment.cluster_info}")
             if not pods:
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed

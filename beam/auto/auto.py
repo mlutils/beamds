@@ -623,12 +623,12 @@ class AutoBeam(BeamBase):
             response = client.push(full_image_name, stream=True, decode=True)
             for line in response:
                 if 'status' in line:
-                    logger.info(line['status'])
+                    logger.debug(line['status'])
                 elif 'error' in line:
                     logger.error(f"Error during push: {line['error']}")
                     raise APIError(line['error'])
                 elif 'progress' in line:
-                    logger.info(line['progress'])
+                    logger.debug(line['progress'])
             return full_image_name  # Return the full image name on success
 
         except APIError as e:
