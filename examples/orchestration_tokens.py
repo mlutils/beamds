@@ -27,7 +27,7 @@ k8s = BeamK8S(
 )
 
 
-# # Initialize your K8S object
+# # Initialize your K8S objectd
 # api_url = "https://api.kh-dev.dt.local:6443"
 # api_token = "your_api_token_here"
 # project_name = "example_namespace"

@@ -96,7 +96,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     #             self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
     #             logger.info(f"Service Account {name} created in namespace {namespace}.")
     #         else:
-    #             logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
+    #             logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")ddd
     #             raise
 
     def create_service_account(self, name, namespace=None):
