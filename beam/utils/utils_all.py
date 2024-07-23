@@ -1253,20 +1253,29 @@ def deserialize_annotation(annotation_str, global_ns=None):
     except Exception:
         return annotation_str
 
+
 def signature_to_dict(signature):
     """Convert a Signature object to a dictionary representation."""
+
+    def default_param(param):
+        param_type = check_type(param)
+        if not param_type.is_scalar:
+            return str(param)
+        return param
+
     return {
         'parameters': [
             {
                 'name': param.name,
                 'kind': param.kind.name,
-                'default': param.default if param.default is not inspect.Parameter.empty else None,
+                'default': default_param(param.default) if param.default is not inspect.Parameter.empty else None,
                 'annotation': serialize_annotation(param.annotation)
             }
             for param in signature.parameters.values()
         ],
         'return_annotation': serialize_annotation(signature.return_annotation)
     }
+
 
 def dict_to_signature(d, global_ns=None):
     """Convert a dictionary representation back to a Signature object."""

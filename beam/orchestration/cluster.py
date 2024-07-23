@@ -1,19 +1,29 @@
+from typing import List
+import time
+
+from ..logging import beam_logger as logger
+from ..base import BeamBase
+
 from .k8s import BeamK8S
+from .pod import BeamPod
 from .deploy import BeamDeploy
 from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig,
                           MemoryStorageConfig, SecurityContextConfig)
-from ..logging import beam_logger as logger
-import time
-from ..base import BeamBase
 
 
-class HTTPServeCluster(BeamBase):
+class BeamCluster(BeamBase):
 
-    def __init__(self, deployment, pods, config, *args, **kwargs):
+    def __init__(self, deployment: BeamDeploy, config, pods: List[BeamPod] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pods = pods
         self.deployment = deployment
         self.config = config
+
+
+class HTTPServeCluster(BeamCluster):
+
+    def __init__(self, deployment, pods, config, *args, **kwargs):
+        super().__init__(deployment, config, *args, pods=pods, **kwargs)
         self.k8s = BeamK8S(
             api_url=config['api_url'],
             api_token=config['api_token'],
@@ -101,10 +111,9 @@ class HTTPServeCluster(BeamBase):
         return cls._deploy_and_launch(bundle_path=None, obj=None, image_name=image_name, config=config)
 
 
-class RayCluster(BeamBase):
+class RayCluster(BeamCluster):
     def __init__(self, deployment, config, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.deployment = deployment
+        super().__init__(deployment, config, *args, **kwargs)
         self.workers = []
         self.n_pods = config['n_pods']
         self.head = None
@@ -194,7 +203,6 @@ class RayCluster(BeamBase):
     #         w.execute(f"command to connect to head node with ip: {self.head.ip}")
 
     # Todo: run over all nodes and get info from pod, if pod is dead, relaunch the pod
-
 
     def monitor_cluster(self):
         while True:
