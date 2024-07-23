@@ -1,6 +1,9 @@
+import base64
+
 from dataclasses import make_dataclass
 from kubernetes import client, watch
-from kubernetes.client import Configuration, RbacAuthorizationV1Api, V1DeleteOptions
+from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions,
+                               V1ObjectMeta, V1RoleBinding, V1RoleRef, RbacV1Subject)
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from ..utils import cached_property
@@ -78,23 +81,104 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             else:
                 logger.error(f"Failed to check or create project '{project_name}': {e}")
 
-    def create_service_account(self, name, create_service_account, namespace=None):
-        namespace = namespace or self.namespace
+    # def create_service_account(self, name, create_service_account, namespace=None):
+    #     namespace = namespace or self.namespace
+    #
+    #     # Attempt to read the service account, create it if it does not exist
+    #     try:
+    #         self.core_v1_api.read_namespaced_service_account(name, namespace)
+    #         logger.info(f"Service Account {name} already exists in namespace {namespace}.")
+    #     except ApiException as e:
+    #         if e.status == 404:
+    #             metadata = client.V1ObjectMeta(name=name)
+    #             service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount",
+    #                                                       metadata=metadata)
+    #             self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
+    #             logger.info(f"Service Account {name} created in namespace {namespace}.")
+    #         else:
+    #             logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")ddd
+    #             raise
 
-        # Attempt to read the service account, create it if it does not exist
+    def create_service_account(self, name, namespace):
+        from kubernetes.client import V1ServiceAccount, V1ObjectMeta
         try:
+            # Attempt to read the service account
             self.core_v1_api.read_namespaced_service_account(name, namespace)
             logger.info(f"Service Account {name} already exists in namespace {namespace}.")
+            return False  # Service account exists, no need to create a new one
         except ApiException as e:
             if e.status == 404:
-                metadata = client.V1ObjectMeta(name=name)
-                service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount",
-                                                          metadata=metadata)
+                # Create the service account if it does not exist
+                service_account = V1ServiceAccount(metadata=V1ObjectMeta(name=name))
                 self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
                 logger.info(f"Service Account {name} created in namespace {namespace}.")
+                # Wait for Kubernetes to potentially auto-create the secret
+                time.sleep(10)
+                return True
             else:
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
+
+    def bind_service_account_to_role(self, service_account_name, namespace, role='admin'):
+        from kubernetes.client import V1RoleBinding, V1RoleRef, V1ObjectMeta
+        try:
+            # Attempt to read the role binding
+            self.rbac_api.read_namespaced_role_binding(f"{service_account_name}-admin-binding", namespace)
+            logger.info(f"Role binding {service_account_name}-admin-binding already exists in namespace {namespace}.")
+            return False  # Role binding exists, no need to create a new one
+        except ApiException as e:
+            if e.status == 404:
+                # Create the role binding if it does not exist
+                role_binding = V1RoleBinding(
+                    metadata=V1ObjectMeta(name=f"{service_account_name}-admin-binding"),
+                    subjects=[{"kind": "ServiceAccount", "name": service_account_name, "namespace": namespace}],
+                    role_ref={"api_group": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": role}
+                )
+                self.rbac_api.create_namespaced_role_binding(namespace, role_binding)
+                logger.info(f"Role binding {service_account_name}-admin-binding created in namespace {namespace}.")
+                return True
+            else:
+                logger.error(
+                    f"Failed to check or create role binding {service_account_name}-admin-binding in namespace {namespace}: {e}")
+                raise
+
+    def create_service_account_secret(self, service_account_name, namespace):
+        from kubernetes.client import V1Secret, V1ObjectMeta
+        # Proper annotations are needed to link the secret with the service account
+        annotations = {
+            'kubernetes.io/service-account.name': service_account_name
+        }
+        secret = V1Secret(
+            metadata=V1ObjectMeta(
+                name=f"{service_account_name}-token",
+                annotations=annotations
+            ),
+            type="kubernetes.io/service-account-token"
+        )
+        try:
+            self.core_v1_api.create_namespaced_secret(namespace, secret)
+            logger.info(f"Secret {secret.metadata.name} created for Service Account {service_account_name}.")
+        except ApiException as e:
+            logger.error(f"Failed to create secret for Service Account {service_account_name}: {e}")
+            raise
+
+    def create_or_retrieve_service_account_token(self, service_account_name, namespace):
+        """Create a new secret for a service account or retrieve an existing one."""
+        # Check if there is already a secret for this service account
+        secrets = self.core_v1_api.list_namespaced_secret(namespace)
+        for secret in secrets.items:
+            if (secret.type == "kubernetes.io/service-account-token" and
+                    secret.metadata.annotations['kubernetes.io/service-account.name'] == service_account_name):
+                # Get the token from the secret
+                token = base64.b64decode(secret.data['token']).decode('utf-8')
+                return token
+
+        # If no secret found, create a new one and retrieve the token
+        # This involves creating a secret linked to the service account with appropriate annotations and type
+        # Assuming that such secret creation and linking is done automatically by your Kubernetes setup when a service account is created
+
+        # This part can be specific based on your cluster configuration, some clusters auto-create these secrets
+        raise Exception("Token not found and manual creation not implemented.")
 
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
@@ -210,7 +294,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return env_vars
 
     @staticmethod
-    def create_pod_template(image_name, use_command=None, command=None, labels=None, deployment_name=None, project_name=None,
+    def create_pod_template(image_name, use_command=None, command=None, labels=None, deployment_name=None,
+                            project_name=None,
                             ports=None, create_service_account=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
                             memory_limits=None, use_gpu=False, gpu_requests=None,
@@ -297,7 +382,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         self.core_v1_api.create_namespaced_persistent_volume_claim(namespace=namespace, body=pvc_manifest)
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 
-    def create_deployment_spec(self, image_name, use_command=None, command=None, labels=None, deployment_name=None, project_name=None, replicas=None,
+    def create_deployment_spec(self, image_name, use_command=None, command=None, labels=None, deployment_name=None,
+                               project_name=None, replicas=None,
                                ports=None, create_service_account=None, service_account_name=None, storage_configs=None,
                                cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=None,
                                node_selector=None, memory_limits=None, use_gpu=None,
