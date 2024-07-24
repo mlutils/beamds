@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from ..utils import cached_property
 
 from .. import beam_path
-from ..type import BeamType
+from ..type import BeamType, Types
 from ..utils import jupyter_like_traceback
 from dataclasses import dataclass
 import re
@@ -229,12 +229,12 @@ class ImageContent(LLMContent):
     @property
     def pil_format(self):
         from PIL import Image
-        if self.image_type.minor == 'numpy':
+        if self.image_type.minor == Types.numpy:
             image = Image.fromarray(self.image)
-        elif self.image_type.minor == 'tensor':
+        elif self.image_type.minor == Types.tensor:
             image = Image.fromarray(self.image.cpu().numpy())
         elif (self.image_type.major == 'path' or
-              (self.image_type.major == 'native' and self.image_type.element == 'str')):
+              (self.image_type.major == Types.native and self.image_type.element == 'str')):
             image = Image.open(beam_path(self.image))
         else:
             raise ValueError(f"Cannot convert {self.image_type} to PIL Image.")
@@ -242,7 +242,7 @@ class ImageContent(LLMContent):
 
     @cached_property
     def base64_image(self):
-        if self.image_type.major == 'path' or self.image_type.major == 'scalar' and self.image_type.element == 'str':
+        if self.image_type.major == 'path' or self.image_type.major == Types.scalar and self.image_type.element == 'str':
             path = beam_path(self.image)
             return base64.b64encode(path.read_bytes()).decode('utf-8')
         if self.image_type.minor == 'pil':

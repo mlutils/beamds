@@ -26,29 +26,6 @@ k8s = BeamK8S(
     namespace=config['project_name'],
 )
 
-# security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
-# memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
-# service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
-# storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
-# ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs', [])]
-# user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
-# command = CommandConfig(**config.get('command', {}))
-
-# where the config should be? either:
-# 1. first argument of the BeamDeploy class
-# 2. hparams=config
-
-# deployment = BeamDeploy(config, k8s, command=command,
-#                         service_configs=service_configs,
-#                         storage_configs=storage_configs,
-#                         ray_ports_configs=ray_ports_configs,
-#                         memory_storage_configs=memory_storage_configs,
-#                         security_context_config=security_context_config,
-#                         user_idm_configs=user_idm_configs,
-#                         # example of overwriting an argument using kwargs:
-#                         # base_url='xxxxx',
-#                         # this would overwrite the base_url from the config
-#                         enable_ray_ports=False)
 
 deployment = BeamDeploy(config, k8s,
                         # example of overwriting an argument using kwargs:

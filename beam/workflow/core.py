@@ -1,12 +1,9 @@
 from dataclasses import dataclass
-
 from prefect import flow, task
-from prefect.task_runners import SequentialTaskRunner
-import datetime
 
 from ..path import beam_path
 from ..utils import beam_hash
-from ..processor import Processor
+from ..base import BeamBase
 from ..transformer import Transformer
 
 
@@ -29,7 +26,7 @@ class CronSchedule:
         return self.__str__()
 
 
-class BeamFlow(Processor):
+class BeamFlow(BeamBase):
 
     def __init__(self, obj, *args, description=None, log_prints=True, retries=None, retry_delay_seconds=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -38,7 +35,7 @@ class BeamFlow(Processor):
         self.log_prints = log_prints
         self.retries = retries
         self.retry_delay_seconds = retry_delay_seconds
-        self.name = obj.name if hasattr(obj, 'name') else self.name
+        self._name = obj.name if hasattr(obj, 'name') else self._name
         self.is_transformer = isinstance(obj, Transformer)
         self.run = task(description=self.description, name=self.name)(self._run)
         self.flow = flow(name=self.name, log_prints=self.log_prints,

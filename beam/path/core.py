@@ -863,7 +863,7 @@ class PureBeamPath(BeamResource):
                 from safetensors.torch import load
                 x = load(fo.read())
 
-            elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif']:
+            elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp']:
                 if target == 'cv2':
                     import cv2
                     x = cv2.imread(fo, **kwargs)
@@ -945,7 +945,7 @@ class PureBeamPath(BeamResource):
 
         if ext == '.abm':
             from ..auto import AutoBeam
-            AutoBeam(x).to_bundle(self)
+            AutoBeam.to_bundle(x, self)
             return self
 
         with self(mode=PureBeamPath.mode('write', ext)) as fo:
@@ -1125,7 +1125,7 @@ class PureBeamPath(BeamResource):
                 x.read_dict(x)
                 x.write(fo)
 
-            elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif']:
+            elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp']:
                 if is_pil(x):
                     from PIL import Image
                     x.save(fo, **kwargs)

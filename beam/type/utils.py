@@ -13,7 +13,8 @@ from ..importer.lazy_importer import lazy_importer as lzi
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
 
 
-class Types(Enum):
+# TODO: switch to class Types(Enum)
+class Types:
     array = 'array'
     scalar = 'scalar'
     container = 'container'
@@ -39,6 +40,12 @@ class Types(Enum):
     polars = 'polars'
     cudf = 'cudf'
     pil = 'pil'
+    int = 'int'
+    float = 'float'
+    complex = 'complex'
+    bool = 'bool'
+    str = 'str'
+    na = 'na'
 
 
 def is_cached_property(obj, attribute_name):
@@ -84,66 +91,66 @@ def check_element_type(x, minor=None):
 
     if minor is None:
         minor = check_minor_type(x)
-    unknown = (minor == 'other')
+    unknown = (minor == Types.other)
 
     if not unknown and not np.isscalar(x) and not is_torch_scalar(x):
-        if minor == 'path':
-            return 'path'
-        return 'array'
+        if minor == Types.path:
+            return Types.path
+        return Types.array
 
     if pd.isna(x):
-        return 'none'
+        return Types.none
 
     if hasattr(x, 'dtype'):
         # this case happens in custom classes that have a dtype attribute
         if unknown:
-            return 'other'
+            return Types.other
 
         t = str(x.dtype).lower()
     else:
         t = str(type(x)).lower()
 
     if 'int' in t:
-        return 'int'
+        return Types.int
     if 'bool' in t:
-        return 'bool'
+        return Types.bool
     if 'float' in t:
-        return 'float'
+        return Types.float
     if 'str' in t:
-        return 'str'
+        return Types.str
     if 'complex' in t:
-        return 'complex'
+        return Types.complex
 
-    return 'object'
+    return Types.object
 
 
 def check_minor_type(x):
     if isinstance(x, np.ndarray):
-        return 'numpy'
+        return Types.numpy
     if isinstance(x, pd.core.base.PandasObject):
-        return 'pandas'
+        return Types.pandas
     if is_tensor(x):
-        return 'tensor'
+        return Types.tensor
     if isinstance(x, dict):
-        return 'dict'
+        return Types.dict
     if isinstance(x, list):
-        return 'list'
+        return Types.list
     if isinstance(x, tuple):
-        return 'tuple'
+        return Types.tuple
     if isinstance(x, set):
-        return 'set'
+        return Types.set
     if isinstance(x, slice):
-        return 'slice'
+        return Types.slice
     if isinstance(x, Counter):
-        return 'counter'
+        return Types.counter
     elif is_scalar(x):
-        return 'scalar'
+        return Types.scalar
     if is_polars(x):
-        return 'polars'
+        return Types.polars
     if is_scipy_sparse(x):
-        return 'scipy_sparse'
+        return Types.scipy_sparse
     elif is_pil(x):
-        return 'pil'
+        return Types.pil
     elif isinstance(x, PurePath) or is_beam_path(x):
         return 'path'
     elif is_beam_data(x):
@@ -153,7 +160,7 @@ def check_minor_type(x):
     if is_cudf(x):
         return 'cudf'
     else:
-        return 'other'
+        return Types.other
 
 
 def elt_of_list(x, sample_size=20):
@@ -172,7 +179,7 @@ def elt_of_list(x, sample_size=20):
     t0 = type(elements[0])
     for e in elements[1:]:
         if type(e) != t0:
-            elt = 'object'
+            elt = Types.object
             break
 
     if elt is None:
@@ -199,84 +206,84 @@ def _check_type(x, minor=True, element=True):
     '''
 
     if is_scalar(x):
-        mjt = 'scalar'
+        mjt = Types.scalar
         if minor:
             if type(x) in [int, float, str, complex, bool]:
-                mit = 'native'
+                mit = Types.native
             else:
                 mit = check_minor_type(x)
         else:
-            mit = 'na'
+            mit = Types.na
         elt = check_element_type(x, minor=mit if mit != 'na' else None) if element else 'na'
 
     elif isinstance(x, dict):
 
         if isinstance(x, Counter):
-            mjt = 'counter'
-            mit = 'counter'
-            elt = 'counter'
+            mjt = Types.counter
+            mit = Types.counter
+            elt = Types.counter
         else:
-            mjt = 'container'
-            mit = 'dict'
+            mjt = Types.container
+            mit = Types.dict
 
             if element:
                 if len(x):
                     elt = check_element_type(next(iter(x.values())))
                 else:
-                    elt = 'empty'
+                    elt = Types.empty
             else:
-                elt = 'na'
+                elt = Types.na
 
     elif x is None:
-        mjt = 'none'
-        mit = 'none'
-        elt = 'none'
+        mjt = Types.none
+        mit = Types.none
+        elt = Types.none
 
     elif isinstance(x, slice):
-        mjt = 'slice'
-        mit = 'slice'
-        elt = 'slice'
+        mjt = Types.slice
+        mit = Types.slice
+        elt = Types.slice
 
     elif isinstance(x, PurePath) or is_beam_path(x):
-        mjt = 'path'
-        mit = 'path'
-        elt = 'path'
+        mjt = Types.path
+        mit = Types.path
+        elt = Types.path
 
     else:
 
-        elt = 'unknown'
+        elt = Types.unknown
 
         if hasattr(x, '__len__'):
-            mjt = 'array'
+            mjt = Types.array
         else:
-            mjt = 'other'
+            mjt = Types.other
         if isinstance(x, list) or isinstance(x, tuple) or isinstance(x, set):
             if not len(x):
-                elt = 'empty'
+                elt = Types.empty
             else:
                 elt = elt_of_list(x)
 
-            if elt in ['array', 'object', 'none']:
-                mjt = 'container'
+            if elt in [Types.array, Types.object, Types.none]:
+                mjt = Types.container
 
-        mit = check_minor_type(x) if minor else 'na'
+        mit = check_minor_type(x) if minor else Types.na
 
         if elt:
-            if mit in ['numpy', 'tensor', 'pandas', 'scipy_sparse']:
-                if mit == 'pandas':
+            if mit in [Types.numpy, Types.tensor, Types.pandas, Types.scipy_sparse]:
+                if mit == Types.pandas:
                     dt = str(x.values.dtype)
                 else:
                     dt = str(x.dtype)
                 if 'float' in dt:
-                    elt = 'float'
+                    elt = Types.float
                 elif 'int' in dt:
-                    elt = 'int'
+                    elt = Types.int
                 else:
-                    elt = 'object'
+                    elt = Types.object
 
-        if mit == 'other':
-            mjt = 'other'
-            elt = 'other'
+        if mit == Types.other:
+            mjt = Types.other
+            elt = Types.other
 
     return TypeTuple(major=mjt, minor=mit, element=elt)
 
@@ -305,7 +312,7 @@ def is_container(x):
                 return True
 
             # path is needed here since we want to consider a list of paths as a container
-            if elt in ['array', 'none', 'object', 'path']:
+            if elt in [Types.array, Types.none, Types.object, Types.path]:
                 return True
 
     return False

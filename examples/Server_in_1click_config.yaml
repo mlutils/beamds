@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~RPNTod9i6nAjevzvRxt_FcKB18Ypyv7Z5YHceYP9yvQ
+api_token: sha256~p2O_ltaM03oKj0RLNI_D_dzasuAIPgr6utWdYHTDvBI
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -7,7 +7,7 @@ base_url: tcp://10.0.7.55:2375
 #client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: 2.6.1b
+beam_version: 2.6.3
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:

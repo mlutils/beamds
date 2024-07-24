@@ -8,6 +8,7 @@ import hashlib
 
 from ..logging import beam_logger as logger
 from ..utils import as_tensor, check_type, as_numpy, beam_device
+from ..type import Types
 
 
 class UniversalBatchSampler(object):
@@ -84,7 +85,7 @@ class UniversalBatchSampler(object):
 
         self.device = beam_device(device)
 
-        if indices_type.major == 'array':
+        if indices_type.major == Types.array:
             self.indices = as_tensor(indices, device=device, dtype=torch.int64)
         else:
             self.indices = torch.arange(indices, device=device)
@@ -155,7 +156,7 @@ class UniversalBatchSampler(object):
                     continue
 
     def replace_indices(self, indices, probs=None):
-        if check_type(indices).major == 'array':
+        if check_type(indices).major == Types.array:
             self.indices = as_numpy(indices)
         else:
             self.indices = np.arange(indices)

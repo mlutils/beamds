@@ -4,6 +4,8 @@ from ..utils import cached_property
 
 from ..processor import Processor
 from ..utils import as_numpy, check_type, as_tensor
+from ..type import Types
+
 
 triton_to_numpy_dtype_dict = {
     'BOOL': 'bool',
@@ -110,7 +112,7 @@ class TritonClient(Processor):
         model_version = model_version or self.model_version or ''
         inputs_metadata = []
         org_type = check_type(args[0])
-        org_device = args[0].device if org_type.minor == 'tensor' else None
+        org_device = args[0].device if org_type.minor == Types.tensor else None
         inputs = []
         metadata = self.get_metadata(model_name, model_version)
         for i, input_metadata in enumerate(metadata['inputs']):
@@ -132,7 +134,7 @@ class TritonClient(Processor):
         outputs = []
         for output_metadata in outputs_metadata:
             out = response.as_numpy(output_metadata.name())
-            if org_type.minor == 'tensor':
+            if org_type.minor == Types.tensor:
                 out = as_tensor(out, device=org_device)
             outputs.append(out)
             

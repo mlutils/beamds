@@ -4,10 +4,6 @@ import time
 from collections import Counter
 
 import torch
-import numpy as np
-from beam import resource, BeamData
-from beam import beam_logger as logger
-import pandas as pd
 
 
 def test_configuration_priority():

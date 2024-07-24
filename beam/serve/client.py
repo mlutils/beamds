@@ -1,10 +1,12 @@
 import io
 import pickle
-from functools import partial
+from functools import partial, update_wrapper
 from ..path import normalize_host, BeamResource
 from ..base import BeamBase
 
 from .server import has_torch
+from ..utils import dict_to_signature
+
 if has_torch:
     import torch
 
@@ -87,8 +89,23 @@ class BeamClient(BeamBase, BeamResource):
             func = partial(self.post, f'alg/beam/{item}')
             func.__name__ = item
             func.__doc__ = self.attributes[item]['description']
+            if self.attributes[item]['signature'] is not None:
+                func = self._create_function_with_signature(func, dict_to_signature(self.attributes[item]['signature']))
             return func
         raise ValueError(f"Unknown attribute type: {attribute_type}")
+
+    def _create_function_with_signature(self, func, signature):
+        # Create a new function with the desired signature
+        def new_func(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        # Update the new function to have the same properties as the original
+        update_wrapper(new_func, func)
+
+        # Set the new function's signature
+        new_func.__signature__ = signature
+
+        return new_func
 
     def __setattr__(self, key, value):
         if key.startswith('_') or not hasattr(self, '_lazy_cache') or 'info' not in self._lazy_cache:

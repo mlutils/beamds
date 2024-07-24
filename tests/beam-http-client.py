@@ -2,7 +2,7 @@ from beam import resource
 
 
 def main():
-    alg = resource('beam-https://localhost:31150')
+    alg = resource('http://localhost:44044')
     print(alg.run('hi'))
 
 

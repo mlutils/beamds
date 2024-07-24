@@ -8,6 +8,7 @@ import numpy as np
 from beam import beam_arguments, Experiment, as_tensor, as_numpy
 from beam import UniversalDataset
 from beam.ssl import get_ssl_parser
+from beam.type import Types
 
 from sklearn.datasets import fetch_covtype
 import pandas as pd
@@ -470,7 +471,7 @@ class Vime(BeamSSL):
                                                        pos_weight=1 / self.hparams.mask * torch.ones(masks_hat.shape,
                                                                                                      device=masks_hat.device))
 
-        results['scalar'][f'acc_mask'].append(as_numpy((masks_hat > 0).long() == mask))
+        results[Types.scalar][f'acc_mask'].append(as_numpy((masks_hat > 0).long() == mask))
 
         x_hat = torch.tensor_split(x_hat, self.cat_splits, dim=-1)
         loss_cat = []
@@ -478,7 +479,7 @@ class Vime(BeamSSL):
         for i in range(x.shape[-1]):
             loss_cat_i = F.cross_entropy(x_hat[i], x[:, i], reduction='none')
             loss_cat.append(loss_cat_i)
-            results['scalar'][f'acc_{self.dataset.features_names[i]}'].append(as_numpy(torch.argmax(x_hat[i], dim=1)
+            results[Types.scalar][f'acc_{self.dataset.features_names[i]}'].append(as_numpy(torch.argmax(x_hat[i], dim=1)
                                                                                        == x[:, i]))
 
         loss_cat = torch.stack(loss_cat, dim=-1)
@@ -569,7 +570,7 @@ class VicVime(BeamSSL):
                                                        pos_weight=1 / self.hparams.mask * torch.ones(masks_hat.shape,
                                                                                                      device=masks_hat.device))
 
-        results['scalar'][f'acc_mask'].append(as_numpy((masks_hat > 0).long() == mask))
+        results[Types.scalar][f'acc_mask'].append(as_numpy((masks_hat > 0).long() == mask))
 
         x_hat = torch.tensor_split(x_hat, self.cat_splits, dim=-1)
         loss_cat = []
@@ -580,7 +581,7 @@ class VicVime(BeamSSL):
         for i in range(xd_cat.shape[-1]):
             loss_cat_i = F.cross_entropy(x_hat[i], xd_cat[:, i], reduction='none') * mask[:, i]
             loss_cat.append(loss_cat_i)
-            results['scalar'][f'acc_{self.dataset.features_names_cat[i]}'].append(as_numpy(torch.argmax(x_hat[i], dim=1)
+            results[Types.scalar][f'acc_{self.dataset.features_names_cat[i]}'].append(as_numpy(torch.argmax(x_hat[i], dim=1)
                                                                                        == xd_cat[:, i]))
 
         loss_num = F.smooth_l1_loss(x_hat[-1], xd_num, reduction='none') * mask[:, -xd_num.shape[-1]:]
@@ -637,7 +638,7 @@ class VicVime(BeamSSL):
             y = as_tensor(y, device=y_hat.device).squeeze(-1)
             loss_classification = F.cross_entropy(y_hat, y, reduction='none')
 
-            results['scalar']['acc_plabels'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
+            results[Types.scalar]['acc_plabels'].append(as_numpy((y_hat.argmax(1) == y).float().mean()))
 
         else:
             loss_classification = as_tensor(0, device=h.device)
@@ -663,8 +664,8 @@ class VicVime(BeamSSL):
                             'norm_loss': self.hparams.norm_loss_weight,
                             }, training=training, results=results)
 
-        results['scalar']['mu'].append(as_numpy(c1))
-        results['scalar']['sig'].append(as_numpy(torch.sqrt(norm_squared_1)))
+        results[Types.scalar]['mu'].append(as_numpy(c1))
+        results[Types.scalar]['sig'].append(as_numpy(torch.sqrt(norm_squared_1)))
 
         return results
 

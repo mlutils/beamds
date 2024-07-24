@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>The Beam-DS Container</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='beam-logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <style>
+      @font-face {
+        font-family: 'Montserrat';
+        src: url('{{ url_for('static', filename='fonts/Montserrat-Regular.ttf') }}') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      @font-face {
+        font-family: 'Montserrat';
+        src: url('{{ url_for('static', filename='fonts/Montserrat-Bold.ttf') }}') format('truetype');
+        font-weight: bold;
+        font-style: normal;
+      }
+
+      body {
+        font-family: 'Montserrat', sans-serif;
+        text-align: center;
+        padding: 50px;
+        background: linear-gradient(to bottom, #8B0000, #FF4500, #FFD700, #FFFFE0);
+        color: #fff;
+      }
+
+      .header img {
+        width: 100px;
+        height: 100px;
+        border-radius: 20px;
+        border: 2px solid #444;
+        background-color: rgba(0, 0, 0, 0.2);
+        padding: 10px;
+      }
+      .header h1 {
+        color: #fff;
+        margin-top: 10px;
+        font-size: 2.5em;
+      }
+      .header p {
+        color: #fff;
+        font-size: 1.5em;
+      }
+      .services-container {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 17px; /* Equal gap for both horizontal and vertical */
+        justify-items: center;
+      }
+      .service {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px; /* Adjusted padding */
+        width: 276px; /* Wider width */
+        height: 250px; /* Adjusted height */
+        text-align: center;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        transition: transform 0.3s, box-shadow 0.3s;
+        color: #333;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+      }
+      .service:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+      }
+      .icon-container {
+        height: 100px; /* Adjusted height for icon container */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 10px;
+      }
+      .service img {
+        max-width: 100%;
+        max-height: 80px; /* Ensuring the icons are appropriate size */
+        height: auto;
+      }
+      .service .large-icon {
+        max-width: 120px;
+        max-height: 120px;
+      }
+      .service a {
+        text-decoration: none;
+        color: #FF4500;
+        font-weight: bold;
+        font-size: 1.2em;
+        margin-top: 10px;
+      }
+      .service p {
+        color: #555;
+        font-size: 0.9em;
+        margin: 5px 0;
+      }
+      .service small {
+        display: block;
+        margin-top: 5px;
+        color: #777;
+        word-wrap: break-word;
+        font-size: 0.8em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <img src="{{ root_icon }}" alt="Root Icon">
+      <h1>Welcome to Your Beam-DS Docker Image</h1>
+      <p>Here are the available services running in your container:</p>
+    </div>
+    <div class="services-container">
+      {% for service in services %}
+        <div class="service">
+          <div class="icon-container">
+            <img src="{{ service.icon }}" alt="{{ service.name }} Icon" class="{{ 'large-icon' if service.name in ['Redis', 'MongoDB', 'Prefect'] else '' }}">
+          </div>
+          <a href="{{ service.url }}" download="{{ 'ssh_connection.sh' if service.name == 'SSH' else '' }}">{{ service.name }}</a>
+          <p>{{ service.description }}</p>
+          <small>{{ service.url }}</small>
+        </div>
+      {% endfor %}
+    </div>
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+  </body>
+</html>

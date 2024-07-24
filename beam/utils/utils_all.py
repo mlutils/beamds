@@ -36,7 +36,7 @@ from dataclasses import asdict, is_dataclass
 
 
 # do not delete this import (it is required as some modules import the following imported functions from this file)
-from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container, is_cached_property
+from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container, is_cached_property, Types
 
 
 DataBatch = namedtuple("DataBatch", "index label data")
@@ -273,11 +273,11 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='none',
 
 def is_boolean(x):
     x_type = check_type(x)
-    if x_type.minor in ['numpy', 'pandas', 'tensor', 'cudf'] and 'bool' in str(x.dtype).lower():
+    if x_type.minor in [Types.numpy, 'pandas', Types.tensor, 'cudf'] and 'bool' in str(x.dtype).lower():
         return True
     elif x_type.minor == 'polars' and 'Boolean' == str(next(iter(x.schema.values()))):
         return True
-    if x_type.minor == 'list' and len(x) and isinstance(x[0], bool):
+    if x_type.minor == Types.list and len(x) and isinstance(x[0], bool):
         return True
     return False
 
@@ -459,12 +459,12 @@ def squeeze_scalar(x, x_type=None):
     if x_type is None:
         x_type = check_type(x)
 
-    if x_type.minor == 'list':
+    if x_type.minor == Types.list:
         if len(x) == 1:
             x = x[0]
             x_type = check_type(x)
 
-    if x_type.major == 'scalar':
+    if x_type.major == Types.scalar:
         if x_type.element == 'int':
             return int(x)
         elif x_type.element == 'float':
@@ -509,11 +509,11 @@ def get_closest_item_with_tuple_key(x, key):
 
     for k in key:
         x_type = check_type(x)
-        if x_type.minor == 'dict' and k in x:
+        if x_type.minor == Types.dict and k in x:
             x = x[k]
-        elif x_type.minor == 'list' and k < len(x):
+        elif x_type.minor == Types.list and k < len(x):
             x = x[k]
-        elif x_type.major == 'container':
+        elif x_type.major == Types.container:
             return None
         else:
             return x
@@ -671,10 +671,10 @@ def filter_dict(d, keys):
 
     keys_type = check_type(keys)
 
-    if keys_type.major == 'scalar':
+    if keys_type.major == Types.scalar:
         keys = [keys]
 
-    elif keys_type.minor in ['list', 'tuple']:
+    elif keys_type.minor in [Types.list, Types.tuple]:
         keys = set(keys)
     else:
         raise ValueError(f"keys must be a scalar, list or tuple. Got {keys_type}")
@@ -843,17 +843,17 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
 
     if indices_type in ['pandas', 'cudf']:
         index = index.values
-    if indices_type == 'other':  # the case where there is a scalar value with a dtype attribute
+    if indices_type == Types.other:  # the case where there is a scalar value with a dtype attribute
         index = int(index)
-    if x_type in ['numpy', 'polars']:
+    if x_type in [Types.numpy, 'polars']:
         return x[index]
     elif x_type in ['pandas', 'cudf']:
         return x.iloc[index]
-    elif x_type == 'tensor':
+    elif x_type == Types.tensor:
         if x.is_sparse:
             x = x.to_dense()
         return x[index]
-    elif x_type == 'list':
+    elif x_type == Types.list:
         return [x[i] for i in index]
     else:
         try:
@@ -868,7 +868,7 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
 def is_arange(x, convert_str=True):
     x_type = check_type(x)
 
-    if x_type.element in ['array', 'object', 'empty', 'none', 'unknown']:
+    if x_type.element in [Types.array, 'object', 'empty', Types.none, 'unknown']:
         return None, False
 
     if convert_str and x_type.element == 'str':
@@ -910,7 +910,7 @@ def dict_to_list(x, convert_str=True):
     if not x:
         return []
 
-    if x_type.minor != 'dict':
+    if x_type.minor != Types.dict:
         return x
 
     keys = np.array(list(x.keys()))
@@ -1230,3 +1230,54 @@ class DataClassEncoder(json.JSONEncoder):
         if is_dataclass(obj):
             return asdict(obj)
         return json.JSONEncoder.default(self, obj)
+
+
+def serialize_annotation(annotation):
+    """Convert annotation to a serializable format."""
+    if annotation is inspect.Parameter.empty:
+        return None
+    if isinstance(annotation, type):
+        return annotation.__name__
+    if isinstance(annotation, str):
+        return annotation
+    return repr(annotation)
+
+def deserialize_annotation(annotation_str, global_ns=None):
+    """Convert serialized annotation back to its original format."""
+    if annotation_str is None:
+        return inspect.Parameter.empty
+    if global_ns is None:
+        global_ns = globals()
+    try:
+        return eval(annotation_str, global_ns)
+    except Exception:
+        return annotation_str
+
+def signature_to_dict(signature):
+    """Convert a Signature object to a dictionary representation."""
+    return {
+        'parameters': [
+            {
+                'name': param.name,
+                'kind': param.kind.name,
+                'default': param.default if param.default is not inspect.Parameter.empty else None,
+                'annotation': serialize_annotation(param.annotation)
+            }
+            for param in signature.parameters.values()
+        ],
+        'return_annotation': serialize_annotation(signature.return_annotation)
+    }
+
+def dict_to_signature(d, global_ns=None):
+    """Convert a dictionary representation back to a Signature object."""
+    parameters = [
+        inspect.Parameter(
+            name=param['name'],
+            kind=getattr(inspect.Parameter, param['kind']),
+            default=param['default'] if param['default'] is not None else inspect.Parameter.empty,
+            annotation=deserialize_annotation(param['annotation'], global_ns)
+        )
+        for param in d['parameters']
+    ]
+    return_annotation = deserialize_annotation(d['return_annotation'], global_ns)
+    return inspect.Signature(parameters, return_annotation=return_annotation)

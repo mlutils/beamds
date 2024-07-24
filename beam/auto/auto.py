@@ -5,7 +5,8 @@ from collections import defaultdict
 
 from packaging import version
 
-from .. import BeamData
+from ..data import BeamData
+from ..resources import this_dir
 from ..base import BeamBase
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
 from ..path import beam_path, local_copy
@@ -15,10 +16,8 @@ import importlib.metadata
 import os
 import importlib
 import warnings
-import tempfile
 
 from ..logging import beam_logger as logger
-from ..type import is_beam_processor
 from ..utils import cached_property
 from uuid import uuid4 as uuid
 
@@ -28,13 +27,11 @@ class AutoBeam(BeamBase):
     # Blacklisted pip packages (sklearn is a fake project that should be ignored, scikit-learn is the real one)
     blacklisted_pip_package = ['sklearn']
 
-    def __init__(self, registry_project_name, registry_url, obj, *args, **kwargs):
+    def __init__(self, obj, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._private_modules = None
         self._visited_modules = None
         self.obj = obj
-        self.registry_url = registry_url
-        self.registry_project_name = registry_project_name
 
     @cached_property
     def self_path(self):
@@ -99,6 +96,7 @@ class AutoBeam(BeamBase):
         private_modules_walk = {}
         root_paths = set(sum([get_module_paths(m) for m in self.private_modules if m is not None], []))
         for root_path in root_paths:
+            # todo: fix it
             root_path = beam_path(root_path)
             if root_path.is_file():
                 private_modules_walk[root_path.str] = root_path.read()
@@ -486,9 +484,9 @@ class AutoBeam(BeamBase):
         return full_image_name
 
     @staticmethod
-    def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint='synchronous-server',
+    def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint=None,
                      copy_bundle=False, registry_url=None, username=None, password=None,
-                     beam_version=None, base_url=None, registry_project_name=None, dockerfile='simple-entrypoint'):
+                     beam_version=None, base_url=None, registry_project_name=None, dockerfile=None):
 
         assert base_image is not None, "You must provide a base_image."
 
@@ -501,7 +499,11 @@ class AutoBeam(BeamBase):
         # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
         # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
 
+        entrypoint = entrypoint or 'synchronous-server'
+        dockerfile = dockerfile or 'simple-entrypoint'
+
         bundle_path = beam_path(bundle_path)
+        # current_dir = this_dir()
         current_dir = beam_path(__file__).parent
 
         if image_name is None:
@@ -558,11 +560,12 @@ class AutoBeam(BeamBase):
                     if 'stream' in line:
                         print(line['stream'].strip())
 
-                full_image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
-                                                       registry_project_name=registry_project_name,
-                                                       username=username, password=password)
-                logger.info(f"Full image name: {full_image_name}")
-                return full_image_name
+                if registry_url is not None:
+                    image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
+                                                           registry_project_name=registry_project_name,
+                                                           username=username, password=password)
+                logger.info(f"Full image name: {image_name}")
+                return image_name
 
             except BuildError as e:
                 logger.error(f"Error building Docker image: {e}")

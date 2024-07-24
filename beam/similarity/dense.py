@@ -9,6 +9,7 @@ from ..logging import beam_logger as logger
 from ..path import beam_path, local_copy
 from ..utils import pretty_format_number, as_numpy, check_type, as_tensor, beam_device
 from .core import BeamSimilarity, Similarities
+from ..type import Types
 
 
 class DenseSimilarity(BeamSimilarity):
@@ -188,14 +189,14 @@ class DenseSimilarity(BeamSimilarity):
     def search(self, x, k=1) -> Similarities:
 
         x_type = check_type(x)
-        device = x.device if x_type.minor == 'tensor' else None
+        device = x.device if x_type.minor == Types.tensor else None
 
         x, _ = self.extract_data_and_index(x)
         D, I = self.vector_store.search(x, k)
 
         if self.index is not None:
             I = self.index[I]
-        if x_type.minor == 'tensor':
+        if x_type.minor == Types.tensor:
             D = as_tensor(D, device=device)
 
         return Similarities(index=I, distance=D, model='faiss', metric=self.metric)

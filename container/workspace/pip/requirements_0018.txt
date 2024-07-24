@@ -14,3 +14,7 @@ pymilvus
 
 pydata-sphinx-theme
 grex
+
+# visualization tool
+imgkit
+dataframe-image

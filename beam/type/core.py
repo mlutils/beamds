@@ -2,7 +2,7 @@ from functools import cached_property
 from typing import Union, Any
 
 from dataclasses import dataclass
-from .utils import _check_type, check_element_type, check_minor_type, is_scalar
+from .utils import _check_type, check_element_type, check_minor_type, is_scalar, Types
 
 
 @dataclass
@@ -47,19 +47,28 @@ class BeamType:
     def is_scalar(self):
         if self._major is None:
             return is_scalar(self._ref)
-        return self._major == 'scalar'
+        return self._major == Types.scalar
 
     @cached_property
     def is_array(self):
-        return self._major == 'array'
+        return self._major == Types.array
 
     @cached_property
     def is_dataframe(self):
         return self._minor in ['pandas', 'polars', 'cudf']
 
     @cached_property
+    def is_path(self):
+        return self._minor == Types.path
+
+    @cached_property
     def is_data_array(self):
-        return self._minor in ['numpy', 'torch', 'polars', 'cudf', 'pandas', 'scipy_sparse']
+        return self._minor in [Types.numpy, 'torch', 'polars', 'cudf', 'pandas', 'scipy_sparse']
+
+    @cached_property
+    def is_str(self):
+        return self._major == Types.scalar and self._element == Types.str
+
     @classmethod
     def check(cls, x, major=True, minor=True, element=True):
         if major:
