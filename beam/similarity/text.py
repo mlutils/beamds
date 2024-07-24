@@ -60,13 +60,16 @@ class TextSimilarity(DenseSimilarity):
     def load_dense_model(dense_model=None, dense_model_device=None, **st_kwargs):
 
         if type(dense_model) is str:
-            if dense_model.startswith('beam'):
-                dense_model = resource(dense_model)
+            dense_model_resource = resource(dense_model)
+            if dense_model_resource.is_beam_client:
+                dense_model = dense_model_resource
             else:
                 from sentence_transformers import SentenceTransformer
                 dense_model = SentenceTransformer(dense_model, device=str(dense_model_device), **st_kwargs)
         elif not is_beam_resource(dense_model):
             dense_model.to(dense_model_device)
+        else:
+            raise ValueError(f"Invalid dense model: {dense_model}")
 
         return dense_model
 

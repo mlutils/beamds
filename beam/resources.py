@@ -1,17 +1,7 @@
+from .base import BeamResource, resource_names
 
 
-resource_names = {
-    'path': ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp', 'comet', 'io', 'dict', 'redis', 'smb', 'nt',
-             'mlflow'],
-    'serve': ['beam-http', 'beam-https', 'beam-grpc', 'beam-grpcs', 'http', 'https', 'grpc', 'grpcs'],
-    'distributed': ['async-http', 'async-https'],
-    'llm': ['openai', 'vllm', 'tgi', 'fastchat', 'huggingface', 'samurai', 'samur-openai', 'fastapi-dp'],
-    'triton': ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs'],
-    'ray': ['ray']
-}
-
-
-def resource(uri, **kwargs):
+def resource(uri, **kwargs) -> BeamResource:
     if type(uri) != str:
         return uri
     if ':' not in uri:
