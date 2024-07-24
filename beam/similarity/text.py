@@ -1,12 +1,46 @@
 from typing import List
+
+from beam.utils import to_device
+
+from beam import check_type
+
 from ..logging import beam_logger as logger
-from ..type.utils import is_beam_resource
+from ..type.utils import is_beam_resource, Types
 from ..utils import beam_device
 from ..processor import Processor
 from ..llm import default_tokenizer
 from .dense import DenseSimilarity
 from ..path import local_copy, beam_path
 from ..resources import resource
+from ..transformer import Transformer
+
+
+class RemoteDenseEncoder(Transformer):
+
+    def __init__(self, remote_encoder, batch_size=None, **kwargs):
+        super().__init__(batch_size=batch_size, **kwargs)
+        self.remote_encoder = resource(remote_encoder)
+        self.batch_size = self.get_hparam('batch_size', 32)
+
+    def transform_callback(self, x, _key=None, _is_chunk=False, _fit=False, path=None, _store=False,
+                           batch_size=None, **kwargs):
+
+        for b in [1, 2, 4, 8, 16, 32]:
+            b = max(1, self.batch_size // b)
+            enc = self.remote_encoder.encode(x, batch_size=b, show_progress_bar=False, convert_to_tensor=True)
+
+            enc_type = check_type(enc)
+            if enc_type.minor == Types.tensor:
+                return to_device(enc, self.device)
+            else:
+                enc = None
+                logger.warning(f"Encoding ({_key}) failed with batch size {b}. Retrying with smaller batch size.")
+
+        return enc
+
+    def encode(self, x: List[str], batch_size=None):
+        batch_size = batch_size or self.batch_size
+        return self.transform(x, batch_size=batch_size)
 
 
 class TextSimilarity(DenseSimilarity):
@@ -39,6 +73,7 @@ class TextSimilarity(DenseSimilarity):
 
         self.dense_model = self.load_dense_model(dense_model=dense_model,
                                                  dense_model_device=self.dense_model_device,
+                                                 batch_size=self.batch_size,
                                                  **st_kwargs)
 
         d = self.dense_model.get_sentence_embedding_dimension()
@@ -57,12 +92,13 @@ class TextSimilarity(DenseSimilarity):
             self._tokenizer = tokenizer
 
     @staticmethod
-    def load_dense_model(dense_model=None, dense_model_device=None, **st_kwargs):
+    def load_dense_model(dense_model=None, dense_model_device=None, batch_size=None, **st_kwargs):
 
         if type(dense_model) is str:
             dense_model_resource = resource(dense_model)
             if dense_model_resource.is_beam_client:
-                dense_model = dense_model_resource
+                dense_model = RemoteDenseEncoder(dense_model_resource, batch_size=batch_size,
+                                                 device=dense_model_device, chunksize=batch_size*10)
             else:
                 from sentence_transformers import SentenceTransformer
                 dense_model = SentenceTransformer(dense_model, device=str(dense_model_device), **st_kwargs)

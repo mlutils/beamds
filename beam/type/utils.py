@@ -290,20 +290,15 @@ def _check_type(x, minor=True, element=True):
 
 def is_container(x):
 
-    if isinstance(x, dict):
-        if isinstance(x, Counter):
-            return False
-        return True
-    if isinstance(x, list) or isinstance(x, tuple):
-
-        if len(x) < 100:
-            sampled_indices = range(len(x))
+    def check_elements(xi, valid_types):
+        if len(xi) < 100:
+            sampled_indices = range(len(xi))
         else:
-            sampled_indices = np.random.randint(len(x), size=(100,))
+            sampled_indices = np.random.randint(len(xi), size=(100,))
 
         elt0 = None
         for i in sampled_indices:
-            elt = check_element_type(x[i])
+            elt = check_element_type(xi[i])
 
             if elt0 is None:
                 elt0 = elt
@@ -312,8 +307,18 @@ def is_container(x):
                 return True
 
             # path is needed here since we want to consider a list of paths as a container
-            if elt in [Types.array, Types.none, Types.object, Types.path]:
+            if elt in valid_types:
                 return True
+
+        return False
+
+    if isinstance(x, dict):
+        if isinstance(x, Counter):
+            return False
+        return check_elements(list(x.values()), valid_types=[Types.array, Types.none, Types.object, Types.path,
+                                                             Types.str])
+    if isinstance(x, list) or isinstance(x, tuple):
+        return check_elements(x, valid_types=[Types.array, Types.none, Types.object, Types.path])
 
     return False
 
