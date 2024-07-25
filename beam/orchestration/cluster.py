@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union, Dict
 import time
 
 from ..logging import beam_logger as logger
@@ -13,7 +13,8 @@ from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmC
 
 class BeamCluster(BeamBase):
 
-    def __init__(self, deployment: BeamDeploy, config, pods: List[BeamPod] = None, *args, **kwargs):
+    def __init__(self, deployment: Union[BeamDeploy, Dict[str, BeamDeploy]], config, pods: List[BeamPod] = None,
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pods = pods
         self.deployment = deployment

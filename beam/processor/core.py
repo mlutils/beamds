@@ -239,6 +239,11 @@ class Processor(BeamBase):
         else:
             if path.is_dir() and path.suffix not in ['.bmd']:
                 for p in path.iterdir():
+
+                    # skip hidden files and files that cannot be assigned to an attribute
+                    if not p.name[0].isalpha():
+                        continue
+
                     k = p.stem
                     if k not in exclude:
                         if self.hasattr(k) and is_beam_processor(getattr(self, k)):

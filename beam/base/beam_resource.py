@@ -78,3 +78,7 @@ class BeamResource(BeamName):
     @property
     def is_beam_client(self):
         return self.scheme in resource_names['serve']
+
+    @property
+    def str(self):
+        return str(self.as_uri())
