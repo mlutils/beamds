@@ -37,11 +37,13 @@ class K8SConfig(BeamConfig):
         BeamParam('service_configs', list, [], 'Service configurations'),
         BeamParam('user_idm_configs', list, [], 'User IDM configurations'),
         BeamParam('ray_ports_configs', list, [], 'Ray ports configurations'),
+        BeamParam('route_timeout', int, 599, 'Route timeout'),
         BeamParam('check_project_exists', bool, True, 'Check if project exists'),
         BeamParam('entrypoint', str, None, 'Entrypoint for the container'),
         BeamParam('dockerfile', str, None, 'Dockerfile for the container'),
         BeamParam('docker_kwargs', dict, None, 'Auxiliary Docker arguments (for the build process)'),
     ]
+
 
 class RayClusterConfig(K8SConfig):
     parameters = [

@@ -20,7 +20,7 @@ class BeamCluster(BeamBase):
         self.config = config
 
 
-class HTTPServeCluster(BeamCluster):
+class ServeCluster(BeamCluster):
 
     def __init__(self, deployment, pods, config, *args, **kwargs):
         super().__init__(deployment, config, *args, pods=pods, **kwargs)
@@ -112,8 +112,8 @@ class HTTPServeCluster(BeamCluster):
 
 
 class RayCluster(BeamCluster):
-    def __init__(self, deployment, config, *args, **kwargs):
-        super().__init__(deployment, config, *args, **kwargs)
+    def __init__(self, deployment, n_pods, config, *args, **kwargs):
+        super().__init__(deployment, config, *args, n_pods, **kwargs)
         self.workers = []
         self.n_pods = config['n_pods']
         self.head = None
@@ -124,71 +124,69 @@ class RayCluster(BeamCluster):
             project_name=config['project_name'],
             namespace=config['project_name'],
         )
+
         self.security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
         self.memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
         self.service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
         self.storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
         self.ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs', [])]
         self.user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
+        self.entrypoint_args = config['entrypoint_args']
+        self.entrypoint_envs = config['entrypoint_envs']
 
-        self.deployment = BeamDeploy(
-            k8s=self.k8s,
-            project_name=self.config['project_name'],
-            check_project_exists=self.config['check_project_exists'],
-            namespace=self.config['project_name'],
-            replicas=self.config['replicas'],
-            labels=self.config['labels'],
-            image_name=self.config['image_name'],
-            deployment_name=self.config['deployment_name'],
-            create_service_account=self.config['create_service_account'],
-            use_scc=self.config['use_scc'],
-            use_node_selector=self.config['use_node_selector'],
-            node_selector=self.config['node_selector'],
-            scc_name=self.config['scc_name'],
-            cpu_requests=self.config['cpu_requests'],
-            cpu_limits=self.config['cpu_limits'],
-            memory_requests=self.config['memory_requests'],
-            memory_limits=self.config['memory_limits'],
-            use_gpu=self.config['use_gpu'],
-            gpu_requests=self.config['gpu_requests'],
-            gpu_limits=self.config['gpu_limits'],
-            service_configs=self.service_configs,
-            storage_configs=self.storage_configs,
-            ray_ports_configs=self.ray_ports_configs,
-            n_pods=self.config['n_pods'],
-            memory_storage_configs=self.memory_storage_configs,
-            security_context_config=self.security_context_config,
-            entrypoint_args=self.config['entrypoint_args'],
-            entrypoint_envs=self.config['entrypoint_envs'],
-            user_idm_configs=self.user_idm_configs,
-            enable_ray_ports=True
+    @classmethod
+    def _deploy_and_launch(cls, n_pods=None, image_name=None, config=None):
+
+        k8s = BeamK8S(
+            api_url=config['api_url'],
+            api_token=config['api_token'],
+            project_name=config['project_name'],
+            namespace=config['project_name']
         )
 
-    def deploy_cluster(self):
-        pod_instances = self.deployment.launch(replicas=self.n_pods)
-        if not pod_instances:
-            raise Exception("Pod deployment failed")
+        deployment = BeamDeploy(config, k8s)
 
-        self.head = pod_instances[0]
-        self.workers = pod_instances[1:]
-        head_command = "ray start --head --port=6379 --disable-usage-stats --dashboard-host=0.0.0.0"
-        self.head.execute(head_command)
+        try:
+            pod_instances = deployment.launch(replicas=config.n_pods)
+            if not pod_instances:
+                raise Exception("Pod deployment failed")
 
-        # TODO: implement reliable method that get ip from head pod when its ready instead of relying to "sleep"
-        time.sleep(10)
-        head_pod_ip = self.get_head_pod_ip(self.head)
+            head = pod_instances[0]
+            workers = pod_instances[1:]
+            head_command = "ray start --head --port=6379 --disable-usage-stats --dashboard-host=0.0.0.0"
+            head.execute(head_command)
 
-        worker_command = "ray start --address={}:6379".format(head_pod_ip)
+            # TODO: implement reliable method that get ip from head pod when its ready instead of relying to "sleep"
+            time.sleep(10)
 
-        for pod_instance in pod_instances[1:]:
-            pod_instance.execute(worker_command)
+            head_pod_ip = cls.get_head_pod_ip(head, k8s, config['project_name'])
 
-    def get_head_pod_ip(self, head_pod_instance):
+            worker_command = "ray start --address={}:6379".format(head_pod_ip)
+
+            for pod_instance in pod_instances[1:]:
+                pod_instance.execute(worker_command)
+
+            return cls(deployment=deployment, n_pods=n_pods, config=config, head=head, workers=workers)
+
+        except Exception as e:
+            logger.error(f"Error during deployment: {str(e)}")
+            raise e
+
+    @classmethod
+    def deploy_cluster_single_deployment(cls, config, n_pods):
+        return cls._deploy_and_launch(n_pods=n_pods, config=config)
+
+    @classmethod
+    def deploy_cluster_multiple_deployments(cls, config, n_pods):
+        return cls._deploy_and_launch(n_pods=n_pods, config=config)
+
+    @classmethod
+    def get_head_pod_ip(cls, head_pod_instance, k8s, project_name):
         head_pod_status = head_pod_instance.get_pod_status()
         head_pod_name = head_pod_instance.pod_infos[0].name
 
         if head_pod_status[0][1] == "Running":
-            pod_info = self.k8s.get_pod_info(head_pod_name, namespace=self.config['project_name'])
+            pod_info = k8s.get_pod_info(head_pod_name, namespace=project_name)
             if pod_info and pod_info.status:
                 return pod_info.status.pod_ip
             else:

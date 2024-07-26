@@ -1,7 +1,8 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~p2O_ltaM03oKj0RLNI_D_dzasuAIPgr6utWdYHTDvBI
+api_token: sha256~TJuumFPzqjq-O2R-W4EGRtEzcfCLE4sGc3Pt_amTGEk
 api_url: https://api.kh-dev.dt.local:6443
-base_image: eladsar/beam:20240605
+#base_image: eladsar/beam:20240605
+base_image: python:3.10-slim
 base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='unix://var/run/docker.sock')
 #client = docker.APIClient(base_url='tcp://10.0.7.55:2375')

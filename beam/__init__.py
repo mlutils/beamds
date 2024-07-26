@@ -17,7 +17,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'parallel', 'task', 'this_dir',
            # Orchestration
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
-           'HTTPServeClusterConfig', 'HTTPServeCluster', 'RayCluster', 'deploy_server'
+           'HTTPServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server'
            ]
 
 
@@ -185,8 +185,8 @@ def __getattr__(name):
         from .orchestration import HTTPServeClusterConfig
         return HTTPServeClusterConfig
     elif name == 'HTTPServeCluster':
-        from .orchestration import HTTPServeCluster
-        return HTTPServeCluster
+        from .orchestration import ServeCluster
+        return ServeCluster
     elif name == 'RayCluster':
         from .orchestration import RayCluster
         return RayCluster
@@ -217,4 +217,4 @@ if len([]):
     from .processor import Processor
     from .concurrent import parallel, task
     from .orchestration import (BeamDeploy, BeamK8S, BeamPod, K8SUnits, K8SConfig, RayClusterConfig,
-                                HTTPServeClusterConfig, HTTPServeCluster, RayCluster, deploy_server)
+                                HTTPServeClusterConfig, ServeCluster, RayCluster, deploy_server)

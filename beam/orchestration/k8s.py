@@ -769,7 +769,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             "kind": "Route",
             "metadata": {
                 "name": service_name,
-                "namespace": namespace
+                "namespace": namespace,
+                "annotations": {
+                    "haproxy.router.openshift.io/timeout": self.config.route_timeout  # Use timeout from config
+                }
             },
             "spec": {
                 "to": {
