@@ -14,7 +14,7 @@ print("API Token:", config['api_token'])
 ray_cluster = RayCluster(deployment=None, config=config)
 
 # Deploy the Ray cluster
-ray_cluster.deploy_cluster()
+ray_cluster.deploy_cluster_single_deployment()
 print(ray_cluster.deployment.cluster_info)
 
 # run on daemon mode the monitor of the cluster
