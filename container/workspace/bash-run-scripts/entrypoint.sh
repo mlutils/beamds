@@ -188,7 +188,7 @@ if [ "$RUN_CHROMA" = true ]; then
   echo "Chroma Port: $CHROMA_PORT"
   export CHROMA_PORT=$CHROMA_PORT
   echo "chroma_port, ${CHROMA_PORT}" >> /workspace/configuration/config.csv
-  chroma run --host localhost --port $CHROMA_PORT --path $HOME/.chroma_data &
+  chroma run --host 127.0.0.1 --port $CHROMA_PORT --path $HOME/.chroma_data &
   echo "Chroma server is running."
 else
   echo "Chroma is disabled."

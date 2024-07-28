@@ -1,3 +1,7 @@
+__all__ = ['SparseSimilarity', 'TFIDF', 'DenseSimilarity', 'Similarities', 'TextSimilarity',
+           'SparnnSimilarity', 'SimilarityConfig', 'TFIDFConfig', 'ChromaSimilarity']
+
+
 def __getattr__(name):
     if name == 'SparseSimilarity':
         from .sparse import SparseSimilarity
@@ -23,6 +27,9 @@ def __getattr__(name):
     elif name == 'TFIDFConfig':
         from .config import TFIDFConfig
         return TFIDFConfig
+    elif name == 'ChromaSimilarity':
+        from .chroma import ChromaSimilarity
+        return ChromaSimilarity
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 
@@ -36,3 +43,4 @@ if len([]):
     from .text import TextSimilarity
     from .sparnn import SparnnSimilarity
     from .config import SimilarityConfig, TFIDFConfig
+    from .chroma import ChromaSimilarity

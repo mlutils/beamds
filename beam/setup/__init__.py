@@ -112,6 +112,7 @@ def load_ipython_extension(ipython, beam_path=None):
             del sys.modules[k]
 
     beam_importer = BeamImporter()
+    print(f"Beam library is loaded from path: {os.path.abspath(os.path.dirname(beam_importer.beam.__file__))}")
 
     # Add the modules to the global namespace
     for alias in beam_importer.aliases:
@@ -123,8 +124,7 @@ def load_ipython_extension(ipython, beam_path=None):
                 ipython.push({k: getattr(module, k)})
 
     print(f"Done importing packages. It took: {time.time() - t0: .2} seconds")
-    print(f"Beam library is loaded from path: {os.path.abspath(os.path.dirname(beam_importer.beam.__file__))}")
-    print(f"The Beam version is: {beam_importer.beam.__version__}")
+    # print(f"The Beam version is: {beam_importer.beam.__version__}")
 
 
 if __name__ == '__main__':

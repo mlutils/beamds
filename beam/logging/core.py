@@ -17,6 +17,7 @@ class BeamLogger:
         self.running_platform = running_platform()
 
         self.handlers = {}
+        self.tags = {}
         if print:
             self.print()
 
@@ -53,7 +54,7 @@ class BeamLogger:
             file_object.close()
         self.file_objects = {}
 
-    def add_file_handlers(self, path):
+    def add_file_handlers(self, path, tag=None):
 
         path = beam_path(path)
 
@@ -79,6 +80,15 @@ class BeamLogger:
         handler = self.logger.add(file_object, level='DEBUG', format=format, serialize=True)
 
         self.handlers[str(json_path)] = handler
+        if tag is not None:
+            self.tags[tag] = path
+
+    def remove_tag(self, tag):
+        path = self.tags[tag]
+        self.remove_file_handler(path)
+
+    def remove_default_handlers(self):
+        self.remove_tag('default')
 
     def open(self, path):
         path = beam_path(path)

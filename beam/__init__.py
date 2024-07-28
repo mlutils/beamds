@@ -1,4 +1,6 @@
 import os
+import sys
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
@@ -128,6 +130,16 @@ def __getattr__(name):
         return initialize_timer()
     elif name in ['beam_logger', 'logger']:
         from .logging import beam_logger
+        from .path import beam_path
+        path = beam_path('/tmp/.beam')
+        path.mkdir()
+        import time
+        t = time.strftime('%Y%m%d-%H%M%S')
+        program = sys.argv[0].split('/')[-1].split('.')[0]
+        path = path.joinpath(f"{program}-{t}.log")
+        beam_logger.add_file_handlers(path, tag='default')
+        beam_logger.info(f"Beam logger (version {__version__}): logs are saved in {path}")
+        beam_logger.debug("to stop logging to this file use beam_logger.remove_default_handlers()")
         return beam_logger
     elif name == 'beam_kpi':
         from .logging import beam_kpi
