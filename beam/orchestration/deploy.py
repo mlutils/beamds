@@ -13,7 +13,7 @@ import json
 
 class BeamDeploy(BeamBase):
 
-    def __init__(self, hparams, k8s, *args, enable_ray_ports=False, **kwargs):
+    def __init__(self, hparams, k8s, *args, **kwargs):
 
         super().__init__(hparams, *args, _config_scheme=K8SConfig, **kwargs)
 
@@ -21,7 +21,7 @@ class BeamDeploy(BeamBase):
         memory_storage_configs = [MemoryStorageConfig(**v) for v in self.get_hparam('memory_storage_configs', [])]
         service_configs = [ServiceConfig(**v) for v in self.get_hparam('service_configs', [])]
         storage_configs = [StorageConfig(**v) for v in self.get_hparam('storage_configs', [])]
-        ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
+        # ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
         user_idm_configs = [UserIdmConfig(**v) for v in self.get_hparam('user_idm_configs', [])]
 
         command = self.get_hparam('command', None)
@@ -62,11 +62,10 @@ class BeamDeploy(BeamBase):
         self.k8s = k8s
         self.command = command
         self.service_configs = service_configs or []
-        self.ray_ports_configs = ray_ports_configs or RayPortsConfig()
+        # self.ray_ports_configs = ray_ports_configs or RayPortsConfig()
         self.memory_storage_configs = memory_storage_configs or []
         self.storage_configs = storage_configs or []
         self.user_idm_configs = user_idm_configs or []
-        self.enable_ray_ports = enable_ray_ports
         self.security_context_config = security_context_config or []
 
     def launch(self, replicas=None):
@@ -108,9 +107,9 @@ class BeamDeploy(BeamBase):
 
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 
-        if self.enable_ray_ports is True:
-            for ray_ports_config in self.ray_ports_configs:
-                extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
+        # if self.ray_ports_configs:
+        #     for ray_ports_config in self.ray_ports_configs:
+        #         extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
@@ -192,7 +191,8 @@ class BeamDeploy(BeamBase):
                         service_name=service_name,
                         namespace=self.namespace,
                         protocol=svc_config.route_protocol,
-                        port=svc_config.port
+                        port=svc_config.port,
+                        route_timeout=svc_config.route_timeout,
                     )
                 if svc_config.create_ingress:
                     self.k8s.create_ingress(
@@ -203,9 +203,9 @@ class BeamDeploy(BeamBase):
 
     def extract_ports(self):
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
-        if self.enable_ray_ports:
-            for ray_ports_config in self.ray_ports_configs:
-                extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
+        # if self.ray_ports_configs:
+        #     for ray_ports_config in self.ray_ports_configs:
+        #         extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
         return extracted_ports
 
     def generate_beam_pod(self, pod_infos):

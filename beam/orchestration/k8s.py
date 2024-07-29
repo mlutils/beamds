@@ -740,7 +740,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             services_info = None
         return services_info
 
-    def create_route(self, service_name, namespace, protocol, port):
+    def create_route(self, service_name, namespace, protocol, port, route_timeout=None):
         from openshift.dynamic.exceptions import NotFoundError
         from openshift.dynamic import DynamicClient
 
@@ -770,9 +770,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             "metadata": {
                 "name": service_name,
                 "namespace": namespace,
-                "annotations": {
-                    "haproxy.router.openshift.io/timeout": self.config.route_timeout  # Use timeout from config
-                }
             },
             "spec": {
                 "to": {
@@ -784,6 +781,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 }
             }
         }
+
+        if route_timeout:
+            route_manifest["metadata"]["annotations"] = {"haproxy.router.openshift.io/timeout": route_timeout}
 
         # Add TLS termination if protocol is 'https'
         if protocol.lower() == 'https':

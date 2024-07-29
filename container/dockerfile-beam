@@ -23,7 +23,7 @@ ENV NLTK_DATA="/usr/local/share/nltk_data"
 ENV USER_NAME="root"
 ENV USER_HOME_DIR="/$USER_NAME"
 
-COPY docker/workspace/ /workspace/
+COPY container/workspace/ /workspace/
 
 # add beam user
 RUN bash /workspace/bash-build-scripts/add_beam_user.sh

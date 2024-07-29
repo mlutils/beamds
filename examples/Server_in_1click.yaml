@@ -46,10 +46,10 @@ node_selector:
   gpu-type: tesla-a100
 project_name: oneclick
 # push_image: false - this is removed
-ray_ports_configs:
-- ray_ports:
-  - 6379
-  - 8265
+#ray_ports_configs:
+#- ray_ports:
+#  - 6379
+#  - 8265
 registry_password: Har@123
 registry_url: harbor.dt.local
 registry_username: admin
@@ -81,9 +81,16 @@ service_configs:
 - create_ingress: false
   create_route: true
   ingress_host: jupyter.example.com
-  port: 44044
-  port_name: fake-alg-http
-  service_name: fake-alg
+  port: 6379
+  port_name: ray-port
+  service_name: ray-port
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: jupyter.example.com
+  port: 8265
+  port_name: ray-port
+  service_name: ray-port
   service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com

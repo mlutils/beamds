@@ -1,9 +1,7 @@
 from typing import List
 import time
-
 from ..logging import beam_logger as logger
 from ..base import BeamBase
-
 from .k8s import BeamK8S
 from .pod import BeamPod
 from .deploy import BeamDeploy
@@ -23,7 +21,7 @@ class BeamCluster(BeamBase):
 class ServeCluster(BeamCluster):
 
     def __init__(self, deployment, pods, config, *args, **kwargs):
-        super().__init__(deployment, config, *args, pods=pods, **kwargs)
+        super().__init__(deployment, pods, config, *args,  **kwargs)
         self.k8s = BeamK8S(
             api_url=config['api_url'],
             api_token=config['api_token'],
@@ -94,8 +92,8 @@ class ServeCluster(BeamCluster):
             return cls(deployment=deployment, pods=pods, config=config)
         except Exception as e:
             logger.error(f"Error during deployment: {str(e)}")
-            # from ..utils import beam_traceback
-            # logger.debug(beam_traceback())
+            from ..utils import beam_traceback
+            logger.debug(beam_traceback())
             raise e
 
     @classmethod
@@ -135,7 +133,7 @@ class RayCluster(BeamCluster):
         self.entrypoint_envs = config['entrypoint_envs']
 
     @classmethod
-    def _deploy_and_launch(cls, n_pods=None, image_name=None, config=None):
+    def _deploy_and_launch(cls, n_pods=None, config=None):
 
         k8s = BeamK8S(
             api_url=config['api_url'],
@@ -147,7 +145,7 @@ class RayCluster(BeamCluster):
         deployment = BeamDeploy(config, k8s)
 
         try:
-            pod_instances = deployment.launch(replicas=config.n_pods)
+            pod_instances = deployment.launch(replicas=config['n_pods'])
             if not pod_instances:
                 raise Exception("Pod deployment failed")
 
@@ -166,10 +164,14 @@ class RayCluster(BeamCluster):
             for pod_instance in pod_instances[1:]:
                 pod_instance.execute(worker_command)
 
+            print(deployment.cluster_info)
+
             return cls(deployment=deployment, n_pods=n_pods, config=config, head=head, workers=workers)
 
         except Exception as e:
             logger.error(f"Error during deployment: {str(e)}")
+            from ..utils import beam_traceback
+            logger.debug(beam_traceback())
             raise e
 
     @classmethod
@@ -179,6 +181,10 @@ class RayCluster(BeamCluster):
     @classmethod
     def deploy_cluster_multiple_deployments(cls, config, n_pods):
         return cls._deploy_and_launch(n_pods=n_pods, config=config)
+
+    def deploy_ray_head(cls, config):
+        pass
+        # return cls._deploy_and_launch(n_pods=1, config=config)
 
     @classmethod
     def get_head_pod_ip(cls, head_pod_instance, k8s, project_name):
@@ -242,35 +248,36 @@ class RayCluster(BeamCluster):
         return head_logs, worker_logs
 
     def add_nodes(self, n=1):
-        new_pods = self.deployment.launch(replicas=n)
-        for pod_instance in new_pods:
-            self.workers.append(pod_instance)
-            worker_command = "ray start --address={}:6379".format(self.get_head_pod_ip(self.head))
-            pod_instance.execute(worker_command)
-            pod_suffix = pod_instance.pod_infos[0].name.split('-')[-1]
-            # Re-use BeamDeploy to create services and routes for new worker nodes
-            for svc_config in self.service_configs:
-                service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
-                self.deployment.k8s.create_service(
-                    base_name=service_name,
-                    namespace=self.config['project_name'],
-                    ports=[svc_config.port],
-                    labels=self.config['labels'],
-                    service_type='ClusterIP'
-                )
-
-                # Create routes and ingress if configured
-                if svc_config.create_route:
-                    self.deployment.k8s.create_route(
-                        service_name=service_name,
-                        namespace=self.config['project_name'],
-                        protocol=svc_config.route_protocol,
-                        port=svc_config.port
-                    )
-                if svc_config.create_ingress:
-                    self.deployment.k8s.create_ingress(
-                        service_configs=[svc_config],
-                    )
+        raise NotImplementedError
+        # new_pods = self.deployment.launch(replicas=n)
+        # for pod_instance in new_pods:
+        #     self.workers.append(pod_instance)
+        #     worker_command = "ray start --address={}:6379".format(self.get_head_pod_ip(self.head))
+        #     pod_instance.execute(worker_command)
+        #     pod_suffix = pod_instance.pod_infos[0].name.split('-')[-1]
+        #     # Re-use BeamDeploy to create services and routes for new worker nodes
+        #     for svc_config in self.service_configs:
+        #         service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
+        #         self.deployment.k8s.create_service(
+        #             base_name=service_name,
+        #             namespace=self.config['project_name'],
+        #             ports=[svc_config.port],
+        #             labels=self.config['labels'],
+        #             service_type='ClusterIP'
+        #         )
+        #
+        #         # Create routes and ingress if configured
+        #         if svc_config.create_route:
+        #             self.deployment.k8s.create_route(
+        #                 service_name=service_name,
+        #                 namespace=self.config['project_name'],
+        #                 protocol=svc_config.route_protocol,
+        #                 port=svc_config.port
+        #             )
+        #         if svc_config.create_ingress:
+        #             self.deployment.k8s.create_ingress(
+        #                 service_configs=[svc_config],
+        #             )
 
     def remove_node(self, i):
         pass

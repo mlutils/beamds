@@ -8,19 +8,23 @@ conf_path = resource(os.path.join(script_dir, 'orchestration_raydeploy.yaml')).s
 config = RayClusterConfig(conf_path)
 
 print('hello world')
-print("API URL:", config['api_url'])
-print("API Token:", config['api_token'])
+print("API URL:", config.api_url)
+print("API Token:", config.api_token)
+
 # Create an instance of RayCluster
-ray_cluster = RayCluster(deployment=None, config=config)
+ray_cluster = RayCluster(deployment=None, n_pods=config['n_pods'], config=config)
 
+# n_pods = '2'
 # Deploy the Ray cluster
-ray_cluster.deploy_cluster_single_deployment()
-print(ray_cluster.deployment.cluster_info)
+ray_cluster.deploy_cluster_single_deployment(n_pods=config['n_pods'], config=config)
 
-# run on daemon mode the monitor of the cluster
-try:
-    # ray_cluster.get_cluster_logs()
-    ray_cluster.monitor_cluster()
-except KeyboardInterrupt:
-    ray_cluster.stop_monitoring()
-    print("Monitoring stopped.")
+
+# print(ray_cluster.deployment.cluster_info)
+
+# # run on daemon mode the monitor of the cluster
+# try:
+#     # ray_cluster.get_cluster_logs()
+#     ray_cluster.monitor_cluster()
+# except KeyboardInterrupt:
+#     ray_cluster.stop_monitoring()
+#     print("Monitoring stopped.")
