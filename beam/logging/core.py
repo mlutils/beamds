@@ -10,7 +10,7 @@ import atexit
 class BeamLogger:
 
     def __init__(self, path=None, print=True):
-        self.logger = loguru.logger
+        self.logger = loguru.logger.opt(depth=1)
         self._level = None
         self.logger.remove()
         self.handlers_queue = []
@@ -142,8 +142,10 @@ class BeamLogger:
         self.__init__(state['path'])
 
     def stdout_handler(self, level='INFO'):
-        return self.logger.add(sys.stdout, level=level, colorize=True, format=
-        '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
+        return self.logger.add(sys.stdout, level=level, colorize=True,
+                               format=f'🔥 | <green>{{time:HH:mm:ss}} ({{elapsed}})</green> | '
+                                      f'<level>{{level:<8}}</level> 🗎 <level>{{message}}</level> '
+                                      f'<cyan>(∫{{function}}-#{{line}})</cyan>')
 
     @property
     def level(self):
@@ -164,18 +166,23 @@ class BeamLogger:
 
     def debug_mode(self):
         self.set_verbosity('DEBUG')
+        self.debug('Debug mode activated')
 
     def info_mode(self):
         self.set_verbosity('INFO')
+        self.info('Info mode activated')
 
     def warning_mode(self):
         self.set_verbosity('WARNING')
+        self.warning('Warning mode activated (only warnings and errors will be logged)')
 
     def error_mode(self):
         self.set_verbosity('ERROR')
+        self.error('Error mode activated (only errors will be logged)')
 
     def critical_mode(self):
         self.set_verbosity('CRITICAL')
+        self.critical('Critical mode activated (only critical errors will be logged)')
 
     @contextmanager
     def as_debug_mode(self):
