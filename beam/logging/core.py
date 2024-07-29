@@ -145,7 +145,7 @@ class BeamLogger:
         return self.logger.add(sys.stdout, level=level, colorize=True,
                                format=f'🔥 | <green>{{time:HH:mm:ss}} ({{elapsed}})</green> | '
                                       f'<level>{{level:<8}}</level> 🗎 <level>{{message}}</level> '
-                                      f'<cyan>(∫{{function}}-#{{line}})</cyan>')
+                                      f'<cyan>(∫{{file}}:{{function}}-#{{line}})</cyan>')
 
     @property
     def level(self):

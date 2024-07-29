@@ -1,7 +1,9 @@
+from typing import Union, Any
+
 from .base import BeamResource, resource_names
 
 
-def resource(uri, **kwargs) -> BeamResource:
+def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     if type(uri) != str:
         return uri
     if ':' not in uri:

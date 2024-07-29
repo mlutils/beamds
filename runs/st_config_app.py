@@ -1,4 +1,6 @@
 import json
+import tempfile
+
 import streamlit as st
 import yaml
 import subprocess
@@ -7,8 +9,9 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, '..')
-from beam import K8SConfig, this_dir
+from beam import K8SConfig, this_dir, resource
 from beam import logger
+from beam.path.utils import temp_local_file
 
 # Path to the local image
 background_image_path = this_dir().joinpath("resources", "st-beam.png").as_posix()
@@ -126,9 +129,6 @@ def generate_ui(config):
     st.markdown('</div>', unsafe_allow_html=True)
     return param_values
 
-def save_to_yaml(param_values, filepath='config.yaml'):
-    with open(filepath, 'w') as yaml_file:
-        yaml.dump(param_values, yaml_file, default_flow_style=False)
 
 def main():
     st.title("Configuration UI")
@@ -141,32 +141,40 @@ def main():
     # Custom styled button using HTML and CSS
     if st.button("Launch"):
         logger.info("Launching the deployment...")
-        save_to_yaml(param_values)
 
-        script_path = str(this_dir().parent.joinpath('examples', 'orchestration_beamdeploy.py'))
+        # param_values
+        with tempfile.TemporaryDirectory() as tmp_dir:
 
-        # Create a placeholder for the terminal output
-        terminal_output = st.empty()
+            user_config_path = resource(tmp_dir).joinpath('config.yaml')
+            user_config_path.write(param_values)
 
-        process = subprocess.Popen(
-            ["python", script_path, "config.yaml"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
+            logger.info(f"Running the deployment script from {this_dir().parent.str}...")
+            # Create a placeholder for the terminal output
+            base_dir = str(this_dir().parent)
 
-        while True:
-            output = process.stdout.readline()
-            if output == "" and process.poll() is not None:
-                break
-            if output:
-                terminal_output.code(output.strip(), language='bash')
-            time.sleep(0.1)
+            # Create a placeholder for the terminal output
+            terminal_output = st.empty()
 
-        # Capture any remaining output
-        stderr_output = process.stderr.read()
-        if stderr_output:
-            terminal_output.code(stderr_output.strip(), language='bash')
+            process = subprocess.Popen(
+                ["python", "-m", "examples.orchestration_beamdeploy", user_config_path.str],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=base_dir
+            )
+
+            while True:
+                output = process.stdout.readline()
+                if output == "" and process.poll() is not None:
+                    break
+                if output:
+                    terminal_output.code(output.strip(), language='bash')
+                time.sleep(0.1)
+
+            # Capture any remaining output
+            stderr_output = process.stderr.read()
+            if stderr_output:
+                terminal_output.code(stderr_output.strip(), language='bash')
 
 
 if __name__ == '__main__':
