@@ -491,13 +491,24 @@ class AutoBeam(BeamBase):
         assert base_image is not None, "You must provide a base_image."
 
         import docker
-        from docker.errors import BuildError
+        from docker.errors import BuildError, ImageNotFound, APIError
 
         # client = docker.APIClient()
         # client = docker.APIClient(base_url='unix:///var/run/docker.sock')
         client = docker.APIClient(base_url=base_url)
         # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
         # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
+
+        try:
+            # Try to get the base image locally, if not found, pull from registry
+            try:
+                client.inspect_image(base_image)
+            except ImageNotFound:
+                print(f"Base image {base_image} not found locally. Attempting to pull...")
+                client.pull(base_image)
+                print(f"Base image {base_image} pulled successfully.")
+        finally:
+            client.close()
 
         entrypoint = entrypoint or 'synchronous-server'
         dockerfile = dockerfile or 'simple-entrypoint'
