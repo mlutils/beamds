@@ -3,14 +3,17 @@ from beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, SecurityContextCon
                                 ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig, CommandConfig)
 from beam.logging import beam_logger as logger
 import time
-from beam.resources import resource
+from beam.resources import resource, this_dir
 from beam.orchestration.config import K8SConfig
 import os
+import sys
 
-# hparams = K8SConfig()
 
-script_dir = os.path.dirname(os.path.realpath(__file__))
-conf_path = resource(os.path.join(script_dir, 'orchestration_beamdeploy.yaml')).str
+if sys.argv[1:]:
+    conf_path = sys.argv[1]
+else:
+    conf_path = this_dir().joinpath('orchestration_beamdeploy.yaml')
+
 config = K8SConfig(conf_path)
 
 print('hello world')

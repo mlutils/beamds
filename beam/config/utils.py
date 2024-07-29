@@ -208,14 +208,19 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
     # set defaults from environment variables
     update_parser(pr, os.environ)
 
+    config_files_should_be_loaded = False
     if return_defaults:
         args = pr.parse_args([])
         keys_with_non_default_values = set()
-        config_files_should_be_loaded = False
 
     else:
         args, unknown = pr.parse_known_args()
-        config_files_should_be_loaded = hasattr(args, 'config_files') and args.config_files and load_config_files
+
+        if load_config_files:
+            if hasattr(args, 'config_files') and args.config_files:
+                config_files_should_be_loaded = True
+            elif len(config_files):
+                config_files_should_be_loaded = True
 
         if config_files_should_be_loaded:
             keys_with_non_default_values = set(args_that_were_provided_explicitly(pr, sys_argv=True))
