@@ -30,7 +30,7 @@ gpu_limits: '1'
 gpu_requests: '1'
 # image_name: harbor.dt.local/public/fake-alg-http-server:latest
 #image_name: None
-image_name: harbor.dt.local/public/beam:openshift-180524a
+image_name: harbor.dt.local/public/beam:20240707ocp
 labels:
   app: raydeploy
 memory_limits: '12'

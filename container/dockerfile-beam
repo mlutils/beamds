@@ -40,7 +40,7 @@ RUN pip install --upgrade pip setuptools wheel
 RUN pip install -U -r /workspace/pip/requirements.txt
 
 #RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+#RUN pip install -U -r /workspace/pip/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 #RUN pip list
 RUN pip install -U -r /workspace/pip/requirements_0001.txt
 #RUN pip list
