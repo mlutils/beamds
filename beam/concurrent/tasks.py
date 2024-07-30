@@ -108,6 +108,7 @@ class BeamTask(BeamName):
             self.exception = e
             logger.error(f"Task {self.name}{metadata} failed with exception: {e}")
             res = jupyter_like_traceback()
+            logger.debug(res)
         finally:
             self.is_pending = False
 
