@@ -271,7 +271,8 @@ class Processor(BeamBase):
                 for kh, vh in overwrite_hparams.items():
                     self.hparams.set(kh, vh)
 
-    def save_state_dict(self, state, path, ext=None, exclude: Union[List, Set] = None, override=False, **kwargs):
+    def save_state_dict(self, state, path, ext=None, exclude: Union[List, Set] = None, override=False,
+                        blacklist_priority=None, **kwargs):
 
         path = beam_path(path)
         ext = ext or path.suffix
@@ -283,10 +284,11 @@ class Processor(BeamBase):
         if ext and ext != '.bmpr':
             path.write(state, ext=ext, **kwargs)
         else:
-            BeamData.write_tree(state, path, override=override, split=False, archive_size=0)
+            BeamData.write_tree(state, path, override=override, split=False, archive_size=0,
+                                blacklist_priority=blacklist_priority, **kwargs)
 
     def save_state(self, path, ext=None, exclude: Union[List, Set] = None, skeleton: Union[bool, str] = True,
-                   init_args: Union[bool, str] = False, override=False, **kwargs):
+                   init_args: Union[bool, str] = False, override=False, blacklist_priority=None, **kwargs):
         state = {}
         exclude = set(exclude) if exclude is not None else set()
         exclude = exclude.union(self.excluded_attributes)
@@ -296,7 +298,8 @@ class Processor(BeamBase):
             if n not in self.excluded_attributes and self.hasattr(n):
                 state[n] = getattr(self, n)
 
-        self.save_state_dict(state, path, ext=ext, exclude=exclude, override=override, **kwargs)
+        self.save_state_dict(state, path, ext=ext, exclude=exclude, override=override,
+                             blacklist_priority=blacklist_priority, **kwargs)
         path = self.base_dir(path, ext=ext)
 
         if skeleton:
@@ -304,7 +307,8 @@ class Processor(BeamBase):
                 skeleton = Processor.skeleton_file
             with self.beam_pickle():
                 BeamData.write_object(self, path.joinpath(skeleton), priority=['.pkl', '.dill'],
-                                      override=override, split=False, archive_size=0)
+                                      blacklist_priority=blacklist_priority, override=override,
+                                      split=False, archive_size=0)
 
                 # if override or not path.joinpath(skeleton).exists():
                 #     path.joinpath(skeleton).write(self)
@@ -316,7 +320,7 @@ class Processor(BeamBase):
             if init_args is True:
                 init_args = Processor.init_args_file
 
-            BeamData.write_object(self._init_args, path.joinpath(init_args),
+            BeamData.write_object(self._init_args, path.joinpath(init_args), blacklist_priority=blacklist_priority,
                                       override=override, split=False, archive_size=0)
 
             # if override or not path.joinpath(init_args).exists():

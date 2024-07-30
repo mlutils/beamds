@@ -748,7 +748,7 @@ class PureBeamPath(BeamResource):
 
         if ext == '.bmpr':
             assert is_beam_processor(x), f"Expected Processor, got {type(x)}"
-            x.to_path(self)
+            x.to_path(self, **kwargs)
             return self
 
         if ext == '.abm':

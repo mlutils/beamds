@@ -1079,7 +1079,7 @@ class BeamData(BeamName):
     @staticmethod
     def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9), override=True,
                    chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None,
-                   split=False, textual_serialization=False, **kwargs):
+                   split=False, textual_serialization=False, blacklist_priority=None, **kwargs):
 
         path = beam_path(path)
 
@@ -1095,7 +1095,8 @@ class BeamData(BeamName):
                 if root:
                     path = path.joinpath(BeamData.default_data_file_name)
 
-                BeamData.write_object(data, path, size=size_summary, archive=True, **kwargs)
+                BeamData.write_object(data, path, size=size_summary, archive=True,
+                                      blacklist_priority=blacklist_priority, **kwargs)
                 return
 
             schema_type = check_type(schema)
@@ -1106,7 +1107,8 @@ class BeamData(BeamName):
                                     archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
                                     split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
                                     file_type=file_type, schema=s, override=override, split=split,
-                                    textual_serialization=textual_serialization, **kwargs)
+                                    textual_serialization=textual_serialization,
+                                    blacklist_priority=blacklist_priority, **kwargs)
 
         else:
 
@@ -1117,12 +1119,13 @@ class BeamData(BeamName):
                                   chunksize=chunksize, chunklen=chunklen, split_by=split_by,
                                   n_chunks=n_chunks, partition=partition, schema=schema,
                                   file_type=file_type, split=split, textual_serialization=textual_serialization,
-                                  **kwargs)
+                                  blacklist_priority=blacklist_priority, **kwargs)
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
                      chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None,
-                     textual_serialization=False, split_by=None, split=True, priority=None, **kwargs):
+                     textual_serialization=False, split_by=None, split=True, priority=None,
+                     blacklist_priority=None, **kwargs):
 
         path = beam_path(path)
 
@@ -1178,6 +1181,9 @@ class BeamData(BeamName):
             if file_type is not None:
                 priority.insert(file_type, 0)
 
+            if blacklist_priority is not None:
+                priority = [p for p in priority if p not in blacklist_priority]
+
             if split_by != 'keys' and n_chunks > 1:
                 dim = {'index': 0, 'columns': 1}[split_by]
                 data = list(divide_chunks(data, n_chunks=n_chunks, dim=dim))
@@ -1205,7 +1211,7 @@ class BeamData(BeamName):
                             if compress is False:
                                 kwargs['compression'] = None
                             BeamData.write_file(di, file_path, partition_cols=partition, coerce_timestamps='us',
-                                            allow_truncated_timestamps=True, schema=schema, **kwargs)
+                                                allow_truncated_timestamps=True, schema=schema, **kwargs)
                         elif ext == '.fea':
                             if compress is False:
                                 kwargs['compression'] = 'uncompressed'
@@ -1220,6 +1226,10 @@ class BeamData(BeamName):
                             if compress is True:
                                 kwargs['compressed'] = True
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
+
+                        elif ext == '.bmpr':
+                            BeamData.write_file(di, file_path, schema=schema, blacklist_priority=blacklist_priority,
+                                                **kwargs)
 
                         else:
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
