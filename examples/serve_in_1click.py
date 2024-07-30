@@ -1,12 +1,10 @@
-from beam.orchestration import (HTTPServeCluster, HTTPServeClusterConfig)
+from beam.orchestration import (ServeCluster, HTTPServeClusterConfig)
 from beam.resources import resource
 from beam.misc.fake import BeamFakeAlg
 import os
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-
-conf_path = resource(os.path.join(script_dir, 'Server_in_1click_config.yaml')).str
-
+conf_path = resource(os.path.join(script_dir, 'Server_in_1click.yaml')).str
 config = HTTPServeClusterConfig(conf_path, conf_bundle=True, port=44044, **{'path-to-bundle': '/app/algorithm'})
 
 print('hello world')
@@ -27,9 +25,9 @@ new_image = "harbor.dt.local/public/fake-alg-http-server:test1"
 
 # HTTPServeCluster.deploy_from_bundle('/app/algorithm', config)
 # serve_cluster.deploy_from_algorithm(alg, config)
-# HTTPServeCluster.deploy_from_algorithm(alg, config)
+ServeCluster.deploy_from_algorithm(alg, config)
 # HTTPServeCluster.commit_pod_to_image_and_push(new_image, config)
-HTTPServeCluster.deploy_from_image(image_name, config)
+# ServeCluster.deploy_from_image(image_name, config)
 
 
 

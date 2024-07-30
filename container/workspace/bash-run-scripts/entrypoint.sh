@@ -23,6 +23,15 @@ fi
 #INITIALS=$1
 #shift
 
+# Set default INITIALS if not provided
+default_initials_used=false
+if [ -z "$INITIALS" ]; then
+    echo "No INITIALS provided. Using default value of 220."
+    INITIALS="220"
+    default_initials_used=true
+fi
+
+
 echo "Initials set to: $INITIALS"
 
 # Initialize service flags
@@ -238,4 +247,12 @@ else
     echo "Running command: ${OPTIONAL_COMMAND} ${MORE_ARGS}"
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
+
 echo "Entrypoint script completed."
+# Only sleep indefinitely if default INITIALS were used
+if [ "$default_initials_used" = true ]; then
+    echo "No custom INITIALS provided, sleeping indefinitely."
+    sleep infinity
+else
+    echo "Custom INITIALS provided, not sleeping indefinitely."
+fi

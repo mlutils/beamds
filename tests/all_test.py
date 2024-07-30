@@ -11,9 +11,20 @@ import torch
 
 def test_k8s_configurations():
 
+    from beam.resources import this_dir
+    from beam import K8SConfig
+
+    conf_path = this_dir().parent.joinpath('examples', 'orchestration_beamdeploy.yaml')
+    config = K8SConfig(conf_path)
+
+    print(config)
+
+
+def test_server_configurations():
+
     from beam import HTTPServeClusterConfig
     from beam import this_dir
-    config_path = this_dir().parent.joinpath('examples/Server_in_1click_config.yaml')
+    config_path = this_dir().parent.joinpath('examples/Server_in_1click.yaml')
     config = HTTPServeClusterConfig(config_path.str, conf_bundle=True, port=44044,
                                     path_to_bundle='/app/algorithm',
                                     api_token='sha256~Z3uD_QjNwupN51L2sA6gJ1jeKVBYMZCV9Gws1lujkec')

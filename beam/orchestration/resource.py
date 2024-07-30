@@ -1,5 +1,5 @@
 from ..type import check_type, Types
-from .cluster import HTTPServeCluster
+from .cluster import ServeCluster
 from ..resources import resource
 
 
@@ -11,8 +11,8 @@ def deploy_server(obj, config):
         config = resource(config).read()
 
     if (obj_type.is_str and resource(obj).exists()) or obj_type.is_path:
-        return HTTPServeCluster.deploy_from_bundle(obj, config)
+        return ServeCluster.deploy_from_bundle(obj, config)
     elif obj_type.is_str:
-        return HTTPServeCluster.deploy_from_image(obj, config)
+        return ServeCluster.deploy_from_image(obj, config)
     else:
-        return HTTPServeCluster.deploy_from_algorithm(obj, config)
+        return ServeCluster.deploy_from_algorithm(obj, config)

@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~p2O_ltaM03oKj0RLNI_D_dzasuAIPgr6utWdYHTDvBI
+api_token: sha256~ph00ttAeDhhERvlSq4ldiOx-R7dnZlfQ-VL7oKuzyag
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -18,8 +18,8 @@ command:
 cpu_limits: '4'
 cpu_requests: '4'
 create_service_account: true
-deployment_name: oneclick
-enable_ray_ports: false
+deployment_name: raydeploy
+#enable_ray_ports: true
 entrypoint_args:
 - '63'
 entrypoint_envs:
@@ -29,9 +29,10 @@ from_email_password: mkhdokjqwwmazyrf
 gpu_limits: '1'
 gpu_requests: '1'
 # image_name: harbor.dt.local/public/fake-alg-http-server:latest
-image_name: None
+#image_name: None
+image_name: harbor.dt.local/public/beam:20240707ocp
 labels:
-  app: oneclick
+  app: raydeploy
 memory_limits: '12'
 memory_requests: '12'
 memory_storage_configs:
@@ -43,7 +44,7 @@ new_image: harbor.dt.local/public/fake-alg-http-server:test1
 n_pods: '2'
 node_selector:
   gpu-type: tesla-a100
-project_name: oneclick
+project_name: kh-dev
 # push_image: false - this is removed
 ray_ports_configs:
 - ray_ports:
@@ -79,10 +80,24 @@ service_configs:
   service_type: ClusterIP
 - create_ingress: false
   create_route: true
-  ingress_host: jupyter.example.com
-  port: 44044
-  port_name: fake-alg-http
-  service_name: fake-alg
+  ingress_host: mlflow.example.com
+  port: 8880
+  port_name: port
+  service_name: mlflow
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: ray-port.example.com
+  port: 6379
+  port_name: port
+  service_name: ray
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: ray-port.example.com
+  port: 8265
+  port_name: port
+  service_name: ray
   service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com
