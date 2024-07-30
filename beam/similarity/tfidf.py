@@ -306,7 +306,7 @@ class TFIDF(BeamSimilarity):
 
     def as_container(self, x):
         x_type = check_type(x)
-        if x_type.element == 'str':
+        if x_type.element == Types.str:
             if not x_type.major == Types.array:
                 x = [x]
         else:

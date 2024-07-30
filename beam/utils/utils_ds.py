@@ -22,7 +22,7 @@ from ..importer.safe_imports.scipy import scipy
 
 def slice_to_index(s, l=None, arr_type=Types.tensor, sliced=None):
 
-    f = torch.arange if str(arr_type) == 'tensor' else np.arange
+    f = torch.arange if str(arr_type) == Types.tensor else np.arange
 
     if isinstance(s, slice):
 
@@ -81,7 +81,7 @@ def as_something_recursively(as_something_func):
                 setattr(x, k, as_func_recursively(v, **kwargs))
             return x
         elif x_type.major == Types.container and x_type.minor in [Types.list, Types.tuple]:
-            if x_type.element not in ['object', 'unknown']:
+            if x_type.element not in [Types.object, Types.unknown]:
                 try:
                     return as_something_func(x, x_type=x_type, **kwargs)
                 except:
@@ -121,10 +121,10 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
         elif 'complex' in dtype:
             dtype = torch.complex32 if half else torch.complex64
 
-    if x_type.minor in ['pandas', 'cudf']:
+    if x_type.minor in [Types.pandas, Types.cudf]:
         x = x.values
 
-    elif x_type.minor == 'polars':
+    elif x_type.minor == Types.polars:
         x = x.to_numpy()
 
     if copy:
@@ -269,18 +269,18 @@ def recursive_concatenate(data, dim=0):
         if minor_type == Types.tensor:
             func = torch.cat
             kwargs = {'dim': dim}
-        elif minor_type == 'pandas':
+        elif minor_type == Types.pandas:
             func = pd.concat
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
             kwargs = {'axis': dim}
-        elif minor_type == 'polars':
+        elif minor_type == Types.polars:
             if dim == 0:
                 import polars as pl
                 func = pl.concat
                 kwargs = {'axis': dim}
             else:
                 func = concat_polars_horizontally
-        elif minor_type == 'cudf':
+        elif minor_type == Types.cudf:
             import cudf
             func = cudf.concat
             data = [cudf.Series(v.values) if isinstance(v, cudf.Index) else v for v in data]
@@ -392,7 +392,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
                 yield i, c
 
-        elif x_type.minor in ['pandas', 'cudf'] and partition != None:
+        elif x_type.minor in [Types.pandas, Types.cudf] and partition != None:
 
             grouped = x.groupby(partition, sort=True)
             for k, g in grouped:
@@ -405,9 +405,9 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
                     c = c.squeeze()
                 yield i, c
 
-        elif x_type.minor in ['pandas', 'cudf']:
+        elif x_type.minor in [Types.pandas, Types.cudf]:
 
-            if x_type.minor == 'cudf':
+            if x_type.minor == Types.cudf:
                 import cudf as upd
             else:
                 upd = pd
@@ -434,7 +434,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
                 yield i, c
 
-        elif x_type.minor == 'polars':
+        elif x_type.minor == Types.polars:
 
             for i in range(n_chunks):
                 c = x.slice(i * chunksize, (i + 1) * chunksize)
@@ -576,15 +576,15 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
     elif x_type.minor == Types.numpy:
         return np.concatenate(x, axis=dim)
 
-    elif x_type.minor == 'scipy_sparse':
+    elif x_type.minor == Types.scipy_sparse:
 
         if dim == 0:
             return scipy.sparse.vstack(x)
         return scipy.sparse.hstack(x)
 
-    elif x_type.minor in ['pandas', 'cudf']:
+    elif x_type.minor in [Types.pandas, Types.cudf]:
 
-        if x_type.minor == 'cudf':
+        if x_type.minor == Types.cudf:
             import cudf as upd
         else:
             upd = pd
@@ -598,7 +598,7 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
         else:
             return recursive_merge(x, method=method, how=how, on=on)
 
-    elif x_type.minor == 'polars':
+    elif x_type.minor == Types.polars:
         if dim == 1:
             return concat_polars_horizontally(x)
         import polars as pl
@@ -673,14 +673,14 @@ def object_size(x, x_type=None):
         x_type = check_type(x)
     if x_type.minor == Types.tensor:
         return x.element_size() * x.nelement()
-    elif x_type.minor in [Types.numpy, 'scipy_sparse']:
+    elif x_type.minor in [Types.numpy, Types.scipy_sparse]:
         return x.size * x.dtype.itemsize
-    elif x_type.minor in ['pandas', 'cudf']:
+    elif x_type.minor in [Types.pandas, Types.cudf]:
         try:
             return np.sum(x.memory_usage(index=True, deep=True))
         except:
             return x.size * x.dtype.itemsize
-    elif x_type.minor == 'polars':
+    elif x_type.minor == Types.polars:
         return x.estimated_size()
     elif x_type.minor == Types.list:
         if len(x) <= 1000:
@@ -786,13 +786,13 @@ def recursive_keys(x, level=1):
 @recursive
 def recursive_clone(x):
     x_minor = check_minor_type(x)
-    if x_minor in [Types.tensor, 'polars']:
+    if x_minor in [Types.tensor, Types.polars]:
         return x.clone()
     elif x_minor == Types.numpy:
         return x.copy()
-    elif x_minor in ['pandas', 'cudf']:
+    elif x_minor in [Types.pandas, Types.cudf]:
         return x.copy(deep=True)
-    elif x_minor == 'scipy_sparse':
+    elif x_minor == Types.scipy_sparse:
         return x.copy()
     else:
         return copy.deepcopy(x)
@@ -853,7 +853,7 @@ def recursive_batch(x, index):
 def recursive_len(x, data_array_only=False):
     x_type = BeamType.check(x)
 
-    if x_type.minor == 'scipy_sparse':
+    if x_type.minor == Types.scipy_sparse:
         return x.shape[0]
 
     if x_type.element == Types.none:
@@ -905,9 +905,9 @@ def recursive_slice_columns(x, columns, columns_index):
 
     if x is None:
         return None
-    elif x_type.minor in ['pandas', 'cudf']:
+    elif x_type.minor in [Types.pandas, Types.cudf]:
         return x[columns]
-    elif x_type.minor == 'polars':
+    elif x_type.minor == Types.polars:
         return x.select(columns)
     else:
         return x[:, columns_index]
@@ -967,17 +967,17 @@ def big_array_representation(x):
 
     metadata = None
     minor_type = check_minor_type(x)
-    if minor_type in ['pandas', 'cudf']:
+    if minor_type in [Types.pandas, Types.cudf]:
         metadata = x.columns
         x = x.values
-    elif minor_type == 'scipy_sparse':
+    elif minor_type == Types.scipy_sparse:
         metadata = x.shape
         x = x.data
-    if minor_type in [Types.numpy, Types.tensor, 'pandas', 'scipy_sparse', 'cudf']:
+    if minor_type in [Types.numpy, Types.tensor, Types.pandas, Types.scipy_sparse, Types.cudf]:
         ind = tuple(slice(0, i, i // n) if i > n else slice(None) for i in x.shape)
         x = x.__getitem__(ind)
 
-    if minor_type == 'polars':
+    if minor_type == Types.polars:
         metadata = x.columns
         import polars as pl
         x = pl.concat([x.head(n // 2), x.sample(n=min(n, len(x) // nl), seed=seed), x.tail(n // 2)])
@@ -1027,7 +1027,7 @@ def recursive_size_summary(x, mode='sum'):
         else:
             raise NotImplementedError
 
-    elif (x_type.minor in [Types.list, Types.tuple]) and x_type.element in ['object', 'unknown', Types.other]:
+    elif (x_type.minor in [Types.list, Types.tuple]) and x_type.element in [Types.object, Types.unknown, Types.other]:
 
         if mode == 'sum':
             return sum([recursive_size_summary(s, mode=mode) for s in x])
@@ -1041,11 +1041,11 @@ def recursive_size_summary(x, mode='sum'):
     else:
         if x_type.minor == Types.tensor:
             return x.element_size() * x.nelement()
-        elif x_type.minor in [Types.numpy, 'scipy_sparse']:
+        elif x_type.minor in [Types.numpy, Types.scipy_sparse]:
             return x.size * x.dtype.itemsize
-        elif x_type.minor == 'pandas':
+        elif x_type.minor == Types.pandas:
             return np.sum(x.memory_usage(index=True, deep=True))
-        elif x_type.minor == 'polars':
+        elif x_type.minor == Types.polars:
             return x.esitmate_size()
         else:
             return sys.getsizeof(x)
@@ -1058,16 +1058,16 @@ def recursive_squeeze(x):
         return x.squeeze(0)
     elif x_type.minor == Types.numpy:
         return np.squeeze(x, axis=0)
-    elif x_type.minor == 'pandas':
+    elif x_type.minor == Types.pandas:
         if isinstance(x, pd.Index) and len(x) == 1:
             return x[0]
         return x.squeeze('index')
-    elif x_type.minor == 'cudf':
+    elif x_type.minor == Types.cudf:
         import cudf
         if isinstance(x, cudf.Index) and len(x) == 1:
             return x[0]
         return x.squeeze('index')
-    elif x_type.minor in ['scipy_sparse', 'polars']:
+    elif x_type.minor in [Types.scipy_sparse, Types.polars]:
         ValueError("Cannot squeeze scipy sparse matrix")
     elif x_type.minor == Types.list and len(x) == 1:
         return x[0]
@@ -1077,9 +1077,9 @@ def recursive_squeeze(x):
 
 def empty_element(x):
     x_type = check_type(x)
-    if x_type.minor in [Types.numpy, 'pandas', Types.tensor, 'scipy_sparse', 'cudf']:
+    if x_type.minor in [Types.numpy, Types.pandas, Types.tensor, Types.scipy_sparse, Types.cudf]:
         return x.size == 0
-    if x_type.minor in [Types.list, Types.tuple, Types.set, Types.dict, 'polars']:
+    if x_type.minor in [Types.list, Types.tuple, Types.set, Types.dict, Types.polars]:
         return len(x) == 0
 
     if x_type.minor == Types.native:
@@ -1157,12 +1157,12 @@ def recursive_flat_array(x, x_type=None, tolist=True):
         if tolist:
             x = x.tolist()
         return x
-    elif x_type.minor == 'pandas':
+    elif x_type.minor == Types.pandas:
         x = x.values.flatten()
         if tolist:
             x = x.tolist()
         return x
-    elif x_type.minor == 'scipy_sparse':
+    elif x_type.minor == Types.scipy_sparse:
         x = x.toarray().flatten()
         if tolist:
             x = x.tolist()

@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import re
 
-from ..type import check_type
+from ..type import check_type, Types
 from ..type.utils import is_beam_data, is_beam_processor, is_pil
 from ..base import BeamResource, BeamURL
 
@@ -760,10 +760,10 @@ class PureBeamPath(BeamResource):
 
             if ext == '.fea':
 
-                if x_type.minor == 'polars':
+                if x_type.minor == Types.polars:
                     import polars as pl
                     x.to_feather(fo, **kwargs)
-                elif x_type.minor == 'cudf':
+                elif x_type.minor == Types.cudf:
                     import cudf
                     x.to_feather(fo, **kwargs)
                 else:
@@ -787,9 +787,9 @@ class PureBeamPath(BeamResource):
 
             elif ext == '.csv':
 
-                if x_type.minor == 'polars':
+                if x_type.minor == Types.polars:
                     x.write_csv(fo, **kwargs)
-                elif x_type.minor == 'cudf':
+                elif x_type.minor == Types.cudf:
                     x.to_csv(fo, **kwargs)
                 else:
                     x = pd.DataFrame(x)
@@ -826,9 +826,9 @@ class PureBeamPath(BeamResource):
                 scipy.sparse.save_npz(fo, x, **kwargs)
                 # self.rename(f'{path}.npz', path)
             elif ext == '.parquet':
-                if x_type.minor == 'polars':
+                if x_type.minor == Types.polars:
                     x.write_parquet(fo, **kwargs)
-                elif x_type.minor == 'cudf':
+                elif x_type.minor == Types.cudf:
                     x.to_parquet(fo, **kwargs)
                 else:
                     x = pd.DataFrame(x)

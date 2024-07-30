@@ -118,9 +118,9 @@ class OptunaHPO(BeamHPO, OptunaBase):
             config = {}
             for k, v in it[1].items():
                 v_type = check_type(v)
-                if v_type.element == 'int':
+                if v_type.element == Types.int:
                     config[k] = trial.suggest_int(k, 0, 1)
-                elif v_type.element == 'str':
+                elif v_type.element == Types.str:
                     config[k] = trial.suggest_categorical(k, ['a', 'b'])
                 else:
                     config[k] = trial.suggest_float(k, 0, 1)

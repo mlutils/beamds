@@ -38,6 +38,8 @@ class BeamResource(BeamName):
             kwargs = kwargs or url.query
             path = path or url.path
 
+        kwargs = {k: v for k, v in kwargs.items() if v is not None and not k.startswith('_')}
+
         self.url = BeamURL(scheme=scheme, hostname=hostname, port=port, username=username, fragment=fragment,
                            params=params, password=password, path=path, **kwargs)
 
@@ -82,3 +84,6 @@ class BeamResource(BeamName):
     @property
     def str(self):
         return str(self.as_uri())
+
+    def __str__(self):
+        return self.str

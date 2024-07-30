@@ -1,4 +1,3 @@
-from enum import Enum
 from collections import namedtuple
 import random
 import numpy as np
@@ -152,13 +151,13 @@ def check_minor_type(x):
     elif is_pil(x):
         return Types.pil
     elif isinstance(x, PurePath) or is_beam_path(x):
-        return 'path'
+        return Types.path
     elif is_beam_data(x):
-        return 'beam_data'
+        return Types.beam_data
     elif is_beam_processor(x):
-        return 'beam_processor'
+        return Types.beam_processor
     if is_cudf(x):
-        return 'cudf'
+        return Types.cudf
     else:
         return Types.other
 
@@ -214,7 +213,7 @@ def _check_type(x, minor=True, element=True):
                 mit = check_minor_type(x)
         else:
             mit = Types.na
-        elt = check_element_type(x, minor=mit if mit != 'na' else None) if element else 'na'
+        elt = check_element_type(x, minor=mit if mit != Types.na else None) if element else Types.na
 
     elif isinstance(x, dict):
 

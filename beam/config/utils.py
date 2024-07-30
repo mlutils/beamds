@@ -189,9 +189,9 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
             args_dict.append(to_dict(ar))
         elif ar_type.minor == Types.dict:
             args_dict.append(ar)
-        elif ar_type.minor == 'path':
+        elif ar_type.minor == Types.path:
             config_files.append(ar)
-        elif ar_type.major == Types.scalar and ar_type.element == 'str':
+        elif ar_type.major == Types.scalar and ar_type.element == Types.str:
             args_str.append(ar)
         else:
             raise ValueError

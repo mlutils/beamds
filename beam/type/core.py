@@ -55,7 +55,7 @@ class BeamType:
 
     @cached_property
     def is_dataframe(self):
-        return self._minor in ['pandas', 'polars', 'cudf']
+        return self._minor in [Types.pandas, Types.polars, Types.cudf]
 
     @cached_property
     def is_path(self):
@@ -63,7 +63,7 @@ class BeamType:
 
     @cached_property
     def is_data_array(self):
-        return self._minor in [Types.numpy, 'torch', 'polars', 'cudf', 'pandas', 'scipy_sparse']
+        return self._minor in [Types.numpy, Types.tensor, Types.polars, Types.cudf, Types.pandas, Types.scipy_sparse]
 
     @cached_property
     def is_str(self):

@@ -25,7 +25,7 @@ def __getattr__(name):
         return BeamResource
     elif name == 'resource_names':
         from .beam_resource import resource_names
-        return
+        return resource_names
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 

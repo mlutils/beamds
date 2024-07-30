@@ -78,7 +78,7 @@ class UniversalBatchSampler(object):
         self.sample_size = sample_size
 
         indices_type = check_type(indices)
-        if indices_type.minor == 'torch':
+        if indices_type.minor == Types.tensor:
             device = device if device is not None else indices.device
         else:
             device = device if device is not None else 'cpu'\

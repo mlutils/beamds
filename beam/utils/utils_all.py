@@ -273,9 +273,9 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='none',
 
 def is_boolean(x):
     x_type = check_type(x)
-    if x_type.minor in [Types.numpy, 'pandas', Types.tensor, 'cudf'] and 'bool' in str(x.dtype).lower():
+    if x_type.minor in [Types.numpy, Types.pandas, Types.tensor, Types.cudf] and 'bool' in str(x.dtype).lower():
         return True
-    elif x_type.minor == 'polars' and 'Boolean' == str(next(iter(x.schema.values()))):
+    elif x_type.minor == Types.polars and 'Boolean' == str(next(iter(x.schema.values()))):
         return True
     if x_type.minor == Types.list and len(x) and isinstance(x[0], bool):
         return True
@@ -465,15 +465,15 @@ def squeeze_scalar(x, x_type=None):
             x_type = check_type(x)
 
     if x_type.major == Types.scalar:
-        if x_type.element == 'int':
+        if x_type.element == Types.int:
             return int(x)
-        elif x_type.element == 'float':
+        elif x_type.element == Types.float:
             return float(x)
-        elif x_type.element == 'complex':
+        elif x_type.element == Types.complex:
             return complex(x)
-        elif x_type.element == 'bool':
+        elif x_type.element == Types.bool:
             return bool(x)
-        elif x_type.element == 'str':
+        elif x_type.element == Types.str:
             return str(x)
 
     return x
@@ -841,13 +841,13 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
     else:
         indices_type = indices_type.minor
 
-    if indices_type in ['pandas', 'cudf']:
+    if indices_type in [Types.pandas, Types.polars]:
         index = index.values
     if indices_type == Types.other:  # the case where there is a scalar value with a dtype attribute
         index = int(index)
-    if x_type in [Types.numpy, 'polars']:
+    if x_type in [Types.numpy, Types.polars]:
         return x[index]
-    elif x_type in ['pandas', 'cudf']:
+    elif x_type in [Types.pandas, Types.cudf]:
         return x.iloc[index]
     elif x_type == Types.tensor:
         if x.is_sparse:
@@ -868,10 +868,10 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
 def is_arange(x, convert_str=True):
     x_type = check_type(x)
 
-    if x_type.element in [Types.array, 'object', 'empty', Types.none, 'unknown']:
+    if x_type.element in [Types.array, Types.object, Types.empty, Types.none, Types.unknown]:
         return None, False
 
-    if convert_str and x_type.element == 'str':
+    if convert_str and x_type.element == Types.str:
         pattern = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)(?P<suffix>.*?)$')
         df = []
         for xi in x:

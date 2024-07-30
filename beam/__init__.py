@@ -200,7 +200,7 @@ def __getattr__(name):
     elif name == 'HTTPServeClusterConfig':
         from .orchestration import HTTPServeClusterConfig
         return HTTPServeClusterConfig
-    elif name == 'HTTPServeCluster':
+    elif name == 'ServeCluster':
         from .orchestration import ServeCluster
         return ServeCluster
     elif name == 'RayCluster':

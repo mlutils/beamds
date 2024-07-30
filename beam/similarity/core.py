@@ -25,6 +25,8 @@ class BeamSimilarity(Processor):
         self.metric = self.hparams.metric
         self.index = None
         self._is_trained = None
+        self._is_range_index = None
+        self._is_numeric_index = None
         self.reset()
 
     @property
@@ -95,8 +97,13 @@ class BeamSimilarity(Processor):
         if not len(self.index):
             if index is None:
                 index = np.arange(len(x))
+                self._is_range_index = True
+                self._is_numeric_index = True
             else:
                 index = as_numpy(index)
+                self._is_range_index = False
+                if index.dtype.kind in 'iuf':
+                    self._is_numeric_index = True
             self.index = index
         else:
             if index is None:
@@ -104,4 +111,6 @@ class BeamSimilarity(Processor):
             else:
                 index = as_numpy(index)
             self.index = np.concatenate([self.index, index])
+
+        return index
 

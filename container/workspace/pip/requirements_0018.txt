@@ -18,3 +18,4 @@ grex
 # visualization tool
 imgkit
 dataframe-image
+eland

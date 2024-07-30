@@ -115,7 +115,7 @@ class SparseSimilarity(BeamSimilarity):
 
         x_type = check_type(x)
 
-        if x_type.minor == 'scipy_sparse':
+        if x_type.minor == Types.scipy_sparse:
             r, c, v = self.scipy_to_row_col_val(x)
             x = self.sparse_tensor(r, c, v)
 
