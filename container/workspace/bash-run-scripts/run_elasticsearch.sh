@@ -1,3 +1,5 @@
+# alternatively run with docker-compose: https://github.com/shazforiot/Elasticsearch-logstash-Kibana-Docker-Compose/blob/main/docker-compose.yml
+
 ELASTICSEARCH_PORT=$1
 KIBANA_PORT=$2
 
