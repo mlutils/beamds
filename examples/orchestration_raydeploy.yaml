@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~ph00ttAeDhhERvlSq4ldiOx-R7dnZlfQ-VL7oKuzyag
+api_token: sha256~gF7HOLVRsqUmBblEtDGfQGu_9SmEXakr38fpuYNYZso
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -12,16 +12,17 @@ body: 'Here is the cluster information:'
 check_project_exists: true
 command:
   arguments:
-  - -c
-  - sleep infinity
-  executable: /bin/bash
+#  - -c
+#  - /workspace/bash-run-scripts/entrypoint.sh --no-ray #TODO: check if can specify only arguments without executable
+#  executable: /bin/bash
+  executable:
 cpu_limits: '4'
 cpu_requests: '4'
 create_service_account: true
 deployment_name: raydeploy
 #enable_ray_ports: true
 entrypoint_args:
-- '63'
+- '--no-ray'
 entrypoint_envs:
   TEST: test
 from_email: dayotech2018@gmail.com
@@ -30,7 +31,7 @@ gpu_limits: '1'
 gpu_requests: '1'
 # image_name: harbor.dt.local/public/fake-alg-http-server:latest
 #image_name: None
-image_name: harbor.dt.local/public/beam:20240707ocp
+image_name: harbor.dt.local/public/beam:20240729ocp-dev
 labels:
   app: raydeploy
 memory_limits: '12'
@@ -67,21 +68,21 @@ service_configs:
 - create_ingress: false
   create_route: false
   ingress_host: ssh.example.com
-  port: 2222
+  port: 22022
   port_name: ssh-port
   service_name: ssh
   service_type: NodePort
 - create_ingress: false
   create_route: true
   ingress_host: jupyter.example.com
-  port: 8888
+  port: 22088
   port_name: jupyter-port
   service_name: jupyter
   service_type: ClusterIP
 - create_ingress: false
   create_route: true
   ingress_host: mlflow.example.com
-  port: 8880
+  port: 22080
   port_name: port
   service_name: mlflow
   service_type: ClusterIP
