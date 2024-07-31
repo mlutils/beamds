@@ -605,6 +605,10 @@ def tqdm_beam(x, *args, threshold=10, stats_period=1, message_func=None, enable=
         for xi in x:
             yield xi
 
+    # check if x has len and its len equals 1, in this case we don't need to show the progress bar
+    elif hasattr(x, '__len__') and len(x) == 1:
+        yield from x
+
     elif enable is True:
 
         pb = my_tqdm(x, *args, **argv)

@@ -35,7 +35,7 @@ else:
 
 from pydantic import Field, PrivateAttr
 from .utils import get_conversation_template
-from .tools import LLMTool, ImageContent
+from .tools import LLMTool
 
 
 # make CompletionObject with dataclasses
@@ -778,7 +778,7 @@ class BeamLLM(PedanticBeamResource):
             max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
             parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', tools=None,
-            fastchat_format=True, guidance=None, **kwargs):
+            image=None, images=None, fastchat_format=True, guidance=None, **kwargs):
         """
 
         @param prompt:
@@ -829,7 +829,7 @@ class BeamLLM(PedanticBeamResource):
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
             response = self.chat(prompt, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat',
-                                 guidance=guidance, **kwargs)
+                                 guidance=guidance, image=image, images=images, **kwargs)
         else:
             response = self.completion(prompt, logprobs=logprobs, echo=echo,
                                        prompt_type=prompt_type, guidance=guidance, **default_params)

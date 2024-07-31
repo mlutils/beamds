@@ -6,7 +6,7 @@ from .model_adapter import get_model_adapter
 default_token_pattern = f" ?[{re.escape(string.whitespace + string.punctuation)}]| ?[A-Za-z]{{1,4}}| ?\d{{1,3}}"
 
 
-def text_splitter(text, separators=["\n\n", ". ", " "], chunk_size=100, length_function=None):
+def text_splitter(text, chunk_size=100, separators=["\n\n", ". ", " "], length_function=None):
     if length_function is None:
         length_function = lambda x: int(1.5 * len(re.findall(r'\w+', x)))
 
@@ -19,7 +19,7 @@ def text_splitter(text, separators=["\n\n", ". ", " "], chunk_size=100, length_f
         if length_function(c) > chunk_size:
             if len(next_chunk) > 0:
                 closed_chunks.append(next_chunk)
-            closed_chunks.extend(text_splitter(c, separators[1:], chunk_size, length_function))
+            closed_chunks.extend(text_splitter(c, chunk_size, separators[1:], length_function))
             next_chunk = closed_chunks.pop()
         elif length_function(next_chunk) + length_function(c) > chunk_size:
             closed_chunks.append(next_chunk)

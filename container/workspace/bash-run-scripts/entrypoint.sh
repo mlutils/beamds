@@ -40,11 +40,14 @@ RUN_JUPYTER=true
 RUN_SSH=true
 RUN_REDIS=true
 RUN_RABBITMQ=true
-RUN_PREFECT=false
 RUN_RAY=true
-RUN_MONGO=false
 RUN_CHROMA=true
-RUN_MINIO=true
+RUN_HOMEPAGE=true
+RUN_PREFECT=false
+
+RUN_MONGO=false
+RUN_MINIO=false
+RUN_ELASTICSEARCH=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -65,6 +68,12 @@ while [[ $# -gt 0 ]]; do
         --prefect) RUN_PREFECT=true; shift ;;
         --ray) RUN_RAY=true; shift ;;
         --chroma) RUN_CHROMA=true; shift ;;
+        --elasticsearch) RUN_ELASTICSEARCH=true; shift ;;
+        --no-elasticsearch) RUN_ELASTICSEARCH=false; shift ;;
+        --minio) RUN_MINIO=true; shift ;;
+        --no-minio) RUN_MINIO=false; shift ;;
+        --homepage) RUN_HOMEPAGE=true; shift ;;
+        --no-homepage) RUN_HOMEPAGE=false; shift ;;
         *) break ;;
     esac
 done
@@ -165,17 +174,32 @@ else
   echo "MongoDB is disabled."
 fi
 
-#if [ "$RUN_MINIO" = true ]; then
-#  MINIO_PORT="${INITIALS}92"
-#  echo "Minio Port: $MINIO_PORT"
-#  export MINIO_PORT=$MINIO_PORT
-#  echo "minio_port, ${MINIO_PORT}" >> /workspace/configuration/config.csv
-#  sed -i "s/MINIO_PORT/${MINIO_PORT}/g" /etc/systemd/system/minio.service
-#  bash /workspace/bash-run-scripts/run_minio.sh $MINIO_PORT
-#  echo "Minio server is running."
-#else
-#  echo "Minio is disabled."
-#fi
+if [ "$RUN_MINIO" = true ]; then
+  MINIO_PORT="${INITIALS}92"
+  echo "Minio Port: $MINIO_PORT"
+  export MINIO_PORT=$MINIO_PORT
+  echo "minio_port, ${MINIO_PORT}" >> /workspace/configuration/config.csv
+  sed -i "s/MINIO_PORT/${MINIO_PORT}/g" /etc/systemd/system/minio.service
+  bash /workspace/bash-run-scripts/run_minio.sh $MINIO_PORT
+  echo "Minio server is running."
+else
+  echo "Minio is disabled."
+fi
+
+if [ "$RUN_ELASTICSEARCH" = true ]; then
+  ELASTICSEARCH_PORT="${INITIALS}92"
+  KIBANA_PORT="${INITIALS}56"
+  echo "Elasticsearch Port: $ELASTICSEARCH_PORT"
+  echo "Kibana Port: $KIBANA_PORT"
+  export ELASTICSEARCH_PORT=$ELASTICSEARCH_PORT
+  export KIBANA_PORT=$KIBANA_PORT
+  echo "elasticsearch_port, ${ELASTICSEARCH_PORT}" >> /workspace/configuration/config.csv
+  echo "kibana_port, ${KIBANA_PORT}" >> /workspace/configuration/config.csv
+  bash /workspace/bash-run-scripts/run_elasticsearch.sh $ELASTICSEARCH_PORT $KIBANA_PORT
+  echo "Elasticsearch server is running."
+else
+  echo "Elasticsearch is disabled."
+fi
 
 if [ "$RUN_RAY" = true ]; then
   RAY_REDIS_PORT="${INITIALS}78"
@@ -234,6 +258,17 @@ if [ "$RUN_JUPYTER" = true ]; then
   echo "Jupyter is running."
 else
   echo "Jupyter is disabled."
+fi
+
+if [ "$RUN_HOMEPAGE" = true ]; then
+  HOMEPAGE_PORT="${INITIALS}89"
+  echo "Homepage Port: $HOMEPAGE_PORT"
+  export HOMEPAGE_PORT=$HOMEPAGE_PORT
+  echo "homepage_port, ${HOMEPAGE_PORT}" >> /workspace/configuration/config.csv
+  bash /workspace/bash-run-scripts/run_homepage.sh $HOMEPAGE_PORT &
+  echo "Homepage is running."
+else
+  echo "Homepage is disabled."
 fi
 
 # echo "Setting permissions to user flash"

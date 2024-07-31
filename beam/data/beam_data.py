@@ -1430,7 +1430,7 @@ class BeamData(BeamName):
         self._total_size = sum(recursive_flatten(self.size, flat_array=True))
         return self._total_size
 
-    def store(self, data=None, path=None, compress=None, chunksize=None,
+    def store(self, path=None, data=None, compress=None, chunksize=None,
               chunklen=None, n_chunks=None, partition=None, split_by=None,
               archive_size=None, override=None, split=True, **kwargs):
 

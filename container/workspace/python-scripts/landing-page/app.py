@@ -46,7 +46,7 @@ ssh {ssh_user}@{ssh_ip} -p {ssh_port}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=51701)
+    parser.add_argument('--port', type=int, default=22001)
     parser.add_argument('--debug', action='store_true', default=False)
     args = parser.parse_args()
 
