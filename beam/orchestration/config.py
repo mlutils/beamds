@@ -11,7 +11,6 @@ class K8SConfig(BeamConfig):
         BeamParam('deployment_name', str, None, 'Name of the deployment'),
         BeamParam('labels', dict, {}, 'Labels for the deployment'),
         BeamParam('image_name', str, None, 'Name of the image to deploy'),
-        BeamParam('use_command', bool, False, 'command configuration for the deployment'),
         BeamParam('command', dict, {}, 'Command configuration for the deployment'),
         BeamParam('os_namespace', str, None, 'Namespace for the deployment'),
         BeamParam('replicas', int, 1, 'Number of replicas for the deployment'),
