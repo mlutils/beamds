@@ -310,16 +310,15 @@ class AutoBeam(BeamBase):
         # # in case the object is defined in the __main__ script
         # # get all import statements from the script
         main_import_statements = None
-        # if self.in_main_script:
-        #     main_script_path = os.path.abspath(sys.argv[0])
-        #     main_script_path = beam_path(main_script_path)
-        #     content = main_script_path.read()
-        #     ast_tree = ast.parse(content)
-        #     collector = ImportCollector()
-        #     collector.visit(ast_tree)
-        #     import_nodes = collector.import_nodes
-        #     # get all the textual representation of the import statements
-        #     main_import_statements = [ast.unparse(a) for a in import_nodes]
+        if self.in_main_script:
+            main_script_path = os.path.abspath(sys.argv[0])
+            main_script_path = beam_path(main_script_path)
+            content = main_script_path.read()
+            ast_tree = ast.parse(content)
+            collector = ImportCollector()
+            collector.visit(ast_tree)
+            import_nodes = collector.import_nodes
+            main_import_statements = '\n'.join([ast.unparse(a) for a in import_nodes])
 
         return {'name': name, 'type': type(self.obj).__name__,
                 'import_statement': self.import_statement, 'module_name': self.module_name,
@@ -384,6 +383,9 @@ class AutoBeam(BeamBase):
 
             # 5. Load metadata and import necessary modules
             metadata = metadata_file.read()
+
+            if metadata['main_import_statements'] is not None:
+                exec(metadata['main_import_statements'], globals())
 
             imported_class = metadata['type']
             module = importlib.import_module(metadata['module_name'])
