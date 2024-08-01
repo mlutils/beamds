@@ -1,8 +1,7 @@
 from functools import cached_property
 
-from beam import beam_device
 
-from ..utils import as_numpy, as_tensor
+from ..utils import as_numpy, as_tensor, beam_device
 from ..base import BeamResource
 
 
@@ -24,12 +23,16 @@ class BeamEmbedding(BeamResource):
 
 class OpenAIEmbedding(BeamEmbedding):
 
-    def __init__(self, model=None, api_key=None, api_base=None, organization=None, format='tensor',
+    def __init__(self, model=None, api_key=None, api_base=None, tls=False, organization=None, format='tensor',
                  device=None, *args, **kwargs):
         super().__init__(*args, model=model, **kwargs)
 
         self.api_key = api_key
-        self.api_base = api_base
+        if not api_base:
+            self.api_base = None
+        else:
+            self.api_base = f"{'https' if tls else 'http'}://{api_base}"
+
         self.organization = organization
         self.model = model
         self.format = format
@@ -44,7 +47,13 @@ class OpenAIEmbedding(BeamEmbedding):
     @cached_property
     def client(self):
         from openai import OpenAI
-        return OpenAI(organization=self.organization, api_key=self.api_key, base_url=self.api_base)
+        http_client = None
+        if self.api_base:
+            import httpx
+            http_client = httpx.Client(transport=httpx.HTTPTransport(verify=False))
+
+        return OpenAI(organization=self.organization, api_key=self.api_key, base_url=self.api_base,
+                      http_client=http_client)
 
     def encode(self, x):
         res = self.client.embeddings.create(model=self.model, input=x, encoding_format='float')

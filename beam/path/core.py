@@ -460,6 +460,7 @@ class PureBeamPath(BeamResource):
         self.close_fo_after_read = True
         if ext is None:
             ext = self.suffix
+        ext = ext.lower()
 
         target = target or get_target(self)
         if target == 'pyarrow':
@@ -734,6 +735,7 @@ class PureBeamPath(BeamResource):
 
         if ext is None:
             ext = self.suffix
+        ext = ext.lower()
 
         x_type = check_type(x)
 
