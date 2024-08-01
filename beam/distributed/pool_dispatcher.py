@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, Future
 from functools import wraps
 from ..utils import cached_property
 
@@ -6,7 +6,7 @@ from ..processor import MetaAsyncResult, MetaDispatcher
 from ..utils import get_class_properties
 
 
-class ThreadAsyncResult(MetaAsyncResult):
+class PoolAsyncResult(MetaAsyncResult):
     def __init__(self, future: Future):
         super().__init__(future)
         self.future = future
@@ -44,9 +44,10 @@ class ThreadAsyncResult(MetaAsyncResult):
             return "PENDING"
 
 
-class ThreadedCluster:
-    def __init__(self, max_workers=None):
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+class PoolCluster:
+    def __init__(self, max_workers=None, pool_type='thread'):
+        PoolExecutor = ThreadPoolExecutor if pool_type == 'thread' else ProcessPoolExecutor
+        self.executor = PoolExecutor(max_workers=max_workers)
 
     def submit(self, fn, *args, **kwargs):
         future = self.executor.submit(fn, *args, **kwargs)
@@ -59,19 +60,20 @@ class ThreadedCluster:
         self.executor.shutdown(wait=wait)
 
 
-class ThreadedRemoteClass:
-    def __init__(self, target_class, asynchronous=False, executor=None, properties=None):
+class PoolRemoteClass:
+    def __init__(self, target_class, asynchronous=False, executor=None, properties=None, pool_type='thread'):
         self._target_class = target_class
         self.properties = properties if properties is not None else []
         self.asynchronous = asynchronous
+        self.pool_type = pool_type
         if executor is None:
-            self.executor = ThreadedCluster()
+            self.executor = PoolCluster(pool_type=pool_type)
         else:
             self.executor = executor
 
     @property
     def target_class(self):
-        if isinstance(self._target_class, ThreadAsyncResult):
+        if isinstance(self._target_class, PoolAsyncResult):
             self._target_class = self._target_class.value
         return self._target_class
 
@@ -79,7 +81,7 @@ class ThreadedRemoteClass:
         def wrapper(*args, **kwargs):
             future = self.executor.submit(method, *args, **kwargs)
             if self.asynchronous:
-                return ThreadAsyncResult(future)
+                return PoolAsyncResult(future)
             else:
                 return future.result()
         return wrapper
@@ -89,7 +91,7 @@ class ThreadedRemoteClass:
         if item in self.properties:
             future = self.executor.submit(self.target_class._get_property, item)
             if self.asynchronous:
-                return ThreadAsyncResult(future)
+                return PoolAsyncResult(future)
             else:
                 return future.result()
 
@@ -102,22 +104,24 @@ class ThreadedRemoteClass:
         return self.method_wrapper(self.target_class.__call__)(*args, **kwargs)
 
 
-class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
-    def __init__(self, obj, *routes, max_workers=None, asynchronous=True, **kwargs):
+class PoolDispatcher(MetaDispatcher, PoolCluster):
+    def __init__(self, obj, *routes, max_workers=None, asynchronous=True, pool_type='thread', **kwargs):
         MetaDispatcher.__init__(self, obj, *routes, asynchronous=asynchronous, **kwargs)
-        ThreadedCluster.__init__(self, max_workers=max_workers)
+        PoolCluster.__init__(self, max_workers=max_workers, pool_type=pool_type)
+
+        self.pool_type = pool_type
 
         if self.type == 'function':
-            self.call_function = self.threaded_function_wrapper(self.obj)
+            self.call_function = self.pooled_function_wrapper(self.obj)
         elif self.type == 'instance':
             if hasattr(self.obj, '__call__'):
-                self.call_function = self.threaded_function_wrapper(self.obj.__call__)
+                self.call_function = self.pooled_function_wrapper(self.obj.__call__)
             for route in self.routes:
                 if hasattr(self.obj, route):
                     method = getattr(self.obj, route)
-                    self._routes_methods[route] = self.threaded_function_wrapper(method)
+                    self._routes_methods[route] = self.pooled_function_wrapper(method)
         elif self.type == 'class':
-            self.call_function = self.threaded_function_wrapper(self.factory_class_wrapper(self.obj))
+            self.call_function = self.pooled_function_wrapper(self.factory_class_wrapper(self.obj))
         else:
             raise ValueError(f"Unknown type: {self.type}")
 
@@ -138,7 +142,7 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
 
         return wrapper
 
-    def threaded_function_wrapper(self, func, asynchronous=None, bypass=False):
+    def pooled_function_wrapper(self, func, asynchronous=None, bypass=False):
 
         if asynchronous is None:
             asynchronous = self.asynchronous
@@ -148,7 +152,7 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
             if bypass:
                 return future
             elif asynchronous:
-                return ThreadAsyncResult(future)
+                return PoolAsyncResult(future)
             else:
                 return future.result()
         return wrapper
@@ -157,6 +161,16 @@ class ThreadedDispatcher(MetaDispatcher, ThreadedCluster):
         res = self.call_function(*args, **kwargs)
         if self.type == 'class':
             properties = get_class_properties(self.obj)
-            return ThreadedRemoteClass(res, asynchronous=self.asynchronous, properties=properties)
+            return PoolRemoteClass(res, asynchronous=self.asynchronous, properties=properties, pool_type=self.pool_type)
         else:
             return res
+
+
+class ThreadedDispatcher(PoolDispatcher):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, pool_type='thread', **kwargs)
+
+
+class ProcessDispatcher(PoolDispatcher):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, pool_type='process', **kwargs)
