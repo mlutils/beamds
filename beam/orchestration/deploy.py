@@ -139,6 +139,8 @@ class BeamDeploy(BeamBase):
             entrypoint_envs=self.entrypoint_envs,
         )
 
+
+
         pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
         self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))
                                for pod in pod_infos]
@@ -150,7 +152,7 @@ class BeamDeploy(BeamBase):
                 if pod_name:
                     actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
                     beam_pod_instance = BeamPod(pod_infos=[BeamPod.extract_pod_info(actual_pod_info)],
-                                                namespace=self.namespace, k8s=self.k8s)
+                                                namespace=self.namespace, k8s=self.k8s, replicas=self.replicas)
                     self.beam_pod_instances.append(beam_pod_instance)
                 else:
                     logger.warning("PodInfo object does not have a 'name' attribute.")
@@ -175,31 +177,76 @@ class BeamDeploy(BeamBase):
         for pod_instance in self.beam_pod_instances:
             pod_suffix = (f"{self.deployment_name}-"
                           f"{pod_instance.pod_infos[0].raw_pod_data['metadata']['name'].split('-')[-1]}")
+            rs_env_vars = []
             for svc_config in self.service_configs:
                 service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
-                self.k8s.create_service(
+
+                service_details = self.k8s.create_service(
                     base_name=service_name,
                     namespace=self.namespace,
                     ports=[svc_config.port],
                     labels=self.labels,
                     service_type=svc_config.service_type
                 )
+                rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_URL", 'value': service_details['url']})
+                rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_PORT", 'value': str(service_details['ports'][0])})
+                rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_NAME", 'value': service_details['name']})
 
                 # Create routes and ingress if configured
                 if svc_config.create_route:
-                    self.k8s.create_route(
+                    route_details = self.k8s.create_route(
                         service_name=service_name,
                         namespace=self.namespace,
                         protocol=svc_config.route_protocol,
                         port=svc_config.port,
                         route_timeout=svc_config.route_timeout,
                     )
+                    rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_ROUTE_NAME", 'value': route_details['name']})
+                    rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_HOST", 'value': route_details['host']})
                 if svc_config.create_ingress:
-                    self.k8s.create_ingress(
+                    ingress_details = self.k8s.create_ingress(
                         service_configs=[svc_config],
                     )
+                original_replicas = self.get_hparam('replicas')
+                original_replicas = str(original_replicas)
+                self.update_deployment_with_env_vars(self.deployment_name, self.namespace, rs_env_vars, original_replicas)
 
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
+
+    def update_deployment_with_env_vars(self, deployment_name, namespace, rs_env_vars, original_replicas):
+        try:
+            # Retrieve the current deployment
+            deployment = self.k8s.apps_v1_api.read_namespaced_deployment(deployment_name, namespace)
+
+
+            # Scale down the deployment to 0
+            deployment.spec.replicas = 0
+            self.k8s.apps_v1_api.replace_namespaced_deployment(deployment_name, namespace, deployment)
+            logger.info(f"Deployment {deployment_name} scaled down to 0.")
+
+            # Wait for pods to scale down
+            # Note: Implement appropriate wait/check here if necessary
+
+            # Update environment variables
+            for container in deployment.spec.template.spec.containers:
+                container_env_names = {env.name for env in container.env} if container.env else set()
+                for var in rs_env_vars:
+                    if var['name'] in container_env_names:
+                        # Update existing env variable
+                        for env in container.env:
+                            if env.name == var['name']:
+                                env.value = var['value']
+                    else:
+                        # Add new env variable
+                        container.env.append(client.V1EnvVar(name=var['name'], value=var['value']))
+
+            # Scale back to original replicas
+            deployment.spec.replicas = original_replicas.str
+            self.k8s.apps_v1_api.replace_namespaced_deployment(deployment_name, namespace, deployment)
+            logger.info(f"Deployment {deployment_name} restored to {original_replicas} replicas.")
+
+        except ApiException as e:
+            logger.error(f"An error occurred while updating deployment: {e}")
 
     def extract_ports(self):
         extracted_ports = [svc_config.port for svc_config in self.service_configs]

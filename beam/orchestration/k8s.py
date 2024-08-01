@@ -193,7 +193,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                          cpu_requests=None, cpu_limits=None, memory_requests=None, use_command=None, command=None,
                          memory_limits=None, gpu_requests=None, memory_storage_configs=None,
                          use_gpu=None, gpu_limits=None, security_context_config=None,
-                         security_context=None, entrypoint_args=None, entrypoint_envs=None):
+                         security_context=None, entrypoint_args=None,  rs_env_vars=None, entrypoint_envs=None):
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
 
@@ -301,6 +301,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                             memory_limits=None, use_gpu=False, gpu_requests=None,
                             gpu_limits=None, use_node_selector=None, node_selector=None,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
+
 
         if labels is None:
             labels = {}
@@ -430,7 +431,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             selector={'matchLabels': pod_template.metadata.labels}
         )
 
-    # TODO: why the method recieves all vars with "none" as default value? It should be a dict with the values
     def create_deployment(self, image_name, use_command=None, command=None, labels=None, deployment_name=None,
                           namespace=None, project_name=None,
                           replicas=None, ports=None, create_service_account=None, service_account_name=None,
@@ -658,6 +658,33 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         except client.exceptions.ApiException as e:
             print(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
 
+        service_url = f"http://{base_name}.{namespace}.svc.cluster.local:{ports[0]}"
+        service_details = {
+            'url': service_url,
+            'name': base_name,
+            'ports': ports  # List of ports
+        }
+        return service_details
+
+    def generate_route_service_variables(self):
+        rs_env_vars = []
+        services_info = self.get_services_info(self.namespace)
+        routes_info = self.get_routes_info(self.namespace)
+
+        for service in services_info:
+            rs_env_vars.append(client.V1EnvVar(
+                name=f"SERVICE_{service['service_name'].upper()}_URL",
+                value=f"http://{service['service_name']}.{self.namespace}:{service['port']}"
+            ))
+
+        for route in routes_info:
+            rs_env_vars.append(client.V1EnvVar(
+                name=f"ROUTE_{route['host'].replace('.', '_').upper()}_URL",
+                value=f"http://{route['host']}"
+            ))
+
+        return rs_env_vars
+
     def generate_unique_service_name(self, base_name, namespace):
         unique_name = base_name
         suffix = 1
@@ -752,8 +779,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         try:
             # Try to get the existing route
             existing_route = route_resource.get(name=service_name, namespace=namespace)
-            # If the route exists, log a message and return
-            logger.info(f"Route {service_name} already exists in namespace {namespace}, skipping creation.")
+            if existing_route: # If the route exists, log a message and return
+                logger.warning(f"Route {service_name} already exists in namespace {namespace}, skipping creation.")
             return
         except NotFoundError:
             # The route does not exist, proceed with creation
@@ -797,9 +824,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.info(f"Route for service {service_name} created successfully in namespace {namespace}.")
             # Print the DNS name of the route
             dns_name = created_route.spec.host  # Accessing the DNS name from the route response
-            logger.info(f"The DNS name of the created route is: {dns_name}")  # Log the DNS name
+            logger.info(f"The DNS name of the created route is: {dns_name}")
+            route_details = {
+                'host': created_route.spec.host,
+                'name': service_name,
+            }
+            return route_details
         except Exception as e:
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
+
 
     def get_routes_info(self, namespace):
         routes_info = []

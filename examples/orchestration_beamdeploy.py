@@ -9,12 +9,10 @@ import os
 import sys
 
 
-if sys.argv[1:]:
-    conf_path = sys.argv[1]
-else:
-    conf_path = this_dir().joinpath('orchestration_beamdeploy.yaml')
-
+script_dir = os.path.dirname(os.path.realpath(__file__))
+conf_path = resource(os.path.join(script_dir, 'orchestration_beamdeploy.yaml')).str
 config = K8SConfig(conf_path)
+
 
 print('hello world')
 print("API URL:", config['api_url'])
