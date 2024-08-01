@@ -81,7 +81,7 @@ def async_client(uri, hostname=None, port=None, username=None, **kwargs):
 
     query = uri.query
     for k, v in query.items():
-        kwargs[k] = v
+        kwargs[k.replace('-', '_')] = v
 
     if 'tls' not in kwargs:
         kwargs['tls'] = True if 'https' in scheme else False
@@ -113,7 +113,7 @@ def ray_client(uri, hostname=None, port=None, username=None, password=None, ray_
     kwargs = defaultdict(lambda: None)
     query = uri.query
     for k, v in query.items():
-        kwargs[k] = v
+        kwargs[k.replace('-', '_')] = v
 
     if kwargs['ray_kwargs'] is not None:
         ray_kwargs = json.loads(ray_kwargs['ray_kwargs'])

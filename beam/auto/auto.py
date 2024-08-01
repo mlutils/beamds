@@ -65,11 +65,47 @@ class AutoBeam(BeamBase):
             return
         self._private_modules.append(module_spec)
 
+    # @cached_property
+    # def module_spec(self):
+    #     try:
+    #         module_spec = importlib.util.find_spec(type(self.obj).__module__)
+    #     except ValueError:
+    #         module_spec = None
+    #
+    #     root_module = module_spec.name.split('.')[0]
+    #     return importlib.util.find_spec(root_module)
+
+    @property
+    def in_main_script(self):
+        return type(self.obj).__module__ == '__main__'
+
+    @cached_property
+    def module_name(self):
+        module_name = type(self.obj).__module__
+        if module_name == '__main__':
+            # The object is defined in the __main__ script
+            main_script_path = os.path.abspath(sys.argv[0])
+
+            cwd = beam_path(os.getcwd())
+            name = beam_path(main_script_path).relative_to(cwd)
+            module_name = name.str.removesuffix('.py').replace(os.sep, '.')
+
+        return module_name
+
     @cached_property
     def module_spec(self):
-        module_spec = importlib.util.find_spec(type(self.obj).__module__)
-        root_module = module_spec.name.split('.')[0]
-        return importlib.util.find_spec(root_module)
+        module_name = type(self.obj).__module__
+        if module_name == '__main__':
+            # The object is defined in the __main__ script
+            main_script_path = os.path.abspath(sys.argv[0])
+
+            module_spec = importlib.util.spec_from_file_location(self.module_name, main_script_path)
+            return module_spec
+        else:
+            # The object is defined in a regular module
+            module_spec = importlib.util.find_spec(module_name)
+            root_module = module_spec.name.split('.')[0]
+            return importlib.util.find_spec(root_module)
 
     @staticmethod
     def module_walk(root_path):
@@ -257,12 +293,11 @@ class AutoBeam(BeamBase):
 
     @property
     def import_statement(self):
-        module_name = type(self.obj).__module__
         # origin = beam_path(get_origin(module_name))
         # if origin.parent.joinpath('__init__.py').is_file():
         #     module_name = f"{origin.parent.name}.{module_name}"
         class_name = type(self.obj).__name__
-        return f"from {module_name} import {class_name}"
+        return f"from {self.module_name} import {class_name}"
 
     @property
     def metadata(self):
@@ -272,8 +307,22 @@ class AutoBeam(BeamBase):
         else:
             name = type(self.obj).__name__
 
+        # # in case the object is defined in the __main__ script
+        # # get all import statements from the script
+        main_import_statements = None
+        if self.in_main_script:
+            main_script_path = os.path.abspath(sys.argv[0])
+            main_script_path = beam_path(main_script_path)
+            content = main_script_path.read()
+            ast_tree = ast.parse(content)
+            collector = ImportCollector()
+            collector.visit(ast_tree)
+            import_nodes = collector.import_nodes
+            main_import_statements = '\n'.join([ast.unparse(a) for a in import_nodes])
+
         return {'name': name, 'type': type(self.obj).__name__,
-                'import_statement': self.import_statement, 'module_name': type(self.obj).__module__}
+                'import_statement': self.import_statement, 'module_name': self.module_name,
+                'main_import_statements': main_import_statements}
 
     @staticmethod
     def to_bundle(obj, path=None):
@@ -297,7 +346,11 @@ class AutoBeam(BeamBase):
         ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'))
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
-        BeamData.write_object(obj, path.joinpath('state'))
+
+        blacklist_priority = None
+        if ab.in_main_script:
+            blacklist_priority = ['.pkl']
+        BeamData.write_object(obj, path.joinpath('state'), blacklist_priority=blacklist_priority)
 
         return path
 
@@ -330,6 +383,9 @@ class AutoBeam(BeamBase):
 
             # 5. Load metadata and import necessary modules
             metadata = metadata_file.read()
+
+            if metadata['main_import_statements'] is not None:
+                exec(metadata['main_import_statements'], globals())
 
             imported_class = metadata['type']
             module = importlib.import_module(metadata['module_name'])

@@ -32,6 +32,9 @@ def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     elif scheme in resource_names['ray']:
         from .distributed import ray_client
         return ray_client(uri, **kwargs)
+    elif scheme in resource_names['embedding']:
+        from .embedding import beam_embedding
+        return beam_embedding(uri, **kwargs)
     else:
         raise Exception(f'Unknown resource scheme: {scheme}')
 

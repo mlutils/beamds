@@ -215,6 +215,8 @@ class ImageContent(LLMContent):
         if type(self.image) == str:
             if self.image.startswith('www.') or self.image.startswith('http://') or self.image.startswith('https://'):
                 self.true_url = True
+            else:
+                self.image = beam_path(self.image)
 
     @cached_property
     def image_type(self):

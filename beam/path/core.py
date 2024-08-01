@@ -460,6 +460,7 @@ class PureBeamPath(BeamResource):
         self.close_fo_after_read = True
         if ext is None:
             ext = self.suffix
+        ext = ext.lower()
 
         target = target or get_target(self)
         if target == 'pyarrow':
@@ -734,6 +735,7 @@ class PureBeamPath(BeamResource):
 
         if ext is None:
             ext = self.suffix
+        ext = ext.lower()
 
         x_type = check_type(x)
 
@@ -748,7 +750,7 @@ class PureBeamPath(BeamResource):
 
         if ext == '.bmpr':
             assert is_beam_processor(x), f"Expected Processor, got {type(x)}"
-            x.to_path(self)
+            x.to_path(self, **kwargs)
             return self
 
         if ext == '.abm':

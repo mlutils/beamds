@@ -57,7 +57,7 @@ class SyncedResults:
 
     @cached_property
     def values(self):
-        vals = {r['name']: r['result'] if r['exception'] is None else r['exception'] for r in self.results}
+        vals = {r['name']: r['result'] if r['exception'] is None else r for r in self.results}
         return dict_to_list(vals, convert_str=False)
 
     @cached_property

@@ -10,7 +10,8 @@ resource_names = {
     'distributed': ['async-http', 'async-https'],
     'llm': ['openai', 'vllm', 'tgi', 'fastchat', 'huggingface', 'samurai', 'samur-openai', 'fastapi-dp'],
     'triton': ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs'],
-    'ray': ['ray']
+    'ray': ['ray'],
+    'embedding': ['emb-openai', 'emb-stt'],
 }
 
 

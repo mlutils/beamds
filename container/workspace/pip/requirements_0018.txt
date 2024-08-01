@@ -19,3 +19,5 @@ grex
 imgkit
 dataframe-image
 eland
+GitPython
+datasketch
