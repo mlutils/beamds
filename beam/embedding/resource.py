@@ -35,7 +35,6 @@ def beam_embedding(url, username=None, hostname=None, port=None, api_key=None,  
         model = path
         api_path = ''
 
-    model = url.path
     model = model.strip('/')
     if not model:
         model = None
