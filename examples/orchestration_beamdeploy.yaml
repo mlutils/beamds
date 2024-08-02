@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~cetyJnhDEdaIs_W8QnFqjGJnhEL_GTK0MCZv-iecE5Y
+api_token: sha256~Naua6i1arpTYCJiURB3l0FVj8DTR9WooIQH-L8WAxI4
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -67,21 +67,21 @@ service_configs:
 - create_ingress: false
   create_route: false
   ingress_host: ssh.example.com
-  port: 2222
+  port: 22022
   port_name: ssh-port
   service_name: ssh
   service_type: NodePort
 - create_ingress: false
   create_route: true
   ingress_host: jupyter.example.com
-  port: 8888
+  port: 22088
   port_name: jupyter-port
   service_name: jupyter
   service_type: ClusterIP
 - create_ingress: false
   create_route: true
   ingress_host: jupyter.example.com
-  port: 44044
+  port: 22044
   port_name: fake-alg-http
   service_name: fake-alg
   service_type: ClusterIP

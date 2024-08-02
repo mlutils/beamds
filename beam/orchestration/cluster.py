@@ -251,35 +251,6 @@ class RayCluster(BeamCluster):
 
     def add_nodes(self, n=1):
         raise NotImplementedError
-        # new_pods = self.deployment.launch(replicas=n)
-        # for pod_instance in new_pods:
-        #     self.workers.append(pod_instance)
-        #     worker_command = "ray start --address={}:6379".format(self.get_head_pod_ip(self.head))
-        #     pod_instance.execute(worker_command)
-        #     pod_suffix = pod_instance.pod_infos[0].name.split('-')[-1]
-        #     # Re-use BeamDeploy to create services and routes for new worker nodes
-        #     for svc_config in self.service_configs:
-        #         service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
-        #         self.deployment.k8s.create_service(
-        #             base_name=service_name,
-        #             namespace=self.config['project_name'],
-        #             ports=[svc_config.port],
-        #             labels=self.config['labels'],
-        #             service_type='ClusterIP'
-        #         )
-        #
-        #         # Create routes and ingress if configured
-        #         if svc_config.create_route:
-        #             self.deployment.k8s.create_route(
-        #                 service_name=service_name,
-        #                 namespace=self.config['project_name'],
-        #                 protocol=svc_config.route_protocol,
-        #                 port=svc_config.port
-        #             )
-        #         if svc_config.create_ingress:
-        #             self.deployment.k8s.create_ingress(
-        #                 service_configs=[svc_config],
-        #             )
 
     def remove_node(self, i):
         pass
@@ -319,16 +290,41 @@ class RnDCluster(BeamCluster):
         deployment = BeamDeploy(config, k8s)
 
         try:
-            pod_instances = deployment.launch(replicas=config['replicas'])
-            if not pod_instances:
-                raise Exception("Pod deployment failed")
-
-            for pod_instance in pod_instances[1:]:
-                print(deployment.cluster_info)
-
-
-
+            pods = deployment.launch(replicas=config['replicas'])
+            if pods:
+                logger.info("Pod deployment successful")
+            if config.send_email is True:
+                subject = "Cluster Deployment Information"
+                # body = f"{config['body']}\n{get_cluster_info}"
+                body = f"{config['body']}<br>{deployment.cluster_info}"
+                to_email = config['to_email']
+                from_email = config['from_email']
+                from_email_password = config['from_email_password']
+                k8s.send_email(subject, body, to_email, from_email, from_email_password)
+            else:
+                logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
+            logger.debug(f"Cluster info: {deployment.cluster_info}")
+            if not pods:
+                logger.error("Pod deployment failed")
+                return None  # Or handle the error as needed
             return cls(deployment=deployment, replicas=replicas, config=config)
+        except Exception as e:
+            logger.error(f"Error during deployment: {str(e)}")
+            from ..utils import beam_traceback
+            logger.debug(beam_traceback())
+            raise e
+
+
+        # try:
+        #     deployment.launch(replicas=config['replicas'])
+        #     if not deployment:
+        #         raise Exception("Pod deployment failed")
+        #     #
+        #     # for pod in deployment:
+        #     #     logger.info(deployment.cluster_info)
+        #     logger.info(deployment.cluster_info)
+        #
+        #     return cls(deployment=deployment, replicas=replicas, config=config)
 
         except Exception as e:
             logger.error(f"Error during deployment: {str(e)}")
@@ -337,11 +333,11 @@ class RnDCluster(BeamCluster):
             raise e
 
     @classmethod
-    def deploy_rnd_cluster_s_deployment(cls, config, replicas):
+    def deploy_rnd_cluster_s_deployment(cls, replicas, config):
         return cls._deploy_and_launch(replicas=replicas, config=config)
 
     @classmethod
-    def deploy_rnd_cluster_m_deployments(cls, config, replicas):
+    def deploy_rnd_cluster_m_deployments(cls, replicas, config):
         return cls._deploy_and_launch(replicas=replicas, config=config)
 
     @classmethod

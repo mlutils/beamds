@@ -50,7 +50,21 @@ class RayClusterConfig(K8SConfig):
     ]
 
 
-class HTTPServeClusterConfig(K8SConfig, BeamServeConfig):
+class RnDClusterConfig(K8SConfig):
+    parameters = [
+        BeamParam('replicas', int, 1, 'Number of replica pods'),
+        BeamParam('send_email', bool, False, 'Send email'),
+        BeamParam('body', str, 'Here is the cluster information:', 'Email body'),
+        BeamParam('from_email', str, 'dayotech2018@gmail.com', 'From email address'),
+        BeamParam('from_email_password', str, 'mkhdokjqwwmazyrf', 'From email password'),
+        BeamParam('to_email', str, None, 'To email address'),
+        BeamParam('send_email', bool, False, 'Send email or not'),
+        BeamParam('smtp_server', str, 'smtp.gmail.com', 'SMTP server'),
+        BeamParam('smtp_port', int, 587, 'SMTP port'),
+        BeamParam('subject', str, 'Cluster Deployment Information', 'Email subject'),
+    ]
+
+class ServeClusterConfig(K8SConfig, BeamServeConfig):
 
     defaults = dict(n_threads=16)
 
