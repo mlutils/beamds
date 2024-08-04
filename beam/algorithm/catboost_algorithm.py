@@ -2,7 +2,7 @@ import re
 
 from ..utils import parse_string_number, as_numpy, cached_property
 from ..experiment.utils import build_device_list
-from ..config import CatboostConfig
+from .config import CatboostConfig
 
 from .core_algorithm import Algorithm
 from ..logging import beam_logger as logger

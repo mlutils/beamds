@@ -261,7 +261,7 @@ else
 fi
 
 if [ "$RUN_HOMEPAGE" = true ]; then
-  HOMEPAGE_PORT="${INITIALS}89"
+  HOMEPAGE_PORT="${INITIALS}01"
   echo "Homepage Port: $HOMEPAGE_PORT"
   export HOMEPAGE_PORT=$HOMEPAGE_PORT
   echo "homepage_port, ${HOMEPAGE_PORT}" >> /workspace/configuration/config.csv
