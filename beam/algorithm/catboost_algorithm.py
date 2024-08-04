@@ -49,19 +49,19 @@ class CBAlgorithm(Algorithm):
     @cached_property
     def model(self):
         cb_kwargs = {
-            'learning_rate': self.get_hparam('lr'),
-            'n_estimators': self.get_hparam('cb_n_estimators'),
+            'learning_rate': self.get_hparam('learning_rate'),
+            'n_estimators': self.get_hparam('n_estimators'),
             'random_seed': self.get_hparam('seed'),
-            'l2_leaf_reg': self.get_hparam('cb_l2_leaf_reg'),
-            'border_count': self.get_hparam('cb_border_count'),
-            'depth': self.get_hparam('cb_depth'),
-            'random_strength': self.get_hparam('cb_random_strength'),
+            'l2_leaf_reg': self.get_hparam('l2_leaf_reg'),
+            'border_count': self.get_hparam('border_count'),
+            'depth': self.get_hparam('depth'),
+            'random_strength': self.get_hparam('random_strength'),
             'task_type': self.device_type,
             'devices': self.devices,
             'loss_function': self.get_hparam('loss_function'),
             'eval_metric': self.eval_metric,
             'custom_metric': self.custom_metric,
-            'verbose': self.get_hparam('cb_log_resolution'),
+            'verbose': self.get_hparam('log_frequency'),
         }
 
         if self.task_type == 'classification':

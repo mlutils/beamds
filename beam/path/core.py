@@ -564,14 +564,14 @@ class PureBeamPath(BeamResource):
 
             elif ext in ['.json', '.ndjson']:
 
-                # TODO: add json read with fastavro and shcema
-                # x = []
-                # with open(path, 'r') as fo:
-                #     for record in fastavro.json_reader(fo):
-                #         x.append(record)
-
                 nd = ext == '.ndjson'
                 try:
+                    if 'schema' in kwargs:
+                        x = []
+                        from fastavro import json_reader, parse_schema
+                        schema = parse_schema(kwargs['schema'])
+                        for record in json_reader(fo, schema=schema):
+                            x.append(record)
                     if target == 'native' or nd:
                         x = json.load(fo, **kwargs)
                     elif target == 'pandas':
@@ -585,6 +585,7 @@ class PureBeamPath(BeamResource):
                     elif target == 'pyarrow':
                         from pyarrow import json as pa
                         x = pa.read_json(fo, **kwargs)
+
                     else:
                         x = json.load(fo, **kwargs)
                 except:
@@ -808,11 +809,21 @@ class PureBeamPath(BeamResource):
             elif ext == '.npy':
                 np.save(fo, x, **kwargs)
             elif ext == '.json':
-                json.dump(x, fo, **kwargs)
+                if 'schema' in kwargs:
+                    from fastavro import json_writer, parse_schema
+                    schema = parse_schema(kwargs['schema'])
+                    json_writer(fo, schema, x)
+                else:
+                    json.dump(x, fo, **kwargs)
             elif ext == '.ndjson':
-                for xi in x:
-                    json.dump(xi, fo, **kwargs)
-                    fo.write("\n")
+                if 'schema' in kwargs:
+                    from fastavro import json_writer, parse_schema
+                    schema = parse_schema(kwargs['schema'])
+                    json_writer(fo, schema, x)
+                else:
+                    for xi in x:
+                        json.dump(xi, fo, **kwargs)
+                        fo.write("\n")
             elif ext == '.txt':
                 fo.write(str(x))
             elif ext == '.npz':
