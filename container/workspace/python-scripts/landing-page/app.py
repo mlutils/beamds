@@ -8,9 +8,9 @@ app = Flask(__name__)
 
 def get_route(name, base_url="http://localhost:"):
 
-    k8s_name = f"KUBERNETES_{name.upper()}_URL"
+    k8s_name = f"KUBERNETES_{name.upper()}_ROUTE_HOST"
     if os.environ.get(k8s_name):
-        return os.environ.get(k8s_name)
+        return f"http://{os.environ.get(k8s_name)}"
     else:
         conf = pd.read_csv('/workspace/configuration/config.csv', index_col=0)
         port = int(conf.drop_duplicates().loc[f"{name.lower()}_port"])
