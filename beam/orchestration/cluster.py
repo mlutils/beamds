@@ -293,6 +293,9 @@ class RnDCluster(BeamCluster):
             pods = deployment.launch(replicas=config['replicas'])
             if pods:
                 logger.info("Pod deployment successful")
+
+            homepage_url = deployment.k8s.get_homepage_route_url(namespace=config['project_name'])
+
             if config.send_email is True:
                 subject = "Cluster Deployment Information"
                 # body = f"{config['body']}\n{get_cluster_info}"
@@ -303,9 +306,9 @@ class RnDCluster(BeamCluster):
                 k8s.send_email(subject, body, to_email, from_email, from_email_password)
             else:
                 logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
-                logger.debug(f"Home-Page: {k8s.get_homepage_route_url(namespace=config['project_name'])}")
+                logger.info(f"Home-Page URL: {homepage_url}")
             logger.debug(f"Cluster info: {deployment.cluster_info}")
-            logger.debug(f"Home-Page: {k8s.get_homepage_route_url(namespace=config['project_name'])}")
+            # logger.info(f"Home-Page URL: {homepage_url}")
             if not pods:
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed

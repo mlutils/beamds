@@ -1025,10 +1025,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         return endpoints
 
+    # Homepage_url=f"http://{route['host']}"
     def get_homepage_route_url(self, namespace):
+        # Fetching all routes in the namespace
         routes = self.get_routes_info(namespace)
+        # Filtering for the specific route associated with 'home-page'
         for route in routes:
-            if route['host'] == 'home-page':
+            if 'home-page' in route['host']:
                 return f"http://{route['host']}"
         return None
 

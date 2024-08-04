@@ -19,14 +19,14 @@ print("API URL:", config.api_url)
 print("API Token:", config.api_token)
 
 # Create an instance of RayCluster or RnDCluster
-ray_cluster = RayCluster(deployment=None, n_pods=config['n_pods'], config=config)
-# rnd_cluster = RnDCluster(deployment=None, replicas=config['replicas'], config=config)
+# ray_cluster = RayCluster(deployment=None, n_pods=config['n_pods'], config=config)
+rnd_cluster = RnDCluster(deployment=None, replicas=config['replicas'], config=config)
 
 # n_pods = '2'
 # Deploy the Ray cluster/ Rnd cluster
 
-ray_cluster.deploy_ray_cluster_s_deployment(n_pods=config['n_pods'], config=config)
-# rnd_cluster.deploy_rnd_cluster_s_deployment(replicas=config['replicas'], config=config)
+# ray_cluster.deploy_ray_cluster_s_deployment(n_pods=config['n_pods'], config=config)
+rnd_cluster.deploy_rnd_cluster_s_deployment(replicas=config['replicas'], config=config)
 # replicas=1
 
 
