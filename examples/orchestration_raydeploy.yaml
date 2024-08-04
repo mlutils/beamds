@@ -19,7 +19,7 @@ command:
 cpu_limits: '4'
 cpu_requests: '4'
 create_service_account: true
-deployment_name: raydeploy
+deployment_name: university
 #enable_ray_ports: true
 entrypoint_args:
 - '--no-ray'
@@ -31,9 +31,9 @@ gpu_limits: '1'
 gpu_requests: '1'
 # image_name: harbor.dt.local/public/fake-alg-http-server:latest
 #image_name: None
-image_name: harbor.dt.local/public/beam:20240729ocp-dev
+image_name: harbor.dt.local/public/beam:20240801
 labels:
-  app: raydeploy
+  app: university
 memory_limits: '12'
 memory_requests: '12'
 memory_storage_configs:
