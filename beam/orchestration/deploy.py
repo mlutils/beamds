@@ -186,12 +186,9 @@ class BeamDeploy(BeamBase):
                     labels=self.labels,
                     service_type=svc_config.service_type
                 )
-                # rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_URL", 'value': service_details['url']})
-                # rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_PORT", 'value': str(service_details['ports'][0])})
-                # rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_NAME", 'value': service_details['name']})
-                rs_env_vars.append({'name': f"SERVICE_URL", 'value': service_details['url']})
-                rs_env_vars.append({'name': f"SERVICE_PORT", 'value': str(service_details['ports'][0])})
-                rs_env_vars.append({'name': f"SERVICE_NAME", 'value': service_details['name']})
+                rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_URL", 'value': service_details['url']})
+                rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_PORT", 'value': str(service_details['ports'][0])})
+                rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_NAME", 'value': service_details['name']})
 
                 # Create routes and ingress if configured
                 if svc_config.create_route:
@@ -202,10 +199,8 @@ class BeamDeploy(BeamBase):
                         port=svc_config.port,
                         route_timeout=svc_config.route_timeout,
                     )
-                    # rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_ROUTE_NAME", 'value': route_details['name']})
-                    # rs_env_vars.append({'name': f"{svc_config.service_name.upper()}_HOST", 'value': route_details['host']})
-                    rs_env_vars.append({'name': f"ROUTE_NAME", 'value': route_details['name']})
-                    rs_env_vars.append({'name': f"ROUTE_URL", 'value': route_details['host']})
+                    rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_NAME", 'value': route_details['name']})
+                    rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_HOST", 'value': route_details['host']})
                 if svc_config.create_ingress:
                     ingress_details = self.k8s.create_ingress(
                         service_configs=[svc_config],

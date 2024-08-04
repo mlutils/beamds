@@ -833,7 +833,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         except Exception as e:
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
 
-
     def get_routes_info(self, namespace):
         routes_info = []
         try:
@@ -1025,6 +1024,16 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             print(f"Failed to retrieve services or nodes in namespace '{namespace}': {e}")
 
         return endpoints
+
+    # Homepage_url=f"http://{route['host']}"
+    def get_homepage_route_url(self, namespace):
+        # Fetching all routes in the namespace
+        routes = self.get_routes_info(namespace)
+        # Filtering for the specific route associated with 'home-page'
+        for route in routes:
+            if 'home-page' in route['host']:
+                return f"http://{route['host']}"
+        return None
 
     def query_available_resources(self):
         total_resources = {'cpu': '0', 'memory': '0', 'nvidia.com/gpu': '0', 'amd.com/gpu': '0', 'storage': '0Gi'}
