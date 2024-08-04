@@ -127,7 +127,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if self.data_type == 'dict':
 
             ind_type = check_type(ind, minor=False)
-            if ind_type.element == 'str':
+            if ind_type.element == Types.str:
                 if ind_type.major == Types.scalar:
                     return self.data[ind]
                 return [self.data[k] for k in ind]

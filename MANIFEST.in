@@ -1,1 +1,2 @@
 include beam/auto/dockerfile*
+include beam/serve/resource/*

@@ -10,13 +10,14 @@ import atexit
 class BeamLogger:
 
     def __init__(self, path=None, print=True):
-        self.logger = loguru.logger
+        self.logger = loguru.logger.opt(depth=1)
         self._level = None
         self.logger.remove()
         self.handlers_queue = []
         self.running_platform = running_platform()
 
         self.handlers = {}
+        self.tags = {}
         if print:
             self.print()
 
@@ -53,7 +54,7 @@ class BeamLogger:
             file_object.close()
         self.file_objects = {}
 
-    def add_file_handlers(self, path):
+    def add_file_handlers(self, path, tag=None):
 
         path = beam_path(path)
 
@@ -79,6 +80,15 @@ class BeamLogger:
         handler = self.logger.add(file_object, level='DEBUG', format=format, serialize=True)
 
         self.handlers[str(json_path)] = handler
+        if tag is not None:
+            self.tags[tag] = path
+
+    def remove_tag(self, tag):
+        path = self.tags[tag]
+        self.remove_file_handler(path)
+
+    def remove_default_handlers(self):
+        self.remove_tag('default')
 
     def open(self, path):
         path = beam_path(path)
@@ -132,8 +142,10 @@ class BeamLogger:
         self.__init__(state['path'])
 
     def stdout_handler(self, level='INFO'):
-        return self.logger.add(sys.stdout, level=level, colorize=True, format=
-        '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | BeamLog | <level>{level}</level> | <level>{message}</level>')
+        return self.logger.add(sys.stdout, level=level, colorize=True,
+                               format=f'🔥 | <green>{{time:HH:mm:ss}} ({{elapsed}})</green> | '
+                                      f'<level>{{level:<8}}</level> 🗎 <level>{{message}}</level> '
+                                      f'<cyan>(∫{{file}}:{{function}}-#{{line}})</cyan>')
 
     @property
     def level(self):
@@ -154,18 +166,23 @@ class BeamLogger:
 
     def debug_mode(self):
         self.set_verbosity('DEBUG')
+        self.debug('Debug mode activated')
 
     def info_mode(self):
         self.set_verbosity('INFO')
+        self.info('Info mode activated')
 
     def warning_mode(self):
         self.set_verbosity('WARNING')
+        self.warning('Warning mode activated (only warnings and errors will be logged)')
 
     def error_mode(self):
         self.set_verbosity('ERROR')
+        self.error('Error mode activated (only errors will be logged)')
 
     def critical_mode(self):
         self.set_verbosity('CRITICAL')
+        self.critical('Critical mode activated (only critical errors will be logged)')
 
     @contextmanager
     def as_debug_mode(self):

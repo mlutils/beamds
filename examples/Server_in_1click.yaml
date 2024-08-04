@@ -1,7 +1,8 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~p2O_ltaM03oKj0RLNI_D_dzasuAIPgr6utWdYHTDvBI
+api_token: sha256~TJuumFPzqjq-O2R-W4EGRtEzcfCLE4sGc3Pt_amTGEk
 api_url: https://api.kh-dev.dt.local:6443
-base_image: eladsar/beam:20240605
+#base_image: eladsar/beam:20240605
+base_image: python:3.10-slim
 base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='unix://var/run/docker.sock')
 #client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
@@ -45,10 +46,10 @@ node_selector:
   gpu-type: tesla-a100
 project_name: oneclick
 # push_image: false - this is removed
-ray_ports_configs:
-- ray_ports:
-  - 6379
-  - 8265
+#ray_ports_configs:
+#- ray_ports:
+#  - 6379
+#  - 8265
 registry_password: Har@123
 registry_url: harbor.dt.local
 registry_username: admin
@@ -80,9 +81,16 @@ service_configs:
 - create_ingress: false
   create_route: true
   ingress_host: jupyter.example.com
-  port: 44044
-  port_name: fake-alg-http
-  service_name: fake-alg
+  port: 6379
+  port_name: ray-port
+  service_name: ray-port
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: jupyter.example.com
+  port: 8265
+  port_name: ray-port
+  service_name: ray-port
   service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com

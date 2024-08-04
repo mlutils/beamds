@@ -737,9 +737,9 @@ class BeamData(BeamName):
 
             if not is_container(self.data):
                 self._orientation = 'simple'
-                if self.data_type.minor in ['pandas', 'polars', 'cudf'] and self.columns is None:
+                if self.data_type.minor in [Types.pandas, Types.polars, Types.cudf] and self.columns is None:
                     self.columns = self.data.columns
-                if self.data_type.minor in ['pandas', 'cudf'] and self._index is None:
+                if self.data_type.minor in [Types.pandas, Types.cudf] and self._index is None:
                     self._index = self.data.index
 
             else:
@@ -1001,7 +1001,11 @@ class BeamData(BeamName):
         return bd.data
 
     @staticmethod
-    def read(paths, schema=None, strict=False, **kwargs):
+    def exists(paths):
+        return BeamData.read(paths, _check_existence=True)
+
+    @staticmethod
+    def read(paths, schema=None, strict=False, _check_existence=False, **kwargs):
 
         if paths is None:
             if strict:
@@ -1017,7 +1021,7 @@ class BeamData(BeamName):
             for k, next_path in iter_container(paths):
 
                 s = BeamData.get_schema_from_subset(schema, k, schema_type=schema_type)
-                values.append(BeamData.read(next_path, schema=s, **kwargs))
+                values.append(BeamData.read(next_path, schema=s, _check_existence=_check_existence, **kwargs))
                 keys.append(k)
 
             return BeamData.containerize_keys_and_values(keys, values)
@@ -1027,10 +1031,15 @@ class BeamData(BeamName):
             kwargs = {**schema.read_schema, **kwargs}
 
         if path.is_file() or path.suffix in ['.bmpr', '.bmd']:
+            if _check_existence:
+                return True
             logger.debug(f"Reading file: {path}")
             return path.read(**kwargs)
 
         if path.is_dir():
+
+            if _check_existence:
+                return True
 
             keys = []
             values = []
@@ -1055,9 +1064,13 @@ class BeamData(BeamName):
         if path.parent.is_dir():
             for p in path.parent.iterdir():
                 if p.stem == path.stem:
+                    if _check_existence:
+                        return True
                     return p.read(**kwargs)
 
-        if strict:
+        if _check_existence:
+            return False
+        elif strict:
             raise ValueError(f"No object found in path: {path}")
         else:
             logger.warning(f"No object found in path: {path}")
@@ -1066,7 +1079,7 @@ class BeamData(BeamName):
     @staticmethod
     def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9), override=True,
                    chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None,
-                   split=False, textual_serialization=False, **kwargs):
+                   split=False, textual_serialization=False, blacklist_priority=None, **kwargs):
 
         path = beam_path(path)
 
@@ -1082,7 +1095,8 @@ class BeamData(BeamName):
                 if root:
                     path = path.joinpath(BeamData.default_data_file_name)
 
-                BeamData.write_object(data, path, size=size_summary, archive=True, **kwargs)
+                BeamData.write_object(data, path, size=size_summary, archive=True,
+                                      blacklist_priority=blacklist_priority, **kwargs)
                 return
 
             schema_type = check_type(schema)
@@ -1093,7 +1107,8 @@ class BeamData(BeamName):
                                     archive_size=archive_size, chunksize=chunksize, chunklen=chunklen,
                                     split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
                                     file_type=file_type, schema=s, override=override, split=split,
-                                    textual_serialization=textual_serialization, **kwargs)
+                                    textual_serialization=textual_serialization,
+                                    blacklist_priority=blacklist_priority, **kwargs)
 
         else:
 
@@ -1104,12 +1119,13 @@ class BeamData(BeamName):
                                   chunksize=chunksize, chunklen=chunklen, split_by=split_by,
                                   n_chunks=n_chunks, partition=partition, schema=schema,
                                   file_type=file_type, split=split, textual_serialization=textual_serialization,
-                                  **kwargs)
+                                  blacklist_priority=blacklist_priority, **kwargs)
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
                      chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None,
-                     textual_serialization=False, split_by=None, split=True, priority=None, **kwargs):
+                     textual_serialization=False, split_by=None, split=True, priority=None,
+                     blacklist_priority=None, **kwargs):
 
         path = beam_path(path)
 
@@ -1136,19 +1152,19 @@ class BeamData(BeamName):
                 priority = []
                 if textual_serialization:
                     priority = ['.json', '.yaml']
-                if partition is not None and data_type.minor == 'pandas':
+                if partition is not None and data_type.minor == Types.pandas:
                     priority = ['.parquet', '.fea', '.pkl']
-                elif partition is not None and data_type.minor == 'polars':
+                elif partition is not None and data_type.minor == Types.polars:
                     priority = ['.pl.parquet', '.pl.fea', '.pl.pkl']
-                elif data_type.minor == 'pandas':
+                elif data_type.minor == Types.pandas:
                     priority = ['.fea', '.parquet', '.pkl']
-                elif data_type.minor == 'polars':
+                elif data_type.minor == Types.polars:
                     priority.extend(['.pl.fea', '.pl.parquet', '.pl.pkl'])
-                elif data_type.minor == 'cudf':
+                elif data_type.minor == Types.cudf:
                     priority = ['.cf.fea', '.cf.parquet', '.cf.pkl']
                 elif data_type.minor == Types.numpy:
                     priority = ['.npy', '.pkl']
-                elif data_type.minor == 'scipy_sparse':
+                elif data_type.minor == Types.scipy_sparse:
                     priority = ['.scipy_npz', '.pkl']
                 elif data_type.minor == Types.tensor:
                     if data.is_sparse_csr:
@@ -1164,6 +1180,9 @@ class BeamData(BeamName):
 
             if file_type is not None:
                 priority.insert(file_type, 0)
+
+            if blacklist_priority is not None:
+                priority = [p for p in priority if p not in blacklist_priority]
 
             if split_by != 'keys' and n_chunks > 1:
                 dim = {'index': 0, 'columns': 1}[split_by]
@@ -1192,7 +1211,7 @@ class BeamData(BeamName):
                             if compress is False:
                                 kwargs['compression'] = None
                             BeamData.write_file(di, file_path, partition_cols=partition, coerce_timestamps='us',
-                                            allow_truncated_timestamps=True, schema=schema, **kwargs)
+                                                allow_truncated_timestamps=True, schema=schema, **kwargs)
                         elif ext == '.fea':
                             if compress is False:
                                 kwargs['compression'] = 'uncompressed'
@@ -1207,6 +1226,10 @@ class BeamData(BeamName):
                             if compress is True:
                                 kwargs['compressed'] = True
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
+
+                        elif ext == '.bmpr':
+                            BeamData.write_file(di, file_path, schema=schema, blacklist_priority=blacklist_priority,
+                                                **kwargs)
 
                         else:
                             BeamData.write_file(di, file_path, schema=schema, **kwargs)
@@ -1332,11 +1355,11 @@ class BeamData(BeamName):
             import torch
             func = torch.stack if dim == 1 and dim >= len(v.shape) else torch.cat
             kwargs = {'dim': dim}
-        elif objects_type == 'pandas':
+        elif objects_type == Types.pandas:
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
             func = pd.concat
             kwargs = {'axis': dim}
-        elif objects_type == 'polars':
+        elif objects_type == Types.polars:
             if dim == 0:
                 import polars as pl
                 func = pl.concat
@@ -1344,7 +1367,7 @@ class BeamData(BeamName):
             else:
                 func = concat_polars_horizontally
                 kwargs = {}
-        elif objects_type == 'cudf':
+        elif objects_type == Types.cudf:
             import cudf
             func = cudf.concat
             data = [cudf.Series(v.values) if isinstance(v, cudf.Index) else v for v in data]
@@ -1407,7 +1430,7 @@ class BeamData(BeamName):
         self._total_size = sum(recursive_flatten(self.size, flat_array=True))
         return self._total_size
 
-    def store(self, data=None, path=None, compress=None, chunksize=None,
+    def store(self, path=None, data=None, compress=None, chunksize=None,
               chunklen=None, n_chunks=None, partition=None, split_by=None,
               archive_size=None, override=None, split=True, **kwargs):
 
@@ -2397,15 +2420,16 @@ class BeamData(BeamName):
 
             i_type = check_type(ind_i)
             # skip the first axis in these case
-            if axes[0] == 'keys' and (i_type.minor in ['pandas', Types.numpy, 'slice', Types.tensor, 'cudf']):
+            if axes[0] == 'keys' and (i_type.minor in [Types.pandas, Types.numpy, Types.slice, Types.tensor, Types.cudf]):
                 axes.pop(0)
-            if axes[0] == 'keys' and (i_type.minor == Types.list and i_type.element == 'int'):
+            if axes[0] == 'keys' and (i_type.minor == Types.list and i_type.element == Types.int):
                 axes.pop(0)
-            if (axes[0] == 'keys' and (i_type.major == Types.scalar and i_type.element == 'int')
-                    and check_type(list(self.hierarchical_keys()), minor=False).element == 'str'):
+            if (axes[0] == 'keys' and (i_type.major == Types.scalar and i_type.element == Types.int)
+                    and check_type(list(self.hierarchical_keys()), minor=False).element == Types.str):
                 axes.pop(0)
             # for orientation == 'simple' we skip the first axis if we slice over columns and index_type is not str
-            if short_list and axes[0] == 'index' and i_type.element == 'str' and self.index_type.element != 'str':
+            if (short_list and axes[0] == 'index' and i_type.element == Types.str and
+                    self.index_type.element != Types.str):
                 axes.pop(0)
 
             a = axes.pop(0)
@@ -2419,10 +2443,10 @@ class BeamData(BeamName):
 
             elif a == 'index':
 
-                if i_type.major == 'slice':
+                if i_type.major == Types.slice:
                     ind_i = slice_to_index(ind_i, l=len(obj))
 
-                if i_type.element == 'bool':
+                if i_type.element == Types.bool:
                     ind_i = self.info.iloc[ind_i].index
 
                 if not isinstance(obj, BeamData):

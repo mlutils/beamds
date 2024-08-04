@@ -16,6 +16,7 @@ class ServiceConfig:
     ingress_host: str = None  # Optional: specify a host for the ingress
     ingress_path: str = '/'  # Default path for ingress, can be overridden
     ingress_tls_secret: str = None  # Optional: specify a TLS secret for ingress TLS
+    route_timeout: str = '599'
 
 
 @dataclass
@@ -31,7 +32,7 @@ class CommandConfig:
 @dataclass
 class RayPortsConfig:
     ray_ports: List[int] = field(default_factory=list)
-    enable_ray_ports: bool = False
+
 
 
 @dataclass

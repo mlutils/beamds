@@ -82,16 +82,27 @@ class BeamClient(BeamBase, BeamResource):
         if item not in self.attributes:
             self.info = self.get_info()
 
-        attribute_type = self.attributes[item]['type']
+        attribute = self.attributes[item]
+        if type(attribute) is dict:
+            attribute_type = self.attributes[item]['type']
+            backwards_compatible = False
+        else:
+            attribute_type = attribute
+            backwards_compatible = True
+
         if attribute_type in ['variable', 'property']:
             return self.get(f'getvar/beam/{item}')
         elif attribute_type == 'method':
             func = partial(self.post, f'alg/beam/{item}')
-            func.__name__ = item
-            func.__doc__ = self.attributes[item]['description']
-            if self.attributes[item]['signature'] is not None:
-                func = self._create_function_with_signature(func, dict_to_signature(self.attributes[item]['signature']))
+
+            if not backwards_compatible:
+                func.__name__ = item
+                func.__doc__ = self.attributes[item]['description']
+                if self.attributes[item]['signature'] is not None:
+                    func = self._create_function_with_signature(func,
+                                                                dict_to_signature(self.attributes[item]['signature']))
             return func
+
         raise ValueError(f"Unknown attribute type: {attribute_type}")
 
     def _create_function_with_signature(self, func, signature):

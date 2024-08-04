@@ -26,7 +26,7 @@ class TFIDFConfig(TransformerConfig):
     defaults = dict(metric='bm25')
 
     parameters = [
-        BeamParam('max_features', int, 1000, 'maximum number of features'),
+        BeamParam('max_features', int, None, 'maximum number of features'),
         BeamParam('max_df', float, 0.95, 'maximum document frequency'),
         BeamParam('min_df', float, 2, 'minimum document frequency'),
         BeamParam('use_idf', bool, True, 'use inverse document frequency'),

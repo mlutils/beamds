@@ -174,12 +174,12 @@ class BeamReport(object):
     @staticmethod
     def format(v):
         v_type = check_element_type(v)
-        if v_type == 'int':
+        if v_type == Types.int:
             if v >= 1000:
                 return f"{float(v): .4}"
             else:
                 return str(v)
-        elif v_type == 'float':
+        elif v_type == Types.float:
             return f"{v: .4}"
         else:
             return v
@@ -210,7 +210,7 @@ class BeamReport(object):
                     else:
                         if v_type.major != Types.scalar:
                             v = v[0]
-                        v = int(v) if v_type.element == 'int' else float(v)
+                        v = int(v) if v_type.element == Types.int else float(v)
                         stat = {'val': v}
 
                     stat = '| '.join([BeamReport.format_stat(k, v) for k, v in dict(stat).items() if k != 'count'])
@@ -390,10 +390,10 @@ class BeamReport(object):
     # def detach_scalar(val):
     #     val_type = check_type(val)
     #     if val_type.major == Types.scalar:
-    #         if val_type.element == 'float':
+    #         if val_type.element == Types.float:
     #             val = float(val)
     #             pass
-    #         elif val_type.element == 'int':
+    #         elif val_type.element == Types.int:
     #             val = int(val)
     #     elif val_type.minor == Types.tensor:
     #         val = val.detach().cpu()
@@ -414,14 +414,14 @@ class BeamReport(object):
                 oprs = {'cat': torch.cat, 'stack': torch.stack}
             elif v_minor == Types.numpy:
                 oprs = {'cat': np.concatenate, 'stack': np.stack}
-            elif v_minor == 'pandas':
+            elif v_minor == Types.pandas:
                 oprs = {'cat': pd.concat, 'stack': pd.concat}
             elif v_minor == Types.native:
                 oprs = {'cat': torch.tensor, 'stack': torch.tensor}
-            elif v_minor == 'cudf':
+            elif v_minor == Types.cudf:
                 import cudf
                 oprs = {'cat': cudf.concat, 'stack': cudf.concat}
-            elif v_minor == 'polars':
+            elif v_minor == Types.polars:
                 import polars as pl
                 oprs = {'cat': pl.concat, 'stack': pl.concat}
             else:
@@ -434,7 +434,7 @@ class BeamReport(object):
 
             val = opr(val)
 
-        elif val_type.major == Types.array and val_type.minor == Types.list and val_type.element in ['int', 'float']:
+        elif val_type.major == Types.array and val_type.minor == Types.list and val_type.element in [Types.int, Types.float]:
             val = as_tensor(val, device='cpu')
 
         val = squeeze_scalar(val)
@@ -459,12 +459,12 @@ class BeamReport(object):
         val_type = check_type(val)
         if val_type.major == Types.scalar:
             val = float(val)
-        elif val_type.minor in ['pandas', 'cudf']:
+        elif val_type.minor in [Types.pandas, Types.cudf]:
             val = val.values
             val = agg_dict['numpy'][aggregation](val)
-            if val_type.minor == 'cudf':
+            if val_type.minor == Types.cudf:
                 val = float(val)
-        elif val_type.minor == 'polars':
+        elif val_type.minor == Types.polars:
             val = val.to_numpy()
             val = agg_dict['numpy'][aggregation](val)
         elif val_type.minor == Types.tensor:

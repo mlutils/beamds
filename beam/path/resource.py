@@ -8,7 +8,7 @@ beam_key = BeamKey()
 
 
 def beam_path(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
-              password=None, **kwargs):
+              password=None, **kwargs) -> BeamPath:
     """
 
     @param port:

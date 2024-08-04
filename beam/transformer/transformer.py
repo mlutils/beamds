@@ -2,7 +2,7 @@ import inspect
 from enum import Enum
 
 from ..utils import (collate_chunks, recursive_chunks, iter_container,
-                        build_container_from_tupled_keys, is_empty, check_type)
+                     build_container_from_tupled_keys, is_empty, check_type, retry)
 from ..concurrent import BeamParallel, BeamTask
 from ..data import BeamData
 from ..path import beam_path
@@ -11,7 +11,7 @@ from ..logging import beam_logger as logger
 from ..processor.core import Processor
 from ..base import beam_cache
 from ..config import TransformerConfig
-from ..type import is_beam_data
+from ..type import is_beam_data, Types
 
 
 class TransformStrategy(Enum):
@@ -28,7 +28,8 @@ class Transformer(Processor):
     def __init__(self, *args, func=None, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
                  chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
-                 use_dill=False, return_results=None, **kwargs):
+                 use_dill=False, return_results=None, use_cache=False, retrials=1,
+                 retrials_delay=1., **kwargs):
         """
 
         @param args:
@@ -74,8 +75,9 @@ class Transformer(Processor):
                                           store_chunk=store_chunk, transform_strategy=transform_strategy,
                                           split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
                                           return_results=return_results,
-                                          override=override, use_dill=use_dill, _config_scheme=TransformerConfig,
-                                          **kwargs)
+                                          override=override, use_dill=use_dill, use_cache=use_cache,
+                                          _config_scheme=TransformerConfig, retrials=retrials,
+                                          retrials_delay=retrials_delay, **kwargs)
 
         self.func = func
 
@@ -101,6 +103,9 @@ class Transformer(Processor):
         self.override = self.hparams.override
         self.use_dill = self.hparams.use_dill
         self.return_results = self.hparams.return_results
+        self.use_cache = self.hparams.use_cache
+        self.retrials = self.hparams.retrials
+        self.retrials_delay = self.hparams.retrials_delay
 
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
@@ -161,7 +166,7 @@ class Transformer(Processor):
         return r
 
     def worker(self, x, key=None, is_chunk=False, fit=False, cache=True, store_path=None, store=False,
-               override=False, return_results=True, task_kwargs=None):
+               override=False, return_results=True, use_cache=False, task_kwargs=None):
 
         task_kwargs = task_kwargs or {}
 
@@ -171,13 +176,20 @@ class Transformer(Processor):
 
         if store_path is not None:
             store_path = beam_path(store_path)
-            if store_path.exists():
-                if override:
-                    logger.warning(f"File {store_path} exists, the data will be stored with the same name "
+            if BeamData.exists(store_path):
+                if use_cache:
+                    logger.debug(f"File/path {store_path} exists using it as cache and skipping calculation.")
+                    if return_results:
+                        return key, BeamData.read(store_path)
+                    else:
+                        return key, None
+
+                elif override:
+                    logger.warning(f"File/path {store_path} exists, the data will be stored with the same name "
                                    f"(override=True).")
                     store_path.unlink()
                 else:
-                    logger.warning(f"File {store_path} already exists, the data will not be stored (override=False).")
+                    logger.warning(f"File/path {store_path} already exists, the data will not be stored (override=False).")
                     return key, None
 
         x = self.transform_callback(x, _key=key, _is_chunk=is_chunk, _fit=fit, _store=store, **task_kwargs)
@@ -245,11 +257,14 @@ class Transformer(Processor):
         store = transform_kwargs.pop('store', (store_path is not None))
         return_results = transform_kwargs.pop('return_results', self.return_results)
         reduce_dim = transform_kwargs.pop('reduce_dim', self.reduce_dim)
+        use_cache = transform_kwargs.pop('use_cache', self.use_cache)
 
         parallel_kwargs = parallel_kwargs or {}
         n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
         mp_method = parallel_kwargs.pop('mp_method', self.mp_method)
         use_dill = parallel_kwargs.pop('use_dill', self.use_dill)
+        retrials = parallel_kwargs.pop('retrials', self.retrials)
+        retrials_delay = parallel_kwargs.pop('retrials_delay', self.retrials_delay)
 
         logger.info(f"Starting transformer process: {self.name}")
 
@@ -352,7 +367,7 @@ class Transformer(Processor):
 
                     k_type = check_type(k)
                     k_with_counter = k
-                    if k_type.element == 'int':
+                    if k_type.element == Types.int:
                         k_with_counter = BeamData.normalize_key(self.counter)
 
                     chunk_path = store_path.joinpath(f"{self.name}_{k_with_counter}{part_name}")
@@ -362,9 +377,14 @@ class Transformer(Processor):
 
                     self.counter += 1
 
-                queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
+                if retrials > 1:
+                    worker = retry(self.worker, retrials=retrials, sleep=retrials_delay)
+                else:
+                    worker = self.worker
+
+                queue.add(BeamTask(worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
                                    override=override, store=store_chunk, name=k, metadata=f"{self.name}",
-                                   return_results=return_results, task_kwargs=kwargs))
+                                   return_results=return_results, use_cache=use_cache, task_kwargs=kwargs))
 
         else:
             self.counter += 1

@@ -23,6 +23,15 @@ fi
 #INITIALS=$1
 #shift
 
+# Set default INITIALS if not provided
+default_initials_used=false
+if [ -z "$INITIALS" ]; then
+    echo "No INITIALS provided. Using default value of 220."
+    INITIALS="220"
+    default_initials_used=true
+fi
+
+
 echo "Initials set to: $INITIALS"
 
 # Initialize service flags
@@ -31,11 +40,14 @@ RUN_JUPYTER=true
 RUN_SSH=true
 RUN_REDIS=true
 RUN_RABBITMQ=true
-RUN_PREFECT=false
 RUN_RAY=true
-RUN_MONGO=false
 RUN_CHROMA=true
-RUN_MINIO=true
+RUN_HOMEPAGE=true
+RUN_PREFECT=false
+
+RUN_MONGO=false
+RUN_MINIO=false
+RUN_ELASTICSEARCH=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -56,6 +68,12 @@ while [[ $# -gt 0 ]]; do
         --prefect) RUN_PREFECT=true; shift ;;
         --ray) RUN_RAY=true; shift ;;
         --chroma) RUN_CHROMA=true; shift ;;
+        --elasticsearch) RUN_ELASTICSEARCH=true; shift ;;
+        --no-elasticsearch) RUN_ELASTICSEARCH=false; shift ;;
+        --minio) RUN_MINIO=true; shift ;;
+        --no-minio) RUN_MINIO=false; shift ;;
+        --homepage) RUN_HOMEPAGE=true; shift ;;
+        --no-homepage) RUN_HOMEPAGE=false; shift ;;
         *) break ;;
     esac
 done
@@ -156,17 +174,32 @@ else
   echo "MongoDB is disabled."
 fi
 
-#if [ "$RUN_MINIO" = true ]; then
-#  MINIO_PORT="${INITIALS}92"
-#  echo "Minio Port: $MINIO_PORT"
-#  export MINIO_PORT=$MINIO_PORT
-#  echo "minio_port, ${MINIO_PORT}" >> /workspace/configuration/config.csv
-#  sed -i "s/MINIO_PORT/${MINIO_PORT}/g" /etc/systemd/system/minio.service
-#  bash /workspace/bash-run-scripts/run_minio.sh $MINIO_PORT
-#  echo "Minio server is running."
-#else
-#  echo "Minio is disabled."
-#fi
+if [ "$RUN_MINIO" = true ]; then
+  MINIO_PORT="${INITIALS}92"
+  echo "Minio Port: $MINIO_PORT"
+  export MINIO_PORT=$MINIO_PORT
+  echo "minio_port, ${MINIO_PORT}" >> /workspace/configuration/config.csv
+  sed -i "s/MINIO_PORT/${MINIO_PORT}/g" /etc/systemd/system/minio.service
+  bash /workspace/bash-run-scripts/run_minio.sh $MINIO_PORT
+  echo "Minio server is running."
+else
+  echo "Minio is disabled."
+fi
+
+if [ "$RUN_ELASTICSEARCH" = true ]; then
+  ELASTICSEARCH_PORT="${INITIALS}92"
+  KIBANA_PORT="${INITIALS}56"
+  echo "Elasticsearch Port: $ELASTICSEARCH_PORT"
+  echo "Kibana Port: $KIBANA_PORT"
+  export ELASTICSEARCH_PORT=$ELASTICSEARCH_PORT
+  export KIBANA_PORT=$KIBANA_PORT
+  echo "elasticsearch_port, ${ELASTICSEARCH_PORT}" >> /workspace/configuration/config.csv
+  echo "kibana_port, ${KIBANA_PORT}" >> /workspace/configuration/config.csv
+  bash /workspace/bash-run-scripts/run_elasticsearch.sh $ELASTICSEARCH_PORT $KIBANA_PORT
+  echo "Elasticsearch server is running."
+else
+  echo "Elasticsearch is disabled."
+fi
 
 if [ "$RUN_RAY" = true ]; then
   RAY_REDIS_PORT="${INITIALS}78"
@@ -188,7 +221,7 @@ if [ "$RUN_CHROMA" = true ]; then
   echo "Chroma Port: $CHROMA_PORT"
   export CHROMA_PORT=$CHROMA_PORT
   echo "chroma_port, ${CHROMA_PORT}" >> /workspace/configuration/config.csv
-  chroma run --host localhost --port $CHROMA_PORT --path $HOME/.chroma_data &
+  chroma run --host 127.0.0.1 --port $CHROMA_PORT --path $HOME/.chroma_data &
   echo "Chroma server is running."
 else
   echo "Chroma is disabled."
@@ -227,6 +260,17 @@ else
   echo "Jupyter is disabled."
 fi
 
+if [ "$RUN_HOMEPAGE" = true ]; then
+  HOMEPAGE_PORT="${INITIALS}89"
+  echo "Homepage Port: $HOMEPAGE_PORT"
+  export HOMEPAGE_PORT=$HOMEPAGE_PORT
+  echo "homepage_port, ${HOMEPAGE_PORT}" >> /workspace/configuration/config.csv
+  bash /workspace/bash-run-scripts/run_homepage.sh $HOMEPAGE_PORT &
+  echo "Homepage is running."
+else
+  echo "Homepage is disabled."
+fi
+
 # echo "Setting permissions to user flash"
 #setfacl -R -m u:"$USER_NAME":rwx /home/
 #setfacl -R -d -m u:"$USER_NAME":rwx /home/
@@ -238,4 +282,12 @@ else
     echo "Running command: ${OPTIONAL_COMMAND} ${MORE_ARGS}"
     eval "${OPTIONAL_COMMAND} ${MORE_ARGS}"
 fi
+
 echo "Entrypoint script completed."
+# Only sleep indefinitely if default INITIALS were used
+if [ "$default_initials_used" = true ]; then
+    echo "No custom INITIALS provided, sleeping indefinitely."
+    sleep infinity
+else
+    echo "Custom INITIALS provided, not sleeping indefinitely."
+fi

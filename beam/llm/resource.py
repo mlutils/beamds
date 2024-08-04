@@ -30,7 +30,7 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
 
     query = url.query
     for k, v in query.items():
-        kwargs[k] = v
+        kwargs[k.replace('-', '_')] = v
 
     if api_key is None and 'api_key' in kwargs:
         api_key = kwargs.pop('api_key')
@@ -43,7 +43,7 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
     if url.protocol == 'openai':
 
         api_key = beam_key('OPENAI_API_KEY', api_key)
-        return OpenAILLM(model=model, api_key=api_key, **kwargs)
+        return OpenAILLM(model=model, hostname=hostname, port=port, api_key=api_key, **kwargs)
 
     elif url.protocol == 'vllm':
         return BeamVLLM(model=model, hostname=hostname, port=port, api_key=api_key, **kwargs)

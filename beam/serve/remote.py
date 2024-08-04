@@ -44,7 +44,7 @@ def beam_client(uri, hostname=None, port=None, username=None, api_key=None, **kw
 
     query = uri.query
     for k, v in query.items():
-        kwargs[k] = v
+        kwargs[k.replace('-', '_')] = v
 
     if api_key is None and 'api_key' in kwargs:
         api_key = kwargs.pop('api_key')
@@ -84,7 +84,7 @@ def triton_client(uri, hostname=None, port=None, model_name=None, model_version=
 
     query = uri.query
     for k, v in query.items():
-        kwargs[k] = v
+        kwargs[k.replace('-', '_')] = v
 
     from .triton import TritonClient
     return TritonClient(scheme=uri.scheme, hostname=hostname, port=port, model_name=model_name,

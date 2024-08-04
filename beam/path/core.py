@@ -6,20 +6,29 @@ from collections import namedtuple
 from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import PurePosixPath, PureWindowsPath, Path
-from typing import Union
-from urllib.parse import urlparse, urlunparse, parse_qsl, ParseResult
 import pandas as pd
 import numpy as np
 import re
 
-from ..type import check_type
-from ..meta import BeamName
+from ..type import check_type, Types
 from ..type.utils import is_beam_data, is_beam_processor, is_pil
+from ..base import BeamResource, BeamURL
 
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
            'polars': 'polars', 'pandas': 'pandas', 'cudf': 'cudf', 'pyarrow': 'pyarrow',
            'native': 'native'}
+
+
+def normalize_host(hostname, port=None, default='localhost'):
+    if hostname is None:
+        hostname = default
+    if port is None:
+        host = f"{hostname}"
+    else:
+        host = f"{hostname}:{port}"
+
+    return host
 
 
 def strip_prefix(text, prefix):
@@ -37,207 +46,6 @@ def get_target(path, deep=1):
     if deep == 0:
         return None
     return get_target(path.parent.joinpath(path.stem), deep-1)
-
-
-class BeamURL(BeamName):
-
-    def __init__(self, url=None, scheme=None, hostname=None, port=None, username=None, password=None, path=None,
-                 fragment=None, params=None, **query):
-
-        self._url = url
-        self._parsed_url = None
-        if url is None:
-            netloc = BeamURL.to_netloc(hostname=hostname, port=port, username=username, password=password)
-            query = BeamURL.dict_to_query(**query)
-            if scheme is None:
-                scheme = 'file'
-            if path is None:
-                path = ''
-            if netloc is None:
-                netloc = ''
-            if query is None:
-                query = ''
-            if fragment is None:
-                fragment = ''
-            if params is None:
-                params = ''
-            self._parsed_url = ParseResult(scheme=scheme, netloc=netloc, path=path, params=params, query=query,
-                                           fragment=fragment)
-
-        assert self._url is not None or self._parsed_url is not None, 'Either url or parsed_url must be provided'
-
-    @property
-    def parsed_url(self):
-        if self._parsed_url is not None:
-            return self._parsed_url
-        self._parsed_url = urlparse(self._url)
-        return self._parsed_url
-
-    @property
-    def url(self):
-        if self._url is not None:
-            return self._url
-        self._url = urlunparse(self._parsed_url)
-        return self._url
-
-    def __repr__(self):
-        return self.url
-
-    def __str__(self):
-
-        netloc = BeamURL.to_netloc(hostname=self.hostname, port=self.port, username=self.username)
-        parsed_url = ParseResult(scheme=self.scheme, netloc=netloc, path=self.path, params=None, query=None,
-                                 fragment=None)
-        return urlunparse(parsed_url)
-
-    @property
-    def scheme(self):
-        return self.parsed_url.scheme
-
-    @property
-    def protocol(self):
-        return self.scheme
-
-    @property
-    def username(self):
-        return self.parsed_url.username
-
-    @property
-    def hostname(self):
-        return self.parsed_url.hostname
-
-    @property
-    def password(self):
-        return self.parsed_url.password
-
-    @property
-    def port(self):
-        return self.parsed_url.port
-
-    @property
-    def path(self):
-        return self.parsed_url.path
-
-    @property
-    def query_string(self):
-        return self.parsed_url.query
-
-    @property
-    def query(self):
-        return dict(parse_qsl(self.parsed_url.query))
-
-    @property
-    def fragment(self):
-        return self.parsed_url.fragment
-
-    @property
-    def params(self):
-        return self.parsed_url.params
-
-    @staticmethod
-    def to_netloc(hostname=None, port=None, username=None, password=None):
-
-        if not hostname:
-            return None
-
-        netloc = hostname
-        if username:
-            if password:
-                username = f"{username}:{password}"
-            netloc = f"{username}@{netloc}"
-        if port:
-            netloc = f"{netloc}:{port}"
-        return netloc
-
-    @staticmethod
-    def to_path(path):
-        return PurePosixPath(path).as_posix()
-
-    @staticmethod
-    def query_to_dict(query):
-        return dict(parse_qsl(query))
-
-    @staticmethod
-    def dict_to_query(**query):
-        return '&'.join([f'{k}={v}' for k, v in query.items() if v is not None])
-
-    @classmethod
-    def from_string(cls, url):
-        parsed_url = urlparse(url)
-        return cls(url, parsed_url)
-
-
-def normalize_host(hostname, port=None, default='localhost'):
-    if hostname is None:
-        hostname = default
-    if port is None:
-        host = f"{hostname}"
-    else:
-        host = f"{hostname}:{port}"
-
-    return host
-
-
-class BeamResource(BeamName):
-    """
-    Base class for all resources. Gets as an input a URI and the resource type and returns the resource.
-    """
-
-    def __init__(self, resource_type: str = None, url: Union[BeamURL, str] = None, scheme: str = None, hostname: str = None,
-                 port: int = None, username: str = None, password: str = None, fragment: str = None, params: str = None,
-                 path: str = None, **kwargs):
-
-        super().__init__()
-        if isinstance(url, str):
-            url = BeamURL(url)
-
-        if url is not None:
-            scheme = scheme or url.scheme
-            hostname = hostname or url.hostname
-            port = port or url.port
-            username = username or url.username
-            password = password or url.password
-            fragment = fragment or url.fragment
-            params = params or url.params
-            kwargs = kwargs or url.query
-            path = path or url.path
-
-        self.url = BeamURL(scheme=scheme, hostname=hostname, port=port, username=username, fragment=fragment,
-                           params=params, password=password, path=path, **kwargs)
-
-        self.resource_type = resource_type
-        self.scheme = self.url.scheme
-
-    def as_uri(self):
-        return self.url.url
-
-    @property
-    def hostname(self):
-        return self.url.hostname
-
-    @property
-    def port(self):
-        return self.url.port
-
-    @property
-    def username(self):
-        return self.url.username
-
-    @property
-    def password(self):
-        return self.url.password
-
-    @property
-    def fragment(self):
-        return self.url.fragment
-
-    @property
-    def params(self):
-        return self.url.params
-
-    @property
-    def query(self):
-        return self.url.query
 
 
 class PureBeamPath(BeamResource):
@@ -652,6 +460,7 @@ class PureBeamPath(BeamResource):
         self.close_fo_after_read = True
         if ext is None:
             ext = self.suffix
+        ext = ext.lower()
 
         target = target or get_target(self)
         if target == 'pyarrow':
@@ -926,6 +735,7 @@ class PureBeamPath(BeamResource):
 
         if ext is None:
             ext = self.suffix
+        ext = ext.lower()
 
         x_type = check_type(x)
 
@@ -940,7 +750,7 @@ class PureBeamPath(BeamResource):
 
         if ext == '.bmpr':
             assert is_beam_processor(x), f"Expected Processor, got {type(x)}"
-            x.to_path(self)
+            x.to_path(self, **kwargs)
             return self
 
         if ext == '.abm':
@@ -952,10 +762,10 @@ class PureBeamPath(BeamResource):
 
             if ext == '.fea':
 
-                if x_type.minor == 'polars':
+                if x_type.minor == Types.polars:
                     import polars as pl
                     x.to_feather(fo, **kwargs)
-                elif x_type.minor == 'cudf':
+                elif x_type.minor == Types.cudf:
                     import cudf
                     x.to_feather(fo, **kwargs)
                 else:
@@ -979,9 +789,9 @@ class PureBeamPath(BeamResource):
 
             elif ext == '.csv':
 
-                if x_type.minor == 'polars':
+                if x_type.minor == Types.polars:
                     x.write_csv(fo, **kwargs)
-                elif x_type.minor == 'cudf':
+                elif x_type.minor == Types.cudf:
                     x.to_csv(fo, **kwargs)
                 else:
                     x = pd.DataFrame(x)
@@ -1018,9 +828,9 @@ class PureBeamPath(BeamResource):
                 scipy.sparse.save_npz(fo, x, **kwargs)
                 # self.rename(f'{path}.npz', path)
             elif ext == '.parquet':
-                if x_type.minor == 'polars':
+                if x_type.minor == Types.polars:
                     x.write_parquet(fo, **kwargs)
-                elif x_type.minor == 'cudf':
+                elif x_type.minor == Types.cudf:
                     x.to_parquet(fo, **kwargs)
                 else:
                     x = pd.DataFrame(x)

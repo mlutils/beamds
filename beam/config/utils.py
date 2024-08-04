@@ -68,7 +68,7 @@ def normalize_value(v):
 
 
 # Function to compare parsed args with defaults
-def args_that_were_provided_explicitly(parser, args):
+def args_that_were_provided_explicitly(parser, args: dict = None, sys_argv=True):
     # Collect all argument strings (flags) for each action
     action_to_flags = {}
     for action in parser._actions:
@@ -77,11 +77,17 @@ def args_that_were_provided_explicitly(parser, args):
 
     # Check which of these were actually used in sys.argv
     passed_actions = set()
-    for arg in sys.argv[1:]:  # skip the first element, which is the script name
-        for dest, flags in action_to_flags.items():
-            if arg in flags:
-                passed_actions.add(dest)
-                break
+    if sys_argv:
+        for arg in sys.argv[1:]:  # skip the first element, which is the script name
+            for dest, flags in action_to_flags.items():
+                if arg in flags:
+                    passed_actions.add(dest)
+                    break
+    if args is not None:
+        for k in args.keys():
+            # add k to the set of passed actions if it was explicitly set to a non-default value
+            if k in action_to_flags and args[k] != parser.get_default(k):
+                passed_actions.add(k)
 
     return passed_actions
 
@@ -142,6 +148,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
     '''
     args can be list of arguments or a long string of arguments or list of strings each contains multiple arguments
     kwargs is a dictionary of both defined and undefined arguments
+    priority order: script arguments > non default kwargs+args > config files > environment variable > default values
     '''
 
     sys_argv_copy = sys.argv.copy()
@@ -149,6 +156,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
     pr = args[0]
     args = args[1:]
 
+    org_pr = copy.deepcopy(pr)
     def update_parser(p, d):
         for pi in p._actions:
             for o in pi.option_strings:
@@ -181,9 +189,9 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
             args_dict.append(to_dict(ar))
         elif ar_type.minor == Types.dict:
             args_dict.append(ar)
-        elif ar_type.minor == 'path':
+        elif ar_type.minor == Types.path:
             config_files.append(ar)
-        elif ar_type.major == Types.scalar and ar_type.element == 'str':
+        elif ar_type.major == Types.scalar and ar_type.element == Types.str:
             args_str.append(ar)
         else:
             raise ValueError
@@ -200,17 +208,22 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
     # set defaults from environment variables
     update_parser(pr, os.environ)
 
+    config_files_should_be_loaded = False
     if return_defaults:
         args = pr.parse_args([])
         keys_with_non_default_values = set()
-        config_files_should_be_loaded = False
 
     else:
         args, unknown = pr.parse_known_args()
-        config_files_should_be_loaded = hasattr(args, 'config_files') and args.config_files and load_config_files
+
+        if load_config_files:
+            if hasattr(args, 'config_files') and args.config_files:
+                config_files_should_be_loaded = True
+            elif len(config_files):
+                config_files_should_be_loaded = True
 
         if config_files_should_be_loaded:
-            keys_with_non_default_values = set(args_that_were_provided_explicitly(pr, args))
+            keys_with_non_default_values = set(args_that_were_provided_explicitly(pr, sys_argv=True))
         else:
             keys_with_non_default_values = set()
 
@@ -249,6 +262,14 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
         # have higher priority
 
         for k in keys_with_non_default_values:
+            logger.debug(f"loading {k} from command line instead of config files {config_files}. "
+                         f"command line arguments have higher priority over config files")
+            config_args.pop(k, None)
+
+        kwargs_non_default_values = set(args_that_were_provided_explicitly(org_pr, kwargs, sys_argv=False))
+        for k in kwargs_non_default_values:
+            logger.debug(f"loading {k} from kwargs instead of config files {config_files}. "
+                         f"non default kwargs has higher priority over config files")
             config_args.pop(k, None)
 
         args = Namespace(**{**to_dict(args), **config_args})

@@ -63,7 +63,7 @@ class Experiment(object):
         self.vars_args = dict(args.items())
         for k, v in self.vars_args.items():
             param_type = check_type(v)
-            if param_type.major == Types.scalar and param_type.element in ['bool', 'str', 'int', 'float']:
+            if param_type.major == Types.scalar and param_type.element in [Types.bool, Types.str, Types.int, Types.float]:
                 self.tensorboard_hparams[k] = v
 
         self.hparams = copy.deepcopy(args)

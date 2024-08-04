@@ -215,6 +215,8 @@ class ImageContent(LLMContent):
         if type(self.image) == str:
             if self.image.startswith('www.') or self.image.startswith('http://') or self.image.startswith('https://'):
                 self.true_url = True
+            else:
+                self.image = beam_path(self.image)
 
     @cached_property
     def image_type(self):
@@ -233,8 +235,8 @@ class ImageContent(LLMContent):
             image = Image.fromarray(self.image)
         elif self.image_type.minor == Types.tensor:
             image = Image.fromarray(self.image.cpu().numpy())
-        elif (self.image_type.major == 'path' or
-              (self.image_type.major == Types.native and self.image_type.element == 'str')):
+        elif (self.image_type.major == Types.path or
+              (self.image_type.major == Types.native and self.image_type.element == Types.str)):
             image = Image.open(beam_path(self.image))
         else:
             raise ValueError(f"Cannot convert {self.image_type} to PIL Image.")
@@ -242,10 +244,11 @@ class ImageContent(LLMContent):
 
     @cached_property
     def base64_image(self):
-        if self.image_type.major == 'path' or self.image_type.major == Types.scalar and self.image_type.element == 'str':
+        if (self.image_type.major == Types.path or self.image_type.major == Types.scalar and
+                self.image_type.element == Types.str):
             path = beam_path(self.image)
             return base64.b64encode(path.read_bytes()).decode('utf-8')
-        if self.image_type.minor == 'pil':
+        if self.image_type.minor == Types.pil:
             return self.pil_encode_base64(self.image)
         else:
             return self.pil_encode_base64(self.pil_format)

@@ -4,7 +4,7 @@
 # suggested beam names: spark flame blaze flash flare glow burst rush ray shine
 
 #FROM nvidia/cuda:12.3.0-devel-ubuntu22.04
-FROM nvcr.io/nvidia/pytorch:24.06-py3
+FROM nvcr.io/nvidia/pytorch:24.07-py3
 LABEL "description"="beam image based on nvidia pytorch docker"
 LABEL "run_command"="bash docker/run_beam.sh <image> <name> <initials-up-to-3-digits>"
 LABEL "standalone_run_command"="docker run -p 28000-28099:28000-28099 --gpus=all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v /home/:/home/ -v /mnt/:/mnt/ --name <name> beam:<date> 280"
@@ -23,7 +23,7 @@ ENV NLTK_DATA="/usr/local/share/nltk_data"
 ENV USER_NAME="root"
 ENV USER_HOME_DIR="/$USER_NAME"
 
-COPY docker/workspace/ /workspace/
+COPY container/workspace/ /workspace/
 
 # add beam user
 RUN bash /workspace/bash-build-scripts/add_beam_user.sh
@@ -40,7 +40,7 @@ RUN pip install --upgrade pip setuptools wheel
 RUN pip install -U -r /workspace/pip/requirements.txt
 
 #RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+#RUN pip install -U -r /workspace/pip/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 #RUN pip list
 RUN pip install -U -r /workspace/pip/requirements_0001.txt
 #RUN pip list

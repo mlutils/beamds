@@ -11,7 +11,6 @@ class K8SConfig(BeamConfig):
         BeamParam('deployment_name', str, None, 'Name of the deployment'),
         BeamParam('labels', dict, {}, 'Labels for the deployment'),
         BeamParam('image_name', str, None, 'Name of the image to deploy'),
-        BeamParam('use_command', bool, False, 'command configuration for the deployment'),
         BeamParam('command', dict, {}, 'Command configuration for the deployment'),
         BeamParam('os_namespace', str, None, 'Namespace for the deployment'),
         BeamParam('replicas', int, 1, 'Number of replicas for the deployment'),
@@ -37,11 +36,13 @@ class K8SConfig(BeamConfig):
         BeamParam('service_configs', list, [], 'Service configurations'),
         BeamParam('user_idm_configs', list, [], 'User IDM configurations'),
         BeamParam('ray_ports_configs', list, [], 'Ray ports configurations'),
+        BeamParam('route_timeout', int, 599, 'Route timeout'),
         BeamParam('check_project_exists', bool, True, 'Check if project exists'),
         BeamParam('entrypoint', str, None, 'Entrypoint for the container'),
         BeamParam('dockerfile', str, None, 'Dockerfile for the container'),
         BeamParam('docker_kwargs', dict, None, 'Auxiliary Docker arguments (for the build process)'),
     ]
+
 
 class RayClusterConfig(K8SConfig):
     parameters = [
@@ -49,7 +50,21 @@ class RayClusterConfig(K8SConfig):
     ]
 
 
-class HTTPServeClusterConfig(K8SConfig, BeamServeConfig):
+class RnDClusterConfig(K8SConfig):
+    parameters = [
+        BeamParam('replicas', int, 1, 'Number of replica pods'),
+        BeamParam('send_email', bool, False, 'Send email'),
+        BeamParam('body', str, 'Here is the cluster information:', 'Email body'),
+        BeamParam('from_email', str, 'dayotech2018@gmail.com', 'From email address'),
+        BeamParam('from_email_password', str, 'mkhdokjqwwmazyrf', 'From email password'),
+        BeamParam('to_email', str, None, 'To email address'),
+        BeamParam('send_email', bool, False, 'Send email or not'),
+        BeamParam('smtp_server', str, 'smtp.gmail.com', 'SMTP server'),
+        BeamParam('smtp_port', int, 587, 'SMTP port'),
+        BeamParam('subject', str, 'Cluster Deployment Information', 'Email subject'),
+    ]
+
+class ServeClusterConfig(K8SConfig, BeamServeConfig):
 
     defaults = dict(n_threads=16)
 

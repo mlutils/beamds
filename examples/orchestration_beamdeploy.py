@@ -3,15 +3,16 @@ from beam.orchestration import (BeamK8S, BeamPod, BeamDeploy, SecurityContextCon
                                 ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig, CommandConfig)
 from beam.logging import beam_logger as logger
 import time
-from beam.resources import resource
+from beam.resources import resource, this_dir
 from beam.orchestration.config import K8SConfig
 import os
+import sys
 
-# hparams = K8SConfig()
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 conf_path = resource(os.path.join(script_dir, 'orchestration_beamdeploy.yaml')).str
 config = K8SConfig(conf_path)
+
 
 print('hello world')
 print("API URL:", config['api_url'])
@@ -36,3 +37,4 @@ deployment = BeamDeploy(config, k8s,
 
 # Launch deployment and obtain pod instances
 deployment.launch(replicas=1)
+logger.debug(f"Home-Page: {deployment.k8s.get_homepage_route_url(namespace=config['project_name'])}")

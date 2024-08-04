@@ -1,17 +1,9 @@
+from typing import Union, Any
+
+from .base import BeamResource, resource_names
 
 
-resource_names = {
-    'path': ['file', 's3', 's3-pa', 'hdfs', 'hdfs-pa', 'sftp', 'comet', 'io', 'dict', 'redis', 'smb', 'nt',
-             'mlflow'],
-    'serve': ['beam-http', 'beam-https', 'beam-grpc', 'beam-grpcs', 'http', 'https', 'grpc', 'grpcs'],
-    'distributed': ['async-http', 'async-https'],
-    'llm': ['openai', 'vllm', 'tgi', 'fastchat', 'huggingface', 'samurai', 'samur-openai', 'fastapi-dp'],
-    'triton': ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs'],
-    'ray': ['ray']
-}
-
-
-def resource(uri, **kwargs):
+def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     if type(uri) != str:
         return uri
     if ':' not in uri:
@@ -40,6 +32,9 @@ def resource(uri, **kwargs):
     elif scheme in resource_names['ray']:
         from .distributed import ray_client
         return ray_client(uri, **kwargs)
+    elif scheme in resource_names['embedding']:
+        from .embedding import beam_embedding
+        return beam_embedding(uri, **kwargs)
     else:
         raise Exception(f'Unknown resource scheme: {scheme}')
 

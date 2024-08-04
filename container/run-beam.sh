@@ -77,7 +77,8 @@ else
   run_mode="-itd"  # Default is interactive, tty, detached
 fi
 
-DOCKER_RUN_COMMAND="docker run $port_mapping --ipc=host --ulimit memlock=-1 $gpu_option --shm-size=8g --memory=${backoff_memory_mb}m --ulimit stack=67108864 --restart unless-stopped $run_mode -v $HOME_DIR:$HOME_DIR -v /mnt/:/mnt/ -v /var/run/docker.sock:/var/run/docker.sock -e INITIALS=${INITIALS} $MORE_DOCKER_ARGS --name $NAME --hostname $NAME $IMAGE $COMMAND"
+#--ipc=host -v /var/run/docker.sock:/var/run/docker.sock --ulimit memlock=-1
+DOCKER_RUN_COMMAND="docker run $port_mapping $gpu_option --shm-size=8g --memory=${backoff_memory_mb}m --ulimit stack=67108864 --restart unless-stopped $run_mode -v $HOME_DIR:$HOME_DIR -v /mnt/:/mnt/  -e INITIALS=${INITIALS} $MORE_DOCKER_ARGS --name $NAME --hostname $NAME $IMAGE $COMMAND"
 
 # Print the final docker run command and execute it
 echo "$DOCKER_RUN_COMMAND"

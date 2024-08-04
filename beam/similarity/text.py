@@ -1,12 +1,67 @@
 from typing import List
+import torch
+
 from ..logging import beam_logger as logger
-from ..type.utils import is_beam_resource
-from ..utils import beam_device
+from ..type.utils import is_beam_resource, Types
+from ..utils import beam_device, to_device, check_type, tqdm_beam as tqdm, divide_chunks
 from ..processor import Processor
 from ..llm import default_tokenizer
 from .dense import DenseSimilarity
 from ..path import local_copy, beam_path
 from ..resources import resource
+from ..transformer import Transformer
+from ..concurrent import parallel, task
+
+
+class RobustDenseEncoder(Transformer):
+
+    def __init__(self, encoder, batch_size=None, batch_ratios_to_try=None, **kwargs):
+        super().__init__(batch_size=batch_size, **kwargs)
+        self.encoder = encoder
+        self.batch_size = self.get_hparam('batch_size', 32)
+        self.batch_ratios_to_try = batch_ratios_to_try or [1, 4, 16, 32]
+
+    def transform_callback(self, x, _key=None, _is_chunk=False, _fit=False, path=None, _store=False,
+                           batch_size=None, show_progress_bar=True, **kwargs):
+
+        batch_size = batch_size or self.batch_size
+        for b in self.batch_ratios_to_try:
+            b = max(1, batch_size // b)
+            enc = self.encoder.encode(x, batch_size=b, show_progress_bar=show_progress_bar,
+                                      convert_to_tensor=True)
+            enc_type = check_type(enc)
+            if enc_type.minor == Types.tensor:
+                return to_device(enc, self.device)
+            else:
+                logger.warning(f"Encoding ({_key}) failed with batch size {b}. Retrying with smaller batch size.")
+
+        logger.warning(f"Encoding ({_key}) failed with all batch sizes, defaulting to iterative calculation.")
+        enc = []
+        enci = self.encoder.encode('hi there', batch_size=1, show_progress_bar=show_progress_bar,
+                                   convert_to_tensor=True)
+        for xi in tqdm(x, enable=show_progress_bar):
+            try:
+                enci = self.encoder.encode(xi, batch_size=1, show_progress_bar=show_progress_bar,
+                                           convert_to_tensor=True)
+                enc.append(enci)
+            except Exception as e:
+                logger.error(f"Encoding failed for {xi}. {e}")
+                enc.append(torch.zeros_like(enci))
+
+        enc = torch.stack(enc)
+
+        return enc
+
+    def encode(self, x: List[str], batch_size=None, cache_dir=None, aggregate=True, **kwargs):
+        batch_size = batch_size or self.batch_size
+        cache_dir = resource(cache_dir)
+
+        transform_params = dict(reduce=aggregate, return_results=True)
+        if cache_dir is not None:
+            transform_params['use_cache'] = True
+            transform_params['store_path'] = cache_dir
+
+        return self.transform(x, batch_size=batch_size, transform_params=transform_params)
 
 
 class TextSimilarity(DenseSimilarity):
@@ -39,6 +94,7 @@ class TextSimilarity(DenseSimilarity):
 
         self.dense_model = self.load_dense_model(dense_model=dense_model,
                                                  dense_model_device=self.dense_model_device,
+                                                 batch_size=self.batch_size,
                                                  **st_kwargs)
 
         d = self.dense_model.get_sentence_embedding_dimension()
@@ -57,16 +113,24 @@ class TextSimilarity(DenseSimilarity):
             self._tokenizer = tokenizer
 
     @staticmethod
-    def load_dense_model(dense_model=None, dense_model_device=None, **st_kwargs):
+    def load_dense_model(dense_model=None, dense_model_device=None, batch_size=None, **st_kwargs):
 
+        chunksize = None
         if type(dense_model) is str:
-            if dense_model.startswith('beam'):
-                dense_model = resource(dense_model)
+            dense_model_resource = resource(dense_model)
+            if dense_model_resource.is_beam_client:
+                dense_model = dense_model_resource
+                chunksize = 100 * batch_size
             else:
                 from sentence_transformers import SentenceTransformer
                 dense_model = SentenceTransformer(dense_model, device=str(dense_model_device), **st_kwargs)
         elif not is_beam_resource(dense_model):
             dense_model.to(dense_model_device)
+        else:
+            raise ValueError(f"Invalid dense model: {dense_model}")
+
+        dense_model = RobustDenseEncoder(dense_model, batch_size=batch_size,
+                                         device=dense_model_device, chunksize=chunksize)
 
         return dense_model
 
@@ -81,15 +145,28 @@ class TextSimilarity(DenseSimilarity):
 
         return tokenizer
 
-    def add(self, x, index=None, **kwargs):
+    def add(self, x, index=None, cache_dir=None, **kwargs):
 
         x, index = self.extract_data_and_index(x, index, convert_to=None)
-        dense_vectors = self.encode(x)
-        super().add(dense_vectors, index)
+        dense_vectors = self.encode(x, cache_dir=cache_dir, aggregate=False)
+        if not type(dense_vectors) is list:
+            dense_vectors = [dense_vectors]
 
-    def encode(self, x: List[str]):
+        logger.info(f"Adding {len(dense_vectors)} dense vectors to the index.")
+        n = 0
+        for dv in tqdm(dense_vectors):
+            ind = None
+            if index is not None:
+                ind = index[n:n + len(dv)]
+                n += len(dv)
+            super().add(dv, ind)
+
+    def encode(self, x: List[str], cache_dir=None, aggregate=True):
         x = list(x)
-        return self.dense_model.encode(x, batch_size=self.batch_size, show_progress_bar=True, convert_to_tensor=True)
+        kwargs = {}
+        if cache_dir is not None:
+            kwargs['cache_dir'] = cache_dir
+        return self.dense_model.encode(x, batch_size=self.batch_size, show_progress_bar=True, **kwargs)
 
     def search(self, x: List[str], k=1):
 

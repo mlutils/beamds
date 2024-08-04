@@ -100,12 +100,12 @@ class LazyTensor:
     def is_contiguous(ind):
 
         ind_type = check_type(ind)
-        if ind_type.major == 'slice':
+        if ind_type.major == Types.slice:
             return ind.step is None or ind.step == 1
         elif ind_type.major == Types.array:
             ind = as_tensor(ind)
             return bool(torch.all(torch.diff(ind) == 1))
-        elif ind_type.major == Types.scalar and ind_type.minor == 'int':
+        elif ind_type.major == Types.scalar and ind_type.minor == Types.int:
             return True
 
         return False
@@ -121,7 +121,7 @@ class LazyTensor:
         for i, ind in enumerate(item):
             ind_type = check_type(ind)
             if ind_type.major == Types.scalar:
-                assert ind_type.element == 'int', "Index must be integer"
+                assert ind_type.element == Types.int, "Index must be integer"
                 count = self.shape[i + 1:].prod() if i < len(self.shape) - 1 else 1
                 offset += ind * self.element_size * count
             else:
@@ -237,7 +237,7 @@ class DataTensor(object):
                 columns = [int(i) for i in torch.arange(n_columns)]
                 self.columns_format = 'int'
 
-        elif columns_type.major == Types.array and columns_type.element == 'int':
+        elif columns_type.major == Types.array and columns_type.element == Types.int:
 
             columns = [int(i) for i in columns]
             self.columns_format = 'int'

@@ -13,7 +13,7 @@ import json
 
 class BeamDeploy(BeamBase):
 
-    def __init__(self, hparams, k8s, *args, enable_ray_ports=False, **kwargs):
+    def __init__(self, hparams, k8s, *args, **kwargs):
 
         super().__init__(hparams, *args, _config_scheme=K8SConfig, **kwargs)
 
@@ -21,7 +21,7 @@ class BeamDeploy(BeamBase):
         memory_storage_configs = [MemoryStorageConfig(**v) for v in self.get_hparam('memory_storage_configs', [])]
         service_configs = [ServiceConfig(**v) for v in self.get_hparam('service_configs', [])]
         storage_configs = [StorageConfig(**v) for v in self.get_hparam('storage_configs', [])]
-        ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
+        # ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
         user_idm_configs = [UserIdmConfig(**v) for v in self.get_hparam('user_idm_configs', [])]
 
         command = self.get_hparam('command', None)
@@ -62,11 +62,10 @@ class BeamDeploy(BeamBase):
         self.k8s = k8s
         self.command = command
         self.service_configs = service_configs or []
-        self.ray_ports_configs = ray_ports_configs or RayPortsConfig()
+        # self.ray_ports_configs = ray_ports_configs or RayPortsConfig()
         self.memory_storage_configs = memory_storage_configs or []
         self.storage_configs = storage_configs or []
         self.user_idm_configs = user_idm_configs or []
-        self.enable_ray_ports = enable_ray_ports
         self.security_context_config = security_context_config or []
 
     def launch(self, replicas=None):
@@ -108,9 +107,9 @@ class BeamDeploy(BeamBase):
 
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
 
-        if self.enable_ray_ports is True:
-            for ray_ports_config in self.ray_ports_configs:
-                extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
+        # if self.ray_ports_configs:
+        #     for ray_ports_config in self.ray_ports_configs:
+        #         extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
@@ -151,7 +150,7 @@ class BeamDeploy(BeamBase):
                 if pod_name:
                     actual_pod_info = self.k8s.get_pod_info(pod_name, self.namespace)
                     beam_pod_instance = BeamPod(pod_infos=[BeamPod.extract_pod_info(actual_pod_info)],
-                                                namespace=self.namespace, k8s=self.k8s)
+                                                namespace=self.namespace, k8s=self.k8s, replicas=self.replicas)
                     self.beam_pod_instances.append(beam_pod_instance)
                 else:
                     logger.warning("PodInfo object does not have a 'name' attribute.")
@@ -176,36 +175,77 @@ class BeamDeploy(BeamBase):
         for pod_instance in self.beam_pod_instances:
             pod_suffix = (f"{self.deployment_name}-"
                           f"{pod_instance.pod_infos[0].raw_pod_data['metadata']['name'].split('-')[-1]}")
+            rs_env_vars = []
             for svc_config in self.service_configs:
                 service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
-                self.k8s.create_service(
+
+                service_details = self.k8s.create_service(
                     base_name=service_name,
                     namespace=self.namespace,
                     ports=[svc_config.port],
                     labels=self.labels,
                     service_type=svc_config.service_type
                 )
+                rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_URL", 'value': service_details['url']})
+                rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_PORT", 'value': str(service_details['ports'][0])})
+                rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_NAME", 'value': service_details['name']})
 
                 # Create routes and ingress if configured
                 if svc_config.create_route:
-                    self.k8s.create_route(
+                    route_details = self.k8s.create_route(
                         service_name=service_name,
                         namespace=self.namespace,
                         protocol=svc_config.route_protocol,
-                        port=svc_config.port
+                        port=svc_config.port,
+                        route_timeout=svc_config.route_timeout,
                     )
+                    rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_NAME", 'value': route_details['name']})
+                    rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_HOST", 'value': route_details['host']})
                 if svc_config.create_ingress:
-                    self.k8s.create_ingress(
+                    ingress_details = self.k8s.create_ingress(
                         service_configs=[svc_config],
                     )
+            rs_env_vars.append({'name': f"PLATFORM_ENGINE", 'value': 'Kuberenetes'})
+            self.update_config_maps_rs_env_vars(self.deployment_name, self.namespace, rs_env_vars)
 
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
 
+    def update_config_maps_rs_env_vars(self, deployment_name, namespace, rs_env_vars):
+        # Prepare ConfigMap data
+        config_map_name = f"{deployment_name}-config"
+        config_data = {var['name']: var['value'] for var in rs_env_vars}
+
+        # Create or update ConfigMap
+        try:
+            existing_cm = self.k8s.core_v1_api.read_namespaced_config_map(config_map_name, namespace)
+            existing_cm.data.update(config_data)
+            # TODO: updating ConfigMap causing the pod to restart -
+            #  new a way to assosiate new pod names to existing routes/services
+            self.k8s.core_v1_api.replace_namespaced_config_map(config_map_name, namespace, existing_cm)
+            logger.info(f"Updated ConfigMap {config_map_name} in namespace {namespace}.")
+        except ApiException as e:
+            if e.status == 404:
+                # Create new ConfigMap if not exists
+                new_cm = client.V1ConfigMap(metadata=client.V1ObjectMeta(name=config_map_name), data=config_data)
+                self.k8s.core_v1_api.create_namespaced_config_map(namespace, new_cm)
+                logger.info(f"Created new ConfigMap {config_map_name} in namespace {namespace}.")
+            else:
+                raise
+
+        # Update deployment to use this ConfigMap
+        deployment = self.k8s.apps_v1_api.read_namespaced_deployment(deployment_name, namespace)
+        for container in deployment.spec.template.spec.containers:
+            container.env_from = [
+                client.V1EnvFromSource(config_map_ref=client.V1ConfigMapEnvSource(name=config_map_name))]
+
+        self.k8s.apps_v1_api.replace_namespaced_deployment(deployment_name, namespace, deployment)
+        logger.info(f"Deployment {deployment_name} updated to use ConfigMap in namespace {namespace}.")
+
     def extract_ports(self):
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
-        if self.enable_ray_ports:
-            for ray_ports_config in self.ray_ports_configs:
-                extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
+        # if self.ray_ports_configs:
+        #     for ray_ports_config in self.ray_ports_configs:
+        #         extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
         return extracted_ports
 
     def generate_beam_pod(self, pod_infos):

@@ -26,6 +26,9 @@ class HTTPClient(BeamClient):
         response = requests.get(f'{self.protocol}://{self.host}/{path}', **kwargs)
         if response.status_code == 200:
             response = self.load_function(io.BytesIO(response.content))
+        else:
+            logger.error(f"Error in get request: (code:{response.status_code})")
+            raise Exception(f"Error in get request: {response.content}")
 
         return response
 
@@ -39,6 +42,9 @@ class HTTPClient(BeamClient):
 
         if response.status_code == 200:
             response = self.load_function(io.BytesIO(response.content))
+        else:
+            logger.error(f"Error in get request: (code:{response.status_code})")
+            raise Exception(f"Error in post request: {response.content}")
 
         return response
 
