@@ -77,6 +77,22 @@ def is_cudf(x):
     return cudf and isinstance(x, cudf.DataFrame)
 
 
+def is_pandas(x):
+    return isinstance(x, pd.core.base.PandasObject)
+
+
+def is_dataframe(x):
+    return is_pandas(x) or is_polars(x) or is_cudf(x)
+
+
+def is_pandas_dataframe(x):
+    return isinstance(x, pd.DataFrame)
+
+
+def is_pandas_series(x):
+    return isinstance(x, pd.Series)
+
+
 # def is_pil(x):
 #     pil = lzi.PIL
 #     return pil and isinstance(x, pil.Image.Image)
