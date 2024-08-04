@@ -303,29 +303,13 @@ class RnDCluster(BeamCluster):
                 k8s.send_email(subject, body, to_email, from_email, from_email_password)
             else:
                 logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
+                logger.debug(f"Home-Page: {k8s.get_homepage_route_url(namespace=config['project_name'])}")
             logger.debug(f"Cluster info: {deployment.cluster_info}")
+            logger.debug(f"Home-Page: {k8s.get_homepage_route_url(namespace=config['project_name'])}")
             if not pods:
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed
             return cls(deployment=deployment, replicas=replicas, config=config)
-        except Exception as e:
-            logger.error(f"Error during deployment: {str(e)}")
-            from ..utils import beam_traceback
-            logger.debug(beam_traceback())
-            raise e
-
-
-        # try:
-        #     deployment.launch(replicas=config['replicas'])
-        #     if not deployment:
-        #         raise Exception("Pod deployment failed")
-        #     #
-        #     # for pod in deployment:
-        #     #     logger.info(deployment.cluster_info)
-        #     logger.info(deployment.cluster_info)
-        #
-        #     return cls(deployment=deployment, replicas=replicas, config=config)
-
         except Exception as e:
             logger.error(f"Error during deployment: {str(e)}")
             from ..utils import beam_traceback

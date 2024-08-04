@@ -37,3 +37,4 @@ deployment = BeamDeploy(config, k8s,
 
 # Launch deployment and obtain pod instances
 deployment.launch(replicas=1)
+logger.debug(f"Home-Page: {deployment.k8s.get_homepage_route_url(namespace=config['project_name'])}")
