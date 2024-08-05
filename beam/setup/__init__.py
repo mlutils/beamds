@@ -103,7 +103,7 @@ def load_ipython_extension(ipython, beam_path=None):
         sys.path.insert(0, '../src')
 
     beam_args = os.getenv('BEAM_ARGS', '')
-    sys.argv.append('---')
+    sys.argv.append('---BEAM-JUPYTER---')
     if beam_args:
         sys.argv.extend(beam_args.split(' '))
 
