@@ -125,7 +125,7 @@ def write_config(file_path, config):
 
 # Initialize session state for configuration
 if 'config' not in st.session_state:
-    conf_path = this_dir().parent.joinpath('examples', 'orchestration_beamdeploy.yaml')
+    conf_path = this_dir().parent.joinpath('examples', 'orchestration_beamdemo.yaml')
     st.session_state.config = read_config(conf_path)
 
 
