@@ -177,7 +177,7 @@ def main():
             st.session_state.config[param] = value
 
         # Save updated config to file
-        conf_path = this_dir().parent.joinpath('examples', 'orchestration_beamdeploy.yaml')
+        conf_path = this_dir().parent.joinpath('examples', 'orchestration_beamdemo.yaml')
         write_config(conf_path, st.session_state.config)
 
     if st.button("Launch"):
@@ -192,7 +192,7 @@ def main():
             terminal_output = st.empty()
 
             process = subprocess.Popen(
-                ["python", "-m", "examples.orchestration_beamdeploy", str(user_config_path)],
+                ["python", "-m", "examples.orchestration_beamdemo", str(user_config_path)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,

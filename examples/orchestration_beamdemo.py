@@ -10,7 +10,7 @@ import sys
 
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-conf_path = resource(os.path.join(script_dir, 'orchestration_beamdeploy.yaml')).str
+conf_path = resource(os.path.join(script_dir, 'orchestration_beamdemo.yaml')).str
 config = K8SConfig(conf_path)
 
 
@@ -37,4 +37,4 @@ deployment = BeamDeploy(config, k8s,
 
 # Launch deployment and obtain pod instances
 deployment.launch(replicas=1)
-logger.debug(f"Home-Page: {deployment.k8s.get_homepage_route_url(namespace=config['project_name'])}")
+logger.info(f"Home-Page: {deployment.k8s.get_homepage_route_url(namespace=config['project_name'])}")

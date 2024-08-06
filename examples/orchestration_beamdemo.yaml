@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~b4AweSHLRUcWWps3DNdbolKrC5qDpv455ZESjo2EhBM
+api_token: sha256~JQay6PBL1Fqe4rPJDO7y6KYCi2NcDESNI4OyCnZBvUE
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -29,7 +29,7 @@ from_email_password: mkhdokjqwwmazyrf
 gpu_limits: '1'
 gpu_requests: '1'
 #image_name: harbor.dt.local/public/nerdctl:v2.0.0-rc.0
-image_name: harbor.dt.local/public/beam:20240729ocp-dev
+image_name: harbor.dt.local/public/beam:20240801
 labels:
   app: 1clickmanager
 memory_limits: '6'
