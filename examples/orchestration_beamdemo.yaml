@@ -1,25 +1,24 @@
-alg_image_name: fake-alg-http-server:latest
+alg_image_name: yolo-algo:latest
 api_token: sha256~JQay6PBL1Fqe4rPJDO7y6KYCi2NcDESNI4OyCnZBvUE
 api_url: https://api.kh-dev.dt.local:6443
-base_image: eladsar/beam:20240605
+base_image: harbor.dt.local/public/beam:20240801
 base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='unix://var/run/docker.sock')
 #client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: 2.6.4
+beam_version: 2.6.7
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:
-  arguments:
-  - -c
-  - sleep infinity
-  executable: /bin/bash
+#  arguments:
+#  - -c
+#  - sleep infinity
+#  executable: /bin/bash
 cpu_limits: '2'
 cpu_requests: '2'
-create_service_account: true
-deployment_name: 1clickmanager
-enable_ray_ports: true
+create_service_account: false
+deployment_name: university
 entrypoint_args:
 - '63'
 entrypoint_envs:
@@ -31,7 +30,7 @@ gpu_requests: '1'
 #image_name: harbor.dt.local/public/nerdctl:v2.0.0-rc.0
 image_name: harbor.dt.local/public/beam:20240801
 labels:
-  app: 1clickmanager
+  app: university
 memory_limits: '6'
 memory_requests: '6'
 memory_storage_configs:
@@ -39,20 +38,16 @@ memory_storage_configs:
   mount_path: /dev/shm
   name: dshm
   size_gb: 8
-n_pods: '2'
+n_pods: '1'
 node_selector:
   gpu-type: tesla-a100
 project_name: kh-dev
 push_image: true
-ray_ports_configs:
-- ray_ports:
-  - 6379
-  - 8265
 registry_password: Har@123
 registry_url: harbor.dt.local
 registry_username: admin
 registry_project_name: public
-replicas: '2'
+replicas: '1'
 send_mail: false
 scc_name: anyuid
 security_context_config:
@@ -109,17 +104,13 @@ storage_configs:
   pvc_size: '500'
 subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
-use_gpu: false
+use_gpu: true
 use_node_selector: false
-use_scc: true
+use_scc: false
 user_idm_configs:
 - create_role_binding: false
   project_name: ben-guryon
   role_binding_name: yos
   role_name: admin
   user_name: yos
-- create_role_binding: false
-  project_name: ben-guryon
-  role_binding_name: asafe
-  role_name: admin
-  user_name: asafe
+
