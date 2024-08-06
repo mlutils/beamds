@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from enum import Enum
+
 import pandas as pd
 
 from ..base import BeamBase
@@ -11,12 +14,36 @@ class FeaturesCategories(Enum):
     text = 'text'
 
 
+class ParameterType(Enum):
+    categorical = 'categorical'
+    linspace = 'linspace'
+    logspace = 'logspace'
+    uniform = 'uniform'
+    loguniform = 'loguniform'
+
+
+@dataclass
+class ParameterSchema:
+    name: str
+    kind: ParameterType
+    possible_values: list[str] | None = None
+    min_value: float | None = None
+    max_value: float | None = None
+    default_value: float | None = None
+    description: str | None = None
+
+
+
 class BeamFeature(BeamBase):
 
     def __init__(self, *args, func=None, name=None, kind=None, **kwargs):
         super().__init__(*args, name=name, **kwargs)
         self.func = func
         self.kind = kind or FeaturesCategories.numerical
+
+    @property
+    def parameters_schema(self):
+        return {}
 
     def transform(self, x, index=None) -> pd.DataFrame:
         v = self.func(x)
@@ -25,7 +52,7 @@ class BeamFeature(BeamBase):
     def fit(self, x):
         pass
 
-    def fit_transform(self, x, index=None) -> pd.DataFrame:
+    def fit_transform(self, x, index=None, **kwargs) -> pd.DataFrame:
         self.fit(x)
         return self.transform(x, index)
 
@@ -62,7 +89,7 @@ class DiscretizedFeature(BeamFeature):
     def __init__(self, *args, columns: list[str] | str = None, n_bins: int = None, strategy='quantile',
                  name=None, subsample=None, **kwargs):
         super().__init__(*args, name=name, kind=FeaturesCategories.categorical, **kwargs)
-        self.n_bins = quantiles
+        self.n_bins = n_bins
         self.strategy = strategy
         self.columns = [columns] if isinstance(columns, str) else columns
         from sklearn.preprocessing import KBinsDiscretizer
@@ -105,6 +132,10 @@ class ScalingFeature(BeamFeature):
             self.encoder = RobustScaler()
         else:
                 raise ValueError(f"Invalid scaling method: {method}")
+
+    @property
+    def parameters_schema(self):
+        return {'method': ParameterSchema(name='method', kind=ParameterType.categorical)}
 
     def fit(self, x):
         if is_pandas_dataframe(x):
@@ -152,8 +183,8 @@ class CetegorizedFeature(BeamFeature):
         return df
 
 
-class FeaturesAggregator(BeamBase):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, name=name, **kwargs)
-        self.features = features or []
+# class FeaturesAggregator(BeamBase):
+#
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, name=name, **kwargs)
+#         self.features = features or []
