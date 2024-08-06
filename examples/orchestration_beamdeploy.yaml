@@ -63,6 +63,9 @@ security_context_config:
   enable_security_context: false
   privileged: true
   runAsUser: 0
+kopf_username: "kubeadmin"
+kopf_password: "6tLRh-tqHpC-TLPjj-WzRkS"
+kopf_server: "https://api.kh-dev.dt.local:6443"
 service_configs:
 - create_ingress: false
   create_route: false

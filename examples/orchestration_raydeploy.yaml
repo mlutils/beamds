@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~tUIKktsMUC-3787CnptYa7_JmUrXMiI6seT7SpkKFIQ
+api_token: sha256~mQP7ore4VRcXxqhz1cZnZL0NykT3dML23bXndmY2EbA
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -32,6 +32,7 @@ gpu_requests: '1'
 # image_name: harbor.dt.local/public/fake-alg-http-server:latest
 #image_name: None
 image_name: harbor.dt.local/public/beam:20240801
+#image_name: rocker/rstudio:latest
 labels:
   app: university
 memory_limits: '12'
@@ -41,7 +42,8 @@ memory_storage_configs:
   mount_path: /dev/shm
   name: dshm
   size_gb: 8
-new_image: harbor.dt.local/public/fake-alg-http-server:test1
+#new_image: harbor.dt.local/public/fake-alg-http-server:test1
+new_image:  rocker/rstudio:latest
 n_pods: '2'
 node_selector:
   gpu-type: tesla-a100
@@ -102,22 +104,29 @@ service_configs:
   service_type: ClusterIP
 - create_ingress: false
   create_route: true
-  ingress_host: home-page.example.com
-  port: 22001
-  port_name: home-page-port
-  service_name: home-page
+  ingress_host: rstudio.example.com
+  port: 8787
+  port_name: port
+  service_name: ray
   service_type: ClusterIP
+#- create_ingress: false
+#  create_route: true
+#  ingress_host: home-page.example.com
+#  port: 22089
+#  port_name: home-page-port
+#  service_name: home-page
+#  service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
-- create_pvc: false
+- create_pvc: true
   pvc_access_mode: ReadWriteMany
-  pvc_mount_path: /data-pvc
+  pvc_mount_path: /usr/local/lib/R/site-library
   pvc_name: data-pvc
   pvc_size: '500'
 subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
-use_gpu: false
+use_gpu: true
 use_node_selector: false
 use_scc: true
 user_idm_configs:
