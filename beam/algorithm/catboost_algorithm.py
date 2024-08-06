@@ -13,6 +13,8 @@ class CBAlgorithm(Algorithm):
     def __init__(self, hparams=None, name=None, **kwargs):
 
         super().__init__(hparams=hparams, name=name, _config_scheme=CatboostConfig,  **kwargs)
+        self._t0 = None
+        self._batch_size = None
 
     @property
     def device_type(self):
@@ -105,7 +107,8 @@ class CBAlgorithm(Algorithm):
 
         if match:
             # Extracting iteration number
-            iteration = match.group('iteration')
+            iteration = int(match.group('iteration'))
+            self.reporter.set_iteration(iteration)
 
             # Extracting metrics
             metrics_string = info[info.index('\t') + 1:].strip()  # Get the substring after the iteration
@@ -119,12 +122,16 @@ class CBAlgorithm(Algorithm):
             for k, v in metrics.items():
                 self.report_scalar(k, v, subset='eval', epoch=iteration)
 
+            self.reporter.post_epoch('eval', self._t0, training=True)
+
             if self.experiment:
-                self.experiment.save_model_results(self.model, None, iteration)
+                self.experiment.save_model_results(self.reporter, self, iteration, visualize_weights=False,
+                                                   store_results=False,)
 
             # post epoch
             self.epoch += 1
             self.reporter.reset_epoch(iteration, total_epochs=self.epoch)
+            self._t0 = self.reporter.pre_epoch('eval', batch_size=self._batch_size, training=True)
 
         else:
             logger.info(f"CB: {info}")
@@ -139,9 +146,16 @@ class CBAlgorithm(Algorithm):
                                      embedding_features=embedding_features, sample_weight=sample_weight)
 
         self.set_train_reporter(first_epoch=0, n_epochs=self.get_hparam('cb_n_estimators'))
+        # self.set_reporter(BeamReport(objective=self.get_hparam('objective'),
+        #                              objective_mode=self.optimization_mode))
+        self.reporter.reset_epoch(0, total_epochs=self.epoch)
+        train_pool = dataset.train_pool
+        self._batch_size = len(train_pool.get_label())
+        self._t0 = self.reporter.pre_epoch('eval', batch_size=self._batch_size)
+        self.model.fit(train_pool, eval_set=dataset.eval_pool, log_cout=self.postprocess_epoch,
+                       log_cerr=self.err_stream, **kwargs)
 
-        return self.model.fit(dataset.train_pool, eval_set=dataset.eval_pool, log_cout=self.postprocess_epoch,
-                              log_cerr=self.err_stream, **kwargs)
+        # self.model.fit(dataset.train_pool, eval_set=dataset.eval_pool, **kwargs)
 
     def predict(self, x, **kwargs):
         return self.model.predict(as_numpy(x), **kwargs)

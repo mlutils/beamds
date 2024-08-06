@@ -312,17 +312,18 @@ class BeamReport(object):
                 self.objective_mode = self.objectives_modes[i]
                 return
 
-    @contextmanager
-    def track_epoch(self, subset, batch_size=None, training=True):
+    def pre_epoch(self, subset, batch_size=None):
         self.subset_context = subset
         self.batch_size_context = batch_size
         self.state = 'in_epoch'
+        return timer()
 
-        t0 = timer()
-        yield
+    def post_epoch(self, subset, t0, batch_size=None, training=True):
+
         delta = timer() - t0
         n_iter = self.iteration + 1
         track_objective = not training
+        batch_size = batch_size or 1
 
         self.state = 'after_epoch'
 
@@ -334,7 +335,6 @@ class BeamReport(object):
 
         self.total_time = time.time() - self.t0
         if (self.n_epochs is not None) and (self.n_epochs is not None) and (self.n_epochs > 0):
-
             n_epochs = self.n_epochs - self.first_epoch
             epoch = self.epoch - self.first_epoch
 
@@ -376,10 +376,19 @@ class BeamReport(object):
         self.subset_context = None
         self.batch_size_context = None
 
+    @contextmanager
+    def track_epoch(self, subset, batch_size=None, training=True):
+        t0 = self.pre_epoch(subset, batch_size)
+        yield
+        self.post_epoch(subset, t0, batch_size, training)
+
     def iterate(self, generator, **kwargs):
         for i, batch in tqdm(generator, **kwargs):
             self.iteration = i
             yield i, batch
+
+    def set_iteration(self, i):
+        self.iteration = i
 
     @staticmethod
     def detach_scalar(val):
