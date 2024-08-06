@@ -69,7 +69,7 @@ class SyncedResults:
 
 class BeamTask(BeamName):
 
-    def __init__(self, func, *args, name=None, silence=False, metadata=None, **kwargs):
+    def __init__(self, func, *args, name=None, silent=False, metadata=None, **kwargs):
 
         super().__init__(name=name, dynamic_name=False)
 
@@ -82,10 +82,10 @@ class BeamTask(BeamName):
         self.exception = None
         self.metadata = metadata
         self.queue_id = -1
-        self.silence = silence
+        self.silent = silent
 
-    def set_silent(self, silence):
-        self.silence = silence
+    def set_silent(self, silent):
+        self.silent = silent
 
     def __call__(self, *args, **kwargs):
         self.args = args
@@ -96,13 +96,13 @@ class BeamTask(BeamName):
 
         metadata = f"({self.metadata})" if self.metadata is not None else ""
 
-        if not self.silence:
+        if not self.silent:
             logger.info(f"Starting task: {self.name} {metadata}")
         try:
-            with Timer(logger, silence=True) as t:
+            with Timer(logger, silent=True) as t:
                 res = self.func(*self.args, **self.kwargs)
                 self.result = res
-                if not self.silence:
+                if not self.silent:
                     logger.info(f"Finished task: {self.name} {metadata}. Elapsed time: {t.elapsed}")
         except Exception as e:
             self.exception = e

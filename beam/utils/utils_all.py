@@ -927,10 +927,10 @@ def dict_to_list(x, convert_str=True):
 
 
 class Timer(object):
-    def __init__(self, logger, name='', silence=False, timeout=None, task=None, task_args=None, task_kwargs=None):
+    def __init__(self, logger, name='', silent=False, timeout=None, task=None, task_args=None, task_kwargs=None):
         self.name = name
         self.logger = logger
-        self.silence = silence
+        self.silent = silent
         self.timeout = timeout
         self.task = task
         self.task_args = task_args or ()
@@ -942,14 +942,14 @@ class Timer(object):
         self.future = None
 
     def __enter__(self):
-        if not self.silence:
+        if not self.silent:
             self.logger.info(f"Starting timer: {self.name}")
         self.run()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         elapsed = self.pause()
-        if not self.silence:
+        if not self.silent:
             self.logger.info(f"Timer {self.name} paused. Elapsed time: {pretty_format_number(elapsed)} Sec")
 
     def reset(self):
@@ -988,7 +988,7 @@ class Timer(object):
                 self.logger.info(f"Timer {self.name} exceeded timeout of {self.timeout} seconds.")
             finally:
                 elapsed = self.pause()
-                if not self.silence:
+                if not self.silent:
                     self.logger.info(f"Timer {self.name} paused. Elapsed time: {elapsed} Sec")
                 if self.executor:
                     self.executor.shutdown()

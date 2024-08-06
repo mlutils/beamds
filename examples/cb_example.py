@@ -21,7 +21,7 @@ def get_data(name='covtype'):
 
 def main():
 
-    config = CatboostExperimentConfig()
+    config = CatboostExperimentConfig(loss_function='MultiClass')
     experiment = Experiment(config)
     data = get_data()
     x = data['x']
@@ -34,8 +34,6 @@ def main():
     x = pd.concat([x1, x2, x3], axis=1)
 
     dataset = TabularDataset(x=x, y=data['y'], cat_features=['Wilderness_Area', 'Soil_Type'])
-
-    print(dataset.train_pool)
 
     alg = CBAlgorithm(config, experiment=experiment)
     alg.fit(dataset=dataset)

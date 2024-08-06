@@ -1,6 +1,6 @@
 import re
 
-from ..utils import parse_string_number, as_numpy, cached_property
+from ..utils import parse_string_number, as_numpy, cached_property, set_seed
 from ..experiment.utils import build_device_list
 from .config import CatboostConfig
 
@@ -54,10 +54,15 @@ class CBAlgorithm(Algorithm):
 
     @cached_property
     def model(self):
+
+        seed = self.get_hparam('seed')
+        if seed == 0:
+            seed = None
+
         cb_kwargs = {
             'learning_rate': self.get_hparam('learning_rate'),
             'n_estimators': self.get_hparam('n_estimators'),
-            'random_seed': self.get_hparam('seed'),
+            'random_seed': seed,
             'l2_leaf_reg': self.get_hparam('l2_leaf_reg'),
             'border_count': self.get_hparam('border_count'),
             'depth': self.get_hparam('depth'),
@@ -90,6 +95,9 @@ class CBAlgorithm(Algorithm):
         compiled_pattern = re.compile(pattern)
         return compiled_pattern
 
+    def err_stream(self, err):
+        logger.error(f"CB: {err}")
+
     def postprocess_epoch(self, info, **kwargs):
 
         # Searching the string
@@ -106,21 +114,24 @@ class CBAlgorithm(Algorithm):
             # Converting metric parts into a dictionary
             metrics = {name: parse_string_number(value) for name, value in metrics_parts}
 
-            logger.info(metrics)
+            # logger.info(metrics)
 
             for k, v in metrics.items():
                 self.report_scalar(k, v, subset='eval', epoch=iteration)
 
-            self.experiment.save_model_results(self.model, None, iteration)
+            if self.experiment:
+                self.experiment.save_model_results(self.model, None, iteration)
 
             # post epoch
             self.epoch += 1
             self.reporter.reset_epoch(iteration, total_epochs=self.epoch)
 
+        else:
+            logger.info(f"CB: {info}")
+
     def _fit(self, x=None, y=None, dataset=None, eval_set=None, cat_features=None, text_features=None,
              embedding_features=None, sample_weight=None, **kwargs):
 
-        log_cout = None
         if dataset is None:
             from ..dataset import TabularDataset
             dataset = TabularDataset(x_train=x, y_train=y, x_test=eval_set[0], y_test=eval_set[1],
@@ -129,7 +140,8 @@ class CBAlgorithm(Algorithm):
 
         self.set_train_reporter(first_epoch=0, n_epochs=self.get_hparam('cb_n_estimators'))
 
-        return self.model.fit(dataset.train_pool, eval_set=dataset.eval_pool, log_cout=log_cout, **kwargs)
+        return self.model.fit(dataset.train_pool, eval_set=dataset.eval_pool, log_cout=self.postprocess_epoch,
+                              log_cerr=self.err_stream, **kwargs)
 
     def predict(self, x, **kwargs):
         return self.model.predict(as_numpy(x), **kwargs)

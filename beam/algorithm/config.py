@@ -147,13 +147,13 @@ class CatboostConfig(DeviceConfig):
         BeamParam('log-frequency', int, 10, 'The frequency (in epochs) of the logging for the catboost model'),
 
         BeamParam('loss_function', str, 'Logloss', 'The loss function for the catboost model'),
+        BeamParam('learning_rate', float, 1e-1, 'The learning rate for the catboost model', tags='tune'),
         # learning rate is drawn from other configurations
         BeamParam('n_estimators', int, 200, 'The number of trees in the catboost model', tags='tune'),
-        BeamParam('l2_leaf_reg', float, 1e-2, 'The L2 regularization for the catboost model', tags='tune'),
-        BeamParam('border_count', int, 128, 'The border count for the catboost model', tags='tune'),
+        BeamParam('l2_leaf_reg', float, 1e-3, 'The L2 regularization for the catboost model', tags='tune'),
+        BeamParam('border_count', int, None, 'The border count for the catboost model', tags='tune'),
         BeamParam('depth', int, 6, 'The depth of the trees in the catboost model', tags='tune'),
-        BeamParam('random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
-        BeamParam('lr', float, 1e-1, 'The learning rate for the catboost model', tags='tune'),
+        BeamParam('random_strength', float, .8, 'The random strength for the catboost model', tags='tune'),
         BeamParam('eval_metric', str, None, 'The evaluation metric for the catboost model, '
                                                'if None, it is set to RMSE for regression and '
                                                'Accuracy for classification'),

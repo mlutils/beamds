@@ -28,7 +28,7 @@ class Transformer(Processor):
     def __init__(self, *args, func=None, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
                  chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
-                 use_dill=False, return_results=None, use_cache=False, retrials=1, silence=False, reduce_func=None,
+                 use_dill=False, return_results=None, use_cache=False, retrials=1, silent=False, reduce_func=None,
                  retrials_delay=1., **kwargs):
         """
 
@@ -76,7 +76,7 @@ class Transformer(Processor):
                                           split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
                                           return_results=return_results, reduce_func=reduce_func,
                                           override=override, use_dill=use_dill, use_cache=use_cache,
-                                          _config_scheme=TransformerConfig, retrials=retrials, silence=silence,
+                                          _config_scheme=TransformerConfig, retrials=retrials, silent=silent,
                                           retrials_delay=retrials_delay, **kwargs)
 
         self.func = func
@@ -107,7 +107,7 @@ class Transformer(Processor):
         self.use_cache = self.hparams.use_cache
         self.retrials = self.hparams.retrials
         self.retrials_delay = self.hparams.retrials_delay
-        self.silence = self.hparams.silence
+        self.silent = self.hparams.silent
 
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
@@ -269,7 +269,7 @@ class Transformer(Processor):
         return_results = transform_kwargs.pop('return_results', self.return_results)
         reduce_dim = transform_kwargs.pop('reduce_dim', self.reduce_dim)
         use_cache = transform_kwargs.pop('use_cache', self.use_cache)
-        silence = transform_kwargs.pop('silence', self.silence)
+        silent = transform_kwargs.pop('silent', self.silent)
 
         parallel_kwargs = parallel_kwargs or {}
         n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
@@ -392,7 +392,7 @@ class Transformer(Processor):
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
                                    override=override, store=store_chunk, name=k, metadata=f"{self.name}",
                                    return_results=return_results, use_cache=use_cache, task_kwargs=kwargs,
-                                   silence=silence, retrials=retrials, retrials_delay=retrials_delay))
+                                   silent=silent, retrials=retrials, retrials_delay=retrials_delay))
 
         else:
             self.counter += 1
