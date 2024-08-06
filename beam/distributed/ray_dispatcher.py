@@ -28,6 +28,9 @@ class RayAsyncResult(MetaAsyncResult):
         except ray.exceptions.GetTimeoutError:
             return None
 
+    def kill(self, force=True, recursive=True):
+        ray.cancel(self.obj, force=force, recursive=recursive)
+
     @property
     def hex(self):
         return self.obj.hex()

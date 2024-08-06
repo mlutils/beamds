@@ -131,8 +131,8 @@ class Algorithm(Processor):
 
     @cached_property
     def optimization_mode(self):
-        objective_mode = self.get_hparam('objective_mode')
-        objective_name = self.get_hparam('objective')
+        objective_mode = self.get_hparam('objective_mode', None)
+        objective_name = self.get_hparam('objective', 'loss')
         return self.get_optimization_mode(objective_mode, objective_name)
 
     @staticmethod

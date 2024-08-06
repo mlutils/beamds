@@ -5,7 +5,7 @@ from typing import Any, Optional, Union, List, Type, Literal
 from pydantic import BaseModel, Field
 from ..utils import cached_property
 
-from .. import beam_path
+from ..path import beam_path
 from ..type import BeamType, Types
 from ..utils import jupyter_like_traceback
 from dataclasses import dataclass

@@ -39,12 +39,18 @@ class CBAlgorithm(Algorithm):
         return self.get_hparam('eval_metric', em)
 
     @property
-    def  custom_metric(self):
+    def custom_metric(self):
         if self.task_type == 'regression':
             cm = []
         else:
             cm = ['Precision', 'Recall']
         return self.get_hparam('custom_metric', cm)
+
+    @cached_property
+    def optimization_mode(self):
+        objective_mode = self.get_hparam('objective_mode', None)
+        objective_name = self.get_hparam('objective', self.eval_metric)
+        return self.get_optimization_mode(objective_mode, objective_name)
 
     @cached_property
     def model(self):
@@ -111,24 +117,22 @@ class CBAlgorithm(Algorithm):
             self.epoch += 1
             self.reporter.reset_epoch(iteration, total_epochs=self.epoch)
 
-    def _fit(self, X, y, eval_set=None, beam_postprocess=True, **kwargs):
-
-        from catboost import Pool
+    def _fit(self, x=None, y=None, dataset=None, eval_set=None, cat_features=None, text_features=None,
+             embedding_features=None, sample_weight=None, **kwargs):
 
         log_cout = None
-        if beam_postprocess:
-            log_cout = self.postprocess_epoch
-
-        train_set = Pool(as_numpy(X), as_numpy(y))
-        if eval_set is not None:
-            eval_set = Pool(as_numpy(eval_set[0]), as_numpy(eval_set[1]))
+        if dataset is None:
+            from ..dataset import TabularDataset
+            dataset = TabularDataset(x_train=x, y_train=y, x_test=eval_set[0], y_test=eval_set[1],
+                                     cat_features=cat_features, text_features=text_features,
+                                     embedding_features=embedding_features, sample_weight=sample_weight)
 
         self.set_train_reporter(first_epoch=0, n_epochs=self.get_hparam('cb_n_estimators'))
 
-        return self.model.fit(train_set, eval_set=eval_set, log_cout=log_cout, **kwargs)
+        return self.model.fit(dataset.train_pool, eval_set=dataset.eval_pool, log_cout=log_cout, **kwargs)
 
-    def predict(self, X, **kwargs):
-        return self.model.predict(as_numpy(X), **kwargs)
+    def predict(self, x, **kwargs):
+        return self.model.predict(as_numpy(x), **kwargs)
 
     def __sklearn_clone__(self):
         # to be used with sklearn clone

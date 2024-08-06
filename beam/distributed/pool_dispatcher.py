@@ -18,7 +18,7 @@ class PoolAsyncResult(MetaAsyncResult):
     def wait(self, timeout=None):
         return self.future.result(timeout=timeout)
 
-    def kill(self, no_restart=False):
+    def kill(self):
         self.future.cancel()
 
     @property

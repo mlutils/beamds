@@ -1,8 +1,10 @@
+import numpy as np
 from dataclasses import dataclass
 from enum import Enum
 
 import pandas as pd
 
+from ..utils import as_numpy, check_type, as_list
 from ..base import BeamBase
 from ..type.utils import is_pandas_dataframe, is_pandas_series
 
@@ -59,20 +61,19 @@ class BeamFeature(BeamBase):
 
 class BinarizedFeature(BeamFeature):
 
-    def __init__(self, *args, column: str = None, name=None, **kwargs):
+    def __init__(self, *args, name=None, **kwargs):
         super().__init__(*args, name=name, kind=FeaturesCategories.categorical, **kwargs)
         from sklearn.preprocessing import MultiLabelBinarizer
         self.encoder = MultiLabelBinarizer()
-        self.column = column
 
     def fit(self, x):
         if is_pandas_dataframe(x):
-            x = x[self.column].values
+            x = x.values
         self.encoder.fit(x)
 
     def transform(self, x, index=None):
         if is_pandas_dataframe(x):
-            x = x[self.column].values
+            x = x.values
             index = index or x.index
         elif is_pandas_series(x):
             x = x.values
@@ -97,21 +98,22 @@ class DiscretizedFeature(BeamFeature):
                                         strategy=self.strategy)
 
     def fit(self, x):
-        if is_pandas_dataframe(x):
-            x = x[self.column].values
-        self.encoder.fit(x)
+        self.encoder.fit(as_numpy(x))
 
     def transform(self, x, index=None):
+        columns = self.columns
         if is_pandas_dataframe(x):
-            x = x[self.column].values
+            x = x.values
             index = index or x.index
+            if columns is None:
+                columns = as_list(x.columns)
         elif is_pandas_series(x):
             x = x.values
             index = index or x.index
 
         v = self.encoder.transform(x)
         # Create a DataFrame with the binary indicator columns
-        df = pd.DataFrame(v, columns=self.columns, index=index)
+        df = pd.DataFrame(v, columns=columns, index=index)
         # df = (df * self.quantiles).astype(int) + 1
         df = df.astype(int) + 1
         return df
@@ -121,8 +123,8 @@ class ScalingFeature(BeamFeature):
 
     def __init__(self, *args, columns: list[str] | str = None, method='standard', name=None, **kwargs):
         super().__init__(*args, name=name, kind=FeaturesCategories.numerical, **kwargs)
-        self.columns = [columns] if isinstance(columns, str) else columns
         self.method = method
+        self.columns = [columns] if isinstance(columns, str) else columns
         from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
         if method == 'standard':
             self.encoder = StandardScaler()
@@ -138,21 +140,19 @@ class ScalingFeature(BeamFeature):
         return {'method': ParameterSchema(name='method', kind=ParameterType.categorical)}
 
     def fit(self, x):
-        if is_pandas_dataframe(x):
-            x = x[self.columns].values
-        self.encoder.fit(x)
+        self.encoder.fit(as_numpy(x))
 
     def transform(self, x, index=None):
-        if is_pandas_dataframe(x):
-            x = x[self.columns].values
-            index = index or x.index
-        elif is_pandas_series(x):
-            x = x.values
+        x_type = check_type(x)
+        columns = self.columns
+        if x_type.is_dataframe:
+            if columns is None:
+                columns = as_list(x.columns)
             index = index or x.index
 
-        v = self.encoder.transform(x)
+        v = self.encoder.transform(as_numpy(x))
         # Create a DataFrame with the binary indicator columns
-        df = pd.DataFrame(v, columns=self.columns, index=index)
+        df = pd.DataFrame(v, columns=columns, index=index)
         return df
 
 
@@ -165,22 +165,40 @@ class CetegorizedFeature(BeamFeature):
         self.encoder = OrdinalEncoder()
 
     def fit(self, x):
-        if is_pandas_dataframe(x):
-            x = x[self.columns].values
-        self.encoder.fit(x)
+        self.encoder.fit(as_numpy(x))
 
     def transform(self, x, index=None):
-        if is_pandas_dataframe(x):
-            x = x[self.columns].values
-            index = index or x.index
-        elif is_pandas_series(x):
-            x = x.values
+        x_type = check_type(x)
+        columns = self.columns
+        if x_type.is_dataframe:
+            if columns is None:
+                columns = as_list(x.columns)
             index = index or x.index
 
-        v = self.encoder.transform(x)
+        v = self.encoder.transform(as_numpy(x))
         # Create a DataFrame with the binary indicator columns
-        df = pd.DataFrame(v, columns=self.columns, index=index)
+        df = pd.DataFrame(v, columns=columns, index=index)
         return df
+
+
+class InverseOneHotFeature(BeamFeature):
+
+    def __init__(self, *args, name=None, **kwargs):
+        super().__init__(*args, name=name, kind=FeaturesCategories.categorical, **kwargs)
+
+    def transform(self, x, index=None):
+
+        column = self.name
+        x_type = check_type(x)
+        if x_type.is_dataframe:
+            columns = x.columns
+            column = columns[0]
+
+        x = as_numpy(x)
+        x = np.argmax(x, axis=1, keepdims=True)
+        x = pd.DataFrame(x, index=index, columns=[column])
+
+        return x
 
 
 # class FeaturesAggregator(BeamBase):

@@ -5,7 +5,9 @@ import pandas as pd
 import torch
 
 from ..type import Types
-from ..utils import cached_property
+from ..utils import cached_property, slice_array
+from ..path import beam_path
+from ..data import BeamData
 
 from .sampler import UniversalBatchSampler
 from ..utils import (recursive_batch, to_device, recursive_device, container_len, beam_device, as_tensor, check_type,
@@ -29,8 +31,6 @@ class UniversalDataset(torch.utils.data.Dataset):
         """
         super().__init__()
 
-        if device is None:
-            device = 'cpu'
         device = beam_device(device)
         target_device = beam_device(target_device)
 
@@ -55,30 +55,30 @@ class UniversalDataset(torch.utils.data.Dataset):
             self.hparams = args[0]
             args = args[1:]
 
+        self._data_type = None
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if len(args) == 1:
                 d = args[0]
                 if isinstance(d, dict):
-                    self.data = {k: as_tensor(v, device=device) for k, v in d.items()}
-                    self._data_type = 'dict'
+                    self.data = {k: self.as_something(v, device=device) for k, v in d.items()}
                 elif isinstance(d, list) or isinstance(d, tuple):
-                    self.data = [as_tensor(v, device=device) for v in d]
-                    self._data_type = 'list'
+                    self.data = [self.as_something(v, device=device) for v in d]
                 else:
                     self.data = d
-                    self._data_type = 'simple'
             elif len(args):
-                self.data = [as_tensor(v, device=device) for v in args]
-                self._data_type = 'list'
+                self.data = [self.as_something(v, device=device) for v in args]
             elif len(kwargs):
-                self.data = {k: as_tensor(v, device=device) for k, v in kwargs.items()}
-                self._data_type = 'dict'
+                self.data = {k: self.as_something(v, device=device) for k, v in kwargs.items()}
             else:
                 self.data = None
-                self._data_type = None
 
-        self.label = as_tensor(label, device=self.device)
+        self.label = self.as_something(label, device=self.device)
+
+    def as_something(self, x, device=None, dtype=None):
+        if self.to_torch:
+            return as_tensor(x, device=device, dtype=dtype)
+        return as_numpy(x)
 
     @cached_property
     def target_device(self):
@@ -118,13 +118,14 @@ class UniversalDataset(torch.utils.data.Dataset):
         self.training = False
 
     @property
-    def data_type(self) -> str:
-        # return check_type(self.data).minor
+    def data_type(self):
+        if self._data_type is None:
+            self._data_type = check_type(self.data)
         return self._data_type
 
     def getitem(self, ind):
 
-        if self.data_type == 'dict':
+        if self.data_type.minor == Types.dict:
 
             ind_type = check_type(ind, minor=False)
             if ind_type.element == Types.str:
@@ -134,12 +135,10 @@ class UniversalDataset(torch.utils.data.Dataset):
 
             return {k: recursive_batch(v, ind) for k, v in self.data.items()}
 
-        elif self.data_type == 'list':
+        elif self.data_type.minor == Types.list:
             return [recursive_batch(v, ind) for v in self.data]
-        elif self.data_type == 'simple':
-            return self.data[ind]
-        else:
-            return self.data[ind]
+
+        return slice_array(self.data, ind, x_type=self.data_type)
 
     @classmethod
     def get_subset(cls, self, subset):
@@ -188,16 +187,14 @@ class UniversalDataset(torch.utils.data.Dataset):
     @cached_property
     def device(self):
 
-        if self.data_type == 'dict':
+        if self.data_type.minor == Types.dict:
             device = recursive_device(next(iter(self.data.values())))
-        elif self.data_type == 'list':
+        elif self.data_type.minor == Types.list:
             device = recursive_device(self.data[0])
-        elif self.data_type == 'simple':
-            device = self.data.device
         elif hasattr(self.data, 'device') and self.data.device is not None:
             device = self.data.device
         else:
-            device = 'cpu'
+            device = None
 
         return beam_device(device)
 
@@ -208,32 +205,22 @@ class UniversalDataset(torch.utils.data.Dataset):
     def values(self):
         return self.data
 
-    # def save(self, path):
-    #
-    #     bd_path = beam_path(path).joinpath('beam_data')
-    #     bd = BeamData(self.data, index=self.index, label=self.label, path=bd_path, device=self.device)
-    #     bd.store()
-    #
-    #     state = self.state
-    #     if has_beam_ds and isinstance(state, BeamData):
-    #         state.store(path=path)
-    #     else:
-    #         path = beam_path(path)
-    #         path.write(state)
+    def save(self, path):
+
+        bd_path = beam_path(path)
+        bd = BeamData(self.data, index=self.index, label=self.label, path=bd_path, device=self.device)
+        bd.store()
 
     def __len__(self):
 
         if self.index is not None:
             return len(self.index)
 
-        if self.data_type is None:
-            self.data_type = check_type(self.data).minor
-
-        if self.data_type == 'dict':
+        if self.data_type.minor == Types.dict:
             return container_len(next(iter(self.data.values())))
-        elif self.data_type == 'list':
+        elif self.data_type.minor == Types.list:
             return container_len(self.data[0])
-        elif self.data_type == 'simple':
+        elif self.data_type.is_data_array:
             return len(self.data)
         elif hasattr(self.data, '__len__'):
             return len(self.data)
@@ -276,7 +263,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if test is None:
             pass
         elif check_type(test).major == Types.array:
-            self.indices['test'] = as_tensor(test, dtype=torch.long)
+            self.indices['test'] = self.as_something(test, dtype=torch.long)
             indices = np.sort(list(set(indices).difference(set(as_numpy(test)))))
 
             if labels is not None:
@@ -294,7 +281,7 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 indices, test = train_test_split(indices, random_state=seed, test_size=test)
 
-            self.indices['test'] = as_tensor(test, dtype=torch.long)
+            self.indices['test'] = self.as_something(test, dtype=torch.long)
             if seed is not None:
                 seed = seed + 1
 
@@ -303,7 +290,7 @@ class UniversalDataset(torch.utils.data.Dataset):
             indices = indices[ind_sort]
 
             test_size = int(test * len(self)) if type(test) is float else test
-            self.indices['test'] = as_tensor(indices[-test_size:], dtype=torch.long)
+            self.indices['test'] = self.as_something(indices[-test_size:], dtype=torch.long)
             indices = indices[:-test_size]
 
             if labels is not None:
@@ -313,7 +300,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         if validation is None:
             pass
         elif check_type(validation).major == Types.array:
-            self.indices['validation'] = as_tensor(validation, dtype=torch.long)
+            self.indices['validation'] = self.as_something(validation, dtype=torch.long)
             indices = np.sort(list(set(indices).difference(set(as_numpy(validation)))))
 
             if labels is not None:
@@ -331,9 +318,9 @@ class UniversalDataset(torch.utils.data.Dataset):
             else:
                 indices, validation = train_test_split(indices, random_state=seed, test_size=validation)
 
-            self.indices['validation'] = as_tensor(validation, dtype=torch.long)
+            self.indices['validation'] = self.as_something(validation, dtype=torch.long)
 
-        self.indices['train'] = as_tensor(indices, dtype=torch.long)
+        self.indices['train'] = self.as_something(indices, dtype=torch.long)
         if labels is not None:
             self.labels_split['train'] = labels[indices]
 

@@ -404,11 +404,11 @@ class Experiment(object):
         :return:
         '''
 
-        visualize_weights = self.hparams.get('visualize_weights', preferred=visualize_weights, default=False)
-        visualize_results = self.hparams.get('visualize_results', preferred=visualize_results, default='yes')
-        store_results = self.hparams.get('store_results', preferred=store_results, default='logscale')
-        store_networks = self.hparams.get('store_networks', preferred=store_networks, default='logscale')
-        print_results = self.hparams.get('print_results', preferred=print_results, default=True)
+        visualize_weights = visualize_weights or self.hparams.get('visualize_weights', default=False)
+        visualize_results = visualize_results or self.hparams.get('visualize_results', default='yes')
+        store_results = store_results or self.hparams.get('store_results', default='logscale')
+        store_networks = store_networks or self.hparams.get('store_networks', default='logscale')
+        print_results = print_results or self.hparams.get('print_results', default=True)
 
         epoch = algorithm.epoch
         if not self.rank:

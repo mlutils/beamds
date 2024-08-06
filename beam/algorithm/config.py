@@ -1,5 +1,5 @@
 
-from ..config import BeamParam, DeviceConfig
+from ..config import BeamParam, DeviceConfig, ExperimentConfig
 from ..similarity import SimilarityConfig, TFIDFConfig
 
 
@@ -31,6 +31,7 @@ class TextGroupExpansionConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('pu-n-estimators', int, 20, 'Number of estimators for the PU classifier'),
         BeamParam('pu-verbose', int, 10, 'Verbosity level for the PU classifier'),
         BeamParam('classifier-type', str, None, 'can be one of [None, catboost, rf]'),
+        BeamParam('early_stopping_rounds', int, None, 'Early stopping rounds for the classifier'),
     ]
 
 # class CatBoostClassifier(iterations=None,
@@ -180,3 +181,7 @@ class CatboostConfig(DeviceConfig):
         BeamParam('use_best_model', bool, None, 'The use best model for the catboost model'),
 
     ]
+
+
+class CatboostExperimentConfig(CatboostConfig, ExperimentConfig):
+    defaults = {'project': 'cb_beam', 'algorithm': 'CBAlgorithm'}
