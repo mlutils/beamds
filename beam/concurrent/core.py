@@ -9,13 +9,13 @@ from .tasks import BeamTask, TaskResult, SyncedResults
 
 
 class BeamAsync(BeamName):
-    def __init__(self, method='apply_async', name=None, silence=False, context='spawn', n_workers=1,
+    def __init__(self, method='apply_async', name=None, silent=False, context='spawn', n_workers=1,
                  backend='redis://localhost', broker='pyamqp://guest@localhost//', local_celery=False):
 
         super().__init__(name=name)
         self.method = method
         self._name = name
-        self.silence = silence
+        self.silent = silent
 
         if method == 'apply_async':
 
@@ -47,8 +47,8 @@ class BeamAsync(BeamName):
         else:
             raise ValueError('method must be one of {apply_async, celery}')
 
-    def set_silent(self, silence):
-        self.silence = silence
+    def set_silent(self, silent):
+        self.silent = silent
 
     def set_name(self, name):
         self._name = name

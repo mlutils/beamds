@@ -17,23 +17,13 @@ class BeamCluster(BeamBase):
         self.pods = pods
         self.deployment = deployment
         self.config = config
-
-
-class ServeCluster(BeamCluster):
-
-    def __init__(self, deployment, pods, config, *args, **kwargs):
-        super().__init__(deployment, pods, config, *args,  **kwargs)
         self.k8s = BeamK8S(
             api_url=config['api_url'],
             api_token=config['api_token'],
             project_name=config['project_name'],
             namespace=config['project_name'],
         )
-        self.subject = config['subject']
-        self.body = config['body']
-        self.to_email = config['to_email']
-        self.from_email = config['from_email']
-        self.from_email_password = config['from_email_password']
+
         self.security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
         self.memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
         self.service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
@@ -42,6 +32,19 @@ class ServeCluster(BeamCluster):
         self.user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
         self.entrypoint_args = config['entrypoint_args']
         self.entrypoint_envs = config['entrypoint_envs']
+
+
+class ServeCluster(BeamCluster):
+
+    def __init__(self, deployment, pods, config, *args, **kwargs):
+        super().__init__(deployment, pods, config, *args,  **kwargs)
+
+        self.subject = config['subject']
+        self.body = config['body']
+        self.to_email = config['to_email']
+        self.from_email = config['from_email']
+        self.from_email_password = config['from_email_password']
+
 
     @classmethod
     def _deploy_and_launch(cls, bundle_path=None, obj=None, image_name=None, config=None):
@@ -116,22 +119,8 @@ class RayCluster(BeamCluster):
         self.workers = []
         self.n_pods = config['n_pods']
         self.head = None
-        self.config = config
-        self.k8s = BeamK8S(
-            api_url=config['api_url'],
-            api_token=config['api_token'],
-            project_name=config['project_name'],
-            namespace=config['project_name'],
-        )
 
-        self.security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
-        self.memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
-        self.service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
-        self.storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
-        self.ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs', [])]
-        self.user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
-        self.entrypoint_args = config['entrypoint_args']
-        self.entrypoint_envs = config['entrypoint_envs']
+
 
     @classmethod
     def _deploy_and_launch(cls, n_pods=None, config=None):
@@ -260,22 +249,6 @@ class RnDCluster(BeamCluster):
     def __init__(self, deployment, replicas, config, *args, **kwargs):
         super().__init__(deployment, config, *args, replicas, **kwargs)
         self.replicas = config['replicas']
-        self.config = config
-        self.k8s = BeamK8S(
-            api_url=config['api_url'],
-            api_token=config['api_token'],
-            project_name=config['project_name'],
-            namespace=config['project_name'],
-        )
-
-        self.security_context_config = SecurityContextConfig(**config.get('security_context_config', {}))
-        self.memory_storage_configs = [MemoryStorageConfig(**v) for v in config.get('memory_storage_configs', [])]
-        self.service_configs = [ServiceConfig(**v) for v in config.get('service_configs', [])]
-        self.storage_configs = [StorageConfig(**v) for v in config.get('storage_configs', [])]
-        self.ray_ports_configs = [RayPortsConfig(**v) for v in config.get('ray_ports_configs', [])]
-        self.user_idm_configs = [UserIdmConfig(**v) for v in config.get('user_idm_configs', [])]
-        self.entrypoint_args = config['entrypoint_args']
-        self.entrypoint_envs = config['entrypoint_envs']
 
     @classmethod
     def _deploy_and_launch(cls, replicas=None, config=None):
@@ -293,9 +266,6 @@ class RnDCluster(BeamCluster):
             pods = deployment.launch(replicas=config['replicas'])
             if pods:
                 logger.info("Pod deployment successful")
-
-            homepage_url = deployment.k8s.get_homepage_route_url(namespace=config['project_name'])
-
             if config.send_email is True:
                 subject = "Cluster Deployment Information"
                 # body = f"{config['body']}\n{get_cluster_info}"
@@ -306,9 +276,7 @@ class RnDCluster(BeamCluster):
                 k8s.send_email(subject, body, to_email, from_email, from_email_password)
             else:
                 logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
-                logger.info(f"Home-Page URL: {homepage_url}")
             logger.debug(f"Cluster info: {deployment.cluster_info}")
-            # logger.info(f"Home-Page URL: {homepage_url}")
             if not pods:
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed
@@ -319,12 +287,25 @@ class RnDCluster(BeamCluster):
             logger.debug(beam_traceback())
             raise e
 
-    @classmethod
-    def deploy_rnd_cluster_s_deployment(cls, replicas, config):
-        return cls._deploy_and_launch(replicas=replicas, config=config)
+        # try:
+        #     deployment.launch(replicas=config['replicas'])
+        #     if not deployment:
+        #         raise Exception("Pod deployment failed")
+        #     #
+        #     # for pod in deployment:
+        #     #     logger.info(deployment.cluster_info)
+        #     logger.info(deployment.cluster_info)
+        #
+        #     return cls(deployment=deployment, replicas=replicas, config=config)
+
+        except Exception as e:
+            logger.error(f"Error during deployment: {str(e)}")
+            from ..utils import beam_traceback
+            logger.debug(beam_traceback())
+            raise e
 
     @classmethod
-    def deploy_rnd_cluster_m_deployments(cls, replicas, config):
+    def deploy_rnd_cluster_deployment(cls, replicas, config):
         return cls._deploy_and_launch(replicas=replicas, config=config)
 
     @classmethod

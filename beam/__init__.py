@@ -19,7 +19,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'parallel', 'task', 'this_dir',
            # Orchestration
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
-           'HTTPServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server'
+           'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server'
            ]
 
 
@@ -28,7 +28,7 @@ from ._version import __version__
 from .config import BeamConfig
 from .logging import beam_logger
 
-conf = BeamConfig(silent=True, load_config_files=False, load_script_arguments=False)
+conf = BeamConfig(silent=True, load_config_files=False, load_script_arguments=True)
 if conf.debug:
     beam_logger.debug_mode()
 log_file_generated = False
@@ -197,9 +197,9 @@ def __getattr__(name):
     elif name == 'RayClusterConfig':
         from .orchestration import RayClusterConfig
         return RayClusterConfig
-    elif name == 'HTTPServeClusterConfig':
-        from .orchestration import HTTPServeClusterConfig
-        return HTTPServeClusterConfig
+    elif name == 'ServeClusterConfig':
+        from .orchestration import ServeClusterConfig
+        return ServeClusterConfig
     elif name == 'ServeCluster':
         from .orchestration import ServeCluster
         return ServeCluster
@@ -233,4 +233,4 @@ if len([]):
     from .processor import Processor
     from .concurrent import parallel, task
     from .orchestration import (BeamDeploy, BeamK8S, BeamPod, K8SUnits, K8SConfig, RayClusterConfig,
-                                HTTPServeClusterConfig, ServeCluster, RayCluster, deploy_server)
+                                ServeClusterConfig, ServeCluster, RayCluster, deploy_server)

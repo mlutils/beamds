@@ -157,6 +157,30 @@ def as_numpy(x, dtype=None, **kwargs):
     return x
 
 
+def as_list(x):
+    if x is None:
+        return None
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    if isinstance(x, torch.Tensor):
+        return x.cpu().tolist()
+    if isinstance(x, pd.Series):
+        return x.values.tolist()
+    if isinstance(x, pd.DataFrame):
+        return [x[col].values.tolist() for col in x.columns]
+    if isinstance(x, pd.Index):
+        return x.values.tolist()
+    if isinstance(x, scipy.sparse.csr_matrix):
+        return x.toarray().tolist()
+    if isinstance(x, scipy.sparse.coo_matrix):
+        return x.toarray().tolist()
+    if isinstance(x, dict):
+        return list(x.values())
+    if isinstance(x, tuple):
+        return list(x)
+    return list(x)
+
+
 def as_scipy_csr(x):
     # Handle PyTorch Tensors
     if isinstance(x, torch.Tensor):
@@ -937,7 +961,9 @@ def recursive_device(x):
                 # case of None
                 pass
 
-    return x.device
+    if hasattr(x, 'device'):
+        return x.device
+    return None
 
 
 def container_len(x):

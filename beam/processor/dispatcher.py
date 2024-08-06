@@ -47,6 +47,9 @@ class MetaAsyncResult:
     def get(self):
         return self.value
 
+    def kill(self):
+        raise NotImplementedError
+
     def wait(self, timeout=None):
         raise NotImplementedError
 

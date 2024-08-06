@@ -97,8 +97,8 @@ class BeamBase(BeamName, metaclass=MetaBeamInit):
     def is_notebook(self):
         return is_notebook()
 
-    def get_hparam(self, hparam, default=None, preferred=None, specific=None):
-        return self.hparams.get(hparam, default=default, preferred=preferred, specific=specific)
+    def get_hparam(self, hparam, default=None, specific=None):
+        return self.hparams.get(hparam, default=default, specific=specific)
 
     def set_hparam(self, hparam, value, tags=None):
         self.hparams.set(hparam, value, tags=tags)

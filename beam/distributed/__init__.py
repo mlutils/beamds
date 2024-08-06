@@ -7,7 +7,7 @@ if len([]):
     from .celery_worker import CeleryWorker
 
     from .ray_dispatcher import RayDispatcher, RayClient
-    from .thread_dispatcher import ThreadedDispatcher
+    from .pool_dispatcher import ThreadedDispatcher, ProcessDispatcher
 
     from .async_client import AsyncClient
     from .async_server import AsyncRayServer, AsyncCeleryServer
@@ -15,7 +15,7 @@ if len([]):
 
 __all__ = ['beam_worker', 'beam_dispatcher_server', 'beam_dispatcher', 'async_client', 'ray_client',
            'CeleryDispatcher', 'CeleryWorker', 'RayDispatcher', 'RayClient', 'ThreadedDispatcher', 'AsyncClient',
-           'AsyncRayServer', 'AsyncCeleryServer']
+           'AsyncRayServer', 'AsyncCeleryServer', 'ProcessDispatcher']
 
 
 def __getattr__(name):
@@ -47,8 +47,11 @@ def __getattr__(name):
         from .ray_dispatcher import RayClient
         return RayClient
     elif name == 'ThreadedDispatcher':
-        from .thread_dispatcher import ThreadedDispatcher
+        from .pool_dispatcher import ThreadedDispatcher
         return ThreadedDispatcher
+    elif name == 'ProcessDispatcher':
+        from .pool_dispatcher import ProcessDispatcher
+        return ProcessDispatcher
     elif name == 'AsyncClient':
         from .async_client import AsyncClient
         return AsyncClient

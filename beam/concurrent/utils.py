@@ -51,8 +51,8 @@ def parallel(tasks: Union[Dict, List], n_workers=0, func=None, method='threading
     return bp(tasks).values
 
 
-def task(func=None, *, name=None, silence=False, retrials=1, sleep=1):
-
+def task(func=None, *, name=None, silent=False, silence=None, retrials=1, sleep=1):
+    silent = silent or silence
     def decorator(func):
 
         if func is not None and retrials > 1:
@@ -60,7 +60,7 @@ def task(func=None, *, name=None, silence=False, retrials=1, sleep=1):
             func = retry(func, retrials=retrials, sleep=sleep, logger=logger)
 
         def wrapper(*args, **kwargs):
-            return BeamTask(func, *args, name=name, silence=silence, **kwargs)
+            return BeamTask(func, *args, name=name, silent=silent, **kwargs)
 
         return wrapper
 

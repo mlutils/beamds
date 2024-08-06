@@ -297,11 +297,9 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
                 self._tags['new'].add(key)
             super().__setattr__(key, value)
 
-    def get(self, key, default=None, preferred=None, specific=None):
+    def get(self, key, default=None, specific=None):
 
         key = key.replace('-', '_').strip()
-        if preferred is not None:
-            return preferred
 
         if type(specific) is list:
             for s in specific:
@@ -311,7 +309,9 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
             return getattr(self, f"{specific}_{key}")
 
         if key in self:
-            return getattr(self, key)
+            v = getattr(self, key)
+            if v is not None:
+                return v
 
         return default
 

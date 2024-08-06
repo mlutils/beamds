@@ -28,7 +28,7 @@ class Transformer(Processor):
     def __init__(self, *args, func=None, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
                  chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
-                 use_dill=False, return_results=None, use_cache=False, retrials=1,
+                 use_dill=False, return_results=None, use_cache=False, retrials=1, silent=False, reduce_func=None,
                  retrials_delay=1., **kwargs):
         """
 
@@ -74,12 +74,13 @@ class Transformer(Processor):
                                           mp_method=mp_method, squeeze=squeeze, reduce=reduce, reduce_dim=reduce_dim,
                                           store_chunk=store_chunk, transform_strategy=transform_strategy,
                                           split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
-                                          return_results=return_results,
+                                          return_results=return_results, reduce_func=reduce_func,
                                           override=override, use_dill=use_dill, use_cache=use_cache,
-                                          _config_scheme=TransformerConfig, retrials=retrials,
+                                          _config_scheme=TransformerConfig, retrials=retrials, silent=silent,
                                           retrials_delay=retrials_delay, **kwargs)
 
         self.func = func
+        self.reduce_func = reduce_func
 
         # check if we can pass kwargs to the function
         self.func_has_kwargs = False
@@ -106,6 +107,7 @@ class Transformer(Processor):
         self.use_cache = self.hparams.use_cache
         self.retrials = self.hparams.retrials
         self.retrials_delay = self.hparams.retrials_delay
+        self.silent = self.hparams.silent
 
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
@@ -166,7 +168,7 @@ class Transformer(Processor):
         return r
 
     def worker(self, x, key=None, is_chunk=False, fit=False, cache=True, store_path=None, store=False,
-               override=False, return_results=True, use_cache=False, task_kwargs=None):
+               override=False, return_results=True, use_cache=False, task_kwargs=None, retrials=1, retrials_delay=1.0,):
 
         task_kwargs = task_kwargs or {}
 
@@ -190,9 +192,17 @@ class Transformer(Processor):
                     store_path.unlink()
                 else:
                     logger.warning(f"File/path {store_path} already exists, the data will not be stored (override=False).")
-                    return key, None
+                    if return_results:
+                        return key, BeamData.read(store_path)
+                    else:
+                        return key, None
 
-        x = self.transform_callback(x, _key=key, _is_chunk=is_chunk, _fit=fit, _store=store, **task_kwargs)
+        if retrials > 1:
+            transform = retry(self.transform_callback, retrials=retrials, sleep=retrials_delay)
+        else:
+            transform = self.transform_callback
+
+        x = transform(x, _key=key, _is_chunk=is_chunk, _fit=fit, _store=store, **task_kwargs)
 
         if store_path is not None:
             store_path = beam_path(store_path)
@@ -226,13 +236,14 @@ class Transformer(Processor):
 
     def reduce(self, x, reduce_dim=None, split_by=None, squeeze=True):
 
-        if isinstance(next(iter_container(x))[1], BeamData):
+        if self.reduce_func is not None:
+            x = self.reduce_func(x)
+        elif isinstance(next(iter_container(x))[1], BeamData):
             x = BeamData.collate(x, split_by=split_by)
         else:
 
             if reduce_dim is None:
                 reduce_dim = self.reduce_dim
-
             x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze)
 
         return x
@@ -258,6 +269,7 @@ class Transformer(Processor):
         return_results = transform_kwargs.pop('return_results', self.return_results)
         reduce_dim = transform_kwargs.pop('reduce_dim', self.reduce_dim)
         use_cache = transform_kwargs.pop('use_cache', self.use_cache)
+        silent = transform_kwargs.pop('silent', self.silent)
 
         parallel_kwargs = parallel_kwargs or {}
         n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
@@ -377,14 +389,10 @@ class Transformer(Processor):
 
                     self.counter += 1
 
-                if retrials > 1:
-                    worker = retry(self.worker, retrials=retrials, sleep=retrials_delay)
-                else:
-                    worker = self.worker
-
-                queue.add(BeamTask(worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
+                queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
                                    override=override, store=store_chunk, name=k, metadata=f"{self.name}",
-                                   return_results=return_results, use_cache=use_cache, task_kwargs=kwargs))
+                                   return_results=return_results, use_cache=use_cache, task_kwargs=kwargs,
+                                   silent=silent, retrials=retrials, retrials_delay=retrials_delay))
 
         else:
             self.counter += 1
@@ -452,7 +460,9 @@ class Transformer(Processor):
             x.store(path=store_path)
             # x = BeamData.from_path(path=path)
 
-        if store or store_chunk:
+        if return_results:
+            return x
+        elif store or store_chunk:
             return
         else:
             return x

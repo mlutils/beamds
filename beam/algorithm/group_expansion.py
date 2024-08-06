@@ -305,8 +305,8 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         if isinstance(seed_subsets, str):
             seed_subsets = [seed_subsets]
 
-        k_sparse = self.get_hparam('k-sparse', preferred=k_sparse)
-        k_dense = self.get_hparam('k-dense', preferred=k_dense)
+        k_sparse = k_sparse or self.get_hparam('k-sparse')
+        k_dense = k_dense or self.get_hparam('k-dense')
 
         if tfidf_sim is None and k_sparse and not self.tfidf_sim[expansion_subset].is_trained:
             logger.warning(f"TFIDF model not fitted for {expansion_subset}. Fitting now")

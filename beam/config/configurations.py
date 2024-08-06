@@ -32,31 +32,6 @@ class CacheConfig(BeamConfig):
     ]
 
 
-class CatboostConfig(DeviceConfig):
-    # catboost
-    parameters = [
-        BeamParam('cb_task', str, 'classification', 'The task type for the catboost model '
-                                                    '[classification|regression|ranking]'),
-        BeamParam('cb_loss_function', str, 'Logloss', 'The loss function for the catboost model'),
-        # learning rate is drawn from other configurations
-        BeamParam('cb_n_estimators', int, 200, 'The number of trees in the catboost model', tags='tune'),
-        BeamParam('cb_l2_leaf_reg', float, 1e-4, 'The L2 regularization for the catboost model', tags='tune'),
-        BeamParam('cb_border_count', int, 128, 'The border count for the catboost model', tags='tune'),
-        BeamParam('cb_depth', int, 6, 'The depth of the trees in the catboost model', tags='tune'),
-        BeamParam('cb_random_strength', float, .5, 'The random strength for the catboost model', tags='tune'),
-        BeamParam('cb_lr', float, 1e-2, 'The learning rate for the catboost model', tags='tune'),
-        BeamParam('cb_eval_metric', str, None, 'The evaluation metric for the catboost model, '
-                                               'if None, it is set to RMSE for regression and '
-                                               'Accuracy for classification'),
-        BeamParam('cb_custom_metric', list, None, 'The custom metric for the catboost model, '
-                                                  'if None, it is set to MAE, MAPE for regression and '
-                                                  'Precision, Recall for classification'),
-
-        BeamParam('cb_log_resolution', int, 10, 'The resolution (in epochs) of the logging for the catboost model'),
-
-    ]
-
-
 class NNModelConfig(BeamConfig):
     parameters = [
         BeamParam('init', str, 'ortho', 'Initialization method [ortho|N02|xavier|]', tags='tune'),
@@ -415,7 +390,7 @@ class TransformerConfig(CacheConfig):
     ]
 
 
-class UniversalConfig(NNExperimentConfig, TransformerConfig, CatboostConfig):
+class UniversalConfig(NNExperimentConfig, TransformerConfig):
     pass
 
 
