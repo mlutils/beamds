@@ -1330,17 +1330,7 @@ class NeuralAlgorithm(Algorithm):
                     self.report_scalar(f'momentum_{k}', scheduler.get_current_state()['momentum'], subset='train')
 
             self.epoch += 1
-            
-            objective = self.calculate_objective()
-
-            if self.get_hparam('objective_to_report') == 'last':
-                report_objective = objective
-            elif self.get_hparam('objective_to_report') == 'best':
-                report_objective = self.best_objective
-            else:
-                raise Exception(f"Unknown objective_to_report: {self.get_hparam('objective_to_report')} "
-                                f"should be [last|best]")
-            self.report(report_objective, i)
+            self.calculate_objective_and_report(i)
 
             if i+1 == self.n_epochs and self.swa_epochs > 0:
                 logger.warning("Switching to SWA training")

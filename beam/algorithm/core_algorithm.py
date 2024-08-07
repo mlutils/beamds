@@ -1,4 +1,6 @@
 from timeit import default_timer as timer
+from functools import wraps
+
 from ..utils import cached_property
 from ..processor import Processor
 from ..logging import beam_logger as logger
@@ -27,6 +29,19 @@ class Algorithm(Processor):
         self.clear_experiment_properties()
         if experiment is not None:
             self.experiment = experiment
+
+    def calculate_objective_and_report(self, i):
+
+        objective = self.calculate_objective()
+
+        if self.get_hparam('objective_to_report') == 'last':
+            report_objective = objective
+        elif self.get_hparam('objective_to_report') == 'best':
+            report_objective = self.best_objective
+        else:
+            raise Exception(f"Unknown objective_to_report: {self.get_hparam('objective_to_report')} "
+                            f"should be [last|best]")
+        self.report(report_objective, i)
 
     @property
     def elapsed_time(self):
@@ -321,3 +336,7 @@ class Algorithm(Processor):
 
     def get_pr_curve(self, name, subset=None):
         return self.reporter.get_pr_curve(name, subset=subset)
+
+    @wraps(Processor.save_state)
+    def load_checkpoint(self, *args, **kwargs):
+        return self.load_state(*args, **kwargs)

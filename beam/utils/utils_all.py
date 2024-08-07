@@ -357,40 +357,53 @@ def pretty_print_timedelta(seconds):
     return f"{pretty_format_number(t_delta.seconds, short=True)} seconds"
 
 
-def parse_string_number(x, time_units=None, unit_prefixes=None):
+def parse_string_number(x, time_units=None, unit_prefixes=None, timedelta_format=True, return_units=False):
+    v, u = _parse_string_number(x, time_units=time_units, unit_prefixes=unit_prefixes, timedelta_format=timedelta_format)
+    if return_units:
+        return v, u
+    return v
 
+
+def int_or_float(x):
     try:
         int_x = int(x)
         if int_x == float(x):
             return int_x
     except:
         pass
-
     try:
         float_x = float(x)
         return float_x
     except:
+        raise ValueError(f"Cannot convert {x} to int or float")
+
+
+def _parse_string_number(x, time_units=None, unit_prefixes=None, timedelta_format=True):
+
+    try:
+        return int_or_float(x), ''
+    except:
         pass
 
     # check for unit prefix or time format
-    match = re.match(r'^(?P<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?])(?P<unit>[a-zA-Z]+)$', x)
+    match = re.match(r'^(?P<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)(?P<unit>[a-zA-Z]+)$', x)
     if match:
         unit = match.group('unit')
-
-        val = int(match.group('value'))
-        if val != float(match.group('value')):
-            val = float(match.group('value'))
+        val = int_or_float(match.group('value'))
 
         # if time format return timedelta
         if time_units is None:
-            time_units = {'s': 'seconds', 'm': 'minutes', 'h': 'hours', 'd': 'days',
-                          'ms': 'milliseconds', 'us': 'microseconds', 'ns': 'nanoseconds',
-                          'y': 'years', 'mo': 'months', 'w': 'weeks',
-                          'sec': 'seconds', 'min': 'minutes', 'hours': 'hours', 'days': 'days', 'weeks': 'weeks',
-                          'months': 'months', 'minutes': 'minutes', 'seconds': 'seconds', 'years': 'years'}
+            time_units = {'s': ('seconds', 1), 'm': ('minutes', 60), 'h': ('hours', 60*60), 'd': ('days', 60*60*24),
+                          'ms': ('milliseconds', 1e-3), 'us': ('microseconds', 1e-6), 'ns': ('nanoseconds', 1e-9),
+                          'y': ('years', 1), 'mo': ('months', 1), 'w': ('weeks', 60*60*24*7),
+                          'sec': ('seconds', 1), 'min': ('minutes', 60), 'hours': ('hours', 60*60), 'days': ('days', 60*60*24),
+                          'weeks': ('weeks', 60*60*24*7), 'months': ('months', 1), 'minutes': ('minutes', 60),
+                          'seconds': ('seconds', 1), 'years': ('years', 1)}
 
         if unit in time_units.keys():
-            return timedelta(**{time_units[unit]: val})
+            if timedelta_format:
+                    return timedelta(**{time_units[unit][0]: val}), unit
+            return val * time_units[unit][1], unit
 
         if unit_prefixes is None:
             # if in unit prefix return the value in the unit
@@ -399,9 +412,9 @@ def parse_string_number(x, time_units=None, unit_prefixes=None):
                              'G': int(1e9), 'Mi': int(1e6), 'p': int(1e-12), 'f': int(1e-15)}
 
         if unit in unit_prefixes.keys():
-            return val * unit_prefixes[unit]
+            return val * unit_prefixes[unit], unit
 
-    return x
+    return x, ''
 
 
 def include_patterns(*patterns):

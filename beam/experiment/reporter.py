@@ -96,6 +96,7 @@ class BeamReport(object):
 
     def reset_epoch(self, epoch, total_epochs=None):
 
+        self._data = None
         self.state = 'before_epoch'
         self.scalar = defaultdict(list)
         self.aux = defaultdict(dict)
@@ -242,7 +243,10 @@ class BeamReport(object):
 
         if self.total_time is not None:
             total_time = pretty_print_timedelta(self.total_time)
-            estimated_time = pretty_print_timedelta(self.estimated_time)
+            if self.estimated_time:
+                estimated_time = pretty_print_timedelta(self.estimated_time)
+            else:
+                estimated_time = 'N/A'
             self.info(f'Elapsed time: {total_time}. Estimated remaining time: {estimated_time}.', )
 
     def write_to_tensorboard(self, writer, hparams=None):
@@ -338,7 +342,10 @@ class BeamReport(object):
             n_epochs = self.n_epochs - self.first_epoch
             epoch = self.epoch - self.first_epoch
 
-            self.estimated_time = self.total_time * (n_epochs - epoch - 1) / (epoch + 1)
+            if epoch + 1 > 0:
+                self.estimated_time = self.total_time * (n_epochs - epoch - 1) / (epoch + 1)
+            else:
+                self.estimated_time = None
 
         agg = None
 

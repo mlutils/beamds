@@ -141,17 +141,18 @@ class BeamLogger:
     def __setstate__(self, state):
         self.__init__(state['path'])
 
-    def stdout_handler(self, level='INFO'):
+    def stdout_handler(self, level='INFO', file_info=True):
+
+        file_info = f' <cyan>(∫{{file}}:{{function}}-#{{line}})</cyan>' if file_info else ''
         return self.logger.add(sys.stdout, level=level, colorize=True,
                                format=f'🔥 | <green>{{time:HH:mm:ss}} ({{elapsed}})</green> | '
-                                      f'<level>{{level:<8}}</level> 🗎 <level>{{message}}</level> '
-                                      f'<cyan>(∫{{file}}:{{function}}-#{{line}})</cyan>')
+                                      f'<level>{{level:<8}}</level> 🗎 <level>{{message}}</level>{file_info}')
 
     @property
     def level(self):
         return self._level
 
-    def set_verbosity(self, level):
+    def set_verbosity(self, level, file_info=True):
         """
         Sets the log level for all handlers to the specified level.
         """
@@ -162,26 +163,26 @@ class BeamLogger:
         if 'stdout' in self.handlers:
             self.logger.remove(self.handlers['stdout'])
 
-        self.handlers['stdout'] = self.stdout_handler(level=level)
+        self.handlers['stdout'] = self.stdout_handler(level=level, file_info=file_info)
 
-    def debug_mode(self):
-        self.set_verbosity('DEBUG')
+    def debug_mode(self, **kwargs):
+        self.set_verbosity('DEBUG', **kwargs)
         self.debug('Debug mode activated')
 
-    def info_mode(self):
-        self.set_verbosity('INFO')
+    def info_mode(self, **kwargs):
+        self.set_verbosity('INFO', **kwargs)
         self.info('Info mode activated')
 
-    def warning_mode(self):
-        self.set_verbosity('WARNING')
+    def warning_mode(self, **kwargs):
+        self.set_verbosity('WARNING', **kwargs)
         self.warning('Warning mode activated (only warnings and errors will be logged)')
 
-    def error_mode(self):
-        self.set_verbosity('ERROR')
+    def error_mode(self, **kwargs):
+        self.set_verbosity('ERROR', **kwargs)
         self.error('Error mode activated (only errors will be logged)')
 
-    def critical_mode(self):
-        self.set_verbosity('CRITICAL')
+    def critical_mode(self, **kwargs):
+        self.set_verbosity('CRITICAL', **kwargs)
         self.critical('Critical mode activated (only critical errors will be logged)')
 
     @contextmanager
