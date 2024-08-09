@@ -263,7 +263,7 @@ class Experiment(object):
     def reload_checkpoint(self, alg=None, iloc=None, loc=None, name=None):
 
         if iloc is None and loc is None and name is None:
-            if self.checkpoints_dir.joinpath('checkpoint_best').is_file():
+            if self.checkpoints_dir.joinpath('checkpoint_best').exists():
                 name = 'checkpoint_best'
             else:
                 iloc = -1
@@ -381,9 +381,13 @@ class Experiment(object):
             if self.comet_exp is not None:
                 self.comet_exp.set_model_graph(str(networks))
 
+    def save_state(self, algorithm, name='best_checkpoint.bmpr', **kwargs):
+        path = self.checkpoints_dir.joinpath(name)
+        algorithm.save_state(path, **kwargs)
+
     def save_model_results(self, reporter, algorithm, iteration, visualize_results=None,
                            store_results=None, store_networks=None, print_results=None,
-                           visualize_weights=None, argv=None):
+                           visualize_weights=None, argv=None, save_checkpoint=True):
 
         '''
 
@@ -431,21 +435,26 @@ class Experiment(object):
                     (visualize_results == 'best' and algorithm.best_state)):
                 self.log_data(reporter, epoch, print_log=print_results, alg=alg, argv=argv)
 
-            if (any([v in store_networks for v in ['yes', 'last', 'logscale']]) or
-                (iteration+1 == algorithm.n_epochs and store_networks == 'final') or
-                (store_networks == 'all_bests' and algorithm.best_state)):
-                checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
-                algorithm.save_checkpoint(checkpoint_file)
+            if save_checkpoint:
+                if (any([v in store_networks for v in ['yes', 'last', 'logscale']]) or
+                   (iteration+1 == algorithm.n_epochs and store_networks == 'final') or
+                   (store_networks == 'all_bests' and algorithm.best_state)):
+                    checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_{epoch:06d}')
+                    algorithm.save_checkpoint(checkpoint_file)
 
-            if algorithm.best_state and store_networks != 'never':
-                checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_best')
-                algorithm.save_checkpoint(checkpoint_file)
+                if algorithm.best_state and store_networks != 'never':
+                    checkpoint_file = self.checkpoints_dir.joinpath(f'checkpoint_best')
+                    algorithm.save_checkpoint(checkpoint_file)
 
-            if 'last' in store_networks or ('logscale' in store_networks and not logscale):
-                try:
-                    self.checkpoints_dir.joinpath(f'checkpoint_{epoch - 1:06d}').unlink()
-                except OSError:
-                    pass
+                if 'last' in store_networks or ('logscale' in store_networks and not logscale):
+                    try:
+                        self.checkpoints_dir.joinpath(f'checkpoint_{epoch - 1:06d}').unlink()
+                    except OSError:
+                        pass
+
+    @property
+    def snapshot_file(self):
+        return self.checkpoints_dir.joinpath(f'checkpoint').str
 
     def log_data(self, reporter, n, print_log=True, alg=None, argv=None):
 
@@ -640,12 +649,23 @@ class Experiment(object):
         self._tensorboard(port=port, get_port_from_beam_port_range=get_port_from_beam_port_range,
                           base_dir=base_dir, log_dirs=log_dirs, hparams=hparams)
 
+    def prepare_experiment_for_run(self):
+
+        logger.set_verbosity(logger.level, file_info=False)
+
+        if self.log_experiment and (not self.load_model and not self.logs_path_is_built):
+            self.build_experiment_dir()
+        else:
+            if not self.log_experiment:
+                logger.warning(f"Experiment logs are disabled (log_experiment=False)")
+            else:
+                logger.debug(f"Experiment setup already exists at {self.experiment_dir}")
+
     def fit(self, alg=None, dataset=None, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
             dataset_kwargs=None, **kwargs):
 
-        if self.log_experiment and (not self.load_model and not self.logs_path_is_built):
-            self.build_experiment_dir()
+        self.prepare_experiment_for_run()
 
         if algorithm_generator is None:
             algorithm_generator = beam_algorithm_generator

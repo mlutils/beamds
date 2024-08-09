@@ -34,151 +34,401 @@ class TextGroupExpansionConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('early_stopping_rounds', int, None, 'Early stopping rounds for the classifier'),
     ]
 
-# class CatBoostClassifier(iterations=None,
-#                          learning_rate=None,
-#                          depth=None,
-#                          l2_leaf_reg=None,
-#                          model_size_reg=None,
-#                          rsm=None,
-#                          loss_function=None,
-#                          border_count=None,
-#                          feature_border_type=None,
-#                          per_float_feature_quantization=None,
-#                          input_borders=None,
-#                          output_borders=None,
-#                          fold_permutation_block=None,
-#                          od_pval=None,
-#                          od_wait=None,
-#                          od_type=None,
-#                          nan_mode=None,
-#                          counter_calc_method=None,
-#                          leaf_estimation_iterations=None,
-#                          leaf_estimation_method=None,
-#                          thread_count=None,
-#                          random_seed=None,
-#                          use_best_model=None,
-#                          verbose=None,
-#                          logging_level=None,
-#                          metric_period=None,
-#                          ctr_leaf_count_limit=None,
-#                          store_all_simple_ctr=None,
-#                          max_ctr_complexity=None,
-#                          has_time=None,
-#                          allow_const_label=None,
-#                          classes_count=None,
-#                          class_weights=None,
-#                          auto_class_weights=None,
-#                          one_hot_max_size=None,
-#                          random_strength=None,
-#                          name=None,
-#                          ignored_features=None,
-#                          train_dir=None,
-#                          custom_loss=None,
-#                          custom_metric=None,
-#                          eval_metric=None,
-#                          bagging_temperature=None,
-#                          save_snapshot=None,
-#                          snapshot_file=None,
-#                          snapshot_interval=None,
-#                          fold_len_multiplier=None,
-#                          used_ram_limit=None,
-#                          gpu_ram_part=None,
-#                          allow_writing_files=None,
-#                          final_ctr_computation_mode=None,
-#                          approx_on_full_history=None,
-#                          boosting_type=None,
-#                          simple_ctr=None,
-#                          combinations_ctr=None,
-#                          per_feature_ctr=None,
-#                          task_type=None,
-#                          device_config=None,
-#                          devices=None,
-#                          bootstrap_type=None,
-#                          subsample=None,
-#                          sampling_unit=None,
-#                          dev_score_calc_obj_block_size=None,
-#                          max_depth=None,
-#                          n_estimators=None,
-#                          num_boost_round=None,
-#                          num_trees=None,
-#                          colsample_bylevel=None,
-#                          random_state=None,
-#                          reg_lambda=None,
-#                          objective=None,
-#                          eta=None,
-#                          max_bin=None,
-#                          scale_pos_weight=None,
-#                          gpu_cat_features_storage=None,
-#                          data_partition=None
-#                          metadata=None,
-#                          early_stopping_rounds=None,
-#                          cat_features=None,
-#                          grow_policy=None,
-#                          min_data_in_leaf=None,
-#                          min_child_samples=None,
-#                          max_leaves=None,
-#                          num_leaves=None,
-#                          score_function=None,
-#                          leaf_estimation_backtracking=None,
-#                          ctr_history_unit=None,
-#                          monotone_constraints=None,
-#                          feature_weights=None,
-#                          penalties_coefficient=None,
-#                          first_feature_use_penalties=None,
-#                          model_shrink_rate=None,
-#                          model_shrink_mode=None,
-#                          langevin=None,
-#                          diffusion_temperature=None,
-#                          posterior_sampling=None,
-#                          boost_from_average=None,
-#                          text_features=None,
-#                          tokenizers=None,
-#                          dictionaries=None,
-#                          feature_calcers=None,
-#                          text_processing=None,
-#                          fixed_binary_splits=None)
+# class CatboostConfig(DeviceConfig):
+#     """
+#     Catboost configuration
+#     References: https://docs.aws.amazon.com/sagemaker/latest/dg/catboost-hyperparameters.html
+#     """
+#
+#     # catboost
+#     parameters = [
+#         BeamParam('cb-task', str, 'classification', 'The task type for the catboost model '
+#                                                     '[classification|regression|ranking]'),
+#         BeamParam('log-frequency', int, 10, 'The frequency (in epochs) of the logging for the catboost model'),
+#
+#         BeamParam('loss_function', str, 'Logloss', 'The loss function for the catboost model'),
+#         BeamParam('learning_rate', float, 1e-1, 'The learning rate for the catboost model', tags='tune'),
+#         # learning rate is drawn from other configurations
+#         BeamParam('n_estimators', int, 200, 'The number of trees in the catboost model', tags='tune'),
+#         BeamParam('l2_leaf_reg', float, 1e-3, 'The L2 regularization for the catboost model', tags='tune'),
+#         BeamParam('bagging_temperature', float, None,
+#                   'Controls the Bayesian bootstrap and helps in reducing overfitting by using random weights '
+#                   'Range: 0.5 to 1.'),
+#         BeamParam('border_count', int, None, 'Higher values can improve accuracy but may slow down training ', tags='tune'),
+#         BeamParam('depth', int, 8, 'The depth of the trees in the catboost model', tags='tune'),
+#         BeamParam('random_strength', float, 1., 'The random strength for the catboost model', tags='tune'),
+#         BeamParam('eval_metric', str, None, 'The evaluation metric for the catboost model, '
+#                                                'if None, it is set to RMSE for regression and '
+#                                                'Accuracy for classification'),
+#         BeamParam('custom_metric', list, None, 'The custom metric for the catboost model, '
+#                                                   'if None, it is set to MAE, MAPE for regression and '
+#                                                   'Precision, Recall for classification'),
+#         BeamParam('feature_border_type', str,
+#                   'GreedyLogSum', 'The feature border type for the catboost model. '
+#                                   'Possible values: [Median, Uniform, UniformAndQuantiles, '
+#                                   'MaxLogSum, GreedyLogSum, MinEntropy].'),
+#         BeamParam('per_float_feature_quantization', str, None,
+#                   'The per float feature quantization for the catboost model. '
+#                   'See https://catboost.ai/en/docs/references/training-parameters/quantization'),
+#         BeamParam('input_borders', str, None, 'path to input file with borders used in numeric features binarization.'),
+#         BeamParam('output_borders', str, None, 'path to output file with borders used in numeric features binarization.'),
+#         BeamParam('fold_permutation_block', int, None, 'The fold permutation block for the catboost model'),
+#         BeamParam('od_pval', float, None, 'The od pval for the catboost model'),
+#         BeamParam('od_wait', int, None, 'The od wait for the catboost model'),
+#         BeamParam('od_type', str, None, 'The od type for the catboost model'),
+#         BeamParam('nan_mode', str, None, 'The nan mode for the catboost model'),
+#         BeamParam('counter_calc_method', str, None, 'The counter calc method for the catboost model'),
+#         BeamParam('leaf_estimation_iterations', int, None, 'The leaf estimation iterations for the catboost model'),
+#         BeamParam('leaf_estimation_method', str, None, 'The leaf estimation method for the catboost model'),
+#         BeamParam('thread_count', int, None, 'The thread count for the catboost model'),
+#         BeamParam('use_best_model', bool, None, 'The use best model for the catboost model'),
+#         BeamParam('snapshot_interval', int, 600, 'The snapshot interval for intermediate model saving [in seconds]'),
+#         BeamParam('save_snapshot', bool, True, 'The save snapshot for the catboost model'),
+#
+#     ]
 
 
 class CatboostConfig(DeviceConfig):
-    # catboost
-    parameters = [
-        BeamParam('cb-task', str, 'classification', 'The task type for the catboost model '
-                                                    '[classification|regression|ranking]'),
-        BeamParam('log-frequency', int, 10, 'The frequency (in epochs) of the logging for the catboost model'),
+    """
+    CatBoost configuration with detailed parameter documentation.
+    References:
+    - https://catboost.ai/docs/references/training-parameters.html
+    - https://docs.aws.amazon.com/sagemaker/latest/dg/catboost-hyperparameters.html
+    """
 
-        BeamParam('loss_function', str, 'Logloss', 'The loss function for the catboost model'),
-        BeamParam('learning_rate', float, 1e-1, 'The learning rate for the catboost model', tags='tune'),
-        # learning rate is drawn from other configurations
-        BeamParam('n_estimators', int, 200, 'The number of trees in the catboost model', tags='tune'),
-        BeamParam('l2_leaf_reg', float, 1e-3, 'The L2 regularization for the catboost model', tags='tune'),
-        BeamParam('border_count', int, None, 'The border count for the catboost model', tags='tune'),
-        BeamParam('depth', int, 6, 'The depth of the trees in the catboost model', tags='tune'),
-        BeamParam('random_strength', float, .8, 'The random strength for the catboost model', tags='tune'),
-        BeamParam('eval_metric', str, None, 'The evaluation metric for the catboost model, '
-                                               'if None, it is set to RMSE for regression and '
-                                               'Accuracy for classification'),
-        BeamParam('custom_metric', list, None, 'The custom metric for the catboost model, '
-                                                  'if None, it is set to MAE, MAPE for regression and '
-                                                  'Precision, Recall for classification'),
-        BeamParam('feature_border_type', str,
-                  'GreedyLogSum', 'The feature border type for the catboost model. '
-                                  'Possible values: [Median, Uniform, UniformAndQuantiles, '
-                                  'MaxLogSum, GreedyLogSum, MinEntropy].'),
-        BeamParam('per_float_feature_quantization', str, None,
-                  'The per float feature quantization for the catboost model. '
-                  'See https://catboost.ai/en/docs/references/training-parameters/quantization'),
-        BeamParam('input_borders', str, None, 'path to input file with borders used in numeric features binarization.'),
-        BeamParam('output_borders', str, None, 'path to output file with borders used in numeric features binarization.'),
-        BeamParam('fold_permutation_block', int, None, 'The fold permutation block for the catboost model'),
-        BeamParam('od_pval', float, None, 'The od pval for the catboost model'),
-        BeamParam('od_wait', int, None, 'The od wait for the catboost model'),
-        BeamParam('od_type', str, None, 'The od type for the catboost model'),
-        BeamParam('nan_mode', str, None, 'The nan mode for the catboost model'),
-        BeamParam('counter_calc_method', str, None, 'The counter calc method for the catboost model'),
-        BeamParam('leaf_estimation_iterations', int, None, 'The leaf estimation iterations for the catboost model'),
-        BeamParam('leaf_estimation_method', str, None, 'The leaf estimation method for the catboost model'),
-        BeamParam('thread_count', int, None, 'The thread count for the catboost model'),
-        BeamParam('use_best_model', bool, None, 'The use best model for the catboost model'),
+    # CatBoost parameters
+    parameters = [
+        BeamParam('objective', str, None, 'The objective function for the CatBoost model. '),
+        BeamParam('objective_to_report', str, 'best', 'Which objective to report in HPO run [best|last]'),
+        BeamParam(
+            'cb-task',
+            str,
+            'classification',
+            'The task type for the CatBoost model. '
+            'Default: classification. '
+            'Options: [classification, regression, ranking]. '
+            'Determines the type of task and influences the loss function and evaluation metrics.'
+        ),
+        BeamParam(
+            'log-frequency',
+            int,
+            10,
+            'The frequency (in iterations) of logging for the CatBoost model. '
+            'Default: 10. '
+            'Range: [1, ∞). '
+            'Affects how often training progress is reported.'
+        ),
+
+        # Core parameters
+        BeamParam(
+            'loss_function',
+            str,
+            'Logloss',
+            'The loss function for the CatBoost model. '
+            'Default: Logloss for classification. '
+            'Options: [Logloss, RMSE, MAE, Quantile, MAPE, Poisson, etc.]. '
+            'Determines the optimization objective and affects model predictions.'
+        ),
+        BeamParam(
+            'eval_metric',
+            str,
+            None,
+            'The evaluation metric for the CatBoost model. '
+            'Default: Auto-detected based on task type. '
+            'Options: [Accuracy, AUC, RMSE, MAE, etc.]. '
+            'Used for evaluating the performance of the model on validation data.'
+        ),
+        BeamParam(
+            'custom_metric',
+            list,
+            None,
+            'The custom metric for the CatBoost model. '
+            'Default: None. '
+            'Options: [Precision, Recall, F1, etc.]. '
+            'Provides additional metrics for evaluation.'
+        ),
+
+        # Training parameters
+        BeamParam(
+            'iterations',
+            int,
+            None,
+            'The number of trees (iterations) in the CatBoost model. '
+            'Default: 1000. '
+            'Range: [1, ∞). '
+            'Higher values may improve performance but can increase training time and risk overfitting.'
+        ),
+        BeamParam(
+            'learning_rate',
+            float,
+            None,
+            'The learning rate for the CatBoost model. '
+            'Default: 0.03. '
+            'Range: (0.0, 1.0]. '
+            'Controls the step size at each iteration while moving towards a minimum of the loss function.'
+        ),
+        BeamParam(
+            'depth',
+            int,
+            None,
+            'The depth of the trees in the CatBoost model. '
+            'Default: 6. '
+            'Range: [1, 16]. '
+            'Deeper trees can capture more complex patterns but may lead to overfitting.'
+        ),
+        BeamParam(
+            'l2_leaf_reg',
+            float,
+            None,
+            'The L2 regularization term on the cost function. '
+            'Default: 3.0. '
+            'Range: (0, ∞). '
+            'Helps prevent overfitting by penalizing large weights.'
+        ),
+
+        # Overfitting detection
+        BeamParam(
+            'od_pval',
+            float,
+            None,
+            'The threshold for the overfitting detector. '
+            'Default: None. '
+            'Range: (0, 1). '
+            'Stops training if the performance on the validation set does not improve by this value.'
+        ),
+        BeamParam(
+            'od_wait',
+            int,
+            None,
+            'Number of iterations to wait after the overfitting criterion is reached before stopping training. '
+            'Default: 20. '
+            'Range: [1, ∞). '
+            'Prevents premature stopping by allowing continued training for a set number of iterations.'
+        ),
+        BeamParam(
+            'od_type',
+            str,
+            None,
+            'The overfitting detection type. '
+            'Default: IncToDec. '
+            'Options: [IncToDec, Iter]. '
+            'Determines how overfitting is detected during training.'
+        ),
+
+        # Regularization parameters
+        BeamParam(
+            'bagging_temperature',
+            float,
+            None,
+            'Controls the Bayesian bootstrap and helps in reducing overfitting by using random weights. '
+            'Default: 1.0. '
+            'Range: [0.0, ∞). '
+            'Higher values increase randomness, helping to reduce overfitting.'
+        ),
+        BeamParam(
+            'random_strength',
+            float,
+            None,
+            'The amount of randomness to use for scoring splits when the tree structure is selected. '
+            'Use this parameter to avoid overfitting the model.'
+            'Default: 1.0. '
+            'Range: [0.0, ∞). '
+            'Adds randomness to scoring splits, helping prevent overfitting.'
+        ),
+
+        # Feature processing
+        BeamParam(
+            'border_count',
+            int,
+            None,
+            'The number of splits for numerical features (max_bin). '
+            'Default: The default value depends on the processing unit type and other parameters: '
+            'CPU: 254 '
+            'GPU in PairLogitPairwise and YetiRankPairwise modes: 32 '
+            'GPU in all other modes: 128 '
+            'Range: [1, 65535]. '
+            'Affects the granularity of feature discretization; higher values can improve accuracy but increase complexity.'
+        ),
+        BeamParam(
+            'feature_border_type',
+            str,
+            None,
+            'The feature border type. '
+            'Default: GreedyLogSum. '
+            'Options: [Median, Uniform, UniformAndQuantiles, MaxLogSum, GreedyLogSum, MinEntropy]. '
+            'Determines how feature borders are selected, impacting split decisions.'
+        ),
+        BeamParam(
+            'per_float_feature_quantization',
+            str,
+            None,
+            'The per float feature quantization. '
+            'Default: None. '
+            'See: https://catboost.ai/en/docs/references/training-parameters/quantization. '
+            'Allows custom quantization for specific features.'
+        ),
+
+        # Advanced tree options
+        BeamParam(
+            'grow_policy',
+            str,
+            None,
+            'Defines how to perform greedy tree construction. '
+            'Default: SymmetricTree. '
+            'Options: [SymmetricTree, Depthwise, Lossguide]. '
+            'Determines the strategy for tree growth, affecting complexity and interpretability.'
+        ),
+        BeamParam(
+            'max_leaves',
+            int,
+            None,
+            'The maximum number of leaves in the resulting tree. '
+            'Default: None. '
+            'Range: [2, 64]. '
+            'Applicable for Lossguide grow policy; limits the complexity of the tree.'
+        ),
+
+        # Sampling and randomness
+        BeamParam(
+            'rsm',
+            float,
+            None,
+            'Random subspace method for feature selection. '
+            'Default: 1.0. '
+            'Range: (0.0, 1.0]. '
+            'Percentage of features used at each split selection, allowing randomness in feature selection.'
+        ),
+        BeamParam(
+            'sampling_frequency',
+            str,
+            None,
+            'Frequency to sample weights and objects during tree building. '
+            'Default: PerTree. '
+            'Options: [PerTree, PerTreeLevel]. '
+            'Determines how often samples are drawn during training.'
+        ),
+        BeamParam(
+            'bootstrap_type',
+            str,
+            None,
+            'The bootstrap type. '
+            'Default: Bayesian. '
+            'Options: [Bayesian, Bernoulli, No, MVS]. '
+            'Controls how samples are drawn for training, affecting robustness and variance.'
+        ),
+
+        # Leaf estimation
+        BeamParam(
+            'leaf_estimation_iterations',
+            int,
+            None,
+            'The number of iterations to calculate values in leaves. '
+            'Default: 1. '
+            'Range: [1, ∞). '
+            'Higher values improve accuracy at the cost of increased training time.'
+        ),
+        BeamParam(
+            'leaf_estimation_method',
+            str,
+            None,
+            'The method used to calculate values in leaves. '
+            'Default: Newton. '
+            'Options: [Newton, Gradient]. '
+            'Determines the approach for estimating leaf values, affecting convergence speed and accuracy.'
+        ),
+
+        # Logging and output
+        BeamParam(
+            'snapshot_interval',
+            int,
+            600,
+            'The snapshot interval for model saving [in seconds]. '
+            'Default: 600. '
+            'Range: [1, ∞). '
+            'Controls how often model snapshots are saved, useful for resuming training.'
+        ),
+        BeamParam(
+            'boosting_type',
+            str,
+            'Plain',
+            'Controls the boosting scheme. '
+            'Default: Plain. '
+            'Options: [Ordered, Plain]. '
+            'Ordered is used to eliminate the effect of a training set order.'
+        ),
+        BeamParam(
+            'allow_const_label',
+            bool,
+            False,
+            'Allows training on a dataset with constant labels. '
+            'Default: False. '
+            'Useful for experimentation or testing.'
+        ),
+
+        # Training parameters
+        BeamParam(
+            'auto_class_weights',
+            str,
+            None,
+            'Automatically calculates class weights for imbalanced datasets. '
+            'Default: None. '
+            'Options: [Balanced, SqrtBalanced, None].'
+        ),
+
+        # Regularization parameters
+        BeamParam(
+            'l1_leaf_reg',
+            float,
+            None,
+            'L1 regularization term on weights. '
+            'Default: 0.0. '
+            'Range: (0, ∞). '
+            'Helps prevent overfitting by penalizing large weights.'
+        ),
+
+        # Feature processing
+        BeamParam(
+            'one_hot_max_size',
+            int,
+            None,
+            'Maximum size of the categorical feature for one-hot encoding. '
+            'Default: 2. '
+            'Range: [1, ∞). '
+            'Larger sizes use a more efficient embedding.'
+        ),
+
+        # Advanced tree options
+        BeamParam(
+            'min_data_in_leaf',
+            int,
+            None,
+            'Minimum number of samples per leaf. '
+            'Default: 1. '
+            'Range: [1, ∞). '
+            'Controls leaf size and can affect overfitting and generalization.'
+        ),
+
+        # Sampling and randomness
+        BeamParam(
+            'bagging_fraction',
+            float,
+            None,
+            'Fraction of samples to use in each iteration. '
+            'Default: 1.0. '
+            'Range: (0.0, 1.0]. '
+            'Controls randomness and variance.'
+        ),
+
+        # Leaf estimation
+        BeamParam(
+            'leaf_estimation_backtracking',
+            str,
+            None,
+            'Backtracking type used for leaf estimation. '
+            'Default: AnyImprovement. '
+            'Options: [No, AnyImprovement, Armijo]. '
+            'Affects convergence and accuracy.'
+        ),
 
     ]
 

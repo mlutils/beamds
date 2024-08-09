@@ -21,7 +21,7 @@ def get_data(name='covtype'):
 
 def main():
 
-    config = CatboostExperimentConfig(loss_function='MultiClass')
+    config = CatboostExperimentConfig(loss_function='MultiClass', iterations=100)
     experiment = Experiment(config)
     data = get_data()
     x = data['x']
