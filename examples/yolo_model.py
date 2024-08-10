@@ -38,7 +38,7 @@ class YOLOBeam(Processor):
         super().load_state_dict(path, ext, exclude, hparams, exclude_hparams, overwrite_hparams, **kwargs)
         self.load_hf_model()
 
-    def process(self, image: Union[Image,str]):
+    def process(self, image):
 
         if isinstance(image, str):
             # convert to PIL image from base64
