@@ -9,7 +9,8 @@ from beam import Processor, BeamConfig, BeamParam
 class YOLOConfig(BeamConfig):
     parameters = [
         BeamParam('model', str, 'facebook/detr-resnet-50', 'The model to use for object detection.'),
-        BeamParam('path-to-bundle', str, '/tmp/yolo-bundle',)
+        BeamParam('path-to-bundle', str, '/tmp/yolo-bundle',),
+        BeamParam('device', str, 'cuda', 'The device to use for inference.'),
     ]
 
 
@@ -25,6 +26,7 @@ class YOLOBeam(Processor):
     def load_hf_model(self):
         self.processor = AutoImageProcessor.from_pretrained(self.get_hparam('model'))
         self.model = AutoModelForObjectDetection.from_pretrained(self.get_hparam('model'))
+        self.model.to(self.get_hparam('device'))
 
     @classmethod
     @property
@@ -38,7 +40,7 @@ class YOLOBeam(Processor):
 
     def process(self, image: Image):
         # Preprocess the image
-        inputs = self.processor(images=image, return_tensors="pt")
+        inputs = self.processor(images=image, return_tensors="pt").to(self.get_hparam('device'))
         # Perform inference
         with torch.no_grad():
             outputs = self.model(**inputs)
