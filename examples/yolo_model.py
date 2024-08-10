@@ -38,7 +38,14 @@ class YOLOBeam(Processor):
         super().load_state_dict(path, ext, exclude, hparams, exclude_hparams, overwrite_hparams, **kwargs)
         self.load_hf_model()
 
-    def process(self, image: Image):
+    def process(self, image: Image | str):
+
+        if isinstance(image, str):
+            # convert to PIL image from base64
+            import base64
+            from io import BytesIO
+            image = Image.open(BytesIO(base64.b64decode(image)))
+
         # Preprocess the image
         inputs = self.processor(images=image, return_tensors="pt").to(self.get_hparam('device'))
         # Perform inference
