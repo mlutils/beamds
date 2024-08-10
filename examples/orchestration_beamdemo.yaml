@@ -1,5 +1,5 @@
 alg_image_name: yolo-algo:latest
-api_token: sha256~JQay6PBL1Fqe4rPJDO7y6KYCi2NcDESNI4OyCnZBvUE
+api_token: sha256~d72Y42Ni8Jv9n0p7OnG7W692bCbqve9ohUAgjsmfBKM
 api_url: https://api.kh-dev.dt.local:6443
 base_image: harbor.dt.local/public/beam:20240801
 base_url: tcp://10.0.7.55:2375
@@ -49,13 +49,14 @@ registry_username: admin
 registry_project_name: public
 replicas: '1'
 send_mail: false
-scc_name: anyuid
+#scc_name: anyuid
+scc_name: privileged
 security_context_config:
   add_capabilities:
-  - SYS_CHROOT
-  - CAP_AUDIT_CONTROL
-  - CAP_AUDIT_WRITE
-  enable_security_context: false
+#  - SYS_CHROOT
+#  - CAP_AUDIT_CONTROL
+#  - CAP_AUDIT_WRITE
+  enable_security_context: true
   privileged: true
   runAsUser: 0
 service_configs:
@@ -93,6 +94,13 @@ service_configs:
   port: 22089
   port_name: home-page-port
   service_name: home-page
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: home-page.example.com
+  port: 35000
+  port_name: flask-port
+  service_name: flask
   service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com

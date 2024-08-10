@@ -1026,14 +1026,18 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return endpoints
 
     # Homepage_url=f"http://{route['host']}"
-    def get_homepage_route_url(self, namespace):
+    def get_route_urls(self, namespace):
         # Fetching all routes in the namespace
         routes = self.get_routes_info(namespace)
-        # Filtering for the specific route associated with 'home-page'
+        route_urls = []
         for route in routes:
             if 'home-page' in route['host']:
-                return f"http://{route['host']}"
-        return None
+                route_urls.append(f"home-page: http://{route['host']}\n")
+            if 'flask' in route['host']:
+                route_urls.append(f"flask serve: http://{route['host']}\n")
+        final_route_urls = ''.join(route_urls)
+                # return final_route_urls
+        return route_urls
 
     def query_available_resources(self):
         total_resources = {'cpu': '0', 'memory': '0', 'nvidia.com/gpu': '0', 'amd.com/gpu': '0', 'storage': '0Gi'}

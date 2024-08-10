@@ -89,7 +89,9 @@ class ServeCluster(BeamCluster):
                 k8s.send_email(subject, body, to_email, from_email, from_email_password)
             else:
                 logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
-            logger.debug(f"Cluster info: {deployment.cluster_info}")
+                logger.info(f"Route Urls: {deployment.k8s.get_route_urls(namespace=config['project_name'])}")
+            # logger.debug(f"Cluster info: {deployment.cluster_info}")
+            logger.info(f"Route Urls: {deployment.k8s.get_route_urls(namespace=config['project_name'])}")
             if not pods:
                 logger.error("Pod deployment failed")
                 return None  # Or handle the error as needed
@@ -155,7 +157,7 @@ class RayCluster(BeamCluster):
             for pod_instance in pod_instances[1:]:
                 pod_instance.execute(worker_command)
 
-            print(deployment.cluster_info)
+            logger.info(deployment.cluster_info)
 
             return cls(deployment=deployment, n_pods=n_pods, config=config, head=head, workers=workers)
 
