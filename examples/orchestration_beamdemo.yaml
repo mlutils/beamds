@@ -3,7 +3,7 @@ api_token: sha256~d72Y42Ni8Jv9n0p7OnG7W692bCbqve9ohUAgjsmfBKM
 api_url: https://api.kh-dev.dt.local:6443
 base_image: harbor.dt.local/public/beam:20240801
 base_url: tcp://10.0.7.55:2375
-# client = docker.APIClient(base_url='unix://var/run/docker.sock')df
+# client = docker.APIClient(base_url='unix://var/run/docker.sock')d
 #client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
