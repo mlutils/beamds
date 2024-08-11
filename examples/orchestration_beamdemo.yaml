@@ -1,5 +1,5 @@
 alg_image_name: yolo-algo:latest
-api_token: sha256~d72Y42Ni8Jv9n0p7OnG7W692bCbqve9ohUAgjsmfBKM
+api_token: sha256~9rJp1lzmNNFFVRsbSRIAcyZ_sx72VzPuVPiYhvlWvzM
 api_url: https://api.kh-dev.dt.local:6443
 base_image: harbor.dt.local/public/beam:20240801
 base_url: tcp://10.0.7.55:2375
@@ -7,7 +7,7 @@ base_url: tcp://10.0.7.55:2375
 #client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: 2.6.7
+beam_version: 2.6.9
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:
@@ -15,10 +15,10 @@ command:
 #  - -c
 #  - sleep infinity
 #  executable: /bin/bash
-cpu_limits: '2'
-cpu_requests: '2'
+cpu_limits: '4'
+cpu_requests: '4'
 create_service_account: false
-deployment_name: flow
+deployment_name: prod
 entrypoint_args:
 - '63'
 entrypoint_envs:
@@ -30,7 +30,7 @@ gpu_requests: '1'
 #image_name: harbor.dt.local/public/nerdctl:v2.0.0-rc.0
 image_name: harbor.dt.local/public/beam:20240801
 labels:
-  app: flow
+  app: prod
 memory_limits: '6'
 memory_requests: '6'
 memory_storage_configs:
@@ -41,7 +41,7 @@ memory_storage_configs:
 n_pods: '1'
 node_selector:
   gpu-type: tesla-a100
-project_name: kh-dev
+project_name: dev
 push_image: true
 registry_password: Har@123
 registry_url: harbor.dt.local
@@ -114,7 +114,7 @@ subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
 use_gpu: true
 use_node_selector: false
-use_scc: false
+use_scc: true
 user_idm_configs:
 - create_role_binding: false
   project_name: ben-guryon
