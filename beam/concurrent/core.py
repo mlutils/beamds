@@ -346,7 +346,7 @@ class BeamParallel(BeamName):
 
         return results[0]
 
-    def run(self, n_workers=None, method=None, shuffle=None):
+    def run(self, n_workers=None, method=None, shuffle=None) -> SyncedResults:
 
         if shuffle is None:
             shuffle = self.shuffle

@@ -2,7 +2,7 @@ import pandas as pd
 
 from .feature import FeaturesCategories, BeamFeature, ParameterSchema, ParameterType
 import tempfile
-from beam import resource
+from ..resources import resource
 from functools import cached_property
 from itertools import combinations
 from collections import Counter
@@ -10,24 +10,10 @@ from collections import Counter
 from ..type.utils import is_pandas_series
 
 
-# class FeaturesCategories(Enum):
-#     numerical = 'numerical'
-#     categorical = 'categorical'
-#     embedding = 'embedding'
-#     text = 'text'
-#
-#
-# class ParameterType(Enum):
-#     categorical = 'categorical'
-#     linspace = 'linspace'
-#     logspace = 'logspace'
-#     uniform = 'uniform'
-#     loguniform = 'loguniform'
-
 
 class Node2Vec(BeamFeature):
     def __init__(self, *args, name=None, q=None, p=None, n_workers=1, verbose=False, num_walks=10, walk_length=80,
-                vector_size=8, window=3, min_count=0, sg=1, workers=1, epochs=1, **kwargs):
+                vector_size=8, window=3, min_count=0, sg=1, epochs=None, **kwargs):
         super().__init__(*args, name=name, kind=FeaturesCategories.embedding, **kwargs)
         self.q = q or self.parameters_schema['q'].default_value
         self.p = p or self.parameters_schema['p'].default_value
@@ -40,6 +26,7 @@ class Node2Vec(BeamFeature):
         self.verbose = verbose
         self.model = None
         self.n_workers = n_workers or self.parameters_schema['n_workers'].default_value
+        self.epochs = epochs or self.parameters_schema['epochs'].default_value
 
     @cached_property
     def parameters_schema(self):
@@ -60,6 +47,8 @@ class Node2Vec(BeamFeature):
                                         default_value=10, description='Number of walks'),
             'walk_length': ParameterSchema(name='walk_length', kind=ParameterType.linspace, min_value=1, max_value=100,
                                         default_value=80, description='Walk length'),
+            'epochs': ParameterSchema(name='epochs', kind=ParameterType.linspace, min_value=1, max_value=12,
+                                        default_value=5, description='Number of epochs in WV training'),
 
         }
 
@@ -76,7 +65,7 @@ class Node2Vec(BeamFeature):
         walks = g.simulate_walks(num_walks=self.num_walks, walk_length=self.walk_length)
         # use random walks to train embeddings
         w2v_model = Word2Vec(walks, vector_size=self.vector_size, window=self.window,
-                             min_count=self.min_count, sg=self.sg, workers=self.workers, epochs=self.epochs)
+                             min_count=self.min_count, sg=self.sg, workers=self.n_workers, epochs=self.epochs)
 
         self.model = w2v_model
 
@@ -87,18 +76,17 @@ class Node2Vec(BeamFeature):
 
     def transform(self, x, column=None, index=None):
         assert self.model is not None, 'Model is not trained'
-        if column is None:
-            assert is_pandas_series(x), 'x should be a pandas Series'
-        else:
-            x = x[column]
-        x = x.values
-        index = index or x.index
+        if is_pandas_series(x):
+            if index is None:
+                index = x.index
+            x = x.values
 
-        return pd.DataFrame([self.model.wv[i] for i in x], index=index)
+        return pd.DataFrame([{self.name: self.model.wv[i]} for i in x], index=index)
 
     def fit_transform(self, x, g=None, source='source', target='target',
                       directed=False, weight='weight', weighted=False, column=None, index=None):
-        g = g or x
+
+        assert g is not None, 'Graph is not provided'
         self.fit(g, source, target, directed, weight, weighted)
         return self.transform(x, column, index)
 

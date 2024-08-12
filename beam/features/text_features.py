@@ -1,6 +1,6 @@
 import pandas as pd
 from .feature import FeaturesCategories, BeamFeature, ParameterSchema, ParameterType
-from beam import resource
+from ..resources import resource
 from functools import cached_property, partial
 
 

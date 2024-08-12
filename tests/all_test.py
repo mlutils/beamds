@@ -9,6 +9,21 @@ import pandas as pd
 import torch
 
 
+def test_transformer_with_errors():
+
+    from beam import Transformer
+
+    def func(x):
+        # print(1/1)
+        print(1 / 0)
+        return x
+
+    t = Transformer(func=func, n_chunks=1)
+    # t = Transformer(func=func, chunksize=1)
+    res = t.transform([1, 2, 3])
+    print(res)
+
+
 def test_k8s_configurations():
 
     from beam.resources import this_dir
@@ -649,6 +664,8 @@ if __name__ == '__main__':
 
     # test_configuration_priority()
 
-    test_k8s_configurations()
+    # test_k8s_configurations()
+
+    test_transformer_with_errors()
 
     print('done')

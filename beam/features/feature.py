@@ -72,12 +72,11 @@ class BinarizedFeature(BeamFeature):
         self.encoder.fit(x)
 
     def transform(self, x, index=None):
-        if is_pandas_dataframe(x):
+        x_type = check_type(x)
+        if x_type.is_dataframe:
+            if index is None:
+                index = x.index
             x = x.values
-            index = index or x.index
-        elif is_pandas_series(x):
-            x = x.values
-            index = index or x.index
 
         v = self.encoder.transform(x)
         # Create a DataFrame with the binary indicator columns
@@ -103,13 +102,13 @@ class DiscretizedFeature(BeamFeature):
     def transform(self, x, index=None):
         columns = self.columns
         if is_pandas_dataframe(x):
-            x = x.values
             index = index or x.index
+            x = x.values
             if columns is None:
                 columns = as_list(x.columns)
         elif is_pandas_series(x):
-            x = x.values
             index = index or x.index
+            x = x.values
 
         v = self.encoder.transform(x)
         # Create a DataFrame with the binary indicator columns
@@ -121,10 +120,9 @@ class DiscretizedFeature(BeamFeature):
 
 class ScalingFeature(BeamFeature):
 
-    def __init__(self, *args, columns: list[str] | str = None, method='standard', name=None, **kwargs):
+    def __init__(self, *args, method='standard', name=None, **kwargs):
         super().__init__(*args, name=name, kind=FeaturesCategories.numerical, **kwargs)
         self.method = method
-        self.columns = [columns] if isinstance(columns, str) else columns
         from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
         if method == 'standard':
             self.encoder = StandardScaler()
@@ -142,13 +140,14 @@ class ScalingFeature(BeamFeature):
     def fit(self, x):
         self.encoder.fit(as_numpy(x))
 
-    def transform(self, x, index=None):
+    def transform(self, x, index=None, columns=None):
         x_type = check_type(x)
-        columns = self.columns
         if x_type.is_dataframe:
+            if index is None:
+                index = x.index
             if columns is None:
-                columns = as_list(x.columns)
-            index = index or x.index
+                columns = x.columns
+            x = x.values
 
         v = self.encoder.transform(as_numpy(x))
         # Create a DataFrame with the binary indicator columns
@@ -158,22 +157,22 @@ class ScalingFeature(BeamFeature):
 
 class CetegorizedFeature(BeamFeature):
 
-    def __init__(self, *args, columns: list[str] | str = None, name=None, **kwargs):
+    def __init__(self, *args, name=None, **kwargs):
         super().__init__(*args, name=name, kind=FeaturesCategories.categorical, **kwargs)
-        self.columns = [columns] if isinstance(columns, str) else columns
         from sklearn.preprocessing import OrdinalEncoder
         self.encoder = OrdinalEncoder()
 
     def fit(self, x):
         self.encoder.fit(as_numpy(x))
 
-    def transform(self, x, index=None):
+    def transform(self, x, index=None, columns=None):
         x_type = check_type(x)
-        columns = self.columns
         if x_type.is_dataframe:
+            if index is None:
+                index = x.index
             if columns is None:
-                columns = as_list(x.columns)
-            index = index or x.index
+                columns = x.columns
+            x = x.values
 
         v = self.encoder.transform(as_numpy(x))
         # Create a DataFrame with the binary indicator columns
