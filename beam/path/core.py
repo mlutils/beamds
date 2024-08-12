@@ -370,7 +370,7 @@ class PureBeamPath(BeamResource):
         for p in current_path.iterdir():
 
             # If item is a directory and pattern requires recursion
-            if p.is_dir() and '**' in pattern:
+            if '**' in pattern and p.is_dir():
                 # Correctly pass `item` as `current_path` for recursive exploration
                 yield from self._glob_recursive(p, pattern, case_sensitive=case_sensitive)
             # Match the item's name against the pattern
