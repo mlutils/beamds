@@ -66,6 +66,10 @@ class BeamType:
         return self._minor in [Types.numpy, Types.tensor, Types.polars, Types.cudf, Types.pandas, Types.scipy_sparse]
 
     @cached_property
+    def is_torch(self):
+        return self._minor == Types.tensor
+
+    @cached_property
     def is_str(self):
         return self._major == Types.scalar and self._element == Types.str
 

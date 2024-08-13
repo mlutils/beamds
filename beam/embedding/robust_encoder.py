@@ -3,7 +3,7 @@ import torch
 
 from ..logging import beam_logger as logger
 from ..type.utils import Types
-from ..utils import to_device, check_type, tqdm_beam as tqdm, divide_chunks
+from ..utils import to_device, check_type, tqdm_beam as tqdm, divide_chunks, as_list
 from ..resources import resource
 from ..transformer import Transformer
 
@@ -23,7 +23,7 @@ class RobustDenseEncoder(Transformer):
         batch_size = batch_size or self.batch_size
         for b in self.batch_ratios_to_try:
             b = max(1, batch_size // b)
-            enc = self.encoder.encode(x, batch_size=b, show_progress_bar=show_progress_bar,
+            enc = self.encoder.encode(as_list(x), batch_size=b, show_progress_bar=show_progress_bar,
                                       convert_to_tensor=True)
             enc_type = check_type(enc)
             if enc_type.minor == Types.tensor:

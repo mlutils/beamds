@@ -105,7 +105,7 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
     if x_type is None:
         x_type = check_type(x, element=False)
 
-    if not convert_to_tensor and x_type.is_data_array or x_type.is_scalar:
+    if not convert_to_tensor and x_type.is_torch:
         return x
     if not convert_scalar and x_type.is_scalar:
         return x

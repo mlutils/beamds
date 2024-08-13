@@ -183,7 +183,7 @@ class InverseOneHotFeature(BeamFeature):
 
     def _transform(self, x, **kwargs):
 
-        if len(self.columns) == 1:
+        if self.columns is not None and len(self.columns) == 1:
             column = self.columns[0]
         else:
             column = self.name
