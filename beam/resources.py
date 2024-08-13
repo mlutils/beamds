@@ -68,6 +68,8 @@ def this_file():
             logger.error(f"Notebook detected, could not get the current file path from ths sys.argv configuration: {e}")
             return None
 
+    return p
+
 
 def this_dir():
     p = this_file()
