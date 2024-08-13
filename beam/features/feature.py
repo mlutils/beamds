@@ -1,3 +1,5 @@
+from functools import wraps
+
 import numpy as np
 from dataclasses import dataclass
 from enum import Enum
@@ -35,84 +37,89 @@ class ParameterSchema:
     description: str | None = None
 
 
-
 class BeamFeature(BeamBase):
 
-    def __init__(self, *args, func=None, name=None, kind=None, **kwargs):
+    def __init__(self, *args, func=None, columns: str | list[str] = None, name=None, kind=None, **kwargs):
         super().__init__(*args, name=name, **kwargs)
         self.func = func
+        self.columns = [columns] if isinstance(columns, str) else columns
         self.kind = kind or FeaturesCategories.numerical
 
     @property
     def parameters_schema(self):
         return {}
 
-    def transform(self, x, index=None) -> pd.DataFrame:
-        v = self.func(x)
-        return pd.DataFrame(v, index=index)
+    def preprocess(self, x):
+        x_type = check_type(x)
+        if x_type.is_dataframe:
+            if self.columns is None:
+                self.columns = x.columns
+            x = x[self.columns]
+        else:
+            # TODO: build this logic
+            x = pd.DataFrame(x, columns=self.columns)
+        return x
 
-    def fit(self, x):
+    def transform(self, x, _preprocessed=False, **kwargs) -> pd.DataFrame:
+        if not _preprocessed:
+            x = self.preprocess(x)
+        return self._transform(x, **kwargs)
+
+    def _transform(self, x: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        return self.func(x)
+
+    def _fit(self, x: pd.DataFrame, **kwargs):
         pass
 
-    def fit_transform(self, x, index=None, **kwargs) -> pd.DataFrame:
-        self.fit(x)
-        return self.transform(x, index)
+    def fit(self, x: pd.DataFrame, _preprocessed=False, **kwargs):
+        if not _preprocessed:
+            x = self.preprocess(x)
+        return self._fit(x, **kwargs)
+
+    def fit_transform(self, x, **kwargs) -> pd.DataFrame:
+        x = self.preprocess(x)
+        self.fit(x, _preprocessed=True, **kwargs)
+        return self.transform(x, _preprocessed=True, **kwargs)
 
 
 class BinarizedFeature(BeamFeature):
 
-    def __init__(self, *args, name=None, **kwargs):
-        super().__init__(*args, name=name, kind=FeaturesCategories.categorical, **kwargs)
+    @wraps(BeamFeature.__init__)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, kind=FeaturesCategories.categorical, **kwargs)
         from sklearn.preprocessing import MultiLabelBinarizer
         self.encoder = MultiLabelBinarizer()
 
-    def fit(self, x):
-        if is_pandas_dataframe(x):
-            x = x.values
-        self.encoder.fit(x)
+    def _fit(self, x, **kwargs):
+        self.encoder.fit(x.values)
 
-    def transform(self, x, index=None):
-        x_type = check_type(x)
-        if x_type.is_dataframe:
-            if index is None:
-                index = x.index
-            x = x.values
+    def _transform(self, x, **kwargs):
 
-        v = self.encoder.transform(x)
+        v = self.encoder.transform(x.values)
         # Create a DataFrame with the binary indicator columns
-        df = pd.DataFrame(v, columns=self.encoder.classes_, index=index)
+        df = pd.DataFrame(v, columns=self.encoder.classes_, index=x.index)
         return df
 
 
 class DiscretizedFeature(BeamFeature):
 
-    def __init__(self, *args, columns: list[str] | str = None, n_bins: int = None, strategy='quantile',
-                 name=None, subsample=None, **kwargs):
-        super().__init__(*args, name=name, kind=FeaturesCategories.categorical, **kwargs)
+    @wraps(BeamFeature.__init__)
+    def __init__(self, *args, n_bins: int = None, strategy='quantile', subsample=None, **kwargs):
+        super().__init__(*args, kind=FeaturesCategories.categorical, **kwargs)
         self.n_bins = n_bins
         self.strategy = strategy
-        self.columns = [columns] if isinstance(columns, str) else columns
         from sklearn.preprocessing import KBinsDiscretizer
         self.encoder = KBinsDiscretizer(n_bins=self.n_bins, encode='ordinal', subsample=subsample,
                                         strategy=self.strategy)
 
-    def fit(self, x):
+    def _fit(self, x, **kwargs):
         self.encoder.fit(as_numpy(x))
 
-    def transform(self, x, index=None):
-        columns = self.columns
-        if is_pandas_dataframe(x):
-            index = index or x.index
-            x = x.values
-            if columns is None:
-                columns = as_list(x.columns)
-        elif is_pandas_series(x):
-            index = index or x.index
-            x = x.values
+    def _transform(self, x, **kwargs):
 
-        v = self.encoder.transform(x)
+        v = self.encoder.transform(x.values)
         # Create a DataFrame with the binary indicator columns
-        df = pd.DataFrame(v, columns=columns, index=index)
+        df = pd.DataFrame(v, columns=x.columns, index=x.index)
         # df = (df * self.quantiles).astype(int) + 1
         df = df.astype(int) + 1
         return df
@@ -120,8 +127,9 @@ class DiscretizedFeature(BeamFeature):
 
 class ScalingFeature(BeamFeature):
 
-    def __init__(self, *args, method='standard', name=None, **kwargs):
-        super().__init__(*args, name=name, kind=FeaturesCategories.numerical, **kwargs)
+    @wraps(BeamFeature.__init__)
+    def __init__(self, *args, method='standard', **kwargs):
+        super().__init__(*args, kind=FeaturesCategories.numerical, **kwargs)
         self.method = method
         from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
         if method == 'standard':
@@ -137,67 +145,51 @@ class ScalingFeature(BeamFeature):
     def parameters_schema(self):
         return {'method': ParameterSchema(name='method', kind=ParameterType.categorical)}
 
-    def fit(self, x):
+    def _fit(self, x, **kwargs):
         self.encoder.fit(as_numpy(x))
 
-    def transform(self, x, index=None, columns=None):
-        x_type = check_type(x)
-        if x_type.is_dataframe:
-            if index is None:
-                index = x.index
-            if columns is None:
-                columns = x.columns
-            x = x.values
+    def _transform(self, x, index=None, columns=None):
 
         v = self.encoder.transform(as_numpy(x))
         # Create a DataFrame with the binary indicator columns
-        df = pd.DataFrame(v, columns=columns, index=index)
+        df = pd.DataFrame(v, columns=x.columns, index=x.index)
         return df
 
 
 class CetegorizedFeature(BeamFeature):
 
-    def __init__(self, *args, name=None, **kwargs):
-        super().__init__(*args, name=name, kind=FeaturesCategories.categorical, **kwargs)
+    @wraps(BeamFeature.__init__)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, kind=FeaturesCategories.categorical, **kwargs)
         from sklearn.preprocessing import OrdinalEncoder
         self.encoder = OrdinalEncoder()
 
-    def fit(self, x):
+    def _fit(self, x, **kwargs):
         self.encoder.fit(as_numpy(x))
 
-    def transform(self, x, index=None, columns=None):
-        x_type = check_type(x)
-        if x_type.is_dataframe:
-            if index is None:
-                index = x.index
-            if columns is None:
-                columns = x.columns
-            x = x.values
+    def _transform(self, x, **kwargs):
 
         v = self.encoder.transform(as_numpy(x))
         # Create a DataFrame with the binary indicator columns
-        df = pd.DataFrame(v, columns=columns, index=index)
+        df = pd.DataFrame(v, columns=x.columns, index=x.index)
         return df
 
 
 class InverseOneHotFeature(BeamFeature):
 
-    def __init__(self, *args, name=None, **kwargs):
-        super().__init__(*args, name=name, kind=FeaturesCategories.categorical, **kwargs)
+    @wraps(BeamFeature.__init__)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, kind=FeaturesCategories.categorical, **kwargs)
 
-    def transform(self, x, index=None):
+    def _transform(self, x, **kwargs):
 
-        column = self.name
-        x_type = check_type(x)
-        if x_type.is_dataframe:
-            columns = x.columns
-            column = columns[0]
+        if len(self.columns) == 1:
+            column = self.columns[0]
+        else:
+            column = self.name
 
-        x = as_numpy(x)
-        x = np.argmax(x, axis=1, keepdims=True)
-        x = pd.DataFrame(x, index=index, columns=[column])
-
-        return x
+        v = np.argmax(as_numpy(x), axis=1, keepdims=True)
+        return pd.DataFrame(v, index=x.index, columns=[column])
 
 
 # class FeaturesAggregator(BeamBase):

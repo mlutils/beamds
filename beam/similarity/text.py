@@ -8,6 +8,7 @@ from ..llm import default_tokenizer
 from .dense import DenseSimilarity
 from ..path import local_copy, beam_path
 from ..resources import resource
+from ..embedding import RobustDenseEncoder
 
 
 class TextSimilarity(DenseSimilarity):

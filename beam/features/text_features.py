@@ -1,11 +1,12 @@
 import pandas as pd
 from .feature import FeaturesCategories, BeamFeature, ParameterSchema, ParameterType
 from ..resources import resource
-from functools import cached_property, partial
+from functools import cached_property, partial, wraps
 
 
 class DenseEmbeddingFeature(BeamFeature):
 
+    @wraps(BeamFeature.__init__)
     def __init__(self, embedder, *args, d=32, embedder_kwargs=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.embedder = resource(embedder)
@@ -20,7 +21,7 @@ class DenseEmbeddingFeature(BeamFeature):
                                  default_value=32, description='Size of embeddings'),
         }
 
-    def fit(self, x=None, v=None):
+    def _fit(self, x=None, v=None):
         if v is None:
             v = self.embedder.encode(x, **self.embedder_kwargs)
 
@@ -29,19 +30,20 @@ class DenseEmbeddingFeature(BeamFeature):
         self.model.fit(v)
         return v
 
-    def transform(self, x, v=None, index=None):
+    def _transform(self, x, v=None):
         if v is None:
             v = self.embedder.encode(x, **self.embedder_kwargs)
         v = self.model.transform(v)
-        return pd.DataFrame(v, index=index)
+        return pd.DataFrame(v, index=x.index)
 
-    def fit_transform(self, x, index=None, **kwargs):
+    def fit_transform(self, x, **kwargs):
         v = self.fit(x)
-        return self.transform(x, v, index)
+        return self.transform(x, v)
 
 
 class SparseEmbeddingFeature(BeamFeature):
 
+    @wraps(BeamFeature.__init__)
     def __init__(self, tokenizer, *args, d=None, min_df=None, max_df=None, max_features=None, use_idf=None,
                  smooth_idf=None, sublinear_tf=None, tokenizer_kwargs=None, n_workers=0, mp_method='joblib',
                  **kwargs):
@@ -84,7 +86,7 @@ class SparseEmbeddingFeature(BeamFeature):
 
         }
 
-    def fit(self, x):
+    def _fit(self, x, **kwargs):
 
         self.embedder.fit(x)
         v = self.embedder.transform(x)
@@ -94,13 +96,12 @@ class SparseEmbeddingFeature(BeamFeature):
         self.model.fit(v)
         return v
 
-    def transform(self, x, v=None, index=None):
+    def _transform(self, x, v=None):
         if v is None:
             v = self.embedder.transform(x)
         v = self.model.transform(v)
-        return pd.DataFrame(v, index=index)
+        return pd.DataFrame(v)
 
-    def fit_transform(self, x, index=None, **kwargs):
+    def fit_transform(self, x, **kwargs):
         v = self.fit(x)
-        return self.transform(x, v, index)
-
+        return self.transform(x, v)

@@ -10,8 +10,9 @@ from ..transformer import Transformer
 
 class RobustDenseEncoder(Transformer):
 
-    def __init__(self, encoder, batch_size=None, batch_ratios_to_try=None, **kwargs):
+    def __init__(self, encoder, device=None, batch_size=None, batch_ratios_to_try=None, **kwargs):
         super().__init__(batch_size=batch_size, **kwargs)
+        self.device = device or 'cpu'
         self.encoder = encoder
         self.batch_size = self.get_hparam('batch_size', 32)
         self.batch_ratios_to_try = batch_ratios_to_try or [1, 4, 16, 32]
