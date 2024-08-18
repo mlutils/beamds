@@ -1,9 +1,77 @@
-from .k8s import BeamK8S
-from .deploy import BeamDeploy
-from .pod import BeamPod
-from .units import K8SUnits
-from .config import K8SConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
-from .cluster import ServeCluster, RayCluster, RnDCluster
-from .resource import deploy_server
 from .dataclasses import *
+
+if len([]):
+
+    from .k8s import BeamK8S
+    from .deploy import BeamDeploy
+    from .pod import BeamPod
+    from .units import K8SUnits
+    from .config import K8SConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
+    from .cluster import ServeCluster, RayCluster, RnDCluster
+    from .manager import BeamManager
+    from .resource import deploy_server
+
+
+__all__ = ['BeamK8S', 'BeamDeploy', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig', 'ServeClusterConfig',
+           'RnDClusterConfig', 'ServeCluster', 'RayCluster', 'RnDCluster', 'BeamManager', 'deploy_server']
+
+
+def __getattr__(name):
+    if name == 'deploy_server':
+        from .resource import deploy_server
+        return deploy_server
+    elif name == 'BeamManager':
+        from .manager import BeamManager
+        return BeamManager
+    elif name == 'ServeCluster':
+        from .cluster import ServeCluster
+        return ServeCluster
+    elif name == 'RayCluster':
+        from .cluster import RayCluster
+        return RayCluster
+    elif name == 'RnDCluster':
+        from .cluster import RnDCluster
+        return RnDCluster
+    elif name == 'K8SConfig':
+        from .config import K8SConfig
+        return K8SConfig
+    elif name == 'RayClusterConfig':
+        from .config import RayClusterConfig
+        return RayClusterConfig
+    elif name == 'ServeClusterConfig':
+        from .config import ServeClusterConfig
+        return ServeClusterConfig
+    elif name == 'RnDClusterConfig':
+        from .config import RnDClusterConfig
+        return RnDClusterConfig
+    elif name == 'K8SUnits':
+        from .units import K8SUnits
+        return K8SUnits
+    elif name == 'BeamPod':
+        from .pod import BeamPod
+        return BeamPod
+    elif name == 'BeamDeploy':
+        from .deploy import BeamDeploy
+        return BeamDeploy
+    elif name == 'BeamK8S':
+        from .k8s import BeamK8S
+        return BeamK8S
+    elif name == 'ServiceConfig':
+        from .dataclasses import ServiceConfig
+        return ServiceConfig
+    elif name == 'CommandConfig':
+        from .dataclasses import CommandConfig
+        return CommandConfig
+    elif name == 'RayPortsConfig':
+        from .dataclasses import RayPortsConfig
+        return RayPortsConfig
+    elif name == 'StorageConfig':
+        from .dataclasses import StorageConfig
+        return StorageConfig
+    elif name == 'MemoryStorageConfig':
+        from .dataclasses import MemoryStorageConfig
+        return MemoryStorageConfig
+    else:
+        raise AttributeError(f"module {__name__} has no attribute {name}")
+
 

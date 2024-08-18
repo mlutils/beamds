@@ -1,7 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import PurePath, Path
-from .core import PureBeamPath, normalize_host
 from io import StringIO, BytesIO, TextIOWrapper
 import os
 import urllib3
@@ -10,8 +9,9 @@ import stat
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import pandas as pd
 import warnings
-from uuid import uuid4 as uuid
 import tempfile
+
+from .core import PureBeamPath, normalize_host
 
 
 class BeamPath(PureBeamPath):
@@ -461,7 +461,7 @@ class S3Path(PureBeamPath):
 
         metadata = self.client.meta.client.head_object(Bucket=self.bucket_name, Key=self.key)
 
-        return {
+        metadata = {
             'size': metadata['ContentLength'],  # File size in bytes
             'last_modified': metadata['LastModified'].timestamp(),  # Last modified time as a timestamp
             'etag': metadata['ETag'],  # ETag (often used as a unique identifier for the content)
@@ -474,6 +474,12 @@ class S3Path(PureBeamPath):
                  metadata['LastModified'].timestamp()))
             # Placeholder permissions, can be customized
         }
+
+        # replace the storage class defined in the constructor
+        storage_class = metadata['StorageClass']
+        if storage_class != self.storage_class:
+            self.storage_class = storage_class
+            self.url.update_query('storage_class', storage_class)
 
     def is_dir(self):
 
@@ -633,10 +639,17 @@ class S3Path(PureBeamPath):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
 
+        from botocore.exceptions import ClientError
         if self.mode in ["wb", "w"]:
             self.file_object.seek(0)
-            self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue(),
-                                                               StorageClass=self.storage_class)
+            try:
+                self.client.Object(self.bucket_name, self.key).put(Body=self.file_object.getvalue(),
+                                                                   StorageClass=self.storage_class)
+            except ClientError as e:
+                from ..logging import BeamError
+                raise BeamError(f"Error writing to {self.bucket_name}/{self.key}: {e}, "
+                                f"consider changing the storage class (currently {self.storage_class})",
+                                error=e)
 
         self.close_at_exit()
 

@@ -56,6 +56,12 @@ class BeamURL(BeamName):
                                  fragment=None)
         return urlunparse(parsed_url)
 
+    def update_query(self, key, value):
+        query = self.query
+        query[key] = value
+        self._parsed_url = self._parsed_url._replace(query=BeamURL.dict_to_query(**query))
+        self._url = None
+
     @property
     def scheme(self):
         return self.parsed_url.scheme
