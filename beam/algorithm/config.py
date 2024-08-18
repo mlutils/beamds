@@ -1,5 +1,5 @@
 
-from ..config import BeamParam, DeviceConfig, ExperimentConfig
+from ..config import BeamParam, DeviceConfig, ExperimentConfig, BeamConfig
 from ..similarity import SimilarityConfig, TFIDFConfig
 
 
@@ -34,58 +34,6 @@ class TextGroupExpansionConfig(SimilarityConfig, TFIDFConfig):
         BeamParam('early_stopping_rounds', int, None, 'Early stopping rounds for the classifier'),
     ]
 
-# class CatboostConfig(DeviceConfig):
-#     """
-#     Catboost configuration
-#     References: https://docs.aws.amazon.com/sagemaker/latest/dg/catboost-hyperparameters.html
-#     """
-#
-#     # catboost
-#     parameters = [
-#         BeamParam('cb-task', str, 'classification', 'The task type for the catboost model '
-#                                                     '[classification|regression|ranking]'),
-#         BeamParam('log-frequency', int, 10, 'The frequency (in epochs) of the logging for the catboost model'),
-#
-#         BeamParam('loss_function', str, 'Logloss', 'The loss function for the catboost model'),
-#         BeamParam('learning_rate', float, 1e-1, 'The learning rate for the catboost model', tags='tune'),
-#         # learning rate is drawn from other configurations
-#         BeamParam('n_estimators', int, 200, 'The number of trees in the catboost model', tags='tune'),
-#         BeamParam('l2_leaf_reg', float, 1e-3, 'The L2 regularization for the catboost model', tags='tune'),
-#         BeamParam('bagging_temperature', float, None,
-#                   'Controls the Bayesian bootstrap and helps in reducing overfitting by using random weights '
-#                   'Range: 0.5 to 1.'),
-#         BeamParam('border_count', int, None, 'Higher values can improve accuracy but may slow down training ', tags='tune'),
-#         BeamParam('depth', int, 8, 'The depth of the trees in the catboost model', tags='tune'),
-#         BeamParam('random_strength', float, 1., 'The random strength for the catboost model', tags='tune'),
-#         BeamParam('eval_metric', str, None, 'The evaluation metric for the catboost model, '
-#                                                'if None, it is set to RMSE for regression and '
-#                                                'Accuracy for classification'),
-#         BeamParam('custom_metric', list, None, 'The custom metric for the catboost model, '
-#                                                   'if None, it is set to MAE, MAPE for regression and '
-#                                                   'Precision, Recall for classification'),
-#         BeamParam('feature_border_type', str,
-#                   'GreedyLogSum', 'The feature border type for the catboost model. '
-#                                   'Possible values: [Median, Uniform, UniformAndQuantiles, '
-#                                   'MaxLogSum, GreedyLogSum, MinEntropy].'),
-#         BeamParam('per_float_feature_quantization', str, None,
-#                   'The per float feature quantization for the catboost model. '
-#                   'See https://catboost.ai/en/docs/references/training-parameters/quantization'),
-#         BeamParam('input_borders', str, None, 'path to input file with borders used in numeric features binarization.'),
-#         BeamParam('output_borders', str, None, 'path to output file with borders used in numeric features binarization.'),
-#         BeamParam('fold_permutation_block', int, None, 'The fold permutation block for the catboost model'),
-#         BeamParam('od_pval', float, None, 'The od pval for the catboost model'),
-#         BeamParam('od_wait', int, None, 'The od wait for the catboost model'),
-#         BeamParam('od_type', str, None, 'The od type for the catboost model'),
-#         BeamParam('nan_mode', str, None, 'The nan mode for the catboost model'),
-#         BeamParam('counter_calc_method', str, None, 'The counter calc method for the catboost model'),
-#         BeamParam('leaf_estimation_iterations', int, None, 'The leaf estimation iterations for the catboost model'),
-#         BeamParam('leaf_estimation_method', str, None, 'The leaf estimation method for the catboost model'),
-#         BeamParam('thread_count', int, None, 'The thread count for the catboost model'),
-#         BeamParam('use_best_model', bool, None, 'The use best model for the catboost model'),
-#         BeamParam('snapshot_interval', int, 600, 'The snapshot interval for intermediate model saving [in seconds]'),
-#         BeamParam('save_snapshot', bool, True, 'The save snapshot for the catboost model'),
-#
-#     ]
 
 
 class CatboostConfig(DeviceConfig):
@@ -435,3 +383,33 @@ class CatboostConfig(DeviceConfig):
 
 class CatboostExperimentConfig(CatboostConfig, ExperimentConfig):
     defaults = {'project': 'cb_beam', 'algorithm': 'CBAlgorithm'}
+
+
+class PULearnConfig(BeamConfig):
+
+    parameters = [
+        BeamParam('estimator', str, None, 'The base estimator to fit on random subsets of the dataset'),
+        BeamParam('n_estimators', int, 10, 'The number of base estimators in the ensemble'),
+        BeamParam('max_samples', int, 1.0, 'The number of unlabeled samples to draw to train each base estimator'),
+        BeamParam('max_features', int, 1.0, 'The number of features to draw from X to train each base estimator'),
+        BeamParam('bootstrap', bool, True, 'Whether samples are drawn with replacement'),
+        BeamParam('bootstrap_features', bool, False, 'Whether features are drawn with replacement'),
+        BeamParam('oob_score', bool, True, 'Whether to use out-of-bag samples to estimate the generalization error'),
+        BeamParam('warm_start', bool, False,
+                  'When set to True, reuse the solution of the previous call to fit and add more estimators to the '
+                  'ensemble, otherwise, just fit a whole new ensemble'),
+        BeamParam('n_jobs', int, 1, 'The number of jobs to run in parallel for both `fit` and `predict`'),
+        BeamParam('random_state', int, None,
+                  'If int, random_state is the seed used by the random number generator; '
+                  'If RandomState instance, random_state is the random number generator; '
+                  'If None, the random number generator is the RandomState instance used by `np.random`'),
+        BeamParam('verbose', int, 0, 'Controls the verbosity of the building process'),
+    ]
+
+
+class PULearnExperimentConfig(PULearnConfig, ExperimentConfig):
+    defaults = {'project': 'pu_learn_beam', 'algorithm': 'BeamPUClassifier'}
+
+
+class PULearnCBExperimentConfig(PULearnExperimentConfig, CatboostConfig):
+    pass

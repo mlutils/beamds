@@ -31,6 +31,7 @@ def synthetic_test(estimator='svc'):
 def covtype_test():
 
     from examples.cb_example import preprocess_covtype
+    from beam.pulearn.pulearn import BeamPUClassifier, BeamCatboostClassifier
 
     data = preprocess_covtype()
     x = data['x']
@@ -40,10 +41,11 @@ def covtype_test():
 
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
 
-    model = CatBoostClassifier(iterations=100, depth=2, learning_rate=0.1, loss_function='Logloss', verbose=20,
-                               cat_features=categorical_features)
+    model = BeamCatboostClassifier(iterations=100, depth=2, learning_rate=0.1,
+                                   loss_function='Logloss', verbose=20)
 
-    pu_estimator = BaggingPuClassifier(estimator=model, n_estimators=15, verbose=20)
+    pu_estimator = BeamPUClassifier(estimator=model, n_estimators=15, verbose=20,
+                                    cat_features=categorical_features)
     pu_estimator.fit(x_train, y_train)
 
     y_pred = pu_estimator.predict(x_test)
