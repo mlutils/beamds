@@ -12,18 +12,13 @@ from beam.dataset.tabular_dataset import TabularDataset
 
 def get_data(name='covtype'):
     from sklearn import datasets
-    import pandas as pd
     fetcher = getattr(datasets, f'fetch_{name}')
     data = fetcher()
-    return {'x': data.data, 'y': data.target, 'columns': data.feature_names,
-            'labels': data.target, 'labels_map': data.target_names}
+    return {'x': data.data, 'y': data.target, 'columns': data.feature_names, 'labels': data.target}
 
 
-def main():
-
-    config = CatboostExperimentConfig(loss_function='MultiClass', iterations=100)
-    experiment = Experiment(config)
-    data = get_data()
+def preprocess_covtype():
+    data = get_data(name='covtype')
     x = data['x']
     columns = data['columns']
 
@@ -32,8 +27,17 @@ def main():
     x3 = InverseOneHotFeature(name='Soil_Type').transform(x[:, 14:])
 
     x = pd.concat([x1, x2, x3], axis=1)
+    return {'x': x, 'y': data['y'], 'columns': x.columns}
 
-    dataset = TabularDataset(x=x, y=data['y'], cat_features=['Wilderness_Area', 'Soil_Type'])
+
+def main():
+
+    config = CatboostExperimentConfig(loss_function='MultiClass', iterations=100)
+    experiment = Experiment(config)
+
+    data = preprocess_covtype()
+
+    dataset = TabularDataset(x=data['x'], y=data['y'], cat_features=['Wilderness_Area', 'Soil_Type'])
 
     alg = CBAlgorithm(config, experiment=experiment)
     alg.fit(dataset=dataset)

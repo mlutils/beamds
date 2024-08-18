@@ -1,3 +1,5 @@
+from typing import Any
+
 from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset,
                      RedisPath, SMBPath, MLFlowPath)
 from .core import BeamKey, BeamURL, IOPath, DictPath
@@ -8,7 +10,7 @@ beam_key = BeamKey()
 
 
 def beam_path(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
-              password=None, **kwargs) -> BeamPath:
+              password=None, **kwargs) -> BeamPath | Any:
     """
 
     @param port:
@@ -132,7 +134,7 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
         return SFTPPath(path, hostname=hostname, username=username, port=port,
                         private_key=private_key, password=password, **kwargs)
     else:
-        raise NotImplementedError
+        raise Exception(f'Unknown protocol: {url.protocol}')
 
 
 def in_memory_storage(mode=None, data=None):

@@ -1,7 +1,11 @@
+from collections import namedtuple
 
 from ..meta import BeamName
 from ..utils import Timer, jupyter_like_traceback, dict_to_list, cached_property
 from ..logging import beam_logger as logger
+
+
+TaskResultTuple = namedtuple('TaskResult', ['name', 'result', 'exception'])
 
 
 class TaskResult:
@@ -43,27 +47,27 @@ class SyncedResults:
 
     @cached_property
     def results_map(self):
-        return {r['name']: r for r in self.results}
+        return {r.name: r for r in self.results}
 
     @cached_property
     def failed(self):
-        failed = {r['name']: r['exception'] for r in self.results if r['exception'] is not None}
+        failed = {r.name: r.exception for r in self.results if r.exception is not None}
         return dict_to_list(failed, convert_str=False)
 
     @cached_property
     def succeeded(self):
-        succeeded = {r['name']: r['result'] for r in self.results if r['exception'] is None}
+        succeeded = {r.name: r.result for r in self.results if r.exception is None}
         return dict_to_list(succeeded, convert_str=False)
 
     @cached_property
     def values(self):
-        vals = {r['name']: r['result'] if r['exception'] is None else r for r in self.results}
+        vals = {r.name: r.result if r.exception is None else r for r in self.results}
         return dict_to_list(vals, convert_str=False)
 
     @cached_property
     def exceptions(self):
-        vals = {r['name']: {'exception': r['exception'], 'traceback': r['result']}
-                for r in self.results if r['exception'] is not None}
+        vals = {r.name: {'exception': r.exception, 'traceback': r.result}
+                for r in self.results if r.exception is not None}
         return dict_to_list(vals, convert_str=False)
 
 
@@ -92,7 +96,7 @@ class BeamTask(BeamName):
         self.kwargs = kwargs
         return self
 
-    def run(self):
+    def run(self) -> TaskResultTuple:
 
         metadata = f"({self.metadata})" if self.metadata is not None else ""
 
@@ -112,4 +116,5 @@ class BeamTask(BeamName):
         finally:
             self.is_pending = False
 
-        return {'name': self.name, 'result': res, 'exception': self.exception}
+        # return {'name': self.name, 'result': res, 'exception': self.exception}
+        return TaskResultTuple(self.name, res, self.exception)

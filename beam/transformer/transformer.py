@@ -114,7 +114,7 @@ class Transformer(Processor):
                            f'The split_by is set to "keys".')
             self.split_by = 'keys'
 
-        store_path = self.get_hparam('store_path', preferred=store_path)
+        store_path = store_path or self.get_hparam('store_path')
         if store_path is not None:
             store_path = beam_path(store_path)
         if store_path is not None and name is not None:
@@ -421,25 +421,22 @@ class Transformer(Processor):
             logger.info("Failed tasks can be obtained in self.exceptions")
             self.exceptions = exceptions
 
-        results = []
-        for _, v in iter_container(synced_results.values):
-            if not isinstance(v, Exception):
-                results.append(v)
+        results = synced_results.results
 
         if is_chunk:
-            values = [xi[1] for xi in results]
-            keys = [xi[0] for xi in results]
+            values = [xi.result[1] if xi.exception is None else xi for xi in results]
+            keys = [xi.name for xi in results]
             keys = [ki if type(ki) is tuple else (ki,) for ki in keys]
+            x = build_container_from_tupled_keys(keys, values)
 
             if len(exceptions) == 0:
-                x = build_container_from_tupled_keys(keys, values)
 
                 logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
                 if reduce and not (store_chunk and not store):
                     x = self.reduce(x, split_by=split_by)
             else:
-                x = {k[0] if type(k) is tuple and len(k) == 1 else k: v for k, v in zip(keys, values)}
+                # x = {k[0] if type(k) is tuple and len(k) == 1 else k: v for k, v in zip(keys, values)}
                 if store and not store_chunk:
                     logger.warning("Due to exceptions, the data will not be stored, "
                                    "the data is returned as a dictionary of all the successful tasks.")
@@ -450,7 +447,7 @@ class Transformer(Processor):
                 logger.warning("Exception occurred, the exception object and the task are returned.")
                 return results
             logger.info(f"Finished transformer process: {self.name}.")
-            x = results[0][1]
+            x = results[0].result[1]
 
         if store and not store_chunk:
 
@@ -458,7 +455,6 @@ class Transformer(Processor):
             if not isinstance(x, BeamData):
                 x = BeamData(x)
             x.store(path=store_path)
-            # x = BeamData.from_path(path=path)
 
         if return_results:
             return x

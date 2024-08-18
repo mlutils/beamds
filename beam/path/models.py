@@ -455,6 +455,26 @@ class S3Path(PureBeamPath):
         except botocore.exceptions.ClientError:
             return False
 
+    def stat(self):
+        if not self.exists():
+            raise FileNotFoundError(f"No such file or directory: '{self}'")
+
+        metadata = self.client.meta.client.head_object(Bucket=self.bucket_name, Key=self.key)
+
+        return {
+            'size': metadata['ContentLength'],  # File size in bytes
+            'last_modified': metadata['LastModified'].timestamp(),  # Last modified time as a timestamp
+            'etag': metadata['ETag'],  # ETag (often used as a unique identifier for the content)
+            'content_type': metadata['ContentType'],  # MIME type of the file
+            'storage_class': metadata['StorageClass'],  # Storage class
+            'owner': metadata.get('Owner', {}).get('DisplayName', None),  # Owner's display name (if available)
+            'permissions': os.stat_result(
+                (0, 0, 0, 0, 0, 0, metadata['ContentLength'],
+                 metadata['LastModified'].timestamp(), metadata['LastModified'].timestamp(),
+                 metadata['LastModified'].timestamp()))
+            # Placeholder permissions, can be customized
+        }
+
     def is_dir(self):
 
         if self.bucket_name is None:

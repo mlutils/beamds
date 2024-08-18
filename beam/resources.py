@@ -1,4 +1,5 @@
 from typing import Union, Any
+import sys
 
 from .base import BeamResource, resource_names
 
@@ -40,19 +41,45 @@ def resource(uri, **kwargs) -> Union[BeamResource, Any]:
 
 
 def this_file():
+
+    from .utils import is_notebook
     import inspect
     # Get the current call stack
     stack = inspect.stack()
 
+    p = None
     # Iterate over the stack frames to find the first one outside the current module
     for frame in stack:
         caller_file_path = frame.filename
         if not caller_file_path.endswith('/resources.py'):
-            return resource(caller_file_path).resolve()
+            p = resource(caller_file_path).resolve()
+            break
+    if p is None:
+        # If no such frame is found (very unlikely), return the first frame
+        p = resource(stack[0].filename).resolve()
 
-    # If no such frame is found (very unlikely), return the first frame
-    return resource(stack[0].filename).resolve()
+    if 'ipykernel' in p.str and is_notebook():
+
+        try:
+            r = resource(sys.argv[2]).read()
+            return resource(r['jupyter_session'])
+        except Exception as e:
+            from .logging import beam_logger as logger
+            logger.error(f"Notebook detected, could not get the current file path from ths sys.argv configuration: {e}")
+            return None
+
+    return p
 
 
 def this_dir():
-    return this_file().parent
+    p = this_file()
+    if p is None:
+        from .logging import beam_logger as logger
+        logger.warning('Could not get the current file (probably jupyter settings), '
+                       'returning the current working directory instead')
+        return cwd()
+    return p.parent
+
+
+def cwd():
+    return resource('.').resolve()
