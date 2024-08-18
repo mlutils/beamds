@@ -1,70 +1,70 @@
-import kopf
-import yaml
-from kubernetes.client import ApiClient, Configuration
-from openshift.dynamic import DynamicClient
-import os
-
-# Custom class imports
-from beam.orchestration import BeamK8S, BeamDeploy
-from beam.orchestration.config import K8SConfig
+from ..base import BeamBase
+from .k8s import BeamK8S
+from threading import Thread
+import time
+import atexit
 
 
+class BeamManager(BeamBase):
 
-def load_config(file_path):
-    with open(file_path, 'r') as file:
-        return yaml.safe_load(file)
-
-script_dir = os.path.dirname(os.path.realpath(__file__))
-conf_path = os.path.join(script_dir, '/home/dayosupp/projects/beamds/examples/orchestration_beamdeploy.yaml')
-config_data = load_config(conf_path)
-
-beam_conf_path = os.path.join(script_dir, '/home/dayosupp/projects/beamds/examples/orchestration_beamdeploy.yaml')
-beam_config = K8SConfig(load_config(beam_conf_path))
-
-def setup_custom_kubernetes_client():
-    configuration = Configuration()
-    configuration.host = config_data['kopf_server']
-    configuration.verify_ssl = False
-    api_client = ApiClient(configuration=configuration)
-    return DynamicClient(api_client)
-
-# Instantiate and configure the global ApiClient
-dynamic_client = setup_custom_kubernetes_client()
-
-class BeamK8SConfigured(BeamK8S):
     def __init__(self, config, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.config = config
-        self.namespace = config.get('namespace', 'default')
+        super().__init__(*args, hparams=config, **kwargs)
+        self.k8s = BeamK8S(config)
+        self.clusters = {}
+        # add monitor thread
+        self.monitor_thread = Thread(target=self._monitor)
+        self.monitor_thread.start()
+        atexit.register(self._cleanup)
 
-@kopf.on.startup()
-def configure_operator(**_):
-    print("Custom Kubernetes client configured using specified API settings.")
-    @kopf.on.login()
-    def login_fn(**_):
-        return kopf.ConnectionInfo(
-            server = config_data['api_url'],
-            token = config_data['api_token'],
-            insecure = True
-        )
+    def _monitor(self):
+        while True:
+            for cluster in self.clusters:
+                self.clusters[cluster].monitor()
+            time.sleep(1)
 
-@kopf.on.create('mydomain.com', 'v1', 'beamdeployments')
-def handle_create(spec, **kwargs):
-    beam_k8s = BeamK8SConfigured(beam_config)
-    project_name = spec.get('projectName', beam_config.get('project_name'))
-    beam_k8s.create_project(project_name)
-    print(f"Project {project_name} created or verified.")
+    def _cleanup(self):
+        for cluster in self.clusters:
+            self.clusters[cluster].cleanup()
+        self.k8s.cleanup()
+        # kill monitor thread
+        self.monitor_thread.join()
 
-@kopf.on.update('mydomain.com', 'v1', 'beamdeployments')
-def handle_update(spec, **kwargs):
-    beam_k8s = BeamK8SConfigured(beam_config)
-    print("Update handled.")
+    def info(self):
+        return {cluster: self.clusters[cluster].info() for cluster in self.clusters}
 
-@kopf.on.delete('mydomain.com', 'v1', 'beamdeployments')
-def handle_delete(spec, **kwargs):
-    beam_k8s = BeamK8SConfigured(beam_config)
-    project_name = spec.get('projectName', beam_config.get('project_name'))
-    beam_k8s.delete_project(project_name)
-    print(f"Project {project_name} cleanup initiated.")
+    def launch_ray_cluster(self, config, **kwargs):
+        name = self.get_cluster_name(config)
+        from .cluster import RayCluster
+        self.clusters[name] = RayCluster(config, self.k8s, name=name, **kwargs)
 
-kopf.run()
+    def launch_serve_cluster(self, config, **kwargs):
+        name = self.get_cluster_name(config)
+        from .cluster import ServeCluster
+        self.clusters[name] = ServeCluster(config, self.k8s, name=name, **kwargs)
+
+    def launch_rnd_cluster(self, config, **kwargs):
+        name = self.get_cluster_name(config)
+        from .cluster import RnDCluster
+        self.clusters[name] = RnDCluster(config, self.k8s, name=name, **kwargs)
+
+    def get_cluster_name(self, config):
+        # TODO: implement a method to generate a unique cluster name (or get it from the config)
+        # return random name for now, (docker style)
+        import randomname
+        return randomname.generate_name()
+
+    def scale_up(self, cluster, n):
+        # add n pods to the cluster
+        self.clusters[cluster].scale_up(n)
+
+    def scale_down(self, cluster, n):
+        # remove n pods from the cluster
+        self.clusters[cluster].scale_down(n)
+
+    def kill_cluster(self, cluster):
+        self.clusters[cluster].cleanup()
+        del self.clusters[cluster]
+
+    def cluster_info(self, cluster):
+        return self.clusters[cluster].info()
+
