@@ -9,6 +9,7 @@ from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmC
                           MemoryStorageConfig, SecurityContextConfig)
 
 
+# BeamCluster class
 class BeamCluster(BeamBase):
 
     def __init__(self, deployment: Union[BeamDeploy, Dict[str, BeamDeploy]], config, pods: List[BeamPod] = None,
