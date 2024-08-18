@@ -1,9 +1,6 @@
 import sys
 from contextlib import contextmanager
-
 import loguru
-from ..utils import running_platform
-from ..path import beam_path
 import atexit
 
 
@@ -14,7 +11,6 @@ class BeamLogger:
         self._level = None
         self.logger.remove()
         self.handlers_queue = []
-        self.running_platform = running_platform()
 
         self.handlers = {}
         self.tags = {}
@@ -29,6 +25,11 @@ class BeamLogger:
         self.set_verbosity('INFO')
 
         atexit.register(self.cleanup)
+
+    @property
+    def running_platform(self):
+        from ..utils import running_platform
+        return running_platform()
 
     def dont_print(self):
         self.logger.remove(self.handlers['stdout'])
@@ -55,7 +56,7 @@ class BeamLogger:
         self.file_objects = {}
 
     def add_file_handlers(self, path, tag=None):
-
+        from ..path import beam_path
         path = beam_path(path)
 
         debug_path = path.joinpath('debug.log')
@@ -91,6 +92,7 @@ class BeamLogger:
         self.remove_tag('default')
 
     def open(self, path):
+        from ..path import beam_path
         path = beam_path(path)
         self.handlers_queue.append(path)
         return self
