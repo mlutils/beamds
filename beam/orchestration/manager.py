@@ -4,7 +4,7 @@ from threading import Thread
 import time
 import atexit
 
-
+# BeamManager class
 class BeamManager(BeamBase):
 
     def __init__(self, config, *args, **kwargs):
