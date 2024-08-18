@@ -1,10 +1,10 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~OccdSqOwZk7k2FCJb2HwPy0tVTOwYtzKqvmMCTyMlSc
+api_token: sha256~dfymv0fOA2rC8d00ihH8N2GSlJZHuE0btauj6qJB0K4
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='unix://var/run/docker.sock')
-#client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+# client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
 beam_version: 2.6.9
@@ -19,7 +19,7 @@ command:
 cpu_limits: '4'
 cpu_requests: '4'
 create_service_account: true
-deployment_name: university
+deployment_name: prod
 #enable_ray_ports: true
 entrypoint_args:
 - '--no-ray'
@@ -34,7 +34,7 @@ gpu_requests: '1'
 image_name: harbor.dt.local/public/beam:20240801
 #image_name: rocker/rstudio:latest
 labels:
-  app: university
+  app: prod
 memory_limits: '12'
 memory_requests: '12'
 memory_storage_configs:
@@ -47,7 +47,7 @@ new_image:  rocker/rstudio:latest
 n_pods: '2'
 node_selector:
   gpu-type: tesla-a100
-project_name: kh-dev
+project_name: starfield
 # push_image: false - this is removed
 ray_ports_configs:
 - ray_ports:
@@ -119,7 +119,7 @@ service_configs:
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
-- create_pvc: true
+- create_pvc: false
   pvc_access_mode: ReadWriteMany
   pvc_mount_path: /usr/local/lib/R/site-library
   pvc_name: data-pvc
@@ -135,8 +135,3 @@ user_idm_configs:
   role_binding_name: yos
   role_name: admin
   user_name: yos
-- create_role_binding: false
-  project_name: ben-guryon
-  role_binding_name: asafe
-  role_name: admin
-  user_name: asafe

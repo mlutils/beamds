@@ -1,5 +1,5 @@
 alg_image_name: fake-alg-http-server:latest
-api_token: sha256~AfybvpfpqqmFDSQ1rMzqmjSNNTHMYe_cAjFsMC_0gtg
+api_token: sha256~dfymv0fOA2rC8d00ihH8N2GSlJZHuE0btauj6qJB0K4
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -41,7 +41,7 @@ memory_storage_configs:
 n_pods: '2'
 node_selector:
   gpu-type: tesla-a100
-project_name: kh-dev
+project_name: starfield
 push_image: true
 ray_ports_configs:
 - ray_ports:

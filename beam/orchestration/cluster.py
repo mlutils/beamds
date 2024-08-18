@@ -289,23 +289,6 @@ class RnDCluster(BeamCluster):
             logger.debug(beam_traceback())
             raise e
 
-        # try:
-        #     deployment.launch(replicas=config['replicas'])
-        #     if not deployment:
-        #         raise Exception("Pod deployment failed")
-        #     #
-        #     # for pod in deployment:
-        #     #     logger.info(deployment.cluster_info)
-        #     logger.info(deployment.cluster_info)
-        #
-        #     return cls(deployment=deployment, replicas=replicas, config=config)
-
-        except Exception as e:
-            logger.error(f"Error during deployment: {str(e)}")
-            from ..utils import beam_traceback
-            logger.debug(beam_traceback())
-            raise e
-
     @classmethod
     def deploy_rnd_cluster_deployment(cls, replicas, config):
         return cls._deploy_and_launch(replicas=replicas, config=config)
