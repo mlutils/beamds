@@ -9,7 +9,7 @@ from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmC
                           MemoryStorageConfig, SecurityContextConfig)
 
 
-# BeamCluster class
+# BeamCluster class now inherits from BeamBase
 class BeamCluster(BeamBase):
 
     def __init__(self, deployment: Union[BeamDeploy, Dict[str, BeamDeploy]], config, pods: List[BeamPod] = None,

@@ -1,4 +1,4 @@
-from beam.orchestration import (RayClusterConfig, RayCluster, RnDCluster,
+from beam.orchestration import (RayClusterConfig, RayCluster, RnDCluster, BeamManagerConfig,
                                 RnDClusterConfig, ServeClusterConfig, ServeCluster, )
 from beam.resources import resource, this_dir
 from beam.logging import beam_logger as logger
@@ -8,7 +8,7 @@ import sys
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 conf_path = resource(os.path.join(script_dir, 'orchestration_manager.yaml')).str
-config = RnDClusterConfig(conf_path)
+config = BeamManagerConfig(conf_path)
 
 logger.info(f"hello world")
 logger.info(f"API URL: {config.api_url}")

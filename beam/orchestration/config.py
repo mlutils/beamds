@@ -89,7 +89,10 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
         BeamParam('alg', object, None, 'Algorithm object'),
         BeamParam('copy-bundle', bool, False, 'Copy bundle to tmp directory'),
     ]
-
+class BeamManagerConfig(K8SConfig):
+    parameters = [
+        BeamParam('clusters', list, [], 'list of clusters'),
+    ]
 
 #
 # alg_image_name: fake-alg-http-server:latest

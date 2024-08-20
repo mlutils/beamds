@@ -6,14 +6,14 @@ if len([]):
     from .deploy import BeamDeploy
     from .pod import BeamPod
     from .units import K8SUnits
-    from .config import K8SConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
+    from .config import K8SConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig, BeamManagerConfig
     from .cluster import ServeCluster, RayCluster, RnDCluster
     from .manager import BeamManager
     from .resource import deploy_server
 
 
 __all__ = ['BeamK8S', 'BeamDeploy', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig', 'ServeClusterConfig',
-           'RnDClusterConfig', 'ServeCluster', 'RayCluster', 'RnDCluster', 'BeamManager', 'deploy_server']
+           'RnDClusterConfig','BeamManagerConfig' 'ServeCluster', 'RayCluster', 'RnDCluster', 'BeamManager', 'deploy_server']
 
 
 def __getattr__(name):
@@ -44,6 +44,9 @@ def __getattr__(name):
     elif name == 'RnDClusterConfig':
         from .config import RnDClusterConfig
         return RnDClusterConfig
+    elif name == 'BeamManagerConfig':
+        from .config import BeamManagerConfig
+        return BeamManagerConfig
     elif name == 'K8SUnits':
         from .units import K8SUnits
         return K8SUnits
