@@ -243,9 +243,6 @@ class BeamDeploy(BeamBase):
 
     def extract_ports(self):
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
-        # if self.ray_ports_configs:
-        #     for ray_ports_config in self.ray_ports_configs:
-        #         extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
         return extracted_ports
 
     def generate_beam_pod(self, pod_infos):
