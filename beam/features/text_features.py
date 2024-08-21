@@ -1,16 +1,17 @@
 import pandas as pd
 from .feature import FeaturesCategories, BeamFeature, ParameterSchema, ParameterType
 from ..resources import resource
+from ..misc import svd_preprocess
 from functools import cached_property, partial, wraps
 
 
 class DenseEmbeddingFeature(BeamFeature):
 
     @wraps(BeamFeature.__init__)
-    def __init__(self, embedder, *args, d=32, embedder_kwargs=None, **kwargs):
+    def __init__(self, encoder, *args, d=32, encoder_kwargs=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.embedder = resource(embedder)
-        self.embedder_kwargs = embedder_kwargs or {}
+        self.encoder = resource(encoder)
+        self.encoder_kwargs = encoder_kwargs or {}
         self.d = d
         self.model = None
 
@@ -23,7 +24,7 @@ class DenseEmbeddingFeature(BeamFeature):
 
     def _fit(self, x=None, v=None):
         if v is None:
-            v = self.embedder.encode(x, **self.embedder_kwargs)
+            v = self.encoder.encode(x, **self.encoder_kwargs)
 
         from sklearn.decomposition import PCA
         self.model = PCA(n_components=self.d)
@@ -32,7 +33,7 @@ class DenseEmbeddingFeature(BeamFeature):
 
     def _transform(self, x, v=None):
         if v is None:
-            v = self.embedder.encode(x, **self.embedder_kwargs)
+            v = self.encoder.encode(x, **self.encoder_kwargs)
         v = self.model.transform(v)
         return pd.DataFrame(v, index=x.index)
 
@@ -51,7 +52,7 @@ class SparseEmbeddingFeature(BeamFeature):
         if tokenizer_kwargs:
             tokenizer = partial(tokenizer, **tokenizer_kwargs)
 
-        d = d or self.parameters_schema['d'].default_value
+        self.d = d or self.parameters_schema['d'].default_value
         min_df = min_df or self.parameters_schema['min_df'].default_value
         max_df = max_df or self.parameters_schema['max_df'].default_value
         max_features = max_features or self.parameters_schema['max_features'].default_value
@@ -60,7 +61,7 @@ class SparseEmbeddingFeature(BeamFeature):
         sublinear_tf = sublinear_tf or self.parameters_schema['sublinear_tf'].default_value
 
         from ..similarity import TFIDF
-        self.embedder = TFIDF(preprocessor=tokenizer, d=d, min_df=min_df, max_df=max_df, max_features=max_features,
+        self.encoder = TFIDF(preprocessor=tokenizer, min_df=min_df, max_df=max_df, max_features=max_features,
                            use_idf=use_idf, smooth_idf=smooth_idf, sublinear_tf=sublinear_tf, n_workers=n_workers,
                            mp_method=mp_method)
 
@@ -88,20 +89,20 @@ class SparseEmbeddingFeature(BeamFeature):
 
     def _fit(self, x, **kwargs):
 
-        self.embedder.fit(x)
-        v = self.embedder.transform(x)
+        x = list(x.squeeze().values)
+        v = self.encoder.fit_transform(x)
 
         from sklearn.decomposition import TruncatedSVD
         self.model = TruncatedSVD(n_components=self.d)
+        v = svd_preprocess(v)
         self.model.fit(v)
         return v
 
     def _transform(self, x, v=None):
         if v is None:
-            v = self.embedder.transform(x)
+            x = list(x.squeeze().values)
+            v = self.encoder.transform(x)
+        v = svd_preprocess(v)
         v = self.model.transform(v)
-        return pd.DataFrame(v)
+        return pd.Series(list(v)).apply(list).to_frame(name=self.name)
 
-    def fit_transform(self, x, **kwargs):
-        v = self.fit(x)
-        return self.transform(x, v)

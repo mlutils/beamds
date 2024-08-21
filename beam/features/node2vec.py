@@ -56,6 +56,10 @@ class Node2Vec(BeamFeature):
 
         }
 
+    @cached_property
+    def na_value(self):
+        return np.zeros(self.model.vector_size)
+
     def _fit(self, x, source='source', target='target', directed=False, weight='weight', weighted=False):
 
         x = x[[source, target, weight]] if weighted else x[[source, target]]
@@ -77,7 +81,7 @@ class Node2Vec(BeamFeature):
 
     def _transform(self, x, **kwargs):
         assert self.model is not None, 'Model is not trained'
-        return x.applymap(lambda i: self.model.wv[i])
+        return x.applymap(lambda i: self.model.wv[i] if i in self.model.wv.key_to_index else self.na_value)
 
     def fit_transform(self, x, g=None, source='source', target='target',
                       directed=False, weight='weight', weighted=False, column=None, index=None):

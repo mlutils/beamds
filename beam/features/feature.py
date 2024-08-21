@@ -51,13 +51,17 @@ class BeamFeature(BeamBase):
 
     def preprocess(self, x):
         x_type = check_type(x)
-        if x_type.is_dataframe:
-            if self.columns is None:
-                self.columns = x.columns
-            x = x[self.columns]
-        else:
+        # if x_type.is_dataframe:
+        #     if self.columns is None:
+        #         self.columns = x.columns
+        #     x = x[self.columns]
+        # else:
+        #     # TODO: build this logic
+        #     x = pd.DataFrame(x, columns=self.columns)
+        if not x_type.is_dataframe:
             # TODO: build this logic
             x = pd.DataFrame(x, columns=self.columns)
+
         return x
 
     def transform(self, x, _preprocessed=False, **kwargs) -> pd.DataFrame:
@@ -91,11 +95,11 @@ class BinarizedFeature(BeamFeature):
         self.encoder = MultiLabelBinarizer()
 
     def _fit(self, x, **kwargs):
-        self.encoder.fit(x.values)
+        self.encoder.fit(x.squeeze().values)
 
     def _transform(self, x, **kwargs):
 
-        v = self.encoder.transform(x.values)
+        v = self.encoder.transform(x.squeeze().values)
         # Create a DataFrame with the binary indicator columns
         df = pd.DataFrame(v, columns=self.encoder.classes_, index=x.index)
         return df

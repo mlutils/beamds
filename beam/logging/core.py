@@ -111,23 +111,26 @@ class BeamLogger:
             self.logger.remove(self.handlers[fullname])
             self.handlers.pop(fullname)
 
-    def debug(self, message, **extra):
-        self.logger.debug(message, **extra)
+    def concat(self, *messages):
+        return ' '.join([str(m) for m in messages])
 
-    def info(self, message, **extra):
-        self.logger.info(message, **extra)
+    def debug(self, *messages, **extra):
+        self.logger.debug(self.concat(messages), **extra)
 
-    def warning(self, message, **extra):
-        self.logger.warning(message, **extra)
+    def info(self, *messages, **extra):
+        self.logger.info(self.concat(messages), **extra)
 
-    def error(self, message, **extra):
-        self.logger.error(message, **extra)
+    def warning(self, *messages, **extra):
+        self.logger.warning(self.concat(messages), **extra)
 
-    def critical(self, message, **extra):
-        self.logger.critical(message, **extra)
+    def error(self, *messages, **extra):
+        self.logger.error(self.concat(messages), **extra)
 
-    def exception(self, message, **extra):
-        self.logger.exception(message, **extra)
+    def critical(self, *messages, **extra):
+        self.logger.critical(self.concat(messages), **extra)
+
+    def exception(self, *messages, **extra):
+        self.logger.exception(self.concat(messages), **extra)
 
     def __getstate__(self):
 

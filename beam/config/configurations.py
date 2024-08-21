@@ -255,8 +255,7 @@ class BeamProjectConfig(BeamConfig):
                   'Root directory for Logs and results'),
         BeamParam('data_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'data'),
                   'Where the dataset is located'),
-        BeamParam('config_file', str, str(Path.home().joinpath('conf.pkl'), ),
-                  'The beam config file to use with secret keys'),
+        BeamParam('config_file', str, None, 'The beam config file to use with secret keys'),
         BeamParam('verbosity', str, 'info', 'The verbosity level [debug|info|warning|error]'),
     ]
 
