@@ -111,7 +111,7 @@ class BeamLogger:
             self.logger.remove(self.handlers[fullname])
             self.handlers.pop(fullname)
 
-    def concat(self, *messages):
+    def concat(self, messages):
         return ' '.join([str(m) for m in messages])
 
     def debug(self, *messages, **extra):

@@ -33,7 +33,7 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
                  strict=False, load_config_files=True, load_script_arguments=True, **kwargs):
 
         self._init_is_done = False
-        self._paser = None
+        self._help = None
 
         if tags is None:
             tags = defaultdict(set)
@@ -75,7 +75,8 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
 
                 parser = self.update_parser(parser, defaults=d, parameters=h, source=ti.__name__)
 
-            self._paser = parser
+            # we cannot store parser as it does not support serialization (pickling)
+            self._help = parser.format_help()
             config, more_tags = _beam_arguments(parser, *args, return_defaults=return_defaults,
                                                 return_tags=True, silent=silent,
                                                 strict=strict, load_config_files=load_config_files,
@@ -240,8 +241,8 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
 
     @property
     def help(self):
-        if self._paser is not None:
-            return self._paser.format_help()
+        if self._help is not None:
+            return self._help
         return "Unavailable to print help as parser is not available"
 
     def to_path(self, path, ext=None):

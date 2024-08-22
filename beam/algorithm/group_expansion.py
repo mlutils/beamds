@@ -9,7 +9,6 @@ from ..utils import cached_property, Timer, as_numpy
 from ..data import BeamData
 from ..logging import beam_logger as logger
 from .core_algorithm import Algorithm
-from ..type import BeamType, Types
 from ..misc import svd_preprocess
 from dataclasses import dataclass
 

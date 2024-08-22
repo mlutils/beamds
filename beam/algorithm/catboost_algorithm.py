@@ -14,7 +14,8 @@ class CBAlgorithm(Algorithm):
 
     def __init__(self, hparams=None, name=None, **kwargs):
 
-        super().__init__(hparams=hparams, name=name, _config_scheme=CatboostConfig,  **kwargs)
+        _config_scheme = kwargs.pop('_config_scheme', CatboostConfig)
+        super().__init__(hparams=hparams, name=name, _config_scheme=_config_scheme,  **kwargs)
         self._t0 = None
         self._batch_size = None
 
@@ -203,8 +204,7 @@ class CBAlgorithm(Algorithm):
         self.model.fit(train_pool, eval_set=dataset.eval_pool, log_cout=self.log_cout,
                        snapshot_interval=self.get_hparam('snapshot_interval'),
                        save_snapshot=self.get_hparam('save_snapshot'),
-                       snapshot_file=snapshot_file,
-                       log_cerr=self.log_cerr, **kwargs)
+                       snapshot_file=snapshot_file, log_cerr=self.log_cerr, **kwargs)
 
         if self.experiment:
             self.experiment.save_state(self)

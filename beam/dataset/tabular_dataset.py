@@ -67,6 +67,18 @@ class TabularDataset(UniversalDataset):
             self.embedding_features = embedding_features
 
     @property
+    def cat_columns(self):
+        return [self.columns[i] for i in self.cat_features] if self.cat_features else None
+
+    @property
+    def text_columns(self):
+        return [self.columns[i] for i in self.text_features] if self.text_features else None
+
+    @property
+    def embedding_columns(self):
+        return [self.columns[i] for i in self.embedding_features] if self.embedding_features else None
+
+    @property
     def train_pool(self):
         x, y = self.get_subset_data('train')
         return self.pool(x, y)
