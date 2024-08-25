@@ -441,22 +441,27 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             x = x.reset_index()
             columns = x.columns
 
-            for i, c in enumerate(np.array_split(x, n_chunks, axis=dim)):
+            if chunksize == 1 and dim == 0:
+                for i, c in x.iterrows():
+                    yield i, c
+            else:
 
-                if squeeze and len(c) == 1:
-                    c = c.squeeze()
-                    c = upd.Series(c, index=columns)
-                    c.name = c[index_name]
-                    c = c.drop(index_name)
+                for i, c in enumerate(np.array_split(x, n_chunks, axis=dim)):
 
-                else:
-                    c = upd.DataFrame(data=c, columns=columns)
-                    c = c.set_index(index_name)
-
-                    if is_series:
+                    if squeeze and len(c) == 1:
                         c = c.squeeze()
+                        c = upd.Series(c, index=columns)
+                        c.name = c[index_name]
+                        c = c.drop(index_name)
 
-                yield i, c
+                    else:
+                        c = upd.DataFrame(data=c, columns=columns)
+                        c = c.set_index(index_name)
+
+                        if is_series:
+                            c = c.squeeze()
+
+                    yield i, c
 
         elif x_type.minor == Types.polars:
 

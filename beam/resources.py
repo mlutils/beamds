@@ -3,6 +3,12 @@ import sys
 
 from .base import BeamResource, resource_names
 
+dynamic_resources = {}
+
+
+def register_resource(scheme, generator):
+    dynamic_resources[scheme] = generator
+
 
 def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     if type(uri) != str:
@@ -36,6 +42,8 @@ def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     elif scheme in resource_names['embedding']:
         from .embedding import beam_embedding
         return beam_embedding(uri, **kwargs)
+    elif scheme in dynamic_resources:
+        return dynamic_resources[scheme](uri, **kwargs)
     else:
         raise Exception(f'Unknown resource scheme: {scheme}')
 

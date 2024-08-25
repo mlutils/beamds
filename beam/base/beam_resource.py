@@ -47,6 +47,25 @@ class BeamResource(BeamName):
         self.resource_type = resource_type
         self.scheme = self.url.scheme
 
+    @classmethod
+    def from_uri(cls, uri: str, **kwargs):
+
+        url = BeamURL.from_string(uri)
+
+        hostname = kwargs.pop('hostname', url.hostname)
+        port = kwargs.pop('port', url.port)
+        username = kwargs.pop('username', url.username)
+        password = kwargs.pop('password', url.password)
+
+        query = url.query
+
+        for k, v in query.items():
+            kwargs[k.replace('-', '_')] = v
+
+        path = url.path
+        return cls(scheme=url.scheme, hostname=hostname, port=port, username=username,
+                   password=password, path=path, **kwargs)
+
     def as_uri(self):
         return self.url.url
 
