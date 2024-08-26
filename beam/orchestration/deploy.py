@@ -289,7 +289,11 @@ class BeamDeploy(BeamBase):
     def cluster_info(self):
         services_info = self.k8s.get_services_info(self.namespace)
         routes_info = self.k8s.get_routes_info(self.namespace)
-        host_ip = self.beam_pod_instances[0].pod_infos[0].raw_pod_data['status'].get('host_ip') or 'Host IP NONE'
+        if self.beam_pod_instances and self.beam_pod_instances[0].pod_infos:
+            host_ip = self.beam_pod_instances[0].pod_infos[0].raw_pod_data['status'].get('host_ip', 'Host IP NONE')
+        else:
+            host_ip = 'Host IP NONE'  # Default if no pods are available
+        # host_ip = self.beam_pod_instances[0].pod_infos[0].raw_pod_data['status'].get('host_ip') or 'Host IP NONE'
         service_info_lines = []
         route_info_lines = []
 

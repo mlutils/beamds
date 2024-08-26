@@ -1,11 +1,16 @@
-from beam.orchestration import K8SConfig
+from beam.orchestration import ServeClusterConfig
 from beam.orchestration import BeamManager
 from beam.orchestration import deploy_server
+from beam import logger
 
 
 def main():
-    config = K8SConfig()
+    config = ServeClusterConfig()
+
+    logger.info("deploy manager with config:")
+    logger.info(str(config))
     manager = BeamManager(config)
+
     deploy_server(manager, config)
 
 
