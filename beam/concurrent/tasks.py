@@ -5,10 +5,10 @@ from ..utils import Timer, jupyter_like_traceback, dict_to_list, cached_property
 from ..logging import beam_logger as logger
 
 
-TaskResultTuple = namedtuple('TaskResult', ['name', 'result', 'exception'])
+TaskSyncedResult = namedtuple('TaskSyncedResult', ['name', 'result', 'exception'])
 
 
-class TaskResult:
+class TaskAsyncResult:
     def __init__(self, async_result):
 
         from celery.result import AsyncResult as CeleryAsyncResult
@@ -96,7 +96,7 @@ class BeamTask(BeamName):
         self.kwargs = kwargs
         return self
 
-    def run(self) -> TaskResultTuple:
+    def run(self) -> TaskSyncedResult:
 
         metadata = f"({self.metadata})" if self.metadata is not None else ""
 
@@ -117,4 +117,4 @@ class BeamTask(BeamName):
             self.is_pending = False
 
         # return {'name': self.name, 'result': res, 'exception': self.exception}
-        return TaskResultTuple(self.name, res, self.exception)
+        return TaskSyncedResult(self.name, res, self.exception)
