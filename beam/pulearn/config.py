@@ -20,7 +20,7 @@ class PULearnConfig(BeamConfig):
                   'If int, random_state is the seed used by the random number generator; '
                   'If RandomState instance, random_state is the random number generator; '
                   'If None, the random number generator is the RandomState instance used by `np.random`'),
-        BeamParam('verbose', int, 0, 'Controls the verbosity of the building process'),
+        BeamParam('pu-verbose', int, 0, 'Controls the verbosity of the building process'),
     ]
 
 

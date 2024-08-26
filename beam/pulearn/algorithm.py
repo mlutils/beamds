@@ -51,7 +51,7 @@ class PUCBAlgorithm(CBAlgorithm):
         return BeamCatboostClassifier(**cb_kwargs)
 
     def set_pu(self):
-        conf = {k: v for k, v in self.hparams.items() if k in self.hparams.tags.PULearnConfig}
+        conf = {k.removeprefix('pu_'): v for k, v in self.hparams.items() if k in self.hparams.tags.PULearnConfig}
         estimator = conf.pop('estimator', 'catboost')
         if estimator == 'catboost':
             estimator = self.model
