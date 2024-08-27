@@ -13,7 +13,7 @@ if len([]):
 
 
 __all__ = ['BeamK8S', 'BeamDeploy', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig', 'ServeClusterConfig',
-           'RnDClusterConfig','BeamManagerConfig' 'ServeCluster', 'RayCluster', 'RnDCluster', 'BeamManager', 'deploy_server']
+           'RnDClusterConfig','BeamManagerConfig', 'ServeCluster', 'RayCluster', 'RnDCluster', 'BeamManager', 'deploy_server']
 
 
 def __getattr__(name):

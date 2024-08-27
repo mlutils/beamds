@@ -1,5 +1,5 @@
 from beam.orchestration import (RayClusterConfig, RayCluster, RnDCluster, BeamManagerConfig,
-                                RnDClusterConfig, ServeClusterConfig, ServeCluster, )
+                                RnDClusterConfig, ServeClusterConfig, ServeCluster, BeamManager)
 from beam.resources import resource, this_dir
 from beam.logging import beam_logger as logger
 import os
@@ -14,6 +14,6 @@ logger.info(f"hello world")
 logger.info(f"API URL: {config.api_url}")
 logger.info(f"API Token: {config.api_token}")
 
-rnd_cluster = RnDCluster(deployment=None, replicas=config['replicas'], config=config)
+manager = BeamManager(deployment=None, clusters=config['clusters'], config=config)
 
-rnd_cluster.deploy_rnd_cluster_deployment(replicas=config['replicas'], config=config)
+manager.monitor_thread()

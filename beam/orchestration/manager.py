@@ -1,5 +1,5 @@
-from ..base import BeamBase
-from .k8s import BeamK8S
+from beam.base import BeamBase
+from beam.orchestration import BeamK8S
 from threading import Thread
 import time
 import atexit

@@ -12,6 +12,7 @@ def main():
     manager = BeamManager(config)
 
     deploy_server(manager, config)
+    print(manager.info())
 
 
 if __name__ == '__main__':
