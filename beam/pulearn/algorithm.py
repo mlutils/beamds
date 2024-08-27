@@ -1,10 +1,11 @@
 import re
 
+import pandas as pd
+
 from .. import beam_path
-from ..path import local_copy
-from ..utils import parse_string_number, as_numpy, cached_property
-from ..experiment.utils import build_device_list
+from ..utils import cached_property
 from .config import PULearnConfig
+from ..dataset import TabularDataset, UniversalDataset
 
 from ..algorithm import CBAlgorithm, Algorithm
 from .model import BeamPUClassifier, BeamCatboostClassifier
@@ -41,6 +42,7 @@ class PUCBAlgorithm(CBAlgorithm):
         }
 
         from ..algorithm.catboost_consts import cb_keys
+
         for key in cb_keys[self.task_type]:
             v = self.get_hparam(key, None)
             if v is not None:
@@ -67,7 +69,6 @@ class PUCBAlgorithm(CBAlgorithm):
             self.experiment.prepare_experiment_for_run()
 
         if dataset is None:
-            from ..dataset import TabularDataset
             dataset = TabularDataset(x_train=x, y_train=y, x_test=eval_set[0], y_test=eval_set[1],
                                      cat_features=cat_features, text_features=text_features,
                                      embedding_features=embedding_features, sample_weight=sample_weight)
@@ -85,16 +86,17 @@ class PUCBAlgorithm(CBAlgorithm):
         self.pu.set_features(cat_features=dataset.cat_columns, embedding_features=dataset.embedding_columns,
                              text_features=dataset.text_columns)
 
-        self.pu.fit(X, y, estimator_fit_kwargs=dict(eval_set=dataset.eval_pool, log_cout=self.log_cout,
-                                                          snapshot_interval=self.get_hparam('snapshot_interval'),
-                                                          save_snapshot=self.get_hparam('save_snapshot'),
-                                                          snapshot_file=snapshot_file,
-                                                          log_cerr=self.log_cerr), **kwargs)
+        self.pu.fit(X, y, estimator_fit_kwargs=dict(snapshot_interval=self.get_hparam('snapshot_interval'),
+                                                    save_snapshot=self.get_hparam('save_snapshot')), **kwargs)
 
         if self.experiment:
             self.experiment.save_state(self)
 
-    def predict(self, x, **kwargs):
+    def predict(self, x: UniversalDataset | pd.DataFrame, **kwargs):
+
+        if isinstance(x, UniversalDataset):
+            x = x.data
+
         return self.pu.predict(x)
 
     @classmethod

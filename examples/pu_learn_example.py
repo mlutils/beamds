@@ -76,7 +76,9 @@ def beam_pu_covtype_test():
     from beam import Experiment
     from beam.dataset import TabularDataset
 
-    conf = PULearnCBExperimentConfig()
+    conf = PULearnCBExperimentConfig(pu_n_estimators=16, device='cuda',
+                                     iterations=600, pu_n_jobs=8, depth=10,
+                                     learning_rate=0.1, pu_verbose=100)
     experiment = Experiment(conf)
 
     alg = PUCBAlgorithm(conf, experiment=experiment)
@@ -84,8 +86,15 @@ def beam_pu_covtype_test():
 
     dataset = TabularDataset(x=x, y=y, cat_features=categorical_features, embedding_features=embedding_features)
 
+    print(dataset['validation'])
+
     alg.fit(dataset=dataset)
     logger.info(f"Model trained with {alg.model}")
+
+    y_pred = alg.predict(dataset['validation'])
+
+    logger.info(f"Predictions statistics:")
+    logger.info(precision_recall_fscore_support(dataset['validation'].label, y_pred))
 
 
 def main():

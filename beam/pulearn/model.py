@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier, Pool
 from pulearn import BaggingPuClassifier
+from sklearn.utils import check_array
 
 
 class BeamCatboostClassifier(CatBoostClassifier):
@@ -12,6 +13,26 @@ class BeamCatboostClassifier(CatBoostClassifier):
         self._numerical_features_mapping = None
         self._fit_kwargs = {}
         super().__init__(*args, **kwargs)
+
+    def __getstate__(self):
+        params = super(BeamCatboostClassifier, self).__getstate__()
+
+        aux = dict(_cat_features_mapping=self._cat_features_mapping,
+                   _embedding_features_mapping=self._embedding_features_mapping,
+                   _text_features_mapping=self._text_features_mapping,
+                   _numerical_features_mapping=self._numerical_features_mapping,
+                   _fit_kwargs=self._fit_kwargs)
+        state = {'params': params,
+                 'aux': aux}
+
+        return state
+
+    def __setstate__(self, state):
+        params = state['params']
+        aux = state['aux']
+        for k, v in aux.items():
+            setattr(self, k, v)
+        super(BeamCatboostClassifier, self).__setstate__(params)
 
     def update_fit_kwargs(self, fit_kwargs: dict = None):
         self._fit_kwargs = fit_kwargs if fit_kwargs is not None else {}
@@ -103,6 +124,12 @@ class BeamPUClassifier(BaggingPuClassifier):
             X = X.get_features()
             y = X.get_label()
 
+        try:
+            X = check_array(X)
+            return X, y
+        except ValueError:
+            pass
+
         numerical_features = [col for col in X.columns if col not in
                               self._cat_features + self._embedding_features + self._text_features]
 
@@ -140,4 +167,16 @@ class BeamPUClassifier(BaggingPuClassifier):
             self.estimator.update_fit_kwargs(estimator_fit_kwargs)
 
         return super().fit(X, y, *args, **kwargs)
+
+    def predict(self, X):
+        X, _ = self.preprocess(X)
+        return super().predict(X)
+
+    def predict_proba(self, X):
+        X, _ = self.preprocess(X)
+        return super().predict_proba(X)
+
+    def predict_log_proba(self, X):
+        X, _ = self.preprocess(X)
+        return super().predict_log_proba(X)
 

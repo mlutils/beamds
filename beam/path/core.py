@@ -396,6 +396,10 @@ class PureBeamPath(BeamResource):
     def iterdir(self):
         raise NotImplementedError
 
+    def iter_content(self, ext=None, **kwargs):
+        for p in self.iterdir():
+            yield p.read(ext=ext, **kwargs)
+
     def is_file(self):
         raise NotImplementedError
 

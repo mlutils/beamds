@@ -9,6 +9,23 @@ import pandas as pd
 import torch
 
 
+def test_config_conventions():
+
+    from beam.config import BeamConfig, BeamParam
+
+    class MyConfig(BeamConfig):
+        parameters = [BeamParam('a_a', type=int, default=1),
+                      BeamParam('b-b', type=int, default=1),
+                      BeamParam('c_c', type=bool, default=True),
+                      BeamParam('d-d', type=bool, default=True),]
+
+    # conf = CatboostConfig('--log-frequency=20')
+    conf = MyConfig('--a_a=10 --b_b=10 --no-c-c --no-d_d')
+
+    print(conf)
+
+
+
 def test_transformer_with_errors():
 
     from beam import Transformer
@@ -650,7 +667,7 @@ if __name__ == '__main__':
 
     # test_catboost()
 
-    test_collate_transformer_chunks()
+    # test_collate_transformer_chunks()
 
     # test_special_attributes()
 
@@ -667,5 +684,7 @@ if __name__ == '__main__':
     # test_k8s_configurations()
 
     # test_transformer_with_errors()
+
+    test_config_conventions()
 
     print('done')
