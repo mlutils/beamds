@@ -2,7 +2,7 @@ import base64
 from dataclasses import make_dataclass
 from kubernetes import client, watch
 from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions,
-                               V1ObjectMeta, V1RoleBinding, V1RoleRef)
+                               V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding)
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from ..utils import cached_property
@@ -14,6 +14,7 @@ from email.mime.multipart import MIMEMultipart
 from .dataclasses import *
 import time
 import json
+import subprocess
 
 
 class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits the method of processor
@@ -80,23 +81,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             else:
                 logger.error(f"Failed to check or create project '{project_name}': {e}")
 
-    # def create_service_account(self, name, create_service_account, namespace=None):
-    #     namespace = namespace or self.namespace
-    #
-    #     # Attempt to read the service account, create it if it does not exist
-    #     try:
-    #         self.core_v1_api.read_namespaced_service_account(name, namespace)
-    #         logger.info(f"Service Account {name} already exists in namespace {namespace}.")
-    #     except ApiException as e:
-    #         if e.status == 404:
-    #             metadata = client.V1ObjectMeta(name=name)
-    #             service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount",
-    #                                                       metadata=metadata)
-    #             self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
-    #             logger.info(f"Service Account {name} created in namespace {namespace}.")
-    #         else:
-    #             logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")ddd
-    #             raise
 
     def create_service_account(self, name, namespace):
         from kubernetes.client import V1ServiceAccount, V1ObjectMeta
@@ -179,13 +163,56 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # This part can be specific based on your cluster configuration, some clusters auto-create these secrets
         raise Exception("Token not found and manual creation not implemented.")
 
+    # def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
+    #     scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
+    #     scc_obj = scc.get(name=scc_name)
+    #     user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
+    #     if user_name not in scc_obj.users:
+    #         scc_obj.users.append(user_name)
+    #         scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
+
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
         scc_obj = scc.get(name=scc_name)
         user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
+
         if user_name not in scc_obj.users:
             scc_obj.users.append(user_name)
             scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
+            logger.info(f"Added {user_name} to {scc_name} SCC.")
+        else:
+            logger.info(f"{user_name} is already in the {scc_name} SCC.")
+
+        # Verification Step
+        scc_obj = scc.get(name=scc_name)  # Re-fetch the SCC to ensure it was updated
+        if user_name in scc_obj.users:
+            logger.info(f"Verification successful: {user_name} is now in the {scc_name} SCC.")
+        else:
+            logger.warning(f"Verification failed: {user_name} is NOT in the {scc_name} SCC.")
+
+    def create_cluster_role_binding_for_scc(self, service_account_name, namespace):
+        cluster_role_binding = client.V1ClusterRoleBinding(
+            metadata=client.V1ObjectMeta(name=f"{service_account_name}-scc-binding"),
+            role_ref=client.V1RoleRef(
+                api_group="rbac.authorization.k8s.io",
+                kind="ClusterRole",
+                name="cluster-admin"  # This can be 'cluster-admin' or a custom role with SCC permissions
+            ),
+            subjects=[{
+                "kind": "ServiceAccount",
+                "name": service_account_name,
+                "namespace": namespace
+            }]
+        )
+
+        try:
+            self.rbac_api.create_cluster_role_binding(cluster_role_binding)
+            logger.info(f"ClusterRoleBinding created for service account {service_account_name}.")
+        except client.exceptions.ApiException as e:
+            if e.status == 409:  # Already exists
+                logger.info(f"ClusterRoleBinding already exists for service account {service_account_name}.")
+            else:
+                logger.error(f"Failed to create ClusterRoleBinding: {e}")
 
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
@@ -599,6 +626,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                         logger.error(
                             f"Failed to create admin role binding for '{config.user_name}' "
                             f"in namespace '{config.project_name}': {e}")
+
 
     def create_service(self, base_name, namespace, ports, labels, service_type):
         # Initialize the service name with the base name

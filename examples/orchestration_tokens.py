@@ -26,16 +26,19 @@ k8s = BeamK8S(
 
 
 # Details for the service account
-service_account_name = "starfieldsvc"  # or another name for the service account
+service_account_name = "globaldsvc"  # or another name for the service account
 namespace = config.project_name  # or another namespace where you want to deploy
 
 # Create service account and manage roles
 try:
-    # This will attempt to create a service account, bind it to an admin role, and create a secret for it
+    # This will attempt to create a service account, bind it to ש role, and create a secret for it
     k8s.create_service_account(service_account_name, namespace)
     k8s.bind_service_account_to_role(service_account_name, namespace,
-                                     role='admin')  # Optionally specify a different role
+                                     role='cluster-admin')  # Optionally specify a different role
 
+    k8s.create_cluster_role_binding_for_scc(service_account_name, namespace)
+
+    k8s.add_scc_to_service_account(service_account_name, namespace, scc_name="anyuid")
     # Retrieve or create a secret for a persistent token and get the token
     token = k8s.create_or_retrieve_service_account_token(service_account_name, namespace)
 

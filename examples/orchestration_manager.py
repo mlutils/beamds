@@ -18,6 +18,7 @@ def main():
     manager = BeamManager(config)
 
     print(manager.info())
+    # manager.launch_ray_cluster('/home/dayosupp/projects/beamds/examples/orchestration_raydeploy.yaml')
 
 
 if __name__ == '__main__':

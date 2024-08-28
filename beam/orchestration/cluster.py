@@ -38,7 +38,7 @@ class BeamCluster(BeamBase):
 class ServeCluster(BeamCluster):
 
     def __init__(self, deployment, pods, config, *args, **kwargs):
-        super().__init__(deployment, pods, config, *args,  **kwargs)
+        super().__init__(deployment, config, pods,  *args,  **kwargs)
 
         self.subject = config['subject']
         self.body = config['body']
@@ -115,13 +115,20 @@ class ServeCluster(BeamCluster):
     def deploy_from_image(cls, image_name, config):
         return cls._deploy_and_launch(bundle_path=None, obj=None, image_name=image_name, config=config)
 
+    def get_cluster_status(self):
+        pod_statuses = [pod.get_pod_status() for pod in self.pods]
+        for status in pod_statuses:
+            if status[0][1] != "Running":
+                return f"Pod {status[0][0]} status: {status[0][1]}"
+        return "healthy"
+
 
 class RayCluster(BeamCluster):
-    def __init__(self, deployment, n_pods, config, *args, **kwargs):
+    def __init__(self, deployment, n_pods, config, head=None, workers=None,  *args, **kwargs):
         super().__init__(deployment, config, *args, n_pods, **kwargs)
-        self.workers = []
+        self.workers =  []
         self.n_pods = config['n_pods']
-        self.head = None
+
 
 
     @classmethod
@@ -201,9 +208,19 @@ class RayCluster(BeamCluster):
 
     # Todo: run over all nodes and get info from pod, if pod is dead, relaunch the pod
 
+    def get_cluster_status(self):
+        head_pod_status = self.head.get_pod_status()
+        if head_pod_status[0][1] == "Running":
+            return "healthy"
+        else:
+            return f"Head pod {self.head.pod_infos[0].name} status: {head_pod_status[0][1]}"
+
     def monitor_cluster(self):
         while True:
             try:
+                if self.head is None:
+                    logger.error("Head pod is not initialized.")
+                    break  # Exit the loop if head pod is not set
                 head_pod_status = self.head.get_pod_status()
                 if head_pod_status[0][1] != "Running":
                     logger.info(f"Head pod {self.head.pod_infos[0].name} is not running. Restarting...")
@@ -314,6 +331,13 @@ class RnDCluster(BeamCluster):
     #         w.execute(f"command to connect to head node with ip: {self.head.ip}")
 
     # Todo: run over all nodes and get info from pod, if pod is dead, relaunch the pod
+
+    def get_cluster_status(self):
+        pod_statuses = [pod.get_pod_status() for pod in self.pods]
+        for status in pod_statuses:
+            if status[0][1] != "Running":
+                return f"Pod {status[0][0]} status: {status[0][1]}"
+        return "healthy"
 
     def monitor_cluster(self):
         while True:
