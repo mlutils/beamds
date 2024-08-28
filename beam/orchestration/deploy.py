@@ -176,6 +176,7 @@ class BeamDeploy(BeamBase):
             pod_suffix = (f"{self.deployment_name}-"
                           f"{pod_instance.pod_infos[0].raw_pod_data['metadata']['name'].split('-')[-1]}")
             rs_env_vars = []
+
             for svc_config in self.service_configs:
                 service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
 

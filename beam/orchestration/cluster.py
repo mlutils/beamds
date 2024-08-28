@@ -124,7 +124,6 @@ class RayCluster(BeamCluster):
         self.head = None
 
 
-
     @classmethod
     def _deploy_and_launch(cls, n_pods=None, config=None):
 
