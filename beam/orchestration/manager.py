@@ -51,8 +51,9 @@ class BeamManager(BeamBase):
     def get_cluster_name(self, config):
         # TODO: implement a method to generate a unique cluster name (or get it from the config)
         # return random name for now, (docker style)
-        import randomname
-        return randomname.generate_name()
+        # import randomname
+        import namegenerator
+        return namegenerator.gen()
 
     def scale_up(self, cluster, n):
         # add n pods to the cluster

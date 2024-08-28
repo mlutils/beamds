@@ -5,15 +5,34 @@ from beam.logging import beam_logger as logger
 import os
 import sys
 
+def main():
 
-script_dir = os.path.dirname(os.path.realpath(__file__))
-conf_path = resource(os.path.join(script_dir, 'orchestration_manager.yaml')).str
-config = BeamManagerConfig(conf_path)
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    conf_path = resource(os.path.join(script_dir, 'orchestration_manager.yaml')).str
+    config = BeamManagerConfig(conf_path)
 
-logger.info(f"hello world")
-logger.info(f"API URL: {config.api_url}")
-logger.info(f"API Token: {config.api_token}")
+    logger.info(f"API URL: {config.api_url}")
+    logger.info(f"API Token: {config.api_token}")
+    logger.info("deploy manager with config:")
+    logger.info(str(config))
+    manager = BeamManager(config)
 
-manager = BeamManager(deployment=None, clusters=config['clusters'], config=config)
+    print(manager.info())
 
-manager.monitor_thread()
+
+if __name__ == '__main__':
+    main()
+
+
+
+# script_dir = os.path.dirname(os.path.realpath(__file__))
+# conf_path = resource(os.path.join(script_dir, 'orchestration_manager.yaml')).str
+# config = BeamManagerConfig(conf_path)
+
+# logger.info(f"hello world")
+# logger.info(f"API URL: {config.api_url}")
+# logger.info(f"API Token: {config.api_token}")
+
+# manager = BeamManager(deployment=None, clusters=config['clusters'], config=config)
+
+# manager.monitor_thread()
