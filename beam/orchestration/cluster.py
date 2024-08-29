@@ -122,6 +122,25 @@ class ServeCluster(BeamCluster):
                 return f"Pod {status[0][0]} status: {status[0][1]}"
         return "healthy"
 
+    def monitor_cluster(self):
+        while True:
+            try:
+                if not self.pods:  # Check if pods list is empty
+                    logger.error("Pods list is not initialized or empty.")
+                    break  # Exit the loop if pods list is not set
+
+                for pod in self.pods:
+                    pod_status = pod.get_pod_status()
+                    if pod_status != "Running":
+                        logger.info(f"Pod {pod.pod_infos[0].name} is not running. Restarting...")
+                        self.deploy_cluster()
+                    else:
+                        logger.info(f"Pod {pod.pod_infos[0].name} is running.")
+
+                time.sleep(3)
+            except KeyboardInterrupt:
+                break
+
 
 class RayCluster(BeamCluster):
     def __init__(self, deployment, n_pods, config, head=None, workers=None,  *args, **kwargs):
@@ -310,28 +329,6 @@ class RnDCluster(BeamCluster):
     def deploy_rnd_cluster_deployment(cls, replicas, config):
         return cls._deploy_and_launch(replicas=replicas, config=config)
 
-    @classmethod
-    def get_head_pod_ip(cls, head_pod_instance, k8s, project_name):
-        head_pod_status = head_pod_instance.get_pod_status()
-        head_pod_name = head_pod_instance.pod_infos[0].name
-
-        if head_pod_status[0][1] == "Running":
-            pod_info = k8s.get_pod_info(head_pod_name, namespace=project_name)
-            if pod_info and pod_info.status:
-                return pod_info.status.pod_ip
-            else:
-                raise Exception(f"Failed to get pod info or pod status for {head_pod_name}")
-        else:
-            raise Exception(f"Head pod {head_pod_name} is not running. Current status: {head_pod_status[0][1]}")
-
-    #  TODO: implement connect_cluster live in pycharm for now
-    # def connect_cluster(self):
-    #     # example how to connect to head node
-    #     for w in self.workers:
-    #         w.execute(f"command to connect to head node with ip: {self.head.ip}")
-
-    # Todo: run over all nodes and get info from pod, if pod is dead, relaunch the pod
-
     def get_cluster_status(self):
         pod_statuses = [pod.get_pod_status() for pod in self.pods]
         for status in pod_statuses:
@@ -342,10 +339,18 @@ class RnDCluster(BeamCluster):
     def monitor_cluster(self):
         while True:
             try:
-                head_pod_status = self.head.get_pod_status()
-                if head_pod_status[0][1] != "Running":
-                    logger.info(f"Head pod {self.head.pod_infos[0].name} is not running. Restarting...")
-                    self.deploy_cluster()
+                if not self.pods:  # Check if pods list is empty
+                    logger.error("Pods list is not initialized or empty.")
+                    break  # Exit the loop if pods list is not set
+
+                for pod in self.pods:
+                    pod_status = pod.get_pod_status()
+                    if pod_status != "Running":
+                        logger.info(f"Pod {pod.pod_infos[0].name} is not running. Restarting...")
+                        self.deploy_cluster()
+                    else:
+                        logger.info(f"Pod {pod.pod_infos[0].name} is running.")
+
                 time.sleep(3)
             except KeyboardInterrupt:
                 break

@@ -71,20 +71,38 @@ class BeamManager(BeamBase):
         monitor_thread.start()
 
     def launch_serve_cluster(self, config, **kwargs):
+        if isinstance(config, str):
+            # Resolve the configuration path relative to the script's directory
+            script_dir = os.path.dirname(os.path.realpath(__file__))
+            conf_path = os.path.join(script_dir, config)
+
+            # Convert the path to a BeamManagerConfig object
+            config = ServeClusterConfig(resource(conf_path).str)
+
         name = self.get_cluster_name(config)
         from .cluster import ServeCluster
-        serve_cluster = ServeCluster(config=config, k8s=self.k8s, deployment=name, **kwargs)
-        self.clusters[name] = serve_cluster
+        serve_cluster = ServeCluster(config=config, pods=[], k8s=self.k8s, deployment=name, **kwargs)
+
+        self.clusters[name] = serve_cluster.deploy_from_image(config=config, image_name=config['image_name'])
 
         # Start monitoring the cluster
         monitor_thread = Thread(target=serve_cluster.monitor_cluster)
         monitor_thread.start()
 
     def launch_rnd_cluster(self, config, **kwargs):
+        if isinstance(config, str):
+            # Resolve the configuration path relative to the script's directory
+            script_dir = os.path.dirname(os.path.realpath(__file__))
+            conf_path = os.path.join(script_dir, config)
+
+            # Convert the path to a BeamManagerConfig object
+            config = RnDClusterConfig(resource(conf_path).str)
+
         name = self.get_cluster_name(config)
         from .cluster import RnDCluster
-        rnd_cluster = RnDCluster(config=config, k8s=self.k8s, deployment=name, **kwargs)
-        self.clusters[name] = rnd_cluster
+
+        rnd_cluster = RnDCluster(config=config, replicas=config['replicas'], k8s=self.k8s, deployment=name, **kwargs)
+        self.clusters[name] = rnd_cluster.deploy_rnd_cluster_deployment(config=config, replicas=config['replicas'])
 
         # Start monitoring the cluster
         monitor_thread = Thread(target=rnd_cluster.monitor_cluster)

@@ -81,6 +81,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             else:
                 logger.error(f"Failed to check or create project '{project_name}': {e}")
 
+    def get_service_accounts(self, namespace):
+        service_accounts = self.core_v1_api.list_namespaced_service_account(namespace)
+        return [sa.metadata.name for sa in service_accounts.items]
 
     def create_service_account(self, name, namespace):
         from kubernetes.client import V1ServiceAccount, V1ObjectMeta
@@ -145,49 +148,66 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.error(f"Failed to create secret for Service Account {service_account_name}: {e}")
             raise
 
-    # def create_or_retrieve_service_account_token(self, service_account_name, namespace):
-    #     """Create a new secret for a service account or retrieve an existing one."""
-    #     # Check if there is already a secret for this service account
-    #     secrets = self.core_v1_api.list_namespaced_secret(namespace)
-    #     for secret in secrets.items:
-    #         if (secret.type == "kubernetes.io/service-account-token" and
-    #                 secret.metadata.annotations['kubernetes.io/service-account.name'] == service_account_name):
-    #             # Get the token from the secret
-    #             token = base64.b64decode(secret.data['token']).decode('utf-8')
-    #             return token
-    #
-    #     # If no secret found, create a new one and retrieve the token
-    #     # This involves creating a secret linked to the service account with appropriate annotations and type
-    #     # Assuming that such secret creation and linking is done automatically by your Kubernetes setup when a service account is created
-    #
-    #     # This part can be specific based on your cluster configuration, some clusters auto-create these secrets
-    #     raise Exception("Token not found and manual creation not implemented.")
+    def retrieve_service_account_token(self, service_account_name, namespace):
+        """Retrieve the token for a specified service account."""
+        from kubernetes.client.exceptions import ApiException
+        import base64
+
+        try:
+            # List all secrets in the given namespace
+            secrets = self.core_v1_api.list_namespaced_secret(namespace)
+            for secret in secrets.items:
+                # Check if the secret is a service account token and matches the specified service account
+                if (secret.type == "kubernetes.io/service-account-token" and
+                        secret.metadata.annotations.get('kubernetes.io/service-account.name') == service_account_name):
+                    # Decode the token from base64
+                    token = base64.b64decode(secret.data['token']).decode('utf-8')
+                    return token
+            # If no valid token was found
+            raise Exception(
+                f"No valid token found for Service Account {service_account_name} in namespace {namespace}.")
+        except ApiException as e:
+            raise Exception(f"Failed to retrieve token for Service Account {service_account_name}: {e}")
+
     def create_or_retrieve_service_account_token(self, service_account_name, namespace):
-        # Retrieve the existing secrets for the service account
-        secrets = self.core_v1_api.list_namespaced_secret(namespace,
-                                                          field_selector=f"type=kubernetes.io/service-account-token")
+        """Create a new secret for a service account or retrieve an existing one."""
+        import base64
+        from kubernetes.client.exceptions import ApiException
 
+        # Check if there is already a secret for this service account
+        secrets = self.core_v1_api.list_namespaced_secret(namespace)
         for secret in secrets.items:
-            if secret.metadata.annotations.get('kubernetes.io/service-account.name') == service_account_name:
-                # If you want to regenerate the token, delete the existing secret
-                self.core_v1_api.delete_namespaced_secret(secret.metadata.name, namespace)
+            if (secret.type == "kubernetes.io/service-account-token" and
+                    secret.metadata.annotations.get('kubernetes.io/service-account.name') == service_account_name):
+                # Check if the token data exists
+                if 'token' in secret.data and secret.data['token']:
+                    # Get the token from the secret
+                    token = base64.b64decode(secret.data['token']).decode('utf-8')
+                    logger.info(
+                        f"Retrieved existing token for service account {service_account_name} in namespace {namespace}.")
+                    return token
+                else:
+                    logger.error(f"Secret {secret.metadata.name} exists but does not contain a valid token.")
 
-        # Now, force the creation of a new token
-        new_secret = self.core_v1_api.create_namespaced_secret(
-            namespace,
-            client.V1Secret(
-                metadata=client.V1ObjectMeta(
-                    generate_name=f"{service_account_name}-token-",
-                    annotations={
-                        "kubernetes.io/service-account.name": service_account_name
-                    }
-                ),
-                type="kubernetes.io/service-account-token"
-            )
-        )
+        # If no valid secret found, create a new one
+        logger.info(f"No valid token found for Service Account {service_account_name}. Creating a new token.")
+        try:
+            self.create_service_account_secret(service_account_name, namespace)
+            # Re-check the secrets after creating one
+            secrets = self.core_v1_api.list_namespaced_secret(namespace)
+            for secret in secrets.items:
+                if (secret.type == "kubernetes.io/service-account-token" and
+                        secret.metadata.annotations.get('kubernetes.io/service-account.name') == service_account_name):
+                    if 'token' in secret.data and secret.data['token']:
+                        token = base64.b64decode(secret.data['token']).decode('utf-8')
+                        logger.info(
+                            f"New token generated for service account {service_account_name} in namespace {namespace}.")
+                        return token
+        except ApiException as e:
+            logger.error(f"Failed to create a new token for Service Account {service_account_name}: {e}")
+            raise
 
-        token = base64.b64decode(new_secret.data['token']).decode('utf-8')
-        return token
+        raise Exception(f"Failed to generate or retrieve a valid token for Service Account {service_account_name}.")
 
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
@@ -231,6 +251,43 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 logger.info(f"ClusterRoleBinding already exists for service account {service_account_name}.")
             else:
                 logger.error(f"Failed to create ClusterRoleBinding: {e}")
+
+    def delete_service_account_secret(self, service_account_name, namespace):
+        # List all secrets in the namespace
+        secrets = self.core_v1_api.list_namespaced_secret(namespace)
+
+        # Iterate through the secrets and find the one associated with the service account
+        for secret in secrets.items:
+            if (secret.type == "kubernetes.io/service-account-token" and
+                    secret.metadata.annotations['kubernetes.io/service-account.name'] == service_account_name):
+                # Delete the secret
+                secret_name = secret.metadata.name
+                try:
+                    self.core_v1_api.delete_namespaced_secret(secret_name, namespace)
+                    logger.info(f"Secret {secret_name} associated with Service Account {service_account_name} deleted.")
+                except ApiException as e:
+                    if e.status == 404:
+                        logger.info(f"Secret {secret_name} not found. It might have been deleted already.")
+                    else:
+                        logger.error(
+                            f"Failed to delete secret {secret_name} for Service Account {service_account_name}: {e}")
+                    raise
+                return  # Once the secret is found and deleted, exit the method
+
+        logger.info(f"No secret found for Service Account {service_account_name} in namespace {namespace}.")
+
+    def delete_service_account(self, service_account_name, namespace):
+        try:
+            # Delete the service account
+            self.core_v1_api.delete_namespaced_service_account(service_account_name, namespace)
+            logger.info(f"Service Account {service_account_name} deleted from namespace {namespace}.")
+
+            # Optionally, delete the associated secret
+            self.delete_service_account_secret(service_account_name, namespace)
+
+        except ApiException as e:
+            logger.error(f"Failed to delete Service Account {service_account_name} in namespace {namespace}: {e}")
+            raise
 
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
