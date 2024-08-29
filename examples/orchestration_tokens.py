@@ -26,7 +26,7 @@ k8s = BeamK8S(
 
 
 # Details for the service account
-service_account_name = "globaldsvc"  # or another name for the service account
+service_account_name = "globalstar"  # or another name for the service account
 namespace = config.project_name  # or another namespace where you want to deploy
 
 # Create service account and manage roles

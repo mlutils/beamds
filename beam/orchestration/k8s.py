@@ -145,31 +145,49 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.error(f"Failed to create secret for Service Account {service_account_name}: {e}")
             raise
 
+    # def create_or_retrieve_service_account_token(self, service_account_name, namespace):
+    #     """Create a new secret for a service account or retrieve an existing one."""
+    #     # Check if there is already a secret for this service account
+    #     secrets = self.core_v1_api.list_namespaced_secret(namespace)
+    #     for secret in secrets.items:
+    #         if (secret.type == "kubernetes.io/service-account-token" and
+    #                 secret.metadata.annotations['kubernetes.io/service-account.name'] == service_account_name):
+    #             # Get the token from the secret
+    #             token = base64.b64decode(secret.data['token']).decode('utf-8')
+    #             return token
+    #
+    #     # If no secret found, create a new one and retrieve the token
+    #     # This involves creating a secret linked to the service account with appropriate annotations and type
+    #     # Assuming that such secret creation and linking is done automatically by your Kubernetes setup when a service account is created
+    #
+    #     # This part can be specific based on your cluster configuration, some clusters auto-create these secrets
+    #     raise Exception("Token not found and manual creation not implemented.")
     def create_or_retrieve_service_account_token(self, service_account_name, namespace):
-        """Create a new secret for a service account or retrieve an existing one."""
-        # Check if there is already a secret for this service account
-        secrets = self.core_v1_api.list_namespaced_secret(namespace)
+        # Retrieve the existing secrets for the service account
+        secrets = self.core_v1_api.list_namespaced_secret(namespace,
+                                                          field_selector=f"type=kubernetes.io/service-account-token")
+
         for secret in secrets.items:
-            if (secret.type == "kubernetes.io/service-account-token" and
-                    secret.metadata.annotations['kubernetes.io/service-account.name'] == service_account_name):
-                # Get the token from the secret
-                token = base64.b64decode(secret.data['token']).decode('utf-8')
-                return token
+            if secret.metadata.annotations.get('kubernetes.io/service-account.name') == service_account_name:
+                # If you want to regenerate the token, delete the existing secret
+                self.core_v1_api.delete_namespaced_secret(secret.metadata.name, namespace)
 
-        # If no secret found, create a new one and retrieve the token
-        # This involves creating a secret linked to the service account with appropriate annotations and type
-        # Assuming that such secret creation and linking is done automatically by your Kubernetes setup when a service account is created
+        # Now, force the creation of a new token
+        new_secret = self.core_v1_api.create_namespaced_secret(
+            namespace,
+            client.V1Secret(
+                metadata=client.V1ObjectMeta(
+                    generate_name=f"{service_account_name}-token-",
+                    annotations={
+                        "kubernetes.io/service-account.name": service_account_name
+                    }
+                ),
+                type="kubernetes.io/service-account-token"
+            )
+        )
 
-        # This part can be specific based on your cluster configuration, some clusters auto-create these secrets
-        raise Exception("Token not found and manual creation not implemented.")
-
-    # def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
-    #     scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
-    #     scc_obj = scc.get(name=scc_name)
-    #     user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
-    #     if user_name not in scc_obj.users:
-    #         scc_obj.users.append(user_name)
-    #         scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
+        token = base64.b64decode(new_secret.data['token']).decode('utf-8')
+        return token
 
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
