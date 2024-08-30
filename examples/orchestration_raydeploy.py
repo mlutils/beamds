@@ -26,7 +26,7 @@ rnd_cluster = RnDCluster(deployment=None, replicas=config['replicas'], config=co
 # Deploy the Ray cluster/ Rnd cluster
 
 # ray_cluster.deploy_ray_cluster_s_deployment(n_pods=config['n_pods'], config=config)
-rnd_cluster.deploy_rnd_cluster_deployment(replicas=config['replicas'], config=config)
+rnd_cluster.deploy_and_launch(replicas=config['replicas'], config=config)
 # replicas=1
 
 

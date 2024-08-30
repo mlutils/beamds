@@ -15,7 +15,12 @@ class BeamManager(BeamBase):
 
     def __init__(self, config, *args, **kwargs):
         super().__init__(*args, hparams=config, **kwargs)
-        self.k8s = BeamK8S(config)
+        self.k8s = BeamK8S(
+            api_url=config['api_url'],
+            api_token=config['api_token'],
+            project_name=config['project_name'],
+            namespace=config['project_name']
+        )
         self.clusters = {}
         self._stop_monitoring = threading.Event()
         # add monitor thread
@@ -102,20 +107,25 @@ class BeamManager(BeamBase):
         name = self.get_cluster_name(config)
         from .cluster import RnDCluster
 
-        rnd_cluster = RnDCluster(config=config, replicas=config['replicas'], k8s=self.k8s, deployment=name, **kwargs)
-        self.clusters[name] = rnd_cluster.deploy_rnd_cluster_deployment(config=config, replicas=config['replicas'])
+        # rnd_cluster = RnDCluster(config=config, replicas=config['replicas'], k8s=self.k8s, deployment=name, **kwargs)
+
+        self.clusters[name] = RnDCluster.deploy_and_launch(replicas=config['replicas'], config=config,
+                                                           k8s=self.k8s)
 
         if self.clusters[name] and isinstance(self.clusters[name], RnDCluster):
             # Start monitoring the cluster
-            monitor_thread = Thread(target=rnd_cluster.monitor_cluster)
+            monitor_thread = Thread(target=self.clusters[name].monitor_cluster)
             monitor_thread.start()
-            cluster_logs = rnd_cluster.get_cluster_logs()
+            cluster_logs = self.clusters[name].get_cluster_logs()
+
             for pod_name, logs in cluster_logs.items():
                 logger.info(f"--- Logs from pod {pod_name} ---")
                 logger.info(logs)
 
         else:
             logger.error("Failed to initialize or launch the RnDCluster.")
+
+        return self.clusters[name]
 
 
     def get_cluster_name(self, config):

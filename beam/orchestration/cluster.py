@@ -339,25 +339,31 @@ class RayCluster(BeamCluster):
 
 
 class RnDCluster(BeamCluster):
-    def __init__(self, deployment, replicas, config, *args, **kwargs):
-        super().__init__(deployment, config, *args, replicas, **kwargs)
-        self.replicas = config['replicas']
+    def __init__(self, deployment, config, *args, pods=None, **kwargs):
+        super().__init__(deployment, config,  *args, pods=pods,  **kwargs)
+        if pods is None:
+            self.replicas = config['replicas']
+        else:
+            self.replicas = len(pods)
 
 
     @classmethod
-    def _deploy_and_launch(cls, replicas=None, config=None):
-
-        k8s = BeamK8S(
-            api_url=config['api_url'],
-            api_token=config['api_token'],
-            project_name=config['project_name'],
-            namespace=config['project_name']
-        )
+    def _deploy_and_launch(cls, replicas=None, config=None, k8s=None):
+        if k8s is None:
+            k8s = BeamK8S(
+                api_url=config['api_url'],
+                api_token=config['api_token'],
+                project_name=config['project_name'],
+                namespace=config['project_name']
+            )
 
         deployment = BeamDeploy(config, k8s)
 
+        if replicas is None:
+            replicas = config['replicas']
+
         try:
-            pods = deployment.launch(replicas=config['replicas'])
+            pods = deployment.launch(replicas=replicas)
 
             # Ensure pods is always a list of BeamPod objects
             if isinstance(pods, BeamPod):
@@ -388,10 +394,7 @@ class RnDCluster(BeamCluster):
                 return None  # Or handle the error as needed
 
             # Create the RnDCluster instance first, without pods
-            cluster_instance = cls(deployment=deployment, replicas=replicas, config=config)
-
-            # Assign pods after instantiation
-            cluster_instance.pods = pods
+            cluster_instance = cls(deployment=deployment, config=config, pods=pods)
 
             return cluster_instance
 
@@ -402,8 +405,8 @@ class RnDCluster(BeamCluster):
             raise e
 
     @classmethod
-    def deploy_rnd_cluster_deployment(cls, replicas, config):
-        return cls._deploy_and_launch(replicas=replicas, config=config)
+    def deploy_and_launch(cls, replicas, config, k8s=None):
+        return cls._deploy_and_launch(replicas=replicas, config=config, k8s=k8s)
 
     def get_cluster_status(self):
         pod_statuses = [pod.get_pod_status() for pod in self.pods]
