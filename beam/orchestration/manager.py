@@ -1,6 +1,7 @@
 from beam.base import BeamBase
 from beam.orchestration import BeamK8S
 from threading import Thread
+from beam.logging import beam_logger as logger
 import os
 from beam.resources import resource
 from beam.orchestration import BeamManagerConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
@@ -104,9 +105,18 @@ class BeamManager(BeamBase):
         rnd_cluster = RnDCluster(config=config, replicas=config['replicas'], k8s=self.k8s, deployment=name, **kwargs)
         self.clusters[name] = rnd_cluster.deploy_rnd_cluster_deployment(config=config, replicas=config['replicas'])
 
-        # Start monitoring the cluster
-        monitor_thread = Thread(target=rnd_cluster.monitor_cluster)
-        monitor_thread.start()
+        if self.clusters[name] and isinstance(self.clusters[name], RnDCluster):
+            # Start monitoring the cluster
+            monitor_thread = Thread(target=rnd_cluster.monitor_cluster)
+            monitor_thread.start()
+            cluster_logs = rnd_cluster.get_cluster_logs()
+            for pod_name, logs in cluster_logs.items():
+                logger.info(f"--- Logs from pod {pod_name} ---")
+                logger.info(logs)
+
+        else:
+            logger.error("Failed to initialize or launch the RnDCluster.")
+
 
     def get_cluster_name(self, config):
         # TODO: implement a method to generate a unique cluster name (or get it from the config)
@@ -114,6 +124,18 @@ class BeamManager(BeamBase):
         # import randomname
         import namegenerator
         return namegenerator.gen()
+
+    def retrieve_cluster_logs(self, cluster_name):
+        if cluster_name not in self.clusters:
+            logger.error(f"Cluster '{cluster_name}' not found.")
+            return
+
+        cluster = self.clusters[cluster_name]
+        cluster_logs = cluster.get_cluster_logs()
+
+        for pod_name, logs in cluster_logs.items():
+            logger.info(f"--- Logs from pod {pod_name} ---")
+            logger.info(logs)
 
 
     def scale_up(self, cluster, n):

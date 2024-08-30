@@ -5,6 +5,7 @@ from beam.logging import beam_logger as logger
 import os
 import sys
 
+
 def main():
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -20,8 +21,8 @@ def main():
     print(manager.info())
     # manager.launch_ray_cluster('/home/dayosupp/projects/beamds/examples/orchestration_raydeploy.yaml')
     # manager.launch_serve_cluster('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
-    # manager.launch_rnd_cluster('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
-
+    manager.launch_rnd_cluster('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
+    # manager.retrieve_cluster_logs('rnd_cluster_name')
 
 
 if __name__ == '__main__':

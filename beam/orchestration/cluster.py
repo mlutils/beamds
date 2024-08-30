@@ -78,9 +78,20 @@ class ServeCluster(BeamCluster):
 
         try:
             pods = deployment.launch(replicas=config['replicas'])
+
+            # Ensure pods is always a list of BeamPod objects
+            if isinstance(pods, BeamPod):
+                pods = [pods]
+            elif isinstance(pods, list):
+                for pod in pods:
+                    if not isinstance(pod, BeamPod):
+                        raise TypeError(f"Expected a BeamPod object, but got {type(pod)}")
+
             if pods:
                 logger.info("Pod deployment successful")
+
             if config.send_email is True:
+
                 subject = "Cluster Deployment Information"
                 # body = f"{config['body']}\n{get_cluster_info}"
                 body = f"{config['body']}<br>{deployment.cluster_info}"
@@ -89,14 +100,25 @@ class ServeCluster(BeamCluster):
                 from_email_password = config['from_email_password']
                 k8s.send_email(subject, body, to_email, from_email, from_email_password)
             else:
+
                 logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
                 logger.info(f"Route Urls: {deployment.k8s.get_route_urls(namespace=config['project_name'])}")
             # logger.debug(f"Cluster info: {deployment.cluster_info}")
             logger.info(f"Route Urls: {deployment.k8s.get_route_urls(namespace=config['project_name'])}")
+
             if not pods:
                 logger.error("Pod deployment failed")
+
                 return None  # Or handle the error as needed
-            return cls(deployment=deployment, pods=pods, config=config)
+
+            # Create the ServeCluster instance first, without pods
+            cluster_instance = cls(deployment=deployment, pods=pods, config=config)
+
+            # Assign pods after instantiation
+            cluster_instance.pods = pods
+
+            return cluster_instance
+
         except Exception as e:
             logger.error(f"Error during deployment: {str(e)}")
             from ..utils import beam_traceback
@@ -125,11 +147,15 @@ class ServeCluster(BeamCluster):
     def monitor_cluster(self):
         while True:
             try:
-                if not self.pods:  # Check if pods list is empty
-                    logger.error("Pods list is not initialized or empty.")
-                    break  # Exit the loop if pods list is not set
+                if not isinstance(self.pods, list):
+                    logger.debug("Pods list is not initialized or is not a list.")
+                    break  # Exit the loop if pods list is not set correctly
 
                 for pod in self.pods:
+                    if not isinstance(pod, BeamPod):
+                        logger.error(f"Expected BeamPod object, but got {type(pod)}")
+                        break
+
                     pod_status = pod.get_pod_status()
                     if pod_status != "Running":
                         logger.info(f"Pod {pod.pod_infos[0].name} is not running. Restarting...")
@@ -278,113 +304,6 @@ class RayCluster(BeamCluster):
 
     def add_nodes(self, n=1):
         raise NotImplementedError
-
-    def remove_node(self, i):
-        pass
-
-
-class RnDCluster(BeamCluster):
-    def __init__(self, deployment, replicas, config, *args, **kwargs):
-        super().__init__(deployment, config, *args, replicas, **kwargs)
-        self.replicas = config['replicas']
-
-    @classmethod
-    def _deploy_and_launch(cls, replicas=None, config=None):
-
-        k8s = BeamK8S(
-            api_url=config['api_url'],
-            api_token=config['api_token'],
-            project_name=config['project_name'],
-            namespace=config['project_name']
-        )
-
-        deployment = BeamDeploy(config, k8s)
-
-        try:
-            pods = deployment.launch(replicas=config['replicas'])
-            if pods:
-                logger.info("Pod deployment successful")
-            if config.send_email is True:
-                subject = "Cluster Deployment Information"
-                # body = f"{config['body']}\n{get_cluster_info}"
-                body = f"{config['body']}<br>{deployment.cluster_info}"
-                to_email = config['to_email']
-                from_email = config['from_email']
-                from_email_password = config['from_email_password']
-                k8s.send_email(subject, body, to_email, from_email, from_email_password)
-            else:
-                logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
-            logger.debug(f"Cluster info: {deployment.cluster_info}")
-            if not pods:
-                logger.error("Pod deployment failed")
-                return None  # Or handle the error as needed
-            return cls(deployment=deployment, replicas=replicas, config=config)
-        except Exception as e:
-            logger.error(f"Error during deployment: {str(e)}")
-            from ..utils import beam_traceback
-            logger.debug(beam_traceback())
-            raise e
-
-    @classmethod
-    def deploy_rnd_cluster_deployment(cls, replicas, config):
-        return cls._deploy_and_launch(replicas=replicas, config=config)
-
-    def get_cluster_status(self):
-        pod_statuses = [pod.get_pod_status() for pod in self.pods]
-        for status in pod_statuses:
-            if status[0][1] != "Running":
-                return f"Pod {status[0][0]} status: {status[0][1]}"
-        return "healthy"
-
-    def monitor_cluster(self):
-        while True:
-            try:
-                if not self.pods:  # Check if pods list is empty
-                    logger.error("Pods list is not initialized or empty.")
-                    break  # Exit the loop if pods list is not set
-
-                for pod in self.pods:
-                    pod_status = pod.get_pod_status()
-                    if pod_status != "Running":
-                        logger.info(f"Pod {pod.pod_infos[0].name} is not running. Restarting...")
-                        self.deploy_cluster()
-                    else:
-                        logger.info(f"Pod {pod.pod_infos[0].name} is running.")
-
-                time.sleep(3)
-            except KeyboardInterrupt:
-                break
-
-    @staticmethod
-    def stop_monitoring():
-        logger.info("Stopped monitoring the Ray cluster.")
-
-    def get_cluster_logs(self):
-        logger.info("Getting logs from head and worker nodes...")
-        head_logs = self.head.get_logs()  # Retrieve head node logs
-        worker_logs = self.workers[0].get_logs()  # Retrieve worker node logs
-        try:
-            logger.info("Logs from head node:")
-            for pod_name, log_entries in head_logs:
-                logger.info(f"Logs for {pod_name}:")
-                for line in log_entries.split('\n'):
-                    if line.strip():
-                        logger.info(line.strip())
-
-            logger.info("Logs from worker node:")
-            for pod_name, log_entries in worker_logs:
-                logger.info(f"Logs for {pod_name}:")
-                for line in log_entries.split('\n'):
-                    if line.strip():
-                        logger.info(line.strip())
-
-        except Exception as e:
-            logger.exception("Failed to retrieve or process cluster logs", exception=e)
-
-        return head_logs, worker_logs
-
-    def add_nodes(self, n=1):
-        raise NotImplementedError
         # new_pods = self.deployment.launch(replicas=n)
         # for pod_instance in new_pods:
         #     self.workers.append(pod_instance)
@@ -417,3 +336,137 @@ class RnDCluster(BeamCluster):
 
     def remove_node(self, i):
         pass
+
+
+class RnDCluster(BeamCluster):
+    def __init__(self, deployment, replicas, config, *args, **kwargs):
+        super().__init__(deployment, config, *args, replicas, **kwargs)
+        self.replicas = config['replicas']
+
+
+    @classmethod
+    def _deploy_and_launch(cls, replicas=None, config=None):
+
+        k8s = BeamK8S(
+            api_url=config['api_url'],
+            api_token=config['api_token'],
+            project_name=config['project_name'],
+            namespace=config['project_name']
+        )
+
+        deployment = BeamDeploy(config, k8s)
+
+        try:
+            pods = deployment.launch(replicas=config['replicas'])
+
+            # Ensure pods is always a list of BeamPod objects
+            if isinstance(pods, BeamPod):
+                pods = [pods]
+            elif isinstance(pods, list):
+                for pod in pods:
+                    if not isinstance(pod, BeamPod):
+                        raise TypeError(f"Expected a BeamPod object, but got {type(pod)}")
+
+            if pods:
+                logger.info("Pod deployment successful")
+
+            if config.send_email is True:
+                subject = "Cluster Deployment Information"
+                # body = f"{config['body']}\n{get_cluster_info}"
+                body = f"{config['body']}<br>{deployment.cluster_info}"
+                to_email = config['to_email']
+                from_email = config['from_email']
+                from_email_password = config['from_email_password']
+                k8s.send_email(subject, body, to_email, from_email, from_email_password)
+
+            else:
+                logger.debug(f"Skipping email - printing Cluster info: {deployment.cluster_info}")
+            logger.debug(f"Cluster info: {deployment.cluster_info}")
+
+            if not pods:
+                logger.error("Pod deployment failed")
+                return None  # Or handle the error as needed
+
+            # Create the RnDCluster instance first, without pods
+            cluster_instance = cls(deployment=deployment, replicas=replicas, config=config)
+
+            # Assign pods after instantiation
+            cluster_instance.pods = pods
+
+            return cluster_instance
+
+        except Exception as e:
+            logger.error(f"Error during deployment: {str(e)}")
+            from ..utils import beam_traceback
+            logger.debug(beam_traceback())
+            raise e
+
+    @classmethod
+    def deploy_rnd_cluster_deployment(cls, replicas, config):
+        return cls._deploy_and_launch(replicas=replicas, config=config)
+
+    def get_cluster_status(self):
+        pod_statuses = [pod.get_pod_status() for pod in self.pods]
+        for status in pod_statuses:
+            if status[0][1] != "Running":
+                return f"Pod {status[0][0]} status: {status[0][1]}"
+        return "healthy"
+
+    def monitor_cluster(self):
+        while True:
+            try:
+                if not isinstance(self.pods, list) or not self.pods:
+                    logger.error("Pods list is not initialized or is not a list.")
+                    break  # Exit the loop if pods list is not set correctly
+
+                for pod in self.pods:
+                    if not isinstance(pod, BeamPod):
+                        logger.error(f"Expected BeamPod object, but got {type(pod)}")
+                        break
+
+                    pod_status = pod.get_pod_status()
+                    if not pod_status:
+                        logger.error(f"Failed to retrieve pod status for pod: {pod.pod_infos[0].name}")
+                        continue
+
+                    if pod_status != "Running":
+                        logger.info(f"Pod {pod.pod_infos[0].name} is not running. Restarting...")
+                        self.deploy_cluster()
+                    else:
+                        logger.info(f"Pod {pod.pod_infos[0].name} is running.")
+
+                time.sleep(3)
+            except Exception as e:
+                logger.exception("Error occurred while monitoring the cluster", exc_info=e)
+                break
+
+    @staticmethod
+    def stop_monitoring():
+        logger.info("Stopped monitoring the Ray cluster.")
+
+    def get_cluster_logs(self):
+        logger.info("Getting logs from RnDCluster pods...")
+
+        if not isinstance(self.pods, list) or not self.pods:
+            logger.error("Pods list is not initialized or is not a list.")
+            return None
+
+        cluster_logs = {}
+        try:
+            for pod in self.pods:
+                if isinstance(pod, BeamPod):
+                    logs = pod.get_logs()
+                    pod_name = pod.pod_infos[0].name if pod.pod_infos else "unknown_pod"
+                    cluster_logs[pod_name] = logs
+                    logger.info(f"Logs from pod {pod_name}:")
+                    for line in logs.split('\n'):
+                        if line.strip():
+                            logger.info(line.strip())
+                else:
+                    logger.error(f"Expected BeamPod object, but got {type(pod)}")
+            return cluster_logs
+        except Exception as e:
+            logger.exception("Failed to retrieve or process cluster logs", exc_info=e)
+            return None
+
+
