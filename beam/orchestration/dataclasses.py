@@ -19,6 +19,7 @@ class ServiceConfig:
     route_timeout: str = '599'
 
 
+
 @dataclass
 class CommandConfig:
     executable: str
@@ -102,7 +103,12 @@ class PodConfig:
 class ContainerConfig:
     pass
 
+
 @dataclass
 class DeploymentConfig:
     container: ContainerConfig
     pod: PodConfig
+
+    def get_labels(self) -> Dict[str, str]:
+        """Returns the labels as a dictionary."""
+        return self.labels.as_dict()

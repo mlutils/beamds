@@ -24,8 +24,8 @@ class BeamManager(BeamBase):
         self.clusters = {}
         self._stop_monitoring = threading.Event()
         # add monitor thread
-        self.monitor_thread = Thread(target=self._monitor)
-        self.monitor_thread.start()
+        # self.monitor_thread = Thread(target=self._monitor)
+        # self.monitor_thread.start()
         atexit.register(self._cleanup)
 
     def _monitor(self):
@@ -48,10 +48,19 @@ class BeamManager(BeamBase):
 
     def _cleanup(self):
         for cluster in self.clusters:
-            self.clusters[cluster].cleanup()
-        self.k8s.cleanup()
-        # kill monitor thread
-        self.monitor_thread.join()
+            if hasattr(self.clusters[cluster], 'cleanup'):
+                self.clusters[cluster].cleanup()
+            else:
+                logger.warning(f"Cluster {cluster} does not have a cleanup method.")
+
+        if hasattr(self.k8s, 'cleanup'):
+            self.k8s.cleanup()
+        else:
+            logger.warning("K8S object does not have a cleanup method.")
+
+        # Kill monitor thread
+        if hasattr(self, 'monitor_thread') and self.monitor_thread.is_alive():
+            self.monitor_thread.join()
 
     def info(self):
         return {cluster: self.clusters[cluster].info() for cluster in self.clusters}
@@ -116,11 +125,12 @@ class BeamManager(BeamBase):
             # Start monitoring the cluster
             monitor_thread = Thread(target=self.clusters[name].monitor_cluster)
             monitor_thread.start()
-            cluster_logs = self.clusters[name].get_cluster_logs()
 
-            for pod_name, logs in cluster_logs.items():
-                logger.info(f"--- Logs from pod {pod_name} ---")
-                logger.info(logs)
+            cluster_logs = self.clusters[name].get_cluster_logs()
+            if cluster_logs:
+                for pod_name, logs in cluster_logs.items():
+                    logger.info(f"--- Logs from pod {pod_name} ---")
+                    logger.info(logs)
 
         else:
             logger.error("Failed to initialize or launch the RnDCluster.")

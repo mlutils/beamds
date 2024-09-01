@@ -1,5 +1,8 @@
 from typing import List, Union, Dict
 import time
+
+from kubernetes.client import ApiException
+
 from ..logging import beam_logger as logger
 from ..base import BeamBase
 from .k8s import BeamK8S
@@ -416,32 +419,43 @@ class RnDCluster(BeamCluster):
         return "healthy"
 
     def monitor_cluster(self):
-        while True:
-            try:
-                if not isinstance(self.pods, list) or not self.pods:
-                    logger.error("Pods list is not initialized or is not a list.")
-                    break  # Exit the loop if pods list is not set correctly
+        try:
+            while True:
+                if hasattr(self, 'labels') and self.labels:
+                    # Retrieve updated pods list based on labels
+                    updated_pods = self.k8s.get_pods_by_label(self.labels, self.namespace)
+                else:
+                    logger.error("No labels provided to filter pods. Please ensure labels are set correctly.")
+                    return
+
+                self.pods = [
+                    BeamPod(
+                        pod_infos=[BeamPod.extract_pod_info(pod)],
+                        namespace=self.namespace,
+                        k8s=self.k8s
+                    )
+                    for pod in updated_pods
+                ]
 
                 for pod in self.pods:
-                    if not isinstance(pod, BeamPod):
-                        logger.error(f"Expected BeamPod object, but got {type(pod)}")
-                        break
+                    try:
+                        pod_status = pod.get_pod_status()
+                        if pod_status != "Running":
+                            logger.warning(f"Pod {pod.pod_infos[0].name} is not running. Status: {pod_status}")
+                        else:
+                            logger.info(f"Pod {pod.pod_infos[0].name} is running smoothly.")
+                    except Exception as e:
+                        logger.error(f"Error retrieving status for pod {pod.pod_infos[0].name}: {str(e)}")
 
-                    pod_status = pod.get_pod_status()
-                    if not pod_status:
-                        logger.error(f"Failed to retrieve pod status for pod: {pod.pod_infos[0].name}")
-                        continue
+                time.sleep(30)  # Adjust sleep duration as needed
+        except Exception as e:
+            logger.error(f"Error occurred while monitoring the cluster: {str(e)}")
 
-                    if pod_status != "Running":
-                        logger.info(f"Pod {pod.pod_infos[0].name} is not running. Restarting...")
-                        self.deploy_cluster()
-                    else:
-                        logger.info(f"Pod {pod.pod_infos[0].name} is running.")
-
-                time.sleep(3)
-            except Exception as e:
-                logger.exception("Error occurred while monitoring the cluster", exc_info=e)
-                break
+    def deploy_cluster(self):
+        logger.info("Redeploying the RnDCluster...")
+        self.deployment.delete()
+        self.deployment = BeamDeploy(self.config, self.k8s)
+        self.pods = self.deployment.launch(replicas=self.replicas)
 
     @staticmethod
     def stop_monitoring():
@@ -462,14 +476,18 @@ class RnDCluster(BeamCluster):
                     pod_name = pod.pod_infos[0].name if pod.pod_infos else "unknown_pod"
                     cluster_logs[pod_name] = logs
                     logger.info(f"Logs from pod {pod_name}:")
-                    for line in logs.split('\n'):
-                        if line.strip():
-                            logger.info(line.strip())
+                    for log_entry in logs:
+                        pod_name, log_content = log_entry
+                        logger.info(f"Logs for {pod_name}:")
+                        for line in log_content.split('\n'):
+                            if line.strip():
+                                logger.info(line.strip())
                 else:
                     logger.error(f"Expected BeamPod object, but got {type(pod)}")
             return cluster_logs
         except Exception as e:
             logger.exception("Failed to retrieve or process cluster logs", exc_info=e)
             return None
+
 
 

@@ -140,8 +140,8 @@ class BeamDeploy(BeamBase):
         )
 
         pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
-        logger.info(f"pod_infos type: {type(pod_infos)}")
-        logger.info(f"pod_infos content: {pod_infos}")
+        logger.debug(f"pod_infos type: {type(pod_infos)}")
+        logger.debug(f"pod_infos content: {pod_infos}")
         self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))
                                for pod in pod_infos]
 
@@ -214,7 +214,6 @@ class BeamDeploy(BeamBase):
             self.update_config_maps_rs_env_vars(self.deployment_name, self.namespace, rs_env_vars)
 
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
-
 
     def update_config_maps_rs_env_vars(self, deployment_name, namespace, rs_env_vars):
         # Prepare ConfigMap data

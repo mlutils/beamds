@@ -18,10 +18,12 @@ def main():
     logger.info(str(config))
     manager = BeamManager(config)
 
-    print(manager.info())
+
     # manager.launch_ray_cluster('/home/dayosupp/projects/beamds/examples/orchestration_raydeploy.yaml')
     # manager.launch_serve_cluster('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
     manager.launch_rnd_cluster('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
+    # print(manager.info())
+    # manager.monitor_thread()
     # manager.retrieve_cluster_logs('rnd_cluster_name')
 
 

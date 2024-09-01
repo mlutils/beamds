@@ -662,6 +662,25 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # TODO: return pod info - extract pod name and namespace from the applied_deployment object,
         # if needed, beam_k8s will query the server to retrieve all the necessary information
 
+    def get_pods_by_label(self, labels, namespace: str):
+        """
+        Retrieve pods matching the given labels within the specified namespace.
+
+        :param labels: Labels to match (usually a dict from the config).
+        :param namespace: Namespace to search within.
+        :return: List of V1Pod objects matching the labels.
+        """
+        if isinstance(labels, dict):
+            label_selector = ",".join([f"{key}={value}" for key, value in labels.items()])
+        elif isinstance(labels, str):
+            label_selector = labels
+        else:
+            logger.error(f"Unsupported labels format: {type(labels)}. Expected dict or str.")
+            return []
+
+        pods = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=label_selector)
+        return pods.items  # Returns a list of V1Pod objects
+
     def create_role_bindings(self, user_idm_configs):
         for config in user_idm_configs:
             if config.create_role_binding:
