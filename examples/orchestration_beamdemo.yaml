@@ -11,14 +11,14 @@ beam_version: 2.6.9
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:
-#  arguments:
-#  - -c
-#  - sleep infinity
-#  executable: /bin/bash
+  arguments:
+  - -c
+  - sleep infinity
+  executable: /bin/bash
 job_name: example-job
 cron_job_name: example-cron-job
 container_name: example-container
-schedule: "*/5 * * * *"  # Omit this line for a regular Job
+job_schedule: "*/5 * * * *"  # Omit this line for a regular Job
 backoff_limit: 4
 cpu_limits: '2'
 cpu_requests: '2'

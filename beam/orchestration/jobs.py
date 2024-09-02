@@ -71,12 +71,12 @@ class BeamCronJob(BeamCluster):
         cron_job = BeamDeploy(cron_job_config, k8s)
 
         # Use the launch_cron_job method from BeamDeploy to deploy the CronJob
-        pods = cron_job.launch_cron_job(cron_job_name=cron_job_config.name)
+        pods = cron_job.launch_cron_job()
 
         if isinstance(pods, BeamPod):
             pods = [pods]
 
-        cron_job_instance = cls(config=config, deployment=cron_job, pods=pods)
+        cron_job_instance = cls(config=config, pods=pods)
         return cron_job_instance
 
     def delete_cron_job(self):

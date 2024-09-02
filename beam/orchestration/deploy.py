@@ -23,6 +23,7 @@ class BeamDeploy(BeamBase):
         storage_configs = [StorageConfig(**v) for v in self.get_hparam('storage_configs', [])]
         # ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
         user_idm_configs = [UserIdmConfig(**v) for v in self.get_hparam('user_idm_configs', [])]
+        restart_policy_config = RestartPolicyConfig(**config.get('restart_policy', {}))
 
         command = self.get_hparam('command', None)
         if command:
@@ -43,7 +44,7 @@ class BeamDeploy(BeamBase):
         self.container_name = self.get_hparam('container_name')
         self.job_name = self.get_hparam('job_name')
         self.deployment_name = self.get_hparam('deployment_name')
-        self.schedule = self.get_hparam('schedule')
+        self.job_schedule = self.get_hparam('job_schedule')
         self.service_type = self.get_hparam('service_type')
         self.service_account_name = f"{self.deployment_name}svc"
         self.use_scc = self.get_hparam('use_scc')
@@ -70,6 +71,7 @@ class BeamDeploy(BeamBase):
         self.storage_configs = storage_configs or []
         self.user_idm_configs = user_idm_configs or []
         self.security_context_config = security_context_config or []
+        self.restart_policy_config = restart_policy_config or []
 
     def launch(self, replicas=None):
         if replicas is None:
@@ -138,6 +140,7 @@ class BeamDeploy(BeamBase):
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
             security_context_config=self.security_context_config,
+            restart_policy=self.restart_policy_config,
             entrypoint_args=self.entrypoint_args,
             entrypoint_envs=self.entrypoint_envs,
         )
@@ -229,7 +232,7 @@ class BeamDeploy(BeamBase):
             cron_job_name=self.cron_job_name,
             backoff_limit=self.backoff_limit,
             image_name=self.image_name,
-            schedule=self.job_schedule,
+            job_schedule=self.job_schedule,
             container_name=self.container_name,
             command=self.command,
             entrypoint_args=self.entrypoint_args,

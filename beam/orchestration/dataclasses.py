@@ -92,8 +92,18 @@ class PodInfos:
         return self.metadata.name
 
 
+@dataclass
+class RestartPolicyConfig:
+    condition: str  # "OnFailure" or "Never"
+    max_attempts: int  # Kubernetes backoffLimit
+    retry_delay: str  # Delay between retries, e.g., "5s"
+    active_deadline_seconds: int  # Maximum time a pod can be active
+    window: str  # Optional, custom retry window, might require custom logic in your app
+
 #Todo: build configuration classes according to the deployment layer structure
 # Todo: check online existing packages that have these configurations
+
+
 @dataclass
 class PodConfig:
     pass

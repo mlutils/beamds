@@ -1,8 +1,8 @@
 import base64
 from dataclasses import make_dataclass
 from kubernetes import client, watch
-from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions,
-                               V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding, V1Pod)
+from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions, BatchV1Api,
+                               V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding, V1Pod, V1PodSpec,)
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from ..utils import cached_property
@@ -33,6 +33,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     @cached_property
     def core_v1_api(self):
         return client.CoreV1Api(self.api_client)
+
+    @cached_property
+    def batch_v1_api(self):
+        return BatchV1Api(self.api_client)
 
     @cached_property
     def api_client(self):
@@ -291,7 +295,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     @staticmethod
     def create_container(image_name, deployment_name=None, cron_job_name=None, project_name=None, ports=None, pvc_mounts=None,
-                         cpu_requests=None, cpu_limits=None, memory_requests=None, use_command=None, command=None,
+                         cpu_requests=None, cpu_limits=None, memory_requests=None, command=None,
                          memory_limits=None, gpu_requests=None, memory_storage_configs=None,
                          use_gpu=None, gpu_limits=None, security_context_config=None,
                          security_context=None, entrypoint_args=None,  rs_env_vars=None, entrypoint_envs=None):
@@ -308,7 +312,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         for key, value in entrypoint_envs.items():
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
-        if use_command is True:
+        if command:
             command = command.as_list()
         else:
             command = None
@@ -395,11 +399,11 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return env_vars
 
     @staticmethod
-    def create_pod_template(image_name, use_command=None, command=None, labels=None, deployment_name=None,
-                            project_name=None, cron_job_name=None,
+    def create_pod_template(image_name, container_name, command=None, labels=None, deployment_name=None,
+                            project_name=None, cron_job_name=None, job_schedule=None, backoff_limit=None,
                             ports=None, create_service_account=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
-                            memory_limits=None, use_gpu=False, gpu_requests=None,
+                            memory_limits=None, use_gpu=False, gpu_requests=None, restart_policy=None,
                             gpu_limits=None, use_node_selector=None, node_selector=None,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
 
@@ -434,7 +438,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Call the create_container static method
         container = BeamK8S.create_container(
             image_name=image_name,
-            use_command=use_command,
             command=command,
             deployment_name=deployment_name,
             cron_job_name=cron_job_name,
@@ -461,6 +464,21 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             volumes=volumes
         )
 
+        # Apply the restart policy if provided
+        if restart_policy:
+            if restart_policy.condition == "on-failure":
+                pod_spec.restart_policy = "OnFailure"
+            elif restart_policy.condition == "never":
+                pod_spec.restart_policy = "Never"
+            else:
+                raise ValueError(f"Unsupported restart condition: {restart_policy.condition}")
+
+        # Adding max attempts and deadline seconds
+        if restart_policy.max_attempts:
+            pod_spec.backoff_limit = restart_policy.max_attempts
+        if restart_policy.active_deadline_seconds:
+            pod_spec.active_deadline_seconds = restart_policy.active_deadline_seconds
+
         # Conditionally add node_selector if it's not None
         if use_node_selector is True:
             pod_spec.node_selector = node_selector
@@ -485,7 +503,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 
     def create_deployment_spec(self, image_name, use_command=None, command=None, labels=None, deployment_name=None,
-                               project_name=None, replicas=None,
+                               project_name=None, replicas=None, restart_policy=None,
                                ports=None, create_service_account=None, service_account_name=None, storage_configs=None,
                                cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=None,
                                node_selector=None, memory_limits=None, use_gpu=None,
@@ -501,7 +519,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the pod template with correct arguments
         pod_template = self.create_pod_template(
             image_name=image_name,
-            use_command=use_command,
             command=command,
             labels=labels,
             deployment_name=deployment_name,
@@ -538,7 +555,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                           storage_configs=None, cpu_requests=None, cpu_limits=None, memory_requests=None,
                           use_node_selector=None, node_selector=None, memory_storage_configs=None,
                           memory_limits=None, use_gpu=False, gpu_requests=None, gpu_limits=None,
-                          security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
+                          security_context_config=None, restart_policy=None,
+                          entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
 
@@ -563,7 +581,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
             memory_storage_configs=memory_storage_configs, use_gpu=use_gpu,
-            gpu_requests=gpu_requests, gpu_limits=gpu_limits,
+            gpu_requests=gpu_requests, gpu_limits=gpu_limits, restart_policy=restart_policy,
             security_context_config=security_context_config,
             entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )
@@ -582,18 +600,20 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created deployment object type: {type(deployment)}")
         return deployment
 
-    def create_cron_job(self, namespace, cron_job_name, image_name, schedule, command, entrypoint_args,
-                        entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
+    def create_cron_job(self, namespace, cron_job_name, image_name, container_name,job_schedule, backoff_limit, command,
+                        entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
                         use_gpu, gpu_requests, gpu_limits, labels, service_account_name,
-                        storage_configs, use_command, security_context_config):
+                        storage_configs, security_context_config):
         pvc_mounts = [{'pvc_name': sc.pvc_name, 'mount_path': sc.pvc_mount_path} for sc in storage_configs]
 
         pod_template = self.create_pod_template(
             image_name=image_name,
-            use_command=use_command,
+            container_name=container_name,
             command=command,
             labels=labels,
             cron_job_name=cron_job_name,
+            backoff_limit=backoff_limit,
+            job_schedule=job_schedule,
             project_name=namespace,
             service_account_name=service_account_name,
             pvc_mounts=pvc_mounts,
@@ -612,7 +632,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         job_spec = client.V1JobSpec(template=pod_template.spec)
 
         cron_job_spec = client.V1CronJobSpec(
-            schedule=schedule,
+            schedule=job_schedule,
             job_template=client.V1JobTemplateSpec(
                 metadata=client.V1ObjectMeta(labels=labels),
                 spec=job_spec
