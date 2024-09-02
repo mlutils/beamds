@@ -73,6 +73,9 @@ class BeamDeploy(BeamBase):
         self.restart_policy_configs = restart_policy_configs or {}
 
     def launch(self, replicas=None):
+
+        object_type = "Deployment"
+
         if replicas is None:
             replicas = self.replicas
 
@@ -120,6 +123,7 @@ class BeamDeploy(BeamBase):
             use_command=self.use_command,
             command=self.command,
             labels=self.labels,
+            object_type=self.object_type,
             deployment_name=self.deployment_name,
             namespace=self.namespace,
             project_name=self.project_name,
@@ -223,7 +227,7 @@ class BeamDeploy(BeamBase):
     def launch_cron_job(self):
         if not self.job_schedule:
             logger.error("CronJob schedule not provided.")
-            return None
+            return
 
         # Delegate CronJob creation to k8s class
         cronjob = self.k8s.create_cron_job(
@@ -239,6 +243,8 @@ class BeamDeploy(BeamBase):
             cpu_limits=self.cpu_limits,
             memory_requests=self.memory_requests,
             memory_limits=self.memory_limits,
+            use_node_selector=self.use_node_selector,
+            node_selector=self.node_selector,
             use_gpu=self.use_gpu,
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
@@ -249,14 +255,24 @@ class BeamDeploy(BeamBase):
             restart_policy_configs=self.restart_policy_configs
         )
 
-        return self.process_pod_infos(cronjob)
+        logger.info(
+            f"CronJob '{self.cron_job_name}' created. Pods will be scheduled according to '{self.job_schedule}'.")
 
+        return cronjob
+
+    # TODO: use process_pod_infos in regular deployment as well
     def process_pod_infos(self, pod_infos):
+        # Handle cases where no pods might be immediately available
+        if not pod_infos:
+            logger.warning("No pods found for the given CronJob. They may not have been scheduled yet.")
+            return None
+
         self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))
                                for pod in pod_infos]
-        self.beam_pod_instances = [BeamPod(pod_infos=[BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))],
-                                           namespace=self.namespace, k8s=self.k8s)
-                                   for pod in pod_infos]
+        self.beam_pod_instances = [
+            BeamPod(pod_infos=[BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))],
+                    namespace=self.namespace, k8s=self.k8s)
+            for pod in pod_infos]
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
 
     def update_config_maps_rs_env_vars(self, deployment_name, namespace, rs_env_vars):

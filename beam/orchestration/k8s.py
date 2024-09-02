@@ -2,7 +2,7 @@ import base64
 from dataclasses import make_dataclass
 from kubernetes import client, watch
 from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions, BatchV1Api,
-                               V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding, V1Pod, V1PodSpec,)
+                               V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding, V1Pod, V1PodSpec, )
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from ..utils import cached_property
@@ -294,24 +294,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             raise
 
     @staticmethod
-    def create_container(image_name, object_type=None, deployment_name=None, cron_job_name=None, project_name=None, ports=None, pvc_mounts=None,
+    def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None, command=None,
                          memory_limits=None, gpu_requests=None, memory_storage_configs=None,
                          use_gpu=None, gpu_limits=None, security_context_config=None,
-                         security_context=None, entrypoint_args=None,  rs_env_vars=None, entrypoint_envs=None):
+                         security_context=None, entrypoint_args=None, rs_env_vars=None, entrypoint_envs=None):
 
-        # Determine the container name based on the object type
-        if object_type == "Deployment":
-            container_name = f"{project_name}-{deployment_name}-container"
-        elif object_type == "CronJob":
-            container_name = f"{project_name}-{cron_job_name}-container"
-        elif object_type == "Job":
-            container_name = f"{project_name}-{job_name}-container"
-        else:
-            container_name = "default-container"
-
-        # container_name = f"{project_name}-{deployment_name}-container" \
-        #     if project_name and deployment_name else "default-container"
+        container_name = f"{project_name}-{deployment_name}-container" \
+            if project_name and deployment_name else "default-container"
 
         # Preparing environment variables from entrypoint_args and envs
         env_vars = []
@@ -436,7 +426,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                         empty_dir=memory_volume_spec
                     ))
                 else:
-                    memory_volume_spec = client.V1EmptyDirVolumeSource()
+                    client.V1EmptyDirVolumeSource()
 
         # Handle PVC mounts
         if pvc_mounts:
@@ -451,7 +441,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             image_name=image_name,
             command=command,
             deployment_name=deployment_name,
-            cron_job_name=cron_job_name,
             project_name=project_name,
             ports=ports,
             pvc_mounts=pvc_mounts,
@@ -477,18 +466,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         # Apply the restart policy if provided
         if restart_policy_configs:
-            if restart_policy_configs.condition == "on-failure":
-                pod_spec.restart_policy = "OnFailure"
-            elif restart_policy_configs.condition == "never":
-                pod_spec.restart_policy = "Never"
-            else:
-                raise ValueError(f"Unsupported restart condition: {restart_policy_configs.condition}")
-
-        # Adding max attempts and deadline seconds
-        if restart_policy_configs.max_attempts:
-            pod_spec.backoff_limit = restart_policy_configs.max_attempts
-        if restart_policy_configs.active_deadline_seconds:
-            pod_spec.active_deadline_seconds = restart_policy_configs.active_deadline_seconds
+            pod_spec.restart_policy = restart_policy_configs.condition
+        else:
+            raise ValueError(f"Unsupported restart condition: {restart_policy_configs.condition}")
 
         # Conditionally add node_selector if it's not None
         if use_node_selector is True:
@@ -611,21 +591,20 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created deployment object type: {type(deployment)}")
         return deployment
 
-    def create_cron_job(self, namespace, cron_job_name, image_name, container_name,job_schedule, command,
+    def create_cron_job(self, namespace, cron_job_name, image_name, container_name, job_schedule, command,
                         entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
-                        use_gpu, gpu_requests, gpu_limits, labels, service_account_name,
-                        storage_configs, security_context_config, restart_policy_configs):
-        pvc_mounts = [{'pvc_name': sc.pvc_name, 'mount_path': sc.pvc_mount_path} for sc in storage_configs]
+                        use_gpu, gpu_requests, gpu_limits, labels, service_account_name, node_selector,
+                        use_node_selector, storage_configs, security_context_config, restart_policy_configs):
 
-        pod_template = self.create_pod_template(
+        pvc_mounts = [{
+            'pvc_name': sc.pvc_name,
+            'mount_path': sc.pvc_mount_path
+        } for sc in storage_configs if sc.create_pvc] if storage_configs else []
+
+        # Create the container definition
+        container = self.create_container(
             image_name=image_name,
-            container_name=container_name,
             command=command,
-            labels=labels,
-            cron_job_name=cron_job_name,
-            job_schedule=job_schedule,
-            project_name=namespace,
-            service_account_name=service_account_name,
             pvc_mounts=pvc_mounts,
             cpu_requests=cpu_requests,
             cpu_limits=cpu_limits,
@@ -635,13 +614,33 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
             security_context_config=security_context_config,
-            restart_policy_configs=restart_policy_configs,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
 
-        job_spec = client.V1JobSpec(template=pod_template.spec)
+        # Create the pod template spec
+        pod_spec = client.V1PodSpec(
+            containers=[container],
+            service_account_name=service_account_name,
+            restart_policy=restart_policy_configs.condition,
+        )
 
+        if use_node_selector is True:
+            pod_spec.node_selector = node_selector
+
+        # Create the pod template
+        pod_template = client.V1PodTemplateSpec(
+            metadata=client.V1ObjectMeta(labels=labels),
+            spec=pod_spec
+        )
+
+        # Create the job spec
+        job_spec = client.V1JobSpec(
+            template=pod_template,
+            backoff_limit=restart_policy_configs.max_attempts
+        )
+
+        # Create the cron job spec
         cron_job_spec = client.V1CronJobSpec(
             schedule=job_schedule,
             job_template=client.V1JobTemplateSpec(
@@ -652,6 +651,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         cron_job_metadata = client.V1ObjectMeta(name=cron_job_name, namespace=namespace, labels={"project": namespace})
 
+        # Create the cron job definition
         cron_job = client.V1CronJob(
             api_version="batch/v1",
             kind="CronJob",
@@ -1004,7 +1004,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         try:
             # Try to get the existing route
             existing_route = route_resource.get(name=service_name, namespace=namespace)
-            if existing_route: # If the route exists, log a message and return
+            if existing_route:  # If the route exists, log a message and return
                 logger.warning(f"Route {service_name} already exists in namespace {namespace}, skipping creation.")
             return
         except NotFoundError:
@@ -1261,7 +1261,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             if 'flask' in route['host']:
                 route_urls.append(f"flask serve: http://{route['host']}\n")
         final_route_urls = ''.join(route_urls)
-                # return final_route_urls
+        # return final_route_urls
         return route_urls
 
     def query_available_resources(self):

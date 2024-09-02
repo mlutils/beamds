@@ -10,7 +10,7 @@ class BeamJob(BeamCluster):
     # Handles Job deployment, monitoring, logs, and interaction via k8s API
 
     def __init__(self, config, job_name=None, pods=None):
-        super(BeamJob, self).__init__(job_name=job_name, config=config, pods=pods)
+        super(BeamJob, self).__init__(deployment=None, job_name=job_name, config=config, pods=pods)
 
     @classmethod
     def deploy_job(cls, config, k8s=None):
@@ -52,7 +52,7 @@ class BeamCronJob(BeamCluster):
     # Handles CronJob deployment, monitoring, logs, and interaction via k8s API
 
     def __init__(self, config, cron_job_name=None, pods=None):
-        super(BeamCronJob, self).__init__(deployment=None, config=config, cron_job_name=cron_job_name, pods=pods, )
+        super(BeamCronJob, self).__init__(deployment=None, config=config, cron_job_name=cron_job_name, pods=pods)
 
     @classmethod
     def deploy_cron_job(cls, config, k8s=None):
