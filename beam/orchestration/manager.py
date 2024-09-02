@@ -130,13 +130,17 @@ class BeamManager(BeamBase):
             if cluster_logs:
                 for pod_name, logs in cluster_logs.items():
                     logger.info(f"--- Logs from pod {pod_name} ---")
-                    logger.info(logs)
+                    for log_entry in logs:
+                        pod_name, log_content = log_entry
+                        # Split the log content by lines and log each line individually
+                        for line in log_content.splitlines():
+                            if line.strip():  # Only log non-empty lines
+                                logger.info(line.strip())
 
         else:
             logger.error("Failed to initialize or launch the RnDCluster.")
 
         return self.clusters[name]
-
 
     def get_cluster_name(self, config):
         # TODO: implement a method to generate a unique cluster name (or get it from the config)

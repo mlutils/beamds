@@ -2,7 +2,7 @@ import base64
 from dataclasses import make_dataclass
 from kubernetes import client, watch
 from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions,
-                               V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding)
+                               V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding, V1Pod)
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from ..utils import cached_property
@@ -582,6 +582,61 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created deployment object type: {type(deployment)}")
         return deployment
 
+    def create_cron_job(self, namespace, cron_job_name, image_name, schedule, command, entrypoint_args,
+                        entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
+                        use_gpu, gpu_requests, gpu_limits, labels, service_account_name,
+                        storage_configs, security_context_config):
+        pvc_mounts = [{'pvc_name': sc.pvc_name, 'mount_path': sc.pvc_mount_path} for sc in storage_configs]
+
+        pod_template = self.create_pod_template(
+            image_name=image_name,
+            use_command=True,
+            command=command,
+            labels=labels,
+            deployment_name=cron_job_name,
+            project_name=namespace,
+            service_account_name=service_account_name,
+            pvc_mounts=pvc_mounts,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            use_gpu=use_gpu,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
+            entrypoint_args=entrypoint_args,
+            entrypoint_envs=entrypoint_envs
+        )
+
+        job_spec = client.V1JobSpec(template=pod_template.spec)
+
+        cron_job_spec = client.V1CronJobSpec(
+            schedule=schedule,
+            job_template=client.V1JobTemplateSpec(
+                metadata=client.V1ObjectMeta(labels=labels),
+                spec=job_spec
+            )
+        )
+
+        cron_job_metadata = client.V1ObjectMeta(name=cron_job_name, namespace=namespace, labels={"project": namespace})
+
+        cron_job = client.V1CronJob(
+            api_version="batch/v1",
+            kind="CronJob",
+            metadata=cron_job_metadata,
+            spec=cron_job_spec
+        )
+
+        try:
+            self.batch_v1_api.create_namespaced_cron_job(body=cron_job, namespace=namespace)
+            logger.info(f"CronJob '{cron_job_name}' created successfully in namespace '{namespace}'.")
+
+            return self.get_pods_by_label(labels, namespace)
+        except ApiException as e:
+            logger.error(f"Failed to create CronJob '{cron_job_name}' in namespace '{namespace}': {e}")
+            return None
+
     def generate_unique_deployment_name(self, base_name, namespace):
         unique_name = base_name
         suffix = 1
@@ -670,16 +725,35 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         :param namespace: Namespace to search within.
         :return: List of V1Pod objects matching the labels.
         """
-        if isinstance(labels, dict):
-            label_selector = ",".join([f"{key}={value}" for key, value in labels.items()])
-        elif isinstance(labels, str):
-            label_selector = labels
-        else:
-            logger.error(f"Unsupported labels format: {type(labels)}. Expected dict or str.")
+        # Ensure that the namespace is a string
+        if not isinstance(namespace, str):
+            logger.error(f"Expected namespace to be a string, but got {type(namespace).__name__}.")
             return []
 
-        pods = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=label_selector)
-        return pods.items  # Returns a list of V1Pod objects
+        try:
+            if isinstance(labels, dict):
+                label_selector = ",".join([f"{key}={value}" for key, value in labels.items()])
+            elif isinstance(labels, str):
+                label_selector = labels
+            else:
+                logger.error(f"Unsupported labels format: {type(labels)}. Expected dict or str.")
+                return []
+
+            logger.debug(f"Using label selector: {label_selector} in namespace: {namespace}")
+
+            # Retrieve the pods
+            pods = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=label_selector)
+
+            if not pods.items:
+                logger.warning("No pods found with the given label selector.")
+                return []
+
+            logger.debug(f"Retrieved {len(pods.items)} pods.")
+            return pods.items  # Returns a list of V1Pod objects
+
+        except Exception as e:
+            logger.exception(f"Error retrieving pods by label: {str(e)}")
+            return []
 
     def create_role_bindings(self, user_idm_configs):
         for config in user_idm_configs:
@@ -720,7 +794,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                         logger.error(
                             f"Failed to create admin role binding for '{config.user_name}' "
                             f"in namespace '{config.project_name}': {e}")
-
 
     def create_service(self, base_name, namespace, ports, labels, service_type):
         # Initialize the service name with the base name

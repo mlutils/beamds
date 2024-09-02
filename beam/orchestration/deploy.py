@@ -215,6 +215,43 @@ class BeamDeploy(BeamBase):
 
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
 
+    def launch_cron_job(self):
+        if not self.job_schedule:
+            logger.error("CronJob schedule not provided.")
+            return None
+
+        # Delegate CronJob creation to k8s class
+        cron_job_pod_infos = self.k8s.create_cron_job(
+            namespace=self.namespace,
+            cron_job_name=f"{self.deployment_name}-cron",
+            image_name=self.image_name,
+            schedule=self.job_schedule,
+            command=self.command,
+            entrypoint_args=self.entrypoint_args,
+            entrypoint_envs=self.entrypoint_envs,
+            cpu_requests=self.cpu_requests,
+            cpu_limits=self.cpu_limits,
+            memory_requests=self.memory_requests,
+            memory_limits=self.memory_limits,
+            use_gpu=self.use_gpu,
+            gpu_requests=self.gpu_requests,
+            gpu_limits=self.gpu_limits,
+            labels=self.labels,
+            service_account_name=self.service_account_name,
+            storage_configs=self.storage_configs,
+            security_context_config=self.security_context_config
+        )
+
+        return self.process_pod_infos(cron_job_pod_infos)
+
+    def process_pod_infos(self, pod_infos):
+        self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))
+                               for pod in pod_infos]
+        self.beam_pod_instances = [BeamPod(pod_infos=[BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))],
+                                           namespace=self.namespace, k8s=self.k8s)
+                                   for pod in pod_infos]
+        return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
+
     def update_config_maps_rs_env_vars(self, deployment_name, namespace, rs_env_vars):
         # Prepare ConfigMap data
         config_map_name = f"{deployment_name}-config"
