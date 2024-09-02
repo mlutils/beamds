@@ -290,7 +290,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             raise
 
     @staticmethod
-    def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
+    def create_container(image_name, deployment_name=None, cron_job_name=None, project_name=None, ports=None, pvc_mounts=None,
                          cpu_requests=None, cpu_limits=None, memory_requests=None, use_command=None, command=None,
                          memory_limits=None, gpu_requests=None, memory_storage_configs=None,
                          use_gpu=None, gpu_limits=None, security_context_config=None,
@@ -396,13 +396,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     @staticmethod
     def create_pod_template(image_name, use_command=None, command=None, labels=None, deployment_name=None,
-                            project_name=None,
+                            project_name=None, cron_job_name=None,
                             ports=None, create_service_account=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
                             memory_limits=None, use_gpu=False, gpu_requests=None,
                             gpu_limits=None, use_node_selector=None, node_selector=None,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
-
 
         if labels is None:
             labels = {}
@@ -438,6 +437,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             use_command=use_command,
             command=command,
             deployment_name=deployment_name,
+            cron_job_name=cron_job_name,
             project_name=project_name,
             ports=ports,
             pvc_mounts=pvc_mounts,
@@ -585,15 +585,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_cron_job(self, namespace, cron_job_name, image_name, schedule, command, entrypoint_args,
                         entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
                         use_gpu, gpu_requests, gpu_limits, labels, service_account_name,
-                        storage_configs, security_context_config):
+                        storage_configs, use_command, security_context_config):
         pvc_mounts = [{'pvc_name': sc.pvc_name, 'mount_path': sc.pvc_mount_path} for sc in storage_configs]
 
         pod_template = self.create_pod_template(
             image_name=image_name,
-            use_command=True,
+            use_command=use_command,
             command=command,
             labels=labels,
-            deployment_name=cron_job_name,
+            cron_job_name=cron_job_name,
             project_name=namespace,
             service_account_name=service_account_name,
             pvc_mounts=pvc_mounts,

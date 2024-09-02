@@ -16,8 +16,8 @@ command:
 #  - sleep infinity
 #  executable: /bin/bash
 job_name: example-job
+cron_job_name: example-cron-job
 container_name: example-container
-container_image: example-image:latest
 schedule: "*/5 * * * *"  # Omit this line for a regular Job
 backoff_limit: 4
 cpu_limits: '2'

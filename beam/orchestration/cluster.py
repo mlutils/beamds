@@ -15,7 +15,7 @@ from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmC
 # BeamCluster class now inherits from BeamBase
 class BeamCluster(BeamBase):
 
-    def __init__(self, deployment: Union[BeamDeploy, Dict[str, BeamDeploy]], config, pods: List[BeamPod] = None,
+    def __init__(self, deployment: Union[BeamDeploy, Dict[str, BeamDeploy], None], config, pods: List[BeamPod] = None,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pods = pods

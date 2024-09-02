@@ -29,8 +29,7 @@ class BeamDeploy(BeamBase):
             command = CommandConfig(**command)
 
         self.entrypoint_args = self.get_hparam('entrypoint_args') or []
-        # self.hparams.entrypoint_args
-
+        self.backoff_limit = self.get_hparam('backoff_limit')
         self.entrypoint_envs = self.get_hparam('entrypoint_envs') or {}
         # self.check_project_exists = self.get_hparam('check_project_exists')
         self.project_name = self.get_hparam('project_name')
@@ -40,7 +39,11 @@ class BeamDeploy(BeamBase):
         self.labels = self.get_hparam('labels')
         self.image_name = self.get_hparam('image_name')
         self.use_command = self.get_hparam('use_command')
+        self.cron_job_name = self.get_hparam('cron_job_name')
+        self.container_name = self.get_hparam('container_name')
+        self.job_name = self.get_hparam('job_name')
         self.deployment_name = self.get_hparam('deployment_name')
+        self.schedule = self.get_hparam('schedule')
         self.service_type = self.get_hparam('service_type')
         self.service_account_name = f"{self.deployment_name}svc"
         self.use_scc = self.get_hparam('use_scc')
@@ -221,11 +224,13 @@ class BeamDeploy(BeamBase):
             return None
 
         # Delegate CronJob creation to k8s class
-        cron_job_pod_infos = self.k8s.create_cron_job(
+        cronjob = self.k8s.create_cron_job(
             namespace=self.namespace,
-            cron_job_name=f"{self.deployment_name}-cron",
+            cron_job_name=self.cron_job_name,
+            backoff_limit=self.backoff_limit,
             image_name=self.image_name,
             schedule=self.job_schedule,
+            container_name=self.container_name,
             command=self.command,
             entrypoint_args=self.entrypoint_args,
             entrypoint_envs=self.entrypoint_envs,
@@ -242,7 +247,7 @@ class BeamDeploy(BeamBase):
             security_context_config=self.security_context_config
         )
 
-        return self.process_pod_infos(cron_job_pod_infos)
+        return self.process_pod_infos(cronjob)
 
     def process_pod_infos(self, pod_infos):
         self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))

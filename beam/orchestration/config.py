@@ -62,6 +62,7 @@ class RnDClusterConfig(K8SConfig):
         BeamParam('subject', str, 'Cluster Deployment Information', 'Email subject'),
     ]
 
+
 class ServeClusterConfig(K8SConfig, BeamServeConfig):
 
     defaults = dict(n_threads=16)
@@ -89,11 +90,25 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
         BeamParam('alg', object, None, 'Algorithm object'),
         BeamParam('copy-bundle', bool, False, 'Copy bundle to tmp directory'),
     ]
+
+
 class BeamManagerConfig(K8SConfig):
     parameters = [
         BeamParam('clusters', list, [], 'list of clusters'),
     ]
 
+
+class CronJobConfig(K8SConfig):
+    parameters = [
+        BeamParam('schedule', str, None, 'Cron job schedule'),
+        BeamParam('backoff_limit', int, None, 'Job configuration'),
+    ]
+
+
+class JobConfig(K8SConfig):
+    parameters = [
+        BeamParam('job_config', dict, {}, 'Job configuration'),
+    ]
 #
 # alg_image_name: fake-alg-http-server:latest
 # api_token: sha256~ya9nNwLC_tY6nTGY4WgrDP5llXBbtPlOAKngFL2l4J0
