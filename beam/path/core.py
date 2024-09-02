@@ -1195,7 +1195,7 @@ class BeamKey:
     @property
     def config_path(self):
         if self._config_path is None:
-            if 'config_file' in self.hparams:
+            if 'config_file' in self.hparams and self.hparams['config_file'] is not None:
                 self._config_path = Path(self.hparams['config_file'])
             else:
                 self._config_path = Path.home().joinpath('conf.pkl')

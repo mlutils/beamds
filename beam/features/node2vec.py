@@ -126,7 +126,9 @@ class Set2Vec(Node2Vec):
         # Iterate over each list in the Series
         for lst in tqdm(np.squeeze(as_numpy(x))):
             # Generate unique pairs from the list
-            pairs = combinations(set(lst), 2)
+
+            lst = set(lst)
+            pairs = combinations(lst, 2)
 
             pairs = [(c1, c2) if c1 < c2 else (c2, c1) for c1, c2 in pairs]
             if self.self_loop:
