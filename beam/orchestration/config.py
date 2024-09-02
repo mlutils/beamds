@@ -60,6 +60,7 @@ class RnDClusterConfig(K8SConfig):
         BeamParam('smtp_server', str, 'smtp.gmail.com', 'SMTP server'),
         BeamParam('smtp_port', int, 587, 'SMTP port'),
         BeamParam('subject', str, 'Cluster Deployment Information', 'Email subject'),
+
     ]
 
 
@@ -101,6 +102,7 @@ class BeamManagerConfig(K8SConfig):
 class CronJobConfig(K8SConfig):
     parameters = [
         BeamParam('job_schedule', str, None, 'Cron job schedule'),
+        # TODO: how to use OnFailure here as default value?
         BeamParam('restart_policy_configs', dict, {}, 'Restart Policy configuration'),
     ]
 

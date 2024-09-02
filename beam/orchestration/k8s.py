@@ -400,7 +400,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return env_vars
 
     @staticmethod
-    def create_pod_template(image_name, container_name, command=None, labels=None, deployment_name=None,
+    def create_pod_template(image_name, command=None, labels=None, deployment_name=None,
                             project_name=None, cron_job_name=None, job_schedule=None,
                             ports=None, create_service_account=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
@@ -493,8 +493,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         self.core_v1_api.create_namespaced_persistent_volume_claim(namespace=namespace, body=pvc_manifest)
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 
-    def create_deployment_spec(self, image_name, use_command=None, command=None, labels=None, deployment_name=None,
-                               project_name=None, replicas=None, restart_policy=None,
+    def create_deployment_spec(self, image_name, command=None, labels=None, deployment_name=None,
+                               project_name=None, replicas=None, restart_policy_configs=None,
                                ports=None, create_service_account=None, service_account_name=None, storage_configs=None,
                                cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=None,
                                node_selector=None, memory_limits=None, use_gpu=None,
@@ -529,6 +529,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
             security_context_config=security_context_config,
+            restart_policy_configs=restart_policy_configs,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
@@ -540,13 +541,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             selector={'matchLabels': pod_template.metadata.labels}
         )
 
-    def create_deployment(self, image_name, use_command=None, command=None, labels=None, deployment_name=None,
+    def create_deployment(self, image_name, command=None, labels=None, deployment_name=None,
                           namespace=None, project_name=None,
                           replicas=None, ports=None, create_service_account=None, service_account_name=None,
                           storage_configs=None, cpu_requests=None, cpu_limits=None, memory_requests=None,
                           use_node_selector=None, node_selector=None, memory_storage_configs=None,
                           memory_limits=None, use_gpu=False, gpu_requests=None, gpu_limits=None,
-                          security_context_config=None, restart_policy=None,
+                          security_context_config=None, restart_policy_configs=None,
                           entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
@@ -566,13 +567,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         deployment_name = self.generate_unique_deployment_name(deployment_name, namespace)
 
         deployment_spec = self.create_deployment_spec(
-            image_name, use_command=use_command, command=command, labels=labels, deployment_name=deployment_name,
+            image_name, command=command, labels=labels, deployment_name=deployment_name,
             project_name=project_name, replicas=replicas, ports=ports, create_service_account=create_service_account,
             service_account_name=service_account_name, use_node_selector=use_node_selector, node_selector=node_selector,
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
             memory_storage_configs=memory_storage_configs, use_gpu=use_gpu,
-            gpu_requests=gpu_requests, gpu_limits=gpu_limits, restart_policy=restart_policy,
+            gpu_requests=gpu_requests, gpu_limits=gpu_limits, restart_policy_configs=restart_policy_configs,
             security_context_config=security_context_config,
             entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )

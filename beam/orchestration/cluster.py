@@ -473,8 +473,7 @@ class RnDCluster(BeamCluster):
             logger.error(f"Error during deployment: {str(e)}")
             from ..utils import beam_traceback
             logger.debug(beam_traceback())
-            raise e@classmethod
-
+            raise e
 
     @classmethod
     def deploy_and_launch(cls, replicas, config, k8s=None):

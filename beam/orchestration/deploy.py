@@ -38,7 +38,6 @@ class BeamDeploy(BeamBase):
         self.replicas = self.get_hparam('replicas')
         self.labels = self.get_hparam('labels')
         self.image_name = self.get_hparam('image_name')
-        self.use_command = self.get_hparam('use_command')
         self.cron_job_name = self.get_hparam('cron_job_name')
         self.container_name = self.get_hparam('container_name')
         self.job_name = self.get_hparam('job_name')
@@ -74,7 +73,6 @@ class BeamDeploy(BeamBase):
 
     def launch(self, replicas=None):
 
-        object_type = "Deployment"
 
         if replicas is None:
             replicas = self.replicas
@@ -120,10 +118,9 @@ class BeamDeploy(BeamBase):
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
-            use_command=self.use_command,
+
             command=self.command,
             labels=self.labels,
-            object_type=self.object_type,
             deployment_name=self.deployment_name,
             namespace=self.namespace,
             project_name=self.project_name,
@@ -149,8 +146,11 @@ class BeamDeploy(BeamBase):
         )
 
         pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+
         logger.debug(f"pod_infos type: {type(pod_infos)}")
+
         logger.debug(f"pod_infos content: {pod_infos}")
+
         self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))
                                for pod in pod_infos]
 
