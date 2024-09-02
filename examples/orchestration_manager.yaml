@@ -59,6 +59,11 @@ registry_url: harbor.dt.local
 registry_username: admin
 registry_project_name: public
 replicas: '1'
+restart_policy:
+  condition: on-failure
+  delay: 5s
+  max_attempts: 3
+  window: 120s
 send_mail: false
 scc_name: anyuid
 security_context_config:

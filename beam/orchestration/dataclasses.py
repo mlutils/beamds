@@ -35,7 +35,6 @@ class RayPortsConfig:
     ray_ports: List[int] = field(default_factory=list)
 
 
-
 @dataclass
 class StorageConfig:
     pvc_name: str
@@ -96,7 +95,7 @@ class PodInfos:
 class RestartPolicyConfig:
     condition: str  # "OnFailure" or "Never"
     max_attempts: int  # Kubernetes backoffLimit
-    retry_delay: str  # Delay between retries, e.g., "5s"
+    delay: str  # Delay between retries, e.g., "5s"
     active_deadline_seconds: int  # Maximum time a pod can be active
     window: str  # Optional, custom retry window, might require custom logic in your app
 

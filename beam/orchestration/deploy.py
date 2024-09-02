@@ -23,14 +23,13 @@ class BeamDeploy(BeamBase):
         storage_configs = [StorageConfig(**v) for v in self.get_hparam('storage_configs', [])]
         # ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
         user_idm_configs = [UserIdmConfig(**v) for v in self.get_hparam('user_idm_configs', [])]
-        restart_policy_config = RestartPolicyConfig(**config.get('restart_policy', {}))
+        restart_policy_configs = RestartPolicyConfig(**self.get_hparam('restart_policy_configs', []))
 
         command = self.get_hparam('command', None)
         if command:
             command = CommandConfig(**command)
 
         self.entrypoint_args = self.get_hparam('entrypoint_args') or []
-        self.backoff_limit = self.get_hparam('backoff_limit')
         self.entrypoint_envs = self.get_hparam('entrypoint_envs') or {}
         # self.check_project_exists = self.get_hparam('check_project_exists')
         self.project_name = self.get_hparam('project_name')
@@ -71,7 +70,7 @@ class BeamDeploy(BeamBase):
         self.storage_configs = storage_configs or []
         self.user_idm_configs = user_idm_configs or []
         self.security_context_config = security_context_config or []
-        self.restart_policy_config = restart_policy_config or []
+        self.restart_policy_configs = restart_policy_configs or {}
 
     def launch(self, replicas=None):
         if replicas is None:
@@ -140,7 +139,7 @@ class BeamDeploy(BeamBase):
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
             security_context_config=self.security_context_config,
-            restart_policy=self.restart_policy_config,
+            restart_policy_configs=self.restart_policy_configs,
             entrypoint_args=self.entrypoint_args,
             entrypoint_envs=self.entrypoint_envs,
         )
@@ -230,7 +229,6 @@ class BeamDeploy(BeamBase):
         cronjob = self.k8s.create_cron_job(
             namespace=self.namespace,
             cron_job_name=self.cron_job_name,
-            backoff_limit=self.backoff_limit,
             image_name=self.image_name,
             job_schedule=self.job_schedule,
             container_name=self.container_name,
@@ -247,7 +245,8 @@ class BeamDeploy(BeamBase):
             labels=self.labels,
             service_account_name=self.service_account_name,
             storage_configs=self.storage_configs,
-            security_context_config=self.security_context_config
+            security_context_config=self.security_context_config,
+            restart_policy_configs=self.restart_policy_configs
         )
 
         return self.process_pod_infos(cronjob)

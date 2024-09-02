@@ -100,8 +100,8 @@ class BeamManagerConfig(K8SConfig):
 
 class CronJobConfig(K8SConfig):
     parameters = [
-        BeamParam('schedule', str, None, 'Cron job schedule'),
-        BeamParam('backoff_limit', int, None, 'Job configuration'),
+        BeamParam('job_schedule', str, None, 'Cron job schedule'),
+        BeamParam('restart_policy_configs', dict, {}, 'Restart Policy configuration'),
     ]
 
 
