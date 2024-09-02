@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Configuration UI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/jquery.knob.css') }}"> <!-- Knob CSS -->
+  </head>
+  <body>
+    <div class="header">
+      <img src="{{ url_for('static', filename='images/beam-logo.png') }}" alt="Root Icon">
+      <h1>Configuration UI</h1>
+      <p>Update your Kubernetes Configuration Parameters</p>
+    </div>
+    <div class="container">
+      <form method="post" action="/" class="row">
+        {% for param in config_params %}
+          <div class="service tile col-lg-3 col-md-6 mb-4"> <!-- Adjusted to 4 tiles per row -->
+            <div class="icon-container">
+              <img src="{{ param.icon }}" alt="{{ param.name }} Icon" class="param-icon">
+            </div>
+            <div class="form-group">
+              <label class="font-weight-bold">{{ param.name }}</label>
+              {% if param.type == 'int' %}
+                <input type="text" name="{{ param.name }}" value="{{ param.value }}" class="knob-input" data-min="0" data-max="100">
+              {% elif param.type == 'float' %}
+                <input type="number" step="any" name="{{ param.name }}" value="{{ param.value }}" class="form-control">
+              {% elif param.type == 'str' %}
+                <input type="text" name="{{ param.name }}" value="{{ param.value }}" class="form-control">
+              {% elif param.type == 'bool' %}
+                <input type="range" name="{{ param.name }}" min="0" max="1" value="{{ 1 if param.value else 0 }}" class="slider" id="{{ param.name }}">
+                <label for="{{ param.name }}" class="slider-label">{{ 'On' if param.value else 'Off' }}</label>
+              {% elif param.type in ['list', 'dict'] %}
+                <textarea name="{{ param.name }}" class="form-control">{{ param.value }}</textarea>
+              {% endif %}
+              <small class="form-text text-muted">{{ param.help }}</small>
+            </div>
+          </div>
+        {% endfor %}
+        <div class="col-12 text-center">
+          <button type="submit" class="btn btn-primary launch-button">Submit</button>
+        </div>
+      </form>
+    </div>
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script> <!-- jQuery -->
+    <script src="{{ url_for('static', filename='js/jquery.knob.min.js') }}"></script> <!-- jQuery Knob -->
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script>
+      $(document).ready(function() {
+        // Initialize knob inputs
+        $(".knob-input").knob();
+
+        // Slider for boolean parameters
+        $('input[type="range"]').on('input', function() {
+          var value = $(this).val();
+          $(this).next('.slider-label').text(value == 1 ? 'On' : 'Off');
+        });
+      });
+    </script>
+  </body>
+</html>
