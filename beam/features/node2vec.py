@@ -4,7 +4,7 @@ import pandas as pd
 from .feature import FeaturesCategories, BeamFeature, ParameterSchema, ParameterType
 import tempfile
 
-from .. import as_numpy
+from ..utils import as_numpy, tqdm_beam as tqdm
 from ..resources import resource
 from functools import cached_property, wraps
 from itertools import combinations
@@ -56,6 +56,9 @@ class Node2Vec(BeamFeature):
 
         }
 
+    def transform_cell(self, i):
+        return self.model.wv[i] if i in self.model.wv.key_to_index else self.na_value
+
     @cached_property
     def na_value(self):
         return np.zeros(self.model.vector_size)
@@ -81,7 +84,7 @@ class Node2Vec(BeamFeature):
 
     def _transform(self, x, **kwargs):
         assert self.model is not None, 'Model is not trained'
-        return x.applymap(lambda i: self.model.wv[i] if i in self.model.wv.key_to_index else self.na_value)
+        return x.applymap(self.transform_cell)
 
     def fit_transform(self, x, g=None, source='source', target='target',
                       directed=False, weight='weight', weighted=False, column=None, index=None):
@@ -93,9 +96,10 @@ class Node2Vec(BeamFeature):
 
 class Set2Vec(Node2Vec):
 
-    def __init__(self, *args, aggregation=None, **kwargs):
+    def __init__(self, *args, aggregation=None, self_loop=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.aggregation = aggregation or 'mean'
+        self.self_loop = self_loop
 
     @cached_property
     def parameters_schema(self):
@@ -103,38 +107,55 @@ class Set2Vec(Node2Vec):
             **super().parameters_schema,
             'aggregation': ParameterSchema(name='aggregation', kind=ParameterType.categorical,
                                            possible_values=['mean', 'sum', 'max', 'min'],
-                                           default_value='mean', description='Aggregation function')
+                                           default_value='mean', description='Aggregation function'),
+            'self_loop': ParameterSchema(name='self_loop', kind=ParameterType.categorical,
+                                             possible_values=[True, False],
+                                             default_value=True, description='Include self loops in the graph'),
         }
+
+    def transform_cell(self, i):
+        try:
+            return self.model.wv[i]
+        except KeyError:
+            return np.stack([super().transform_cell(j) for j in i])
 
     def _fit(self, x, **kwargs):
         # Step 1: Generate pairs and count their occurrences
         pair_counts = Counter()
 
         # Iterate over each list in the Series
-        for lst in np.squeeze(as_numpy(x)):
+        for lst in tqdm(np.squeeze(as_numpy(x))):
             # Generate unique pairs from the list
-            pairs = combinations(lst, 2)
+            pairs = combinations(set(lst), 2)
+
+            pairs = [(c1, c2) if c1 < c2 else (c2, c1) for c1, c2 in pairs]
+            if self.self_loop:
+                pairs = pairs + [(n, n) for n in lst]
+
             # Update the counter with the pairs
             pair_counts.update(pairs)
 
         # Step 2: Construct the DataFrame
         df = pd.DataFrame([{'n1': n1, 'n2': n2, 'weight': weight} for (n1, n2), weight in pair_counts.items()])
-        super().fit(df, source='n1', target='n2', weight='weight', weighted=True, directed=False)
+        Node2Vec._fit(self, df, source='n1', target='n2', weight='weight', weighted=True, directed=False)
 
-    def _transform(self, x, **kwargs):
+    def _transform(self, x: pd.DataFrame, **kwargs):
         assert self.model is not None, 'Model is not trained'
 
+        x = x.squeeze()
         # aggregate the embeddings of the nodes in the set
         if self.aggregation == 'mean':
-            return pd.DataFrame([self.model.wv[i].mean(axis=0) for i in x], index=x.index)
+            v = [self.transform_cell(i).mean(axis=0) for i in x.values]
         elif self.aggregation == 'sum':
-            return pd.DataFrame([self.model.wv[i].sum(axis=0) for i in x], index=x.index)
+            v = [self.transform_cell(i).sum(axis=0) for i in x.values]
         elif self.aggregation == 'max':
-            return pd.DataFrame([self.model.wv[i].max(axis=0) for i in x], index=x.index)
+            v = [self.transform_cell(i).max(axis=0) for i in x.values]
         elif self.aggregation == 'min':
-            return pd.DataFrame([self.model.wv[i].min(axis=0) for i in x], index=index)
+            v = [self.transform_cell(i).min(axis=0) for i in x.values]
         else:
             raise ValueError(f'Unknown aggregation function: {self.aggregation}')
+
+        return pd.Series(v, index=x.index).apply(list).to_frame(name=self.name)
 
     def fit_transform(self, x, **kwargs):
         return BeamFeature.fit_transform(self, x, **kwargs)

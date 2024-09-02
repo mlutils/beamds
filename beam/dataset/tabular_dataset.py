@@ -33,7 +33,7 @@ class TabularDataset(UniversalDataset):
                              x_test=x_test, y_validation=y_validation, y_test=y_test, to_torch=False, **kwargs)
 
             self.unified = False
-            self.eval_subset = 'validation' if x_validation else 'test'
+            self.eval_subset = 'validation' if x_validation is not None else 'test'
             x_type = check_type(x_train)
             if x_type.is_dataframe:
                 if self.columns is None:
@@ -43,21 +43,21 @@ class TabularDataset(UniversalDataset):
             columns = self.columns
             if cat_features is not None:
                 cat_features_type = check_type(cat_features)
-                if cat_features_type.element == Types.str:
+                if cat_features_type.element in [Types.str, Types.object]:
                     cat_features = [columns.index(c) for c in cat_features]
                 elif cat_features_type.is_array:
                     cat_features = as_numpy(cat_features)
 
             if text_features is not None:
                 text_features_type = check_type(text_features)
-                if text_features_type.element == Types.str:
+                if text_features_type.element in [Types.str, Types.object]:
                     text_features = [columns.index(c) for c in text_features]
                 elif text_features_type.is_array:
                     text_features = as_numpy(text_features)
 
             if embedding_features is not None:
                 embedding_features_type = check_type(embedding_features)
-                if embedding_features_type.element == Types.str:
+                if embedding_features_type.element in [Types.str, Types.object]:
                     embedding_features = [columns.index(c) for c in embedding_features]
                 elif embedding_features_type.is_array:
                     embedding_features = as_numpy(embedding_features)
@@ -99,8 +99,8 @@ class TabularDataset(UniversalDataset):
             x = batch.data
             y = batch.label
         else:
-            x = self[f'x_{subset}']
-            y = self[f'y_{subset}']
+            x = self.data[f'x_{subset}']
+            y = self.data[f'y_{subset}']
         return x, y
 
     def pool(self, x, y):
