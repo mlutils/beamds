@@ -25,6 +25,9 @@ class BeamJob(BeamCluster):
                 namespace=config['project_name'],
             )
 
+        cron_job_config = CronJobConfig(**config)
+        cron_job = BeamDeploy(cron_job_config, k8s)
+
         job_config = JobConfig(**config)
         job = BeamDeploy(job_config, k8s)
 

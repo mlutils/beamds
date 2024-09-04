@@ -592,82 +592,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created deployment object type: {type(deployment)}")
         return deployment
 
-    def create_cron_job(self, namespace, cron_job_name, image_name, container_name, job_schedule, command,
-                        entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
-                        use_gpu, gpu_requests, gpu_limits, labels, service_account_name, node_selector,
-                        use_node_selector, storage_configs, security_context_config, restart_policy_configs):
-
-        pvc_mounts = [{
-            'pvc_name': sc.pvc_name,
-            'mount_path': sc.pvc_mount_path
-        } for sc in storage_configs if sc.create_pvc] if storage_configs else []
-
-        # Create the container definition
-        container = self.create_container(
-            image_name=image_name,
-            command=command,
-            pvc_mounts=pvc_mounts,
-            cpu_requests=cpu_requests,
-            cpu_limits=cpu_limits,
-            memory_requests=memory_requests,
-            memory_limits=memory_limits,
-            use_gpu=use_gpu,
-            gpu_requests=gpu_requests,
-            gpu_limits=gpu_limits,
-            security_context_config=security_context_config,
-            entrypoint_args=entrypoint_args,
-            entrypoint_envs=entrypoint_envs
-        )
-
-        # Create the pod template spec
-        pod_spec = client.V1PodSpec(
-            containers=[container],
-            service_account_name=service_account_name,
-            restart_policy=restart_policy_configs.condition,
-        )
-
-        if use_node_selector is True:
-            pod_spec.node_selector = node_selector
-
-        # Create the pod template
-        pod_template = client.V1PodTemplateSpec(
-            metadata=client.V1ObjectMeta(labels=labels),
-            spec=pod_spec
-        )
-
-        # Create the job spec
-        job_spec = client.V1JobSpec(
-            template=pod_template,
-            backoff_limit=restart_policy_configs.max_attempts
-        )
-
-        # Create the cron job spec
-        cron_job_spec = client.V1CronJobSpec(
-            schedule=job_schedule,
-            job_template=client.V1JobTemplateSpec(
-                metadata=client.V1ObjectMeta(labels=labels),
-                spec=job_spec
-            )
-        )
-
-        cron_job_metadata = client.V1ObjectMeta(name=cron_job_name, namespace=namespace, labels={"project": namespace})
-
-        # Create the cron job definition
-        cron_job = client.V1CronJob(
-            api_version="batch/v1",
-            kind="CronJob",
-            metadata=cron_job_metadata,
-            spec=cron_job_spec
-        )
-
-        try:
-            self.batch_v1_api.create_namespaced_cron_job(body=cron_job, namespace=namespace)
-            logger.info(f"CronJob '{cron_job_name}' created successfully in namespace '{namespace}'.")
-
-            return self.get_pods_by_label(labels, namespace)
-        except ApiException as e:
-            logger.error(f"Failed to create CronJob '{cron_job_name}' in namespace '{namespace}': {e}")
-            return None
 
     def generate_unique_deployment_name(self, base_name, namespace):
         unique_name = base_name
@@ -924,6 +848,213 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 if e.status == 404:  # Not Found, the name is unique
                     return unique_name
                 raise  # Reraise exceptions that are not related to the service not existing
+
+    def create_job(self, namespace, job_name, image_name, container_name, command,
+                   entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
+                   use_gpu, gpu_requests, gpu_limits, labels, service_account_name, node_selector,
+                   use_node_selector, storage_configs, security_context_config, restart_policy_configs):
+
+        pvc_mounts = [{
+            'pvc_name': sc.pvc_name,
+            'mount_path': sc.pvc_mount_path
+        } for sc in storage_configs if sc.create_pvc] if storage_configs else []
+
+        # Create the container definition
+        container = self.create_container(
+            image_name=image_name,
+            command=command,
+            pvc_mounts=pvc_mounts,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            use_gpu=use_gpu,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
+            entrypoint_args=entrypoint_args,
+            entrypoint_envs=entrypoint_envs
+        )
+
+        # Create the pod spec
+        pod_spec = client.V1PodSpec(
+            containers=[container],
+            service_account_name=service_account_name,
+            restart_policy=restart_policy_configs.condition
+        )
+
+        if use_node_selector is True:
+            pod_spec.node_selector = node_selector
+
+        # Create the pod template
+        pod_template = client.V1PodTemplateSpec(
+            metadata=client.V1ObjectMeta(labels=labels),
+            spec=pod_spec
+        )
+
+        # Create the job spec
+        job_spec = client.V1JobSpec(
+            template=pod_template,
+            backoff_limit=restart_policy_configs.max_attempts
+        )
+
+        # Create the job metadata
+        job_metadata = client.V1ObjectMeta(name=job_name, namespace=namespace, labels={"project": namespace})
+
+        # Create the job definition
+        job = client.V1Job(
+            api_version="batch/v1",
+            kind="Job",
+            metadata=job_metadata,
+            spec=job_spec
+        )
+
+        try:
+            self.batch_v1_api.create_namespaced_job(body=job, namespace=namespace)
+            logger.info(f"Job '{job_name}' created successfully in namespace '{namespace}'.")
+
+            return self.get_pods_by_label(labels, namespace)
+        except ApiException as e:
+            logger.error(f"Failed to create Job '{job_name}' in namespace '{namespace}': {e}")
+            return None
+
+    def create_cron_job(self, namespace, cron_job_name, image_name, container_name, job_schedule, command,
+                        entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
+                        use_gpu, gpu_requests, gpu_limits, labels, service_account_name, node_selector,
+                        use_node_selector, storage_configs, security_context_config, restart_policy_configs):
+
+        pvc_mounts = [{
+            'pvc_name': sc.pvc_name,
+            'mount_path': sc.pvc_mount_path
+        } for sc in storage_configs if sc.create_pvc] if storage_configs else []
+
+        # Create the container definition
+        container = self.create_container(
+            image_name=image_name,
+            command=command,
+            pvc_mounts=pvc_mounts,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            use_gpu=use_gpu,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
+            entrypoint_args=entrypoint_args,
+            entrypoint_envs=entrypoint_envs
+        )
+
+        # Create the pod template spec
+        pod_spec = client.V1PodSpec(
+            containers=[container],
+            service_account_name=service_account_name,
+            restart_policy=restart_policy_configs.condition,
+        )
+
+        if use_node_selector is True:
+            pod_spec.node_selector = node_selector
+
+        # Create the pod template
+        pod_template = client.V1PodTemplateSpec(
+            metadata=client.V1ObjectMeta(labels=labels),
+            spec=pod_spec
+        )
+
+        # Create the job spec
+        job_spec = client.V1JobSpec(
+            template=pod_template,
+            backoff_limit=restart_policy_configs.max_attempts
+        )
+
+        # Create the cron job spec
+        cron_job_spec = client.V1CronJobSpec(
+            schedule=job_schedule,
+            job_template=client.V1JobTemplateSpec(
+                metadata=client.V1ObjectMeta(labels=labels),
+                spec=job_spec
+            )
+        )
+
+        cron_job_metadata = client.V1ObjectMeta(name=cron_job_name, namespace=namespace, labels={"project": namespace})
+
+        # Create the cron job definition
+        cron_job = client.V1CronJob(
+            api_version="batch/v1",
+            kind="CronJob",
+            metadata=cron_job_metadata,
+            spec=cron_job_spec
+        )
+
+        try:
+            self.batch_v1_api.create_namespaced_cron_job(body=cron_job, namespace=namespace)
+            logger.info(f"CronJob '{cron_job_name}' created successfully in namespace '{namespace}'.")
+
+            return self.get_pods_by_label(labels, namespace)
+        except ApiException as e:
+            logger.error(f"Failed to create CronJob '{cron_job_name}' in namespace '{namespace}': {e}")
+            return None
+
+    def monitor_job(self, job_name, namespace):
+        """
+        Monitor the status of a Job until it completes, fails, or hits the backoff limit.
+        """
+        try:
+            job = self.batch_v1_api.read_namespaced_job_status(job_name, namespace)
+            while job.status.active or not (job.status.succeeded or job.status.failed):
+                logger.info(f"Job '{job_name}' is still active. Waiting for completion...")
+                time.sleep(10)
+                job = self.batch_v1_api.read_namespaced_job_status(job_name, namespace)
+
+            if job.status.succeeded:
+                logger.info(f"Job '{job_name}' completed successfully.")
+            elif job.status.failed:
+                logger.error(f"Job '{job_name}' failed.")
+        except ApiException as e:
+            logger.error(f"Failed to monitor Job '{job_name}' in namespace '{namespace}': {e}")
+            return None
+
+    def monitor_cron_job(self, cron_job_name, namespace):
+        """
+        Monitor the status of a CronJob. Checks the Job spawned by the CronJob to ensure its completion.
+        """
+        try:
+            # Get the most recent Job created by the CronJob
+            cron_job = self.batch_v1_api.read_namespaced_cron_job(cron_job_name, namespace)
+            job_selector = cron_job.spec.job_template.spec.template.metadata.labels
+
+            # Poll for Job status associated with the CronJob
+            while True:
+                jobs = self.batch_v1_api.list_namespaced_job(namespace, label_selector=','.join(
+                    [f"{k}={v}" for k, v in job_selector.items()]))
+                if jobs.items:
+                    for job in jobs.items:
+                        self.monitor_job(job.metadata.name, namespace)
+                        logger.info(f"Monitored Job '{job.metadata.name}' triggered by CronJob '{cron_job_name}'")
+                else:
+                    logger.info(f"No active Jobs found for CronJob '{cron_job_name}'.")
+                time.sleep(30)  # Poll every 30 seconds
+        except ApiException as e:
+            logger.error(f"Failed to monitor CronJob '{cron_job_name}' in namespace '{namespace}': {e}")
+            return None
+
+    def get_job_logs(self, job_name, namespace):
+        """
+        Get logs from the Pods associated with a Job.
+        """
+        try:
+            pods = self.get_pods_by_label({'job-name': job_name}, namespace)
+            if not pods:
+                logger.error(f"No pods found for Job '{job_name}' in namespace '{namespace}'.")
+                return None
+
+            for pod in pods:
+                logs = self.core_v1_api.read_namespaced_pod_log(name=pod.metadata.name, namespace=namespace)
+                logger.info(f"Logs from pod '{pod.metadata.name}':\n{logs}")
+                return logs
+        except ApiException as e:
+            logger.error(f"Failed to retrieve logs for Job '{job_name}': {e}")
+            return None
 
     def delete_service(self, deployment_name, namespace=None):
         from kubernetes.client import V1DeleteOptions

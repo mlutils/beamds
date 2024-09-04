@@ -65,6 +65,26 @@ class BeamManager(BeamBase):
     def info(self):
         return {cluster: self.clusters[cluster].info() for cluster in self.clusters}
 
+    def launch_job(self, config, **kwargs):
+        # If config is a string (path), resolve it and load the configuration
+        if isinstance(config, str):
+            # Resolve the configuration path relative to the script's directory
+            script_dir = os.path.dirname(os.path.realpath(__file__))
+            conf_path = os.path.join(script_dir, config)
+
+            # Convert the path to a BeamManagerConfig object
+            config = BeamManagerConfig(resource(conf_path).str)
+
+        name = self.get_cluster_name(config)
+
+        from .jobs import BeamJob
+        job = BeamJob.deploy_job(config=config, k8s=self.k8s)
+        self.clusters[name] = job
+
+        # Start monitoring the job
+        monitor_thread = Thread(target=job.monitor_cluster)
+        monitor_thread.start()
+
     def launch_cron_job(self, config, **kwargs):
         # If config is a string (path), resolve it and load the configuration
         if isinstance(config, str):
@@ -84,6 +104,8 @@ class BeamManager(BeamBase):
         # Start monitoring the cluster
         monitor_thread = Thread(target=cron_job.monitor_cluster)
         monitor_thread.start()
+
+
 
     def launch_ray_cluster(self, config, **kwargs):
         # If config is a string (path), resolve it and load the configuration
@@ -161,6 +183,7 @@ class BeamManager(BeamBase):
             logger.error("Failed to initialize or launch the RnDCluster.")
 
         return self.clusters[name]
+
 
     def get_cluster_name(self, config):
         # TODO: implement a method to generate a unique cluster name (or get it from the config)

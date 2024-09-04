@@ -38,6 +38,7 @@ class BeamCluster(BeamBase):
         self.entrypoint_envs = config['entrypoint_envs']
 
 
+
 class ServeCluster(BeamCluster):
 
     def __init__(self, deployment, config, pods=None,  *args, **kwargs):
