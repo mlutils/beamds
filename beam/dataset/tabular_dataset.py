@@ -84,6 +84,11 @@ class TabularDataset(UniversalDataset):
         return self.pool(x, y)
 
     @property
+    def validation_pool(self):
+        x, y = self.get_subset_data('validation')
+        return self.pool(x, y)
+
+    @property
     def eval_pool(self):
         x, y = self.get_subset_data(self.eval_subset)
         return self.pool(x, y)

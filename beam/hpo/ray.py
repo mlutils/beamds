@@ -61,7 +61,7 @@ class RayHPO(BeamHPO, RayClient):
             base = int(x[1] / x[0])
             return tune.lograndint(int(emin), int(emax), base=base)
 
-        step_size = (x[1] / x[0]) ** ( (end - start) / n_steps )
+        step_size = (x[1] / x[0]) ** ((end - start) / n_steps )
         return tune.qloguniform(emin, emax, step_size, base=base)
 
     @staticmethod

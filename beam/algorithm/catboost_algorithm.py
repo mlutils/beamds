@@ -63,6 +63,8 @@ class CBAlgorithm(Algorithm):
 
     def set_objective(self):
         objective_name = self.get_hparam('objective', self.eval_metric)
+        if type(objective_name) is list:
+            objective_name = objective_name[0]
         self.set_hparam('objective', objective_name)
 
     @cached_property
@@ -95,7 +97,8 @@ class CBAlgorithm(Algorithm):
             v = self.get_hparam(key, None)
             if v is not None:
                 if key in cb_kwargs:
-                    logger.error(f"CB init: Overriding key {key} with value {v}")
+                    # logger.error(f"CB init: Overriding key {key} with value {v}")
+                    continue
                 cb_kwargs[key] = self.hparams[key]
 
         return CatBoost(**cb_kwargs)

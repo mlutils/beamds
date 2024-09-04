@@ -35,6 +35,9 @@ class HPOConfig(RayConfig, BeamConfig):
         BeamParam('get-port-from-beam-port-range', bool, True, 'get port from beam port range',),
         BeamParam('replay-buffer-size', int, None, 'Maximal size of finite-memory hpo',),
         BeamParam('time-window', int, None, 'Maximal time window of finite-memory hpo',),
+        BeamParam('max-iterations', int, None, 'Maximal number of iterations for ASHAScheduler',),
+        BeamParam('reduction-factor', int, 2, 'Reduction factor for ASHAScheduler',),
+        BeamParam('grace-period', int, 20, 'Grace period for ASHAScheduler',),
 
     ]
 

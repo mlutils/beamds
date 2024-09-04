@@ -78,13 +78,21 @@ class BeamHPO(Processor):
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}
 
-    def linspace(self, param, start, end, n_steps, endpoint=True,  dtype=None):
+    def linspace(self, param, start, end, n_steps=None, endpoint=True,  dtype=None):
         param = param.replace('-', '_').strip()
+
+        if n_steps is None:
+            n_steps = int(end - start + 1)
+
         self.suggestions[param] = partial(self._linspace, param=param, start=start, end=end, n_steps=n_steps,
                        endpoint=endpoint, dtype=dtype)
 
-    def logspace(self, param, start, end, n_steps, base=None, dtype=None):
+    def logspace(self, param, start, end, n_steps=None, base=None, dtype=None):
         param = param.replace('-', '_').strip()
+
+        if n_steps is None:
+            n_steps = int(end - start + 1)
+
         self.suggestions[param] = partial(self._logspace, param=param, start=start, end=end,
                                           n_steps=n_steps, base=base, dtype=dtype)
 

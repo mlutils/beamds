@@ -24,6 +24,7 @@ class OptunaBase:
 
     @staticmethod
     def _logspace(trial, param, start, end, n_steps, base=None, dtype=None):
+
         x = np.logspace(start, end, n_steps, base=base)
         if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int, np.int64, 'int', 'int64']:
             x = np.round(x).astype(int)
