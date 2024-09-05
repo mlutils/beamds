@@ -101,11 +101,9 @@ class BeamManager(BeamBase):
         cron_job = BeamCronJob.deploy_cron_job(config=config, k8s=self.k8s)
         self.clusters[name] = cron_job
 
-        # Start monitoring the cluster
+        # Start monitoring the cron job
         monitor_thread = Thread(target=cron_job.monitor_cron_job)
         monitor_thread.start()
-
-
 
     def launch_ray_cluster(self, config, **kwargs):
         # If config is a string (path), resolve it and load the configuration

@@ -51,6 +51,21 @@ class BeamJob(BeamCluster):
         except Exception as e:
             logger.error(f"Error occurred while deleting the Job: {str(e)}")
 
+    def monitor_job(self):
+        """
+        Monitor the Job status and retrieve logs upon completion.
+        """
+        try:
+            # Monitor the job status
+            self.k8s.monitor_job(job_name=self.config['job_name'], namespace=self.config['project_name'])
+
+            # Once completed, fetch and print logs
+            logs = self.k8s.get_job_logs(job_name=self.config['job_name'], namespace=self.config['project_name'])
+            if logs:
+                logger.info(f"Logs for Job '{self.config['job_name']}':\n{logs}")
+        except Exception as e:
+            logger.error(f"Failed to monitor job '{self.config['job_name']}': {str(e)}")
+
 
 class BeamCronJob(BeamCluster):
     # Handles CronJob deployment, monitoring, logs, and interaction via k8s API
@@ -93,3 +108,27 @@ class BeamCronJob(BeamCluster):
             logger.info(f"CronJob {self.deployment.metadata.name} deleted successfully.")
         except Exception as e:
             logger.error(f"Error occurred while deleting the CronJob: {str(e)}")
+
+    def monitor_cron_job(self):
+        """
+        Monitor the CronJob status and retrieve logs of any triggered jobs.
+        """
+        try:
+            # Monitor the cron job's spawned jobs
+            self.k8s.monitor_cron_job(cron_job_name=self.config['cron_job_name'], namespace=self.config['project_name'])
+
+            # Fetch logs from jobs spawned by the cron job
+            jobs = self.k8s.get_pods_by_label({'cronjob-name': self.config['cron_job_name']}, self.config['project_name'])
+            if jobs:
+                for job in jobs:
+                    logs = self.k8s.get_job_logs(job.metadata.name, namespace=self.config['project_name'])
+                    if logs:
+                        logger.info(f"Logs for CronJob '{self.config['cron_job_name']}':\n{logs}")
+        except Exception as e:
+            logger.error(f"Failed to monitor cron job '{self.config['cron_job_name']}': {str(e)}")
+
+    def get_cron_job_logs(self):
+        """
+        Retrieve logs of the last job triggered by this cron job.
+        """
+        return self.k8s.get_job_logs(self.cron_job_name, self.namespace)

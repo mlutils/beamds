@@ -1006,6 +1006,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def monitor_job(self, job_name, namespace):
         """
         Monitor the status of a Job until it completes, fails, or hits the backoff limit.
+        Fetch and display logs after job completion.
         """
         try:
             job = self.batch_v1_api.read_namespaced_job_status(job_name, namespace)
@@ -1016,6 +1017,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
             if job.status.succeeded:
                 logger.info(f"Job '{job_name}' completed successfully.")
+                # Fetch and display the logs for the job's pods
+                logs = self.get_job_logs(job_name=job_name, namespace=namespace)
+                if logs:
+                    logger.info(f"Logs for Job '{job_name}':\n{logs}")
             elif job.status.failed:
                 logger.error(f"Job '{job_name}' failed.")
         except ApiException as e:
@@ -1025,6 +1030,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def monitor_cron_job(self, cron_job_name, namespace):
         """
         Monitor the status of a CronJob. Checks the Job spawned by the CronJob to ensure its completion.
+        Fetch logs of each job spawned by the CronJob.
         """
         try:
             # Get the most recent Job created by the CronJob
@@ -1039,6 +1045,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     for job in jobs.items:
                         self.monitor_job(job.metadata.name, namespace)
                         logger.info(f"Monitored Job '{job.metadata.name}' triggered by CronJob '{cron_job_name}'")
+
+                        # Fetch and display logs for each job
+                        logs = self.get_job_logs(job_name=job.metadata.name, namespace=namespace)
+                        if logs:
+                            logger.info(
+                                f"Logs for Job '{job.metadata.name}' triggered by CronJob '{cron_job_name}':\n{logs}")
                 else:
                     logger.info(f"No active Jobs found for CronJob '{cron_job_name}'.")
                 time.sleep(30)  # Poll every 30 seconds
@@ -1051,15 +1063,19 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         Get logs from the Pods associated with a Job.
         """
         try:
+            # Pods are labeled with `job-name` to associate them with the job
             pods = self.get_pods_by_label({'job-name': job_name}, namespace)
             if not pods:
                 logger.error(f"No pods found for Job '{job_name}' in namespace '{namespace}'.")
                 return None
 
+            logs = ""
             for pod in pods:
-                logs = self.core_v1_api.read_namespaced_pod_log(name=pod.metadata.name, namespace=namespace)
-                logger.info(f"Logs from pod '{pod.metadata.name}':\n{logs}")
-                return logs
+                pod_logs = self.core_v1_api.read_namespaced_pod_log(name=pod.metadata.name, namespace=namespace)
+                logger.info(f"Logs from pod '{pod.metadata.name}':\n{pod_logs}")
+                logs += pod_logs + "\n"
+
+            return logs
         except ApiException as e:
             logger.error(f"Failed to retrieve logs for Job '{job_name}': {e}")
             return None
