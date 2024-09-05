@@ -1,6 +1,6 @@
 from beam.orchestration import ServeClusterConfig
-from beam.orchestration import BeamManager
 from beam.orchestration import deploy_server
+from runs.manager import BeamManagerWrapper
 from beam import logger
 
 
@@ -9,7 +9,7 @@ def main():
 
     logger.info("deploy manager with config:")
     logger.info(str(config))
-    manager = BeamManager(config)
+    manager = BeamManagerWrapper(config)
 
     deploy_server(manager, config)
     print(manager.info())

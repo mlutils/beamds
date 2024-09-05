@@ -313,7 +313,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         for key, value in entrypoint_envs.items():
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
-        if command:
+        if command is not None and command.executable is not None:
             command = command.as_list()
         else:
             command = None

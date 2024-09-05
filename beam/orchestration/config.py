@@ -73,6 +73,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
         BeamParam('base_image', str, None, 'Base image'),
         BeamParam('base_url', str, 'tcp://10.0.7.55:2375', 'Base URL'),
         BeamParam('beam_version', str, '2.5.11', 'Beam version'),
+        BeamParam('requirements_blacklist', list, [], 'Requirements blacklist'),
         BeamParam('send_email', bool, False, 'Send email'),
         BeamParam('body', str, 'Here is the cluster information:', 'Email body'),
         BeamParam('from_email', str, 'dayotech2018@gmail.com', 'From email address'),
