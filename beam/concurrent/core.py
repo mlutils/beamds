@@ -5,7 +5,7 @@ from ..utils import tqdm_beam
 from ..utils import collate_chunks
 from ..meta import BeamName
 from ..logging import beam_logger as logger
-from .tasks import BeamTask, TaskResult, SyncedResults
+from .tasks import BeamTask, TaskAsyncResult, SyncedResults
 
 
 class BeamAsync(BeamName):
@@ -60,7 +60,7 @@ class BeamAsync(BeamName):
         else:  # self.method == 'celery'
             async_result = self.celery_task.delay(func, *args, **kwargs)
 
-        return TaskResult(async_result)
+        return TaskAsyncResult(async_result)
 
 
 class BeamParallel(BeamName):

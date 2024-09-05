@@ -255,8 +255,7 @@ class BeamProjectConfig(BeamConfig):
                   'Root directory for Logs and results'),
         BeamParam('data_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'data'),
                   'Where the dataset is located'),
-        BeamParam('config_file', str, str(Path.home().joinpath('conf.pkl'), ),
-                  'The beam config file to use with secret keys'),
+        BeamParam('config_file', str, None, 'The beam config file to use with secret keys'),
         BeamParam('verbosity', str, 'info', 'The verbosity level [debug|info|warning|error]'),
     ]
 
@@ -382,6 +381,7 @@ class TransformerConfig(CacheConfig):
         BeamParam('use-dill', bool, False, 'Whether to use dill for serialization'),
         BeamParam('return-results', bool, None, 'Whether to return the results if None, it is set to True '
                                                 'if store_path is None'),
+        BeamParam('n_workers', int, None, 'The number of workers to use for the transformation'),
         BeamParam('use-cache', bool, False, 'Use the store_path as cache and do not apply transformation '
                                             'if cache exists'),
         BeamParam('retrials', int, 1, 'The number of retrials to apply for each chunk'),

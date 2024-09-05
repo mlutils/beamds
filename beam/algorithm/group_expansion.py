@@ -9,7 +9,7 @@ from ..utils import cached_property, Timer, as_numpy
 from ..data import BeamData
 from ..logging import beam_logger as logger
 from .core_algorithm import Algorithm
-from ..type import BeamType, Types
+from ..misc import svd_preprocess
 from dataclasses import dataclass
 
 
@@ -108,27 +108,12 @@ class TextGroupExpansionAlgorithm(GroupExpansionAlgorithm):
         pca = PCA(n_components=self.get_hparam('pca-components', 128))
         return pca
 
-    @staticmethod
-    def svd_preprocess(x):
-
-        x_type = BeamType.check_minor(x)
-
-        if x_type.minor == Types.tensor:
-            crow_indices = x.crow_indices().numpy()
-            col_indices = x.col_indices().numpy()
-            values = x.values().numpy()
-
-            # Create a SciPy CSR matrix
-            from scipy.sparse import csr_matrix
-            x = csr_matrix((values, col_indices, crow_indices), shape=x.size())
-        return x
-
     def svd_fit_transform(self, x):
-        x = self.svd_preprocess(x)
+        x = svd_preprocess(x)
         return self.svd_transformer.fit_transform(x)
 
     def svd_transform(self, x):
-        x = self.svd_preprocess(x)
+        x = svd_preprocess(x)
         return self.svd_transformer.transform(x)
 
     def pca_fit_transform(self, x):

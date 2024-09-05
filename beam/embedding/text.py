@@ -37,7 +37,7 @@ class OpenAIEmbedding(BeamEmbedding):
         self.model = model
         self.format = format
         self.device = device
-        super().__init__(scheme='emb-openai', resource_type='embedder', **kwargs)
+        super().__init__(scheme='emb-openai', resource_type='encoder', **kwargs)
 
     def as_something(self, x):
         if self.format == 'numpy':
@@ -65,7 +65,7 @@ class SentenceTransformerEmbedding(BeamEmbedding):
 
     def __init__(self, model=None, device=None, batch_size=1, format='tensor', show_progress_bar=False, **kwargs):
 
-        super().__init__(scheme='emb-stt', resource_type='embedder', **kwargs)
+        super().__init__(scheme='emb-stt', resource_type='encoder', **kwargs)
 
         self.device = beam_device(device)
         self.batch_size = batch_size

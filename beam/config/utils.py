@@ -28,13 +28,10 @@ def boolean_feature(parser, feature, default=False, help='', metavar=None):
         f_dash = f.replace("_", "-")
         f_under = f.replace("-", "_")
 
-        feature_parser.add_argument(f"--{f}", dest=featurename, action='store_true', help=help)
-        feature_parser.add_argument(f"--no-{f}", dest=featurename, action='store_false', help=help)
-
-        for fi in [f_dash, f_under]:
-            if fi != f:
-                feature_parser.add_argument(f"--{f_dash}", dest=featurename, action='store_true', help=help)
-                feature_parser.add_argument(f"--no-{f_dash}", dest=featurename, action='store_false', help=help)
+        feature_parser.add_argument(f"--{f_dash}", f"--{f_under}", dest=featurename, action='store_true',
+                                    help=help)
+        feature_parser.add_argument(f"--no-{f_dash}", f"--no-{f_under}",  dest=featurename, action='store_false',
+                                    help=help)
 
     pa = parser._actions
     for a in pa:

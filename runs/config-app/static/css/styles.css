@@ -1,0 +1,86 @@
+/* General styles */
+body {
+    font-family: 'Montserrat', sans-serif;
+    text-align: center;
+    padding: 50px;
+    background: linear-gradient(to bottom, #8B0000, #FF4500, #FFD700, #FFFFE0);
+    color: #fff;
+}
+
+/* Header styles */
+.header img {
+    width: 100px;
+    height: 100px;
+    border-radius: 20px;
+    border: 2px solid #444;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 10px;
+}
+.header h1 {
+    color: #fff;
+    margin-top: 10px;
+    font-size: 2.5em;
+}
+.header p {
+    color: #fff;
+    font-size: 1.5em;
+}
+
+/* Tile and form styles */
+.service.tile {
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s, box-shadow 0.3s;
+    color: #333;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+.service.tile:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+}
+.icon-container {
+    height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+.param-icon {
+    max-width: 60px;
+    max-height: 60px;
+}
+.slider {
+    width: 100%;
+    margin-top: 10px;
+}
+.slider-label {
+    margin-top: 5px;
+    font-weight: bold;
+    color: #FF4500;
+}
+.knob-input {
+    width: 100px;
+    height: 100px;
+    margin: 0 auto;
+    display: block;
+}
+.launch-button {
+    background-color: #1f77b4;
+    color: white;
+    font-weight: bold;
+    font-size: 20px;
+    padding: 15px 30px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 20px;
+}
+.launch-button:hover {
+    background-color: #155a8a;
+}

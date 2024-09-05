@@ -194,8 +194,8 @@ class TFIDF(BeamSimilarity):
         self.device = self.get_hparam('device', device)
 
         self.n_workers = self.get_hparam('n_workers', n_workers)
-        self.n_chunks = self.get_hparam('n_chunks', self.n_workers)
-        self.chunksize = self.get_hparam('chunksize', None)
+        self.n_chunks = self.get_hparam('n_chunks', n_chunks)
+        self.chunksize = self.get_hparam('chunksize', chunksize)
         self.mp_method = self.get_hparam('mp_method', mp_method)
         self.use_dill = self.get_hparam('use_dill', use_dill)
 

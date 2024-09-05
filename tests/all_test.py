@@ -9,6 +9,23 @@ import pandas as pd
 import torch
 
 
+def test_config_conventions():
+
+    from beam.config import BeamConfig, BeamParam
+
+    class MyConfig(BeamConfig):
+        parameters = [BeamParam('a_a', type=int, default=1),
+                      BeamParam('b-b', type=int, default=1),
+                      BeamParam('c_c', type=bool, default=True),
+                      BeamParam('d-d', type=bool, default=True),]
+
+    # conf = CatboostConfig('--log-frequency=20')
+    conf = MyConfig('--a_a=10 --b_b=10 --no-c-c --no-d_d')
+
+    print(conf)
+
+
+
 def test_transformer_with_errors():
 
     from beam import Transformer
@@ -144,10 +161,10 @@ def test_collate_transformer_chunks():
         return x + 1
 
     df = pd.DataFrame(data=np.random.rand(16, 4), columns=['a', 'b', 'c', 'd'])
-    my_beautiful_transformer = Transformer(n_workers=1, chunksize=2, mp_method='joblib', func=func, use_dill=True)
+    my_beautiful_transformer = Transformer(n_workers=2, chunksize=2, mp_method='joblib', func=func, use_dill=True)
     res = my_beautiful_transformer(df, transform_kwargs=dict(store_path='/tmp/xx'))
 
-    add_token_transformer = Transformer(n_workers=1, chunksize=2, mp_method='joblib',
+    add_token_transformer = Transformer(n_workers=2, chunksize=2, mp_method='joblib',
                                         func=lambda x: [xi + ' bye' for xi in x], use_dill=True)
 
     res = add_token_transformer(['hi how are you?', 'we are here', 'lets dance', 'it is fine'],
@@ -666,6 +683,8 @@ if __name__ == '__main__':
 
     # test_k8s_configurations()
 
-    test_transformer_with_errors()
+    # test_transformer_with_errors()
+
+    test_config_conventions()
 
     print('done')

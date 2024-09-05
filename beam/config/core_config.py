@@ -33,6 +33,7 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
                  strict=False, load_config_files=True, load_script_arguments=True, **kwargs):
 
         self._init_is_done = False
+        self._help = None
 
         if tags is None:
             tags = defaultdict(set)
@@ -74,6 +75,8 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
 
                 parser = self.update_parser(parser, defaults=d, parameters=h, source=ti.__name__)
 
+            # we cannot store parser as it does not support serialization (pickling)
+            self._help = parser.format_help()
             config, more_tags = _beam_arguments(parser, *args, return_defaults=return_defaults,
                                                 return_tags=True, silent=silent,
                                                 strict=strict, load_config_files=load_config_files,
@@ -230,11 +233,20 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
                         parse_kwargs['type'] = json.loads
 
                     if type(v.name) is list:
-                        parser.add_argument(*[f"--{ni}" for ni in name_to_parse], **parse_kwargs)
+                        names = ([f"--{ni.replace('_', '-')}" for ni in name_to_parse] +
+                                 [f"--{ni.replace('-', '_')}" for ni in name_to_parse])
+                        parser.add_argument(*names, **parse_kwargs)
                     else:
-                        parser.add_argument(f"--{name_to_parse}", **parse_kwargs)
+                        parser.add_argument(*[f"--{name_to_parse.replace('_', '-')}",
+                                             f"--{name_to_parse.replace('-', '_')}"], **parse_kwargs)
 
         return parser
+
+    @property
+    def help(self):
+        if self._help is not None:
+            return self._help
+        return "Unavailable to print help as parser is not available"
 
     def to_path(self, path, ext=None):
         d = copy.deepcopy(self.dict())

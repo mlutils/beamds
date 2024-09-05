@@ -17,7 +17,7 @@ from ..utils import (recursive_batch, to_device, recursive_device, container_len
 class UniversalDataset(torch.utils.data.Dataset):
 
     def __init__(self, *args, index=None, label=None, device=None, target_device=None, to_torch=True,
-                 index_mapping='backward', **kwargs):
+                 index_mapping='backward', preprocess=True, **kwargs):
         """
         Universal Beam dataset class
 
@@ -47,6 +47,7 @@ class UniversalDataset(torch.utils.data.Dataset):
         # The training label is to be used when one wants to apply some data transformations/augmentations
         # only in training mode
         self.training = False
+        self.preprocess = preprocess
         self.statistics = None
         self._target_device = target_device
         self.to_torch = to_torch
@@ -78,7 +79,9 @@ class UniversalDataset(torch.utils.data.Dataset):
     def as_something(self, x, device=None, dtype=None):
         if self.to_torch:
             return as_tensor(x, device=device, dtype=dtype)
-        return as_numpy(x)
+        elif self.preprocess:
+            return as_numpy(x)
+        return x
 
     @cached_property
     def target_device(self):
@@ -143,7 +146,10 @@ class UniversalDataset(torch.utils.data.Dataset):
     @classmethod
     def get_subset(cls, self, subset):
         index = self.indices[subset]
-        return cls(self.data, index=index, label=self.label, device=self.device,
+        data = recursive_batch(self.data, index)
+        label = recursive_batch(self.label, index) if self.label is not None else None
+
+        return UniversalDataset(data, label=label, device=self.device,
                      target_device=self.target_device, to_torch=self.to_torch, index_mapping='forward')
 
     def __getitem__(self, ind):
