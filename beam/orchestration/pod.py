@@ -76,8 +76,13 @@ class BeamPod(Processor):
         statuses = []
         for pod_info in self.pod_infos:
             pod_name = pod_info.raw_pod_data['metadata']['name']
-            status = self.k8s.get_pod_info(pod_name, self.namespace).status.phase
-            statuses.append((pod_name, status))
+            try:
+                pod_data = self.k8s.get_pod_info(pod_name, self.namespace)
+                logger.debug(f"Pod data for {pod_name}: {pod_data}")
+                status = pod_data.status.phase
+                statuses.append((pod_name, status))
+            except Exception as e:
+                logger.error(f"Error retrieving status for pod {pod_name}: {str(e)}")
         return statuses
 
     def to_dict(self):

@@ -325,7 +325,7 @@ class AutoBeam(BeamBase):
                 'main_import_statements': main_import_statements}
 
     @staticmethod
-    def to_bundle(obj, path=None):
+    def to_bundle(obj, path=None, blacklist=None):
 
         if path is None:
             path = beam_path('.')
@@ -343,7 +343,7 @@ class AutoBeam(BeamBase):
         path.mkdir()
         logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
         path.joinpath('requirements.json').write(ab.requirements)
-        ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'))
+        ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'), blacklist=blacklist)
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
 
@@ -462,7 +462,7 @@ class AutoBeam(BeamBase):
         return requirements
 
     @staticmethod
-    def write_requirements(requirements, path, relation='~=', sim_type='major'):
+    def write_requirements(requirements, path, relation='~=', sim_type='major', blacklist=None):
         '''
 
         @param requirements:
@@ -471,18 +471,24 @@ class AutoBeam(BeamBase):
         @return:
         '''
 
+        if blacklist is None:
+            blacklist = []
+
         path = beam_path(path)
         if relation == 'all':
             content = '\n'.join([f"{r['pip_package']}" for r in requirements])
         elif relation in ['==', '>=']:
-            content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements])
+            content = '\n'.join([f"{r['pip_package']}{relation}{r['version']}" for r in requirements
+                                 if r['pip_package'] not in blacklist])
         elif relation == '~=':
             if sim_type == 'major':
                 content = '\n'.join(
-                    [f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:2])}" for r in requirements])
+                    [f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:2])}" for r in requirements
+                     if r['pip_package'] not in blacklist])
             elif sim_type == 'minor':
                 content = '\n'.join(
-                    [f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:3])}" for r in requirements])
+                    [f"{r['pip_package']}{relation}{'.'.join(r['version'].split('.')[:3])}" for r in requirements
+                     if r['pip_package'] not in blacklist])
             else:
                 raise ValueError(f"sim_type can be 'major' or 'minor'")
         else:
@@ -522,13 +528,13 @@ class AutoBeam(BeamBase):
 
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
-                  entrypoint='synchronous-server', beam_version=None, dockerfile='simple-entrypoint',
+                  entrypoint='synchronous-server', beam_version='latest', dockerfile='simple-entrypoint',
                   registry_url=None, base_url=None, registry_project_name=None,
-                  username=None, password=None, copy_bundle=False, **kwargs):
+                  username=None, password=None, copy_bundle=False, requirements_blacklist=None, **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
-            bundle_path = AutoBeam.to_bundle(obj, path=bundle_path)
+            bundle_path = AutoBeam.to_bundle(obj, path=bundle_path, blacklist=requirements_blacklist)
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         full_image_name = (
@@ -542,9 +548,11 @@ class AutoBeam(BeamBase):
     @staticmethod
     def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint=None,
                      copy_bundle=False, registry_url=None, username=None, password=None,
-                     beam_version=None, base_url=None, registry_project_name=None, dockerfile=None):
+                     beam_version='latest', base_url=None, registry_project_name=None, dockerfile=None):
 
         assert base_image is not None, "You must provide a base_image."
+        if not bool(beam_version):
+            beam_version = ''
 
         import docker
         from docker.errors import BuildError, ImageNotFound, APIError

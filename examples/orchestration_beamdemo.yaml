@@ -1,24 +1,28 @@
 alg_image_name: yolo-algo:latest
-api_token: sha256~JQay6PBL1Fqe4rPJDO7y6KYCi2NcDESNI4OyCnZBvUE
+api_token: sha256~dmox_4TviiJHDnfoV2VnVi66aWqEgqdr01R597rLKFc
 api_url: https://api.kh-dev.dt.local:6443
 base_image: harbor.dt.local/public/beam:20240801
 base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='unix://var/run/docker.sock')
-#client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+# client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: 2.6.7
+beam_version: 2.6.9
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:
-#  arguments:
-#  - -c
-#  - sleep infinity
-#  executable: /bin/bash
+  arguments:
+  - -c
+  - nvidia-smi
+  executable: /bin/bash
+job_name: beam-job
+cron_job_name: beam-cron-job
+container_name: beam-cron-container
+job_schedule: "*/2 * * * *" # every 2 minutes
 cpu_limits: '2'
 cpu_requests: '2'
 create_service_account: false
-deployment_name: university
+deployment_name: prod
 entrypoint_args:
 - '63'
 entrypoint_envs:
@@ -30,7 +34,7 @@ gpu_requests: '1'
 #image_name: harbor.dt.local/public/nerdctl:v2.0.0-rc.0
 image_name: harbor.dt.local/public/beam:20240801
 labels:
-  app: university
+  app: prod
 memory_limits: '6'
 memory_requests: '6'
 memory_storage_configs:
@@ -41,21 +45,29 @@ memory_storage_configs:
 n_pods: '1'
 node_selector:
   gpu-type: tesla-a100
-project_name: kh-dev
+project_name: dev
 push_image: true
 registry_password: Har@123
 registry_url: harbor.dt.local
 registry_username: admin
 registry_project_name: public
 replicas: '1'
+restart_policy_configs:
+#  condition: OnFailure
+  condition: Always
+  delay: 5s
+  active_deadline_seconds: 300
+  max_attempts: 3
+  window: 120s
 send_mail: false
-scc_name: anyuid
+#scc_name: anyuid
+scc_name: privileged
 security_context_config:
   add_capabilities:
-  - SYS_CHROOT
-  - CAP_AUDIT_CONTROL
-  - CAP_AUDIT_WRITE
-  enable_security_context: false
+#  - SYS_CHROOT
+#  - CAP_AUDIT_CONTROL
+#  - CAP_AUDIT_WRITE
+  enable_security_context: true
   privileged: true
   runAsUser: 0
 service_configs:
@@ -93,6 +105,13 @@ service_configs:
   port: 22089
   port_name: home-page-port
   service_name: home-page
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: home-page.example.com
+  port: 35000
+  port_name: flask-port
+  service_name: flask
   service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com

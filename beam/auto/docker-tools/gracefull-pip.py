@@ -72,5 +72,6 @@ def main(requirements_path):
                     continue
 
 
-if __name__ == 'main':
+if __name__ == '__main__':
+    logging.info(f"Running gracefull-pip.py with file: {sys.argv[1]}")
     main(sys.argv[1])

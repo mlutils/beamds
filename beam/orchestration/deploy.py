@@ -23,14 +23,13 @@ class BeamDeploy(BeamBase):
         storage_configs = [StorageConfig(**v) for v in self.get_hparam('storage_configs', [])]
         # ray_ports_configs = [RayPortsConfig(**v) for v in self.get_hparam('ray_ports_configs', [])]
         user_idm_configs = [UserIdmConfig(**v) for v in self.get_hparam('user_idm_configs', [])]
+        restart_policy_configs = RestartPolicyConfig(**self.get_hparam('restart_policy_configs', []))
 
         command = self.get_hparam('command', None)
         if command:
             command = CommandConfig(**command)
 
         self.entrypoint_args = self.get_hparam('entrypoint_args') or []
-        # self.hparams.entrypoint_args
-
         self.entrypoint_envs = self.get_hparam('entrypoint_envs') or {}
         # self.check_project_exists = self.get_hparam('check_project_exists')
         self.project_name = self.get_hparam('project_name')
@@ -39,8 +38,11 @@ class BeamDeploy(BeamBase):
         self.replicas = self.get_hparam('replicas')
         self.labels = self.get_hparam('labels')
         self.image_name = self.get_hparam('image_name')
-        self.use_command = self.get_hparam('use_command')
+        self.cron_job_name = self.get_hparam('cron_job_name')
+        self.container_name = self.get_hparam('container_name')
+        self.job_name = self.get_hparam('job_name')
         self.deployment_name = self.get_hparam('deployment_name')
+        self.job_schedule = self.get_hparam('job_schedule')
         self.service_type = self.get_hparam('service_type')
         self.service_account_name = f"{self.deployment_name}svc"
         self.use_scc = self.get_hparam('use_scc')
@@ -67,8 +69,11 @@ class BeamDeploy(BeamBase):
         self.storage_configs = storage_configs or []
         self.user_idm_configs = user_idm_configs or []
         self.security_context_config = security_context_config or []
+        self.restart_policy_configs = restart_policy_configs or {}
 
     def launch(self, replicas=None):
+
+
         if replicas is None:
             replicas = self.replicas
 
@@ -113,7 +118,7 @@ class BeamDeploy(BeamBase):
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
-            use_command=self.use_command,
+
             command=self.command,
             labels=self.labels,
             deployment_name=self.deployment_name,
@@ -135,14 +140,22 @@ class BeamDeploy(BeamBase):
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
             security_context_config=self.security_context_config,
+            restart_policy_configs=self.restart_policy_configs,
             entrypoint_args=self.entrypoint_args,
             entrypoint_envs=self.entrypoint_envs,
         )
 
         pod_infos = self.k8s.apply_deployment(deployment, namespace=self.namespace)
+
+        logger.debug(f"pod_infos type: {type(pod_infos)}")
+
+        logger.debug(f"pod_infos content: {pod_infos}")
+
         self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))
                                for pod in pod_infos]
-        self.beam_pod_instances = []
+
+        # self.beam_pod_instances = []
+        self.beam_pod_instances = [] if isinstance(pod_infos, list) else [pod_infos]
 
         if isinstance(pod_infos, list) and pod_infos:
             for pod_info in pod_infos:
@@ -176,6 +189,7 @@ class BeamDeploy(BeamBase):
             pod_suffix = (f"{self.deployment_name}-"
                           f"{pod_instance.pod_infos[0].raw_pod_data['metadata']['name'].split('-')[-1]}")
             rs_env_vars = []
+
             for svc_config in self.service_configs:
                 service_name = f"{svc_config.service_name}-{svc_config.port}-{pod_suffix}"
 
@@ -208,6 +222,100 @@ class BeamDeploy(BeamBase):
             rs_env_vars.append({'name': f"PLATFORM_ENGINE", 'value': 'Kuberenetes'})
             self.update_config_maps_rs_env_vars(self.deployment_name, self.namespace, rs_env_vars)
 
+        return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
+
+    def launch_job(self):
+
+        if self.create_service_account:
+            self.k8s.create_service_account(self.service_account_name, self.namespace)
+        else:
+            self.service_account_name = 'default'
+            logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
+
+        # Delegate Job creation to the k8s class
+        job = self.k8s.create_job(
+            namespace=self.namespace,
+            job_name=self.job_name,
+            image_name=self.image_name,
+            container_name=self.container_name,
+            command=self.command,
+            entrypoint_args=self.entrypoint_args,
+            entrypoint_envs=self.entrypoint_envs,
+            cpu_requests=self.cpu_requests,
+            cpu_limits=self.cpu_limits,
+            memory_requests=self.memory_requests,
+            memory_limits=self.memory_limits,
+            use_node_selector=self.use_node_selector,
+            node_selector=self.node_selector,
+            use_gpu=self.use_gpu,
+            gpu_requests=self.gpu_requests,
+            gpu_limits=self.gpu_limits,
+            labels=self.labels,
+            service_account_name=self.service_account_name,
+            storage_configs=self.storage_configs,
+            security_context_config=self.security_context_config,
+            restart_policy_configs=self.restart_policy_configs
+        )
+
+        logger.info(f"Job '{self.job_name}' created successfully.")
+
+        return job
+
+    def launch_cron_job(self):
+        if not self.job_schedule:
+            logger.error("CronJob schedule not provided.")
+            return
+
+        if self.create_service_account:
+            self.k8s.create_service_account(self.service_account_name, self.namespace)
+        else:
+            self.service_account_name = 'default'
+            logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
+
+        # Delegate CronJob creation to k8s class
+        cronjob = self.k8s.create_cron_job(
+            namespace=self.namespace,
+            cron_job_name=self.cron_job_name,
+            image_name=self.image_name,
+            job_schedule=self.job_schedule,
+            container_name=self.container_name,
+            command=self.command,
+            entrypoint_args=self.entrypoint_args,
+            entrypoint_envs=self.entrypoint_envs,
+            cpu_requests=self.cpu_requests,
+            cpu_limits=self.cpu_limits,
+            memory_requests=self.memory_requests,
+            memory_limits=self.memory_limits,
+            use_node_selector=self.use_node_selector,
+            node_selector=self.node_selector,
+            use_gpu=self.use_gpu,
+            gpu_requests=self.gpu_requests,
+            gpu_limits=self.gpu_limits,
+            labels=self.labels,
+            service_account_name=self.service_account_name,
+            storage_configs=self.storage_configs,
+            security_context_config=self.security_context_config,
+            restart_policy_configs=self.restart_policy_configs
+        )
+
+        logger.info(
+            f"CronJob '{self.cron_job_name}' created. Pods will be scheduled according to '{self.job_schedule}'.")
+
+        return cronjob
+
+    # TODO: use process_pod_infos in regular deployment as well
+    def process_pod_infos(self, pod_infos):
+        # Handle cases where no pods might be immediately available
+        if not pod_infos:
+            logger.warning("No pods found for the given CronJob. They may not have been scheduled yet.")
+            return None
+
+        self.pod_info_state = [BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))
+                               for pod in pod_infos]
+        self.beam_pod_instances = [
+            BeamPod(pod_infos=[BeamPod.extract_pod_info(self.k8s.get_pod_info(pod.name, self.namespace))],
+                    namespace=self.namespace, k8s=self.k8s)
+            for pod in pod_infos]
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
 
     def update_config_maps_rs_env_vars(self, deployment_name, namespace, rs_env_vars):
@@ -243,9 +351,6 @@ class BeamDeploy(BeamBase):
 
     def extract_ports(self):
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
-        # if self.ray_ports_configs:
-        #     for ray_ports_config in self.ray_ports_configs:
-        #         extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
         return extracted_ports
 
     def generate_beam_pod(self, pod_infos):
@@ -292,7 +397,11 @@ class BeamDeploy(BeamBase):
     def cluster_info(self):
         services_info = self.k8s.get_services_info(self.namespace)
         routes_info = self.k8s.get_routes_info(self.namespace)
-        host_ip = self.beam_pod_instances[0].pod_infos[0].raw_pod_data['status'].get('host_ip') or 'Host IP NONE'
+        if self.beam_pod_instances and self.beam_pod_instances[0].pod_infos:
+            host_ip = self.beam_pod_instances[0].pod_infos[0].raw_pod_data['status'].get('host_ip', 'Host IP NONE')
+        else:
+            host_ip = 'Host IP NONE'  # Default if no pods are available
+        # host_ip = self.beam_pod_instances[0].pod_infos[0].raw_pod_data['status'].get('host_ip') or 'Host IP NONE'
         service_info_lines = []
         route_info_lines = []
 

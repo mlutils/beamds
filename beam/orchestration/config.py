@@ -60,7 +60,9 @@ class RnDClusterConfig(K8SConfig):
         BeamParam('smtp_server', str, 'smtp.gmail.com', 'SMTP server'),
         BeamParam('smtp_port', int, 587, 'SMTP port'),
         BeamParam('subject', str, 'Cluster Deployment Information', 'Email subject'),
+
     ]
+
 
 class ServeClusterConfig(K8SConfig, BeamServeConfig):
 
@@ -71,6 +73,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
         BeamParam('base_image', str, None, 'Base image'),
         BeamParam('base_url', str, 'tcp://10.0.7.55:2375', 'Base URL'),
         BeamParam('beam_version', str, '2.5.11', 'Beam version'),
+        BeamParam('requirements_blacklist', list, [], 'Requirements blacklist'),
         BeamParam('send_email', bool, False, 'Send email'),
         BeamParam('body', str, 'Here is the cluster information:', 'Email body'),
         BeamParam('from_email', str, 'dayotech2018@gmail.com', 'From email address'),
@@ -91,6 +94,24 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
     ]
 
 
+class BeamManagerConfig(K8SConfig):
+    parameters = [
+        BeamParam('clusters', list, [], 'list of clusters'),
+    ]
+
+
+class CronJobConfig(K8SConfig):
+    parameters = [
+        BeamParam('job_schedule', str, None, 'Cron job schedule'),
+        # TODO: how to use OnFailure here as default value?
+        BeamParam('restart_policy_configs', dict, {}, 'Restart Policy configuration'),
+    ]
+
+
+class JobConfig(K8SConfig):
+    parameters = [
+        BeamParam('job_config', dict, {}, 'Job configuration'),
+    ]
 #
 # alg_image_name: fake-alg-http-server:latest
 # api_token: sha256~ya9nNwLC_tY6nTGY4WgrDP5llXBbtPlOAKngFL2l4J0

@@ -1,7 +1,6 @@
 alg_image_name: fake-alg-http-server:latest
-#api_token: sha256~dfymv0fOA2rC8d00ihH8N2GSlJZHuE0btauj6qJB0K4
-#api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJzdGFyZmllbGQiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoiZ2xvYmFsZHN2Yy10b2tlbi05aGRtdCIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50Lm5hbWUiOiJnbG9iYWxkc3ZjIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQudWlkIjoiNDc0NjlmYjYtMDg4Ni00N2FiLWE1NDgtY2RiNTVjZTY2YjhlIiwic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50OnN0YXJmaWVsZDpnbG9iYWxkc3ZjIn0.NoA3EmgV_r9RkIoemHzoNVX6sCSjRkC_v40-8XgbBFwrf8KfbcqBk2AKuvZYocTfl09jeX9WJHL2AGJa3eaXq2eQ_Jz1LzpYMUxu2EgckFA6WNAk16LSMcAXi7S47OcrwaEmayYvkljh5CiUKV_GMCPjPYEytMcZdrjun2v6_Om61SXKnHMpmBkMnJp6O4PvEBbY3XMrowOULyWWQATfWC1NtLy_QIqfTqXOVRY7f-dRWW8WC2D6fUOapjsspJt2A3pSheSPVB1MtmVjxhmhPVJQNiVAlmvXDkF5cUVZDyFZnbzXP9v4l6izi-HSqGAcNdJx8Ry6BdWWF3MtVTdqfSipkzC5MKYSPmQJqRel_qJHxDdg-XHqrKwRqFvRY0imhLWGdxQn3xpV_uQwQjUrZ2U36hQ_6ZjzcRZ_43P-r45j0_E0T4QeY5yt_EjTUg6xR75NCiyo9WiXZPTpLvW6qDz5aW3BQCbL8Mg-f2aI8rsNCZfXhEA91P_qmdptx63VetkELtehOthDLBps5dtUFaFWlfsSH0AkvN7exd3eJxMdlDDk6ng0Jliynjy7NdzH1lkoY4oYKxIsEvnAz-JRloWW-Xq2aiuraRQL_fITiL_hHCzmDWn4rLQclgwIbV54AKIGJHZBM6MkQk_GE8cS5FDHLRWlQY60nzyJuNxOFt8
-api_token: sha256~Z_T3PqnKf1uUgdqjJDp8Tx4bKI6cPgPHmdPL_tkvjxc
+# api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJzdGFyZmllbGQiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoic3RhcmZpZWxkc3ZjLXRva2VuLWZid2hzIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InN0YXJmaWVsZHN2YyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImMwMWFiN2E2LTMxNDEtNDFjNi04ZTgyLWIzYjY5MjYwNTY3YyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpzdGFyZmllbGQ6c3RhcmZpZWxkc3ZjIn0.kWOkxF7vD9g5PDzv7nlNIVYm1dYDAXve1MH-HzfWXBrrcUZCSI3Wu_IH_PvBhshphvbPBFJrCnLciFMC0Mt0C54vE1T6G6_cpqSThvPTmpyh0fORLhxQ98jIXfY40yuTDYyOZgefHsZJ2aGUSDPQlzSsT8PLBfbaVw9Y7aqimc70EUKEREmUY8NHhhttw0pNUCfB0WkZpSRUW9gLZjdZgwOyKLnhsIoErS5I9sIc7aILyjvOVpewZKI0KBU5aUi9jZSzbI5aXycx3P2YBp4KCOWqdL8AYVlMDcfSFX1c5yRa8LhLciFGzop9lT6HiDHWGzkiWhcYubGkxE3pLOfXMI9WoW5FWzTaXMeL6qNxenvAU9rbUkjbtxTsQ_sursEMCgcWgW8Tm5jbYrZDYVeH71l4ph7X-CtPZ7zJ7dIwxlSJ_seJ7Ardkk6LgB24Po20raizX063PAd5ivqYCLOL3jfN0wFReRX_TZMID47gNmyyG-_p6vuKublKNcjqFuoKY7Cw30jQp6bxSzDmYecwT7wFOn3gyOyUUbKj7auycIZxPJSjsR-TdLl9TyrSzSSsQV-Sg2JqPA15U9E2-T48m1RLz2ckyOR5LEsrhx9ESJTc1qcry6Ho4x1cG9nMVYfg4uZey_6CXH0giUtM3-5pt5vUKb746GbUIoend7yMCmI
+api_token: sha256~dmox_4TviiJHDnfoV2VnVi66aWqEgqdr01R597rLKFc
 api_url: https://api.kh-dev.dt.local:6443
 base_image: eladsar/beam:20240605
 base_url: tcp://10.0.7.55:2375
@@ -18,10 +17,10 @@ command:
 #  - /workspace/bash-run-scripts/entrypoint.sh --no-ray #TODO: check if can specify only arguments without executable
 #  executable: /bin/bash
   executable:
-cpu_limits: '4'
-cpu_requests: '4'
+cpu_limits: '2'
+cpu_requests: '2'
 create_service_account: false
-deployment_name: prod
+deployment_name: beam-manager
 #enable_ray_ports: true
 entrypoint_args:
 - '--no-ray'
@@ -36,9 +35,9 @@ gpu_requests: '1'
 image_name: harbor.dt.local/public/beam:20240801
 #image_name: rocker/rstudio:latest
 labels:
-  app: prod
-memory_limits: '12'
-memory_requests: '12'
+  app: beam-manager
+memory_limits: '4'
+memory_requests: '4'
 memory_storage_configs:
 - enabled: true
   mount_path: /dev/shm
@@ -46,20 +45,25 @@ memory_storage_configs:
   size_gb: 8
 #new_image: harbor.dt.local/public/fake-alg-http-server:test1
 new_image:  rocker/rstudio:latest
-n_pods: '2'
+n_pods: '1'
 node_selector:
   gpu-type: tesla-a100
-project_name: starbase
+project_name: starfield
 # push_image: false - this is removed
-ray_ports_configs:
-- ray_ports:
-  - 6379
-  - 8265
+#ray_ports_configs:
+#- ray_ports:
+#  - 6379
+#  - 8265
 registry_password: Har@123
 registry_url: harbor.dt.local
 registry_username: admin
 registry_project_name: public
 replicas: '1'
+restart_policy:
+  condition: on-failure
+  delay: 5s
+  max_attempts: 3
+  window: 120s
 send_mail: false
 scc_name: anyuid
 security_context_config:
@@ -85,34 +89,34 @@ service_configs:
   port_name: jupyter-port
   service_name: jupyter
   service_type: ClusterIP
-- create_ingress: false
-  create_route: true
-  ingress_host: mlflow.example.com
-  port: 22080
-  port_name: port
-  service_name: mlflow
-  service_type: ClusterIP
-- create_ingress: false
-  create_route: true
-  ingress_host: ray-port.example.com
-  port: 6379
-  port_name: port
-  service_name: ray
-  service_type: ClusterIP
-- create_ingress: false
-  create_route: true
-  ingress_host: ray-port.example.com
-  port: 8265
-  port_name: port
-  service_name: ray
-  service_type: ClusterIP
-- create_ingress: false
-  create_route: true
-  ingress_host: rstudio.example.com
-  port: 8787
-  port_name: port
-  service_name: ray
-  service_type: ClusterIP
+#- create_ingress: false
+#  create_route: true
+#  ingress_host: mlflow.example.com
+#  port: 22080
+#  port_name: port
+#  service_name: mlflow
+#  service_type: ClusterIP
+#- create_ingress: false
+#  create_route: true
+#  ingress_host: ray-port.example.com
+#  port: 6379
+#  port_name: port
+#  service_name: ray
+#  service_type: ClusterIP
+#- create_ingress: false
+#  create_route: true
+#  ingress_host: ray-port.example.com
+#  port: 8265
+#  port_name: port
+#  service_name: ray
+#  service_type: ClusterIP
+#- create_ingress: false
+#  create_route: true
+#  ingress_host: rstudio.example.com
+#  port: 8787
+#  port_name: port
+#  service_name: ray
+#  service_type: ClusterIP
 #- create_ingress: false
 #  create_route: true
 #  ingress_host: home-page.example.com
@@ -125,14 +129,14 @@ smtp_server: smtp.gmail.com
 storage_configs:
 - create_pvc: false
   pvc_access_mode: ReadWriteMany
-  pvc_mount_path: /usr/local/lib/R/site-library
+  pvc_mount_path: /pvc
   pvc_name: data-pvc
   pvc_size: '500'
 subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
-use_gpu: true
+use_gpu: false
 use_node_selector: false
-use_scc: true
+use_scc: false
 user_idm_configs:
 - create_role_binding: false
   project_name: ben-guryon

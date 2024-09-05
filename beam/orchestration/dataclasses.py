@@ -19,6 +19,7 @@ class ServiceConfig:
     route_timeout: str = '599'
 
 
+
 @dataclass
 class CommandConfig:
     executable: str
@@ -32,7 +33,6 @@ class CommandConfig:
 @dataclass
 class RayPortsConfig:
     ray_ports: List[int] = field(default_factory=list)
-
 
 
 @dataclass
@@ -91,8 +91,18 @@ class PodInfos:
         return self.metadata.name
 
 
+@dataclass
+class RestartPolicyConfig:
+    condition: str  # "OnFailure" or "Never"
+    max_attempts: int  # Kubernetes backoffLimit
+    delay: str  # Delay between retries, e.g., "5s"
+    active_deadline_seconds: int  # Maximum time a pod can be active
+    window: str  # Optional, custom retry window, might require custom logic in your app
+
 #Todo: build configuration classes according to the deployment layer structure
 # Todo: check online existing packages that have these configurations
+
+
 @dataclass
 class PodConfig:
     pass
@@ -102,7 +112,12 @@ class PodConfig:
 class ContainerConfig:
     pass
 
+
 @dataclass
 class DeploymentConfig:
     container: ContainerConfig
     pod: PodConfig
+
+    def get_labels(self) -> Dict[str, str]:
+        """Returns the labels as a dictionary."""
+        return self.labels.as_dict()

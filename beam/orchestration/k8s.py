@@ -1,9 +1,8 @@
 import base64
-
 from dataclasses import make_dataclass
 from kubernetes import client, watch
-from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions,
-                               V1ObjectMeta, V1RoleBinding, V1RoleRef, RbacV1Subject)
+from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions, BatchV1Api,
+                               V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding, V1Pod, V1PodSpec, )
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from ..utils import cached_property
@@ -15,6 +14,7 @@ from email.mime.multipart import MIMEMultipart
 from .dataclasses import *
 import time
 import json
+import subprocess
 
 
 class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits the method of processor
@@ -33,6 +33,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     @cached_property
     def core_v1_api(self):
         return client.CoreV1Api(self.api_client)
+
+    @cached_property
+    def batch_v1_api(self):
+        return BatchV1Api(self.api_client)
 
     @cached_property
     def api_client(self):
@@ -81,23 +85,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             else:
                 logger.error(f"Failed to check or create project '{project_name}': {e}")
 
-    # def create_service_account(self, name, create_service_account, namespace=None):
-    #     namespace = namespace or self.namespace
-    #
-    #     # Attempt to read the service account, create it if it does not exist
-    #     try:
-    #         self.core_v1_api.read_namespaced_service_account(name, namespace)
-    #         logger.info(f"Service Account {name} already exists in namespace {namespace}.")
-    #     except ApiException as e:
-    #         if e.status == 404:
-    #             metadata = client.V1ObjectMeta(name=name)
-    #             service_account = client.V1ServiceAccount(api_version="v1", kind="ServiceAccount",
-    #                                                       metadata=metadata)
-    #             self.core_v1_api.create_namespaced_service_account(namespace=namespace, body=service_account)
-    #             logger.info(f"Service Account {name} created in namespace {namespace}.")
-    #         else:
-    #             logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")ddd
-    #             raise
+    def get_service_accounts(self, namespace):
+        service_accounts = self.core_v1_api.list_namespaced_service_account(namespace)
+        return [sa.metadata.name for sa in service_accounts.items]
 
     def create_service_account(self, name, namespace):
         from kubernetes.client import V1ServiceAccount, V1ObjectMeta
@@ -162,38 +152,154 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.error(f"Failed to create secret for Service Account {service_account_name}: {e}")
             raise
 
+    def retrieve_service_account_token(self, service_account_name, namespace):
+        """Retrieve the token for a specified service account."""
+        from kubernetes.client.exceptions import ApiException
+        import base64
+
+        try:
+            # List all secrets in the given namespace
+            secrets = self.core_v1_api.list_namespaced_secret(namespace)
+            for secret in secrets.items:
+                # Check if the secret is a service account token and matches the specified service account
+                if (secret.type == "kubernetes.io/service-account-token" and
+                        secret.metadata.annotations.get('kubernetes.io/service-account.name') == service_account_name):
+                    # Decode the token from base64
+                    token = base64.b64decode(secret.data['token']).decode('utf-8')
+                    return token
+            # If no valid token was found
+            raise Exception(
+                f"No valid token found for Service Account {service_account_name} in namespace {namespace}.")
+        except ApiException as e:
+            raise Exception(f"Failed to retrieve token for Service Account {service_account_name}: {e}")
+
     def create_or_retrieve_service_account_token(self, service_account_name, namespace):
         """Create a new secret for a service account or retrieve an existing one."""
+        import base64
+        from kubernetes.client.exceptions import ApiException
+
         # Check if there is already a secret for this service account
         secrets = self.core_v1_api.list_namespaced_secret(namespace)
         for secret in secrets.items:
             if (secret.type == "kubernetes.io/service-account-token" and
-                    secret.metadata.annotations['kubernetes.io/service-account.name'] == service_account_name):
-                # Get the token from the secret
-                token = base64.b64decode(secret.data['token']).decode('utf-8')
-                return token
+                    secret.metadata.annotations.get('kubernetes.io/service-account.name') == service_account_name):
+                # Check if the token data exists
+                if 'token' in secret.data and secret.data['token']:
+                    # Get the token from the secret
+                    token = base64.b64decode(secret.data['token']).decode('utf-8')
+                    logger.info(
+                        f"Retrieved existing token for service account {service_account_name} in namespace {namespace}.")
+                    return token
+                else:
+                    logger.error(f"Secret {secret.metadata.name} exists but does not contain a valid token.")
 
-        # If no secret found, create a new one and retrieve the token
-        # This involves creating a secret linked to the service account with appropriate annotations and type
-        # Assuming that such secret creation and linking is done automatically by your Kubernetes setup when a service account is created
+        # If no valid secret found, create a new one
+        logger.info(f"No valid token found for Service Account {service_account_name}. Creating a new token.")
+        try:
+            self.create_service_account_secret(service_account_name, namespace)
+            # Re-check the secrets after creating one
+            secrets = self.core_v1_api.list_namespaced_secret(namespace)
+            for secret in secrets.items:
+                if (secret.type == "kubernetes.io/service-account-token" and
+                        secret.metadata.annotations.get('kubernetes.io/service-account.name') == service_account_name):
+                    if 'token' in secret.data and secret.data['token']:
+                        token = base64.b64decode(secret.data['token']).decode('utf-8')
+                        logger.info(
+                            f"New token generated for service account {service_account_name} in namespace {namespace}.")
+                        return token
+        except ApiException as e:
+            logger.error(f"Failed to create a new token for Service Account {service_account_name}: {e}")
+            raise
 
-        # This part can be specific based on your cluster configuration, some clusters auto-create these secrets
-        raise Exception("Token not found and manual creation not implemented.")
+        raise Exception(f"Failed to generate or retrieve a valid token for Service Account {service_account_name}.")
 
     def add_scc_to_service_account(self, service_account_name, namespace, scc_name):
         scc = self.dyn_client.resources.get(api_version='security.openshift.io/v1', kind='SecurityContextConstraints')
         scc_obj = scc.get(name=scc_name)
         user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
+
         if user_name not in scc_obj.users:
             scc_obj.users.append(user_name)
             scc.patch(body=scc_obj, name=scc_name, content_type='application/merge-patch+json')
+            logger.info(f"Added {user_name} to {scc_name} SCC.")
+        else:
+            logger.info(f"{user_name} is already in the {scc_name} SCC.")
+
+        # Verification Step
+        scc_obj = scc.get(name=scc_name)  # Re-fetch the SCC to ensure it was updated
+        if user_name in scc_obj.users:
+            logger.info(f"Verification successful: {user_name} is now in the {scc_name} SCC.")
+        else:
+            logger.warning(f"Verification failed: {user_name} is NOT in the {scc_name} SCC.")
+
+    def create_cluster_role_binding_for_scc(self, service_account_name, namespace):
+        cluster_role_binding = client.V1ClusterRoleBinding(
+            metadata=client.V1ObjectMeta(name=f"{service_account_name}-scc-binding"),
+            role_ref=client.V1RoleRef(
+                api_group="rbac.authorization.k8s.io",
+                kind="ClusterRole",
+                name="cluster-admin"  # This can be 'cluster-admin' or a custom role with SCC permissions
+            ),
+            subjects=[{
+                "kind": "ServiceAccount",
+                "name": service_account_name,
+                "namespace": namespace
+            }]
+        )
+
+        try:
+            self.rbac_api.create_cluster_role_binding(cluster_role_binding)
+            logger.info(f"ClusterRoleBinding created for service account {service_account_name}.")
+        except client.exceptions.ApiException as e:
+            if e.status == 409:  # Already exists
+                logger.info(f"ClusterRoleBinding already exists for service account {service_account_name}.")
+            else:
+                logger.error(f"Failed to create ClusterRoleBinding: {e}")
+
+    def delete_service_account_secret(self, service_account_name, namespace):
+        # List all secrets in the namespace
+        secrets = self.core_v1_api.list_namespaced_secret(namespace)
+
+        # Iterate through the secrets and find the one associated with the service account
+        for secret in secrets.items:
+            if (secret.type == "kubernetes.io/service-account-token" and
+                    secret.metadata.annotations['kubernetes.io/service-account.name'] == service_account_name):
+                # Delete the secret
+                secret_name = secret.metadata.name
+                try:
+                    self.core_v1_api.delete_namespaced_secret(secret_name, namespace)
+                    logger.info(f"Secret {secret_name} associated with Service Account {service_account_name} deleted.")
+                except ApiException as e:
+                    if e.status == 404:
+                        logger.info(f"Secret {secret_name} not found. It might have been deleted already.")
+                    else:
+                        logger.error(
+                            f"Failed to delete secret {secret_name} for Service Account {service_account_name}: {e}")
+                    raise
+                return  # Once the secret is found and deleted, exit the method
+
+        logger.info(f"No secret found for Service Account {service_account_name} in namespace {namespace}.")
+
+    def delete_service_account(self, service_account_name, namespace):
+        try:
+            # Delete the service account
+            self.core_v1_api.delete_namespaced_service_account(service_account_name, namespace)
+            logger.info(f"Service Account {service_account_name} deleted from namespace {namespace}.")
+
+            # Optionally, delete the associated secret
+            self.delete_service_account_secret(service_account_name, namespace)
+
+        except ApiException as e:
+            logger.error(f"Failed to delete Service Account {service_account_name} in namespace {namespace}: {e}")
+            raise
 
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
-                         cpu_requests=None, cpu_limits=None, memory_requests=None, use_command=None, command=None,
+                         cpu_requests=None, cpu_limits=None, memory_requests=None, command=None,
                          memory_limits=None, gpu_requests=None, memory_storage_configs=None,
                          use_gpu=None, gpu_limits=None, security_context_config=None,
-                         security_context=None, entrypoint_args=None,  rs_env_vars=None, entrypoint_envs=None):
+                         security_context=None, entrypoint_args=None, rs_env_vars=None, entrypoint_envs=None):
+
         container_name = f"{project_name}-{deployment_name}-container" \
             if project_name and deployment_name else "default-container"
 
@@ -207,7 +313,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         for key, value in entrypoint_envs.items():
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
-        if use_command is True:
+        if command is not None and command.executable is not None:
             command = command.as_list()
         else:
             command = None
@@ -294,14 +400,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return env_vars
 
     @staticmethod
-    def create_pod_template(image_name, use_command=None, command=None, labels=None, deployment_name=None,
-                            project_name=None,
+    def create_pod_template(image_name, command=None, labels=None, deployment_name=None,
+                            project_name=None, cron_job_name=None, job_schedule=None,
                             ports=None, create_service_account=None, service_account_name=None, pvc_mounts=None,
                             cpu_requests=None, cpu_limits=None, memory_requests=None, memory_storage_configs=None,
-                            memory_limits=None, use_gpu=False, gpu_requests=None,
+                            memory_limits=None, use_gpu=False, gpu_requests=None, restart_policy_configs=None,
                             gpu_limits=None, use_node_selector=None, node_selector=None,
                             security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
-
 
         if labels is None:
             labels = {}
@@ -321,7 +426,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                         empty_dir=memory_volume_spec
                     ))
                 else:
-                    memory_volume_spec = client.V1EmptyDirVolumeSource()
+                    client.V1EmptyDirVolumeSource()
 
         # Handle PVC mounts
         if pvc_mounts:
@@ -334,7 +439,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Call the create_container static method
         container = BeamK8S.create_container(
             image_name=image_name,
-            use_command=use_command,
             command=command,
             deployment_name=deployment_name,
             project_name=project_name,
@@ -360,6 +464,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             volumes=volumes
         )
 
+        # Apply the restart policy if provided
+        if restart_policy_configs:
+            pod_spec.restart_policy = restart_policy_configs.condition
+        else:
+            raise ValueError(f"Unsupported restart condition: {restart_policy_configs.condition}")
+
         # Conditionally add node_selector if it's not None
         if use_node_selector is True:
             pod_spec.node_selector = node_selector
@@ -383,8 +493,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         self.core_v1_api.create_namespaced_persistent_volume_claim(namespace=namespace, body=pvc_manifest)
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 
-    def create_deployment_spec(self, image_name, use_command=None, command=None, labels=None, deployment_name=None,
-                               project_name=None, replicas=None,
+    def create_deployment_spec(self, image_name, command=None, labels=None, deployment_name=None,
+                               project_name=None, replicas=None, restart_policy_configs=None,
                                ports=None, create_service_account=None, service_account_name=None, storage_configs=None,
                                cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=None,
                                node_selector=None, memory_limits=None, use_gpu=None,
@@ -400,7 +510,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the pod template with correct arguments
         pod_template = self.create_pod_template(
             image_name=image_name,
-            use_command=use_command,
             command=command,
             labels=labels,
             deployment_name=deployment_name,
@@ -420,6 +529,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             gpu_requests=gpu_requests,
             gpu_limits=gpu_limits,
             security_context_config=security_context_config,
+            restart_policy_configs=restart_policy_configs,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
@@ -431,13 +541,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             selector={'matchLabels': pod_template.metadata.labels}
         )
 
-    def create_deployment(self, image_name, use_command=None, command=None, labels=None, deployment_name=None,
+    def create_deployment(self, image_name, command=None, labels=None, deployment_name=None,
                           namespace=None, project_name=None,
                           replicas=None, ports=None, create_service_account=None, service_account_name=None,
                           storage_configs=None, cpu_requests=None, cpu_limits=None, memory_requests=None,
                           use_node_selector=None, node_selector=None, memory_storage_configs=None,
                           memory_limits=None, use_gpu=False, gpu_requests=None, gpu_limits=None,
-                          security_context_config=None, entrypoint_args=None, entrypoint_envs=None):
+                          security_context_config=None, restart_policy_configs=None,
+                          entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
 
@@ -456,13 +567,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         deployment_name = self.generate_unique_deployment_name(deployment_name, namespace)
 
         deployment_spec = self.create_deployment_spec(
-            image_name, use_command=use_command, command=command, labels=labels, deployment_name=deployment_name,
+            image_name, command=command, labels=labels, deployment_name=deployment_name,
             project_name=project_name, replicas=replicas, ports=ports, create_service_account=create_service_account,
             service_account_name=service_account_name, use_node_selector=use_node_selector, node_selector=node_selector,
             storage_configs=storage_configs, cpu_requests=cpu_requests, cpu_limits=cpu_limits,
             memory_requests=memory_requests, memory_limits=memory_limits,
             memory_storage_configs=memory_storage_configs, use_gpu=use_gpu,
-            gpu_requests=gpu_requests, gpu_limits=gpu_limits,
+            gpu_requests=gpu_requests, gpu_limits=gpu_limits, restart_policy_configs=restart_policy_configs,
             security_context_config=security_context_config,
             entrypoint_args=entrypoint_args, entrypoint_envs=entrypoint_envs,
         )
@@ -480,6 +591,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         )
         logger.info(f"Created deployment object type: {type(deployment)}")
         return deployment
+
 
     def generate_unique_deployment_name(self, base_name, namespace):
         unique_name = base_name
@@ -560,6 +672,44 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         # TODO: return pod info - extract pod name and namespace from the applied_deployment object,
         # if needed, beam_k8s will query the server to retrieve all the necessary information
+
+    def get_pods_by_label(self, labels, namespace: str):
+        """
+        Retrieve pods matching the given labels within the specified namespace.
+
+        :param labels: Labels to match (usually a dict from the config).
+        :param namespace: Namespace to search within.
+        :return: List of V1Pod objects matching the labels.
+        """
+        # Ensure that the namespace is a string
+        if not isinstance(namespace, str):
+            logger.error(f"Expected namespace to be a string, but got {type(namespace).__name__}.")
+            return []
+
+        try:
+            if isinstance(labels, dict):
+                label_selector = ",".join([f"{key}={value}" for key, value in labels.items()])
+            elif isinstance(labels, str):
+                label_selector = labels
+            else:
+                logger.error(f"Unsupported labels format: {type(labels)}. Expected dict or str.")
+                return []
+
+            logger.debug(f"Using label selector: {label_selector} in namespace: {namespace}")
+
+            # Retrieve the pods
+            pods = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=label_selector)
+
+            if not pods.items:
+                logger.warning("No pods found with the given label selector.")
+                return []
+
+            logger.debug(f"Retrieved {len(pods.items)} pods.")
+            return pods.items  # Returns a list of V1Pod objects
+
+        except Exception as e:
+            logger.exception(f"Error retrieving pods by label: {str(e)}")
+            return []
 
     def create_role_bindings(self, user_idm_configs):
         for config in user_idm_configs:
@@ -699,6 +849,237 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     return unique_name
                 raise  # Reraise exceptions that are not related to the service not existing
 
+    def create_job(self, namespace, job_name, image_name, container_name, command,
+                   entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
+                   use_gpu, gpu_requests, gpu_limits, labels, service_account_name, node_selector,
+                   use_node_selector, storage_configs, security_context_config, restart_policy_configs):
+
+        pvc_mounts = [{
+            'pvc_name': sc.pvc_name,
+            'mount_path': sc.pvc_mount_path
+        } for sc in storage_configs if sc.create_pvc] if storage_configs else []
+
+        # Create the container definition
+        container = self.create_container(
+            image_name=image_name,
+            command=command,
+            pvc_mounts=pvc_mounts,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            use_gpu=use_gpu,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
+            entrypoint_args=entrypoint_args,
+            entrypoint_envs=entrypoint_envs
+        )
+
+        if restart_policy_configs.condition == "Always":
+            restart_policy_configs.condition = "OnFailure"
+
+
+
+        # Create the pod spec
+        pod_spec = client.V1PodSpec(
+            containers=[container],
+            service_account_name=service_account_name,
+            restart_policy=restart_policy_configs.condition,
+        )
+
+        if use_node_selector is True:
+            pod_spec.node_selector = node_selector
+
+        # Create the pod template
+        pod_template = client.V1PodTemplateSpec(
+            metadata=client.V1ObjectMeta(labels=labels),
+            spec=pod_spec
+        )
+
+        # Create the job spec
+        job_spec = client.V1JobSpec(
+            template=pod_template,
+            backoff_limit=restart_policy_configs.max_attempts
+        )
+
+        # Create the job metadata
+        job_metadata = client.V1ObjectMeta(name=job_name, namespace=namespace, labels={"project": namespace})
+
+        # Create the job definition
+        job = client.V1Job(
+            api_version="batch/v1",
+            kind="Job",
+            metadata=job_metadata,
+            spec=job_spec
+        )
+
+        try:
+            self.batch_v1_api.create_namespaced_job(body=job, namespace=namespace)
+            logger.info(f"Job '{job_name}' created successfully in namespace '{namespace}'.")
+
+            return self.get_pods_by_label(labels, namespace)
+        except ApiException as e:
+            logger.error(f"Failed to create Job '{job_name}' in namespace '{namespace}': {e}")
+            return None
+
+    def create_cron_job(self, namespace, cron_job_name, image_name, container_name, job_schedule, command,
+                        entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
+                        use_gpu, gpu_requests, gpu_limits, labels, service_account_name, node_selector,
+                        use_node_selector, storage_configs, security_context_config, restart_policy_configs):
+
+        pvc_mounts = [{
+            'pvc_name': sc.pvc_name,
+            'mount_path': sc.pvc_mount_path
+        } for sc in storage_configs if sc.create_pvc] if storage_configs else []
+
+        # Create the container definition
+        container = self.create_container(
+            image_name=image_name,
+            command=command,
+            pvc_mounts=pvc_mounts,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            use_gpu=use_gpu,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
+            entrypoint_args=entrypoint_args,
+            entrypoint_envs=entrypoint_envs
+        )
+
+        if restart_policy_configs.condition == "Always":
+            restart_policy_configs.condition = "OnFailure"
+
+        # Create the pod template spec
+        pod_spec = client.V1PodSpec(
+            containers=[container],
+            service_account_name=service_account_name,
+            restart_policy=restart_policy_configs.condition,
+        )
+
+        if use_node_selector is True:
+            pod_spec.node_selector = node_selector
+
+        # Create the pod template
+        pod_template = client.V1PodTemplateSpec(
+            metadata=client.V1ObjectMeta(labels=labels),
+            spec=pod_spec
+        )
+
+        # Create the job spec
+        job_spec = client.V1JobSpec(
+            template=pod_template,
+            backoff_limit=restart_policy_configs.max_attempts
+        )
+
+        # Create the cron job spec
+        cron_job_spec = client.V1CronJobSpec(
+            schedule=job_schedule,
+            job_template=client.V1JobTemplateSpec(
+                metadata=client.V1ObjectMeta(labels=labels),
+                spec=job_spec
+            )
+        )
+
+        cron_job_metadata = client.V1ObjectMeta(name=cron_job_name, namespace=namespace, labels={"project": namespace})
+
+        # Create the cron job definition
+        cron_job = client.V1CronJob(
+            api_version="batch/v1",
+            kind="CronJob",
+            metadata=cron_job_metadata,
+            spec=cron_job_spec
+        )
+
+        try:
+            self.batch_v1_api.create_namespaced_cron_job(body=cron_job, namespace=namespace)
+            logger.info(f"CronJob '{cron_job_name}' created successfully in namespace '{namespace}'.")
+
+            return self.get_pods_by_label(labels, namespace)
+        except ApiException as e:
+            logger.error(f"Failed to create CronJob '{cron_job_name}' in namespace '{namespace}': {e}")
+            return None
+
+    def monitor_job(self, job_name, namespace):
+        """
+        Monitor the status of a Job until it completes, fails, or hits the backoff limit.
+        Fetch and display logs after job completion.
+        """
+        try:
+            job = self.batch_v1_api.read_namespaced_job_status(job_name, namespace)
+            while job.status.active or not (job.status.succeeded or job.status.failed):
+                logger.info(f"Job '{job_name}' is still active. Waiting for completion...")
+                time.sleep(10)
+                job = self.batch_v1_api.read_namespaced_job_status(job_name, namespace)
+
+            if job.status.succeeded:
+                logger.info(f"Job '{job_name}' completed successfully.")
+                # Fetch and display the logs for the job's pods
+                logs = self.get_job_logs(job_name=job_name, namespace=namespace)
+                if logs:
+                    logger.info(f"Logs for Job '{job_name}':\n{logs}")
+            elif job.status.failed:
+                logger.error(f"Job '{job_name}' failed.")
+        except ApiException as e:
+            logger.error(f"Failed to monitor Job '{job_name}' in namespace '{namespace}': {e}")
+            return None
+
+    def monitor_cron_job(self, cron_job_name, namespace):
+        """
+        Monitor the status of a CronJob. Checks the Job spawned by the CronJob to ensure its completion.
+        Fetch logs of each job spawned by the CronJob.
+        """
+        try:
+            # Get the most recent Job created by the CronJob
+            cron_job = self.batch_v1_api.read_namespaced_cron_job(cron_job_name, namespace)
+            job_selector = cron_job.spec.job_template.spec.template.metadata.labels
+
+            # Poll for Job status associated with the CronJob
+            while True:
+                jobs = self.batch_v1_api.list_namespaced_job(namespace, label_selector=','.join(
+                    [f"{k}={v}" for k, v in job_selector.items()]))
+                if jobs.items:
+                    for job in jobs.items:
+                        self.monitor_job(job.metadata.name, namespace)
+                        logger.info(f"Monitored Job '{job.metadata.name}' triggered by CronJob '{cron_job_name}'")
+
+                        # Fetch and display logs for each job
+                        logs = self.get_job_logs(job_name=job.metadata.name, namespace=namespace)
+                        if logs:
+                            logger.info(
+                                f"Logs for Job '{job.metadata.name}' triggered by CronJob '{cron_job_name}':\n{logs}")
+                else:
+                    logger.info(f"No active Jobs found for CronJob '{cron_job_name}'.")
+                time.sleep(30)  # Poll every 30 seconds
+        except ApiException as e:
+            logger.error(f"Failed to monitor CronJob '{cron_job_name}' in namespace '{namespace}': {e}")
+            return None
+
+    def get_job_logs(self, job_name, namespace):
+        """
+        Get logs from the Pods associated with a Job.
+        """
+        try:
+            # Pods are labeled with `job-name` to associate them with the job
+            pods = self.get_pods_by_label({'job-name': job_name}, namespace)
+            if not pods:
+                logger.error(f"No pods found for Job '{job_name}' in namespace '{namespace}'.")
+                return None
+
+            logs = ""
+            for pod in pods:
+                pod_logs = self.core_v1_api.read_namespaced_pod_log(name=pod.metadata.name, namespace=namespace)
+                logger.info(f"Logs from pod '{pod.metadata.name}':\n{pod_logs}")
+                logs += pod_logs + "\n"
+
+            return logs
+        except ApiException as e:
+            logger.error(f"Failed to retrieve logs for Job '{job_name}': {e}")
+            return None
+
     def delete_service(self, deployment_name, namespace=None):
         from kubernetes.client import V1DeleteOptions
 
@@ -779,7 +1160,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         try:
             # Try to get the existing route
             existing_route = route_resource.get(name=service_name, namespace=namespace)
-            if existing_route: # If the route exists, log a message and return
+            if existing_route:  # If the route exists, log a message and return
                 logger.warning(f"Route {service_name} already exists in namespace {namespace}, skipping creation.")
             return
         except NotFoundError:
@@ -1026,14 +1407,18 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         return endpoints
 
     # Homepage_url=f"http://{route['host']}"
-    def get_homepage_route_url(self, namespace):
+    def get_route_urls(self, namespace):
         # Fetching all routes in the namespace
         routes = self.get_routes_info(namespace)
-        # Filtering for the specific route associated with 'home-page'
+        route_urls = []
         for route in routes:
             if 'home-page' in route['host']:
-                return f"http://{route['host']}"
-        return None
+                route_urls.append(f"home-page: http://{route['host']}\n")
+            if 'flask' in route['host']:
+                route_urls.append(f"flask serve: http://{route['host']}\n")
+        final_route_urls = ''.join(route_urls)
+        # return final_route_urls
+        return route_urls
 
     def query_available_resources(self):
         total_resources = {'cpu': '0', 'memory': '0', 'nvidia.com/gpu': '0', 'amd.com/gpu': '0', 'storage': '0Gi'}

@@ -17,14 +17,21 @@ RUN pip install --no-cache-dir packaging
 # RUN pip install --no-cache-dir -r /tmp/requirements.txt
 RUN python /app/docker-tools/gracefull-pip.py /app/requirements.txt
 
+
 RUN if [ -z "${BEAM_DS_VERSION}" ]; then \
+        echo "BEAM_DS_VERSION is not set: will not install Beam-DS"; \
+    elif [ "${BEAM_DS_VERSION}" = "latest" ]; then \
         pip install beam-ds[serve]; \
     else \
         pip install beam-ds[serve]==${BEAM_DS_VERSION}; \
     fi
 
+
 # Copy the algorithm bundle directory
 COPY ${ALGORITHM_DIR} /app/algorithm
+
+# decompress the /app/algorithm/modules.tar.gz to /app dir
+RUN tar -xvf /app/algorithm/modules.tar.gz -C /app/
 
 # copy the config file
 COPY ${CONFIG_FILE} /app/config.yaml

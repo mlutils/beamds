@@ -26,6 +26,9 @@ RUN if [ -z "${BEAM_DS_VERSION}" ]; then \
 # Copy the algorithm bundle directory
 COPY ${ALGORITHM_DIR} /app/algorithm
 
+# decompress the /app/algorithm/modules.tar.gz to /app dir
+RUN tar -xvf /app/algorithm/modules.tar.gz -C /app
+
 # copy the config file
 COPY ${CONFIG_FILE} /app/config.yaml
 

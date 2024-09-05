@@ -5,15 +5,18 @@ if len([]):
     from .k8s import BeamK8S
     from .deploy import BeamDeploy
     from .pod import BeamPod
+    from .jobs import BeamJob, BeamCronJob
     from .units import K8SUnits
-    from .config import K8SConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
+    from .config import (K8SConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig, BeamManagerConfig,
+                         JobConfig, CronJobConfig)
     from .cluster import ServeCluster, RayCluster, RnDCluster
     from .manager import BeamManager
     from .resource import deploy_server
 
 
 __all__ = ['BeamK8S', 'BeamDeploy', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig', 'ServeClusterConfig',
-           'RnDClusterConfig', 'ServeCluster', 'RayCluster', 'RnDCluster', 'BeamManager', 'deploy_server']
+           'JobConfig', 'CronJobConfig', 'RnDClusterConfig','BeamManagerConfig', 'ServeCluster', 'RayCluster',
+           'RnDCluster', 'BeamManager', 'deploy_server']
 
 
 def __getattr__(name):
@@ -32,6 +35,18 @@ def __getattr__(name):
     elif name == 'RnDCluster':
         from .cluster import RnDCluster
         return RnDCluster
+    elif name == 'BeamJob':
+        from .jobs import BeamJob
+        return BeamJob
+    elif name == 'BeamCronJob':
+        from .jobs import BeamCronJob
+        return BeamCronJob
+    elif name == 'JobConfig':
+        from .config import JobConfig
+        return JobConfig
+    elif name == 'CronJobConfig':
+        from .config import CronJobConfig
+        return CronJobConfig
     elif name == 'K8SConfig':
         from .config import K8SConfig
         return K8SConfig
@@ -44,6 +59,9 @@ def __getattr__(name):
     elif name == 'RnDClusterConfig':
         from .config import RnDClusterConfig
         return RnDClusterConfig
+    elif name == 'BeamManagerConfig':
+        from .config import BeamManagerConfig
+        return BeamManagerConfig
     elif name == 'K8SUnits':
         from .units import K8SUnits
         return K8SUnits
