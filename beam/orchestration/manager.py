@@ -82,7 +82,7 @@ class BeamManager(BeamBase):
         self.clusters[name] = job
 
         # Start monitoring the job
-        monitor_thread = Thread(target=job.monitor_cluster)
+        monitor_thread = Thread(target=job.monitor_job)
         monitor_thread.start()
 
     def launch_cron_job(self, config, **kwargs):
@@ -102,7 +102,7 @@ class BeamManager(BeamBase):
         self.clusters[name] = cron_job
 
         # Start monitoring the cluster
-        monitor_thread = Thread(target=cron_job.monitor_cluster)
+        monitor_thread = Thread(target=cron_job.monitor_cron_job)
         monitor_thread.start()
 
 

@@ -9,8 +9,9 @@ from .config import JobConfig, CronJobConfig
 class BeamJob(BeamCluster):
     # Handles Job deployment, monitoring, logs, and interaction via k8s API
 
-    def __init__(self, config, job_name=None, pods=None):
-        super(BeamJob, self).__init__(deployment=None, job_name=job_name, config=config, pods=pods)
+    def __init__(self, config, job_name=None, pods=None, *args, **kwargs):
+        super(BeamJob, self).__init__(deployment=None, job_name=job_name, config=config,
+                                      pods=pods, *args, **kwargs)
 
     @classmethod
     def deploy_job(cls, config, k8s=None):
@@ -28,11 +29,11 @@ class BeamJob(BeamCluster):
         cron_job_config = CronJobConfig(**config)
         cron_job = BeamDeploy(cron_job_config, k8s)
 
-        job_config = JobConfig(**config)
-        job = BeamDeploy(job_config, k8s)
+        config = JobConfig(**config)
+        job = BeamDeploy(config, k8s)
 
         # Use the launch_job method from BeamDeploy to deploy the Job
-        pods = job.launch_job(job_name=job_config.name)
+        pods = job.launch_job()
 
         if isinstance(pods, BeamPod):
             pods = [pods]

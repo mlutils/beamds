@@ -225,6 +225,13 @@ class BeamDeploy(BeamBase):
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
 
     def launch_job(self):
+
+        if self.create_service_account:
+            self.k8s.create_service_account(self.service_account_name, self.namespace)
+        else:
+            self.service_account_name = 'default'
+            logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
+
         # Delegate Job creation to the k8s class
         job = self.k8s.create_job(
             namespace=self.namespace,
@@ -258,6 +265,12 @@ class BeamDeploy(BeamBase):
         if not self.job_schedule:
             logger.error("CronJob schedule not provided.")
             return
+
+        if self.create_service_account:
+            self.k8s.create_service_account(self.service_account_name, self.namespace)
+        else:
+            self.service_account_name = 'default'
+            logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
 
         # Delegate CronJob creation to k8s class
         cronjob = self.k8s.create_cron_job(

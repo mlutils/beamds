@@ -876,11 +876,16 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             entrypoint_envs=entrypoint_envs
         )
 
+        if restart_policy_configs.condition == "Always":
+            restart_policy_configs.condition = "OnFailure"
+
+
+
         # Create the pod spec
         pod_spec = client.V1PodSpec(
             containers=[container],
             service_account_name=service_account_name,
-            restart_policy=restart_policy_configs.condition
+            restart_policy=restart_policy_configs.condition,
         )
 
         if use_node_selector is True:
@@ -944,6 +949,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
+
+        if restart_policy_configs.condition == "Always":
+            restart_policy_configs.condition = "OnFailure"
 
         # Create the pod template spec
         pod_spec = client.V1PodSpec(
