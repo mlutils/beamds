@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for
 import sys
 sys.path.insert(0, '../..')
-from beam import ServeClusterConfig
+from beam import ServeClusterConfig, resource
 import argparse
 import yaml
 import os
@@ -17,6 +17,11 @@ def read_config(file_path):
 def write_config(file_path, config):
     with open(file_path, 'w') as f:
         yaml.dump(config, f)
+
+
+def launch_button():
+    # fill in here what the button should do
+    manager = resource(args.manager)
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -62,6 +67,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=22001)
     parser.add_argument('--debug', action='store_true', default=False)
+    parser.add_argument('--manager', type=str, default=None)
     args = parser.parse_args()
 
     app.run(host='0.0.0.0', port=args.port, debug=args.debug)

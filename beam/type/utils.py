@@ -43,6 +43,7 @@ class Types:
     float = 'float'
     complex = 'complex'
     bool = 'bool'
+    bytes = 'bytes'
     str = 'str'
     na = 'na'
 
@@ -133,6 +134,12 @@ def check_element_type(x, minor=None):
         return Types.float
     if 'str' in t:
         return Types.str
+    if '<u3' in t:
+        return Types.str
+    if 's3' in t:
+        return Types.bytes
+    if 'bytes' in t:
+        return Types.bytes
     if 'complex' in t:
         return Types.complex
 
