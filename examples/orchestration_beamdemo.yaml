@@ -21,7 +21,7 @@ container_name: beam-cron-container
 job_schedule: "*/2 * * * *" # every 2 minutes
 cpu_limits: '2'
 cpu_requests: '2'
-create_service_account: true
+create_service_account: false
 deployment_name: prod
 entrypoint_args:
 - '63'

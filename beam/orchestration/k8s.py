@@ -1317,6 +1317,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     f"in namespace {self.namespace}: {e}")
 
     def scale_deployment_to_zero(self, deployment_name, namespace):
+        """
+        Scale down the deployment to zero replicas.
+        """
         try:
             self.apps_v1_api.patch_namespaced_deployment_scale(
                 name=deployment_name,
@@ -1327,62 +1330,82 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         except ApiException as e:
             logger.error(f"Failed to scale deployment '{deployment_name}' to zero: {e}")
 
-    def delete_resources_by_app_name(self, app_name, namespace):
+    def delete_all_resources_by_app_label(self, app_name, deployment_name, namespace):
+        """
+        Delete all Kubernetes resources labeled with the app name.
+        """
         try:
-            self.core_v1_api.delete_collection_namespaced_pod(
+            # Delete all objects labeled with app={app_name}
+            pods = self.core_v1_api.delete_collection_namespaced_pod(
                 namespace=namespace,
                 label_selector=f"app={app_name}"
             )
-            logger.info(f"Deleted resources with app label '{app_name}' in namespace '{namespace}'.")
+            logger.debug(f"Deleting pods with app label '{app_name}' in namespace '{namespace}'.")
+            logger.info(f"Deleted all pods labeled with app '{app_name}' in namespace '{namespace}'.")
         except ApiException as e:
-            logger.error(f"Failed to delete resources with app label '{app_name}' in namespace '{namespace}': {e}")
+            logger.error(f"Failed to delete resources labeled with app '{app_name}' in namespace '{namespace}': {e}")
 
     def delete_cronjobs_by_name(self, app_name, namespace):
         try:
             cronjobs = self.batch_v1_api.list_namespaced_cron_job(namespace, label_selector=f"app={app_name}")
             for cronjob in cronjobs.items:
                 self.batch_v1_api.delete_namespaced_cron_job(cronjob.metadata.name, namespace)
-            logger.info(f"Deleted CronJobs associated with app '{app_name}'.")
+                logger.debug(f"Deleted cronjob '{cronjob.metadata.name}' in namespace '{namespace}'.")
+            logger.info(f"Deleted all CronJobs associated with app '{app_name}' in namespace '{namespace}'.")
         except ApiException as e:
-            logger.error(f"Failed to delete CronJobs: {e}")
+            logger.error(f"Failed to delete CronJobs associated with '{app_name}': {e}")
 
     def delete_jobs_by_name(self, app_name, namespace):
         try:
             jobs = self.batch_v1_api.list_namespaced_job(namespace, label_selector=f"app={app_name}")
             for job in jobs.items:
                 self.batch_v1_api.delete_namespaced_job(job.metadata.name, namespace)
-            logger.info(f"Deleted Jobs associated with app '{app_name}'.")
+                logger.debug(f"Deleted job '{job.metadata.name}' in namespace '{namespace}'.")
+            logger.info(f"Deleted all Jobs associated with app '{app_name}' in namespace '{namespace}'.")
         except ApiException as e:
-            logger.error(f"Failed to delete Jobs: {e}")
+            logger.error(f"Failed to delete Jobs associated with '{app_name}': {e}")
 
     def delete_services_by_deployment(self, deployment_name, namespace):
         try:
             services = self.core_v1_api.list_namespaced_service(namespace, label_selector=f"app={deployment_name}")
             for service in services.items:
+                logger.debug(f"Deleting service: {service.metadata.name}")
                 self.core_v1_api.delete_namespaced_service(service.metadata.name, namespace)
-            logger.info(f"Deleted Services associated with deployment '{deployment_name}'.")
+                logger.info(
+                    f"Deleted service '{service.metadata.name}' associated with deployment '{deployment_name}'.")
         except ApiException as e:
-            logger.error(f"Failed to delete Services: {e}")
+            logger.error(f"Failed to delete Services associated with deployment '{deployment_name}': {e}")
 
-    def delete_routes_by_deployment(self, deployment_name, namespace):
+    def delete_routes_by_deployment_name(self, deployment_name, namespace):
+        """
+        Delete all routes associated with the deployment name.
+        """
         try:
             routes = self.custom_objects_api.list_namespaced_custom_object(
-                group="route.openshift.io", version="v1", namespace=namespace, plural="routes")
+                group="route.openshift.io", version="v1", namespace=namespace, plural="routes"
+            )
             for route in routes.get('items', []):
                 if deployment_name in route['metadata']['name']:
                     self.custom_objects_api.delete_namespaced_custom_object(
                         group="route.openshift.io", version="v1", namespace=namespace,
-                        plural="routes", name=route['metadata']['name'])
-            logger.info(f"Deleted Routes associated with deployment '{deployment_name}'.")
+                        plural="routes", name=route['metadata']['name']
+                    )
+                    logger.debug(f"Deleted route '{route['metadata']['name']}' in namespace '{namespace}'.")
+            logger.info(
+                f"Deleted all routes associated with deployment '{deployment_name}' in namespace '{namespace}'.")
         except ApiException as e:
-            logger.error(f"Failed to delete Routes: {e}")
+            logger.error(f"Failed to delete routes associated with deployment '{deployment_name}': {e}")
 
     def delete_configmap_by_deployment(self, deployment_name, namespace):
         try:
+            logger.debug(f"Deleting configmap: {deployment_name}-config")
             self.core_v1_api.delete_namespaced_config_map(f"{deployment_name}-config", namespace)
             logger.info(f"Deleted ConfigMap '{deployment_name}-config'.")
         except ApiException as e:
-            logger.error(f"Failed to delete ConfigMap '{deployment_name}-config': {e}")
+            if e.status == 404:
+                logger.warning(f"ConfigMap '{deployment_name}-config' not found in namespace '{namespace}'.")
+            else:
+                logger.error(f"Failed to delete ConfigMap '{deployment_name}-config': {e}")
 
     def delete_service(self, deployment_name, namespace=None):
         from kubernetes.client import V1DeleteOptions
@@ -1407,23 +1430,63 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         except ApiException as e:
             logger.error(f"Error deleting service for deployment '{deployment_name}': {e}")
 
-    def delete_services_by_label_selector(self, label_selector, namespace=None):
-        if namespace is None:
-            namespace = self.namespace
-
+    def delete_resources_starting_with(self, prefix, namespace):
+        """
+        Deletes all resources in the given namespace that have names starting with the specified prefix.
+        """
         try:
-            services = self.core_v1_api.list_namespaced_service(namespace=namespace, label_selector=label_selector)
+            # Delete pods starting with the prefix
+            pods = self.core_v1_api.list_namespaced_pod(namespace=namespace)
+            for pod in pods.items:
+                if pod.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting pod: {pod.metadata.name}")
+                    self.core_v1_api.delete_namespaced_pod(pod.metadata.name, namespace)
+                    logger.info(f"Deleted pod '{pod.metadata.name}' in namespace '{namespace}'")
+
+            # Delete services starting with the prefix
+            services = self.core_v1_api.list_namespaced_service(namespace=namespace)
             for service in services.items:
-                service_name = service.metadata.name
-                self.core_v1_api.delete_namespaced_service(
-                    name=service_name,
-                    namespace=namespace,
-                    body=V1DeleteOptions()
-                )
-                logger.info(f"Deleted service '{service_name}' in namespace '{namespace}'")
-        except Exception as e:
-            logger.error(
-                f"Error deleting services with label selector '{label_selector}' in namespace '{namespace}': {e}")
+                if service.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting service: {service.metadata.name}")
+                    self.core_v1_api.delete_namespaced_service(service.metadata.name, namespace)
+                    logger.info(f"Deleted service '{service.metadata.name}' in namespace '{namespace}'")
+
+            # Delete configmaps starting with the prefix
+            configmaps = self.core_v1_api.list_namespaced_config_map(namespace=namespace)
+            for configmap in configmaps.items:
+                if configmap.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting configmap: {configmap.metadata.name}")
+                    self.core_v1_api.delete_namespaced_config_map(configmap.metadata.name, namespace)
+                    logger.info(f"Deleted configmap '{configmap.metadata.name}' in namespace '{namespace}'")
+
+            # Delete deployments starting with the prefix
+            deployments = self.apps_v1_api.list_namespaced_deployment(namespace=namespace)
+            for deployment in deployments.items:
+                if deployment.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting deployment: {deployment.metadata.name}")
+                    self.apps_v1_api.delete_namespaced_deployment(deployment.metadata.name, namespace)
+                    logger.info(f"Deleted deployment '{deployment.metadata.name}' in namespace '{namespace}'")
+
+            # Delete cronjobs starting with the prefix
+            cronjobs = self.batch_v1_api.list_namespaced_cron_job(namespace=namespace)
+            for cronjob in cronjobs.items:
+                if cronjob.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting cronjob: {cronjob.metadata.name}")
+                    self.batch_v1_api.delete_namespaced_cron_job(cronjob.metadata.name, namespace)
+                    logger.info(f"Deleted cronjob '{cronjob.metadata.name}' in namespace '{namespace}'")
+
+            # Delete jobs starting with the prefix
+            jobs = self.batch_v1_api.list_namespaced_job(namespace=namespace)
+            for job in jobs.items:
+                if job.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting job: {job.metadata.name}")
+                    self.batch_v1_api.delete_namespaced_job(job.metadata.name, namespace)
+                    logger.info(f"Deleted job '{job.metadata.name}' in namespace '{namespace}'")
+
+            # Add more resource deletion if needed
+
+        except ApiException as e:
+            logger.error(f"Failed to delete resources starting with '{prefix}': {e}")
 
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []

@@ -37,14 +37,15 @@ class BeamManager(BeamBase):
         # Scale deployment to zero if it exists
         self.k8s.scale_deployment_to_zero(deployment_name, namespace)
 
-        # Delete all resources associated with the app name
-        self.k8s.delete_resources_by_app_name(app_name, namespace)
+        self.k8s.delete_resources_starting_with(prefix=deployment_name, namespace=namespace)
+        # Delete all resources labeled with the app name
+        self.k8s.delete_all_resources_by_app_label(app_name, deployment_name=deployment_name, namespace=namespace)
 
         # Delete CronJobs, Jobs, ConfigMaps, Services, Routes
         self.k8s.delete_cronjobs_by_name(app_name, namespace)
         self.k8s.delete_jobs_by_name(app_name, namespace)
         self.k8s.delete_services_by_deployment(deployment_name, namespace)
-        self.k8s.delete_routes_by_deployment(deployment_name, namespace)
+        self.k8s.delete_routes_by_deployment_name(deployment_name, namespace)
         self.k8s.delete_configmap_by_deployment(deployment_name, namespace)
 
         # Delete service accounts associated with the app
