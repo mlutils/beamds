@@ -102,13 +102,13 @@ service_configs:
   port_name: jupyter-port
   service_name: jupyter
   service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: mlflow.example.com
-#  port: 22080
-#  port_name: port
-#  service_name: mlflow
-#  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: api.example.com
+  port: 35000
+  port_name: port
+  service_name: api
+  service_type: ClusterIP
 #- create_ingress: false
 #  create_route: true
 #  ingress_host: ray-port.example.com

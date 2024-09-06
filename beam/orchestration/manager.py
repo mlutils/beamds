@@ -28,6 +28,30 @@ class BeamManager(BeamBase):
         # self.monitor_thread.start()
         atexit.register(self._cleanup)
 
+    def cleanup_existing_resources(self, namespace, deployment_name, app_name):
+        """
+        Cleanup existing Kubernetes/OpenShift resources before deploying a new one.
+        """
+        logger.info(f"Cleaning up existing resources for deployment '{deployment_name}' in namespace '{namespace}'")
+
+        # Scale deployment to zero if it exists
+        self.k8s.scale_deployment_to_zero(deployment_name, namespace)
+
+        # Delete all resources associated with the app name
+        self.k8s.delete_resources_by_app_name(app_name, namespace)
+
+        # Delete CronJobs, Jobs, ConfigMaps, Services, Routes
+        self.k8s.delete_cronjobs_by_name(app_name, namespace)
+        self.k8s.delete_jobs_by_name(app_name, namespace)
+        self.k8s.delete_services_by_deployment(deployment_name, namespace)
+        self.k8s.delete_routes_by_deployment(deployment_name, namespace)
+        self.k8s.delete_configmap_by_deployment(deployment_name, namespace)
+
+        # Delete service accounts associated with the app
+        self.k8s.delete_service_account(app_name, namespace)
+
+        logger.info(f"Cleanup completed for deployment '{deployment_name}' in namespace '{namespace}'")
+
     def _monitor(self):
         try:
             while True:
@@ -85,6 +109,8 @@ class BeamManager(BeamBase):
         monitor_thread = Thread(target=job.monitor_job)
         monitor_thread.start()
 
+        return name
+
     def launch_cron_job(self, config, **kwargs):
         # If config is a string (path), resolve it and load the configuration
         if isinstance(config, str):
@@ -104,6 +130,8 @@ class BeamManager(BeamBase):
         # Start monitoring the cron job
         monitor_thread = Thread(target=cron_job.monitor_cron_job)
         monitor_thread.start()
+
+        return name
 
     def launch_ray_cluster(self, config, **kwargs):
         # If config is a string (path), resolve it and load the configuration
@@ -125,6 +153,8 @@ class BeamManager(BeamBase):
         monitor_thread = Thread(target=ray_cluster.monitor_cluster)
         monitor_thread.start()
 
+        return name
+
     def launch_serve_cluster(self, config, **kwargs):
         if isinstance(config, str):
             # Resolve the configuration path relative to the script's directory
@@ -133,6 +163,8 @@ class BeamManager(BeamBase):
 
             # Convert the path to a BeamManagerConfig object
             config = ServeClusterConfig(resource(conf_path).str)
+
+        self.cleanup_existing_resources(config['project_name'], config['deployment_name'], config['labels']['app'])
 
         name = self.get_cluster_name(config)
         from .cluster import ServeCluster
@@ -144,7 +176,9 @@ class BeamManager(BeamBase):
         monitor_thread = Thread(target=serve_cluster.monitor_cluster)
         monitor_thread.start()
 
-    def launch_rnd_cluster(self, config, **kwargs):
+        return name
+
+    def launch_rnd_cluster(self, config,  **kwargs):
         if isinstance(config, str):
             # Resolve the configuration path relative to the script's directory
             script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -152,6 +186,8 @@ class BeamManager(BeamBase):
 
             # Convert the path to a BeamManagerConfig object
             config = RnDClusterConfig(resource(conf_path).str)
+
+        self.cleanup_existing_resources(config['project_name'], config['deployment_name'], config['labels']['app'])
 
         name = self.get_cluster_name(config)
         from .cluster import RnDCluster
@@ -180,8 +216,7 @@ class BeamManager(BeamBase):
         else:
             logger.error("Failed to initialize or launch the RnDCluster.")
 
-        return self.clusters[name]
-
+        return name
 
     def get_cluster_name(self, config):
         # TODO: implement a method to generate a unique cluster name (or get it from the config)
