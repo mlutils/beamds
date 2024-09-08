@@ -55,21 +55,60 @@ body {
     max-width: 60px;
     max-height: 60px;
 }
+
+/* Thicker toggle slider */
 .slider {
+    -webkit-appearance: none;
+    appearance: none;
     width: 100%;
-    margin-top: 10px;
+    height: 40px; /* Thicker height */
+    background: grey; /* Default background color for off state */
+    outline: none;
+    opacity: 0.9;
+    transition: background 0.4s ease-in-out;
+    border-radius: 20px; /* Rounded edges for a modern look */
 }
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 50px; /* Bigger thumb */
+    height: 50px; /* Bigger thumb */
+    border-radius: 50%;
+    background: #FFD700; /* Thumb color */
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.2); /* Shadow for modern look */
+}
+
+.slider::-moz-range-thumb {
+    width: 50px; /* Bigger thumb */
+    height: 50px; /* Bigger thumb */
+    border-radius: 50%;
+    background: #FFD700; /* Thumb color */
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.2); /* Shadow for modern look */
+}
+
+/* Change slider background when toggled on */
+.slider.on {
+    background: #1f77b4; /* Blue background when ON */
+}
+
 .slider-label {
     margin-top: 5px;
     font-weight: bold;
     color: #FF4500;
 }
+
+/* Knob styles */
 .knob-input {
-    width: 100px;
-    height: 100px;
+    width: 120px;  /* Ensure the knob has enough space */
+    height: 120px;
     margin: 0 auto;
     display: block;
 }
+
+/* Launch button styles */
 .launch-button {
     background-color: #1f77b4;
     color: white;
@@ -83,4 +122,15 @@ body {
 }
 .launch-button:hover {
     background-color: #155a8a;
+}
+
+/* Form input styles */
+.form-control {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    font-size: 16px;
 }

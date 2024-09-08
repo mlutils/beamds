@@ -6,23 +6,29 @@ import argparse
 import yaml
 import os
 
+
 app = Flask(__name__)
 
+# Sample system parameters
+system_params = {
+    "cpu_cores": 4,
+    "memory": "16GB",
+    "disk_space": "500GB"
+}
 
 def read_config(file_path):
     with open(file_path, 'r') as f:
         return yaml.safe_load(f)
 
-
 def write_config(file_path, config):
     with open(file_path, 'w') as f:
         yaml.dump(config, f)
 
-
-def launch_button():
-    # fill in here what the button should do
-    manager = resource(args.manager)
-
+def handle_submission(config_params, system_params):
+    # Perform your logic here with the selected config and system parameters
+    print("Received config params:", config_params)
+    print("System params:", system_params)
+    # Add your processing logic here, such as saving to a file, applying configuration, etc.
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -42,22 +48,25 @@ def home():
         })
 
     if request.method == 'POST':
-        # Update config_data with submitted form values
+        selected_config = {}
         for param in config_class.parameters:
             value = request.form.get(param.name)
             if param.type == int:
-                config_data[param.name] = int(value)
+                selected_config[param.name] = int(value)
             elif param.type == float:
-                config_data[param.name] = float(value)
+                selected_config[param.name] = float(value)
             elif param.type == bool:
-                config_data[param.name] = value == 'on'
+                selected_config[param.name] = value == 'on'
             elif param.type in [list, dict]:
-                config_data[param.name] = yaml.safe_load(value)
+                selected_config[param.name] = yaml.safe_load(value)
             else:
-                config_data[param.name] = value
+                selected_config[param.name] = value
+
+        # Call the function with the selected config and system params
+        handle_submission(selected_config, system_params)
 
         # Save the updated configuration
-        write_config(config_path, config_data)
+        write_config(config_path, selected_config)
         return redirect(url_for('home'))  # Refresh the page after submission
 
     return render_template('index.html', config_params=config_params)
