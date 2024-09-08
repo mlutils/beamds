@@ -5,7 +5,7 @@ from torch import nn
 from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 
-from beam import beam_arguments, Experiment, beam_algorithm_generator
+from beam import beam_arguments, Experiment, nn_algorithm_generator
 from beam import UniversalDataset, UniversalBatchSampler
 from beam import NeuralAlgorithm
 from beam import LinearNet

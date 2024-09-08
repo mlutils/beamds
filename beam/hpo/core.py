@@ -4,9 +4,9 @@ from functools import partial
 
 from .params import HPOConfig
 from .._version import __version__
-from ..algorithm import NeuralAlgorithm
+from ..algorithm import Algorithm, NeuralAlgorithm
 from ..config import print_beam_hyperparameters
-from ..experiment import beam_algorithm_generator
+from ..experiment import nn_algorithm_generator, simple_algorithm_generator
 from ..logging import beam_logger as logger
 from ..path import beam_path, BeamPath
 from ..processor import Processor
@@ -40,7 +40,11 @@ class BeamHPO(Processor):
 
         self.alg = alg
         if algorithm_generator is None:
-            self.ag = partial(beam_algorithm_generator, dataset=dataset,
+
+            algorithm_generator = nn_algorithm_generator if isinstance(self.alg, NeuralAlgorithm) \
+                else simple_algorithm_generator
+
+            self.ag = partial(algorithm_generator, dataset=dataset,
                               alg_args=alg_args, alg_kwargs=alg_kwargs, dataset_args=dataset_args,
                               dataset_kwargs=dataset_kwargs)
         else:
@@ -71,9 +75,20 @@ class BeamHPO(Processor):
         self.suggestions = {}
         self.post_train_hook = post_train_hook
 
+    def fit_algorithm(self, experiment):
+
+        if isinstance(self.alg, NeuralAlgorithm):
+            alg, report = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True,
+                                         runner='default')
+        else:
+            alg, report = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True,
+                                         runner='simple')
+
+        return alg, report
+
     @staticmethod
     def get_optimization_mode(mode, objective_name):
-        return NeuralAlgorithm.get_optimization_mode(mode, objective_name)
+        return Algorithm.get_optimization_mode(mode, objective_name)
 
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}

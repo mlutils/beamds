@@ -15,6 +15,19 @@ from ..logging import beam_logger as logger
 from ..path import beam_path
 from ..utils import find_port, is_notebook
 
+from ray.tune.search.sample import Uniform
+
+
+class LogSpace(Uniform):
+
+    def __init__(self, sampler, x):
+        self.sampler = sampler
+        self.x = x
+
+    def sample(self, *args, **kwargs):
+        i = self.sampler.sample(*args, **kwargs)
+        return self.x[i]
+
 
 class RayHPO(BeamHPO, RayClient):
 
@@ -51,18 +64,24 @@ class RayHPO(BeamHPO, RayClient):
 
         if base is None:
             base = 10
-
-        emin = base ** start
-        emax = base ** end
-
+        # emin = base ** start
+        # emax = base ** end
         x = np.logspace(start, end, n_steps, base=base)
 
-        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int, np.int64, 'int', 'int64']:
-            base = int(x[1] / x[0])
-            return tune.lograndint(int(emin), int(emax), base=base)
+        return tune.choice(x)
 
-        step_size = (x[1] / x[0]) ** ((end - start) / n_steps )
-        return tune.qloguniform(emin, emax, step_size, base=base)
+        # s = tune.randint(0, len(x) - 1)
+        #
+        # return LogSpace(s, x)
+
+        # r = tune.qloguniform(emin, emax, step_size, base=base)
+
+        # if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int64, 'int', 'int64']:
+        #     base = int(x[1] / x[0])
+        #     return tune.lograndint(int(emin), int(emax), base=base)
+        #
+        # step_size = (x[1] / x[0]) ** ((end - start) / n_steps)
+        # return tune.qloguniform(emin, emax, step_size, base=base)
 
     @staticmethod
     def _randn(param, mu, sigma):
@@ -79,7 +98,8 @@ class RayHPO(BeamHPO, RayClient):
                     f" in trial directory ({trial_dir})")
         trial_dir.joinpath('beam_configuration.pkl').write({'experiment_dir': experiment.experiment_dir})
 
-        alg, report = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True)
+        alg, report = self.fit_algorithm(experiment=experiment)
+
         train.report({report.objective_name: report.best_objective})
         if self.post_train_hook is not None:
             self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=report)
@@ -134,7 +154,7 @@ class RayHPO(BeamHPO, RayClient):
         if 'metric' not in tune_config_kwargs.keys():
             tune_config_kwargs['metric'] = self.experiment_hparams.get('objective')
         if 'mode' not in tune_config_kwargs.keys():
-            mode = self.experiment_hparams.get('objective-mode')
+            mode = self.experiment_hparams.get('optimization-mode')
             tune_config_kwargs['mode'] = self.get_optimization_mode(mode, tune_config_kwargs['metric'])
 
         if 'progress_reporter' not in tune_config_kwargs.keys() and is_notebook():

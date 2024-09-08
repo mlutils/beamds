@@ -21,7 +21,7 @@ from ..type import Types
 
 class BeamReport(object):
 
-    def __init__(self, objective=None, objective_mode='max', aux_objectives=None, aux_objectives_modes=None):
+    def __init__(self, objective=None, optimization_mode='max', aux_objectives=None, aux_objectives_modes=None):
 
         self.scalar = None
         self.aux = None
@@ -43,13 +43,13 @@ class BeamReport(object):
 
         if objective is not None:
             aux_objectives.insert(0, objective)
-            aux_objectives_modes.insert(0, objective_mode)
+            aux_objectives_modes.insert(0, optimization_mode)
 
         self.objective_names = aux_objectives
         self.objectives_modes = aux_objectives_modes
 
         self.objective_name = None
-        self.objective_mode = None
+        self.optimization_mode = None
 
         self.epoch = None
         self.best_epoch = None
@@ -142,7 +142,7 @@ class BeamReport(object):
                     data['scalars'][name] = v
                 else:
                     data[subset]['scalars'][name] = v
-            for dtype, v_dtype  in self.aux.items():
+            for dtype, v_dtype in self.aux.items():
                 for k, v in v_dtype.items():
                     subset, name = self.extract_subset_and_name(k)
                     if subset is None:
@@ -294,7 +294,7 @@ class BeamReport(object):
 
     @cached_property
     def comparison(self):
-        return {'max': np.greater, 'min': np.less}[self.objective_mode]
+        return {'max': np.greater, 'min': np.less}[self.optimization_mode]
 
     def set_objective(self, objective):
 
@@ -313,7 +313,7 @@ class BeamReport(object):
         for i, o in enumerate(self.objective_names):
             if o is not None and o in keys:
                 self.objective_name = o
-                self.objective_mode = self.objectives_modes[i]
+                self.optimization_mode = self.objectives_modes[i]
                 return
 
     def pre_epoch(self, subset, batch_size=None):
@@ -322,11 +322,10 @@ class BeamReport(object):
         self.state = 'in_epoch'
         return timer()
 
-    def post_epoch(self, subset, t0, batch_size=None, training=True):
+    def post_epoch(self, subset, t0, batch_size=None, track_objective=True):
 
         delta = timer() - t0
         n_iter = self.iteration + 1
-        track_objective = not training
         batch_size = batch_size or 1
 
         self.state = 'after_epoch'
@@ -387,7 +386,7 @@ class BeamReport(object):
     def track_epoch(self, subset, batch_size=None, training=True):
         t0 = self.pre_epoch(subset, batch_size)
         yield
-        self.post_epoch(subset, t0, batch_size, training)
+        self.post_epoch(subset, t0, batch_size, not training)
 
     def iterate(self, generator, **kwargs):
         for i, batch in tqdm(generator, **kwargs):

@@ -40,8 +40,9 @@ def main():
     dataset = TabularDataset(x=data['x'], y=data['y'], cat_features=['Wilderness_Area', 'Soil_Type'])
 
     alg = CBAlgorithm(config, experiment=experiment)
-    alg.fit(dataset=dataset)
+    report = alg.fit(dataset)
     logger.info(f"Model trained with {alg.model}")
+    print(report)
 
 
 if __name__ == '__main__':

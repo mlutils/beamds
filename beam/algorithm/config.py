@@ -44,10 +44,10 @@ class CatboostConfig(DeviceConfig):
     - https://docs.aws.amazon.com/sagemaker/latest/dg/catboost-hyperparameters.html
     """
 
+    defaults = {'objective': None, 'objective_to_report': 'best'}
+
     # CatBoost parameters
     parameters = [
-        BeamParam('objective', str, None, 'The objective function for the CatBoost model. '),
-        BeamParam('objective_to_report', str, 'best', 'Which objective to report in HPO run [best|last]'),
         BeamParam(
             'cb-task',
             str,

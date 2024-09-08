@@ -1,6 +1,7 @@
 import re
 
 from .. import beam_path
+from ..experiment import BeamReport
 from ..path import local_copy
 from ..utils import parse_string_number, as_numpy, cached_property, set_seed
 from ..experiment.utils import build_device_list
@@ -8,6 +9,8 @@ from .config import CatboostConfig
 
 from .core_algorithm import Algorithm
 from ..logging import beam_logger as logger
+from ..type import check_type, Types
+from ..dataset import TabularDataset
 
 
 class CBAlgorithm(Algorithm):
@@ -56,16 +59,13 @@ class CBAlgorithm(Algorithm):
         return self.get_hparam('custom_metric', cm)
 
     @cached_property
-    def optimization_mode(self):
-        objective_mode = self.get_hparam('objective_mode', None)
-        objective_name = self.get_hparam('objective', None)
-        return self.get_optimization_mode(objective_mode, objective_name)
-
-    def set_objective(self):
+    def objective_name(self):
         objective_name = self.get_hparam('objective', self.eval_metric)
         if type(objective_name) is list:
             objective_name = objective_name[0]
         self.set_hparam('objective', objective_name)
+
+        return objective_name
 
     @cached_property
     def model(self):
@@ -100,6 +100,11 @@ class CBAlgorithm(Algorithm):
                     # logger.error(f"CB init: Overriding key {key} with value {v}")
                     continue
                 cb_kwargs[key] = self.hparams[key]
+
+        # here we fix broken configurations that can be the result of a hpo tuning
+        if 'max_leaves' in cb_kwargs and cb_kwargs['max_leaves'] is not None:
+            if 'grow_policy' in cb_kwargs and cb_kwargs['grow_policy'] != 'Lossguide':
+                cb_kwargs.pop('max_leaves')
 
         return CatBoost(**cb_kwargs)
 
@@ -139,7 +144,7 @@ class CBAlgorithm(Algorithm):
             for k, v in metrics.items():
                 self.report_scalar(k, v, subset='eval', epoch=iteration)
 
-            self.reporter.post_epoch('eval', self._t0, training=True)
+            self.reporter.post_epoch('eval', self._t0, track_objective=True)
             # post epoch
             self.epoch = iteration + self.log_frequency
             self.calculate_objective_and_report(self.epoch)
@@ -172,24 +177,32 @@ class CBAlgorithm(Algorithm):
         try:
             self.postprocess_epoch(*args, **kwargs)
         except Exception as e:
-            logger.error(f"CB: {e}")
+            logger.debug(f"CB Error: {e}")
             from ..utils import beam_traceback
-            logger.error(beam_traceback())
+            logger.debug(beam_traceback())
+            raise e
 
     @cached_property
     def n_epochs(self):
         return self.get_hparam('iterations', 1000)
 
+    @cached_property
+    def train_reporter(self):
+        return BeamReport(objective='best', optimization_mode=self.optimization_mode,
+                          aux_objectives=['loss'], aux_objectives_modes=['min'])
+
     def _fit(self, x=None, y=None, dataset=None, eval_set=None, cat_features=None, text_features=None,
              embedding_features=None, sample_weight=None, **kwargs):
 
-        self.set_objective()
+        if x is not None:
+            if isinstance(x, TabularDataset):
+                dataset = x
+                x = None
 
         if self.experiment:
             self.experiment.prepare_experiment_for_run()
 
         if dataset is None:
-            from ..dataset import TabularDataset
             dataset = TabularDataset(x_train=x, y_train=y, x_test=eval_set[0], y_test=eval_set[1],
                                      cat_features=cat_features, text_features=text_features,
                                      embedding_features=embedding_features, sample_weight=sample_weight)
@@ -204,10 +217,18 @@ class CBAlgorithm(Algorithm):
         if self.experiment:
             snapshot_file = self.experiment.snapshot_file
 
-        self.model.fit(train_pool, eval_set=dataset.eval_pool, log_cout=self.log_cout,
-                       snapshot_interval=self.get_hparam('snapshot_interval'),
-                       save_snapshot=self.get_hparam('save_snapshot'),
-                       snapshot_file=snapshot_file, log_cerr=self.log_cerr, **kwargs)
+        try:
+            self.model.fit(train_pool, eval_set=dataset.eval_pool, log_cout=self.log_cout,
+                           snapshot_interval=self.get_hparam('snapshot_interval'),
+                           save_snapshot=self.get_hparam('save_snapshot'),
+                           snapshot_file=snapshot_file, log_cerr=self.log_cerr, **kwargs)
+
+        except SystemError as e:
+            if self.hpo == 'optuna':
+                from optuna.exceptions import TrialPruned
+                raise TrialPruned(f"Trial pruned: {e}")
+            else:
+                raise e
 
         if self.experiment:
             self.experiment.save_state(self)
@@ -227,8 +248,14 @@ class CBAlgorithm(Algorithm):
     def load_state_dict(self, path, ext=None, exclude: set | list = None, **kwargs):
 
         path = beam_path(path)
-        with local_copy(path.joinpath('model.cb'), as_beam_path=False) as p:
-            self.model.load_model(p)
+
+        if path.joinpath('model.cb').exists():
+            with local_copy(path.joinpath('model.cb'), as_beam_path=False) as p:
+                self.model.load_model(p)
+        elif path.joinpath('model.pkl').exists():
+            self.model = path.joinpath('model.pkl').read()
+        else:
+            raise FileNotFoundError(f"Model file not found in {path}")
 
         return super().load_state_dict(path, ext, exclude, **kwargs)
 
@@ -237,5 +264,9 @@ class CBAlgorithm(Algorithm):
         super().save_state_dict(state, path, ext, exclude, **kwargs)
 
         path = beam_path(path)
-        with local_copy(path.joinpath('model.cb'), as_beam_path=False) as p:
-            self.model.save_model(p)
+
+        if self.model.is_fitted():
+            with local_copy(path.joinpath('model.cb'), as_beam_path=False) as p:
+                self.model.save_model(p)
+        else:
+            path.joinpath('model.pkl').write(self.model)

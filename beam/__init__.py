@@ -5,7 +5,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 __all__ = ['UniversalBatchSampler', 'UniversalDataset',
-           'Experiment', 'beam_algorithm_generator',
+           'Experiment', 'nn_algorithm_generator',
            'NeuralAlgorithm',
            'LinearNet', 'PackedSet', 'copy_network', 'reset_network', 'DataTensor', 'BeamOptimizer', 'BeamScheduler',
            'BeamNN',
@@ -57,8 +57,8 @@ def __getattr__(name):
         from .experiment import Experiment
         return Experiment
     elif name == 'beam_algorithm_generator':
-        from .experiment import beam_algorithm_generator
-        return beam_algorithm_generator
+        from .experiment import nn_algorithm_generator
+        return nn_algorithm_generator
     elif name == 'NeuralAlgorithm':
         from .algorithm import NeuralAlgorithm
         return NeuralAlgorithm
@@ -217,7 +217,7 @@ def __getattr__(name):
 if len([]):
     from .utils import tqdm_beam as tqdm
     from .dataset import UniversalBatchSampler, UniversalDataset
-    from .experiment import Experiment, beam_algorithm_generator
+    from .experiment import Experiment, nn_algorithm_generator
     from .algorithm import NeuralAlgorithm
     from .nn import LinearNet, PackedSet, copy_network, reset_network, DataTensor, BeamOptimizer, BeamScheduler, BeamNN
     from .data import BeamData
