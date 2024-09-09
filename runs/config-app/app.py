@@ -38,8 +38,12 @@ def handle_submission(config_params):
     else:
         raise ValueError("Invalid application type")
 
-    print("Received config params:", config_params)
-    application(config_params)
+    print("Received config params:")
+    print(config_params)
+    try:
+        application(config_params)
+    except Exception as e:
+        print(f"Error launching application: {e}")
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -47,22 +51,26 @@ def home():
     config_data = resource(args.config_file).read()
 
     if args.application == 'rnd':
-        config_class = RnDClusterConfig(config_data)
+        config_class = RnDClusterConfig(config_data, load_script_arguments=False)
     elif args.application == 'serve':
-        config_class = ServeClusterConfig(config_data)
+        config_class = ServeClusterConfig(config_data, load_script_arguments=False)
     else:
         raise ValueError("Invalid application type")
 
     # Prepare parameters to pass to the template
     config_params = []
-    for param in config_class.parameters:
-        config_params.append({
-            'name': param.name,
-            'value': config_data.get(param.name),
-            'type': param.type.__name__,
-            'help': param.help or '',
-            'icon': url_for('static', filename='images/param_icon.png')  # Placeholder for actual icons
-        })
+    config_classes = config_class.__class__.mro()
+    for cc in config_classes:
+        if not hasattr(cc, 'parameters'):
+            continue
+        for param in cc.parameters:
+            config_params.append({
+                'name': param.name,
+                'value': config_data.get(param.name),
+                'type': param.type.__name__,
+                'help': param.help or '',
+                'icon': url_for('static', filename='images/param_icon.png')  # Placeholder for actual icons
+            })
 
     if request.method == 'POST':
         selected_config = {}
@@ -79,17 +87,24 @@ def home():
             else:
                 selected_config[param.name] = value
 
+        if args.application == 'rnd':
+            config_class = RnDClusterConfig(config_data, load_script_arguments=False, **selected_config)
+        elif args.application == 'serve':
+            config_class = ServeClusterConfig(config_data, load_script_arguments=False, **selected_config)
+        else:
+            raise ValueError("Invalid application type")
+
         # Call the function with the selected config and system params
-        handle_submission(selected_config)
+        handle_submission(config_class)
 
         # Save the updated configuration
         # write_config(config_path, selected_config)
         return redirect(url_for('home'))  # Refresh the page after submission
 
     if args.application == 'rnd':
-        index_file = 'rnd_index.html'
+        index_file = 'index_rnd.html'
     elif args.application == 'serve':
-        index_file = 'serve_index.html'
+        index_file = 'index_serve.html'
     else:
         raise ValueError("Invalid application type")
     return render_template(index_file, config_params=config_params)

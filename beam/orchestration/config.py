@@ -69,7 +69,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
     defaults = dict(n_threads=16)
 
     parameters = [
-        BeamParam('alg', object, None, 'Algorithm object'),
+        BeamParam('alg', str, None, 'Algorithm object'),
         BeamParam('alg_image_name', str, None, 'Algorithm image name'),
         BeamParam('base_image', str, None, 'Base image'),
         BeamParam('base_url', str, 'tcp://10.0.7.55:2375', 'Base URL'),

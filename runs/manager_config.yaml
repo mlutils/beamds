@@ -1,6 +1,6 @@
 alg_image_name: beam-manager:latest
 # api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJzdGFyZmllbGQiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoic3RhcmZpZWxkc3ZjLXRva2VuLWZid2hzIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InN0YXJmaWVsZHN2YyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImMwMWFiN2E2LTMxNDEtNDFjNi04ZTgyLWIzYjY5MjYwNTY3YyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpzdGFyZmllbGQ6c3RhcmZpZWxkc3ZjIn0.kWOkxF7vD9g5PDzv7nlNIVYm1dYDAXve1MH-HzfWXBrrcUZCSI3Wu_IH_PvBhshphvbPBFJrCnLciFMC0Mt0C54vE1T6G6_cpqSThvPTmpyh0fORLhxQ98jIXfY40yuTDYyOZgefHsZJ2aGUSDPQlzSsT8PLBfbaVw9Y7aqimc70EUKEREmUY8NHhhttw0pNUCfB0WkZpSRUW9gLZjdZgwOyKLnhsIoErS5I9sIc7aILyjvOVpewZKI0KBU5aUi9jZSzbI5aXycx3P2YBp4KCOWqdL8AYVlMDcfSFX1c5yRa8LhLciFGzop9lT6HiDHWGzkiWhcYubGkxE3pLOfXMI9WoW5FWzTaXMeL6qNxenvAU9rbUkjbtxTsQ_sursEMCgcWgW8Tm5jbYrZDYVeH71l4ph7X-CtPZ7zJ7dIwxlSJ_seJ7Ardkk6LgB24Po20raizX063PAd5ivqYCLOL3jfN0wFReRX_TZMID47gNmyyG-_p6vuKublKNcjqFuoKY7Cw30jQp6bxSzDmYecwT7wFOn3gyOyUUbKj7auycIZxPJSjsR-TdLl9TyrSzSSsQV-Sg2JqPA15U9E2-T48m1RLz2ckyOR5LEsrhx9ESJTc1qcry6Ho4x1cG9nMVYfg4uZey_6CXH0giUtM3-5pt5vUKb746GbUIoend7yMCmI
-api_token: sha256~wH9jcKM_H-2GyyUHDIHOCy0o3B-7lhhL1QCFMuE1kZM
+api_token: sha256~uxEKFz5cROltasRPx3M9HKGy1_qymnNHG0ng2QQY_U0
 api_url: https://api.kh-dev.dt.local:6443
 base_image: python:3.10-slim
 base_url: tcp://10.0.7.55:2375
@@ -59,7 +59,7 @@ new_image:  rocker/rstudio:latest
 n_pods: '1'
 node_selector:
   gpu-type: tesla-a100
-project_name: starfield
+project_name: dev
 # push_image: false - this is removed
 #ray_ports_configs:
 #- ray_ports:
@@ -110,40 +110,12 @@ service_configs:
   port_name: port
   service_name: api
   service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: ray-port.example.com
-#  port: 6379
-#  port_name: port
-#  service_name: ray
-#  service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: ray-port.example.com
-#  port: 8265
-#  port_name: port
-#  service_name: ray
-#  service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: rstudio.example.com
-#  port: 8787
-#  port_name: port
-#  service_name: ray
-#  service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: home-page.example.com
-#  port: 22089
-#  port_name: home-page-port
-#  service_name: home-page
-#  service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
-- create_pvc: false
+- create_pvc: true
   pvc_access_mode: ReadWriteMany
-  pvc_mount_path: /pvc
+  pvc_mount_path: /home/pvc
   pvc_name: data-pvc
   pvc_size: '500'
 subject: Cluster Deployment Information

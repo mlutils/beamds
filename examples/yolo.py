@@ -23,7 +23,7 @@ def main():
     display(image)
     # store to bundle
     logger.info(f"Storing the processor to bundle: {config.path_to_bundle}")
-    yolo.to_bundle(config.path_to_bundle)
+    yolo.to_bundle(config.path_to_bundle, blacklist=['torch', 'torchvision'])
 
 
 if __name__ == '__main__':
