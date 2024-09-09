@@ -84,7 +84,7 @@ security_context_config:
 #  - SYS_CHROOT
 #  - CAP_AUDIT_CONTROL
 #  - CAP_AUDIT_WRITE
-  enable_security_context: false
+  enable_security_context: true
   privileged: true
   runAsUser: 0
 service_configs:
