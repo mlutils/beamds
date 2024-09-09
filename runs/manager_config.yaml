@@ -1,6 +1,6 @@
 alg_image_name: beam-manager:latest
 # api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJzdGFyZmllbGQiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoic3RhcmZpZWxkc3ZjLXRva2VuLWZid2hzIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InN0YXJmaWVsZHN2YyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImMwMWFiN2E2LTMxNDEtNDFjNi04ZTgyLWIzYjY5MjYwNTY3YyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpzdGFyZmllbGQ6c3RhcmZpZWxkc3ZjIn0.kWOkxF7vD9g5PDzv7nlNIVYm1dYDAXve1MH-HzfWXBrrcUZCSI3Wu_IH_PvBhshphvbPBFJrCnLciFMC0Mt0C54vE1T6G6_cpqSThvPTmpyh0fORLhxQ98jIXfY40yuTDYyOZgefHsZJ2aGUSDPQlzSsT8PLBfbaVw9Y7aqimc70EUKEREmUY8NHhhttw0pNUCfB0WkZpSRUW9gLZjdZgwOyKLnhsIoErS5I9sIc7aILyjvOVpewZKI0KBU5aUi9jZSzbI5aXycx3P2YBp4KCOWqdL8AYVlMDcfSFX1c5yRa8LhLciFGzop9lT6HiDHWGzkiWhcYubGkxE3pLOfXMI9WoW5FWzTaXMeL6qNxenvAU9rbUkjbtxTsQ_sursEMCgcWgW8Tm5jbYrZDYVeH71l4ph7X-CtPZ7zJ7dIwxlSJ_seJ7Ardkk6LgB24Po20raizX063PAd5ivqYCLOL3jfN0wFReRX_TZMID47gNmyyG-_p6vuKublKNcjqFuoKY7Cw30jQp6bxSzDmYecwT7wFOn3gyOyUUbKj7auycIZxPJSjsR-TdLl9TyrSzSSsQV-Sg2JqPA15U9E2-T48m1RLz2ckyOR5LEsrhx9ESJTc1qcry6Ho4x1cG9nMVYfg4uZey_6CXH0giUtM3-5pt5vUKb746GbUIoend7yMCmI
-api_token: sha256~dmox_4TviiJHDnfoV2VnVi66aWqEgqdr01R597rLKFc
+api_token: sha256~wH9jcKM_H-2GyyUHDIHOCy0o3B-7lhhL1QCFMuE1kZM
 api_url: https://api.kh-dev.dt.local:6443
 base_image: python:3.10-slim
 base_url: tcp://10.0.7.55:2375
@@ -26,7 +26,7 @@ requirements_blacklist:
 - 'optuna'
 cpu_limits: '2'
 cpu_requests: '2'
-create_service_account: false
+create_service_account: true
 deployment_name: beam-manager
 #enable_ray_ports: true
 entrypoint_args:
@@ -78,13 +78,14 @@ restart_policy_configs:
   max_attempts: 3
   window: 120s
 send_mail: false
-scc_name: anyuid
+#scc_name: anyuid
+scc_name: privileged
 security_context_config:
   add_capabilities:
 #  - SYS_CHROOT
 #  - CAP_AUDIT_CONTROL
 #  - CAP_AUDIT_WRITE
-  enable_security_context: false
+  enable_security_context: true
   privileged: true
   runAsUser: 0
 service_configs:
@@ -102,13 +103,13 @@ service_configs:
   port_name: jupyter-port
   service_name: jupyter
   service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: mlflow.example.com
-#  port: 22080
-#  port_name: port
-#  service_name: mlflow
-#  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: api.example.com
+  port: 35000
+  port_name: port
+  service_name: api
+  service_type: ClusterIP
 #- create_ingress: false
 #  create_route: true
 #  ingress_host: ray-port.example.com
@@ -149,7 +150,7 @@ subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
 use_gpu: false
 use_node_selector: false
-use_scc: false
+use_scc: true
 user_idm_configs:
 - create_role_binding: false
   project_name: ben-guryon

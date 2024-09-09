@@ -1,5 +1,6 @@
 import base64
 from dataclasses import make_dataclass
+import kubernetes
 from kubernetes import client, watch
 from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions, BatchV1Api,
                                V1ObjectMeta, V1RoleBinding, V1RoleRef, V1ClusterRoleBinding, V1Pod, V1PodSpec, )
@@ -66,6 +67,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     @cached_property
     def rbac_api(self):
         return RbacAuthorizationV1Api(self.api_client)
+
+    @cached_property
+    def custom_objects_api(self):
+        return client.CustomObjectsApi(self.api_client)
 
     def create_project(self, project_name):
         try:
@@ -281,17 +286,23 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"No secret found for Service Account {service_account_name} in namespace {namespace}.")
 
     def delete_service_account(self, service_account_name, namespace):
+        """
+        Delete a service account in the given namespace. If the service account doesn't exist, log a message and continue.
+        """
+        # Append 'svc' to the service account name
+        service_account_name = f"{service_account_name}svc"
+
         try:
-            # Delete the service account
             self.core_v1_api.delete_namespaced_service_account(service_account_name, namespace)
-            logger.info(f"Service Account {service_account_name} deleted from namespace {namespace}.")
-
-            # Optionally, delete the associated secret
-            self.delete_service_account_secret(service_account_name, namespace)
-
+            logger.info(f"Service Account '{service_account_name}' deleted successfully in namespace '{namespace}'.")
         except ApiException as e:
-            logger.error(f"Failed to delete Service Account {service_account_name} in namespace {namespace}: {e}")
-            raise
+            if e.status == 404:
+                logger.warning(
+                    f"Service Account '{service_account_name}' not found in namespace '{namespace}'. Continuing...")
+            else:
+                logger.error(
+                    f"Failed to delete Service Account '{service_account_name}' in namespace '{namespace}': {e}")
+                raise
 
     @staticmethod
     def create_container(image_name, deployment_name=None, project_name=None, ports=None, pvc_mounts=None,
@@ -592,7 +603,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         logger.info(f"Created deployment object type: {type(deployment)}")
         return deployment
 
-
     def generate_unique_deployment_name(self, base_name, namespace):
         unique_name = base_name
         suffix = 1
@@ -707,8 +717,14 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.debug(f"Retrieved {len(pods.items)} pods.")
             return pods.items  # Returns a list of V1Pod objects
 
+        except kubernetes.client.exceptions.ApiException as e:
+            if e.status == 401:
+                logger.error(f"Unauthorized access while retrieving pods: {str(e)}")
+            else:
+                logger.exception(f"Error retrieving pods by label: {str(e)}")
+            return []
         except Exception as e:
-            logger.exception(f"Error retrieving pods by label: {str(e)}")
+            logger.exception(f"Unexpected error retrieving pods by label: {str(e)}")
             return []
 
     def create_role_bindings(self, user_idm_configs):
@@ -1080,47 +1096,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.error(f"Failed to retrieve logs for Job '{job_name}': {e}")
             return None
 
-    def delete_service(self, deployment_name, namespace=None):
-        from kubernetes.client import V1DeleteOptions
-
-        if namespace is None:
-            namespace = self.namespace
-
-        try:
-            # Get the service associated with the deployment
-            service_list = self.core_v1_api.list_namespaced_service(namespace=namespace)
-            for service in service_list.items:
-                if service.metadata.labels.get("app") == deployment_name:
-                    service_name = service.metadata.name
-                    # Use the core_v1_api to delete the Service
-                    self.core_v1_api.delete_namespaced_service(
-                        name=service_name,
-                        namespace=namespace,
-                        body=V1DeleteOptions()
-                    )
-                    logger.info(f"Deleted service '{service_name}' from namespace '{namespace}'.")
-                    return  # Exit the loop once the service is deleted
-        except ApiException as e:
-            logger.error(f"Error deleting service for deployment '{deployment_name}': {e}")
-
-    def delete_services_by_label_selector(self, label_selector, namespace=None):
-        if namespace is None:
-            namespace = self.namespace
-
-        try:
-            services = self.core_v1_api.list_namespaced_service(namespace=namespace, label_selector=label_selector)
-            for service in services.items:
-                service_name = service.metadata.name
-                self.core_v1_api.delete_namespaced_service(
-                    name=service_name,
-                    namespace=namespace,
-                    body=V1DeleteOptions()
-                )
-                logger.info(f"Deleted service '{service_name}' in namespace '{namespace}'")
-        except Exception as e:
-            logger.error(
-                f"Error deleting services with label selector '{label_selector}' in namespace '{namespace}': {e}")
-
     def get_services_info(self, namespace):
         services_info = []
         try:
@@ -1147,6 +1122,55 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.error(f"Failed to get services info for namespace '{namespace}': {e}")
             services_info = None
         return services_info
+
+    def get_routes_info(self, namespace):
+        routes_info = []
+        try:
+            route_resource = self.dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
+            routes = route_resource.get(namespace=namespace)
+            for route in routes.items:
+                route_info = {
+                    "route_name": route.metadata.name,
+                    "host": route.spec.host,
+                }
+                routes_info.append(route_info)
+        except ApiException as e:
+            logger.error(f"Failed to get routes info for namespace '{namespace}': {e}")
+            routes_info = None
+        return routes_info
+
+    def print_pod_node_info(self, deployment_name):
+        # Step 1: Find the deployment to get its selector
+        deployment = self.apps_v1_api.read_namespaced_deployment(deployment_name, self.namespace)
+        selector = ','.join([f'{k}={v}' for k, v in deployment.spec.selector.match_labels.items()])
+
+        # Step 2: List all pods in the deployment using the selector
+        pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=selector)
+
+        # Collect unique node names where the pods are scheduled
+        node_names = set()
+        for pod in pods.items:
+            node_name = pod.spec.node_name
+            node_names.add(node_name)
+            logger.info(f"Pod: {pod.metadata.name} is running on Node: {node_name}")
+
+        # Step 3: List services and check if they target the deployment
+        services = self.core_v1_api.list_namespaced_service(namespace=self.namespace)
+        for service in services.items:
+            if service.spec.type == "NodePort":
+                for port in service.spec.ports:
+                    if port.node_port:
+                        logger.info(
+                            f"NodePort Service: {service.metadata.name}, Port: {port.port}, NodePort: {port.node_port}")
+                        # Since we can't get the external IP, we'll just inform about using the cluster's node IPs
+                        logger.info(
+                            "To access the NodePort service, use the IP "
+                            "address of any cluster node with the listed NodePort.")
+
+        # Inform about the limitation regarding node IPs
+        logger.info(
+            "Node external IPs cannot be retrieved with namespace-scoped "
+            "permissions. Use known node IPs to access NodePort services.")
 
     def create_route(self, service_name, namespace, protocol, port, route_timeout=None):
         from openshift.dynamic.exceptions import NotFoundError
@@ -1213,44 +1237,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             return route_details
         except Exception as e:
             logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
-
-    def get_routes_info(self, namespace):
-        routes_info = []
-        try:
-            route_resource = self.dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
-            routes = route_resource.get(namespace=namespace)
-            for route in routes.items:
-                route_info = {
-                    "route_name": route.metadata.name,
-                    "host": route.spec.host,
-                }
-                routes_info.append(route_info)
-        except ApiException as e:
-            logger.error(f"Failed to get routes info for namespace '{namespace}': {e}")
-            routes_info = None
-        return routes_info
-
-    def delete_route(self, route_name, namespace):
-        from openshift.dynamic.exceptions import NotFoundError
-        from openshift.dynamic import DynamicClient
-
-        dyn_client = DynamicClient(self.api_client)
-
-        # Get the Route resource from the OpenShift API
-        route_resource = dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
-
-        try:
-            # Try to get the existing route
-            existing_route = route_resource.get(name=route_name, namespace=namespace)
-            # If the route exists, delete it
-            existing_route.delete()
-            logger.info(f"Deleted route '{route_name}' from namespace '{namespace}'.")
-        except NotFoundError:
-            # If the route doesn't exist, log a message
-            logger.info(f"Route '{route_name}' does not exist in namespace '{namespace}'.")
-        except Exception as e:
-            # Handle other exceptions
-            logger.error(f"Error deleting route '{route_name}' in namespace '{namespace}': {e}")
 
     def create_ingress(self, service_configs, default_host=None, default_path="/", default_tls_secret=None):
         from kubernetes.client import (V1Ingress, V1IngressSpec, V1IngressRule, V1HTTPIngressRuleValue,
@@ -1330,55 +1316,177 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     f"Failed to create Ingress for service {svc_config.service_name} "
                     f"in namespace {self.namespace}: {e}")
 
-    def delete_ingress(self, service_name):
-        from kubernetes.client import NetworkingV1Api, V1DeleteOptions
+    def scale_deployment_to_zero(self, deployment_name, namespace):
+        """
+        Scale down the deployment to zero replicas.
+        """
+        try:
+            self.apps_v1_api.patch_namespaced_deployment_scale(
+                name=deployment_name,
+                namespace=namespace,
+                body={'spec': {'replicas': 0}}
+            )
+            logger.info(f"Scaled down deployment '{deployment_name}' to zero.")
+        except ApiException as e:
+            logger.error(f"Failed to scale deployment '{deployment_name}' to zero: {e}")
+
+    def delete_all_resources_by_app_label(self, app_name, deployment_name, namespace):
+        """
+        Delete all Kubernetes resources labeled with the app name.
+        """
+        try:
+            # Delete all objects labeled with app={app_name}
+            pods = self.core_v1_api.delete_collection_namespaced_pod(
+                namespace=namespace,
+                label_selector=f"app={app_name}"
+            )
+            logger.debug(f"Deleting pods with app label '{app_name}' in namespace '{namespace}'.")
+            logger.info(f"Deleted all pods labeled with app '{app_name}' in namespace '{namespace}'.")
+        except ApiException as e:
+            logger.error(f"Failed to delete resources labeled with app '{app_name}' in namespace '{namespace}': {e}")
+
+    def delete_cronjobs_by_name(self, app_name, namespace):
+        try:
+            cronjobs = self.batch_v1_api.list_namespaced_cron_job(namespace, label_selector=f"app={app_name}")
+            for cronjob in cronjobs.items:
+                self.batch_v1_api.delete_namespaced_cron_job(cronjob.metadata.name, namespace)
+                logger.debug(f"Deleted cronjob '{cronjob.metadata.name}' in namespace '{namespace}'.")
+            logger.info(f"Deleted all CronJobs associated with app '{app_name}' in namespace '{namespace}'.")
+        except ApiException as e:
+            logger.error(f"Failed to delete CronJobs associated with '{app_name}': {e}")
+
+    def delete_jobs_by_name(self, app_name, namespace):
+        try:
+            jobs = self.batch_v1_api.list_namespaced_job(namespace, label_selector=f"app={app_name}")
+            for job in jobs.items:
+                self.batch_v1_api.delete_namespaced_job(job.metadata.name, namespace)
+                logger.debug(f"Deleted job '{job.metadata.name}' in namespace '{namespace}'.")
+            logger.info(f"Deleted all Jobs associated with app '{app_name}' in namespace '{namespace}'.")
+        except ApiException as e:
+            logger.error(f"Failed to delete Jobs associated with '{app_name}': {e}")
+
+    def delete_services_by_deployment(self, deployment_name, namespace):
+        try:
+            services = self.core_v1_api.list_namespaced_service(namespace, label_selector=f"app={deployment_name}")
+            for service in services.items:
+                logger.debug(f"Deleting service: {service.metadata.name}")
+                self.core_v1_api.delete_namespaced_service(service.metadata.name, namespace)
+                logger.info(
+                    f"Deleted service '{service.metadata.name}' associated with deployment '{deployment_name}'.")
+        except ApiException as e:
+            logger.error(f"Failed to delete Services associated with deployment '{deployment_name}': {e}")
+
+    def delete_routes_by_deployment_name(self, deployment_name, namespace):
+        """
+        Delete all routes associated with the deployment name.
+        """
+        try:
+            routes = self.custom_objects_api.list_namespaced_custom_object(
+                group="route.openshift.io", version="v1", namespace=namespace, plural="routes"
+            )
+            for route in routes.get('items', []):
+                if deployment_name in route['metadata']['name']:
+                    self.custom_objects_api.delete_namespaced_custom_object(
+                        group="route.openshift.io", version="v1", namespace=namespace,
+                        plural="routes", name=route['metadata']['name']
+                    )
+                    logger.debug(f"Deleted route '{route['metadata']['name']}' in namespace '{namespace}'.")
+            logger.info(
+                f"Deleted all routes associated with deployment '{deployment_name}' in namespace '{namespace}'.")
+        except ApiException as e:
+            logger.error(f"Failed to delete routes associated with deployment '{deployment_name}': {e}")
+
+    def delete_configmap_by_deployment(self, deployment_name, namespace):
+        try:
+            logger.debug(f"Deleting configmap: {deployment_name}-config")
+            self.core_v1_api.delete_namespaced_config_map(f"{deployment_name}-config", namespace)
+            logger.info(f"Deleted ConfigMap '{deployment_name}-config'.")
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(f"ConfigMap '{deployment_name}-config' not found in namespace '{namespace}'.")
+            else:
+                logger.error(f"Failed to delete ConfigMap '{deployment_name}-config': {e}")
+
+    def delete_service(self, deployment_name, namespace=None):
+        from kubernetes.client import V1DeleteOptions
+
+        if namespace is None:
+            namespace = self.namespace
 
         try:
-            # Initialize the NetworkingV1Api
-            networking_v1_api = NetworkingV1Api(self.api_client)
+            # Get the service associated with the deployment
+            service_list = self.core_v1_api.list_namespaced_service(namespace=namespace)
+            for service in service_list.items:
+                if service.metadata.labels.get("app") == deployment_name:
+                    service_name = service.metadata.name
+                    # Use the core_v1_api to delete the Service
+                    self.core_v1_api.delete_namespaced_service(
+                        name=service_name,
+                        namespace=namespace,
+                        body=V1DeleteOptions()
+                    )
+                    logger.info(f"Deleted service '{service_name}' from namespace '{namespace}'.")
+                    return  # Exit the loop once the service is deleted
+        except ApiException as e:
+            logger.error(f"Error deleting service for deployment '{deployment_name}': {e}")
 
-            # Use the NetworkingV1Api to delete the Ingress
-            networking_v1_api.delete_namespaced_ingress(
-                name=f"{service_name}-ingress",
-                namespace=self.namespace,
-                body=V1DeleteOptions()
-            )
-            logger.info(f"Ingress for service {service_name} deleted successfully.")
-        except Exception as e:
-            logger.error(f"Failed to delete Ingress for service {service_name}: {e}")
+    def delete_resources_starting_with(self, prefix, namespace):
+        """
+        Deletes all resources in the given namespace that have names starting with the specified prefix.
+        """
+        try:
+            # Delete pods starting with the prefix
+            pods = self.core_v1_api.list_namespaced_pod(namespace=namespace)
+            for pod in pods.items:
+                if pod.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting pod: {pod.metadata.name}")
+                    self.core_v1_api.delete_namespaced_pod(pod.metadata.name, namespace)
+                    logger.info(f"Deleted pod '{pod.metadata.name}' in namespace '{namespace}'")
 
-    def print_pod_node_info(self, deployment_name):
-        # Step 1: Find the deployment to get its selector
-        deployment = self.apps_v1_api.read_namespaced_deployment(deployment_name, self.namespace)
-        selector = ','.join([f'{k}={v}' for k, v in deployment.spec.selector.match_labels.items()])
+            # Delete services starting with the prefix
+            services = self.core_v1_api.list_namespaced_service(namespace=namespace)
+            for service in services.items:
+                if service.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting service: {service.metadata.name}")
+                    self.core_v1_api.delete_namespaced_service(service.metadata.name, namespace)
+                    logger.info(f"Deleted service '{service.metadata.name}' in namespace '{namespace}'")
 
-        # Step 2: List all pods in the deployment using the selector
-        pods = self.core_v1_api.list_namespaced_pod(namespace=self.namespace, label_selector=selector)
+            # Delete configmaps starting with the prefix
+            configmaps = self.core_v1_api.list_namespaced_config_map(namespace=namespace)
+            for configmap in configmaps.items:
+                if configmap.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting configmap: {configmap.metadata.name}")
+                    self.core_v1_api.delete_namespaced_config_map(configmap.metadata.name, namespace)
+                    logger.info(f"Deleted configmap '{configmap.metadata.name}' in namespace '{namespace}'")
 
-        # Collect unique node names where the pods are scheduled
-        node_names = set()
-        for pod in pods.items:
-            node_name = pod.spec.node_name
-            node_names.add(node_name)
-            logger.info(f"Pod: {pod.metadata.name} is running on Node: {node_name}")
+            # Delete deployments starting with the prefix
+            deployments = self.apps_v1_api.list_namespaced_deployment(namespace=namespace)
+            for deployment in deployments.items:
+                if deployment.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting deployment: {deployment.metadata.name}")
+                    self.apps_v1_api.delete_namespaced_deployment(deployment.metadata.name, namespace)
+                    logger.info(f"Deleted deployment '{deployment.metadata.name}' in namespace '{namespace}'")
 
-        # Step 3: List services and check if they target the deployment
-        services = self.core_v1_api.list_namespaced_service(namespace=self.namespace)
-        for service in services.items:
-            if service.spec.type == "NodePort":
-                for port in service.spec.ports:
-                    if port.node_port:
-                        logger.info(
-                            f"NodePort Service: {service.metadata.name}, Port: {port.port}, NodePort: {port.node_port}")
-                        # Since we can't get the external IP, we'll just inform about using the cluster's node IPs
-                        logger.info(
-                            "To access the NodePort service, use the IP "
-                            "address of any cluster node with the listed NodePort.")
+            # Delete cronjobs starting with the prefix
+            cronjobs = self.batch_v1_api.list_namespaced_cron_job(namespace=namespace)
+            for cronjob in cronjobs.items:
+                if cronjob.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting cronjob: {cronjob.metadata.name}")
+                    self.batch_v1_api.delete_namespaced_cron_job(cronjob.metadata.name, namespace)
+                    logger.info(f"Deleted cronjob '{cronjob.metadata.name}' in namespace '{namespace}'")
 
-        # Inform about the limitation regarding node IPs
-        logger.info(
-            "Node external IPs cannot be retrieved with namespace-scoped "
-            "permissions. Use known node IPs to access NodePort services.")
+            # Delete jobs starting with the prefix
+            jobs = self.batch_v1_api.list_namespaced_job(namespace=namespace)
+            for job in jobs.items:
+                if job.metadata.name.startswith(prefix):
+                    logger.debug(f"Deleting job: {job.metadata.name}")
+                    self.batch_v1_api.delete_namespaced_job(job.metadata.name, namespace)
+                    logger.info(f"Deleted job '{job.metadata.name}' in namespace '{namespace}'")
+
+            # Add more resource deletion if needed
+
+        except ApiException as e:
+            logger.error(f"Failed to delete resources starting with '{prefix}': {e}")
 
     def get_internal_endpoints_with_nodeport(self, namespace):
         endpoints = []
@@ -1551,3 +1659,49 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.info("Email sent successfully!")
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
+
+    # def delete_route(self, route_name, namespace):
+    #     from openshift.dynamic.exceptions import NotFoundError
+    #     from openshift.dynamic import DynamicClient
+    #
+    #     dyn_client = DynamicClient(self.api_client)
+    #
+    #     # Get the Route resource from the OpenShift API
+    #     route_resource = dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
+    #
+    #     try:
+    #         # Try to get the existing route
+    #         existing_route = route_resource.get(name=route_name, namespace=namespace)
+    #         # If the route exists, delete it
+    #         existing_route.delete()
+    #         logger.info(f"Deleted route '{route_name}' from namespace '{namespace}'.")
+    #     except NotFoundError:
+    #         # If the route doesn't exist, log a message
+    #         logger.info(f"Route '{route_name}' does not exist in namespace '{namespace}'.")
+    #     except Exception as e:
+    #         # Handle other exceptions
+    #         logger.error(f"Error deleting route '{route_name}' in namespace '{namespace}': {e}")
+    #
+    # def delete_ingress(self, service_name):
+    #     from kubernetes.client import NetworkingV1Api, V1DeleteOptions
+    #
+    #     try:
+    #         # Initialize the NetworkingV1Api
+    #         networking_v1_api = NetworkingV1Api(self.api_client)
+    #
+    #         # Use the NetworkingV1Api to delete the Ingress
+    #         networking_v1_api.delete_namespaced_ingress(
+    #             name=f"{service_name}-ingress",
+    #             namespace=self.namespace,
+    #             body=V1DeleteOptions()
+    #         )
+    #         logger.info(f"Ingress for service {service_name} deleted successfully.")
+    #     except Exception as e:
+    #         logger.error(f"Failed to delete Ingress for service {service_name}: {e}")
+    #
+    # def delete_service_account(self, app_name, namespace):
+    #     try:
+    #         self.core_v1_api.delete_namespaced_service_account(app_name, namespace)
+    #         logger.info(f"Deleted ServiceAccount '{app_name}' in namespace '{namespace}'.")
+    #     except ApiException as e:
+    #         logger.error(f"Failed to delete ServiceAccount '{app_name}': {e}")
