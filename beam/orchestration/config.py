@@ -69,6 +69,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
     defaults = dict(n_threads=16)
 
     parameters = [
+        BeamParam('alg', object, None, 'Algorithm object'),
         BeamParam('alg_image_name', str, None, 'Algorithm image name'),
         BeamParam('base_image', str, None, 'Base image'),
         BeamParam('base_url', str, 'tcp://10.0.7.55:2375', 'Base URL'),
@@ -89,7 +90,6 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
         BeamParam('registry_project_name', str, 'public', 'Registry project name'),
         BeamParam('push_image', bool, True, 'Push image to registry'),
         BeamParam('pods', list, [], 'List of pods'),
-        BeamParam('alg', object, None, 'Algorithm object'),
         BeamParam('copy-bundle', bool, False, 'Copy bundle to tmp directory'),
     ]
 

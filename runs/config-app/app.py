@@ -2,19 +2,22 @@ from flask import Flask, render_template, request, redirect, url_for
 import sys
 sys.path.insert(0, '../..')
 from beam import ServeClusterConfig, resource
+from beam.orchestration.config import RnDClusterConfig
 import argparse
 import yaml
 import os
 
 
-app = Flask(__name__)
+parser = argparse.ArgumentParser()
+parser.add_argument('--port', type=int, default=22001)
+parser.add_argument('--debug', action='store_true', default=False)
+parser.add_argument('--manager', type=str, default=None)
+parser.add_argument('--config-file', type=str, default=None)
+parser.add_argument('--application', type=str, default=None)
+args = parser.parse_args()
 
-# Sample system parameters
-system_params = {
-    "cpu_cores": 4,
-    "memory": "16GB",
-    "disk_space": "500GB"
-}
+
+app = Flask(__name__)
 
 def read_config(file_path):
     with open(file_path, 'r') as f:
@@ -24,17 +27,31 @@ def write_config(file_path, config):
     with open(file_path, 'w') as f:
         yaml.dump(config, f)
 
-def handle_submission(config_params, system_params):
-    # Perform your logic here with the selected config and system parameters
+def handle_submission(config_params):
+
+    manager = resource(args.manager)
+
+    if args.application == 'rnd':
+        application = getattr(manager, 'launch_rnd_cluster')
+    elif args.application == 'serve':
+        application = getattr(manager, 'launch_serve_cluster')
+    else:
+        raise ValueError("Invalid application type")
+
     print("Received config params:", config_params)
-    print("System params:", system_params)
-    # Add your processing logic here, such as saving to a file, applying configuration, etc.
+    application(config_params)
+
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-    config_path = os.path.join('examples', 'orchestration_beamdemo.yaml')
-    config_data = read_config(config_path)
-    config_class = ServeClusterConfig(config_data)  # Assuming K8SConfig is already defined
+    config_data = resource(args.config_file).read()
+
+    if args.application == 'rnd':
+        config_class = RnDClusterConfig(config_data)
+    elif args.application == 'serve':
+        config_class = ServeClusterConfig(config_data)
+    else:
+        raise ValueError("Invalid application type")
 
     # Prepare parameters to pass to the template
     config_params = []
@@ -63,20 +80,20 @@ def home():
                 selected_config[param.name] = value
 
         # Call the function with the selected config and system params
-        handle_submission(selected_config, system_params)
+        handle_submission(selected_config)
 
         # Save the updated configuration
-        write_config(config_path, selected_config)
+        # write_config(config_path, selected_config)
         return redirect(url_for('home'))  # Refresh the page after submission
 
-    return render_template('index.html', config_params=config_params)
+    if args.application == 'rnd':
+        index_file = 'rnd_index.html'
+    elif args.application == 'serve':
+        index_file = 'serve_index.html'
+    else:
+        raise ValueError("Invalid application type")
+    return render_template(index_file, config_params=config_params)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=22001)
-    parser.add_argument('--debug', action='store_true', default=False)
-    parser.add_argument('--manager', type=str, default=None)
-    args = parser.parse_args()
-
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=args.port, debug=args.debug)
