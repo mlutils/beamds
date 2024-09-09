@@ -1,5 +1,5 @@
 alg_image_name: yolo-algo:latest
-api_token: sha256~QvONljNzDJqnkq0W2y7strUN5tUJ2AczHJbBCko9Jq0
+api_token: sha256~L9JG67uwvtnhEuWbYtCqWKJJrN8H1-xG86PCJoWCHXI
 api_url: https://api.kh-dev.dt.local:6443
 base_image: harbor.dt.local/public/beam:20240801
 base_url: tcp://10.0.7.55:2375
