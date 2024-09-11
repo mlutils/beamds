@@ -1,6 +1,6 @@
 import re
 
-from .. import beam_path
+from ..path import beam_path
 from ..experiment import BeamReport
 from ..path import local_copy
 from ..utils import parse_string_number, as_numpy, cached_property, set_seed
@@ -8,7 +8,7 @@ from ..experiment.utils import build_device_list
 from .config import CatboostConfig
 
 from .core_algorithm import Algorithm
-from ..logging import beam_logger as logger
+from ..logging import beam_logger as logger, BeamError
 from ..type import check_type, Types
 from ..dataset import TabularDataset
 
@@ -67,8 +67,8 @@ class CBAlgorithm(Algorithm):
 
         return objective_name
 
-    @cached_property
-    def model(self):
+    @property
+    def catboost_kwargs(self):
 
         seed = self.get_hparam('seed')
         if seed == 0:
@@ -83,15 +83,6 @@ class CBAlgorithm(Algorithm):
             'verbose': self.log_frequency,
         }
 
-        if self.task_type == 'classification':
-            from catboost import CatBoostClassifier as CatBoost
-        elif self.task_type == 'regression':
-            from catboost import CatBoostRegressor as CatBoost
-        elif self.task_type == 'ranking':
-            from catboost import CatBoostRanker as CatBoost
-        else:
-            raise ValueError(f"Invalid task type: {self.task_type}")
-
         from .catboost_consts import cb_keys
         for key in cb_keys[self.task_type]:
             v = self.get_hparam(key, None)
@@ -104,9 +95,29 @@ class CBAlgorithm(Algorithm):
         # here we fix broken configurations that can be the result of a hpo tuning
         if 'max_leaves' in cb_kwargs and cb_kwargs['max_leaves'] is not None:
             if 'grow_policy' in cb_kwargs and cb_kwargs['grow_policy'] != 'Lossguide':
+                logger.warning(f"Beam-Catboost: Ignoring max_leaves with grow_policy: {cb_kwargs['grow_policy']}")
                 cb_kwargs.pop('max_leaves')
 
-        return CatBoost(**cb_kwargs)
+        # if 'grow_policy' not in cb_kwargs or cb_kwargs['grow_policy'] == 'SymmetricTree':
+        if 'grow_policy' in cb_kwargs and cb_kwargs['grow_policy'] != 'SymmetricTree':
+            logger.warning(f"Beam-Catboost: Ignoring max_leaves with grow_policy: {cb_kwargs['grow_policy']}")
+            cb_kwargs.pop('boosting_type')
+
+        return cb_kwargs
+
+    @cached_property
+    def model(self):
+
+        if self.task_type == 'classification':
+            from catboost import CatBoostClassifier as CatBoost
+        elif self.task_type == 'regression':
+            from catboost import CatBoostRegressor as CatBoost
+        elif self.task_type == 'ranking':
+            from catboost import CatBoostRanker as CatBoost
+        else:
+            raise ValueError(f"Invalid task type: {self.task_type}")
+
+        return CatBoost(**self.catboost_kwargs)
 
     @cached_property
     def info_re_pattern(self):
@@ -118,7 +129,7 @@ class CBAlgorithm(Algorithm):
         return compiled_pattern
 
     def log_cerr(self, err):
-        logger.error(f"CB: {err}")
+        logger.error(f"Beam-Catboost: {err}")
 
     def postprocess_epoch(self, info, **kwargs):
 
@@ -155,7 +166,7 @@ class CBAlgorithm(Algorithm):
 
             self.reporter_pre_epoch(self.epoch)
 
-        logger.debug(f"CB: {info}")
+        logger.debug(f"Beam-Catboost: {info}")
 
     def reporter_pre_epoch(self, epoch, batch_size=None):
 
@@ -229,6 +240,11 @@ class CBAlgorithm(Algorithm):
                 raise TrialPruned(f"Trial pruned: {e}")
             else:
                 raise e
+
+        except Exception as e:
+            logger.error(f"Beam-Catboost: {e}")
+            logger.debug(f"Beam-Catboost: {e}")
+            raise BeamError(f"CatBoost: {e}")
 
         if self.experiment:
             self.experiment.save_state(self)

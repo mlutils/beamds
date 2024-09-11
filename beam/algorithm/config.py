@@ -143,6 +143,7 @@ class CatboostConfig(DeviceConfig):
             'Default: None. '
             'Range: (0, 1). '
             'Stops training if the performance on the validation set does not improve by this value.'
+            'For best results, it is recommended to set a value in the range [ 1e-10 ; 1e-2 ]'
         ),
         BeamParam(
             'od_wait',

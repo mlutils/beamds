@@ -7,7 +7,7 @@ from collections import Counter
 import scipy.sparse as sp
 import numpy as np
 
-from ..importer.lazy_importer import lazy_importer as lzi
+from ..importer import lazy_importer as lzi
 if lzi.has('torch'):
     import torch
     default_sparse_framework = 'torch'

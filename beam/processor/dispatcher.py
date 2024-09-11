@@ -25,6 +25,8 @@ class ObjectInfo:
     vars_args: list
     name: str = None
     serialization: str = None
+    version: str = None
+    self: ObjectAttribute = None
 
 
 class MetaAsyncResult:
@@ -143,57 +145,10 @@ class MetaDispatcher(BeamBase):
         else:
             raise AttributeError(f"Attribute {item} not served with {self.__class__.__name__}")
 
-    # def get_info(self):
-    #
-    #     obj = self.real_object
-    #
-    #     d = {'name': None, 'obj': self.type, 'serialization': self.serialization_method}
-    #
-    #     if obj is None:
-    #         d['attributes'] = self._predefined_attributes.copy()
-    #         d['hparams'] = None
-    #         d['vars_args'] = None
-    #
-    #     elif self.type == 'function':
-    #         d['vars_args'] = obj.__code__.co_varnames
-    #     else:
-    #         d['vars_args'] = obj.__init__.__code__.co_varnames
-    #         if hasattr(obj, 'hparams'):
-    #             d['hparams'] = to_dict(obj.hparams)
-    #         else:
-    #             d['hparams'] = None
-    #
-    #         attributes = self._predefined_attributes.copy()
-    #         for name, attr in safe_getmembers(obj):
-    #             if type(name) is not str:
-    #                 continue
-    #             if not name.startswith('_') and inspect.isroutine(attr):
-    #                 attributes[name] = 'method'
-    #             elif not name.startswith('_') and not inspect.isbuiltin(attr):
-    #                 attributes[name] = 'variable'
-    #
-    #         properties = inspect.getmembers(type(obj), lambda m: isinstance(m, property))
-    #         for name, attr in properties:
-    #             if not name.startswith('_'):
-    #                 attributes[name] = 'property'
-    #
-    #         d['attributes'] = attributes
-    #
-    #     if hasattr(obj, 'name'):
-    #         d['name'] = obj.name
-    #
-    #     if hasattr(self, 'metadata'):
-    #         metadata = self.metadata
-    #         if metadata is not None:
-    #             d['metadata'] = self.metadata
-    #
-    #     return d
-
-    # change the get_info func to use the dataclasses
-
     def get_info(self):
         obj = self.real_object
         attributes = {}
+        from .._version import __version__
         if obj is None:
             attributes = {k: ObjectAttribute(name=k, type='method') for k in self._predefined_attributes}
             hparams = None
@@ -202,7 +157,8 @@ class MetaDispatcher(BeamBase):
             vars_args = obj.__code__.co_varnames
             hparams = None
         else:
-            vars_args = obj.__init__.__code__.co_varnames
+            # vars_args = obj.__init__.__code__.co_varnames
+            vars_args = None
             if hasattr(obj, 'hparams'):
                 hparams = to_dict(obj.hparams)
             else:
@@ -226,9 +182,20 @@ class MetaDispatcher(BeamBase):
 
         if hasattr(obj, 'name'):
             name = obj.name
+        elif hasattr(obj, '__name__'):
+            name = obj.__name__
+        elif hasattr(obj, '__class__'):
+            name = obj.__class__.__name__
         else:
             name = None
 
         type_name = type(obj).__name__
+
+        signature = None
+        if callable(obj):
+            signature = signature_to_dict(inspect.signature(obj))
+
+        self_attr = ObjectAttribute(name='self', type=type_name, description=obj.__doc__, signature=signature)
+
         return ObjectInfo(attributes=attributes, hparams=hparams, vars_args=vars_args, name=name,
-                          type=self.type, type_name=type_name)
+                          type=self.type, type_name=type_name, version=__version__, self=self_attr)

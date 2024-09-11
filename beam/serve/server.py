@@ -10,12 +10,7 @@ from uuid import uuid4 as uuid
 from ..logging import beam_logger as logger
 from ..utils import find_port, safe_getmembers
 from ..processor import MetaDispatcher
-
-try:
-    import torch
-    has_torch = True
-except ImportError:
-    has_torch = False
+from ..importer import lazy_importer as lzi
 
 
 class BeamServer(MetaDispatcher):
@@ -25,7 +20,8 @@ class BeamServer(MetaDispatcher):
 
         super().__init__(obj, *args, asynchronous=False, **kwargs)
 
-        if use_torch and has_torch:
+        torch = lzi.torch
+        if use_torch and torch:
             self.load_function = torch.load
             self.dump_function = torch.save
             self.serialization_method = 'torch'

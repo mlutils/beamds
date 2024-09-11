@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import PurePath
 from functools import cached_property
 
-from ..importer.lazy_importer import lazy_importer as lzi
+from ..importer import lazy_importer as lzi
 
 
 TypeTuple = namedtuple('TypeTuple', 'major minor element')

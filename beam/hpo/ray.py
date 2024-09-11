@@ -104,7 +104,7 @@ class RayHPO(BeamHPO, RayClient):
         if self.post_train_hook is not None:
             self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=report)
 
-        self.tracker(algorithm=alg, results=report.data, hparams=hparams, suggestion=config)
+        self.tracker(algorithm=alg, results=report.results, hparams=hparams, suggestion=config)
 
     def run(self, *args, runtime_env=None, tune_config_kwargs=None, run_config_kwargs=None,
             init_config_kwargs=None, restore_path=None, restore_config=None, **kwargs):

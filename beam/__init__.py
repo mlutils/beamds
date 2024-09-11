@@ -19,7 +19,9 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'parallel', 'task', 'this_dir',
            # Orchestration
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
-           'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server'
+           'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server',
+           # do not autoreaload these modules
+           # 'beam_server', 'beam_client',
            ]
 
 
@@ -56,7 +58,7 @@ def __getattr__(name):
     elif name == 'Experiment':
         from .experiment import Experiment
         return Experiment
-    elif name == 'beam_algorithm_generator':
+    elif name == 'nn_algorithm_generator':
         from .experiment import nn_algorithm_generator
         return nn_algorithm_generator
     elif name == 'NeuralAlgorithm':
