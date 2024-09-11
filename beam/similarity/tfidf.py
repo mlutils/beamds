@@ -306,12 +306,10 @@ class TFIDF(BeamSimilarity):
 
     def as_container(self, x):
         x_type = check_type(x)
-        if x_type.element == Types.str:
-            if not x_type.major == Types.array:
-                x = [x]
+        if x_type.major == Types.scalar:
+            x = [x]
         else:
-            if not x_type.major == Types.container:
-                x = [x]
+            x = list(x)
         return x
 
     def transform(self, x: Union[List, List[List], BeamData], index: Union[None, Any] = None,

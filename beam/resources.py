@@ -13,14 +13,12 @@ def register_resource(scheme, generator):
 def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     if type(uri) != str:
         return uri
-    if ':' not in uri:
-        from .path import beam_path
-        return beam_path(uri, **kwargs)
-    elif uri[1] == ':':  # windows path
+
+    if uri[1] == ':' or '://' not in uri:
         from .path import beam_path
         return beam_path(uri, **kwargs)
 
-    scheme = uri.split(':')[0]
+    scheme = uri.split('://')[0]
     if scheme in resource_names['path']:
         from .path import beam_path
         return beam_path(uri, **kwargs)

@@ -65,7 +65,7 @@ def beam_dispatcher_server(*routes, host=None, port=None, protocol='http', serve
 
 def async_client(uri, hostname=None, port=None, username=None, **kwargs):
 
-    scheme = uri.split(':')[0]
+    scheme = uri.split('://')[0]
     uri = uri.removeprefix('async-')
 
     uri = BeamURL.from_string(uri)
