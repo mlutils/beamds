@@ -5,8 +5,8 @@ from ..path import normalize_host, BeamResource
 from ..base import BeamBase
 
 from ..importer import lazy_importer as lzi
+from ..importer import torch
 from ..utils import dict_to_signature
-
 
 
 class BeamClient(BeamBase, BeamResource):
@@ -64,8 +64,7 @@ class BeamClient(BeamBase, BeamResource):
     @property
     def load_function(self):
         if self.serialization == 'torch':
-            torch = lzi.torch
-            if not torch:
+            if not lzi.has('torch'):
                 raise ImportError('Cannot use torch serialization without torch installed')
             return torch.load
         else:

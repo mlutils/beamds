@@ -8,7 +8,7 @@ from beam import beam_logger as logger
 
 def optimize_catboost(dataset, hpo_config, config):
 
-    logger.info(f"Training a RuleNet predictor")
+    logger.info(f"Starting HPO")
 
     study = RayHPO(config, alg=CBAlgorithm, dataset=dataset, print_results=False,  hpo_config=hpo_config)
     # study = OptunaHPO(config, alg=CBAlgorithm, dataset=dataset, print_results=False,  hpo_config=hpo_config)
@@ -36,7 +36,7 @@ def optimize_catboost(dataset, hpo_config, config):
     study.linspace('max_leaves', 2, 64)
     study.loguniform('min_data_in_leaf', 1, 100)
     study.linspace('early_stopping_rounds', 1, 100)
-    study.categorical('od_type', ['IncToDec', 'Iter'])
+    study.categorical('od_type', ['IncToDec', 'Iter', None])
     study.linspace('od_wait', 1, 100)
     study.loguniform('od_pval', 1e-10, 1e-2)
     study.categorical('sampling_frequency', ['PerTree', 'PerTreeLevel'])

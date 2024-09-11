@@ -64,11 +64,12 @@ class RayHPO(BeamHPO, RayClient):
 
         if base is None:
             base = 10
-        # emin = base ** start
-        # emax = base ** end
-        x = np.logspace(start, end, n_steps, base=base)
 
-        return tune.choice(x)
+        x = np.logspace(start, end, n_steps, base=base)
+        if dtype is not None:
+            x = x.astype(dtype)
+
+        return tune.choice(x.tolist())
 
         # s = tune.randint(0, len(x) - 1)
         #

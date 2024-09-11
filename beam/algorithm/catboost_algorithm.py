@@ -28,7 +28,7 @@ class CBAlgorithm(Algorithm):
 
     @property
     def device_type(self):
-        return 'CPU' if self.get_hparam('device', 'cpu') else 'GPU'
+        return 'CPU' if self.get_hparam('device', 'cpu') == 'cpu' else 'GPU'
 
     @property
     def task_type(self):
@@ -93,15 +93,45 @@ class CBAlgorithm(Algorithm):
                 cb_kwargs[key] = self.hparams[key]
 
         # here we fix broken configurations that can be the result of a hpo tuning
-        if 'max_leaves' in cb_kwargs and cb_kwargs['max_leaves'] is not None:
-            if 'grow_policy' in cb_kwargs and cb_kwargs['grow_policy'] != 'Lossguide':
+        if cb_kwargs.get('max_leaves', None) is not None:
+            if cb_kwargs.get('grow_policy', None) not in ['Lossguide', None]:
                 logger.warning(f"Beam-Catboost: Ignoring max_leaves with grow_policy: {cb_kwargs['grow_policy']}")
                 cb_kwargs.pop('max_leaves')
 
         # if 'grow_policy' not in cb_kwargs or cb_kwargs['grow_policy'] == 'SymmetricTree':
-        if 'grow_policy' in cb_kwargs and cb_kwargs['grow_policy'] != 'SymmetricTree':
-            logger.warning(f"Beam-Catboost: Ignoring max_leaves with grow_policy: {cb_kwargs['grow_policy']}")
-            cb_kwargs.pop('boosting_type')
+        # if 'grow_policy' in cb_kwargs and cb_kwargs['grow_policy'] != 'SymmetricTree':
+        if cb_kwargs.get('boosting_type', None) is not None:
+            if cb_kwargs.get('grow_policy', None) not in ['SymmetricTree', None]:
+                logger.warning(f"Beam-Catboost: Ignoring boosting_type with grow_policy: {cb_kwargs['grow_policy']}")
+                cb_kwargs.pop('boosting_type')
+
+        # if cb_kwargs.get('od_type', None) in ['IncToDec', None]:
+
+        if cb_kwargs.get('early_stopping_rounds', None) is not None:
+            if cb_kwargs.get('od_wait', None) is not None:
+                logger.warning(f"Beam-Catboost: Ignoring early_stopping_rounds with od_type: {cb_kwargs['od_wait']}")
+                cb_kwargs.pop('early_stopping_rounds')
+
+        if cb_kwargs.get('od_pval', None) is not None:
+            if cb_kwargs.get('od_type', None) == 'Iter':
+                logger.warning(f"Beam-Catboost: Ignoring od_pval with od_type: {cb_kwargs['od_type']}")
+                cb_kwargs.pop('od_pval')
+
+        if cb_kwargs.get('bagging_temperature', None) is not None:
+            if cb_kwargs.get('bootstrap_type', None) not in ['Bayesian', None]:
+                logger.warning(f"Beam-Catboost: Ignoring bagging_temperature with bootstrap_type: "
+                               f"{cb_kwargs['bootstrap_type']}")
+                cb_kwargs.pop('bagging_temperature')
+
+        if self.device_type == 'CPU':
+            if cb_kwargs.get('leaf_estimation_backtracking', None) == 'Armijo':
+                logger.warning(f"Beam-Catboost: Backtracking type Armijo is supported only on GPU, ignoring it "
+                               f"(defaulting to AnyImprovement)")
+                cb_kwargs.pop('leaf_estimation_backtracking')
+        else:
+            if cb_kwargs.get('rsm', None) is not None:
+                logger.warning(f"Beam-Catboost: rsm on GPU is supported for pairwise modes only (ignoring it)")
+                cb_kwargs.pop('rsm')
 
         return cb_kwargs
 

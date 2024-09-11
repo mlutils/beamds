@@ -33,7 +33,7 @@ def preprocess_covtype():
 def main():
 
     config = CatboostExperimentConfig(loss_function='MultiClass', iterations=100, grow_policy='Depthwise',
-                                      boosting_type='Ordered',)
+                                      boosting_type='Ordered', device='cuda')
     experiment = Experiment(config)
 
     data = preprocess_covtype()

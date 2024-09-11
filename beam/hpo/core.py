@@ -32,7 +32,7 @@ class BeamHPO(Processor):
         self.experiment_hparams.set('print_results', self.hparams.get('print_results'))
         self.experiment_hparams.set('visualize_weights', False)
         self.experiment_hparams.set('enable_tqdm', self.hparams.get('enable_tqdm', False))
-        self.experiment_hparams.set('n_gpus', 0)
+        # self.experiment_hparams.set('n_gpus', 0)
 
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.identifier = f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}'
@@ -101,6 +101,10 @@ class BeamHPO(Processor):
 
         self.suggestions[param] = partial(self._linspace, param=param, start=start, end=end, n_steps=n_steps,
                        endpoint=endpoint, dtype=dtype)
+
+    def add_parameter(self, param, func, *args, **kwargs):
+        func = partial(func, *args, **kwargs)
+        getattr(self, param)(param, func)
 
     def logspace(self, param, start, end, n_steps=None, base=None, dtype=None):
         param = param.replace('-', '_').strip()

@@ -16,8 +16,8 @@ from .utils_all import (check_type, check_minor_type, slice_array, is_arange, Da
                         jupyter_like_traceback)
 from ..type import BeamType, Types
 
-from ..importer.safe_imports.torch import torch
-from ..importer.safe_imports.scipy import scipy
+from ..importer import torch
+from ..importer import scipy
 
 
 def slice_to_index(s, l=None, arr_type=Types.tensor, sliced=None):
