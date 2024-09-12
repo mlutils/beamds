@@ -52,17 +52,49 @@ class BeamFeature(BeamBase):
                                       if k.startswith(f"{name}-")})
 
     def get_hparam(self, hparam, default=None, specific=None):
-        v = self.my_hparams.get(hparam, default=default, specific=specific)
+        hparam = hparam.replace('-', '_')
+        v = self.my_hparams.get(hparam, specific=specific)
         if v is None:
-            v = self.hparams.get(hparam, default=default, specific=specific)
+            v = self.hparams.get(hparam, specific=specific)
+        if v is None:
+            if hparam in self.parameters_schema:
+                v = self.parameters_schema[hparam].default
+        if v is None:
+            v = default
         return v
+
+    def add_parameters_to_study(self, study):
+        for k, v in self.parameters_schema.items():
+
+            study.add_parameter(k, func=v.kind, **{kk: vv for kk, vv in
+                                                   v.__dict__.items() if vv not in [None, 'name', 'kind', 'default',
+                                                                                    'description']})
 
     @property
     def parameters_schema(self):
-        return {'enabled': ParameterSchema(name='enabled',
+        d = {'enabled': ParameterSchema(name='enabled',
                                            kind=ParameterType.categorical,
                                            choices=[True, False],
                                            default=True, description='Enable/Disable feature')}
+
+        if self.columns is not None:
+            for c in self.columns:
+                d[f'{c}-column-enabled'] = ParameterSchema(name=f'{c}-enabled',
+                                                    kind=ParameterType.categorical,
+                                                    choices=[True, False],
+                                                    default=True, description=f'Enable/Disable column {c}')
+
+        return d
+
+    @property
+    def enabled(self):
+        return self.get_hparam('enabled', default=True)
+
+    @property
+    def enabled_columns(self):
+        if self.columns is None:
+            return None
+        return [c for c in self.columns if self.get_hparam(f'{c}-enabled', default=True)]
 
     def preprocess(self, x):
         x_type = check_type(x)
@@ -80,9 +112,15 @@ class BeamFeature(BeamBase):
         return x
 
     def transform(self, x, _preprocessed=False, **kwargs) -> pd.DataFrame:
+        if not self.enabled:
+            return pd.DataFrame(index=x.index)
         if not _preprocessed:
             x = self.preprocess(x)
-        return self._transform(x, **kwargs)
+        y = self._transform(x, **kwargs)
+        c = self.enabled_columns
+        if c is not None:
+            y = y[c]
+        return y
 
     def _transform(self, x: pd.DataFrame, **kwargs) -> pd.DataFrame:
         return self.func(x)
@@ -91,9 +129,10 @@ class BeamFeature(BeamBase):
         pass
 
     def fit(self, x: pd.DataFrame, _preprocessed=False, **kwargs):
-        if not _preprocessed:
-            x = self.preprocess(x)
-        return self._fit(x, **kwargs)
+        if self.enabled:
+            if not _preprocessed:
+                x = self.preprocess(x)
+            self._fit(x, **kwargs)
 
     def fit_transform(self, x, **kwargs) -> pd.DataFrame:
         x = self.preprocess(x)
