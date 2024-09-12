@@ -8,6 +8,7 @@ import pandas as pd
 
 from ..utils import as_numpy, check_type, as_list
 from ..base import BeamBase
+from ..config import BeamConfig
 from ..type.utils import is_pandas_dataframe, is_pandas_series
 
 
@@ -30,24 +31,38 @@ class ParameterType(Enum):
 class ParameterSchema:
     name: str
     kind: ParameterType
-    possible_values: list[str] | None = None
-    min_value: float | None = None
-    max_value: float | None = None
-    default_value: float | None = None
+    choices: list[str | int | float | bool] | None = None
+    start: float | None = None
+    end: float | None = None
+    dtype: type | None = None
+    n_steps: int | None = None
+    endpoint: bool | None = True
+    default: float | None = None
     description: str | None = None
 
 
 class BeamFeature(BeamBase):
 
-    def __init__(self, *args, func=None, columns: str | list[str] = None, name=None, kind=None, **kwargs):
+    def __init__(self, name, *args, func=None, columns: str | list[str] = None, kind=None, **kwargs):
         super().__init__(*args, name=name, **kwargs)
         self.func = func
         self.columns = [columns] if isinstance(columns, str) else columns
         self.kind = kind or FeaturesCategories.numerical
+        self.my_hparams = BeamConfig({k.removeprefix(f"{name}-"): v for k, v in self.hparams.dict().items()
+                                      if k.startswith(f"{name}-")})
+
+    def get_hparam(self, hparam, default=None, specific=None):
+        v = self.my_hparams.get(hparam, default=default, specific=specific)
+        if v is None:
+            v = self.hparams.get(hparam, default=default, specific=specific)
+        return v
 
     @property
     def parameters_schema(self):
-        return {}
+        return {'enabled': ParameterSchema(name='enabled',
+                                           kind=ParameterType.categorical,
+                                           choices=[True, False],
+                                           default=True, description='Enable/Disable feature')}
 
     def preprocess(self, x):
         x_type = check_type(x)

@@ -19,40 +19,41 @@ class Node2Vec(BeamFeature):
     def __init__(self, *args, q=None, p=None, n_workers=1, verbose=False, num_walks=10, walk_length=80,
                 vector_size=8, window=3, min_count=0, sg=1, epochs=None, **kwargs):
         super().__init__(*args, kind=FeaturesCategories.embedding, **kwargs)
-        self.q = q or self.parameters_schema['q'].default_value
-        self.p = p or self.parameters_schema['p'].default_value
-        self.num_walks = num_walks or self.parameters_schema['num_walks'].default_value
-        self.walk_length = walk_length or self.parameters_schema['walk_length'].default_value
-        self.vector_size = vector_size or self.parameters_schema['vector_size'].default_value
-        self.window = window or self.parameters_schema['window'].default_value
-        self.min_count = min_count or self.parameters_schema['min_count'].default_value
-        self.sg = sg or self.parameters_schema['sg'].default_value
+        self.q = q or self.parameters_schema['q'].default
+        self.p = p or self.parameters_schema['p'].default
+        self.num_walks = num_walks or self.parameters_schema['num_walks'].default
+        self.walk_length = walk_length or self.parameters_schema['walk_length'].default
+        self.vector_size = vector_size or self.parameters_schema['vector_size'].default
+        self.window = window or self.parameters_schema['window'].default
+        self.min_count = min_count or self.parameters_schema['min_count'].default
+        self.sg = sg or self.parameters_schema['sg'].default
         self.verbose = verbose
         self.model = None
-        self.n_workers = n_workers or self.parameters_schema['n_workers'].default_value
-        self.epochs = epochs or self.parameters_schema['epochs'].default_value
+        self.n_workers = n_workers or self.parameters_schema['n_workers'].default
+        self.epochs = epochs or self.parameters_schema['epochs'].default
 
     @cached_property
     def parameters_schema(self):
-        return {
+
+        return super().parameters_schema | {
             'q': ParameterSchema(name='q', kind=ParameterType.uniform,
-                                 min_value=0.1, max_value=10, default_value=1, description='Node2Vec q parameter'),
+                                 start=0.1, end=10, default=1, description='Node2Vec q parameter'),
             'p': ParameterSchema(name='p', kind=ParameterType.uniform,
-                                 min_value=0.1, max_value=10, default_value=1, description='Node2Vec p parameter'),
-            'vector_size': ParameterSchema(name='vector_size', kind=ParameterType.linspace, min_value=1, max_value=100,
-                                           default_value=8, description='Size of embeddings'),
-            'window': ParameterSchema(name='window', kind=ParameterType.linspace, min_value=1, max_value=10,
-                                        default_value=3, description='Window size'),
-            'min_count': ParameterSchema(name='min_count', kind=ParameterType.linspace, min_value=0, max_value=10,
-                                        default_value=0, description='Minimum count'),
-            'sg': ParameterSchema(name='sg', kind=ParameterType.categorical, possible_values=[0, 1],
-                                        default_value=1, description='Skip-gram'),
-            'num_walks': ParameterSchema(name='num_walks', kind=ParameterType.linspace, min_value=1, max_value=100,
-                                        default_value=10, description='Number of walks'),
-            'walk_length': ParameterSchema(name='walk_length', kind=ParameterType.linspace, min_value=1, max_value=100,
-                                        default_value=80, description='Walk length'),
-            'epochs': ParameterSchema(name='epochs', kind=ParameterType.linspace, min_value=1, max_value=12,
-                                        default_value=5, description='Number of epochs in WV training'),
+                                 start=0.1, end=10, default=1, description='Node2Vec p parameter'),
+            'vector_size': ParameterSchema(name='vector_size', kind=ParameterType.linspace, start=1, end=100,
+                                           default=8, description='Size of embeddings'),
+            'window': ParameterSchema(name='window', kind=ParameterType.linspace, start=1, end=10,
+                                      default=3, description='Window size'),
+            'min_count': ParameterSchema(name='min_count', kind=ParameterType.linspace, start=0, end=10,
+                                         default=0, description='Minimum count'),
+            'sg': ParameterSchema(name='sg', kind=ParameterType.categorical, choices=[0, 1],
+                                  default=1, description='Skip-gram'),
+            'num_walks': ParameterSchema(name='num_walks', kind=ParameterType.linspace, start=1, end=100,
+                                         default=10, description='Number of walks'),
+            'walk_length': ParameterSchema(name='walk_length', kind=ParameterType.linspace, start=1, end=100,
+                                           default=80, description='Walk length'),
+            'epochs': ParameterSchema(name='epochs', kind=ParameterType.linspace, start=1, end=12,
+                                      default=5, description='Number of epochs in WV training'),
 
         }
 
@@ -106,11 +107,11 @@ class Set2Vec(Node2Vec):
         return {
             **super().parameters_schema,
             'aggregation': ParameterSchema(name='aggregation', kind=ParameterType.categorical,
-                                           possible_values=['mean', 'sum', 'max', 'min'],
-                                           default_value='mean', description='Aggregation function'),
+                                           choices=['mean', 'sum', 'max', 'min'],
+                                           default='mean', description='Aggregation function'),
             'self_loop': ParameterSchema(name='self_loop', kind=ParameterType.categorical,
-                                             possible_values=[True, False],
-                                             default_value=True, description='Include self loops in the graph'),
+                                         choices=[True, False],
+                                         default=True, description='Include self loops in the graph'),
         }
 
     def transform_cell(self, i):

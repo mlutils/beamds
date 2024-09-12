@@ -18,8 +18,8 @@ class DenseEmbeddingFeature(BeamFeature):
     @cached_property
     def parameters_schema(self):
         return {
-            'd': ParameterSchema(name='d', kind=ParameterType.linspace, min_value=1, max_value=100,
-                                 default_value=32, description='Size of embeddings'),
+            'd': ParameterSchema(name='d', kind=ParameterType.linspace, start=1, end=100,
+                                 default=32, description='Size of embeddings'),
         }
 
     def _fit(self, x=None, v=None):
@@ -52,13 +52,13 @@ class SparseEmbeddingFeature(BeamFeature):
         if tokenizer_kwargs:
             tokenizer = partial(tokenizer, **tokenizer_kwargs)
 
-        self.d = d or self.parameters_schema['d'].default_value
-        min_df = min_df or self.parameters_schema['min_df'].default_value
-        max_df = max_df or self.parameters_schema['max_df'].default_value
-        max_features = max_features or self.parameters_schema['max_features'].default_value
-        use_idf = use_idf or self.parameters_schema['use_idf'].default_value
-        smooth_idf = smooth_idf or self.parameters_schema['smooth_idf'].default_value
-        sublinear_tf = sublinear_tf or self.parameters_schema['sublinear_tf'].default_value
+        self.d = d or self.parameters_schema['d'].default
+        min_df = min_df or self.parameters_schema['min_df'].default
+        max_df = max_df or self.parameters_schema['max_df'].default
+        max_features = max_features or self.parameters_schema['max_features'].default
+        use_idf = use_idf or self.parameters_schema['use_idf'].default
+        smooth_idf = smooth_idf or self.parameters_schema['smooth_idf'].default
+        sublinear_tf = sublinear_tf or self.parameters_schema['sublinear_tf'].default
 
         from ..similarity import TFIDF
         self.encoder = TFIDF(preprocessor=tokenizer, min_df=min_df, max_df=max_df, max_features=max_features,
@@ -70,20 +70,20 @@ class SparseEmbeddingFeature(BeamFeature):
     @cached_property
     def parameters_schema(self):
         return {
-            'd': ParameterSchema(name='d', kind=ParameterType.linspace, min_value=1, max_value=100,
-                                 default_value=32, description='Size of embeddings'),
-            'min_df': ParameterSchema(name='min_df', kind=ParameterType.linspace, min_value=1, max_value=100,
-                                        default_value=2, description='Minimum document frequency'),
-            'max_df': ParameterSchema(name='max_df', kind=ParameterType.linspace, min_value=0, max_value=1,
-                                        default_value=1.0, description='Maximum document frequency'),
-            'max_features': ParameterSchema(name='max_features', kind=ParameterType.linspace, min_value=1, max_value=100,
-                                            default_value=None, description='Maximum number of features'),
-            'use_idf': ParameterSchema(name='use_idf', kind=ParameterType.categorical, possible_values=[True, False],
-                                        default_value=True, description='Use inverse document frequency'),
+            'd': ParameterSchema(name='d', kind=ParameterType.linspace, start=1, end=100,
+                                 default=32, description='Size of embeddings'),
+            'min_df': ParameterSchema(name='min_df', kind=ParameterType.linspace, start=1, end=100,
+                                      default=2, description='Minimum document frequency'),
+            'max_df': ParameterSchema(name='max_df', kind=ParameterType.linspace, start=0, end=1,
+                                      default=1.0, description='Maximum document frequency'),
+            'max_features': ParameterSchema(name='max_features', kind=ParameterType.linspace, start=1, end=100,
+                                            default=None, description='Maximum number of features'),
+            'use_idf': ParameterSchema(name='use_idf', kind=ParameterType.categorical, choices=[True, False],
+                                       default=True, description='Use inverse document frequency'),
             'smooth_idf': ParameterSchema(name='smooth_idf', kind=ParameterType.categorical,
-                                          possible_values=[True, False], default_value=True, description='Smooth idf'),
+                                          choices=[True, False], default=True, description='Smooth idf'),
             'sublinear_tf': ParameterSchema(name='sublinear_tf', kind=ParameterType.categorical,
-                                            possible_values=[True, False], default_value=False, description='Sublinear tf'),
+                                            choices=[True, False], default=False, description='Sublinear tf'),
 
         }
 

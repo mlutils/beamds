@@ -100,7 +100,7 @@ class BeamHPO(Processor):
             n_steps = int(end - start + 1)
 
         self.suggestions[param] = partial(self._linspace, param=param, start=start, end=end, n_steps=n_steps,
-                       endpoint=endpoint, dtype=dtype)
+                                          endpoint=endpoint, dtype=dtype)
 
     def add_parameter(self, param, func, *args, **kwargs):
         func = partial(func, *args, **kwargs)
