@@ -322,6 +322,8 @@ def run_worker(rank, world_size, results_queue_or_kwargs, job, experiment, *args
 def build_device_list(hparams):
 
     device = beam_device(hparams.device)
+    if 'cpu' in device.type:
+        return []
 
     device_list = hparams.get('device_list', None)
     if device_list is not None:

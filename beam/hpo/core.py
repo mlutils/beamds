@@ -22,7 +22,7 @@ class BeamHPO(Processor):
         if hpo_config is None:
             hpo_config = HPOConfig(**kwargs)
 
-        super().__init__(*args, hparams=hpo_config)
+        super().__init__(*args, hparams=hpo_config, **kwargs)
         logger.info(f"Creating new study (Beam version: {__version__})")
 
         self.experiment_hparams = hparams

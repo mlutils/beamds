@@ -35,7 +35,6 @@ class TextGroupExpansionConfig(SimilarityConfig, TFIDFConfig):
     ]
 
 
-
 class CatboostConfig(DeviceConfig):
     """
     CatBoost configuration with detailed parameter documentation.
