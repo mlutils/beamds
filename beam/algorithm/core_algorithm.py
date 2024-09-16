@@ -178,8 +178,13 @@ class Algorithm(Processor):
 
     @cached_property
     def objective_name(self):
-        objective_name = self.get_hparam('objective', 'loss')
+        objective_name = self.expected_objective_name(self.hparams)
         self.set_hparam('objective', objective_name)
+        return objective_name
+
+    @staticmethod
+    def expected_objective_name(hparams):
+        objective_name = hparams.get('objective', 'loss')
         return objective_name
 
     @cached_property

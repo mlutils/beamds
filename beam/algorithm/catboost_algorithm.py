@@ -31,24 +31,32 @@ class CBAlgorithm(Algorithm):
         return 'CPU' if self.get_hparam('device', 'cpu') == 'cpu' else 'GPU'
 
     @property
-    def task_type(self):
-        tp = self.get_hparam('cb_task', 'classification')
-        assert tp in ['classification', 'regression', 'ranking'], f"Invalid task type: {tp}"
-        return tp
-
-    @property
     def devices(self):
         device_list = build_device_list(self.hparams)
         device_list = [d.index for d in device_list]
         return device_list
 
     @property
+    def task_type(self):
+        return self._task_type(self.hparams)
+
+    @staticmethod
+    def _task_type(hparams):
+        tp = hparams.get('cb_task', 'classification')
+        assert tp in ['classification', 'regression', 'ranking'], f"Invalid task type: {tp}"
+        return tp
+
+    @property
     def eval_metric(self):
-        if self.task_type == 'regression':
+        return self._eval_metric(self.hparams)
+
+    @staticmethod
+    def _eval_metric(hparams):
+        if CBAlgorithm._task_type(hparams) == 'regression':
             em = 'RMSE'
         else:
             em = 'Accuracy'
-        return self.get_hparam('eval_metric', em)
+        return hparams.get('eval_metric', em)
 
     @property
     def custom_metric(self):
@@ -58,13 +66,11 @@ class CBAlgorithm(Algorithm):
             cm = ['Precision', 'Recall']
         return self.get_hparam('custom_metric', cm)
 
-    @cached_property
-    def objective_name(self):
-        objective_name = self.get_hparam('objective', self.eval_metric)
+    @staticmethod
+    def objective_name(hparams):
+        objective_name = hparams.get('objective', CBAlgorithm._eval_metric(hparams))
         if type(objective_name) is list:
             objective_name = objective_name[0]
-        self.set_hparam('objective', objective_name)
-
         return objective_name
 
     @property

@@ -71,18 +71,13 @@ class RayHPO(BeamHPO, RayClient):
 
         return tune.choice(x.tolist())
 
-        # s = tune.randint(0, len(x) - 1)
-        #
-        # return LogSpace(s, x)
-
-        # r = tune.qloguniform(emin, emax, step_size, base=base)
-
-        # if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int64, 'int', 'int64']:
-        #     base = int(x[1] / x[0])
-        #     return tune.lograndint(int(emin), int(emax), base=base)
-        #
-        # step_size = (x[1] / x[0]) ** ((end - start) / n_steps)
-        # return tune.qloguniform(emin, emax, step_size, base=base)
+    def trainable(self, hparams):
+        runner_tune = tune.with_resources(
+            tune.with_parameters(partial(self.runner)),
+            resources={"cpu": hparams.get('cpus-per-trial'),
+                       "gpu": hparams.get('gpus-per-trial')}
+        )
+        return runner_tune
 
     @staticmethod
     def _randn(param, mu, sigma):
@@ -145,15 +140,15 @@ class RayHPO(BeamHPO, RayClient):
         if self.experiment_hparams.get('device') != 'cpu':
             self.experiment_hparams.set('device', 'cuda')
 
-        runner_tune = tune.with_resources(
-                tune.with_parameters(partial(self.runner)),
-                resources={"cpu": hparams.get('cpus-per-trial'),
-                           "gpu": hparams.get('gpus-per-trial')}
-            )
-
         tune_config_kwargs = tune_config_kwargs or {}
         if 'metric' not in tune_config_kwargs.keys():
-            tune_config_kwargs['metric'] = self.experiment_hparams.get('objective')
+
+            objective_name = self.experiment_hparams.get('objective')
+            if objective_name is None:
+                if hasattr(self.alg, 'expected_objective_name'):
+                    objective_name = self.alg.expected_objective_name(self.experiment_hparams)
+            tune_config_kwargs['metric'] = objective_name
+
         if 'mode' not in tune_config_kwargs.keys():
             mode = self.experiment_hparams.get('optimization-mode')
             tune_config_kwargs['mode'] = self.get_optimization_mode(mode, tune_config_kwargs['metric'])
@@ -190,11 +185,18 @@ class RayHPO(BeamHPO, RayClient):
         logger.info(f"Starting ray-tune hyperparameter optimization process. "
                     f"Results and logs will be stored at {local_dir}")
 
-        if restore_path:
-            restore_config = restore_config or {}
-            tuner = tune.Tuner.restore(restore_path, runner_tune, **restore_config)
-        else:
-            tuner = tune.Tuner(runner_tune, param_space=search_space, tune_config=tune_config, run_config=run_config)
+        tuner = self.tuner(hparams, restore_path=restore_path, restore_config=restore_config,
+                           search_space=search_space, tune_config=tune_config, run_config=run_config)
         analysis = tuner.fit()
 
         return analysis
+
+    def tuner(self, hparams, restore_path=None, restore_config=None, search_space=None, tune_config=None, run_config=None):
+        if restore_path:
+            restore_config = restore_config or {}
+            tuner = tune.Tuner.restore(restore_path, self.trainable(hparams), **restore_config)
+        else:
+            tuner = tune.Tuner(self.trainable(hparams), param_space=search_space,
+                               tune_config=tune_config, run_config=run_config)
+
+        return tuner

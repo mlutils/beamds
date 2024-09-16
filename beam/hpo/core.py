@@ -86,9 +86,8 @@ class BeamHPO(Processor):
 
         return alg, report
 
-    @staticmethod
-    def get_optimization_mode(mode, objective_name):
-        return Algorithm.get_optimization_mode(mode, objective_name)
+    def get_optimization_mode(self, mode, objective_name):
+        return self.alg.get_optimization_mode(mode, objective_name)
 
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}

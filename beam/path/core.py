@@ -98,6 +98,8 @@ class PureBeamPath(BeamResource):
             yield p
 
     def __getitem__(self, name):
+        if type(name) is int:
+            return list(self)[name]
         return self.joinpath(name)
 
     def __setitem__(self, key, value):
