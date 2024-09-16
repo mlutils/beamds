@@ -14,7 +14,7 @@ def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     if type(uri) != str:
         return uri
 
-    if uri[1] == ':' or '://' not in uri:
+    if '://' not in uri:
         from .path import beam_path
         return beam_path(uri, **kwargs)
 

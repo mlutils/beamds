@@ -33,7 +33,7 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     if type(path) != str:
         return path
 
-    if path[1] == ':':  # windows path
+    if len(path) > 1 and path[1] == ':':  # windows path
         path = path.replace('\\', '/')
         path = path.lstrip('/')
         return BeamPath(path, scheme='nt')
