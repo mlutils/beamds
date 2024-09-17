@@ -29,7 +29,7 @@ def slice_to_index(s, l=None, arr_type=Types.tensor, sliced=None):
     elif arr_type == Types.pandas:
         f = pd.RangeIndex
     elif arr_type == Types.list:
-        f = lambda x: list(range(x))
+        f = lambda start, stop, step: list(range(start, stop, step))
     else:
         raise ValueError(f"Unsupported array type: {arr_type}")
 
@@ -43,7 +43,8 @@ def slice_to_index(s, l=None, arr_type=Types.tensor, sliced=None):
             else:
                 return ValueError(f"Cannot slice: {s} without length info")
 
-        l = l or len(sliced) if sliced is not None else 0
+        if l is None:
+            l = len(sliced) if sliced is not None else 0
 
         step = s.step
         if step is None:

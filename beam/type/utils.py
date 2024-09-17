@@ -55,25 +55,35 @@ def is_cached_property(obj, attribute_name):
 
 
 def is_polars(x):
+    if not lzi.is_loaded('polars'):
+        return False
     pl = lzi.polars
     return pl and isinstance(x, pl.DataFrame)
 
 
 def is_tensor(x):
+    if not lzi.is_loaded('torch'):
+        return False
     torch = lzi.torch
     return torch and torch.is_tensor(x)
 
 
 def is_torch_scalar(x):
+    if not lzi.is_loaded('torch'):
+        return False
     return is_tensor(x) and (not len(x.shape))
 
 
 def is_scipy_sparse(x):
+    if not lzi.is_loaded('scipy'):
+        return False
     scipy = lzi.scipy
     return scipy and scipy.sparse.issparse(x)
 
 
 def is_cudf(x):
+    if not lzi.is_loaded('cudf'):
+        return False
     cudf = lzi.cudf
     return cudf and isinstance(x, cudf.DataFrame)
 
@@ -99,6 +109,8 @@ def is_pandas_series(x):
 #     return pil and isinstance(x, pil.Image.Image)
 
 def is_pil(x):
+    if not lzi.is_loaded('PIL'):
+        return False
     pil = lzi.pil_image
     return pil and isinstance(x, pil.Image)
 

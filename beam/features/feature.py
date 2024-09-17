@@ -14,6 +14,7 @@ from ..utils import as_numpy, as_dataframe, as_list
 from ..processor import Processor
 from ..config import BeamConfig
 from ..logging import beam_logger as logger
+from ..data import BeamData
 
 
 class FeaturesCategories(Enum):
@@ -55,13 +56,15 @@ class BeamFeature(Processor):
                  input_columns_blacklist=None,
                  output_columns_blacklist=None,
                  **kwargs):
+        self.my_hparams = None
         super().__init__(*args, name=name, **kwargs)
+        self._is_fitted = False
         self.func = func
         self._input_columns = input_columns
         self.n_input_columns = n_input_columns
-        self.output_columns = output_columns
-        self._is_fitted = False
+        self._output_columns = output_columns
         self.add_name_prefix = add_name_prefix
+        self.prefer_name = prefer_name
         self.kind = kind or FeaturesCategories.numerical
         self.my_hparams = BeamConfig({k.removeprefix(f"{name}-"): v for k, v in self.hparams.dict().items()
                                       if k.startswith(f"{name}-")})
@@ -80,12 +83,18 @@ class BeamFeature(Processor):
     def is_fitted(self):
         return self._is_fitted
 
+    @property
+    def output_columns(self):
+        if hasattr(self, '_output_columns') and self._output_columns is not None:
+            return as_list(self._output_columns)
+        return None
+
     def reset(self):
         self._is_fitted = False
 
-    @cached_property
+    @property
     def input_columns(self):
-        if self._input_columns is not None:
+        if hasattr(self, '_input_columns') and self._input_columns is not None:
             columns = self._input_columns
             columns_type = check_type(columns)
             if columns_type.major == Types.scalar:
@@ -105,7 +114,9 @@ class BeamFeature(Processor):
 
     def get_hparam(self, hparam, default=None, specific=None):
         hparam = hparam.replace('-', '_')
-        v = self.my_hparams.get(hparam, specific=specific)
+        v = None
+        if self.my_hparams is not None:
+            v = self.my_hparams.get(hparam, specific=specific)
         if v is None:
             v = self.hparams.get(hparam, specific=specific)
         if v is None:
@@ -130,13 +141,13 @@ class BeamFeature(Processor):
 
         if self.input_columns is not None:
             for c in self.input_columns:
-                d[f'{c}-input-column-enabled'] = ParameterSchema(name=f'{c}-enabled',
+                d[f'{c}-input-column-enabled'] = ParameterSchema(name=f'{c}-input-column-enabled',
                                                     kind=ParameterType.categorical,
                                                     choices=[True, False],
                                                     default=True, description=f'Enable/Disable column {c}')
         if self.output_columns is not None:
             for c in self.output_columns:
-                d[f'{c}-output-column-enabled'] = ParameterSchema(name=f'{c}-enabled',
+                d[f'{c}-output-column-enabled'] = ParameterSchema(name=f'{c}-output-column-enabled',
                                                     kind=ParameterType.categorical,
                                                     choices=[True, False],
                                                     default=True, description=f'Enable/Disable column {c}')
@@ -185,7 +196,7 @@ class BeamFeature(Processor):
             y = y.drop(columns=[col for col in y.columns if col not in self.enabled_column_names])
         if len(y.columns) == 1:
             if self.prefer_name and self.name is not None:
-                y.columns = self.name
+                y.columns = [self.name]
         else:
             if self.add_name_prefix and self.name is not None:
                 y.columns = [f"{self.name}/{c}" for c in y.columns]
@@ -203,7 +214,7 @@ class BeamFeature(Processor):
                 x = self.preprocess(x)
 
             if self.is_fitted:
-                logger.warning(f"Feature {self.name} is already fitted, skipping")
+                logger.warning(f"Feature {self.name} is already fitted, skipping (use reset() to re-fit)")
 
             self._fit(x, **kwargs)
         self._is_fitted = True
@@ -275,7 +286,7 @@ class ScalingFeature(BeamFeature):
 
     @property
     def parameters_schema(self):
-        return {'method': ParameterSchema(name='method', kind=ParameterType.categorical)}
+        return {'method': ParameterSchema(name='method', kind=ParameterType.categorical)} | super().parameters_schema
 
     def _fit(self, x, **kwargs):
         self.encoder.fit(as_numpy(x))
@@ -326,10 +337,14 @@ class InverseOneHotFeature(BeamFeature):
 
 class FeaturesAggregator(Processor):
 
-    def __init__(self, *features, path=None, save_intermediate_results=True, **kwargs):
+    def __init__(self, *features, state_path=None, artifact_path=None, save_intermediate_results=True, **kwargs):
         super().__init__(**kwargs)
         self.features = features or []
+        self.state_path = state_path
+        self.artifact_path = artifact_path
+        self.save_intermediate_results = save_intermediate_results
 
+    @property
     def parameters_schema(self):
         d = {}
         for f in self.features:
@@ -373,7 +388,34 @@ class FeaturesAggregator(Processor):
                               overwrite_hparams=overwrite_hparams, **kwargs)
 
     def transform(self, x, **kwargs):
-        return pd.concat([f.transform(x, **kwargs) for f in self.features], axis=1)
+        y = []
+        for f in self.features:
+            yi = f.transform(x, **kwargs)
+            y.append(yi)
+            if self.artifact_path is not None:
+                p = beam_path(self.artifact_path).joinpath(f.name)
+                BeamData.write_object(yi, p)
+
+        return pd.concat(y, axis=1)
 
     def fit_transform(self, x, **kwargs):
-        return pd.concat([f.fit_transform(x, **kwargs) for f in self.features], axis=1)
+        y = []
+        for f in self.features:
+
+            if f.is_fitted:
+                logger.warning(f"Feature {f.name} is already fitted, applying transform only")
+                yi = f.transform(x, **kwargs)
+            else:
+                yi = f.fit_transform(x, **kwargs)
+
+                if self.save_intermediate_results and self.state_path is not None:
+                    p = beam_path(self.state_path).joinpath(f.name)
+                    f.save_state(p)
+
+            if self.artifact_path is not None:
+                p = beam_path(self.artifact_path).joinpath(f.name)
+                BeamData.write_object(yi, p)
+
+            y.append(yi)
+
+        return pd.concat(y, axis=1)

@@ -25,7 +25,9 @@ def preprocess_covtype():
     features_aggregator = FeaturesAggregator(ScalingFeature('numerical', input_columns=range(10),
                                                                     output_columns=columns[:10], add_name_prefix=False),
                                              InverseOneHotFeature('Wilderness_Area', input_columns=range(10, 14)),
-                                             InverseOneHotFeature('Soil_Type', input_columns=slice(14, None)))
+                                             InverseOneHotFeature('Soil_Type', input_columns=slice(14, None)),
+                                             state_path='/tmp/covtype_features_state',
+                                             artifact_path='/tmp/covtype_features_artifact')
 
     x = features_aggregator.fit_transform(x)
     return {'x': x, 'y': data['y'], 'columns': x.columns}
