@@ -118,7 +118,7 @@ class Set2Vec(Node2Vec):
         try:
             return self.model.wv[i]
         except KeyError:
-            return np.stack([super().transform_cell(j) for j in i])
+            return np.stack([Node2Vec.transform_cell(self, j) for j in i])
 
     def _fit(self, x, **kwargs):
         # Step 1: Generate pairs and count their occurrences

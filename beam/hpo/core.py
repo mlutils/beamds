@@ -77,7 +77,7 @@ class BeamHPO(Processor):
 
     def fit_algorithm(self, experiment):
 
-        if isinstance(self.alg, NeuralAlgorithm):
+        if isinstance(self.alg, NeuralAlgorithm) or issubclass(self.alg, NeuralAlgorithm):
             alg, report = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True,
                                          runner='default')
         else:

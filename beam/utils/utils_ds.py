@@ -22,7 +22,16 @@ from ..importer import scipy
 
 def slice_to_index(s, l=None, arr_type=Types.tensor, sliced=None):
 
-    f = torch.arange if str(arr_type) == Types.tensor else np.arange
+    if arr_type == Types.tensor:
+        f = torch.arange
+    elif arr_type == Types.numpy:
+        f = np.arange
+    elif arr_type == Types.pandas:
+        f = pd.RangeIndex
+    elif arr_type == Types.list:
+        f = lambda x: list(range(x))
+    else:
+        raise ValueError(f"Unsupported array type: {arr_type}")
 
     if isinstance(s, slice):
 
@@ -157,7 +166,27 @@ def as_numpy(x, dtype=None, **kwargs):
     return x
 
 
-def as_list(x):
+def as_dataframe(x, target='pandas', **kwargs):
+    x_type = check_type(x)
+    if not x_type.is_dataframe:
+        if x_type.is_torch:
+            x = as_numpy(x)
+
+    if target == 'pandas' and x_type.minor != Types.pandas:
+        return pd.DataFrame(x, **kwargs)
+
+    if target == 'polars' and x_type.minor != Types.polars:
+        import polars as pl
+        return pl.DataFrame(x, **kwargs)
+
+    if target == 'cudf' and x_type.minor != Types.cudf:
+        import cudf
+        return cudf.DataFrame(x, **kwargs)
+
+    raise ValueError(f"Unsupported target type: {target}")
+
+
+def as_list(x, length=None, **kwargs):
     if x is None:
         return None
     if isinstance(x, np.ndarray):
@@ -178,6 +207,8 @@ def as_list(x):
         return list(x.values())
     if isinstance(x, tuple):
         return list(x)
+    if isinstance(x, slice):
+        return slice_to_index(x, length, arr_type=Types.list)
     return list(x)
 
 

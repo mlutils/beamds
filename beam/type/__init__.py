@@ -11,7 +11,7 @@ if len([]):
 __all__ = ['BeamType', 'check_minor_type', 'check_element_type', 'is_scalar', 'is_container', 'is_beam_data',
            'is_beam_path', 'is_beam_processor', 'is_cached_property', 'Types', 'is_beam_resource', 'is_beam_config',
            'is_pandas', 'is_cudf', 'is_dataframe', 'is_pandas_dataframe', 'is_polars', 'is_tensor', 'is_pil',
-           'is_torch_scalar', 'is_scipy_sparse', 'is_pandas_series']
+           'is_torch_scalar', 'is_scipy_sparse', 'is_pandas_series', 'check_type']
 
 
 def check_type(x, major=True, minor=True, element=True) -> BeamType:
