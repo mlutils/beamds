@@ -16,7 +16,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'beam_logger', 'beam_kpi', 'logger',
            'beam_path', 'beam_key', 'pretty_format_number', 'resource',
            'tqdm', 'Transformer', 'Processor',
-           'parallel', 'task', 'this_dir', 'cwd'
+           'parallel', 'task', 'this_dir', 'cwd',
            # Orchestration
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
            'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server',
