@@ -43,6 +43,10 @@ class SafeLazyImporter:
         return self._getattr('scipy')
 
     @cached_property
+    def optuna(self):
+        return self._getattr('optuna')
+
+    @cached_property
     def PIL(self):
         return self._getattr('PIL')
 

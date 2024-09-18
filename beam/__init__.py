@@ -5,7 +5,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 __all__ = ['UniversalBatchSampler', 'UniversalDataset',
-           'Experiment', 'beam_algorithm_generator',
+           'Experiment', 'nn_algorithm_generator',
            'NeuralAlgorithm',
            'LinearNet', 'PackedSet', 'copy_network', 'reset_network', 'DataTensor', 'BeamOptimizer', 'BeamScheduler',
            'BeamNN',
@@ -16,10 +16,12 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'beam_logger', 'beam_kpi', 'logger',
            'beam_path', 'beam_key', 'pretty_format_number', 'resource',
            'tqdm', 'Transformer', 'Processor',
-           'parallel', 'task', 'this_dir',
+           'parallel', 'task', 'this_dir', 'cwd',
            # Orchestration
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
-           'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server'
+           'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server',
+           # do not autoreaload these modules
+           # 'beam_server', 'beam_client',
            ]
 
 
@@ -56,9 +58,9 @@ def __getattr__(name):
     elif name == 'Experiment':
         from .experiment import Experiment
         return Experiment
-    elif name == 'beam_algorithm_generator':
-        from .experiment import beam_algorithm_generator
-        return beam_algorithm_generator
+    elif name == 'nn_algorithm_generator':
+        from .experiment import nn_algorithm_generator
+        return nn_algorithm_generator
     elif name == 'NeuralAlgorithm':
         from .algorithm import NeuralAlgorithm
         return NeuralAlgorithm
@@ -178,6 +180,9 @@ def __getattr__(name):
     elif name == 'this_dir':
         from .resources import this_dir
         return this_dir
+    elif name == 'cwd':
+        from .resources import cwd
+        return cwd
     # Orchestration
     elif name == 'BeamDeploy':
         from .orchestration import BeamDeploy
@@ -217,7 +222,7 @@ def __getattr__(name):
 if len([]):
     from .utils import tqdm_beam as tqdm
     from .dataset import UniversalBatchSampler, UniversalDataset
-    from .experiment import Experiment, beam_algorithm_generator
+    from .experiment import Experiment, nn_algorithm_generator
     from .algorithm import NeuralAlgorithm
     from .nn import LinearNet, PackedSet, copy_network, reset_network, DataTensor, BeamOptimizer, BeamScheduler, BeamNN
     from .data import BeamData
@@ -228,7 +233,7 @@ if len([]):
     from .path import beam_path, beam_key
     from .serve import beam_server, beam_client
     from ._version import __version__
-    from .resources import resource, this_dir
+    from .resources import resource, this_dir, cwd
     from .transformer import Transformer
     from .processor import Processor
     from .concurrent import parallel, task

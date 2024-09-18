@@ -1,6 +1,6 @@
 import os
 
-from ..config import BeamConfig, BeamParam
+from ..config import ExperimentConfig, BeamConfig, BeamParam
 
 
 class RayConfig(BeamConfig):
@@ -13,12 +13,12 @@ class RayConfig(BeamConfig):
     ]
 
 
-class HPOConfig(RayConfig, BeamConfig):
+class HPOConfig(RayConfig, ExperimentConfig):
 
     parameters = [
         BeamParam('gpus-per-trial', int, 1, 'number of gpus per trial',),
         BeamParam('cpus-per-trial', int, 4, 'number of cpus per trial',),
-        BeamParam('num-trials', int, 1000, 'number of HPO trails',),
+        BeamParam(['n-trials', 'num-trials'], int, 1000, 'number of HPO trails',),
         BeamParam('n-jobs', int, 1, 'number of parallel HPO jobs',),
         BeamParam('time-budget-s', int, None, 'time budget in seconds',),
         BeamParam('print-results', bool, False, 'print the intermediate results during training',),

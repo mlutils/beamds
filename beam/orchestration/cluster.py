@@ -66,6 +66,8 @@ class ServeCluster(BeamCluster):
         from ..auto import AutoBeam
 
         logger.info(f"base_image: {config['base_image']}")
+        if config['requirements_blacklist']:
+            logger.warning(f"Will not install the blacklisted requirements: {config['requirements_blacklist']}")
 
         if image_name is None:
             image_name = AutoBeam.to_docker(obj=obj, bundle_path=bundle_path, base_image=config.base_image,

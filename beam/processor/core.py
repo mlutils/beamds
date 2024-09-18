@@ -221,9 +221,9 @@ class Processor(BeamBase):
 
         return constructor(*args, **kwargs)
 
-    def to_bundle(self, path):
+    def to_bundle(self, path, **kwargs):
         from ..auto import AutoBeam
-        AutoBeam.to_bundle(self, path)
+        AutoBeam.to_bundle(self, path, **kwargs)
 
     def load_state_dict(self, path, ext=None, exclude: Union[List, Set] = None, hparams=True, exclude_hparams=None,
                         overwrite_hparams=None, **kwargs):

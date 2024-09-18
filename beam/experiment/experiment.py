@@ -15,8 +15,8 @@ from ..utils import (cached_property, set_seed, find_free_port, check_if_port_is
 from ..path import beam_path, BeamPath, beam_key
 from ..logging import beam_logger as logger
 from ..config import print_beam_hyperparameters, BeamConfig, UniversalConfig
-from .utils import (path_depth, gen_hparams_string, beam_algorithm_generator, default_runner, run_worker,
-                    build_device_list)
+from .utils import (path_depth, gen_hparams_string, nn_algorithm_generator, default_runner, simple_runner, run_worker,
+                    build_device_list, simple_algorithm_generator)
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 
@@ -225,7 +225,7 @@ class Experiment(object):
         self.source_dir = None
 
     def algorithm_generator(self, *args, **kwargs):
-        return beam_algorithm_generator(self, *args, **kwargs)
+        return nn_algorithm_generator(self, *args, **kwargs)
 
     @cached_property
     def training_framework(self):
@@ -663,12 +663,18 @@ class Experiment(object):
 
     def fit(self, alg=None, dataset=None, algorithm_generator=None, return_results=False, reload_results=False,
             tensorboard_arguments=None, alg_args=None, alg_kwargs=None, dataset_args=None,
-            dataset_kwargs=None, **kwargs):
+            dataset_kwargs=None, runner=None, **kwargs):
+
+        if type(runner) is str and runner == 'simple':
+            runner = simple_runner
+            if algorithm_generator is None:
+                algorithm_generator = simple_algorithm_generator
+        elif runner is None or (type(runner) is str and runner == 'default'):
+            runner = default_runner
+            if algorithm_generator is None:
+                algorithm_generator = nn_algorithm_generator
 
         self.prepare_experiment_for_run()
-
-        if algorithm_generator is None:
-            algorithm_generator = beam_algorithm_generator
 
         try:
 
@@ -688,7 +694,7 @@ class Experiment(object):
             if self.hparams.get('federated_runner'):
                 res = self.federated_training(alg=alg, algorithm_generator=algorithm_generator, **kwargs)
             else:
-                res = self.run(default_runner, *(algorithm_generator, self, alg), **kwargs)
+                res = self.run(runner, *(algorithm_generator, self, alg), **kwargs)
 
         except KeyboardInterrupt:
 

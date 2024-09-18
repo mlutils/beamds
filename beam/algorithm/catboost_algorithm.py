@@ -1,13 +1,16 @@
 import re
 
-from .. import beam_path
+from ..path import beam_path
+from ..experiment import BeamReport
 from ..path import local_copy
 from ..utils import parse_string_number, as_numpy, cached_property, set_seed
 from ..experiment.utils import build_device_list
 from .config import CatboostConfig
 
 from .core_algorithm import Algorithm
-from ..logging import beam_logger as logger
+from ..logging import beam_logger as logger, BeamError
+from ..type import check_type, Types
+from ..dataset import TabularDataset
 
 
 class CBAlgorithm(Algorithm):
@@ -25,13 +28,7 @@ class CBAlgorithm(Algorithm):
 
     @property
     def device_type(self):
-        return 'CPU' if self.get_hparam('device', 'cpu') else 'GPU'
-
-    @property
-    def task_type(self):
-        tp = self.get_hparam('cb_task', 'classification')
-        assert tp in ['classification', 'regression', 'ranking'], f"Invalid task type: {tp}"
-        return tp
+        return 'CPU' if self.get_hparam('device', 'cpu') == 'cpu' else 'GPU'
 
     @property
     def devices(self):
@@ -40,12 +37,26 @@ class CBAlgorithm(Algorithm):
         return device_list
 
     @property
+    def task_type(self):
+        return self._task_type(self.hparams)
+
+    @staticmethod
+    def _task_type(hparams):
+        tp = hparams.get('cb_task', 'classification')
+        assert tp in ['classification', 'regression', 'ranking'], f"Invalid task type: {tp}"
+        return tp
+
+    @property
     def eval_metric(self):
-        if self.task_type == 'regression':
+        return self._eval_metric(self.hparams)
+
+    @staticmethod
+    def _eval_metric(hparams):
+        if CBAlgorithm._task_type(hparams) == 'regression':
             em = 'RMSE'
         else:
             em = 'Accuracy'
-        return self.get_hparam('eval_metric', em)
+        return hparams.get('eval_metric', em)
 
     @property
     def custom_metric(self):
@@ -55,20 +66,15 @@ class CBAlgorithm(Algorithm):
             cm = ['Precision', 'Recall']
         return self.get_hparam('custom_metric', cm)
 
-    @cached_property
-    def optimization_mode(self):
-        objective_mode = self.get_hparam('objective_mode', None)
-        objective_name = self.get_hparam('objective', None)
-        return self.get_optimization_mode(objective_mode, objective_name)
-
-    def set_objective(self):
-        objective_name = self.get_hparam('objective', self.eval_metric)
+    @staticmethod
+    def objective_name(hparams):
+        objective_name = hparams.get('objective', CBAlgorithm._eval_metric(hparams))
         if type(objective_name) is list:
             objective_name = objective_name[0]
-        self.set_hparam('objective', objective_name)
+        return objective_name
 
-    @cached_property
-    def model(self):
+    @property
+    def catboost_kwargs(self):
 
         seed = self.get_hparam('seed')
         if seed == 0:
@@ -83,15 +89,6 @@ class CBAlgorithm(Algorithm):
             'verbose': self.log_frequency,
         }
 
-        if self.task_type == 'classification':
-            from catboost import CatBoostClassifier as CatBoost
-        elif self.task_type == 'regression':
-            from catboost import CatBoostRegressor as CatBoost
-        elif self.task_type == 'ranking':
-            from catboost import CatBoostRanker as CatBoost
-        else:
-            raise ValueError(f"Invalid task type: {self.task_type}")
-
         from .catboost_consts import cb_keys
         for key in cb_keys[self.task_type]:
             v = self.get_hparam(key, None)
@@ -101,7 +98,62 @@ class CBAlgorithm(Algorithm):
                     continue
                 cb_kwargs[key] = self.hparams[key]
 
-        return CatBoost(**cb_kwargs)
+        # here we fix broken configurations that can be the result of a hpo tuning
+        if cb_kwargs.get('max_leaves', None) is not None:
+            if cb_kwargs.get('grow_policy', None) not in ['Lossguide', None]:
+                logger.warning(f"Beam-Catboost: Ignoring max_leaves with grow_policy: {cb_kwargs['grow_policy']}")
+                cb_kwargs.pop('max_leaves')
+
+        # if 'grow_policy' not in cb_kwargs or cb_kwargs['grow_policy'] == 'SymmetricTree':
+        # if 'grow_policy' in cb_kwargs and cb_kwargs['grow_policy'] != 'SymmetricTree':
+        if cb_kwargs.get('boosting_type', None) is not None:
+            if cb_kwargs.get('grow_policy', None) not in ['SymmetricTree', None]:
+                logger.warning(f"Beam-Catboost: Ignoring boosting_type with grow_policy: {cb_kwargs['grow_policy']}")
+                cb_kwargs.pop('boosting_type')
+
+        # if cb_kwargs.get('od_type', None) in ['IncToDec', None]:
+
+        if cb_kwargs.get('early_stopping_rounds', None) is not None:
+            if cb_kwargs.get('od_wait', None) is not None:
+                logger.warning(f"Beam-Catboost: Ignoring early_stopping_rounds with od_type: {cb_kwargs['od_wait']}")
+                cb_kwargs.pop('early_stopping_rounds')
+
+        if cb_kwargs.get('od_pval', None) is not None:
+            if cb_kwargs.get('od_type', None) == 'Iter':
+                logger.warning(f"Beam-Catboost: Ignoring od_pval with od_type: {cb_kwargs['od_type']}")
+                cb_kwargs.pop('od_pval')
+
+        if cb_kwargs.get('bagging_temperature', None) is not None:
+            if cb_kwargs.get('bootstrap_type', None) not in ['Bayesian', None]:
+                logger.warning(f"Beam-Catboost: Ignoring bagging_temperature with bootstrap_type: "
+                               f"{cb_kwargs['bootstrap_type']}")
+                cb_kwargs.pop('bagging_temperature')
+
+        if self.device_type == 'CPU':
+            if cb_kwargs.get('leaf_estimation_backtracking', None) == 'Armijo':
+                logger.warning(f"Beam-Catboost: Backtracking type Armijo is supported only on GPU, ignoring it "
+                               f"(defaulting to AnyImprovement)")
+                cb_kwargs.pop('leaf_estimation_backtracking')
+        else:
+            if cb_kwargs.get('rsm', None) is not None:
+                logger.warning(f"Beam-Catboost: rsm on GPU is supported for pairwise modes only (ignoring it)")
+                cb_kwargs.pop('rsm')
+
+        return cb_kwargs
+
+    @cached_property
+    def model(self):
+
+        if self.task_type == 'classification':
+            from catboost import CatBoostClassifier as CatBoost
+        elif self.task_type == 'regression':
+            from catboost import CatBoostRegressor as CatBoost
+        elif self.task_type == 'ranking':
+            from catboost import CatBoostRanker as CatBoost
+        else:
+            raise ValueError(f"Invalid task type: {self.task_type}")
+
+        return CatBoost(**self.catboost_kwargs)
 
     @cached_property
     def info_re_pattern(self):
@@ -113,7 +165,7 @@ class CBAlgorithm(Algorithm):
         return compiled_pattern
 
     def log_cerr(self, err):
-        logger.error(f"CB: {err}")
+        logger.error(f"Beam-Catboost: {err}")
 
     def postprocess_epoch(self, info, **kwargs):
 
@@ -139,7 +191,7 @@ class CBAlgorithm(Algorithm):
             for k, v in metrics.items():
                 self.report_scalar(k, v, subset='eval', epoch=iteration)
 
-            self.reporter.post_epoch('eval', self._t0, training=True)
+            self.reporter.post_epoch('eval', self._t0, track_objective=True)
             # post epoch
             self.epoch = iteration + self.log_frequency
             self.calculate_objective_and_report(self.epoch)
@@ -150,7 +202,7 @@ class CBAlgorithm(Algorithm):
 
             self.reporter_pre_epoch(self.epoch)
 
-        logger.debug(f"CB: {info}")
+        logger.debug(f"Beam-Catboost: {info}")
 
     def reporter_pre_epoch(self, epoch, batch_size=None):
 
@@ -172,24 +224,32 @@ class CBAlgorithm(Algorithm):
         try:
             self.postprocess_epoch(*args, **kwargs)
         except Exception as e:
-            logger.error(f"CB: {e}")
+            logger.debug(f"CB Error: {e}")
             from ..utils import beam_traceback
-            logger.error(beam_traceback())
+            logger.debug(beam_traceback())
+            raise e
 
     @cached_property
     def n_epochs(self):
         return self.get_hparam('iterations', 1000)
 
+    @cached_property
+    def train_reporter(self):
+        return BeamReport(objective='best', optimization_mode=self.optimization_mode,
+                          aux_objectives=['loss'], aux_objectives_modes=['min'])
+
     def _fit(self, x=None, y=None, dataset=None, eval_set=None, cat_features=None, text_features=None,
              embedding_features=None, sample_weight=None, **kwargs):
 
-        self.set_objective()
+        if x is not None:
+            if isinstance(x, TabularDataset):
+                dataset = x
+                x = None
 
         if self.experiment:
             self.experiment.prepare_experiment_for_run()
 
         if dataset is None:
-            from ..dataset import TabularDataset
             dataset = TabularDataset(x_train=x, y_train=y, x_test=eval_set[0], y_test=eval_set[1],
                                      cat_features=cat_features, text_features=text_features,
                                      embedding_features=embedding_features, sample_weight=sample_weight)
@@ -204,10 +264,23 @@ class CBAlgorithm(Algorithm):
         if self.experiment:
             snapshot_file = self.experiment.snapshot_file
 
-        self.model.fit(train_pool, eval_set=dataset.eval_pool, log_cout=self.log_cout,
-                       snapshot_interval=self.get_hparam('snapshot_interval'),
-                       save_snapshot=self.get_hparam('save_snapshot'),
-                       snapshot_file=snapshot_file, log_cerr=self.log_cerr, **kwargs)
+        try:
+            self.model.fit(train_pool, eval_set=dataset.eval_pool, log_cout=self.log_cout,
+                           snapshot_interval=self.get_hparam('snapshot_interval'),
+                           save_snapshot=self.get_hparam('save_snapshot'),
+                           snapshot_file=snapshot_file, log_cerr=self.log_cerr, **kwargs)
+
+        except SystemError as e:
+            if self.hpo == 'optuna':
+                from optuna.exceptions import TrialPruned
+                raise TrialPruned(f"Trial pruned: {e}")
+            else:
+                raise e
+
+        except Exception as e:
+            logger.error(f"Beam-Catboost: {e}")
+            logger.debug(f"Beam-Catboost: {e}")
+            raise BeamError(f"CatBoost: {e}")
 
         if self.experiment:
             self.experiment.save_state(self)
@@ -227,8 +300,14 @@ class CBAlgorithm(Algorithm):
     def load_state_dict(self, path, ext=None, exclude: set | list = None, **kwargs):
 
         path = beam_path(path)
-        with local_copy(path.joinpath('model.cb'), as_beam_path=False) as p:
-            self.model.load_model(p)
+
+        if path.joinpath('model.cb').exists():
+            with local_copy(path.joinpath('model.cb'), as_beam_path=False) as p:
+                self.model.load_model(p)
+        elif path.joinpath('model.pkl').exists():
+            self.model = path.joinpath('model.pkl').read()
+        else:
+            raise FileNotFoundError(f"Model file not found in {path}")
 
         return super().load_state_dict(path, ext, exclude, **kwargs)
 
@@ -237,5 +316,9 @@ class CBAlgorithm(Algorithm):
         super().save_state_dict(state, path, ext, exclude, **kwargs)
 
         path = beam_path(path)
-        with local_copy(path.joinpath('model.cb'), as_beam_path=False) as p:
-            self.model.save_model(p)
+
+        if self.model.is_fitted():
+            with local_copy(path.joinpath('model.cb'), as_beam_path=False) as p:
+                self.model.save_model(p)
+        else:
+            path.joinpath('model.pkl').write(self.model)

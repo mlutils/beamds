@@ -1,4 +1,5 @@
-from beam.base import BeamBase
+from ..base import BeamBase
+from ..type import check_type, Types
 
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
@@ -26,4 +27,7 @@ class BeamTokenizer(BeamBase):
         return self
 
     def __call__(self, x):
+        x_type = check_type(x)
+        if x_type.major == Types.array:
+            return [self._tokenizer.encode(xi).ids for xi in x]
         return self._tokenizer.encode(x).ids

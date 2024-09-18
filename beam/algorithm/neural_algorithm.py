@@ -1146,7 +1146,7 @@ class NeuralAlgorithm(Algorithm):
         # if not training and self.rank > 0:
         #     return
 
-        objective_name = self.get_hparam('objective')
+        objective_name = self.objective_name
         batch_size = self.batch_size_train if training else self.batch_size_eval
 
         with self.reporter.track_epoch(subset, batch_size=batch_size, training=training):
@@ -1235,7 +1235,7 @@ class NeuralAlgorithm(Algorithm):
                  head=None, eval_mode=True, return_dataset=None, **kwargs):
 
         self.set_reporter(BeamReport(objective=self.get_hparam('objective'),
-                                     objective_mode=self.optimization_mode))
+                                     optimization_mode=self.optimization_mode))
 
         with torch.no_grad():
 
@@ -1291,9 +1291,6 @@ class NeuralAlgorithm(Algorithm):
 
         return dataset
 
-    def training_closure(self, *args, **kwargs):
-        pass
-
     def __iter__(self):
 
         self.t0 = timer()
@@ -1330,7 +1327,7 @@ class NeuralAlgorithm(Algorithm):
                     self.report_scalar(f'momentum_{k}', scheduler.get_current_state()['momentum'], subset='train')
 
             self.epoch += 1
-            self.calculate_objective_and_report(i)
+            objective = self.calculate_objective_and_report(i)
 
             if i+1 == self.n_epochs and self.swa_epochs > 0:
                 logger.warning("Switching to SWA training")

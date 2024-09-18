@@ -8,6 +8,7 @@ from ..utils import (set_seed, is_notebook, beam_device)
 from ..path import beam_path
 from ..logging import beam_logger as logger
 from ..config import get_beam_llm, BeamConfig
+from ..importer import lazy_importer as lzi
 
 
 done_training = mp.Event()
@@ -73,8 +74,8 @@ def path_depth(path):
     return len(str(path.resolve()).split(os.sep))
 
 
-def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None, dataset_args=None,
-                             dataset_kwargs=None, rank=0, **kwargs):
+def nn_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None, dataset_args=None,
+                           dataset_kwargs=None, rank=0, **kwargs):
 
     if alg_args is None:
         alg_args = tuple()
@@ -113,6 +114,39 @@ def beam_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_k
         alg.load_datasets(datasets)
 
     return alg
+
+
+def simple_algorithm_generator(experiment, alg, dataset=None, alg_args=None, alg_kwargs=None, dataset_args=None,
+                               dataset_kwargs=None, rank=0, **kwargs):
+
+    if alg_args is None:
+        alg_args = tuple()
+    if alg_kwargs is None:
+        alg_kwargs = dict()
+    if dataset_args is None:
+        dataset_args = tuple()
+    if dataset_kwargs is None:
+        dataset_kwargs = dict()
+
+    if dataset is not None:
+        if inspect.isclass(dataset):
+            dataset = dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+        elif inspect.isfunction(dataset):
+            dataset = dataset(experiment.hparams, *dataset_args, **dataset_kwargs)
+
+    if inspect.isclass(alg):
+        store_init_path = None
+        if rank == 0:
+            store_init_path = experiment.store_init_path
+
+        alg = alg(experiment.hparams, experiment=experiment, *alg_args, store_init_path=store_init_path, **alg_kwargs)
+        # if a new algorithm is generated, we clean the tensorboard writer. If the reload option is True,
+        # the algorithm will fix the epoch number s.t. tensorboard graphs will not overlap
+        experiment.writer_cleanup()
+    else:
+        alg.experiment = experiment
+
+    return alg, dataset
 
 
 def training_closure(rank, world_size, experiment, alg, *args, **kwargs):
@@ -160,6 +194,13 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     except Exception as e:
 
+        if lzi.optuna is not None:
+            from optuna.exceptions import TrialPruned
+            if isinstance(e, TrialPruned):
+                logger.warning(f"TrialPruned: Training was interrupted, Worker terminates.")
+                logger.debug(f"TrialPruned: {e}")
+                raise e
+
         tb = traceback.format_exc()
 
         llm = get_beam_llm() if experiment.llm is None else experiment.llm
@@ -185,6 +226,56 @@ def default_runner(rank, world_size, experiment, algorithm_generator, *args, ten
 
     if world_size == 1:
         return alg, results
+
+
+def simple_runner(rank, world_size, experiment, algorithm_generator, *args, **kwargs):
+
+    alg, dataset = algorithm_generator(*args, rank=rank, **kwargs)
+
+    assert rank == 0, "Simple runner is only supported for single process training."
+
+    results = None
+
+    try:
+
+        results = alg.fit(dataset)
+        logger.info(f"Training is done, Worker terminates.")
+
+    except KeyboardInterrupt as e:
+
+        logger.warning(f"KeyboardInterrupt: Training was interrupted, Worker terminates.")
+        logger.debug(f"KeyboardInterrupt: {e}")
+        training_closure(rank, world_size, experiment, alg, *args, **kwargs)
+
+    except Exception as e:
+
+        if lzi.optuna is not None:
+            from optuna.exceptions import TrialPruned
+            if isinstance(e, TrialPruned):
+                logger.warning(f"TrialPruned: Training was interrupted, Worker terminates.")
+                logger.debug(f"TrialPruned: {traceback.format_exc()}")
+                raise e
+
+        tb = traceback.format_exc()
+
+        llm = get_beam_llm() if experiment.llm is None else experiment.llm
+
+        if llm is not None:
+            explain = llm.explain_traceback(tb)
+            logger.error(f"LLM Message: {explain}")
+
+        logger.error(f"Exception: {e}")
+        logger.error(f"Exception: {tb}")
+        logger.error(f"Exception: Training was interrupted, Worker terminates, but checkpoint will be saved.")
+        training_closure(rank, world_size, experiment, alg, *args, **kwargs)
+
+        if not is_notebook():
+            raise e
+
+    experiment.writer_cleanup()
+
+    # return alg, results
+    return experiment.experiment_dir, results
 
 
 def run_worker(rank, world_size, results_queue_or_kwargs, job, experiment, *args, **kwargs):
@@ -231,6 +322,8 @@ def run_worker(rank, world_size, results_queue_or_kwargs, job, experiment, *args
 def build_device_list(hparams):
 
     device = beam_device(hparams.device)
+    if 'cpu' in device.type:
+        return []
 
     device_list = hparams.get('device_list', None)
     if device_list is not None:

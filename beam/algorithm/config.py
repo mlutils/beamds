@@ -35,7 +35,6 @@ class TextGroupExpansionConfig(SimilarityConfig, TFIDFConfig):
     ]
 
 
-
 class CatboostConfig(DeviceConfig):
     """
     CatBoost configuration with detailed parameter documentation.
@@ -44,10 +43,10 @@ class CatboostConfig(DeviceConfig):
     - https://docs.aws.amazon.com/sagemaker/latest/dg/catboost-hyperparameters.html
     """
 
+    defaults = {'objective': None, 'objective_to_report': 'best'}
+
     # CatBoost parameters
     parameters = [
-        BeamParam('objective', str, None, 'The objective function for the CatBoost model. '),
-        BeamParam('objective_to_report', str, 'best', 'Which objective to report in HPO run [best|last]'),
         BeamParam(
             'cb-task',
             str,
@@ -143,6 +142,7 @@ class CatboostConfig(DeviceConfig):
             'Default: None. '
             'Range: (0, 1). '
             'Stops training if the performance on the validation set does not improve by this value.'
+            'For best results, it is recommended to set a value in the range [ 1e-10 ; 1e-2 ]'
         ),
         BeamParam(
             'od_wait',

@@ -309,6 +309,19 @@ class HTTPServer(BeamServer):
                         <hr/>
                 """
 
+        # print documentation about the object itself
+        if info.get('self'):
+            html += f"""
+                    <div class="property">
+                        <h2>Property: self</h2>
+                        <details>
+                            <summary>Description</summary>
+                            <p>{info['self'].get('description', 'No description available')}</p>
+                        </details>
+                    </div>
+                    <hr/>
+                    """
+
         for attribute_name, attribute_metadata in methods.items():
             attribute_type = attribute_metadata.get('type', 'Unknown')
             description = attribute_metadata.get('description', 'No description available')

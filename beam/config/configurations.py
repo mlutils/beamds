@@ -1,7 +1,6 @@
 import argparse
 import os
 import math
-from pathlib import Path
 from .core_config import BeamConfig, BeamParam
 from .deepspeed import DeepspeedConfig
 from .utils import _beam_arguments
@@ -175,16 +174,6 @@ class NNTrainingConfig(NNModelConfig, SchedulerConfig, AccelerateConfig,
                        SWAConfig, OptimizerConfig, DatasetConfig, SamplerConfig, NNCompilerConfig):
 
     parameters = [
-        BeamParam('objective', str, 'objective', 'A single objective to apply hyperparameter optimization or '
-                                                 'ReduceLROnPlateau scheduling. '
-                                                 'By default we consider maximization of the objective (e.g. accuracy) '
-                                                 'You can override this behavior by overriding the Algorithm.report method.'),
-
-        BeamParam('objective_mode', str, None, 'Set [min/max] to minimize/maximize the objective. '
-                                               'By default objectives that contain the words "loss/error/mse" a are minimized and '
-                                               'other objectives are maximized. You can override this behavior by setting this flag.'),
-
-        BeamParam('objective_to_report', str, 'best', 'Which objective to report in HPO run [best|last]'),
 
         BeamParam('scale_epoch_by_batch_size', bool, True,
                   'When True: epoch length corresponds to the number of examples sampled from the dataset in each epoch '
@@ -340,6 +329,17 @@ class ExperimentConfig(BeamProjectConfig, KeysConfig, CacheConfig):
                   'in your alg.train_iteration function'),
         BeamParam('compile_network', bool, False,
                   'Apply torch.compile to optimize the network forward function to speed up training.'),
+
+        BeamParam('objective', str, 'objective', 'A single objective to apply hyperparameter optimization or '
+                                                 'ReduceLROnPlateau scheduling. '
+                                                 'By default we consider maximization of the objective (e.g. accuracy) '
+                                                 'You can override this behavior by overriding the Algorithm.report method.'),
+
+        BeamParam('optimization_mode', str, None, 'Set [min/max] to minimize/maximize the objective. '
+                                               'By default objectives that contain the words "loss/error/mse" a are minimized and '
+                                               'other objectives are maximized. You can override this behavior by setting this flag.'),
+
+        BeamParam('objective_to_report', str, 'best', 'Which objective to report in HPO run [best|last]'),
 
         # possible combinations for single gpu:
         # 1. torch

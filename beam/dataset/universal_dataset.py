@@ -143,14 +143,13 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         return slice_array(self.data, ind, x_type=self.data_type)
 
-    @classmethod
-    def get_subset(cls, self, subset):
+    def get_subset(self, subset):
         index = self.indices[subset]
         data = recursive_batch(self.data, index)
         label = recursive_batch(self.label, index) if self.label is not None else None
 
         return UniversalDataset(data, label=label, device=self.device,
-                     target_device=self.target_device, to_torch=self.to_torch, index_mapping='forward')
+                                target_device=self.target_device, to_torch=self.to_torch, index_mapping='forward')
 
     def __getitem__(self, ind):
 
