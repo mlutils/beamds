@@ -172,6 +172,7 @@ class BeamManager(BeamBase):
         serve_cluster = ServeCluster(config=config, pods=[], k8s=self.k8s, deployment=name, **kwargs)
 
         self.clusters[name] = serve_cluster.deploy_from_image(config=config, image_name=config['image_name'])
+        self.clusters[name] = serve_cluster.deploy_from_b
 
         # Start monitoring the cluster
         monitor_thread = Thread(target=serve_cluster.monitor_cluster)

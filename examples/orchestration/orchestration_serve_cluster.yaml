@@ -1,13 +1,14 @@
 alg_image_name: yolo-algo:latest
-api_token: sha256~L9JG67uwvtnhEuWbYtCqWKJJrN8H1-xG86PCJoWCHXI
+api_token: sha256~rOLLyXOHG1iVvQ8OutATGzlSLvNKX_LFaSExA94J0RI
 api_url: https://api.kh-dev.dt.local:6443
+#base_image: nvcr.io/nvidia/pytorch:24.05-py3
 base_image: harbor.dt.local/public/beam:20240801
 base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='unix://var/run/docker.sock')
 # client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: 2.6.9
+beam_version: 2.6.7
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:
