@@ -17,12 +17,13 @@ class BeamHPO(Processor):
 
     def __init__(self, hparams, *args, hpo_config=None,
                  alg=None, dataset=None, algorithm_generator=None, alg_args=None,
-                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, post_train_hook=None, **kwargs):
+                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, post_train_hook=None,
+                 **kwargs):
 
         if hpo_config is None:
             hpo_config = HPOConfig(**kwargs)
 
-        super().__init__(*args, hparams=hpo_config, **kwargs)
+        super().__init__(*args, hparams=hpo_config, _config_scheme=HPOConfig,  **kwargs)
         logger.info(f"Creating new study (Beam version: {__version__})")
 
         self.experiment_hparams = hparams
@@ -241,3 +242,10 @@ class BeamHPO(Processor):
 
     def run(self, *args, **kwargs):
         raise NotImplementedError
+
+
+    # def run(self, *args, runtime_env=None, tune_config_kwargs=None, run_config_kwargs=None,
+    #             init_config_kwargs=None, restore_path=None, restore_config=None, **kwargs):
+
+    # def run(self, suggest=None, load_study=False, storage=None, sampler=None, pruner=None, study_name=None,
+    #         direction=None, load_if_exists=False, directions=None, *args, **kwargs):

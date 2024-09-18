@@ -170,20 +170,17 @@ class RayHPO(BeamHPO, RayClient):
 
         tune_config = TuneConfig(**tune_config_kwargs)
 
-        # the ray run configuration
-        local_dir = self.hparams.get('hpo_path')
-
         run_config_kwargs = run_config_kwargs or {}
         if 'name' not in run_config_kwargs.keys():
             run_config_kwargs['name'] = self.identifier
         if 'stop' not in run_config_kwargs.keys():
             run_config_kwargs['stop'] = stop
         if 'storage_path' not in run_config_kwargs.keys():
-            run_config_kwargs['storage_path'] = local_dir
+            run_config_kwargs['storage_path'] = self.hpo_path
         run_config = RunConfig(**run_config_kwargs)
 
         logger.info(f"Starting ray-tune hyperparameter optimization process. "
-                    f"Results and logs will be stored at {local_dir}")
+                    f"Results and logs will be stored at {self.hpo_path}")
 
         tuner = self.tuner(hparams, restore_path=restore_path, restore_config=restore_config,
                            search_space=search_space, tune_config=tune_config, run_config=run_config)

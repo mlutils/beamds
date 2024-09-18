@@ -173,14 +173,14 @@ def as_dataframe(x, target='pandas', **kwargs):
         if x_type.is_torch:
             x = as_numpy(x)
 
-    if target == 'pandas' and x_type.minor != Types.pandas:
+    if target == 'pandas':
         return pd.DataFrame(x, **kwargs)
 
-    if target == 'polars' and x_type.minor != Types.polars:
+    if target == 'polars':
         import polars as pl
         return pl.DataFrame(x, **kwargs)
 
-    if target == 'cudf' and x_type.minor != Types.cudf:
+    if target == 'cudf':
         import cudf
         return cudf.DataFrame(x, **kwargs)
 

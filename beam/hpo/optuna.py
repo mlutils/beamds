@@ -154,8 +154,8 @@ class OptunaHPO(OptunaBase, BeamHPO):
             direction = 'maximize' if direction == 'max' else 'minimize'
 
         if study_name is None:
-            # study_name = f'{self.hparams.project_name}.{self.hparams.algorithm}.{self.hparams.identifier}'
-            study_name = 'experiments'
+            study_name = f'{self.hparams.project_name}-{self.hparams.algorithm}-{self.hparams.identifier}'
+            # study_name = 'experiments'
 
         if storage is None:
             if self.hpo_path is not None:

@@ -67,7 +67,7 @@ class CBAlgorithm(Algorithm):
         return self.get_hparam('custom_metric', cm)
 
     @staticmethod
-    def objective_name(hparams):
+    def expected_objective_name(hparams):
         objective_name = hparams.get('objective', CBAlgorithm._eval_metric(hparams))
         if type(objective_name) is list:
             objective_name = objective_name[0]
