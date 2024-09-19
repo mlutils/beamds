@@ -138,11 +138,10 @@ def __getattr__(name):
             from .path import beam_path
             path = beam_path('/tmp/.beam')
             path.mkdir()
-            import time
-            t = time.strftime('%Y%m%d-%H%M%S')
+            t = beam_logger.timestamp()
             program = sys.argv[0].split('/')[-1].split('.')[0]
             path = path.joinpath(f"{program}-{t}.log")
-            beam_logger.add_file_handlers(path, tag='default')
+            beam_logger.add_default_file_handler(path)
             beam_logger.info(f"Beam logger (version {__version__}): logs are saved in {path}")
             beam_logger.debug("to stop logging to this file use beam_logger.remove_default_handlers()")
             log_file_generated = True

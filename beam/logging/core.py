@@ -37,9 +37,15 @@ class BeamLogger:
     def print(self):
         self.handlers['stdout'] = self.stdout_handler()
 
-    def cleanup(self, print=True):
+    def cleanup(self, print=True, clean_default=True, blacklist=None):
+        if blacklist is None:
+            blacklist = []
         for k, handler in self.handlers.items():
             if k == 'stdout' and print:
+                continue
+            if k in blacklist:
+                continue
+            if clean_default and k == 'default':
                 continue
             try:
                 self.logger.remove(handler)
@@ -54,6 +60,15 @@ class BeamLogger:
         for k, file_object in self.file_objects.items():
             file_object.close()
         self.file_objects = {}
+
+    @staticmethod
+    def timestamp():
+        import time
+        t = time.strftime('%Y%m%d-%H%M%S')
+        return t
+
+    def add_default_file_handler(self, path):
+        self.add_file_handlers(path, tag='default')
 
     def add_file_handlers(self, path, tag=None):
         from ..path import beam_path

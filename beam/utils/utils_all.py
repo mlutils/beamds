@@ -703,6 +703,10 @@ def none_function(*args, **kwargs):
     return None
 
 
+def identity_function(x, **kwargs):
+    return x
+
+
 class NoneClass:
     def __init__(self, *args, **kwargs):
         pass

@@ -3,7 +3,11 @@ from sklearn.tree import DecisionTreeClassifier
 import pandas as pd
 
 
-def predictive_power_score(x_train, x_test, y_train, y_test, objective_func=None, depths=None):
+def predictive_power_score(x_train, x_test, y_train, y_test, objective_func=None, depths=None, dt_kwargs=None):
+
+    if dt_kwargs is None:
+        dt_kwargs = {}
+
     if depths is None:
         depths = [1, 2, 4, 6, 10]
 
@@ -17,7 +21,7 @@ def predictive_power_score(x_train, x_test, y_train, y_test, objective_func=None
         xi_test = x_test[[i]]
         oi = {}
         for n in depths:
-            alg = DecisionTreeClassifier(max_depth=n)
+            alg = DecisionTreeClassifier(max_depth=n, **dt_kwargs)
             alg.fit(xi_train, y_train)
             pred = alg.predict(xi_test)
             oi[n] = objective_func(y_test, pred)

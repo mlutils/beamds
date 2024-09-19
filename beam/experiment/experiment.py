@@ -162,7 +162,7 @@ class Experiment(object):
             self.store_init_path = self.experiment_dir.joinpath('init_alg_args.pkl')
 
         if self.load_model:
-            logger.cleanup()
+            logger.cleanup(clean_default=False)
             logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
             logger.info(f"Resuming existing experiment")
 
@@ -776,7 +776,7 @@ class Experiment(object):
 
     def build_experiment_dir(self):
 
-        logger.cleanup()
+        logger.cleanup(clean_default=False)
         logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
         print_beam_hyperparameters(self.hparams, default_params=UniversalConfig(return_defaults=True),
                                    debug_only=not self.print_hyperparameters)

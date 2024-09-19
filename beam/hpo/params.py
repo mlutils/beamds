@@ -31,7 +31,6 @@ class HPOConfig(RayConfig, ExperimentConfig):
         BeamParam('track-suggestion', bool, True, 'track the suggestions of each trial',),
         BeamParam('hpo-path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'hpo'),
                   'Root directory for Logs and results of Hyperparameter optimizations and the associated experiments'),
-        BeamParam('resume-hpo-path', str, None, 'Path to an existing HPO run to resume',),
         BeamParam('stop', str, None, 'stop criteria for the HPO',),
         BeamParam('get-port-from-beam-port-range', bool, True, 'get port from beam port range',),
         BeamParam('replay-buffer-size', int, None, 'Maximal size of finite-memory hpo',),
