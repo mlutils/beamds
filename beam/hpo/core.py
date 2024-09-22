@@ -45,9 +45,10 @@ class BeamHPO(Processor):
                                                       self.experiment_hparams.algorithm,
                                                       self.experiment_hparams.identifier))
 
-            self.hpo_path = hpo_path
+            self.hpo_path = beam_path(hpo_path)
             logger.info(f"Creating new study at {self.hpo_path} (Beam version: {__version__})")
             self.hpo_path.mkdir()
+            self.hpo_path.joinpath('hpo_config.pkl').write(self.hparams)
 
         self.experiment_hparams = hparams
         self.experiment_hparams.set('reload', False)
@@ -60,6 +61,8 @@ class BeamHPO(Processor):
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.identifier = f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}'
         self.experiment_hparams.set('identifier', self.identifier)
+        if not self.is_reloaded:
+            self.hpo_path.joinpath('base_config.pkl').write(self.experiment_hparams)
 
         self.alg = alg
         if algorithm_generator is None:
@@ -104,6 +107,8 @@ class BeamHPO(Processor):
             endpoint = True
 
         if n_steps is None:
+            assert int(end) == end and int(start) == start, \
+                "n_steps must be specified if start or end is not an integer"
             n_steps = int(end - start + 1)
 
         self.suggestions[param] = partial(self._linspace, param=param, start=start, end=end, n_steps=n_steps,
@@ -249,6 +254,22 @@ class BeamHPO(Processor):
     def run(self, *args, **kwargs):
         raise NotImplementedError
 
+    def score_table(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @property
+    def best(self):
+        raise NotImplementedError
+
+    def _best(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def retrieve_algorithm(self, path):
+        path = beam_path(path)
+        conf = path.joinpath('beam_configuration.pkl').read()
+        alg = beam_path(conf['experiment_dir']).joinpath('best_model.bmpr').read()
+        return alg
 
     # def run(self, *args, runtime_env=None, tune_config_kwargs=None, run_config_kwargs=None,
     #             init_config_kwargs=None, restore_path=None, restore_config=None, **kwargs):

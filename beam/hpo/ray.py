@@ -49,7 +49,7 @@ class RayHPO(BeamHPO, RayClient):
         step_size = (end - start) / n_steps
         end = end - step_size * (1 - endpoint)
 
-        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int, np.int64, 'int', 'int64']:
+        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int64, 'int', 'int64']:
 
             start = int(np.round(start))
             step_size = int(np.round(step_size))
@@ -197,3 +197,15 @@ class RayHPO(BeamHPO, RayClient):
                                tune_config=tune_config, run_config=run_config)
 
         return tuner
+
+    def get_results(self, analysis, *args, **kwargs):
+        return self.tuner(*args, **kwargs).get_results()
+
+    def score_table(self, *args, **kwargs):
+        res = self.get_results(*args, **kwargs)
+        return res.get_dataframe()
+
+    def _best(self, *args, **kwargs):
+        best = self.get_results(*args, **kwargs).get_best_result()
+        return self.retrive_algorithm_from_path(best.path)
+

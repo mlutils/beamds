@@ -1,5 +1,7 @@
 import re
 
+from sklearn.metrics import fbeta_score
+
 from ..path import beam_path
 from ..experiment import BeamReport
 from ..path import local_copy
@@ -11,6 +13,29 @@ from .core_algorithm import Algorithm
 from ..logging import beam_logger as logger, BeamError
 from ..type import check_type, Types
 from ..dataset import TabularDataset
+
+
+class FBetaMetric:
+    def __init__(self, beta=1., threshold=0.5):
+        self.beta = beta
+        self.threshold = threshold
+
+    def get_final_error(self, error, weight):
+        return error
+
+    def is_max_optimal(self):
+        return True
+
+    def evaluate(self, approxes, target, weight):
+        assert len(approxes) == 1
+        assert len(target) == len(approxes[0])
+        approx = approxes[0]
+
+        y_pred = (approx > self.threshold).astype(int)
+        y_true = target.astype(int)
+        score = fbeta_score(y_true, y_pred, beta=self.beta)
+
+        return score, 1
 
 
 class CBAlgorithm(Algorithm):
