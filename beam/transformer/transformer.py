@@ -429,6 +429,7 @@ class Transformer(Processor):
             values = [xi.result[1] if xi.exception is None else xi for xi in results]
             keys = [xi.name for xi in results]
             keys = [ki if type(ki) is tuple else (ki,) for ki in keys]
+            sorted_keys = [ki if type(ki) is tuple else (ki,) for ki in sorted_keys]
             x = build_container_from_tupled_keys(keys, values, sorted_keys=sorted_keys)
 
             if len(exceptions) == 0:
