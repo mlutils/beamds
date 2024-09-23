@@ -369,11 +369,13 @@ class Transformer(Processor):
         if return_results is None:
             return_results = not (store or store_chunk)
 
+        sorted_keys = []
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")
             for k, c in tqdm(self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
                                          squeeze=squeeze, split_by=split_by, partition=partition)):
 
+                sorted_keys.append(k)
                 chunk_path = None
                 if store_chunk:
 
@@ -427,7 +429,7 @@ class Transformer(Processor):
             values = [xi.result[1] if xi.exception is None else xi for xi in results]
             keys = [xi.name for xi in results]
             keys = [ki if type(ki) is tuple else (ki,) for ki in keys]
-            x = build_container_from_tupled_keys(keys, values)
+            x = build_container_from_tupled_keys(keys, values, sorted_keys=sorted_keys)
 
             if len(exceptions) == 0:
 

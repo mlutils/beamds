@@ -551,9 +551,17 @@ def new_container(k):
     return x
 
 
-def insert_tupled_key(x, k, v, default=None):
+def insert_tupled_key(x, k, v, default=None, keys=None):
     if x is None and default is None:
-        x = new_container(k[0])
+        if keys is None:
+            x = new_container(k[0])
+        else:
+            keys = [ki[0] for ki in keys]
+            if is_arange(keys, sort=False):
+                x = []
+            else:
+                x = {}
+
     elif x is None:
         x = default
 
@@ -580,12 +588,16 @@ def insert_tupled_key(x, k, v, default=None):
     return x
 
 
-def build_container_from_tupled_keys(keys, values):
-    keys = sorted(keys)
+def build_container_from_tupled_keys(keys, values, sorted_keys=None):
+
+    if sorted_keys is None:
+        sorted_keys = sorted(keys)
+    kv_map = {k: v for k, v in zip(keys, values)}
+    sorted_values = [kv_map[k] for k in sorted_keys]
 
     x = None
-    for ki, vi in zip(keys, values):
-        x = insert_tupled_key(x, ki, vi)
+    for ki, vi in zip(sorted_keys, sorted_values):
+        x = insert_tupled_key(x, ki, vi, keys=sorted_keys)
 
     return x
 
@@ -886,7 +898,7 @@ def slice_array(x, index, x_type=None, indices_type=None, wrap_object=False):
             raise TypeError(f"Cannot slice object of type {x_type}")
 
 
-def is_arange(x, convert_str=True):
+def is_arange(x, convert_str=True, sort=True):
     x_type = check_type(x)
 
     if x_type.element in [Types.array, Types.object, Types.empty, Types.none, Types.unknown]:
@@ -911,8 +923,9 @@ def is_arange(x, convert_str=True):
 
     try:
         arr_x = arr_x.astype(int)
-        argsort = np.argsort(arr_x)
-        arr_x = arr_x[argsort]
+        if sort:
+            argsort = np.argsort(arr_x)
+            arr_x = arr_x[argsort]
     except (ValueError, TypeError):
         return None, False
 
@@ -921,7 +934,10 @@ def is_arange(x, convert_str=True):
     if not isa:
         argsort = None
 
-    return argsort, isa
+    if sort:
+        return argsort, isa
+    else:
+        return isa
 
 
 # convert a dict to list if is_arange is True

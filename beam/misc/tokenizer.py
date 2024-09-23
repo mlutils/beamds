@@ -5,6 +5,7 @@ from tokenizers import Tokenizer
 from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
+from tokenizers.processors import TemplateProcessing
 
 
 class BeamTokenizer(Processor):
@@ -19,7 +20,7 @@ class BeamTokenizer(Processor):
         if self.special_tokens is None:
             self.special_tokens = []
 
-        self.vocab_size = self.hparams.vocab_size
+        self._vocab_size = self.hparams.vocab_size
         self.unk_token = self.hparams.unk_token
         self.bos_token = self.hparams.bos_token
         self.eos_token = self.hparams.eos_token
@@ -33,14 +34,18 @@ class BeamTokenizer(Processor):
         bpe_kwargs = self.get_hparam('bpe_kwargs', {})
 
         bpe = BPE(unk_token=self.unk_token, **bpe_kwargs)
-        self._tokenizer = Tokenizer(bpe,eos_token=self.eos_token, bos_token=self.bos_token, unk_token=self.unk_token,
-                                    mask_token=self.mask_token, pad_token=self.pad_token,
-                                    addiontal_special_tokens=self.special_tokens)
+        self._tokenizer = Tokenizer(bpe)
 
-        self._trainer = BpeTrainer(special_tokens=self.special_tokens, vocab_size=self.vocab_size,
+        # Add special tokens
+        self._tokenizer.add_special_tokens(self.special_tokens)
+
+        self._trainer = BpeTrainer(special_tokens=self.special_tokens, vocab_size=self._vocab_size,
                                    min_frequency=self.min_frequency)
 
         self._tokenizer.pre_tokenizer = Whitespace()
+        self._tokenizer.post_processor = TemplateProcessing(single=f"{self.bos_token} $A {self.eos_token}",
+                                                            special_tokens=[(self.bos_token, 1),
+                                                                            (self.eos_token, 2)])
 
     def train(self, texts):
         self._tokenizer.train_from_iterator(texts, self._trainer)
