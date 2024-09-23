@@ -1,4 +1,4 @@
-from ..base import BeamBase
+from ..processor import Processor
 from ..type import check_type, Types
 
 from tokenizers import Tokenizer
@@ -7,19 +7,39 @@ from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
 
-class BeamTokenizer(BeamBase):
-    def __init__(self, *args, vocab_size=30000, unk_token='<unk>', min_frequency=2, special_tokens=None, **kwargs):
-        super().__init__(*args, **kwargs)
+class BeamTokenizer(Processor):
+    def __init__(self, *args, vocab_size=30000, unk_token='<unk>', bos_token='<s>', eos_token='</s>',
+                 mask_token='<mask>', pad_token='<pad>',
+                 min_frequency=2, special_tokens=None, bpe_kwargs=None, **kwargs):
+        super().__init__(*args, vocab_size=vocab_size, unk_token=unk_token, bos_token=bos_token,
+                         eos_token=eos_token, mask_token=mask_token, pad_token=pad_token, min_frequency=min_frequency,
+                         special_tokens=special_tokens, bpe_kwargs=bpe_kwargs, **kwargs)
 
         self.special_tokens = self.get_hparam('special_tokens', special_tokens)
         if self.special_tokens is None:
-            self.special_tokens = ['<s>', '<pad>', '</s>', '<unk>', '<mask>']
-        self.vocab_size = self.get_hparam('vocab_size', vocab_size)
-        self.unk_token = self.get_hparam('unk_token', unk_token)
-        self.min_frequency = self.get_hparam('min_frequency', min_frequency)
-        self._tokenizer = Tokenizer(BPE(unk_token=self.unk_token))
+            self.special_tokens = []
+
+        self.vocab_size = self.hparams.vocab_size
+        self.unk_token = self.hparams.unk_token
+        self.bos_token = self.hparams.bos_token
+        self.eos_token = self.hparams.eos_token
+        self.mask_token = self.hparams.mask_token
+        self.pad_token = self.hparams.pad_token
+        self.min_frequency = self.hparams.min_frequency
+
+        self.special_tokens = ([self.unk_token, self.bos_token, self.eos_token, self.mask_token, self.pad_token]
+                               + self.special_tokens)
+
+        bpe_kwargs = self.get_hparam('bpe_kwargs', {})
+
+        bpe = BPE(unk_token=self.unk_token, **bpe_kwargs)
+        self._tokenizer = Tokenizer(bpe,eos_token=self.eos_token, bos_token=self.bos_token, unk_token=self.unk_token,
+                                    mask_token=self.mask_token, pad_token=self.pad_token,
+                                    addiontal_special_tokens=self.special_tokens)
+
         self._trainer = BpeTrainer(special_tokens=self.special_tokens, vocab_size=self.vocab_size,
                                    min_frequency=self.min_frequency)
+
         self._tokenizer.pre_tokenizer = Whitespace()
 
     def train(self, texts):
@@ -31,3 +51,16 @@ class BeamTokenizer(BeamBase):
         if x_type.major == Types.array:
             return [self._tokenizer.encode(xi).ids for xi in x]
         return self._tokenizer.encode(x).ids
+
+    @property
+    def vocab(self):
+        return self._tokenizer.get_vocab()
+
+    @property
+    def vocab_size(self):
+        return len(self.vocab)
+
+    @property
+    def inverse_vocab(self):
+        return {v: k for k, v in self.vocab.items()}
+
