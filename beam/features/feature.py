@@ -125,7 +125,7 @@ class BeamFeature(Processor):
         if v is None:
             v = self.hparams.get(hparam, specific=specific)
         if v is None:
-            if hparam in self.parameters_schema:
+            if hasattr(self, '_schema') and hparam in self.parameters_schema:
                 v = self.parameters_schema[hparam].default
         if v is None:
             v = default

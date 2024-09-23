@@ -33,17 +33,15 @@ class BeamHPO(Processor):
             if hpo_path is not None:
 
                 root_path = beam_path(hpo_path)
-                hpo_path = str(root_path.joinpath(self.experiment_hparams.project_name,
-                                                  self.experiment_hparams.algorithm,
-                                                  self.experiment_hparams.identifier))
+                hpo_path = str(root_path.joinpath(hparams.project_name,hparams.algorithm,
+                                                  hparams.identifier))
 
             else:
                 logger.warning("No hpo_path specified. HPO results will be saved only to each experiment directory.")
                 root_path = beam_path(self.experiment_hparams.get('logs_path'))
                 if type(root_path) is BeamPath:
-                    hpo_path = str(root_path.joinpath('hpo', self.experiment_hparams.project_name,
-                                                      self.experiment_hparams.algorithm,
-                                                      self.experiment_hparams.identifier))
+                    hpo_path = str(root_path.joinpath('hpo', hparams.project_name, hparams.algorithm,
+                                                      hparams.identifier))
 
             self.hpo_path = beam_path(hpo_path)
             logger.info(f"Creating new study at {self.hpo_path} (Beam version: {__version__})")
@@ -235,6 +233,7 @@ class BeamHPO(Processor):
 
         if self.hpo_path is not None:
             path = beam_path(self.hpo_path).joinpath('tracker')
+            path.mkdir()
             path.joinpath('tracker.pkl').write(tracker)
 
     def generate_hparams(self, config):
