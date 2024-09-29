@@ -38,6 +38,7 @@ class HPOConfig(RayConfig, ExperimentConfig):
         BeamParam('max-iterations', int, None, 'Maximal number of iterations for ASHAScheduler',),
         BeamParam('reduction-factor', int, 2, 'Reduction factor for ASHAScheduler',),
         BeamParam('grace-period', int, 20, 'Grace period for ASHAScheduler',),
+        BeamParam('report-best-objective', bool, False, 'Report the best objective at each iteration',),
 
     ]
 

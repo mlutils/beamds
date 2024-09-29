@@ -22,3 +22,6 @@ eland
 GitPython
 datasketch
 randomname
+
+hydra-core
+langchain-community
