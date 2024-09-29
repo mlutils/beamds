@@ -18,6 +18,7 @@ import importlib
 import warnings
 
 from ..logging import beam_logger as logger
+from ..type.utils import is_class, is_function
 from ..utils import cached_property
 from uuid import uuid4 as uuid
 
@@ -94,7 +95,14 @@ class AutoBeam(BeamBase):
 
     @cached_property
     def module_spec(self):
-        module_name = type(self.obj).__module__
+
+        if is_class(self.obj):
+            module_name = type(self.obj).__module__
+        elif is_function(self.obj):
+            module_name = self.obj.__module__
+        else:
+            raise ValueError(f"Object type not supported: {type(self.obj)}")
+
         if module_name == '__main__':
             # The object is defined in the __main__ script
             main_script_path = os.path.abspath(sys.argv[0])
@@ -223,7 +231,13 @@ class AutoBeam(BeamBase):
 
     @cached_property
     def module_dependencies(self):
-        module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
+        if is_class(self.obj):
+            module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
+        elif is_function(self.obj):
+            module_path = beam_path(inspect.getfile(self.obj)).resolve()
+        else:
+            raise ValueError(f"Object type not supported: {type(self.obj)}")
+
         modules = self.recursive_module_dependencies(module_path)
         return list(set(modules))
 
