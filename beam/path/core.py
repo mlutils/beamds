@@ -19,6 +19,15 @@ targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
            'polars': 'polars', 'pandas': 'pandas', 'cudf': 'cudf', 'pyarrow': 'pyarrow',
            'native': 'native'}
 
+# list all extensions by theirs a priori probability
+prioritized_extensions = ['.pkl', '.parquet', '.csv', '.fea', '.json', '.ndjson', '.pt', '.orc', '.txt', '.bin', '.npz',
+                          '.pickle', '.dill', '.npy', 'yaml',
+                          '.scipy_npz', '.flac', '.xls', '.xlsx', '.xlsm', '.xlsb', '.odf', '.ods', '.odt',
+                          '.avro', '.adjlist', '.gexf', '.gml', '.pajek', '.graphml', '.ini', '.h5', '.hdf5', '.yaml',
+                          '.yml', '.xml', '.mat', '.zip', '.msgpack', '.cloudpickle', '.geojson', '.wav', '.joblib',
+                          '.z', '.gz', '.bz2', '.xz', '.lzma', '.safetensors', '.png', '.jpg', '.jpeg', '.gif',
+                          '.bmp', '.tiff', '.tif', '.webp']
+
 
 def normalize_host(hostname, port=None, default='localhost'):
     if hostname is None:
@@ -37,7 +46,9 @@ def strip_prefix(text, prefix):
     return text
 
 
-def get_target(path, deep=1):
+def get_target(path, deep=1, target=None):
+    if target is not None:
+        return targets[target]
     ext = path.suffix
     if ext is None:
         return None
@@ -468,7 +479,7 @@ class PureBeamPath(BeamResource):
             ext = self.suffix
         ext = ext.lower()
 
-        target = target or get_target(self)
+        target = get_target(self, target=target)
         if target == 'pyarrow':
             if ext == '.fea':
                 import pyarrow.feather as pdu
@@ -541,7 +552,7 @@ class PureBeamPath(BeamResource):
                 import soundfile
                 x = soundfile.read(fo, **kwargs)
             elif ext == '.parquet':
-                target = target or get_target(self, deep=1)
+                target = get_target(self, deep=1, target=target)
                 if target == 'pyarrow':
                     import pyarrow.parquet as pq
                     x = pq.read_table(fo, **kwargs)

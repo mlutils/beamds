@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..logging import beam_logger as logger
-from ..path import beam_path
+from ..path import beam_path, prioritized_extensions
 
 from .elements import Groups, Iloc, Loc, Key, return_none
 from ..meta import BeamName
@@ -1062,11 +1062,17 @@ class BeamData(BeamName):
                 return BeamData.containerize_keys_and_values(keys, values)
 
         if path.parent.is_dir():
-            for p in path.parent.iterdir():
+            for i, p in enumerate(path.parent.iterdir()):
                 if p.stem == path.stem:
                     if _check_existence:
                         return True
                     return p.read(**kwargs)
+                if len(prioritized_extensions) > i:
+                    path_with_suffix = path.with_suffix(prioritized_extensions[i])
+                    if path_with_suffix.exists():
+                        if _check_existence:
+                            return True
+                        return path_with_suffix.read(**kwargs)
 
         if _check_existence:
             return False

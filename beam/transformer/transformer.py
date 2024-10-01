@@ -382,14 +382,12 @@ class Transformer(Processor):
                     k_type = check_type(k)
                     k_with_counter = k
                     if k_type.element == Types.int:
-                        k_with_counter = BeamData.normalize_key(self.counter)
+                        k_with_counter = BeamData.normalize_key(k_with_counter)
 
                     chunk_path = store_path.joinpath(f"{self.name}_{k_with_counter}{part_name}")
 
                     if store_suffix is not None:
                         chunk_path = chunk_path.with_suffix(chunk_path.suffix + store_suffix)
-
-                    self.counter += 1
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
                                    override=override, store=store_chunk, name=k, metadata=f"{self.name}",
@@ -397,7 +395,6 @@ class Transformer(Processor):
                                    silent=silent, retrials=retrials, retrials_delay=retrials_delay))
 
         else:
-            self.counter += 1
 
             if store_path:
 
@@ -409,6 +406,7 @@ class Transformer(Processor):
                                override=override, store=store_chunk, name=self.name, return_results=return_results,
                                task_kwargs=kwargs))
 
+        self.counter += 1
         logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "
                     f"Number of queued tasks is {len(queue)}.")
 

@@ -468,15 +468,15 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             else:
                 upd = pd
 
-            index_name = x.index.name or 'index'
-            is_series = x.ndim == 1
-            x = x.reset_index()
-            columns = x.columns
-
             if chunksize == 1 and dim == 0:
                 for i, c in x.iterrows():
                     yield i, c
             else:
+
+                index_name = x.index.name or 'index'
+                is_series = x.ndim == 1
+                x = x.reset_index()
+                columns = x.columns
 
                 for i, c in enumerate(np.array_split(x, n_chunks, axis=dim)):
 

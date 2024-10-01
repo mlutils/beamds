@@ -1,7 +1,7 @@
 
 
 __all__ = ['beam_path', 'in_memory_storage', 'local_copy', 'FileSystem', 'beam_key', 'PureBeamPath',
-           'BeamURL', 'normalize_host', 'BeamResource', 'BeamFile']
+           'BeamURL', 'normalize_host', 'BeamResource', 'BeamFile', 'prioritized_extensions']
 
 
 def __getattr__(name):
@@ -43,6 +43,9 @@ def __getattr__(name):
     elif name == 'BeamPath':
         from .models import BeamPath
         return BeamPath
+    elif name == 'prioritized_extensions':
+        from .core import prioritized_extensions
+        return prioritized_extensions
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 
@@ -51,6 +54,6 @@ def __getattr__(name):
 if len([]):
     from .resource import beam_path, in_memory_storage
     from .utils import local_copy, FileSystem
-    from .core import PureBeamPath, BeamURL, normalize_host, BeamResource, BeamFile
+    from .core import PureBeamPath, BeamURL, normalize_host, BeamResource, BeamFile, prioritized_extensions
     from .models import BeamPath
     from .resource import beam_key
