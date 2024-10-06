@@ -13,4 +13,5 @@ base_paths = Namespace(projects_data=os.path.join(base_path, 'projects', 'data')
                        projects_hpo=os.path.join(base_path, 'projects', 'hpo'),
                        )
 
-tmp_paths = Namespace(beam_kv_store='/tmp/beam_kv_store',)
+tmp_paths = Namespace(beam_kv_store='/tmp/beam/kv_store',
+                      code_repos='/tmp/beam/repos',)
