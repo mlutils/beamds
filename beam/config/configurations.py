@@ -4,6 +4,7 @@ import math
 from .core_config import BeamConfig, BeamParam
 from .deepspeed import DeepspeedConfig
 from .utils import _beam_arguments
+from ..base import base_paths
 
 
 class DeviceConfig(BeamConfig):
@@ -240,10 +241,8 @@ class BeamProjectConfig(BeamConfig):
         BeamParam('project_name', str, 'beam', 'The name of the beam project'),
         BeamParam('algorithm', str, 'Algorithm', 'algorithm name'),
         BeamParam('identifier', str, 'debug', 'The name of the model to use'),
-        BeamParam('logs_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'experiments'),
-                  'Root directory for Logs and results'),
-        BeamParam('data_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'data'),
-                  'Where the dataset is located'),
+        BeamParam('logs_path', str, base_paths.projects_experiments, 'Root directory for Logs and results'),
+        BeamParam('data_path', str, base_paths.projects_data, 'Where the dataset is located'),
         BeamParam('config_file', str, None, 'The beam config file to use with secret keys'),
         BeamParam('verbosity', str, 'info', 'The verbosity level [debug|info|warning|error]'),
     ]

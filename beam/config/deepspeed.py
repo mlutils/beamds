@@ -1,6 +1,7 @@
 import os
 from collections import defaultdict
 from .core_config import BeamConfig, BeamParam
+from ..base import base_paths
 from ..path import beam_path
 
 
@@ -38,7 +39,7 @@ class DeepspeedConfig(BeamConfig):
                                                      '[cpu, nvme, none]'),
         BeamParam('offload_param_pin_memory', bool, True, 'Whether to pin memory for offloaded parameters'),
 
-        BeamParam('offload_param_nvme_path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'deepspeed'),
+        BeamParam('offload_param_nvme_path', str, base_paths.deepspeed_data,
                   'Path to NVMe device for offloaded parameters'),
 
         # Optimizer offloading

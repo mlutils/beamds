@@ -136,7 +136,8 @@ def __getattr__(name):
         from .logging import beam_logger
         if not log_file_generated:
             from .path import beam_path
-            path = beam_path('/tmp/.beam')
+            from .base import base_paths
+            path = beam_path(base_paths.logs)
             path.mkdir()
             t = beam_logger.timestamp()
             program = sys.argv[0].split('/')[-1].split('.')[0]

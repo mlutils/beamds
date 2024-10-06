@@ -12,7 +12,7 @@ import re
 
 from ..type import check_type, Types
 from ..type.utils import is_beam_data, is_beam_processor, is_pil
-from ..base import BeamResource, BeamURL
+from ..base import BeamResource, BeamURL, base_paths
 
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
@@ -1193,7 +1193,7 @@ class BeamKey:
 
         self._config_path = config_path
         if self._config_path is None:
-            self._config_path = Path.home().joinpath('conf.pkl')
+            self._config_path = Path(base_paths.global_config)
 
         self._config_file = None
         self.hparams = kwargs
@@ -1211,7 +1211,7 @@ class BeamKey:
             if 'config_file' in self.hparams and self.hparams['config_file'] is not None:
                 self._config_path = Path(self.hparams['config_file'])
             else:
-                self._config_path = Path.home().joinpath('conf.pkl')
+                self._config_path = Path(base_paths.global_config)
         return self._config_path
 
     @property

@@ -1,5 +1,6 @@
 import os
 
+from ..base import base_paths
 from ..config import ExperimentConfig, BeamConfig, BeamParam
 
 
@@ -29,8 +30,8 @@ class HPOConfig(RayConfig, ExperimentConfig):
         BeamParam('track-algorithms', bool, False, 'track the algorithms of each trial',),
         BeamParam('track-hparams', bool, True, 'track the hyperparameters of each trial',),
         BeamParam('track-suggestion', bool, True, 'track the suggestions of each trial',),
-        BeamParam('hpo-path', str, os.path.join(os.path.expanduser('~'), 'beam_projects', 'hpo'),
-                  'Root directory for Logs and results of Hyperparameter optimizations and the associated experiments'),
+        BeamParam('hpo-path', str, base_paths.projects_hpo, 'Root directory for Logs and results of Hyperparameter '
+                                                            'optimizations and the associated experiments'),
         BeamParam('stop', str, None, 'stop criteria for the HPO',),
         BeamParam('get-port-from-beam-port-range', bool, True, 'get port from beam port range',),
         BeamParam('replay-buffer-size', int, None, 'Maximal size of finite-memory hpo',),

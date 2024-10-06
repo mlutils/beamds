@@ -6,8 +6,7 @@ from collections import defaultdict
 from packaging import version
 
 from ..data import BeamData
-from ..resources import this_dir
-from ..base import BeamBase
+from ..base import BeamBase, base_paths
 from .utils import get_module_paths, ImportCollector, is_installed_package, is_std_lib, get_origin, is_module_installed
 from ..path import beam_path, local_copy
 
@@ -381,7 +380,7 @@ class AutoBeam(BeamBase):
 
         logger.info(f"Loading object from path {path}")
         if cache_path is None:
-            cache_path = beam_path('/tmp/autobeam').joinpath(uuid())
+            cache_path = beam_path(base_paths.autobeam_cache).joinpath(uuid())
         else:
             cache_path = beam_path(cache_path)
 
@@ -685,7 +684,7 @@ class AutoBeam(BeamBase):
 
         # Default docker configuration path
         if dockercfg_path is None:
-            dockercfg_path = os.path.expanduser("~/.docker")
+            dockercfg_path = base_paths.docker_config_dir
 
         # Set up Docker client
         client = docker.APIClient(base_url=base_url)
