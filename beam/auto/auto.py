@@ -82,7 +82,7 @@ class AutoBeam(BeamBase):
 
     @cached_property
     def module_name(self):
-        module_name = type(self.obj).__module__
+        module_name = self._module_name
         if module_name == '__main__':
             # The object is defined in the __main__ script
             main_script_path = os.path.abspath(sys.argv[0])
@@ -93,16 +93,19 @@ class AutoBeam(BeamBase):
 
         return module_name
 
-    @cached_property
-    def module_spec(self):
-
+    @property
+    def _module_name(self):
         if is_class(self.obj):
-            module_name = type(self.obj).__module__
+            return type(self.obj).__module__
         elif is_function(self.obj):
-            module_name = self.obj.__module__
+            return self.obj.__module__
         else:
             raise ValueError(f"Object type not supported: {type(self.obj)}")
 
+    @cached_property
+    def module_spec(self):
+
+        module_name = self.module_name
         if module_name == '__main__':
             # The object is defined in the __main__ script
             main_script_path = os.path.abspath(sys.argv[0])
@@ -307,19 +310,24 @@ class AutoBeam(BeamBase):
 
     @property
     def import_statement(self):
-        # origin = beam_path(get_origin(module_name))
-        # if origin.parent.joinpath('__init__.py').is_file():
-        #     module_name = f"{origin.parent.name}.{module_name}"
-        class_name = type(self.obj).__name__
-        return f"from {self.module_name} import {class_name}"
+        return f"from {self.module_name} import {self._name()}"
+
+    def _name(self, look_for_property=False):
+        if is_class(self.obj):
+            if look_for_property and hasattr(self.obj, 'name'):
+                obj_name = self.obj.name
+            else:
+                obj_name = type(self.obj).__name__
+        elif is_function(self.obj):
+            obj_name = self.obj.__name__
+        else:
+            raise ValueError(f"Object type not supported: {type(self.obj)}")
+        return obj_name
 
     @property
     def metadata(self):
 
-        if hasattr(self.obj, 'name'):
-            name = self.obj.name
-        else:
-            name = type(self.obj).__name__
+        name = self._name(look_for_property=True)
 
         # # in case the object is defined in the __main__ script
         # # get all import statements from the script
@@ -403,7 +411,11 @@ class AutoBeam(BeamBase):
 
             imported_class = metadata['type']
             module = importlib.import_module(metadata['module_name'])
-            cls_obj = getattr(module, imported_class)
+
+            if imported_class != 'function':
+                obj = getattr(module, imported_class)
+            else:
+                obj = module
 
             # import_statement = metadata['import_statement']
             # exec(import_statement, globals())
