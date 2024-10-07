@@ -143,7 +143,7 @@ def __getattr__(name):
             program = sys.argv[0].split('/')[-1].split('.')[0]
             path = path.joinpath(f"{program}-{t}.log")
             beam_logger.add_default_file_handler(path)
-            beam_logger.info(f"Beam logger (version {__version__}): logs are saved in {path}")
+            beam_logger.info(f"Beam logger ({__version__}): logs are saved to {path}")
             beam_logger.debug("to stop logging to this file use beam_logger.remove_default_handlers()")
             log_file_generated = True
         return beam_logger
