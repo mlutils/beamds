@@ -226,12 +226,6 @@ class BeamDeploy(BeamBase):
 
     def launch_job(self):
 
-        if self.create_service_account:
-            self.k8s.create_service_account(self.service_account_name, self.namespace)
-        else:
-            self.service_account_name = 'default'
-            logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
-
         # Delegate Job creation to the k8s class
         job = self.k8s.create_job(
             namespace=self.namespace,
@@ -251,7 +245,6 @@ class BeamDeploy(BeamBase):
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
             labels=self.labels,
-            service_account_name=self.service_account_name,
             storage_configs=self.storage_configs,
             security_context_config=self.security_context_config,
             restart_policy_configs=self.restart_policy_configs
@@ -266,11 +259,6 @@ class BeamDeploy(BeamBase):
             logger.error("CronJob schedule not provided.")
             return
 
-        if self.create_service_account:
-            self.k8s.create_service_account(self.service_account_name, self.namespace)
-        else:
-            self.service_account_name = 'default'
-            logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
 
         # Delegate CronJob creation to k8s class
         cronjob = self.k8s.create_cron_job(
@@ -292,7 +280,6 @@ class BeamDeploy(BeamBase):
             gpu_requests=self.gpu_requests,
             gpu_limits=self.gpu_limits,
             labels=self.labels,
-            service_account_name=self.service_account_name,
             storage_configs=self.storage_configs,
             security_context_config=self.security_context_config,
             restart_policy_configs=self.restart_policy_configs

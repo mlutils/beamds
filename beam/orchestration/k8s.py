@@ -867,7 +867,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_job(self, namespace, job_name, image_name, container_name, command,
                    entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
-                   use_gpu, gpu_requests, gpu_limits, labels, service_account_name, node_selector,
+                   use_gpu, gpu_requests, gpu_limits, labels, node_selector,
                    use_node_selector, storage_configs, security_context_config, restart_policy_configs):
 
         pvc_mounts = [{
@@ -900,7 +900,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the pod spec
         pod_spec = client.V1PodSpec(
             containers=[container],
-            service_account_name=service_account_name,
             restart_policy=restart_policy_configs.condition,
         )
 
@@ -941,7 +940,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_cron_job(self, namespace, cron_job_name, image_name, container_name, job_schedule, command,
                         entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
-                        use_gpu, gpu_requests, gpu_limits, labels, service_account_name, node_selector,
+                        use_gpu, gpu_requests, gpu_limits, labels, node_selector,
                         use_node_selector, storage_configs, security_context_config, restart_policy_configs):
 
         pvc_mounts = [{
@@ -972,7 +971,6 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the pod template spec
         pod_spec = client.V1PodSpec(
             containers=[container],
-            service_account_name=service_account_name,
             restart_policy=restart_policy_configs.condition,
         )
 
