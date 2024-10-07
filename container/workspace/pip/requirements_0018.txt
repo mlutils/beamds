@@ -25,3 +25,6 @@ randomname
 
 hydra-core
 langchain-community
+
+PyGitHub
+python-gitlab
