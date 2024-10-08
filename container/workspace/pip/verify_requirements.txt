@@ -3,7 +3,9 @@
 pyarrow<15.0.0
 six
 tqdm
-jupyter-tensorboard
+
+# compilation errors
+# jupyter-tensorboard
 
 
 xgboost>=1.6.1
