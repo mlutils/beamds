@@ -244,7 +244,14 @@ class Transformer(Processor):
 
             if reduce_dim is None:
                 reduce_dim = self.reduce_dim
-            x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze)
+
+            if isinstance(x, list):
+                x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze)
+            elif isinstance(x, dict):
+                x = collate_chunks(*list(x.values()), keys=list(x.keys()),  dim=reduce_dim, squeeze=squeeze,
+                                   logger=logger)
+            else:
+                raise TypeError(f"Unsupported type for reduction: {type(x)} (supports list and dict).")
 
         return x
 

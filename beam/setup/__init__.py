@@ -90,7 +90,7 @@ def load_ipython_extension(ipython, beam_path=None):
 
     msg = colored('Setting up the Beam environment for interactive use', attrs=['bold'])
     print(f'✨ | {msg}')
-    msg = colored('Standard modules will be automatically imported Submit '
+    msg = colored('Standard modules will be automatically imported '
                   'so you can use them without explicit import', attrs=['bold'])
     print(f'🚀 | {msg}')
 

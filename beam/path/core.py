@@ -431,6 +431,9 @@ class PureBeamPath(BeamResource):
     def replace(self, target):
         return NotImplementedError
 
+    def __contains__(self, item):
+        return self.joinpath(item).exists()
+
     def read(self, ext=None, target=None, **kwargs):
 
         """
