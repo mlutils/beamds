@@ -10,7 +10,7 @@ import pandas as pd
 
 from .. import beam_path
 from ..type import check_type, Types
-from ..utils import as_numpy, as_dataframe, as_list, identity_function
+from ..utils import as_numpy, as_dataframe, as_list, identity_function, return_constant
 from ..processor import Processor
 from ..config import BeamConfig
 from ..logging import beam_logger as logger
@@ -74,12 +74,12 @@ class BeamFeature(Processor):
         self.my_hparams = BeamConfig({k.removeprefix(f"{name}-"): v for k, v in self.hparams.dict().items()
                                       if k.startswith(f"{name}-")})
 
-        self.input_columns_blacklist = defaultdict(lambda: False)
+        self.input_columns_blacklist = defaultdict(return_constant(False))
         if input_columns_blacklist is not None:
             for c in as_list(input_columns_blacklist):
                 self.input_columns_blacklist[c] = True
 
-        self.output_columns_blacklist = defaultdict(lambda: False)
+        self.output_columns_blacklist = defaultdict(return_constant(False))
         if output_columns_blacklist is not None:
             for c in as_list(output_columns_blacklist):
                 self.output_columns_blacklist[c] = True

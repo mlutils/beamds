@@ -1327,3 +1327,9 @@ def dict_to_signature(d, global_ns=None):
     ]
     return_annotation = deserialize_annotation(d['return_annotation'], global_ns)
     return inspect.Signature(parameters, return_annotation=return_annotation)
+
+
+def return_constant(a):
+    def _return_constant(*args, **kwargs):
+        return a
+    return _return_constant
