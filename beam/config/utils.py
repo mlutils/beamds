@@ -85,7 +85,7 @@ def args_that_were_provided_explicitly(parser, args: dict = None, sys_argv=True)
     if sys_argv:
         for arg in sys.argv[1:]:  # skip the first element, which is the script name
             for dest, flags in action_to_flags.items():
-                if arg in flags:
+                if arg.split('=')[0] in flags:
                     passed_actions.add(dest)
                     break
     if args is not None:
@@ -237,6 +237,8 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
                 keys_with_non_default_values.update(set(vars(args_with_unknowns).keys()).difference(vars(args).keys()))
 
     for k, v in kwargs.items():
+        if k.startswith('_'):
+            continue
         if k not in args:
             setattr(args, k, v)
 
@@ -260,6 +262,8 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
                 for k, v in cf['_tags'].items():
                     tags[k].add(v)
                 del cf['_tags']
+
+            cf = {c.replace('-', '_'): v for c, v in cf.items()}
             config_args.update(cf)
 
         # remove from config_args all the keys with non-default values s.t. the arguments passed in the command line

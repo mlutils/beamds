@@ -10,7 +10,7 @@ import pandas as pd
 
 from .. import beam_path
 from ..type import check_type, Types
-from ..utils import as_numpy, as_dataframe, as_list
+from ..utils import as_numpy, as_dataframe, as_list, identity_function, return_constant
 from ..processor import Processor
 from ..config import BeamConfig
 from ..logging import beam_logger as logger
@@ -41,7 +41,7 @@ class ParameterSchema:
     end: float | None = None
     dtype: type | None = None
     n_steps: int | None = None
-    endpoint: bool | None = True
+    endpoint: bool | None = None
     default: float | None = None
     description: str | None = None
 
@@ -59,22 +59,27 @@ class BeamFeature(Processor):
         self.my_hparams = None
         super().__init__(*args, name=name, **kwargs)
         self._is_fitted = False
+
+        if func is None:
+            func = identity_function
         self.func = func
+
         self._input_columns = input_columns
         self.n_input_columns = n_input_columns
         self._output_columns = output_columns
+        self._schema = None
         self.add_name_prefix = add_name_prefix
         self.prefer_name = prefer_name
         self.kind = kind or FeaturesCategories.numerical
         self.my_hparams = BeamConfig({k.removeprefix(f"{name}-"): v for k, v in self.hparams.dict().items()
                                       if k.startswith(f"{name}-")})
 
-        self.input_columns_blacklist = defaultdict(lambda: False)
+        self.input_columns_blacklist = defaultdict(return_constant(False))
         if input_columns_blacklist is not None:
             for c in as_list(input_columns_blacklist):
                 self.input_columns_blacklist[c] = True
 
-        self.output_columns_blacklist = defaultdict(lambda: False)
+        self.output_columns_blacklist = defaultdict(return_constant(False))
         if output_columns_blacklist is not None:
             for c in as_list(output_columns_blacklist):
                 self.output_columns_blacklist[c] = True
@@ -120,20 +125,22 @@ class BeamFeature(Processor):
         if v is None:
             v = self.hparams.get(hparam, specific=specific)
         if v is None:
-            if hparam in self.parameters_schema:
+            if hasattr(self, '_schema') and hparam in self.parameters_schema:
                 v = self.parameters_schema[hparam].default
         if v is None:
             v = default
         return v
 
-    def add_parameters_to_study(self, study):
+    def add_parameters_to_study(self, study, add_enable=True):
         for k, v in self.parameters_schema.items():
-            study.add_parameter(k, func=v.kind, **{kk: vv for kk, vv in
-                                                   v.__dict__.items() if vv not in [None, 'name', 'kind', 'default',
-                                                                                    'description']})
+            if not add_enable and k == 'enabled':
+                continue
+            study.add_parameter(k, kind=v.kind.value, **{kk: vv for kk, vv in v.__dict__.items()
+                                                         if vv is not None and kk not in
+                                                         ['name', 'kind', 'default', 'description']})
 
     @property
-    def parameters_schema(self):
+    def basic_parameters_schema(self):
         d = {'enabled': ParameterSchema(name='enabled',
                                            kind=ParameterType.categorical,
                                            choices=[True, False],
@@ -153,6 +160,16 @@ class BeamFeature(Processor):
                                                     default=True, description=f'Enable/Disable column {c}')
 
         return d
+
+    def add_to_schema(self, name, kind, **kwargs):
+        if self._schema is None:
+            self._schema = {}
+        self._schema[name] = ParameterSchema(name=name, kind=kind, **kwargs)
+
+    @property
+    def parameters_schema(self):
+        schema = self._schema or {}
+        return self.basic_parameters_schema | schema
 
     @property
     def enabled(self):
@@ -199,7 +216,7 @@ class BeamFeature(Processor):
                 y.columns = [self.name]
         else:
             if self.add_name_prefix and self.name is not None:
-                y.columns = [f"{self.name}/{c}" for c in y.columns]
+                y.columns = [f"{self.name}-{c}" for c in y.columns]
         return y
 
     def _transform(self, x: pd.DataFrame, **kwargs) -> pd.DataFrame:
@@ -284,9 +301,8 @@ class ScalingFeature(BeamFeature):
         else:
                 raise ValueError(f"Invalid scaling method: {method}")
 
-    @property
-    def parameters_schema(self):
-        return {'method': ParameterSchema(name='method', kind=ParameterType.categorical)} | super().parameters_schema
+        self.add_to_schema('method', ParameterType.categorical, choices=['standard', 'minmax', 'robust'],
+                           default='standard', description='Scaling method')
 
     def _fit(self, x, **kwargs):
         self.encoder.fit(as_numpy(x))

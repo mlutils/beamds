@@ -9,6 +9,7 @@ import copy
 import pandas as pd
 import torch.multiprocessing as mp
 
+from ..base import base_paths
 from ..type import Types
 from ..utils import (cached_property, set_seed, find_free_port, check_if_port_is_available, is_notebook,
                      find_port, as_numpy, check_type, beam_device, beam_service_port)
@@ -81,7 +82,7 @@ class Experiment(object):
         self.log_experiment = self.hparams.get('log_experiment', default=True)
 
         if not self.log_experiment:
-            self.experiment_dir = beam_path('/tmp/')
+            self.experiment_dir = beam_path(base_paths.projects_experiments)
             self.exp_name = 'experiment'
             self.exp_num = None
             self.load_model = False
@@ -162,7 +163,7 @@ class Experiment(object):
             self.store_init_path = self.experiment_dir.joinpath('init_alg_args.pkl')
 
         if self.load_model:
-            logger.cleanup()
+            logger.cleanup(clean_default=False)
             logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
             logger.info(f"Resuming existing experiment")
 
@@ -776,7 +777,7 @@ class Experiment(object):
 
     def build_experiment_dir(self):
 
-        logger.cleanup()
+        logger.cleanup(clean_default=False)
         logger.add_file_handlers(self.experiment_dir.joinpath('experiment.log'))
         print_beam_hyperparameters(self.hparams, default_params=UniversalConfig(return_defaults=True),
                                    debug_only=not self.print_hyperparameters)

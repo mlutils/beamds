@@ -12,12 +12,21 @@ import re
 
 from ..type import check_type, Types
 from ..type.utils import is_beam_data, is_beam_processor, is_pil
-from ..base import BeamResource, BeamURL
+from ..base import BeamResource, BeamURL, base_paths
 
 BeamFile = namedtuple('BeamFile', ['data', 'timestamp'])
 targets = {'pl': 'polars', 'pd': 'pandas', 'cf': 'cudf', 'pa': 'pyarrow',
            'polars': 'polars', 'pandas': 'pandas', 'cudf': 'cudf', 'pyarrow': 'pyarrow',
            'native': 'native'}
+
+# list all extensions by theirs a priori probability
+prioritized_extensions = ['.pkl', '.parquet', '.csv', '.fea', '.json', '.ndjson', '.pt', '.orc', '.txt', '.bin', '.npz',
+                          '.pickle', '.dill', '.npy', 'yaml',
+                          '.scipy_npz', '.flac', '.xls', '.xlsx', '.xlsm', '.xlsb', '.odf', '.ods', '.odt',
+                          '.avro', '.adjlist', '.gexf', '.gml', '.pajek', '.graphml', '.ini', '.h5', '.hdf5', '.yaml',
+                          '.yml', '.xml', '.mat', '.zip', '.msgpack', '.cloudpickle', '.geojson', '.wav', '.joblib',
+                          '.z', '.gz', '.bz2', '.xz', '.lzma', '.safetensors', '.png', '.jpg', '.jpeg', '.gif',
+                          '.bmp', '.tiff', '.tif', '.webp']
 
 
 def normalize_host(hostname, port=None, default='localhost'):
@@ -37,7 +46,9 @@ def strip_prefix(text, prefix):
     return text
 
 
-def get_target(path, deep=1):
+def get_target(path, deep=1, target=None):
+    if target is not None:
+        return targets[target]
     ext = path.suffix
     if ext is None:
         return None
@@ -420,6 +431,9 @@ class PureBeamPath(BeamResource):
     def replace(self, target):
         return NotImplementedError
 
+    def __contains__(self, item):
+        return self.joinpath(item).exists()
+
     def read(self, ext=None, target=None, **kwargs):
 
         """
@@ -468,7 +482,7 @@ class PureBeamPath(BeamResource):
             ext = self.suffix
         ext = ext.lower()
 
-        target = target or get_target(self)
+        target = get_target(self, target=target)
         if target == 'pyarrow':
             if ext == '.fea':
                 import pyarrow.feather as pdu
@@ -541,7 +555,7 @@ class PureBeamPath(BeamResource):
                 import soundfile
                 x = soundfile.read(fo, **kwargs)
             elif ext == '.parquet':
-                target = target or get_target(self, deep=1)
+                target = get_target(self, deep=1, target=target)
                 if target == 'pyarrow':
                     import pyarrow.parquet as pq
                     x = pq.read_table(fo, **kwargs)
@@ -1182,7 +1196,7 @@ class BeamKey:
 
         self._config_path = config_path
         if self._config_path is None:
-            self._config_path = Path.home().joinpath('conf.pkl')
+            self._config_path = Path(base_paths.global_config)
 
         self._config_file = None
         self.hparams = kwargs
@@ -1200,7 +1214,7 @@ class BeamKey:
             if 'config_file' in self.hparams and self.hparams['config_file'] is not None:
                 self._config_path = Path(self.hparams['config_file'])
             else:
-                self._config_path = Path.home().joinpath('conf.pkl')
+                self._config_path = Path(base_paths.global_config)
         return self._config_path
 
     @property

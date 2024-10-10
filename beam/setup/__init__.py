@@ -1,5 +1,6 @@
 # setup.py
 import importlib
+from termcolor import colored
 import sys
 import os
 
@@ -87,8 +88,11 @@ def load_ipython_extension(ipython, beam_path=None):
     t0 = time.time()
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-    print("Setting up the Beam environment for interactive use")
-    print("Standard modules will be automatically imported so you can use them without explicit import")
+    msg = colored('Setting up the Beam environment for interactive use', attrs=['bold'])
+    print(f'✨ | {msg}')
+    msg = colored('Standard modules will be automatically imported '
+                  'so you can use them without explicit import', attrs=['bold'])
+    print(f'🚀 | {msg}')
 
     if ipython is not None:
         ipython.run_line_magic('load_ext', 'autoreload')
@@ -112,7 +116,9 @@ def load_ipython_extension(ipython, beam_path=None):
             del sys.modules[k]
 
     beam_importer = BeamImporter()
-    print(f"Beam library is loaded from path: {os.path.abspath(os.path.dirname(beam_importer.beam.__file__))}")
+    msg = colored(f'Beam library is loaded from path: '
+                  f'{os.path.abspath(os.path.dirname(beam_importer.beam.__file__))}', attrs=['bold'])
+    print(f"🛸 | "f"{msg}")
 
     # Add the modules to the global namespace
     for alias in beam_importer.aliases:
@@ -123,7 +129,8 @@ def load_ipython_extension(ipython, beam_path=None):
             for k in module.__all__:
                 ipython.push({k: getattr(module, k)})
 
-    print(f"Done importing packages. It took: {time.time() - t0: .2} seconds")
+    msg = colored(f'Done importing packages. It took: {time.time() - t0: .2} seconds', attrs=['bold'])
+    print(f"⏲ | {msg}")
     # print(f"The Beam version is: {beam_importer.beam.__version__}")
 
 

@@ -1,7 +1,8 @@
 Orange3
 feature-engine
 textstat
-outlines
+# compiles outlines-core from source and encounters error
+# outlines
 cloudpickle
 msgpack
 pydantic
@@ -22,3 +23,9 @@ eland
 GitPython
 datasketch
 randomname
+
+hydra-core
+langchain-community
+
+PyGitHub
+python-gitlab

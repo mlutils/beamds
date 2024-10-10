@@ -7,6 +7,7 @@ from ..base import BeamBase
 from ..importer import lazy_importer as lzi
 from ..importer import torch
 from ..utils import dict_to_signature
+from ..logging import beam_logger as logger
 
 
 class BeamClient(BeamBase, BeamResource):
@@ -30,7 +31,11 @@ class BeamClient(BeamBase, BeamResource):
 
     @property
     def type(self):
-        return self.info['type']
+        if 'type' in self.info:
+            return self.info['type']
+        else:
+            logger.debug(f"Backcompatibility mode detected for {self.host}")
+            return 'instance'
 
     def to_function(self):
 
@@ -131,7 +136,7 @@ class BeamClient(BeamBase, BeamResource):
             self.info = self.get_info()
 
         attribute = self.attributes[item]
-        if self._backwards_compatible:
+        if self.backwards_compatible:
             attribute_type = attribute
         else:
             attribute_type = attribute['type']

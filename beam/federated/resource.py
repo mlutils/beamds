@@ -5,6 +5,7 @@ from ..distributed import RayDispatcher, RayClient
 from .federated import BeamFederated
 from ..utils import find_port, GPUManager
 from ..logging import beam_logger as logger
+from ..base import tmp_paths
 
 
 def federated_executor(func=None, world_size=1, framework='ddp', distributed_backend='nccl', host=None,
@@ -26,7 +27,7 @@ def federated_executor(func=None, world_size=1, framework='ddp', distributed_bac
     logger.info(f'Multiprocessing port is: {port}, KV store port is: {kv_store_port}')
 
     if kv_store_path is None and kv_store == 'file':
-        kv_store_path = '/tmp/beam_kv_store'
+        kv_store_path = tmp_paths.beam_kv_store
 
     if kv_store_timeout is None:
         kv_store_timeout = 300

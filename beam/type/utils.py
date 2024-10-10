@@ -46,6 +46,23 @@ class Types:
     bytes = 'bytes'
     str = 'str'
     na = 'na'
+    cls = 'class'
+    function = 'function'
+    method = 'method'
+
+
+def is_function(obj, include_class=False):
+    if include_class:
+        return callable(obj)
+    return callable(obj) and not is_class(obj)
+
+
+def is_class(obj):
+    return isinstance(obj, type)
+
+
+def is_class_method(obj):
+    return is_function(obj) and is_class(obj.__self__)
 
 
 def is_cached_property(obj, attribute_name):
@@ -282,6 +299,16 @@ def _check_type(x, minor=True, element=True):
         mjt = Types.path
         mit = Types.path
         elt = Types.path
+
+    elif is_class_method(x):
+        mjt = Types.method
+        mit = Types.method
+        elt = Types.method
+
+    elif is_function(x, include_class=False):
+        mjt = Types.function
+        mit = Types.function
+        elt = Types.function
 
     else:
 

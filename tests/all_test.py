@@ -9,6 +9,14 @@ import pandas as pd
 import torch
 
 
+def test_build_container_from_tupled_keys():
+    from beam.utils import build_container_from_tupled_keys
+    keys = [(2,), (1,), (0,)]
+    values = ['ccc', 'bbb', 'aaa']
+    print(build_container_from_tupled_keys(keys, values))
+    print(build_container_from_tupled_keys(keys, values, sorted_keys=[(0,), (2,), (1,)]))
+
+
 def test_config_conventions():
 
     from beam.config import BeamConfig, BeamParam
@@ -685,6 +693,8 @@ if __name__ == '__main__':
 
     # test_transformer_with_errors()
 
-    test_config_conventions()
+    # test_config_conventions()
+
+    test_build_container_from_tupled_keys()
 
     print('done')

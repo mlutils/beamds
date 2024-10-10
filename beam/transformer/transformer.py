@@ -244,7 +244,14 @@ class Transformer(Processor):
 
             if reduce_dim is None:
                 reduce_dim = self.reduce_dim
-            x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze)
+
+            if isinstance(x, list):
+                x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze)
+            elif isinstance(x, dict):
+                x = collate_chunks(*list(x.values()), keys=list(x.keys()),  dim=reduce_dim, squeeze=squeeze,
+                                   logger=logger)
+            else:
+                raise TypeError(f"Unsupported type for reduction: {type(x)} (supports list and dict).")
 
         return x
 
@@ -369,25 +376,25 @@ class Transformer(Processor):
         if return_results is None:
             return_results = not (store or store_chunk)
 
+        sorted_keys = []
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")
             for k, c in tqdm(self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
                                          squeeze=squeeze, split_by=split_by, partition=partition)):
 
+                sorted_keys.append(k)
                 chunk_path = None
                 if store_chunk:
 
                     k_type = check_type(k)
                     k_with_counter = k
                     if k_type.element == Types.int:
-                        k_with_counter = BeamData.normalize_key(self.counter)
+                        k_with_counter = BeamData.normalize_key(k_with_counter)
 
                     chunk_path = store_path.joinpath(f"{self.name}_{k_with_counter}{part_name}")
 
                     if store_suffix is not None:
                         chunk_path = chunk_path.with_suffix(chunk_path.suffix + store_suffix)
-
-                    self.counter += 1
 
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
                                    override=override, store=store_chunk, name=k, metadata=f"{self.name}",
@@ -395,7 +402,6 @@ class Transformer(Processor):
                                    silent=silent, retrials=retrials, retrials_delay=retrials_delay))
 
         else:
-            self.counter += 1
 
             if store_path:
 
@@ -407,6 +413,7 @@ class Transformer(Processor):
                                override=override, store=store_chunk, name=self.name, return_results=return_results,
                                task_kwargs=kwargs))
 
+        self.counter += 1
         logger.info(f"Starting transformer: {self.name} with {n_workers} workers. "
                     f"Number of queued tasks is {len(queue)}.")
 
@@ -427,7 +434,8 @@ class Transformer(Processor):
             values = [xi.result[1] if xi.exception is None else xi for xi in results]
             keys = [xi.name for xi in results]
             keys = [ki if type(ki) is tuple else (ki,) for ki in keys]
-            x = build_container_from_tupled_keys(keys, values)
+            sorted_keys = [ki if type(ki) is tuple else (ki,) for ki in sorted_keys]
+            x = build_container_from_tupled_keys(keys, values, sorted_keys=sorted_keys)
 
             if len(exceptions) == 0:
 

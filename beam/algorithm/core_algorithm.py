@@ -156,22 +156,24 @@ class Algorithm(Processor):
         also you can add key 'objective' to the results dictionary to report the final scores.
         '''
 
-        if self.hpo == 'tune':
+        objective_name = self.get_hparam('objective', 'objective')
+        if self.get_hparam('report_best_objective', False):
+            objective_value = self.best_objective
+        else:
+            objective_value = objective
 
-            if self.get_hparam('objective') is not None:
-                metrics = {self.get_hparam('objective'): objective}
-            else:
-                metrics = {'objective': objective}
+        if self.hpo == 'tune':
+            metrics = {objective_name: objective_value}
             from ray import train
             train.report(metrics)
+
         elif self.hpo == 'optuna':
             import optuna
-            self.trial.report(objective, epoch)
+            self.trial.report(objective_value, epoch)
             self.trial.set_user_attr('best_value', self.best_objective)
             self.trial.set_user_attr('best_epoch', self.best_epoch)
             if self.trial.should_prune():
                 raise optuna.TrialPruned()
-
             train_timeout = self.get_hparam('train-timeout')
             if train_timeout is not None and 0 < train_timeout < self.elapsed_time:
                 raise optuna.exceptions.OptunaError(f"Trial timed out after {self.get_hparam('train-timeout')} seconds.")

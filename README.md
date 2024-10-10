@@ -16,7 +16,7 @@ Beam was created by data-science practitioners for data-science practitioners. I
     3. Algorithm selection
     4. Algorithm training
     5. Hyperparameter tuning
-    6. odel deployment
+    6. Model deployment
     7. Lifelong learning
 2. Production level coding from the first line of code: no more quick and dirty Proof Of Concepts (POC). Every line of code counts toward a production model.
 3. Consume effectively all resources: use multi-core, multi-GPUs, distributed computing, remote storage solutions, and databases to enable as much as possible productivity by the resources at hand.

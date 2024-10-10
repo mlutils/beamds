@@ -15,18 +15,40 @@ from ..utils import beam_device
 
 class BeamHPO(Processor):
 
-    def __init__(self, hparams, *args, hpo_config=None,
+    def __init__(self, hparams, *args, _reload_study=False, hpo_config=None,
                  alg=None, dataset=None, algorithm_generator=None, alg_args=None,
-                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, post_train_hook=None, **kwargs):
+                 alg_kwargs=None, dataset_args=None, dataset_kwargs=None, post_train_hook=None,
+                 **kwargs):
 
         if hpo_config is None:
             hpo_config = HPOConfig(**kwargs)
 
-        super().__init__(*args, hparams=hpo_config, **kwargs)
-        logger.info(f"Creating new study (Beam version: {__version__})")
+        super().__init__(*args, hparams=hpo_config, _config_scheme=HPOConfig,  **kwargs)
+
+        self.is_reloaded = _reload_study
+        if _reload_study:
+            logger.info(f"Reloading existing study from {self.hpo_path} (Beam version: {__version__})")
+        else:
+            hpo_path = self.hparams.get('hpo_path')
+            if hpo_path is not None:
+
+                root_path = beam_path(hpo_path)
+                hpo_path = str(root_path.joinpath(hparams.project_name,hparams.algorithm,
+                                                  hparams.identifier))
+
+            else:
+                logger.warning("No hpo_path specified. HPO results will be saved only to each experiment directory.")
+                root_path = beam_path(self.experiment_hparams.get('logs_path'))
+                if type(root_path) is BeamPath:
+                    hpo_path = str(root_path.joinpath('hpo', hparams.project_name, hparams.algorithm,
+                                                      hparams.identifier))
+
+            self.hpo_path = beam_path(hpo_path)
+            logger.info(f"Creating new study at {self.hpo_path} (Beam version: {__version__})")
+            self.hpo_path.mkdir()
+            self.hpo_path.joinpath('hpo_config.pkl').write(self.hparams)
 
         self.experiment_hparams = hparams
-
         self.experiment_hparams.set('reload', False)
         self.experiment_hparams.set('override', False)
         self.experiment_hparams.set('print_results', self.hparams.get('print_results'))
@@ -37,6 +59,8 @@ class BeamHPO(Processor):
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.identifier = f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}'
         self.experiment_hparams.set('identifier', self.identifier)
+        if not self.is_reloaded:
+            self.hpo_path.joinpath('base_config.pkl').write(self.experiment_hparams)
 
         self.alg = alg
         if algorithm_generator is None:
@@ -54,23 +78,6 @@ class BeamHPO(Processor):
         if self.hparams.get('print_hyperparameters'):
             print_beam_hyperparameters(self.experiment_hparams, default_params=HPOConfig(return_defaults=True))
 
-        hpo_path = self.hparams.get('hpo_path')
-        if hpo_path is not None:
-
-            root_path = beam_path(hpo_path)
-            hpo_path = str(root_path.joinpath(self.experiment_hparams.project_name,
-                                              self.experiment_hparams.algorithm,
-                                              self.experiment_hparams.identifier))
-
-        else:
-            logger.warning("No hpo_path specified. HPO results will be saved only to each experiment directory.")
-            root_path = beam_path(self.experiment_hparams.get('logs_path'))
-            if type(root_path) is BeamPath:
-                hpo_path = str(root_path.joinpath('hpo', self.experiment_hparams.project_name,
-                                                  self.experiment_hparams.algorithm,
-                                                  self.experiment_hparams.identifier))
-
-        self.hpo_path = hpo_path
         self.experiments_tracker = []
         self.suggestions = {}
         self.post_train_hook = post_train_hook
@@ -92,18 +99,22 @@ class BeamHPO(Processor):
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}
 
-    def linspace(self, param, start, end, n_steps=None, endpoint=True,  dtype=None):
+    def linspace(self, param, start, end, n_steps=None, endpoint=None,  dtype=None):
         param = param.replace('-', '_').strip()
+        if endpoint is None:
+            endpoint = True
 
         if n_steps is None:
+            assert int(end) == end and int(start) == start, \
+                "n_steps must be specified if start or end is not an integer"
             n_steps = int(end - start + 1)
 
         self.suggestions[param] = partial(self._linspace, param=param, start=start, end=end, n_steps=n_steps,
                                           endpoint=endpoint, dtype=dtype)
 
-    def add_parameter(self, param, func, *args, **kwargs):
-        func = partial(func, *args, **kwargs)
-        getattr(self, param)(param, func)
+    def add_parameter(self, param, kind, *args, **kwargs):
+        func = getattr(self, kind)
+        func(param, *args, **kwargs)
 
     def logspace(self, param, start, end, n_steps=None, base=None, dtype=None):
         param = param.replace('-', '_').strip()
@@ -222,7 +233,7 @@ class BeamHPO(Processor):
 
         if self.hpo_path is not None:
             path = beam_path(self.hpo_path).joinpath('tracker')
-            path.mkdir(parents=True, exist_ok=True)
+            path.mkdir()
             path.joinpath('tracker.pkl').write(tracker)
 
     def generate_hparams(self, config):
@@ -241,3 +252,26 @@ class BeamHPO(Processor):
 
     def run(self, *args, **kwargs):
         raise NotImplementedError
+
+    def score_table(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @property
+    def best(self):
+        raise NotImplementedError
+
+    def _best(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def retrieve_algorithm(self, path):
+        path = beam_path(path)
+        conf = path.joinpath('beam_configuration.pkl').read()
+        alg = beam_path(conf['experiment_dir']).joinpath('best_model.bmpr').read()
+        return alg
+
+    # def run(self, *args, runtime_env=None, tune_config_kwargs=None, run_config_kwargs=None,
+    #             init_config_kwargs=None, restore_path=None, restore_config=None, **kwargs):
+
+    # def run(self, suggest=None, load_study=False, storage=None, sampler=None, pruner=None, study_name=None,
+    #         direction=None, load_if_exists=False, directions=None, *args, **kwargs):

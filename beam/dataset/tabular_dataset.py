@@ -44,21 +44,21 @@ class TabularDataset(UniversalDataset):
             if cat_features is not None:
                 cat_features_type = check_type(cat_features)
                 if cat_features_type.element in [Types.str, Types.object]:
-                    cat_features = [columns.index(c) for c in cat_features]
+                    cat_features = [columns.index(c) for c in cat_features if c in columns]
                 elif cat_features_type.is_array:
                     cat_features = as_numpy(cat_features)
 
             if text_features is not None:
                 text_features_type = check_type(text_features)
                 if text_features_type.element in [Types.str, Types.object]:
-                    text_features = [columns.index(c) for c in text_features]
+                    text_features = [columns.index(c) for c in text_features if c in columns]
                 elif text_features_type.is_array:
                     text_features = as_numpy(text_features)
 
             if embedding_features is not None:
                 embedding_features_type = check_type(embedding_features)
                 if embedding_features_type.element in [Types.str, Types.object]:
-                    embedding_features = [columns.index(c) for c in embedding_features]
+                    embedding_features = [columns.index(c) for c in embedding_features if c in columns]
                 elif embedding_features_type.is_array:
                     embedding_features = as_numpy(embedding_features)
 

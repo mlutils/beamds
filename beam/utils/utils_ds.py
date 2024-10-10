@@ -173,14 +173,14 @@ def as_dataframe(x, target='pandas', **kwargs):
         if x_type.is_torch:
             x = as_numpy(x)
 
-    if target == 'pandas' and x_type.minor != Types.pandas:
+    if target == 'pandas':
         return pd.DataFrame(x, **kwargs)
 
-    if target == 'polars' and x_type.minor != Types.polars:
+    if target == 'polars':
         import polars as pl
         return pl.DataFrame(x, **kwargs)
 
-    if target == 'cudf' and x_type.minor != Types.cudf:
+    if target == 'cudf':
         import cudf
         return cudf.DataFrame(x, **kwargs)
 
@@ -468,15 +468,15 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             else:
                 upd = pd
 
-            index_name = x.index.name or 'index'
-            is_series = x.ndim == 1
-            x = x.reset_index()
-            columns = x.columns
-
             if chunksize == 1 and dim == 0:
                 for i, c in x.iterrows():
                     yield i, c
             else:
+
+                index_name = x.index.name or 'index'
+                is_series = x.ndim == 1
+                x = x.reset_index()
+                columns = x.columns
 
                 for i, c in enumerate(np.array_split(x, n_chunks, axis=dim)):
 
@@ -609,7 +609,7 @@ def recursive_collate_chunks(*xs, dim=0, on='index', how='outer', method='tree')
         return collate_chunks(*xs, dim=dim, on=on, how=how, method=method)
 
 
-def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree', squeeze=True):
+def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree', squeeze=True, logger=None):
     if len(xs) == 0:
         return []
 
@@ -621,6 +621,15 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
     x = list(xs)
 
     x_type = check_type(x[0], element=False)
+
+    if keys is not None:
+        if x_type.minor not in [Types.pandas, Types.cudf] or dim != 0:
+            msg = f"Cannot collate with keys for {x_type.minor}, or dim={dim}"
+            if logger is not None:
+                logger.warning(f"{msg}, returning the data as a dictionary (keys, values)")
+                return {k: v for k, v in zip(keys, x)}
+            else:
+                raise ValueError(msg)
 
     if x_type.major == Types.container and x_type.minor == Types.dict:
         dictionary = {}
@@ -653,7 +662,13 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
         if dim == 0:
             if len(x[0].shape) == 1:
                 x = [upd.Series(xi) for xi in x]
-            return upd.concat(x, axis=dim)
+            if keys is not None:
+                df = upd.concat(x, axis=dim, ignore_index=True)
+                df.index = keys
+            else:
+                df = upd.concat(x, axis=dim)
+            return df
+
         elif on == 'index':
             return recursive_merge(x, method=method, how=how, left_index=True, right_index=True)
         else:
@@ -663,8 +678,8 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
         if dim == 1:
             return concat_polars_horizontally(x)
         import polars as pl
-        return pl.concat(x)
-
+        df = pl.concat(x)
+        return df
     else:
 
         xc = []
