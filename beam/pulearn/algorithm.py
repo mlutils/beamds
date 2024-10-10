@@ -2,7 +2,7 @@ import re
 
 import pandas as pd
 
-from .. import beam_path
+from ..path import beam_path
 from ..utils import cached_property
 from .config import PULearnConfig
 from ..dataset import TabularDataset, UniversalDataset
@@ -27,30 +27,7 @@ class PUCBAlgorithm(CBAlgorithm):
 
     @cached_property
     def model(self):
-
-        seed = self.get_hparam('seed')
-        if seed == 0:
-            seed = None
-
-        cb_kwargs = {
-            'random_seed': seed,
-            'task_type': self.device_type,
-            'devices': self.devices,
-            'eval_metric': self.eval_metric,
-            'custom_metric': self.custom_metric,
-            'verbose': self.log_frequency,
-        }
-
-        from ..algorithm.catboost_consts import cb_keys
-
-        for key in cb_keys[self.task_type]:
-            v = self.get_hparam(key, None)
-            if v is not None:
-                if key in cb_kwargs:
-                    logger.error(f"CB init: Overriding key {key} with value {v}")
-                cb_kwargs[key] = self.hparams[key]
-
-        return BeamCatboostClassifier(**cb_kwargs)
+        return BeamCatboostClassifier(**self.catboost_kwargs)
 
     def set_pu(self):
         conf = {k.removeprefix('pu_'): v for k, v in self.hparams.items() if k in self.hparams.tags.PULearnConfig}

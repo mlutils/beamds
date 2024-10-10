@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from timeit import default_timer as timer
 from functools import wraps
 
@@ -5,6 +6,23 @@ from ..utils import cached_property
 from ..processor import Processor
 from ..logging import beam_logger as logger
 from ..experiment import BeamReport
+
+
+@dataclass
+class FitReport:
+    objective: float
+    objective_name: str
+    optimization_mode: str
+    epoch: int
+    best_objective: float
+    best_epoch: int
+    best_state: bool
+    results: dict
+
+    def __str__(self):
+        return (f"Objective name: {self.objective_name}, Optimization mode: {self.optimization_mode}, "
+                f"Objective: {self.objective}, Epoch: {self.epoch}, Best Objective: {self.best_objective}, "
+                f"Best Epoch: {self.best_epoch}, Best State: {self.best_state}")
 
 
 class Algorithm(Processor):
@@ -25,10 +43,19 @@ class Algorithm(Processor):
         self.best_objective = None
         self.best_epoch = None
         self.best_state = False
+        self.datasets = None
 
         self.clear_experiment_properties()
         if experiment is not None:
             self.experiment = experiment
+
+    def load_datasets(self, datasets):
+        self.datasets = datasets
+
+    @classmethod
+    @property
+    def excluded_attributes(cls) -> set[str]:
+        return super(Algorithm, cls).excluded_attributes.union(['_experiment', 'reporter', 'trial', 'datasets'])
 
     def calculate_objective_and_report(self, i):
 
@@ -42,6 +69,8 @@ class Algorithm(Processor):
             raise Exception(f"Unknown objective_to_report: {self.get_hparam('objective_to_report')} "
                             f"should be [last|best]")
         self.report(report_objective, i)
+
+        return objective
 
     @property
     def elapsed_time(self):
@@ -67,7 +96,7 @@ class Algorithm(Processor):
 
     @cached_property
     def train_reporter(self):
-        return BeamReport(objective=self.get_hparam('objective'), objective_mode=self.optimization_mode,
+        return BeamReport(objective=self.objective_name, optimization_mode=self.optimization_mode,
                           aux_objectives=['loss'], aux_objectives_modes=['min'])
 
     def set_reporter(self, reporter=None):
@@ -104,6 +133,9 @@ class Algorithm(Processor):
     @cached_property
     def n_epochs(self):
         return self.get_hparam('n_epochs')
+
+    def training_closure(self, *args, **kwargs):
+        pass
 
     def calculate_objective(self):
         '''
@@ -145,18 +177,35 @@ class Algorithm(Processor):
                 raise optuna.exceptions.OptunaError(f"Trial timed out after {self.get_hparam('train-timeout')} seconds.")
 
     @cached_property
+    def objective_name(self):
+        objective_name = self.expected_objective_name(self.hparams)
+        self.set_hparam('objective', objective_name)
+        return objective_name
+
+    @staticmethod
+    def expected_objective_name(hparams):
+        objective_name = hparams.get('objective', 'loss')
+        return objective_name
+
+    @cached_property
     def optimization_mode(self):
-        objective_mode = self.get_hparam('objective_mode', None)
-        objective_name = self.get_hparam('objective', 'loss')
-        return self.get_optimization_mode(objective_mode, objective_name)
+        optimization_mode = self.get_hparam('optimization_mode', None)
+        optimization_mode = self.get_optimization_mode(optimization_mode, self.objective_name)
+        return optimization_mode
 
     @staticmethod
     def get_optimization_mode(mode, objective_name):
+        # do not override this method in sub-classes as ray tune and optuna use it before the algorithm is initialized
         if mode is not None:
             return mode
-        if any(n in objective_name.lower() for n in ['loss', 'error', 'mse']):
-            return 'min'
-        return 'max'
+        if objective_name is None or any(n in objective_name.lower() for n in ['loss', 'error', 'mse',
+                                                                               'entropy', 'mae', 'mape']):
+            mode = 'min'
+        else:
+            mode = 'max'
+        logger.debug(f"Algorithm: Optimization mode: {mode}, objective: {objective_name}")
+
+        return mode
 
     def early_stopping(self, epoch=None):
         '''
@@ -218,7 +267,7 @@ class Algorithm(Processor):
     def _fit(self, *args, **kwargs):
         raise NotImplementedError("please implement _fit method in your sub-class")
 
-    def fit(self, *args, **kwargs):
+    def fit(self, *args, **kwargs) -> FitReport:
 
         if self._experiment is None:
             from ..config import ExperimentConfig
@@ -229,7 +278,11 @@ class Algorithm(Processor):
             experiment = Experiment(conf)
             self.experiment = experiment
 
-        return self._fit(*args, **kwargs)
+        results = self._fit(*args, **kwargs)
+        report = FitReport(objective=self.objective, epoch=self.epoch, best_objective=self.best_objective,
+                           best_epoch=self.best_epoch, best_state=self.best_state, results=results,
+                           objective_name=self.objective_name, optimization_mode=self.optimization_mode)
+        return report
 
     def predict(self, *args, **kwargs):
         raise NotImplementedError('predict method not implemented')
@@ -337,6 +390,9 @@ class Algorithm(Processor):
     def get_pr_curve(self, name, subset=None):
         return self.reporter.get_pr_curve(name, subset=subset)
 
-    @wraps(Processor.save_state)
+    @wraps(Processor.load_state)
     def load_checkpoint(self, *args, **kwargs):
         return self.load_state(*args, **kwargs)
+
+    def save_checkpoint(self, *args, **kwargs):
+        return self.save_state(*args, **kwargs)

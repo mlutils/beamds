@@ -4,6 +4,7 @@ import openshift
 import docker
 import waitress
 import namegenerator
+import loguru
 
 
 class BeamManagerWrapper(BeamManager):

@@ -1,13 +1,16 @@
-from beam.base import BeamBase
-from beam.orchestration import BeamK8S
 from threading import Thread
-from beam.logging import beam_logger as logger
 import os
-from beam.resources import resource
-from beam.orchestration import BeamManagerConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
 import time
 import atexit
 import threading
+
+from ..base import BeamBase
+from ..orchestration import BeamK8S
+from ..logging import beam_logger as logger
+from ..resources import resource
+from ..orchestration import BeamManagerConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
+
+from .resource import deploy_server
 
 
 # BeamManager class
@@ -171,8 +174,8 @@ class BeamManager(BeamBase):
         from .cluster import ServeCluster
         serve_cluster = ServeCluster(config=config, pods=[], k8s=self.k8s, deployment=name, **kwargs)
 
-        self.clusters[name] = serve_cluster.deploy_from_image(config=config, image_name=config['image_name'])
-        self.clusters[name] = serve_cluster.deploy_from_b
+        # self.clusters[name] = serve_cluster.deploy_from_image(config=config, image_name=config['image_name'])
+        self.clusters[name] = deploy_server(config.alg, config=config)
 
         # Start monitoring the cluster
         monitor_thread = Thread(target=serve_cluster.monitor_cluster)

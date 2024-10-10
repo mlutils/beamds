@@ -33,12 +33,12 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     if type(path) != str:
         return path
 
-    if ':' not in path:
-        return BeamPath(path, scheme='file')
-    elif path[1] == ':':  # windows path
+    if len(path) > 1 and path[1] == ':':  # windows path
         path = path.replace('\\', '/')
         path = path.lstrip('/')
         return BeamPath(path, scheme='nt')
+    elif '://' not in path:
+        return BeamPath(path, scheme='file')
 
     url = BeamURL.from_string(path)
 

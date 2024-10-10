@@ -54,10 +54,10 @@ def beam_client(uri, hostname=None, port=None, username=None, api_key=None, **kw
         if 'tls' not in kwargs:
             kwargs['tls'] = True if scheme == 'https' else False
         from .http_client import HTTPClient
-        return HTTPClient(hostname=hostname, port=port, username=username, api_key=api_key, **kwargs)
+        return HTTPClient.client(hostname=hostname, port=port, username=username, api_key=api_key, **kwargs)
     elif 'grpc' in scheme:
         from .grpc_client import GRPCClient
-        return GRPCClient(hostname=hostname, port=port, username=username, api_key=api_key, **kwargs)
+        return GRPCClient.client(hostname=hostname, port=port, username=username, api_key=api_key, **kwargs)
     else:
         raise ValueError(f"Unknown protocol: {scheme}")
 

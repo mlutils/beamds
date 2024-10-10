@@ -4,9 +4,9 @@ from functools import partial
 
 from .params import HPOConfig
 from .._version import __version__
-from ..algorithm import NeuralAlgorithm
+from ..algorithm import Algorithm, NeuralAlgorithm
 from ..config import print_beam_hyperparameters
-from ..experiment import beam_algorithm_generator
+from ..experiment import nn_algorithm_generator, simple_algorithm_generator
 from ..logging import beam_logger as logger
 from ..path import beam_path, BeamPath
 from ..processor import Processor
@@ -22,7 +22,7 @@ class BeamHPO(Processor):
         if hpo_config is None:
             hpo_config = HPOConfig(**kwargs)
 
-        super().__init__(*args, hparams=hpo_config)
+        super().__init__(*args, hparams=hpo_config, **kwargs)
         logger.info(f"Creating new study (Beam version: {__version__})")
 
         self.experiment_hparams = hparams
@@ -32,7 +32,7 @@ class BeamHPO(Processor):
         self.experiment_hparams.set('print_results', self.hparams.get('print_results'))
         self.experiment_hparams.set('visualize_weights', False)
         self.experiment_hparams.set('enable_tqdm', self.hparams.get('enable_tqdm', False))
-        self.experiment_hparams.set('n_gpus', 0)
+        # self.experiment_hparams.set('n_gpus', 0)
 
         exptime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         self.identifier = f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}'
@@ -40,7 +40,11 @@ class BeamHPO(Processor):
 
         self.alg = alg
         if algorithm_generator is None:
-            self.ag = partial(beam_algorithm_generator, dataset=dataset,
+
+            algorithm_generator = nn_algorithm_generator if isinstance(self.alg, NeuralAlgorithm) \
+                else simple_algorithm_generator
+
+            self.ag = partial(algorithm_generator, dataset=dataset,
                               alg_args=alg_args, alg_kwargs=alg_kwargs, dataset_args=dataset_args,
                               dataset_kwargs=dataset_kwargs)
         else:
@@ -71,9 +75,19 @@ class BeamHPO(Processor):
         self.suggestions = {}
         self.post_train_hook = post_train_hook
 
-    @staticmethod
-    def get_optimization_mode(mode, objective_name):
-        return NeuralAlgorithm.get_optimization_mode(mode, objective_name)
+    def fit_algorithm(self, experiment):
+
+        if isinstance(self.alg, NeuralAlgorithm) or issubclass(self.alg, NeuralAlgorithm):
+            alg, report = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True,
+                                         runner='default')
+        else:
+            alg, report = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True,
+                                         runner='simple')
+
+        return alg, report
+
+    def get_optimization_mode(self, mode, objective_name):
+        return self.alg.get_optimization_mode(mode, objective_name)
 
     def add_suggestion(self, param, func, *args, **kwargs):
         self.suggestions[param] = {'func': func, 'args': args, 'kwargs': kwargs}
@@ -85,7 +99,11 @@ class BeamHPO(Processor):
             n_steps = int(end - start + 1)
 
         self.suggestions[param] = partial(self._linspace, param=param, start=start, end=end, n_steps=n_steps,
-                       endpoint=endpoint, dtype=dtype)
+                                          endpoint=endpoint, dtype=dtype)
+
+    def add_parameter(self, param, func, *args, **kwargs):
+        func = partial(func, *args, **kwargs)
+        getattr(self, param)(param, func)
 
     def logspace(self, param, start, end, n_steps=None, base=None, dtype=None):
         param = param.replace('-', '_').strip()

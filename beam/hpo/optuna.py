@@ -10,6 +10,7 @@ from ..experiment import Experiment
 from ..logging import beam_logger as logger
 from ..path import beam_path
 from ..utils import check_type
+from ..type import Types
 
 
 class OptunaBase:
@@ -24,9 +25,10 @@ class OptunaBase:
 
     @staticmethod
     def _logspace(trial, param, start, end, n_steps, base=None, dtype=None):
-
+        if base is None:
+            base = 10
         x = np.logspace(start, end, n_steps, base=base)
-        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int, np.int64, 'int', 'int64']:
+        if np.sum(np.abs(x - np.round(x))) < 1e-8 or dtype in [int, np.int64, 'int', 'int64']:
             x = np.round(x).astype(int)
         i = trial.suggest_int(param, 0, len(x) - 1)
         return x[i]
@@ -49,7 +51,7 @@ class OptunaBase:
         return mu + sigma * np.sqrt(2) * erfinv(2 * x - 1)
 
 
-class OptunaHPO(BeamHPO, OptunaBase):
+class OptunaHPO(OptunaBase, BeamHPO):
 
     def runner(self, trial, suggest):
 
@@ -59,15 +61,16 @@ class OptunaHPO(BeamHPO, OptunaBase):
         experiment = Experiment(hparams, hpo='optuna', trial=trial, print_hyperparameters=False)
 
         logger.info(f"Experiment directory is: {experiment.experiment_dir}, see experiment_dir attr in trial logs")
-        trial.set_user_attr("experiment_dir", experiment.experiment_dir)
+        trial.set_user_attr("experiment_dir", experiment.experiment_dir.as_uri())
 
-        alg, results = experiment.fit(alg=self.alg, algorithm_generator=self.ag, return_results=True)
+        alg, report = self.fit_algorithm(experiment=experiment)
+
         if self.post_train_hook is not None:
-            self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=results)
+            self.post_train_hook(alg=alg, experiment=experiment, hparams=hparams, suggestion=config, results=report)
 
-        self.tracker(algorithm=alg, results=results, hparams=hparams, suggestion=config)
+        self.tracker(algorithm=alg, results=report, hparams=hparams, suggestion=config)
 
-        return results.objective
+        return report.objective
 
     def grid_search(self, load_study=False, storage=None, sampler=None, pruner=None, study_name=None, direction=None,
                     load_if_exists=False, directions=None, sync_parameters=None, explode_parameters=None, **kwargs):
@@ -145,10 +148,14 @@ class OptunaHPO(BeamHPO, OptunaBase):
             kwargs['n_jobs'] = 1
 
         if direction is None:
-            direction = 'maximize'
+            mode = self.experiment_hparams.get('optimization-mode')
+            objective = self.experiment_hparams.get('objective')
+            direction = self.get_optimization_mode(mode, objective)
+            direction = 'maximize' if direction == 'max' else 'minimize'
 
         if study_name is None:
-            study_name = f'{self.hparams.project_name}/{self.hparams.algorithm}/{self.hparams.identifier}'
+            # study_name = f'{self.hparams.project_name}.{self.hparams.algorithm}.{self.hparams.identifier}'
+            study_name = 'experiments'
 
         if storage is None:
             if self.hpo_path is not None:
@@ -156,7 +163,7 @@ class OptunaHPO(BeamHPO, OptunaBase):
                 path = beam_path(self.hpo_path)
                 path.joinpath('optuna').mkdir(parents=True, exist_ok=True)
 
-                storage = f'sqlite:///{self.hpo_path}/{study_name}.db'
+                storage = f'sqlite:///{self.hpo_path}/optuna/{study_name}.db'
                 logger.info(f"Using {storage} as storage to store the trials results")
 
         runner = partial(self.runner, suggest=suggest)
@@ -167,6 +174,8 @@ class OptunaHPO(BeamHPO, OptunaBase):
             study = optuna.create_study(storage=storage, sampler=sampler, pruner=pruner, study_name=study_name,
                                         direction=direction, load_if_exists=load_if_exists, directions=directions)
 
-        study.optimize(runner, *args, gc_after_trial=True, **kwargs)
+        n_trials = self.hparams.n_trials
+
+        study.optimize(runner, n_trials=n_trials, gc_after_trial=True, **kwargs)
 
         return study

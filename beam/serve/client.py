@@ -4,11 +4,9 @@ from functools import partial, update_wrapper
 from ..path import normalize_host, BeamResource
 from ..base import BeamBase
 
-from .server import has_torch
+from ..importer import lazy_importer as lzi
+from ..importer import torch
 from ..utils import dict_to_signature
-
-if has_torch:
-    import torch
 
 
 class BeamClient(BeamBase, BeamResource):
@@ -21,6 +19,44 @@ class BeamClient(BeamBase, BeamResource):
         self.host = normalize_host(hostname, port)
         self.api_key = api_key
         self.info = self.get_info()
+        self._backwards_compatible = None
+        if 'self' in self.info:
+            self.__doc__ = self.info['self']['description']
+
+    def __dir__(self):
+        # d = list(super().__dir__()) + list(self.attributes.keys())
+        d = list(self.attributes.keys())
+        return sorted(d)
+
+    @property
+    def type(self):
+        return self.info['type']
+
+    def to_function(self):
+
+        assert self.type == 'function', f"Cannot convert {self.type} to function"
+
+        def _func(*args, **kwargs):
+            return self(*args, **kwargs)
+
+        _func.__name__ = self.info.get('name', 'function')
+
+        signature = None
+        if 'self' in self.info:
+            _func.__doc__ = self.info['self']['description']
+            signature = self.info['self'].get('signature', None)
+
+        if signature is not None:
+            _func = BeamClient._create_function_with_signature(_func, dict_to_signature(signature))
+
+        return _func
+
+    @classmethod
+    def client(cls, *args, **kwargs):
+        obj = cls(*args, **kwargs)
+        if obj.type == 'function':
+            return obj.to_function()
+        return obj
 
     def get_info(self):
         raise NotImplementedError
@@ -28,7 +64,7 @@ class BeamClient(BeamBase, BeamResource):
     @property
     def load_function(self):
         if self.serialization == 'torch':
-            if not has_torch:
+            if not lzi.has('torch'):
                 raise ImportError('Cannot use torch serialization without torch installed')
             return torch.load
         else:
@@ -37,7 +73,8 @@ class BeamClient(BeamBase, BeamResource):
     @property
     def dump_function(self):
         if self.serialization == 'torch':
-            if not has_torch:
+            torch = lzi.torch
+            if not torch:
                 raise ImportError('Cannot use torch serialization without torch installed')
             return torch.save
         else:
@@ -75,6 +112,17 @@ class BeamClient(BeamBase, BeamResource):
     def __call__(self, *args, **kwargs):
         return self.post('call/beam', *args, **kwargs)
 
+    @property
+    def backwards_compatible(self):
+        if self._backwards_compatible is None:
+            item, attribute = next(iter(self.attributes.items()))
+            if type(attribute) is dict:
+                backwards_compatible = False
+            else:
+                backwards_compatible = True
+            self._backwards_compatible = backwards_compatible
+        return self._backwards_compatible
+
     def getattr(self, item):
         if item.startswith('_') or item in ['info'] or not hasattr(self, 'info'):
             return super().__getattribute__(item)
@@ -83,19 +131,17 @@ class BeamClient(BeamBase, BeamResource):
             self.info = self.get_info()
 
         attribute = self.attributes[item]
-        if type(attribute) is dict:
-            attribute_type = self.attributes[item]['type']
-            backwards_compatible = False
-        else:
+        if self._backwards_compatible:
             attribute_type = attribute
-            backwards_compatible = True
+        else:
+            attribute_type = attribute['type']
 
         if attribute_type in ['variable', 'property']:
             return self.get(f'getvar/beam/{item}')
         elif attribute_type == 'method':
             func = partial(self.post, f'alg/beam/{item}')
 
-            if not backwards_compatible:
+            if not self.backwards_compatible:
                 func.__name__ = item
                 func.__doc__ = self.attributes[item]['description']
                 if self.attributes[item]['signature'] is not None:
@@ -105,7 +151,8 @@ class BeamClient(BeamBase, BeamResource):
 
         raise ValueError(f"Unknown attribute type: {attribute_type}")
 
-    def _create_function_with_signature(self, func, signature):
+    @staticmethod
+    def _create_function_with_signature(func, signature):
         # Create a new function with the desired signature
         def new_func(*args, **kwargs):
             return func(*args, **kwargs)
@@ -117,6 +164,24 @@ class BeamClient(BeamBase, BeamResource):
         new_func.__signature__ = signature
 
         return new_func
+
+    @staticmethod
+    def _create_class_with_signature(cls, signature):
+        # Create a new init method with the desired signature
+        def new_init(self, *args, **kwargs):
+            # Call the original init method
+            cls.__init__(self, *args, **kwargs)
+
+        # Update the init method with the original class __init__ properties
+        update_wrapper(new_init, cls.__init__)
+
+        # Set the new init method's signature
+        new_init.__signature__ = signature
+
+        # Replace the class __init__ method with the new one
+        cls.__init__ = new_init
+
+        return cls
 
     def __setattr__(self, key, value):
         if key.startswith('_') or not hasattr(self, '_lazy_cache') or 'info' not in self._lazy_cache:
