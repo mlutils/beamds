@@ -15,7 +15,7 @@ COPY ${DOCKER_TOOLS_DIR} /app/docker-tools
 COPY ${REQUIREMENTS_FILE} /app/requirements.txt
 RUN pip install --no-cache-dir packaging
 # RUN pip install --no-cache-dir -r /tmp/requirements.txt
-RUN python /app/docker-tools/gracefull-pip.py /app/requirements.txt
+RUN python3 /app/docker-tools/gracefull-pip.py /app/requirements.txt
 
 
 RUN if [ -z "${BEAM_DS_VERSION}" ]; then \

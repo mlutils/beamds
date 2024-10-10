@@ -18,6 +18,7 @@ import importlib
 import warnings
 
 from ..logging import beam_logger as logger
+from ..type.utils import is_class, is_function
 from ..utils import cached_property
 from uuid import uuid4 as uuid
 
@@ -119,8 +120,8 @@ class AutoBeam(BeamBase):
             dir_files = {}
             for f in files:
                 p = r.joinpath(f)
-                if p.suffix == '.py':
-                    dir_files[f] = p.read()
+                # if p.suffix == '.py':
+                dir_files[f] = p.read()
             if len(dir_files):
                 module_walk[str(r_relative)] = dir_files
 
@@ -529,7 +530,7 @@ class AutoBeam(BeamBase):
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version='latest', dockerfile='simple-entrypoint',
-                  registry_url=None, base_url=None, registry_project_name=None,
+                  registry_url=None, base_url=None, registry_project_name=None, path_to_state=config.path_to_state,
                   username=None, password=None, copy_bundle=False, requirements_blacklist=None, **kwargs):
 
         if obj is not None:

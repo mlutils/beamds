@@ -60,6 +60,7 @@ n_pods: '1'
 node_selector:
   gpu-type: tesla-a100
 project_name: starfield
+path_to_state: /tmp
 # push_image: false - this is removed
 #ray_ports_configs:
 #- ray_ports:

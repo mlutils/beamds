@@ -9,7 +9,7 @@ class K8SConfig(BeamConfig):
         BeamParam('api_token', str, None, 'API token for the Kubernetes API server'),
         BeamParam('project_name', str, None, 'Name of the project'),
         BeamParam('deployment_name', str, None, 'Name of the deployment'),
-        BeamParam('labels', dict, {}, 'Labels for the deployment'),
+        BeamParam('labels', dict, {"runai/node-pool": "cpu-only"}, 'Labels for the deployment'),
         BeamParam('image_name', str, None, 'Name of the image to deploy'),
         BeamParam('command', dict, {}, 'Command configuration for the deployment'),
         BeamParam('os_namespace', str, None, 'Namespace for the deployment'),
@@ -97,6 +97,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
 class BeamManagerConfig(K8SConfig):
     parameters = [
         BeamParam('clusters', list, [], 'list of clusters'),
+        BeamParam('master_config', dict, {"runai/node-pool": "cpu-only"}, 'Labels for the deployment'),
     ]
 
 

@@ -75,7 +75,7 @@ class ServeCluster(BeamCluster):
                                             password=config.registry_password, serve_config=config,
                                             registry_project_name=config.registry_project_name,
                                             entrypoint=config.entrypoint, dockerfile=config.dockerfile,
-                                            requirements_blacklist=config.requirements_blacklist,
+                                            requirements_blacklist=config.requirements_blacklist, path_to_state=config.path_to_state,
                                             )
             logger.info(f"Image {image_name} created successfully")
 
