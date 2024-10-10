@@ -5,9 +5,9 @@ from beam import logger
 
 
 def main():
-    config = ServeClusterConfig()
+    config = ServeClusterConfig(path_to_state = '/tmp/manager')
 
-    logger.info("deploy manager with config:")
+    logger.info("deploy manager with config :")
     logger.info(str(config))
     manager = BeamManagerWrapper(config)
 

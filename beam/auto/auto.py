@@ -17,7 +17,7 @@ import importlib
 import warnings
 
 from ..logging import beam_logger as logger
-from ..type.utils import is_class, is_function
+from ..type.utils import is_class_instance, is_function
 from ..utils import cached_property
 from uuid import uuid4 as uuid
 
@@ -94,7 +94,7 @@ class AutoBeam(BeamBase):
 
     @property
     def _module_name(self):
-        if is_class(self.obj):
+        if is_class_instance(self.obj):
             return type(self.obj).__module__
         elif is_function(self.obj):
             return self.obj.__module__
@@ -233,7 +233,7 @@ class AutoBeam(BeamBase):
 
     @cached_property
     def module_dependencies(self):
-        if is_class(self.obj):
+        if is_class_instance(self.obj):
             module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
         elif is_function(self.obj):
             module_path = beam_path(inspect.getfile(self.obj)).resolve()
@@ -309,10 +309,10 @@ class AutoBeam(BeamBase):
 
     @property
     def import_statement(self):
-        return f"from {self.module_name} import {self._name()}"
+        return f"from {self.module_name} import {self.fixed_name()}"
 
-    def _name(self, look_for_property=False):
-        if is_class(self.obj):
+    def fixed_name(self, look_for_property=False):
+        if is_class_instance(self.obj):
             if look_for_property and hasattr(self.obj, 'name'):
                 obj_name = self.obj.name
             else:
@@ -326,7 +326,7 @@ class AutoBeam(BeamBase):
     @property
     def metadata(self):
 
-        name = self._name(look_for_property=True)
+        name = self.fixed_name(look_for_property=True)
 
         # # in case the object is defined in the __main__ script
         # # get all import statements from the script
@@ -554,12 +554,12 @@ class AutoBeam(BeamBase):
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version='latest', dockerfile='simple-entrypoint',
-                  registry_url=None, base_url=None, registry_project_name=None, path_to_state=config.path_to_state,
+                  registry_url=None, base_url=None, registry_project_name=None, path_to_state=None,
                   username=None, password=None, copy_bundle=False, requirements_blacklist=None, **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
-            bundle_path = AutoBeam.to_bundle(obj, path=bundle_path, blacklist=requirements_blacklist)
+            bundle_path = AutoBeam.to_bundle(obj, path=path_to_state, blacklist=requirements_blacklist)
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         full_image_name = (
@@ -650,6 +650,11 @@ class AutoBeam(BeamBase):
             }
 
             try:
+
+                from uuid import uuid4 as uuid
+                random_string = str(uuid())[:6]
+                image_name = f"{image_name}_{random_string}"
+
                 client = docker.APIClient(base_url=base_url)
                 logger.debug(f"Docker client version: {client.version()}")
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
@@ -661,6 +666,7 @@ class AutoBeam(BeamBase):
                         print(line['stream'].strip())
 
                 if registry_url is not None:
+
                     image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
                                                            registry_project_name=registry_project_name,
                                                            username=username, password=password)

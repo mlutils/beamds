@@ -3,7 +3,9 @@ import os
 import time
 import atexit
 import threading
+import namegenerator
 
+from examples.orchestration.orchestration_beampod import project_name, deployment_name
 from ..base import BeamBase
 from ..orchestration import BeamK8S
 from ..logging import beam_logger as logger
@@ -160,6 +162,8 @@ class BeamManager(BeamBase):
         return name
 
     def launch_serve_cluster(self, config, **kwargs):
+
+
         if isinstance(config, str):
             # Resolve the configuration path relative to the script's directory
             script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -168,7 +172,17 @@ class BeamManager(BeamBase):
             # Convert the path to a BeamManagerConfig object
             config = ServeClusterConfig(resource(conf_path).str)
 
-        self.cleanup_existing_resources(config['project_name'], config['deployment_name'], config['labels']['app'])
+        project_name = config.get('project_name', self.hparams.project_name)
+        deployment_name = config.get('deployment_name', namegenerator.gen())
+
+        app = None
+        if 'labels' in config:
+             if 'app' in config['labels']:
+                app = config['labels']['app']
+
+        app = app or deployment_name
+
+        self.cleanup_existing_resources(project_name, deployment_name, app)
 
         name = self.get_cluster_name(config)
         from .cluster import ServeCluster
