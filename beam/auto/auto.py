@@ -17,7 +17,7 @@ import importlib
 import warnings
 
 from ..logging import beam_logger as logger
-from ..type.utils import is_class, is_function
+from ..type.utils import is_class_instance, is_function
 from ..utils import cached_property
 from uuid import uuid4 as uuid
 
@@ -94,7 +94,7 @@ class AutoBeam(BeamBase):
 
     @property
     def _module_name(self):
-        if is_class(self.obj):
+        if is_class_instance(self.obj):
             return type(self.obj).__module__
         elif is_function(self.obj):
             return self.obj.__module__
@@ -233,7 +233,7 @@ class AutoBeam(BeamBase):
 
     @cached_property
     def module_dependencies(self):
-        if is_class(self.obj):
+        if is_class_instance(self.obj):
             module_path = beam_path(inspect.getfile(type(self.obj))).resolve()
         elif is_function(self.obj):
             module_path = beam_path(inspect.getfile(self.obj)).resolve()
@@ -309,10 +309,10 @@ class AutoBeam(BeamBase):
 
     @property
     def import_statement(self):
-        return f"from {self.module_name} import {self._name()}"
+        return f"from {self.module_name} import {self.canonical_name()}"
 
-    def _name(self, look_for_property=False):
-        if is_class(self.obj):
+    def canonical_name(self, look_for_property=False):
+        if is_class_instance(self.obj):
             if look_for_property and hasattr(self.obj, 'name'):
                 obj_name = self.obj.name
             else:
@@ -326,7 +326,7 @@ class AutoBeam(BeamBase):
     @property
     def metadata(self):
 
-        name = self._name(look_for_property=True)
+        name = self.canonical_name(look_for_property=True)
 
         # # in case the object is defined in the __main__ script
         # # get all import statements from the script

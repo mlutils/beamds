@@ -54,15 +54,19 @@ class Types:
 def is_function(obj, include_class=False):
     if include_class:
         return callable(obj)
-    return callable(obj) and not is_class(obj)
+    return callable(obj) and not is_class_instance(obj)
 
 
-def is_class(obj):
+def is_class_instance(obj):
+    return isinstance(obj, object) and not isinstance(obj, type)
+
+
+def is_class_type(obj):
     return isinstance(obj, type)
 
 
 def is_class_method(obj):
-    return is_function(obj) and is_class(obj.__self__)
+    return is_function(obj) and hasattr(obj, '__self__') and is_class_instance(obj.__self__)
 
 
 def is_cached_property(obj, attribute_name):
