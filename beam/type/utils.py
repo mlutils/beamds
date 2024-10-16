@@ -58,7 +58,12 @@ def is_function(obj, include_class=False):
 
 
 def is_class_instance(obj):
-    return isinstance(obj, type) and not isinstance(obj, type)
+    return isinstance(obj, object) and not isinstance(obj, type)
+
+
+def is_class_type(obj):
+    return isinstance(obj, type)
+
 
 def is_class_method(obj):
     return is_function(obj) and hasattr(obj, '__self__') and is_class_instance(obj.__self__)

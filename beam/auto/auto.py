@@ -129,8 +129,8 @@ class AutoBeam(BeamBase):
             dir_files = {}
             for f in files:
                 p = r.joinpath(f)
-                # if p.suffix == '.py':
-                dir_files[f] = p.read()
+                if p.suffix == '.py':
+                    dir_files[f] = p.read()
             if len(dir_files):
                 module_walk[str(r_relative)] = dir_files
 
@@ -309,9 +309,9 @@ class AutoBeam(BeamBase):
 
     @property
     def import_statement(self):
-        return f"from {self.module_name} import {self.fixed_name()}"
+        return f"from {self.module_name} import {self.canonical_name()}"
 
-    def fixed_name(self, look_for_property=False):
+    def canonical_name(self, look_for_property=False):
         if is_class_instance(self.obj):
             if look_for_property and hasattr(self.obj, 'name'):
                 obj_name = self.obj.name
@@ -326,7 +326,7 @@ class AutoBeam(BeamBase):
     @property
     def metadata(self):
 
-        name = self.fixed_name(look_for_property=True)
+        name = self.canonical_name(look_for_property=True)
 
         # # in case the object is defined in the __main__ script
         # # get all import statements from the script
@@ -554,12 +554,12 @@ class AutoBeam(BeamBase):
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version='latest', dockerfile='simple-entrypoint',
-                  registry_url=None, base_url=None, registry_project_name=None, path_to_state=None,
+                  registry_url=None, base_url=None, registry_project_name=None,
                   username=None, password=None, copy_bundle=False, requirements_blacklist=None, **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
-            bundle_path = AutoBeam.to_bundle(obj, path=path_to_state, blacklist=requirements_blacklist)
+            bundle_path = AutoBeam.to_bundle(obj, path=bundle_path, blacklist=requirements_blacklist)
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         full_image_name = (
@@ -650,11 +650,6 @@ class AutoBeam(BeamBase):
             }
 
             try:
-
-                from uuid import uuid4 as uuid
-                random_string = str(uuid())[:6]
-                image_name = f"{image_name}_{random_string}"
-
                 client = docker.APIClient(base_url=base_url)
                 logger.debug(f"Docker client version: {client.version()}")
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
@@ -666,7 +661,6 @@ class AutoBeam(BeamBase):
                         print(line['stream'].strip())
 
                 if registry_url is not None:
-
                     image_name = AutoBeam._push_image(image_name, registry_url, base_url=base_url,
                                                            registry_project_name=registry_project_name,
                                                            username=username, password=password)
