@@ -5,7 +5,7 @@ import atexit
 import threading
 import namegenerator
 
-from examples.orchestration.orchestration_beampod import project_name, deployment_name
+# from examples.orchestration.orchestration_beampod import project_name, deployment_name
 from ..base import BeamBase
 from ..orchestration import BeamK8S
 from ..logging import beam_logger as logger
