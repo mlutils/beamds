@@ -68,7 +68,6 @@ class PureBeamPath(BeamResource):
     text_based_extensions = textual_extensions + ['.json', '.orc', '.yaml', '.yml', '.ndjson', '.csv', '.ini']
 
     def __init__(self, *pathsegments, scheme=None, client=None, **kwargs):
-
         if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
             pathsegments = pathsegments[0].parts
 
@@ -78,6 +77,7 @@ class PureBeamPath(BeamResource):
             self.path = PurePosixPath(*pathsegments)
 
         super().__init__(resource_type='storage', scheme=scheme, path=str(self.path), **kwargs)
+
 
         self.mode = "rb"
         self.file_object = None

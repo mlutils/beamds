@@ -1,6 +1,7 @@
 from ..type import check_type, Types
 from .cluster import ServeCluster
 from ..resources import resource
+from ..logging import beam_logger as logger
 
 
 # DeployServer
@@ -12,8 +13,10 @@ def deploy_server(obj, config):
         config = resource(config).read()
 
     if (obj_type.is_str and resource(obj).exists()) or obj_type.is_path:
+        logger.info(f"Resource {obj} exists, deploying from bundle...")
         return ServeCluster.deploy_from_bundle(obj, config)
     elif obj_type.is_str:
+        logger.info(f"Resource {obj} does not exist or is treated as a string, deploying from image...")
         return ServeCluster.deploy_from_image(obj, config)
     else:
         return ServeCluster.deploy_from_algorithm(obj, config)

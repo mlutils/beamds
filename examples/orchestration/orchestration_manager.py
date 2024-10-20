@@ -8,9 +8,7 @@ import sys
 
 def main():
 
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    conf_path = resource(os.path.join(script_dir, 'orchestration_manager.yaml')).str
-    config = BeamManagerConfig(conf_path)
+    config = ServeClusterConfig()
 
     logger.info(f"API URL: {config.api_url}")
     logger.info(f"API Token: {config.api_token}")
@@ -20,10 +18,10 @@ def main():
 
 
     # manager.launch_ray_cluster('/home/dayosupp/projects/beamds/examples/orchestration_raydeploy.yaml')
-    # manager.launch_serve_cluster('/home/dayosupp/projects/beamds/examples/orchestration_serve_cluster.yaml')
+    manager.launch_serve_cluster('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml')
     # manager.launch_cron_job('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
     # manager.launch_job('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
-    manager.launch_rnd_cluster('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_rnd_cluster.yaml')
+    # manager.launch_rnd_cluster('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_rnd_cluster.yaml')
     # print(manager.info())
     # manager.monitor_thread()
     # manager.retrieve_cluster_logs('rnd_cluster_name')

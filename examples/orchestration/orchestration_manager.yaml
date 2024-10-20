@@ -1,14 +1,13 @@
 alg_image_name: fake-alg-http-server:latest
-# api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJzdGFyZmllbGQiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoic3RhcmZpZWxkc3ZjLXRva2VuLWZid2hzIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InN0YXJmaWVsZHN2YyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImMwMWFiN2E2LTMxNDEtNDFjNi04ZTgyLWIzYjY5MjYwNTY3YyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpzdGFyZmllbGQ6c3RhcmZpZWxkc3ZjIn0.kWOkxF7vD9g5PDzv7nlNIVYm1dYDAXve1MH-HzfWXBrrcUZCSI3Wu_IH_PvBhshphvbPBFJrCnLciFMC0Mt0C54vE1T6G6_cpqSThvPTmpyh0fORLhxQ98jIXfY40yuTDYyOZgefHsZJ2aGUSDPQlzSsT8PLBfbaVw9Y7aqimc70EUKEREmUY8NHhhttw0pNUCfB0WkZpSRUW9gLZjdZgwOyKLnhsIoErS5I9sIc7aILyjvOVpewZKI0KBU5aUi9jZSzbI5aXycx3P2YBp4KCOWqdL8AYVlMDcfSFX1c5yRa8LhLciFGzop9lT6HiDHWGzkiWhcYubGkxE3pLOfXMI9WoW5FWzTaXMeL6qNxenvAU9rbUkjbtxTsQ_sursEMCgcWgW8Tm5jbYrZDYVeH71l4ph7X-CtPZ7zJ7dIwxlSJ_seJ7Ardkk6LgB24Po20raizX063PAd5ivqYCLOL3jfN0wFReRX_TZMID47gNmyyG-_p6vuKublKNcjqFuoKY7Cw30jQp6bxSzDmYecwT7wFOn3gyOyUUbKj7auycIZxPJSjsR-TdLl9TyrSzSSsQV-Sg2JqPA15U9E2-T48m1RLz2ckyOR5LEsrhx9ESJTc1qcry6Ho4x1cG9nMVYfg4uZey_6CXH0giUtM3-5pt5vUKb746GbUIoend7yMCmI
-api_token: sha256~wH9jcKM_H-2GyyUHDIHOCy0o3B-7lhhL1QCFMuE1kZM
+api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZXYiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoieW9zLXRva2VuLWQycDUyIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InlvcyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImNlOWUzNzkyLThmZTAtNDgxNC05YTVlLWNlMTdmODJjOGU5MiIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZXY6eW9zIn0.mKgXusdiiEVN3MzjQ6mZOTfjoY8LFz-1RxVCrDcq38V5AcxaEiTvOGm-6-Vd4ZTV15DR7ds2OqBqZcpcdeuD_eSqZofsfF_dFM8483mXsA8obzBjXiOw0sLeUAq7ZCzb0sTVOySfz4v84MGHgCbMOfD92sfVsfbXhvAXYY2HLX2Vh5og6spjz0P__BBpL--8rfaR1bpua8bMhR5gOreuednJ8hTFPsxTtgZkNppBdHC6WO0j6rm5APDLhu0CMj1_Dwdee4KL0xtt5vKK1YDqy2fdq4ApFP5kYIZu0YnIsliI-msGgX1ioT_eqj_7oz6Hdi5gdSiNDVGnXbhwkdYchslB4evLCEGXAEI2uFQ0d2wVkCcFjGqiVjHdpQa6JCxWClXBveap8o78eM_c59WV343YQri2pfiGthAZUYxIz5mXddV9237OHUh6YwUFyosaKv853c_W-py8rCsxUVFA_o7PFkfHnVogPETjJw-ZzVTxk_PYzxGl9Dh8kEVhJCiPrFBlNtoJVnaEcdNKD_z8I2hr3ca6DB6k6Ws-ABIYWOKO3yu07wp6RdTYeoS3wjWB9GkcjW52UHBi1hQ2qrR1m-X0DsdTrg_PTuw-9KgXz5LnekPJwMrzRn2DFaswOmXOynTEM_PbvlsQ55DBntix_r2df2rWnCWgxbw9MuFog44
 api_url: https://api.kh-dev.dt.local:6443
-base_image: eladsar/beam:20240605
+base_image: harbor.dt.local/public/ubunto_slim:python-3-10
 base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='unix://var/run/docker.sock')
 # client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: 2.6.9
+beam_version: 2.7.0
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:
@@ -32,7 +31,7 @@ gpu_limits: '1'
 gpu_requests: '1'
 # image_name: harbor.dt.local/public/fake-alg-http-server:latest
 #image_name: None
-image_name: harbor.dt.local/public/beam:20240801
+image_name: harbor.dt.local/public/ubunto_slim:python-3-10
 #image_name: rocker/rstudio:latest
 labels:
   app: beam-manager
@@ -48,7 +47,7 @@ new_image:  rocker/rstudio:latest
 n_pods: '1'
 node_selector:
   gpu-type: tesla-a100
-project_name: starfield
+project_name: dev
 # push_image: false - this is removed
 #ray_ports_configs:
 #- ray_ports:
@@ -59,9 +58,11 @@ registry_url: harbor.dt.local
 registry_username: admin
 registry_project_name: public
 replicas: '1'
-restart_policy:
-  condition: on-failure
+restart_policy_configs:
+#  condition: OnFailure
+  condition: Always
   delay: 5s
+  active_deadline_seconds: 300
   max_attempts: 3
   window: 120s
 send_mail: false
