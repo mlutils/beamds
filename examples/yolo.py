@@ -3,7 +3,7 @@ from PIL import Image
 import requests
 from beam import logger
 
-from examples.yolo_model import YOLOConfig, YOLOBeam
+from .yolo_model import YOLOConfig, YOLOBeam
 
 
 def main():
