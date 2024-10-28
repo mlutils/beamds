@@ -1,3 +1,4 @@
+alg: /tmp/bundle
 alg_image_name: yolo-algo:latest
 api_token: sha256~wH9jcKM_H-2GyyUHDIHOCy0o3B-7lhhL1QCFMuE1kZM
 api_url: https://api.kh-dev.dt.local:6443

@@ -8,17 +8,22 @@ import sys
 
 def main():
 
-    config = ServeClusterConfig()
+    config = resource('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml').read()
+    config = ServeClusterConfig('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml', **config)
 
     logger.info(f"API URL: {config.api_url}")
     logger.info(f"API Token: {config.api_token}")
     logger.info("deploy manager with config:")
+    config.update({'project_name': 'dev',
+        'deployment_name': 'yolo',
+        'labels': {'app': 'yolo'},
+        'alg': '/tmp/yolo-bundle'})
     logger.info(str(config))
     manager = BeamManager(config)
 
-
     # manager.launch_ray_cluster('/home/dayosupp/projects/beamds/examples/orchestration_raydeploy.yaml')
-    manager.launch_serve_cluster('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml')
+    manager.launch_serve_cluster(config)
+    # manager.launch_serve_cluster('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml')
     # manager.launch_cron_job('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
     # manager.launch_job('/home/dayosupp/projects/beamds/examples/orchestration_beamdemo.yaml')
     # manager.launch_rnd_cluster('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_rnd_cluster.yaml')

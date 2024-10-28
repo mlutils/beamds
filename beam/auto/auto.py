@@ -129,12 +129,13 @@ class AutoBeam(BeamBase):
             dir_files = {}
             for f in files:
                 p = r.joinpath(f)
-                if p.suffix == '.py':
-                    dir_files[f] = p.read()
+                # if p.suffix == '.py':
+                dir_files[f] = p.read()
             if len(dir_files):
                 module_walk[str(r_relative)] = dir_files
 
         return module_walk
+    # TODO: we need all files to be exist in the manager, else the docker builds will fail, not only .py files
 
     @cached_property
     def private_modules_walk(self):
