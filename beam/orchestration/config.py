@@ -98,7 +98,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
 class BeamManagerConfig(K8SConfig):
     parameters = [
         BeamParam('clusters', list, [], 'list of clusters'),
-        BeamParam('master_config', dict, {"runai/node-pool": "cpu-only"}, 'Labels for the deployment'),
+        BeamParam('labels', dict, {"runai/node-pool": "cpu-only"}, 'Labels for the deployment'),
     ]
 
 

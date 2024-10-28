@@ -129,8 +129,13 @@ class AutoBeam(BeamBase):
             dir_files = {}
             for f in files:
                 p = r.joinpath(f)
-                if p.suffix == '.py':
-                    dir_files[f] = p.read()
+
+                # if p.suffix == '.py':
+                #     dir_files[f] = p.read()
+
+                #TODO: better filter of undesired files
+                dir_files[f] = p.read()
+
             if len(dir_files):
                 module_walk[str(r_relative)] = dir_files
 
@@ -554,12 +559,13 @@ class AutoBeam(BeamBase):
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version='latest', dockerfile='simple-entrypoint',
-                  registry_url=None, base_url=None, registry_project_name=None,
-                  username=None, password=None, copy_bundle=False, requirements_blacklist=None, **kwargs):
+                  registry_url=None, base_url=None, registry_project_name=None, path_to_state=None,
+                  username=None, password=None, copy_bundle=False, requirements_blacklist=None,
+                  **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
-            bundle_path = AutoBeam.to_bundle(obj, path=bundle_path, blacklist=requirements_blacklist)
+            bundle_path = AutoBeam.to_bundle(obj, path=path_to_state, blacklist=requirements_blacklist)
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         full_image_name = (
@@ -572,7 +578,7 @@ class AutoBeam(BeamBase):
 
     @staticmethod
     def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint=None,
-                     copy_bundle=False, registry_url=None, username=None, password=None,
+                     copy_bundle=False, registry_url=None, username=None, password=None, override_image=False,
                      beam_version='latest', base_url=None, registry_project_name=None, dockerfile=None):
 
         assert base_image is not None, "You must provide a base_image."
@@ -650,6 +656,12 @@ class AutoBeam(BeamBase):
             }
 
             try:
+
+                if not override_image:
+                    from uuid import uuid4 as uuid
+                    random_string = uuid().hex[:6]
+                    image_name = f"{image_name}-{random_string}"
+
                 client = docker.APIClient(base_url=base_url)
                 logger.debug(f"Docker client version: {client.version()}")
                 response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
