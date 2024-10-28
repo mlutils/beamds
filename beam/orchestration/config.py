@@ -5,21 +5,21 @@ from ..serve import BeamServeConfig
 class K8SConfig(BeamConfig):
 
     parameters = [
-        BeamParam('api_url', str, None, 'URL of the Kubernetes API server'),
-        BeamParam('api_token', str, None, 'API token for the Kubernetes API server'),
-        BeamParam('project_name', str, None, 'Name of the project'),
-        BeamParam('deployment_name', str, None, 'Name of the deployment'),
+        BeamParam('api_url', str, 'https://api.kh-dev.dt.local:6443', 'URL of the Kubernetes API server'),
+        BeamParam('api_token', str, 'eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGp', 'API token for the Kubernetes API server'),
+        BeamParam('project_name', str, 'dev', 'Name of the project'),
+        BeamParam('deployment_name', str, 'demo', 'Name of the deployment'),
         BeamParam('labels', dict, {"runai/node-pool": "cpu-only"}, 'Labels for the deployment'),
-        BeamParam('image_name', str, None, 'Name of the image to deploy'),
-        BeamParam('command', dict, {}, 'Command configuration for the deployment'),
-        BeamParam('os_namespace', str, None, 'Namespace for the deployment'),
+        BeamParam('image_name', str, 'harbor.dt.local/public/beam:20240801', 'Name of the image to deploy'),
+        BeamParam('command', dict, { "executable": "/bin/bash", "arguments": ["-c", "sleep infinity"]}, 'Command configuration for the deployment'),
+        BeamParam('os_namespace', str, 'dev', 'Namespace for the deployment'),
         BeamParam('replicas', int, 1, 'Number of replicas for the deployment'),
         BeamParam('entrypoint_args', list, [], 'Arguments for the container entrypoint'),
         BeamParam('entrypoint_envs', dict, {}, 'Environment variables for the container entrypoint'),
-        BeamParam('use_scc', bool, True, 'Use SCC control parameter'),
+        BeamParam('use_scc', bool, False, 'Use SCC control parameter'),
         BeamParam('scc_name', str, 'anyuid', 'SCC name'),
         BeamParam('create_service_account', bool, True, 'Create service account'),
-        BeamParam('security_context_config', dict, {}, 'Security context configuration'),
+        BeamParam('security_context_config', dict, {"add_capabilities": ["SYS_CHROOT", "CAP_AUDIT_CONTROL", "CAP_AUDIT_WRITE"],  "enable_security_context": False, "privileged": False}, 'Security context configuration'),
         BeamParam('use_node_selector', bool, False, 'Use node selector'),
         BeamParam('node_selector', dict, {"gpu-type": "tesla-a100"}, 'Node selector'),
         BeamParam('cpu_requests', str, '4', 'CPU requests'),
@@ -30,15 +30,16 @@ class K8SConfig(BeamConfig):
         BeamParam('gpu_limits', str, '1', 'GPU limits'),
         BeamParam('use_gpu', bool, False, 'Use GPU'),
         BeamParam('n_pods', int, 1, 'Number of pods'),
-        BeamParam('storage_configs', list, [], 'Storage configurations'),
-        BeamParam('memory_configs', list, [], 'Memory storage configurations'),
+        BeamParam('storage_configs', list, [{"create_pvc": False, "pvc_access_mode": "ReadWriteMany", "pvc_mount_path": "/data-pvc", "pvc_name": "data-pvc", "pvc_size": "500"}], 'Storage configuration for the deployment'),
         BeamParam('service_configs', list, [], 'Service configurations'),
-        BeamParam('user_idm_configs', list, [], 'User IDM configurations'),
+        BeamParam('service_configs', list, [{"create_ingress": False, "create_route": True, "ingress_host": "home-page.example.com", "port": 35000, "port_name": "flask-port", "service_name": "flask", "service_type": "ClusterIP"}], 'Service configuration for the deployment'),
+        BeamParam('user_idm_configs', list, [{"create_role_binding": False, "project_name": "ben-guryon", "role_binding_name": "yos", "role_name": "admin", "user_name": "yos"}], 'User IDM configurations'),
         BeamParam('route_timeout', int, 599, 'Route timeout'),
+        BeamParam('memory_storage_configs', list, [{"enabled": True, "mount_path": "/dev/shm", "name": "dshm", "size_gb": 8}], 'Memory storage configuration for the deployment'),
         BeamParam('check_project_exists', bool, True, 'Check if project exists'),
-        BeamParam('entrypoint', str, None, 'Entrypoint for the container'),
-        BeamParam('dockerfile', str, None, 'Dockerfile for the container'),
-        BeamParam('docker_kwargs', dict, None, 'Auxiliary Docker arguments (for the build process)'),
+        BeamParam('entrypoint', str, '/workspace/bash-run-scripts/entrypoint.sh', 'Entrypoint for the container'),
+        BeamParam('dockerfile', str, 'dockerfile-beam', 'Dockerfile for the container'),
+        BeamParam('docker_kwargs', dict, {"version": "1.0.0", "author": "user@example.com"}, 'Auxiliary Docker arguments (for the build process)'),
     ]
 
 
@@ -66,20 +67,20 @@ class RnDClusterConfig(K8SConfig):
 
 class ServeClusterConfig(K8SConfig, BeamServeConfig):
 
-    defaults = dict(n_threads=16)
+    defaults = dict(n_threads=16,alg=None)
 
     parameters = [
-        BeamParam('alg', str, None, 'Algorithm object can be - bundle, object, image'),
-        BeamParam('alg_image_name', str, None, 'Algorithm image name'),
-        BeamParam('base_image', str, None, 'Base image'),
+        BeamParam('alg', str, '/tmp/bundle', 'Algorithm object can be - bundle, object, image'),
+        BeamParam('alg_image_name', str, 'alg-demo:latest', 'Algorithm image name'),
+        BeamParam('base_image', str, 'harbor.dt.local/public/ubunto_slim:python-3-10', 'Base image'),
         BeamParam('base_url', str, 'tcp://10.0.7.55:2375', 'Base URL'),
-        BeamParam('beam_version', str, '2.5.11', 'Beam version'),
-        BeamParam('requirements_blacklist', list, [], 'Requirements blacklist'),
+        BeamParam('beam_version', str, '2.7.0', 'Beam version'),
+        BeamParam('requirements_blacklist', list, ['sklearn'], 'Requirements blacklist'),
         BeamParam('send_email', bool, False, 'Send email'),
         BeamParam('body', str, 'Here is the cluster information:', 'Email body'),
         BeamParam('from_email', str, 'dayotech2018@gmail.com', 'From email address'),
         BeamParam('from_email_password', str, 'mkhdokjqwwmazyrf', 'From email password'),
-        BeamParam('to_email', str, None, 'To email address'),
+        BeamParam('to_email', str, 'cluster@demo.com', 'To email address'),
         BeamParam('send_email', bool, False, 'Send email or not'),
         BeamParam('smtp_server', str, 'smtp.gmail.com', 'SMTP server'),
         BeamParam('smtp_port', int, 587, 'SMTP port'),
@@ -89,7 +90,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
         BeamParam('registry_password', str, 'Har@123', 'Registry password'),
         BeamParam('registry_project_name', str, 'public', 'Registry project name'),
         BeamParam('push_image', bool, True, 'Push image to registry'),
-        BeamParam('pods', list, [], 'List of pods'),
+        BeamParam('pods', list, [], 'List of pods'), #TODO ??? where it used? the names are generated uniquely
         BeamParam('copy-bundle', bool, False, 'Copy bundle to tmp directory'),
         BeamParam('path_to_state', str, '/tmp', 'Path to bundle'),
     ]
@@ -104,15 +105,15 @@ class BeamManagerConfig(K8SConfig):
 
 class CronJobConfig(K8SConfig):
     parameters = [
-        BeamParam('job_schedule', str, None, 'Cron job schedule'),
-        # TODO: how to use OnFailure here as default value?
-        BeamParam('restart_policy_configs', dict, {}, 'Restart Policy configuration'),
+        BeamParam('cron_job_name', str, 'beam-cron-job', 'Cron job name'),
+        BeamParam('job_schedule', str, '*/2 * * * *', 'Cron job schedule'),
+        BeamParam('restart_policy_configs', dict, {"condition": "OnFailure", "delay": "5s", "active_deadline_seconds": 300, "max_attempts": 3, "window": "120s"}, 'Restart policy configuration for the deployment'),
     ]
 
 
 class JobConfig(K8SConfig):
     parameters = [
-        BeamParam('job_config', dict, {}, 'Job configuration'),
+        BeamParam('job_name', str, 'beam-job', 'Job Name'),
     ]
 #
 # alg_image_name: fake-alg-http-server:latest

@@ -140,6 +140,7 @@ class AutoBeam(BeamBase):
                 module_walk[str(r_relative)] = dir_files
 
         return module_walk
+    # TODO: we need all files to be exist in the manager, else the docker builds will fail, not only .py files
 
     @cached_property
     def private_modules_walk(self):

@@ -17,6 +17,7 @@ def deploy_server(obj, config):
         return ServeCluster.deploy_from_bundle(obj, config)
     elif obj_type.is_str:
         logger.info(f"Resource {obj} does not exist or is treated as a string, deploying from image...")
+         # TODO: handle case where obj when path used as image name - should change to image name from config to avoid pod deployment failure
         return ServeCluster.deploy_from_image(obj, config)
     else:
         return ServeCluster.deploy_from_algorithm(obj, config)

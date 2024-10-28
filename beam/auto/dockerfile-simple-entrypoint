@@ -13,7 +13,7 @@ ARG DOCKER_TOOLS_DIR
 COPY ${DOCKER_TOOLS_DIR} /app/docker-tools
 # Copy the requirements.txt file and install Python dependencies
 COPY ${REQUIREMENTS_FILE} /app/requirements.txt
-RUN pip install --no-cache-dir packaging
+RUN pip install --no-cache-dir packaging 
 # RUN pip install --no-cache-dir -r /tmp/requirements.txt
 RUN python3 /app/docker-tools/gracefull-pip.py /app/requirements.txt
 
