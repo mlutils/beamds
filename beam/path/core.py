@@ -999,7 +999,7 @@ class PureBeamPath(BeamResource):
         return io_path.data['/']
 
     def resolve(self, strict=False):
-        return self.gen(self.path.resolve(strict=strict))
+        return self
 
 
 class DictBasedPath(PureBeamPath):

@@ -80,7 +80,7 @@ class BeamTokenizer(Processor):
         x_type = check_type(x)
         if x_type.major == Types.array:
             return [self.encode(item) for item in x]
-        return self._tokenizer.encode(x).ids
+        return self.encode(x)
 
     @property
     def vocab(self):
