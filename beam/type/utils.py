@@ -5,10 +5,12 @@ import pandas as pd
 from collections import Counter
 from pathlib import PurePath
 from functools import cached_property
+import types
+
 
 from ..importer import lazy_importer as lzi
 
-
+function_types = (types.FunctionType, types.BuiltinFunctionType, types.MethodType, types.BuiltinMethodType)
 TypeTuple = namedtuple('TypeTuple', 'major minor element')
 
 
@@ -52,27 +54,32 @@ class Types:
 
 
 def is_function(obj, include_class=False):
+    """
+    Returns True if obj is a function, method, or callable.
+    If include_class is True, callable class instances are included.
+    """
     if include_class:
-        return callable(obj)
-    return callable(obj) and not is_class_instance(obj)
-
+        return callable(obj) and not is_class_instance(obj)
+    return isinstance(obj, function_types)
 
 def is_class_instance(obj):
-    return isinstance(obj, object) and not isinstance(obj, type)
-
+    """
+    Returns True if obj is an instance of a user-defined class.
+    """
+    return not is_class_type(obj) and hasattr(obj, '__class__')
 
 def is_class_type(obj):
-    return isinstance(obj, type)
-
+    """
+    Returns True if obj is a class type, excluding function types.
+    """
+    return isinstance(obj, type) and not isinstance(obj, function_types) and not isinstance(obj, type(None))
 
 def is_class_method(obj):
-    return is_function(obj) and hasattr(obj, '__self__') and is_class_instance(obj.__self__)
+    """
+    Returns True if obj is a method bound to an instance of a class.
+    """
+    return isinstance(obj, types.MethodType) and hasattr(obj, '__self__') and is_class_instance(obj.__self__)
 
-
-def is_cached_property(obj, attribute_name):
-    # Access the class attribute directly without triggering the property
-    attr = getattr(type(obj), attribute_name, None)
-    return isinstance(attr, cached_property)
 
 
 def is_polars(x):

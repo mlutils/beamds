@@ -67,7 +67,7 @@ class BeamTokenizer(Processor):
                               if (self.min_token_length is None or len(token) >= self.min_token_length) and
                               (self.max_token_length  is None or len(token) <= self.max_token_length )}
             # Update the tokenizer's vocabulary
-            self._filtered_tokens = set(filtered_vocab.keys())
+            self._filtered_tokens = set(filtered_vocab.values())
             logger.info(f"Filtered vocabulary size: {len(filtered_vocab)}")
 
     def train(self, texts):
@@ -84,7 +84,10 @@ class BeamTokenizer(Processor):
 
     @property
     def vocab(self):
-        return self._tokenizer.get_vocab()
+        vocab = self._tokenizer.get_vocab()
+        if self._filtered_tokens is not None:
+            vocab = {k: v for k, v in vocab.items() if v in self._filtered_tokens}
+        return vocab
 
     @property
     def vocab_size(self):
