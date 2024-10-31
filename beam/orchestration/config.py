@@ -17,7 +17,7 @@ class K8SConfig(BeamConfig):
         BeamParam('replicas', int, 1, 'Number of replicas for the deployment'),
         BeamParam('entrypoint_args', list, [], 'Arguments for the container entrypoint'),
         BeamParam('entrypoint_envs', dict, {}, 'Environment variables for the container entrypoint'),
-        BeamParam('use_scc', bool, False, 'Use SCC control parameter'),
+        BeamParam('use_scc', bool, True, 'Use SCC control parameter'),
         BeamParam('scc_name', str, 'anyuid', 'SCC name'),
         BeamParam('create_service_account', bool, True, 'Create service account'),
         BeamParam('security_context_config', dict, {"add_capabilities": ["SYS_CHROOT", "CAP_AUDIT_CONTROL", "CAP_AUDIT_WRITE"],  "enable_security_context": False, "privileged": False}, 'Security context configuration'),

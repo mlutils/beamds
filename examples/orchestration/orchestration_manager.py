@@ -19,7 +19,7 @@ def main():
         'deployment_name': 'yolo',
         'labels': {'app': 'yolo'},
         'alg': '/tmp/yolo-bundle',
-        'debug_sleep': False})
+        'debug_sleep': True})
     logger.info(str(config))
     manager = BeamManager(config)
 
