@@ -21,6 +21,7 @@ cpu_limits: '2'
 cpu_requests: '2'
 create_service_account: false
 deployment_name: beam-manager
+debug_sleep: false
 #enable_ray_ports: true
 entrypoint_args:
 - '--no-ray'

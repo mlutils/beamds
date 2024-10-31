@@ -6,12 +6,13 @@ class K8SConfig(BeamConfig):
 
     parameters = [
         BeamParam('api_url', str, 'https://api.kh-dev.dt.local:6443', 'URL of the Kubernetes API server'),
-        BeamParam('api_token', str, 'eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGp', 'API token for the Kubernetes API server'),
+        BeamParam('api_token', str, 'eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZXYiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoieW9zLXRva2VuLWQycDUyIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InlvcyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImNlOWUzNzkyLThmZTAtNDgxNC05YTVlLWNlMTdmODJjOGU5MiIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZXY6eW9zIn0.mKgXusdiiEVN3MzjQ6mZOTfjoY8LFz-1RxVCrDcq38V5AcxaEiTvOGm-6-Vd4ZTV15DR7ds2OqBqZcpcdeuD_eSqZofsfF_dFM8483mXsA8obzBjXiOw0sLeUAq7ZCzb0sTVOySfz4v84MGHgCbMOfD92sfVsfbXhvAXYY2HLX2Vh5og6spjz0P__BBpL--8rfaR1bpua8bMhR5gOreuednJ8hTFPsxTtgZkNppBdHC6WO0j6rm5APDLhu0CMj1_Dwdee4KL0xtt5vKK1YDqy2fdq4ApFP5kYIZu0YnIsliI-msGgX1ioT_eqj_7oz6Hdi5gdSiNDVGnXbhwkdYchslB4evLCEGXAEI2uFQ0d2wVkCcFjGqiVjHdpQa6JCxWClXBveap8o78eM_c59WV343YQri2pfiGthAZUYxIz5mXddV9237OHUh6YwUFyosaKv853c_W-py8rCsxUVFA_o7PFkfHnVogPETjJw-ZzVTxk_PYzxGl9Dh8kEVhJCiPrFBlNtoJVnaEcdNKD_z8I2hr3ca6DB6k6Ws-ABIYWOKO3yu07wp6RdTYeoS3wjWB9GkcjW52UHBi1hQ2qrR1m-X0DsdTrg_PTuw-9KgXz5LnekPJwMrzRn2DFaswOmXOynTEM_PbvlsQ55DBntix_r2df2rWnCWgxbw9MuFog44', 'API token for the Kubernetes API server'),
         BeamParam('project_name', str, 'dev', 'Name of the project'),
         BeamParam('deployment_name', str, 'demo', 'Name of the deployment'),
+        BeamParam('debug_sleep', bool, False, 'Sleep Infinity deployment'),
         BeamParam('labels', dict, {"runai/node-pool": "cpu-only"}, 'Labels for the deployment'),
         BeamParam('image_name', str, 'harbor.dt.local/public/beam:20240801', 'Name of the image to deploy'),
-        BeamParam('command', dict, { "executable": "/bin/bash", "arguments": ["-c", "sleep infinity"]}, 'Command configuration for the deployment'),
+        BeamParam('command', dict, {}, 'Command configuration for the deployment'),
         BeamParam('os_namespace', str, 'dev', 'Namespace for the deployment'),
         BeamParam('replicas', int, 1, 'Number of replicas for the deployment'),
         BeamParam('entrypoint_args', list, [], 'Arguments for the container entrypoint'),
@@ -36,10 +37,12 @@ class K8SConfig(BeamConfig):
         BeamParam('user_idm_configs', list, [{"create_role_binding": False, "project_name": "ben-guryon", "role_binding_name": "yos", "role_name": "admin", "user_name": "yos"}], 'User IDM configurations'),
         BeamParam('route_timeout', int, 599, 'Route timeout'),
         BeamParam('memory_storage_configs', list, [{"enabled": True, "mount_path": "/dev/shm", "name": "dshm", "size_gb": 8}], 'Memory storage configuration for the deployment'),
+        BeamParam('restart_policy_configs', dict, {"condition": "Always", "delay": "5s", "active_deadline_seconds": 300, "max_attempts": 3, "window": "120s"}, 'Restart policy configuration for the deployment'),
         BeamParam('check_project_exists', bool, True, 'Check if project exists'),
-        BeamParam('entrypoint', str, '/workspace/bash-run-scripts/entrypoint.sh', 'Entrypoint for the container'),
-        BeamParam('dockerfile', str, 'dockerfile-beam', 'Dockerfile for the container'),
+        BeamParam('entrypoint', str, None, 'Entrypoint for the container'),
+        BeamParam('dockerfile', str, None, 'Dockerfile for the container'),
         BeamParam('docker_kwargs', dict, {"version": "1.0.0", "author": "user@example.com"}, 'Auxiliary Docker arguments (for the build process)'),
+
     ]
 
 

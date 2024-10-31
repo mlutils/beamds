@@ -21,6 +21,7 @@ cpu_limits: '2'
 cpu_requests: '2'
 create_service_account: false
 deployment_name: yolo
+debug_sleep: false
 entrypoint_args:
 - '63'
 entrypoint_envs:

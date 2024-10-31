@@ -1,3 +1,7 @@
+from logging import debug
+
+from numpy.f2py.crackfortran import true_intent_list
+
 from .utils import convert_datetimes
 from ..base import BeamBase
 from .pod import BeamPod, PodInfos
@@ -28,6 +32,15 @@ class BeamDeploy(BeamBase):
         command = self.get_hparam('command', None)
         if command:
             command = CommandConfig(**command)
+
+        debug_sleep = self.get_hparam('debug_sleep')
+        if debug_sleep:
+            # If debug_sleep is True, set both executable and arguments directly
+            command = CommandConfig(executable="/bin/bash", arguments=["-c", "sleep infinity"])
+        else:
+            # Retrieve from config if not in debug mode
+            # command = CommandConfig(**self.get_hparam('command'))
+            command = None
 
         self.entrypoint_args = self.get_hparam('entrypoint_args') or []
         self.entrypoint_envs = self.get_hparam('entrypoint_envs') or {}
@@ -85,6 +98,7 @@ class BeamDeploy(BeamBase):
         else:
             self.service_account_name = 'default'
             logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
+
 
         if self.storage_configs:
             for storage_config in self.storage_configs:
