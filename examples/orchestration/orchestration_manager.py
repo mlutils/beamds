@@ -8,8 +8,9 @@ import sys
 
 def main():
 
-    config = resource('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml').read()
-    config = ServeClusterConfig('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml', **config)
+    ## config = resource('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml').read()
+    # config = ServeClusterConfig('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml', **config)
+    config = ServeClusterConfig()
 
     logger.info(f"API URL: {config.api_url}")
     logger.info(f"API Token: {config.api_token}")
@@ -17,7 +18,8 @@ def main():
     config.update({'project_name': 'dev',
         'deployment_name': 'yolo',
         'labels': {'app': 'yolo'},
-        'alg': '/tmp/yolo-bundle'})
+        'alg': '/tmp/yolo-bundle',
+        'debug_sleep': False})
     logger.info(str(config))
     manager = BeamManager(config)
 

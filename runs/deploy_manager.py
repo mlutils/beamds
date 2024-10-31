@@ -5,7 +5,7 @@ from beam import logger
 
 
 def main():
-    config = ServeClusterConfig(path_to_state = '/tmp/manager')
+    config = ServeClusterConfig(path_to_state='/tmp/manager')
     # config = ServeClusterConfig()
 
     logger.info("deploy manager with config :")
@@ -13,6 +13,7 @@ def main():
     manager = BeamManagerWrapper(config)
 
     deploy_server(manager, config)
+    # TODO: Deploy server does not cleanup the existing manager when deploying, it just adds a new one because it runs directly from ServerCluster and not BeamManager
     print(manager.info())
 
 

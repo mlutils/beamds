@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import List, Union, Optional
 from .units import K8SUnits
 from typing import Dict, Any
@@ -91,6 +91,16 @@ class PodInfos:
         return self.metadata.name
 
 
+# @dataclass
+# class RestartPolicyConfig:
+#     condition: str  # "OnFailure" or "Never"
+#     max_attempts: int  # Kubernetes backoffLimit
+#     delay: str  # Delay between retries, e.g., "5s"
+#     active_deadline_seconds: int  # Maximum time a pod can be active
+#     window: str  # Optional, custom retry window, might require custom logic in your app
+
+
+
 @dataclass
 class RestartPolicyConfig:
     condition: str  # "OnFailure" or "Never"
@@ -99,9 +109,11 @@ class RestartPolicyConfig:
     active_deadline_seconds: int  # Maximum time a pod can be active
     window: str  # Optional, custom retry window, might require custom logic in your app
 
+    def to_dict(self):
+        return asdict(self)
+
 #Todo: build configuration classes according to the deployment layer structure
 # Todo: check online existing packages that have these configurations
-
 
 @dataclass
 class PodConfig:
