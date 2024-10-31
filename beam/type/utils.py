@@ -81,6 +81,11 @@ def is_class_method(obj):
     return isinstance(obj, types.MethodType) and hasattr(obj, '__self__') and is_class_instance(obj.__self__)
 
 
+def is_cached_property(obj, attribute_name):
+    # Access the class attribute directly without triggering the property
+    attr = getattr(type(obj), attribute_name, None)
+    return isinstance(attr, cached_property)
+
 
 def is_polars(x):
     if not lzi.is_loaded('polars'):
