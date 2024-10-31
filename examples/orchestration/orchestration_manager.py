@@ -8,7 +8,7 @@ import sys
 
 def main():
 
-    # config = resource('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml').read()
+    ## config = resource('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml').read()
     # config = ServeClusterConfig('/home/dayosupp/projects/beamds/examples/orchestration/orchestration_serve_cluster.yaml', **config)
     config = ServeClusterConfig()
 
