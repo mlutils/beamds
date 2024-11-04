@@ -66,7 +66,7 @@ def is_class_instance(obj):
     """
     Returns True if obj is an instance of a user-defined class.
     """
-    return not is_class_type(obj) and hasattr(obj, '__class__')
+    return not is_class_type(obj) and hasattr(obj, '__class__') and not isinstance(obj, function_types)
 
 def is_class_type(obj):
     """
