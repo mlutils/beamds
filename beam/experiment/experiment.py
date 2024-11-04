@@ -160,7 +160,7 @@ class Experiment(object):
 
         self.store_init_path = None
         if self.hparams.get('store_init_args', default=True):
-            self.store_init_path = self.experiment_dir.joinpath('init_alg_args.pkl')
+            self.store_init_path = self.experiment_dir.joinpath('init_alg_args.yaml')
 
         if self.load_model:
             logger.cleanup(clean_default=False)
@@ -245,7 +245,7 @@ class Experiment(object):
         path = beam_path(path)
         logger.info(f"Reload experiment from path: {path}")
 
-        args = BeamConfig.from_path(path.joinpath('args.pkl'))
+        args = BeamConfig.from_path(path.joinpath('args.yaml'))
         args.override = False
         args.reload = True
 
