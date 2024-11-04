@@ -32,15 +32,17 @@ class BeamDeploy(BeamBase):
         command = self.get_hparam('command', None)
         if command:
             command = CommandConfig(**command)
+        else:
+            command = None
 
         debug_sleep = self.get_hparam('debug_sleep')
         if debug_sleep:
             # If debug_sleep is True, set both executable and arguments directly
             command = CommandConfig(executable="/bin/bash", arguments=["-c", "sleep infinity"])
-        else:
-            # Retrieve from config if not in debug mode
-            # command = CommandConfig(**self.get_hparam('command'))
-            command = None
+        # else:
+        #     # Retrieve from config if not in debug mode
+        #     # command = CommandConfig(**self.get_hparam('command'))
+        #     command = None
 
         self.entrypoint_args = self.get_hparam('entrypoint_args') or []
         self.entrypoint_envs = self.get_hparam('entrypoint_envs') or {}
@@ -125,10 +127,6 @@ class BeamDeploy(BeamBase):
             self.k8s.add_scc_to_service_account(self.service_account_name, self.namespace, self.scc_name)
 
         extracted_ports = [svc_config.port for svc_config in self.service_configs]
-
-        # if self.ray_ports_configs:
-        #     for ray_ports_config in self.ray_ports_configs:
-        #         extracted_ports += [ray_port for ray_port in ray_ports_config.ray_ports]
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,

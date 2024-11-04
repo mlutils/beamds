@@ -314,8 +314,6 @@ class RayCluster(BeamCluster):
                 raise Exception(f"Failed to get pod info or pod status for {head_pod_name}")
         else:
             raise Exception(f"Head pod {head_pod_name} is not running. Current status: {head_pod_status[0][1]}")
-
-    #  TODO: implement connect_cluster live in pycharm for now
     # def connect_cluster(self):
     #     # example how to connect to head node
     #     for w in self.workers:
