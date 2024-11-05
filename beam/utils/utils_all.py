@@ -765,36 +765,36 @@ def jupyter_like_traceback(exc_type=None, exc_value=None, tb=None, context=3):
     return f"{traceback_text}\n{exc_type.__name__}: {exc_value}"
 
 
-def retry(func=None, retrials=3, logger=None, name=None, verbose=False, sleep=1):
+def retry(func=None, retries=3, logger=None, name=None, verbose=False, sleep=1):
     if func is None:
-        return partial(retry, retrials=retrials, sleep=sleep)
+        return partial(retry, retries=retries, sleep=sleep)
 
     name = name if name is not None else func.__name__
     @wraps(func)
     def wrapper(*args, **kwargs):
-        local_retrials = retrials
+        local_retries = retries
         last_exception = None
-        while local_retrials > 0:
+        while local_retries > 0:
             try:
                 return func(*args, **kwargs)
             except KeyboardInterrupt as e:
                 raise e
             except Exception as e:
                 last_exception = e
-                local_retrials -= 1
+                local_retries -= 1
                 if logger is not None:
 
-                    if local_retrials == np.inf:
+                    if local_retries == np.inf:
                         retry_message = f"Retrying {name}..."
                     else:
-                        retry_message = f"Retries {local_retrials}/{retrials} left."
+                        retry_message = f"Retries {local_retries}/{retries} left."
 
                     logger.warning(f"Exception occurred in {name}. {retry_message}")
 
                     if verbose:
                         logger.warning(jupyter_like_traceback())
 
-                if local_retrials > 0:
+                if local_retries > 0:
                     time.sleep(sleep * (1 + np.random.rand()))
         if last_exception:
             raise last_exception
@@ -803,7 +803,7 @@ def retry(func=None, retrials=3, logger=None, name=None, verbose=False, sleep=1)
 
 
 def run_forever(func=None, *args, sleep=1, name=None, logger=None, **kwargs):
-    return retry(func=func, *args, retrials=np.inf, logger=logger, name=name, sleep=sleep, **kwargs)
+    return retry(func=func, *args, retries=np.inf, logger=logger, name=name, sleep=sleep, **kwargs)
 
 
 def parse_text_to_protocol(text, protocol='json'):

@@ -97,8 +97,8 @@ class BeamLLM(PedanticBeamResource):
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     logit_bias: Optional[Dict[str, float]] = Field(None)
-    parse_retrials: int = Field(3, ge=0)
-    ask_retrials: int = Field(1, ge=1)
+    parse_retries: int = Field(3, ge=0)
+    ask_retries: int = Field(1, ge=1)
     sleep: float = Field(1.0, ge=0.0)
     adapter: Optional[str] = Field(None)
     system: Optional[str] = Field(None)
@@ -118,8 +118,8 @@ class BeamLLM(PedanticBeamResource):
     def __init__(self, *args, temperature=.1, top_p=1, n=1, stream=False, stop=None, max_tokens=None,
                  presence_penalty=0,
                  frequency_penalty=0.0, logit_bias=None, scheme='unknown', model=None, max_new_tokens=None,
-                 ask_retrials=1,
-                 debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retrials=3,
+                 ask_retries=1,
+                 debug_langchain=False, len_function=None, tokenizer=None, path_to_tokenizer=None, parse_retries=3,
                  sleep=1,
                  adapter=None, tools=None, systerm=None, **kwargs):
         super().__init__(resource_type='llm', scheme=scheme, **kwargs)
@@ -148,8 +148,8 @@ class BeamLLM(PedanticBeamResource):
             frequency_penalty = float(frequency_penalty)
         self.frequency_penalty = frequency_penalty
 
-        self.parse_retrials = int(parse_retrials)
-        self.ask_retrials = int(ask_retrials)
+        self.parse_retries = int(parse_retries)
+        self.ask_retries = int(ask_retries)
         self.sleep = float(sleep)
         self.logit_bias = logit_bias
         self.scheme = scheme
@@ -373,34 +373,34 @@ class BeamLLM(PedanticBeamResource):
     def _chat_completion(self, chat, **kwargs) -> CompletionObject:
         raise NotImplementedError
 
-    def chat_completion(self, chat, stream=False, parse_retrials=3, sleep=1, ask_retrials=1,
+    def chat_completion(self, chat, stream=False, parse_retries=3, sleep=1, ask_retries=1,
                         prompt_type='chat_completion', **kwargs):
 
         chat_completion_function = self._chat_completion
-        if ask_retrials > 1:
-            chat_completion_function = retry(func=chat_completion_function, retrials=ask_retrials,
+        if ask_retries > 1:
+            chat_completion_function = retry(func=chat_completion_function, retries=ask_retries,
                                              sleep=sleep, logger=logger,
                                              name=f"LLM chat-completion with model: {self.model}")
 
         completion_object = chat_completion_function(chat, stream=stream, **kwargs)
         response = LLMResponse(completion_object.response, self, chat=True, stream=stream,
-                               parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
+                               parse_retries=parse_retries, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt)
 
         return response
 
-    def completion(self, prompt, parse_retrials=3, sleep=1, ask_retrials=1, prompt_type='completion', stream=False,
+    def completion(self, prompt, parse_retries=3, sleep=1, ask_retries=1, prompt_type='completion', stream=False,
                    **kwargs):
 
         completion_function = self._completion
-        if ask_retrials > 1:
-            completion_function = retry(func=completion_function, retrials=ask_retrials,
+        if ask_retries > 1:
+            completion_function = retry(func=completion_function, retries=ask_retries,
                                         sleep=sleep, logger=logger,
                                         name=f"LLM completion with model: {self.model}")
 
         completion_object = completion_function(prompt, stream=stream, **kwargs)
         response = LLMResponse(completion_object.response, self, chat=False, stream=stream,
-                               parse_retrials=parse_retrials, sleep=sleep, prompt_type=prompt_type,
+                               parse_retries=parse_retries, sleep=sleep, prompt_type=prompt_type,
                                prompt_kwargs=completion_object.kwargs, prompt=completion_object.prompt,
                                verify=completion_object.valid)
         return response
@@ -410,7 +410,7 @@ class BeamLLM(PedanticBeamResource):
 
     def get_default_params(self, temperature=None, top_p=None, n=None, stream=None, stop=None, max_tokens=None,
                            presence_penalty=None, frequency_penalty=None, logit_bias=None, max_new_tokens=None,
-                           parse_retrials=None, ask_retrials=None, sleep=None):
+                           parse_retries=None, ask_retries=None, sleep=None):
 
         temperature = temperature or (self.temperature if self.temperature != self.__fields__['temperature'].default
                                       else None)
@@ -428,8 +428,8 @@ class BeamLLM(PedanticBeamResource):
         logit_bias = logit_bias or self.logit_bias
         max_new_tokens = max_new_tokens or self.max_new_tokens
         max_tokens = max_tokens or self.max_tokens
-        ask_retrials = ask_retrials or self.ask_retrials
-        parse_retrials = parse_retrials or self.parse_retrials
+        ask_retries = ask_retries or self.ask_retries
+        parse_retries = parse_retries or self.parse_retries
         sleep = sleep or self.sleep
 
         kwargs = {'temperature': temperature,
@@ -440,8 +440,8 @@ class BeamLLM(PedanticBeamResource):
                   'max_tokens': max_tokens,
                   'presence_penalty': presence_penalty,
                   'frequency_penalty': frequency_penalty,
-                  'parse_retrials': parse_retrials,
-                  'ask_retrials': ask_retrials,
+                  'parse_retries': parse_retries,
+                  'ask_retries': ask_retries,
                   'sleep': sleep}
 
         if max_new_tokens is not None:
@@ -453,7 +453,7 @@ class BeamLLM(PedanticBeamResource):
 
     def chat(self, message, system=None, reset_chat=False, temperature=None,
              top_p=None, n=None, stream=None, stop=None, max_tokens=None, presence_penalty=None, frequency_penalty=None,
-             logit_bias=None, max_new_tokens=None, parse_retrials=None, sleep=None, ask_retrials=None, tools=None,
+             logit_bias=None, max_new_tokens=None, parse_retries=None, sleep=None, ask_retries=None, tools=None,
              prompt_type='chat_completion', guidance=None, image=None, images=None,
              overwrite_system_message=True, **kwargs):
 
@@ -472,9 +472,9 @@ class BeamLLM(PedanticBeamResource):
         @param frequency_penalty:
         @param logit_bias:
         @param max_new_tokens:
-        @param parse_retrials:
+        @param parse_retries:
         @param sleep:
-        @param ask_retrials:
+        @param ask_retries:
         @param tools:
         @param prompt_type:
         @param guidance:
@@ -491,7 +491,7 @@ class BeamLLM(PedanticBeamResource):
                                                  presence_penalty=presence_penalty,
                                                  frequency_penalty=frequency_penalty,
                                                  logit_bias=logit_bias, max_new_tokens=max_new_tokens,
-                                                 parse_retrials=parse_retrials, sleep=sleep, ask_retrials=ask_retrials)
+                                                 parse_retries=parse_retries, sleep=sleep, ask_retries=ask_retries)
 
         system = system or self.system
 
@@ -777,7 +777,7 @@ class BeamLLM(PedanticBeamResource):
     def ask(self, prompt, system=None, max_tokens=None, temperature=None, top_p=None, frequency_penalty=None,
             max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
-            parse_retrials=None, sleep=None, ask_retrials=None, prompt_type='completion', tools=None,
+            parse_retries=None, sleep=None, ask_retries=None, prompt_type='completion', tools=None,
             image=None, images=None, fastchat_format=True, guidance=None, **kwargs):
         """
 
@@ -794,9 +794,9 @@ class BeamLLM(PedanticBeamResource):
         @param logprobs:
         @param logit_bias:
         @param echo:
-        @param parse_retrials:
+        @param parse_retries:
         @param sleep:
-        @param ask_retrials:
+        @param ask_retries:
         @param prompt_type:
         @param tools:
         @param guidance:
@@ -813,8 +813,8 @@ class BeamLLM(PedanticBeamResource):
                                                  presence_penalty=presence_penalty,
                                                  frequency_penalty=frequency_penalty,
                                                  logit_bias=logit_bias,
-                                                 max_new_tokens=max_new_tokens, ask_retrials=ask_retrials,
-                                                 parse_retrials=parse_retrials, sleep=sleep)
+                                                 max_new_tokens=max_new_tokens, ask_retries=ask_retries,
+                                                 parse_retries=parse_retries, sleep=sleep)
 
         if fastchat_format:
             chat = BeamChat(scheme=self.scheme, adapter=self.adapter, messages=[{'role': 'system', 'content': prompt}],

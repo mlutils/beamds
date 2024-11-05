@@ -383,8 +383,8 @@ class TransformerConfig(CacheConfig):
         BeamParam('n_workers', int, None, 'The number of workers to use for the transformation'),
         BeamParam('use-cache', bool, False, 'Use the store_path as cache and do not apply transformation '
                                             'if cache exists'),
-        BeamParam('retrials', int, 1, 'The number of retrials to apply for each chunk'),
-        BeamParam('retrial_delay', float, 1., 'The delay between retrials'),
+        BeamParam('retries', int, 1, 'The number of retries to apply for each chunk'),
+        BeamParam('retries_delay', float, 1., 'The delay between retries'),
 
     ]
 

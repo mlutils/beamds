@@ -40,24 +40,24 @@ def parallel_copy_path(src, dst, chunklen=10, **kwargs):
 
 
 def parallel(tasks: Union[Dict, List], n_workers=0, func=None, method='threading', progressbar='beam', reduce=False, reduce_dim=0,
-             use_dill=False, retrials=1, sleep=1, **kwargs):
+             use_dill=False, retries=1, sleep=1, **kwargs):
 
-    if func is not None and retrials > 1:
+    if func is not None and retries > 1:
         from ..logging import beam_logger as logger
-        func = retry(func, retrials=retrials, sleep=sleep, logger=logger)
+        func = retry(func, retries=retries, sleep=sleep, logger=logger)
 
     bp = BeamParallel(func=func, n_workers=n_workers, method=method, progressbar=progressbar,
                       reduce=reduce, reduce_dim=reduce_dim, use_dill=use_dill, **kwargs)
     return bp(tasks).values
 
 
-def task(func=None, *, name=None, silent=False, silence=None, retrials=1, sleep=1):
+def task(func=None, *, name=None, silent=False, silence=None, retries=1, sleep=1):
     silent = silent or silence
     def decorator(func):
 
-        if func is not None and retrials > 1:
+        if func is not None and retries > 1:
             from ..logging import beam_logger as logger
-            func = retry(func, retrials=retrials, sleep=sleep, logger=logger)
+            func = retry(func, retries=retries, sleep=sleep, logger=logger)
 
         def wrapper(*args, **kwargs):
             return BeamTask(func, *args, name=name, silent=silent, **kwargs)
