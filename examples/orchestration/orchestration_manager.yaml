@@ -35,7 +35,7 @@ container_name: beam-cron-container
 job_schedule: "*/2 * * * *" # every 2 minutes
 gpu_limits: '1'
 gpu_requests: '1'
-# image_name: harbor.dt.local/public/fake-alg-http-server:latest
+# image_name: harbor.dt.local/public/fake-alg-http-server:latestddddd
 #image_name: None
 image_name: harbor.dt.local/public/ubunto_slim:python-3-10
 #image_name: rocker/rstudio:latest
