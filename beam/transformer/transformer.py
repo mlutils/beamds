@@ -2,7 +2,7 @@ import inspect
 from enum import Enum
 
 from ..utils import (collate_chunks, recursive_chunks, iter_container,
-                     build_container_from_tupled_keys, is_empty, check_type, retry)
+                     build_container_from_tupled_keys, is_empty, check_type, retry, get_number_of_cores)
 from ..concurrent import BeamParallel, BeamTask
 from ..data import BeamData
 from ..path import beam_path
@@ -26,7 +26,7 @@ class TransformStrategy(Enum):
 class Transformer(Processor):
 
     def __init__(self, *args, func=None, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
-                 chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0, store_chunk=None,
+                 chunksize=None, mp_method='joblib', squeeze=False, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
                  use_dill=False, return_results=None, use_cache=False, retries=1, silent=False, reduce_func=None,
                  retries_delay=1., **kwargs):
@@ -298,6 +298,16 @@ class Transformer(Processor):
             n_chunks = self.n_chunks
         if (chunksize is None) and (n_chunks is None):
             n_chunks = 1
+
+        if n_workers is None:
+            if chunksize is not None:
+                n_workers = 1
+            else:
+                n_workers = n_chunks
+        elif n_workers < 1:
+            # defaults to half of the available cores
+            n_workers = get_number_of_cores() // 2
+
         if squeeze is None:
             squeeze = self.squeeze
 

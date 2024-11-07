@@ -368,7 +368,7 @@ class TransformerConfig(CacheConfig):
         BeamParam('store_path', str, None, 'The path to store the results'),
         BeamParam('partition', str, None, 'The partition to use for splitting the dataset'),
         BeamParam('chunksize', int, None, 'The chunksize to use for splitting the dataset'),
-        BeamParam('squeeze', bool, True, 'Whether to squeeze the results'),
+        BeamParam('squeeze', bool, False, 'Whether to squeeze the chunks (e.g. 1-dim dataframe to series)'),
         BeamParam('reduce', bool, True, 'Whether to reduce and collate the results'),
         BeamParam('reduce_dim', int, 0, 'The dimension to reduce the results'),
         BeamParam('transform_strategy', str, None, 'The transform strategy to use can be [CC|CS|SC|SS]'),
@@ -380,7 +380,9 @@ class TransformerConfig(CacheConfig):
         BeamParam('use-dill', bool, False, 'Whether to use dill for serialization'),
         BeamParam('return-results', bool, None, 'Whether to return the results if None, it is set to True '
                                                 'if store_path is None'),
-        BeamParam('n_workers', int, None, 'The number of workers to use for the transformation'),
+        BeamParam('n_workers', int, None, 'The number of workers to use for the transformation. '
+                                          'If None defaults to 1 if chunksize is not None and n_chunks otherwise,'
+                                          'if <1 defaults to half of the number of cpus'),
         BeamParam('use-cache', bool, False, 'Use the store_path as cache and do not apply transformation '
                                             'if cache exists'),
         BeamParam('retries', int, 1, 'The number of retries to apply for each chunk'),

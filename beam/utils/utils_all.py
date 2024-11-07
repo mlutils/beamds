@@ -1333,3 +1333,10 @@ def return_constant(a):
     def _return_constant(*args, **kwargs):
         return a
     return _return_constant
+
+
+def get_number_of_cores():
+    try:
+        return os.cpu_count() or multiprocessing.cpu_count()
+    except (AttributeError, NotImplementedError):
+        return 1  # Fallback to 1 if the number of cores cannot be determined
