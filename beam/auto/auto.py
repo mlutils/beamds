@@ -544,18 +544,19 @@ class AutoBeam(BeamBase):
         path = beam_path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         import tarfile
-        with tarfile.open(str(path), "w:gz") as tar:
-            for i, (root_path, sub_paths) in enumerate(self.private_modules_walk.items()):
-                root_path = beam_path(root_path)
-                if root_path.is_file():
-                    tar.add(str(root_path), arcname=root_path.name)
-                else:
+        with local_copy(path, override=True) as local_path:
+            with tarfile.open(local_path, "w:gz") as tar:
+                for i, (root_path, sub_paths) in enumerate(self.private_modules_walk.items()):
                     root_path = beam_path(root_path)
-                    for sub_path, files in sub_paths.items():
-                        for file_name, _ in files.items():
-                            local_name = root_path.joinpath(sub_path, file_name)
-                            relative_name = local_name.relative_to(root_path.parent)
-                            tar.add(str(local_name), arcname=str(relative_name))
+                    if root_path.is_file():
+                        tar.add(str(root_path), arcname=root_path.name)
+                    else:
+                        root_path = beam_path(root_path)
+                        for sub_path, files in sub_paths.items():
+                            for file_name, _ in files.items():
+                                local_name = root_path.joinpath(sub_path, file_name)
+                                relative_name = local_name.relative_to(root_path.parent)
+                                tar.add(str(local_name), arcname=str(relative_name))
 
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
@@ -665,8 +666,9 @@ class AutoBeam(BeamBase):
 
                 client = docker.APIClient(base_url=base_url)
                 logger.debug(f"Docker client version: {client.version()}")
-                response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
-                                        buildargs=build_args, tag=image_name, rm=True, decode=True)
+                with local_copy(bundle_path) as local_path:
+                    response = client.build(path=local_path, dockerfile='.docker/dockerfile',
+                                            buildargs=build_args, tag=image_name, rm=True, decode=True)
 
                 # Process and print each log entry
                 for line in response:
