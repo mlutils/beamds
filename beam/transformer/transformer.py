@@ -2,7 +2,7 @@ import inspect
 from enum import Enum
 
 from ..utils import (collate_chunks, recursive_chunks, iter_container,
-                     build_container_from_tupled_keys, is_empty, check_type, retry)
+                     build_container_from_tupled_keys, is_empty, check_type, retry, get_number_of_cores)
 from ..concurrent import BeamParallel, BeamTask
 from ..data import BeamData
 from ..path import beam_path
@@ -26,10 +26,10 @@ class TransformStrategy(Enum):
 class Transformer(Processor):
 
     def __init__(self, *args, func=None, n_workers=0, n_chunks=None, name=None, store_path=None, partition=None,
-                 chunksize=None, mp_method='joblib', squeeze=True, reduce=True, reduce_dim=0, store_chunk=None,
+                 chunksize=None, mp_method='joblib', squeeze=False, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
-                 use_dill=False, return_results=None, use_cache=False, retrials=1, silent=False, reduce_func=None,
-                 retrials_delay=1., **kwargs):
+                 use_dill=False, return_results=None, use_cache=False, retries=1, silent=False, reduce_func=None,
+                 retries_delay=1., **kwargs):
         """
 
         @param args:
@@ -76,8 +76,8 @@ class Transformer(Processor):
                                           split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
                                           return_results=return_results, reduce_func=reduce_func,
                                           override=override, use_dill=use_dill, use_cache=use_cache,
-                                          _config_scheme=TransformerConfig, retrials=retrials, silent=silent,
-                                          retrials_delay=retrials_delay, **kwargs)
+                                          _config_scheme=TransformerConfig, retries=retries, silent=silent,
+                                          retries_delay=retries_delay, **kwargs)
 
         self.func = func
         self.reduce_func = reduce_func
@@ -105,8 +105,8 @@ class Transformer(Processor):
         self.use_dill = self.hparams.use_dill
         self.return_results = self.hparams.return_results
         self.use_cache = self.hparams.use_cache
-        self.retrials = self.hparams.retrials
-        self.retrials_delay = self.hparams.retrials_delay
+        self.retries = self.hparams.retries
+        self.retries_delay = self.hparams.retries_delay
         self.silent = self.hparams.silent
 
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
@@ -168,7 +168,7 @@ class Transformer(Processor):
         return r
 
     def worker(self, x, key=None, is_chunk=False, fit=False, cache=True, store_path=None, store=False,
-               override=False, return_results=True, use_cache=False, task_kwargs=None, retrials=1, retrials_delay=1.0,):
+               override=False, return_results=True, use_cache=False, task_kwargs=None, retries=1, retries_delay=1.0,):
 
         task_kwargs = task_kwargs or {}
 
@@ -197,8 +197,8 @@ class Transformer(Processor):
                     else:
                         return key, None
 
-        if retrials > 1:
-            transform = retry(self.transform_callback, retrials=retrials, sleep=retrials_delay)
+        if retries > 1:
+            transform = retry(self.transform_callback, retries=retries, sleep=retries_delay)
         else:
             transform = self.transform_callback
 
@@ -282,8 +282,8 @@ class Transformer(Processor):
         n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
         mp_method = parallel_kwargs.pop('mp_method', self.mp_method)
         use_dill = parallel_kwargs.pop('use_dill', self.use_dill)
-        retrials = parallel_kwargs.pop('retrials', self.retrials)
-        retrials_delay = parallel_kwargs.pop('retrials_delay', self.retrials_delay)
+        retries = parallel_kwargs.pop('retries', self.retries)
+        retries_delay = parallel_kwargs.pop('retries_delay', self.retries_delay)
 
         logger.info(f"Starting transformer process: {self.name}")
 
@@ -298,6 +298,16 @@ class Transformer(Processor):
             n_chunks = self.n_chunks
         if (chunksize is None) and (n_chunks is None):
             n_chunks = 1
+
+        if n_workers is None:
+            if chunksize is not None:
+                n_workers = 1
+            else:
+                n_workers = n_chunks
+        elif n_workers < 1:
+            # defaults to half of the available cores
+            n_workers = get_number_of_cores() // 2
+
         if squeeze is None:
             squeeze = self.squeeze
 
@@ -399,7 +409,7 @@ class Transformer(Processor):
                 queue.add(BeamTask(self.worker, c, key=k, is_chunk=is_chunk, store_path=chunk_path,
                                    override=override, store=store_chunk, name=k, metadata=f"{self.name}",
                                    return_results=return_results, use_cache=use_cache, task_kwargs=kwargs,
-                                   silent=silent, retrials=retrials, retrials_delay=retrials_delay))
+                                   silent=silent, retries=retries, retries_delay=retries_delay))
 
         else:
 

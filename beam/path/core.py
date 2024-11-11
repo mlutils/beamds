@@ -143,6 +143,11 @@ class PureBeamPath(BeamResource):
             dst.mkdir(parents=True, exist_ok=True)
             for p in self.iterdir():
                 p.copy(dst.joinpath(p.name), ignore=ignore, include=include)
+
+        elif self.is_file() and dst.is_dir():
+            dst = dst.joinpath(self.name)
+            self.copy(dst, ignore=ignore, include=include)
+
         else:
             dst.parent.mkdir()
             ext = self.suffix
@@ -999,7 +1004,7 @@ class PureBeamPath(BeamResource):
         return io_path.data['/']
 
     def resolve(self, strict=False):
-        return self.gen(self.path.resolve(strict=strict))
+        return self
 
 
 class DictBasedPath(PureBeamPath):

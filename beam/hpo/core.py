@@ -46,7 +46,7 @@ class BeamHPO(Processor):
             self.hpo_path = beam_path(hpo_path)
             logger.info(f"Creating new study at {self.hpo_path} (Beam version: {__version__})")
             self.hpo_path.mkdir()
-            self.hpo_path.joinpath('hpo_config.pkl').write(self.hparams)
+            self.hpo_path.joinpath('hpo_config.yaml').write(self.hparams)
 
         self.experiment_hparams = hparams
         self.experiment_hparams.set('reload', False)
@@ -60,7 +60,7 @@ class BeamHPO(Processor):
         self.identifier = f'{self.experiment_hparams.identifier}_hp_optimization_{exptime}'
         self.experiment_hparams.set('identifier', self.identifier)
         if not self.is_reloaded:
-            self.hpo_path.joinpath('base_config.pkl').write(self.experiment_hparams)
+            self.hpo_path.joinpath('base_config.yaml').write(self.experiment_hparams)
 
         self.alg = alg
         if algorithm_generator is None:

@@ -129,8 +129,13 @@ class AutoBeam(BeamBase):
             dir_files = {}
             for f in files:
                 p = r.joinpath(f)
+
                 # if p.suffix == '.py':
+                #     dir_files[f] = p.read()
+
+                #TODO: better filter of undesired files
                 dir_files[f] = p.read()
+
             if len(dir_files):
                 module_walk[str(r_relative)] = dir_files
 
@@ -539,28 +544,30 @@ class AutoBeam(BeamBase):
         path = beam_path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         import tarfile
-        with tarfile.open(str(path), "w:gz") as tar:
-            for i, (root_path, sub_paths) in enumerate(self.private_modules_walk.items()):
-                root_path = beam_path(root_path)
-                if root_path.is_file():
-                    tar.add(str(root_path), arcname=root_path.name)
-                else:
+        with local_copy(path, override=True) as local_path:
+            with tarfile.open(local_path, "w:gz") as tar:
+                for i, (root_path, sub_paths) in enumerate(self.private_modules_walk.items()):
                     root_path = beam_path(root_path)
-                    for sub_path, files in sub_paths.items():
-                        for file_name, _ in files.items():
-                            local_name = root_path.joinpath(sub_path, file_name)
-                            relative_name = local_name.relative_to(root_path.parent)
-                            tar.add(str(local_name), arcname=str(relative_name))
+                    if root_path.is_file():
+                        tar.add(str(root_path), arcname=root_path.name)
+                    else:
+                        root_path = beam_path(root_path)
+                        for sub_path, files in sub_paths.items():
+                            for file_name, _ in files.items():
+                                local_name = root_path.joinpath(sub_path, file_name)
+                                relative_name = local_name.relative_to(root_path.parent)
+                                tar.add(str(local_name), arcname=str(relative_name))
 
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
                   entrypoint='synchronous-server', beam_version='latest', dockerfile='simple-entrypoint',
-                  registry_url=None, base_url=None, registry_project_name=None,
-                  username=None, password=None, copy_bundle=False, requirements_blacklist=None, **kwargs):
+                  registry_url=None, base_url=None, registry_project_name=None, path_to_state=None,
+                  username=None, password=None, copy_bundle=False, requirements_blacklist=None,
+                  **kwargs):
 
         if obj is not None:
             logger.info(f"Building an object bundle")
-            bundle_path = AutoBeam.to_bundle(obj, path=bundle_path, blacklist=requirements_blacklist)
+            bundle_path = AutoBeam.to_bundle(obj, path=path_to_state, blacklist=requirements_blacklist)
 
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         full_image_name = (
@@ -573,7 +580,7 @@ class AutoBeam(BeamBase):
 
     @staticmethod
     def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint=None,
-                     copy_bundle=False, registry_url=None, username=None, password=None,
+                     copy_bundle=False, registry_url=None, username=None, password=None, override_image=False,
                      beam_version='latest', base_url=None, registry_project_name=None, dockerfile=None):
 
         assert base_image is not None, "You must provide a base_image."
@@ -651,10 +658,17 @@ class AutoBeam(BeamBase):
             }
 
             try:
+
+                if not override_image:
+                    from uuid import uuid4 as uuid
+                    random_string = uuid().hex[:6]
+                    image_name = f"{image_name}-{random_string}"
+
                 client = docker.APIClient(base_url=base_url)
                 logger.debug(f"Docker client version: {client.version()}")
-                response = client.build(path=bundle_path.str, dockerfile='.docker/dockerfile',
-                                        buildargs=build_args, tag=image_name, rm=True, decode=True)
+                with local_copy(bundle_path) as local_path:
+                    response = client.build(path=local_path, dockerfile='.docker/dockerfile',
+                                            buildargs=build_args, tag=image_name, rm=True, decode=True)
 
                 # Process and print each log entry
                 for line in response:

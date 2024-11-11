@@ -470,7 +470,9 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
             if chunksize == 1 and dim == 0:
                 for i, c in x.iterrows():
-                    yield i, c
+                    if squeeze:
+                        yield i, c
+                    yield i, c.to_frame().T
             else:
 
                 index_name = x.index.name or 'index'

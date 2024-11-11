@@ -3,9 +3,10 @@ from PIL import Image
 import requests
 from beam import logger
 
-
-from .yolo_model import YOLOConfig, YOLOBeam
-
+try:
+    from examples.yolo_model import YOLOConfig, YOLOBeam
+except:
+    from yolo_model import YOLOConfig, YOLOBeam
 
 def main():
 
@@ -25,7 +26,7 @@ def main():
     # store to bundle
     logger.info(f"Storing the processor to bundle: {config.path_to_bundle}")
     yolo.to_bundle(config.path_to_bundle, blacklist=['torch', 'torchvision'])
-
+    print('Done!')
 
 
 if __name__ == '__main__':

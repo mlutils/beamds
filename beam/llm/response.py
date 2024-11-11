@@ -14,12 +14,12 @@ from ..utils import parse_text_to_protocol, retry
 
 
 class LLMResponse:
-    def __init__(self, response, llm, prompt=None, prompt_kwargs=None, chat=False, stream=False, parse_retrials=3,
+    def __init__(self, response, llm, prompt=None, prompt_kwargs=None, chat=False, stream=False, parse_retries=3,
                  sleep=1, prompt_type='completion', verify=True, **kwargs):
         self.response = response
         self._prompt = prompt
         self._prompt_kwargs = prompt_kwargs
-        self.parse_retrials = parse_retrials
+        self.parse_retries = parse_retries
         self.sleep = sleep
         self.llm = llm
         self.id = f'beamllm-{uuid.uuid4()}'
@@ -65,7 +65,7 @@ class LLMResponse:
         else:
             for r in self.response:
                 yield LLMResponse(r, self.llm, prompt=self.prompt, chat=self.chat, stream=self.stream,
-                                  prompt_kwargs=self._prompt_kwargs, parse_retrials=self.parse_retrials,
+                                  prompt_kwargs=self._prompt_kwargs, parse_retries=self.parse_retries,
                                   sleep=self.sleep, prompt_type=self.prompt_type)
 
     def add_task_result(self, task_result, success=True):
@@ -121,12 +121,12 @@ class LLMResponse:
 
     def _protocol(self, text, protocol='json'):
 
-        if self.parse_retrials == 0:
+        if self.parse_retries == 0:
             return parse_text_to_protocol(text, protocol=protocol)
         try:
             return parse_text_to_protocol(text, protocol=protocol)
         except:
-            retry_protocol = (retry(retrials=self.parse_retrials, sleep=self.sleep,  logger=logger, name=f"fix-{protocol} with {self.model}")
+            retry_protocol = (retry(retries=self.parse_retries, sleep=self.sleep, logger=logger, name=f"fix-{protocol} with {self.model}")
                               (self.llm.fix_protocol))
             return retry_protocol(text, protocol=protocol)
 

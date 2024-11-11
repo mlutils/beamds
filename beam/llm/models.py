@@ -302,12 +302,12 @@ class FastAPIDPLLM(SamurAI):
     echo: Optional[bool] = Field(None)
     worker_generate_stream_ep: Optional[str] = Field(None)
     streaming_delimiter: Optional[bytes] = Field(None)
-    retrials: Optional[int] = Field(None)
+    retries: Optional[int] = Field(None)
     timeout: Optional[int] = Field(None)
 
     def __init__(self, *args, application='Botson', task='None', cut_long_prompt=False, echo=False,
                  worker_generate_stream_ep='worker_generate_stream/', streaming_delimiter=b"\0",
-                 retrials=None, stop_token_ids=None, protocol='http', stop=None, timeout=60, **kwargs):
+                 retries=None, stop_token_ids=None, protocol='http', stop=None, timeout=60, **kwargs):
 
         kwargs['scheme'] = 'fastapi-dp'
         super().__init__(*args, protocol=protocol, **kwargs)
@@ -320,7 +320,7 @@ class FastAPIDPLLM(SamurAI):
         self.streaming_delimiter = streaming_delimiter
         self.stop_token_ids = stop_token_ids
         self.stop = stop
-        self.retrials = retrials
+        self.retries = retries
         self.timeout = timeout
         self.headers = {'Content-Type': 'application/json', 'accept': 'application/json'}
 

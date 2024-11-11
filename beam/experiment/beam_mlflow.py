@@ -77,7 +77,7 @@ class MFBeamAlgWrapper(mlflow.pyfunc.PythonModel):
         checkpoint_file = alg.experiment.checkpoints_dir.joinpath(f'checkpoint_mlflow_{alg.epoch + 1:06d}')
         alg.save_checkpoint(checkpoint_file)
 
-        artifacts = {'hparams': str(alg.experiment.experiment_dir.joinpath('hparams.pkl')),
+        artifacts = {'hparams': str(alg.experiment.experiment_dir.joinpath('hparams.yaml')),
                      'state': str(checkpoint_file)}
         with mlflow.start_run() as run:
             mlflow.pyfunc.log_model(

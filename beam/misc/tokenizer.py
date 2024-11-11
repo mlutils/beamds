@@ -1,11 +1,13 @@
-from ..processor import Processor
-from ..type import check_type, Types
-
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.processors import TemplateProcessing
+
+from ..logging import beam_logger as logger
+from ..processor import Processor
+from ..type import check_type, Types
+
 
 
 class BeamTokenizer(Processor):
@@ -38,6 +40,7 @@ class BeamTokenizer(Processor):
 
         bpe = BPE(unk_token=self.unk_token, **bpe_kwargs)
         self._tokenizer = Tokenizer(bpe)
+        self._filtered_tokens = None
 
         # Add special tokens
         self._tokenizer.add_special_tokens(self.special_tokens)
@@ -50,6 +53,12 @@ class BeamTokenizer(Processor):
                                                             special_tokens=[(self.bos_token, 1),
                                                                             (self.eos_token, 2)])
 
+    def encode(self, x):
+        tokens = self._tokenizer.encode(x).ids
+        if self._filtered_tokens is not None:
+            tokens = [token for token in tokens if token in self._filtered_tokens]
+        return tokens
+
     def _filter_tokens_by_length(self):
         # Filter vocabulary based on token length constraints (N1 and N2)
         vocab = self._tokenizer.get_vocab()
@@ -58,7 +67,8 @@ class BeamTokenizer(Processor):
                               if (self.min_token_length is None or len(token) >= self.min_token_length) and
                               (self.max_token_length  is None or len(token) <= self.max_token_length )}
             # Update the tokenizer's vocabulary
-            self._tokenizer.set_vocab(filtered_vocab)
+            self._filtered_tokens = set(filtered_vocab.values())
+            logger.info(f"Filtered vocabulary size: {len(filtered_vocab)}")
 
     def train(self, texts):
         self._tokenizer.train_from_iterator(texts, self._trainer)
@@ -69,12 +79,15 @@ class BeamTokenizer(Processor):
     def __call__(self, x):
         x_type = check_type(x)
         if x_type.major == Types.array:
-            return [self._tokenizer.encode(xi).ids for xi in x]
-        return self._tokenizer.encode(x).ids
+            return [self.encode(item) for item in x]
+        return self.encode(x)
 
     @property
     def vocab(self):
-        return self._tokenizer.get_vocab()
+        vocab = self._tokenizer.get_vocab()
+        if self._filtered_tokens is not None:
+            vocab = {k: v for k, v in vocab.items() if v in self._filtered_tokens}
+        return vocab
 
     @property
     def vocab_size(self):
