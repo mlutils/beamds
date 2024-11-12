@@ -41,5 +41,6 @@ def ensure_rfc1123_compliance(name):
     # Handle the case where the name might be empty after stripping
     if not name:
         name = 'default-name'
+    # todo: use generator + deployment suffix to generate unique names not hardcoding
 
     return name
