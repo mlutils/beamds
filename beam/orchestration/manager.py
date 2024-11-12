@@ -40,7 +40,10 @@ class BeamManager(BeamBase):
         logger.info(f"Cleaning up existing resources for deployment '{deployment_name}' in namespace '{namespace}'")
 
         # Scale deployment to zero if it exists
-        self.k8s.scale_deployment_to_zero(deployment_name, namespace)
+        if self.k8s.deployment_exists(deployment_name, namespace):
+            self.k8s.scale_deployment_to_zero(deployment_name, namespace)
+        else:
+            logger.info(f"Deployment '{deployment_name}' not found in namespace '{namespace}'. Skipping scaling to 0.")
 
         self.k8s.delete_resources_starting_with(prefix=deployment_name, namespace=namespace)
         # Delete all resources labeled with the app name
