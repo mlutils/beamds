@@ -639,6 +639,12 @@ def collate_chunks(*xs, keys=None, dim=0, on='index', how='outer', method='tree'
             dictionary.update(xi)
         return dictionary
 
+    if x_type.major == Types.container and x_type.minor == Types.list and dim == 0:
+        l = []
+        for xi in x:
+            l.extend(xi)
+        return l
+
     if (x_type.major not in [Types.array, Types.other]) or (dim == 1 and not x_type.is_data_array):
         return x
 
