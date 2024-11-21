@@ -7,11 +7,13 @@ class MetaBeamInit(type):
         init_args = {'args': args, 'kwargs': kwargs}
         if _store_init_path:
             cls._pre_init(_store_init_path, init_args)
+        if '_init_args' not in kwargs:
+            kwargs['_init_args'] = init_args
 
-        instance = super().__call__(*args, _init_args=init_args, **kwargs)
-
+        instance = super().__call__(*args, **kwargs)
         instance._init_args = init_args if _save_init_args else None
         instance._init_is_done = True
+
         return instance
 
     def _pre_init(cls, store_init_path, init_args):
