@@ -7,6 +7,7 @@ from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOp
 from kubernetes.client.rest import ApiException
 from ..logging import beam_logger as logger
 from ..utils import cached_property
+from .utils import ensure_rfc1123_compliance
 from ..processor import Processor
 from .units import K8SUnits
 import smtplib
@@ -325,7 +326,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
         if command is not None and command.executable is not None:
-            command = command.as_list()
+            command = command.dict()
         else:
             command = None
 
@@ -552,6 +553,22 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             selector={'matchLabels': pod_template.metadata.labels}
         )
 
+    def deployment_exists(self, deployment_name, namespace):
+        """
+        Check if a deployment exists in the specified namespace.
+        """
+        try:
+            self.apps_v1_api.read_namespaced_deployment(name=deployment_name, namespace=namespace)
+            logger.info(f"Deployment '{deployment_name}' exists in namespace '{namespace}'.")
+            return True
+        except ApiException as e:
+            if e.status == 404:
+                logger.info(f"Deployment '{deployment_name}' not found in namespace '{namespace}', skipping.")
+                return False
+            else:
+                logger.error(f"Unexpected error while checking deployment '{deployment_name}': {e}")
+                raise
+
     def create_deployment(self, image_name, command=None, labels=None, deployment_name=None,
                           namespace=None, project_name=None,
                           replicas=None, ports=None, create_service_account=None, service_account_name=None,
@@ -574,8 +591,11 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             if labels is None:
                 labels = {}
             labels['app'] = deployment_name  # Set the 'app' label to the unique deployment name
+        else:
+            deployment_name = self.generate_unique_deployment_name(deployment_name, namespace)
 
-        deployment_name = self.generate_unique_deployment_name(deployment_name, namespace)
+        # Ensure deployment name complies with RFC 1123
+        deployment_name = ensure_rfc1123_compliance(deployment_name)
 
         deployment_spec = self.create_deployment_spec(
             image_name, command=command, labels=labels, deployment_name=deployment_name,

@@ -61,7 +61,7 @@ class ServeCluster(BeamCluster):
 
 
     @classmethod
-    def _deploy_and_launch(cls, bundle_path=None, obj=None, image_name=None, config=None, k8s=None):
+    def  _deploy_and_launch(cls, bundle_path=None, obj=None, image_name=None, config=None, k8s=None):
 
         from ..auto import AutoBeam
 
@@ -198,14 +198,14 @@ class ServeCluster(BeamCluster):
 
                 for pod in self.pods:
                     try:
-                        pod_status = pod.get_pod_status()
-                        if pod_status != "Running":
-                            logger.warning(f"Pod {pod.pod_infos[0].name} is not running. Status: {pod_status}")
-                        else:
-                            logger.info(f"Pod {pod.pod_infos[0].name} is running smoothly.")
+                        statuses = pod.get_pod_status()
+                        for pod_name, status in statuses:
+                            if status != "Running":
+                                logger.warning(f"Pod {pod_name} is not running. Status: {status}")
+                            else:
+                                logger.info(f"Pod {pod_name} is running smoothly.")
                     except Exception as e:
-                        logger.error(f"Error retrieving status for pod {pod.pod_infos[0].name}: {str(e)}")
-
+                        logger.error(f"Error retrieving status for pod: {str(e)}")
                 time.sleep(30)  # Adjust sleep duration as needed
         except Exception as e:
             logger.error(f"Error occurred while monitoring the cluster: {str(e)}")
@@ -314,8 +314,6 @@ class RayCluster(BeamCluster):
                 raise Exception(f"Failed to get pod info or pod status for {head_pod_name}")
         else:
             raise Exception(f"Head pod {head_pod_name} is not running. Current status: {head_pod_status[0][1]}")
-
-    #  TODO: implement connect_cluster live in pycharm for now
     # def connect_cluster(self):
     #     # example how to connect to head node
     #     for w in self.workers:

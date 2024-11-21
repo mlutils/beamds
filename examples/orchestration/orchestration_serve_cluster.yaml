@@ -18,7 +18,7 @@ command:
 #  - nvidia-smi
   executable: #/bin/bash
 cpu_limits: '2'
-cpu_requests: '2'
+cpu_requests: 2
 create_service_account: false
 deployment_name: yolo
 debug_sleep: false
@@ -38,8 +38,8 @@ gpu_requests: '1'
 image_name: harbor.dt.local/public/beam:20240801
 labels:
   app: yolo
-memory_limits: '6'
-memory_requests: '6'
+memory_limits: 4
+memory_requests: '4'
 memory_storage_configs:
 - enabled: true
   mount_path: /dev/shm

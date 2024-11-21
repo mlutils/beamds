@@ -112,7 +112,7 @@ class RestartPolicyConfig:
     def to_dict(self):
         return asdict(self)
 
-#Todo: build configuration classes according to the deployment layer structure
+# Todo: build configuration classes according to the deployment layer structure
 # Todo: check online existing packages that have these configurations
 
 @dataclass
