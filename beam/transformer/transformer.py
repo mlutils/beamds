@@ -29,7 +29,7 @@ class Transformer(Processor):
                  chunksize=None, mp_method='joblib', squeeze=False, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
                  use_dill=False, return_results=None, use_cache=False, retries=1, silent=False, reduce_func=None,
-                 retries_delay=1., **kwargs):
+                 retries_delay=1., _config_scheme=None, **kwargs):
         """
 
         @param args:
@@ -69,6 +69,7 @@ class Transformer(Processor):
         assert inspect.isroutine(func) or func is None, "The func argument must be a function."
 
         name = name or func.__name__ if func is not None else None
+        _config_scheme = _config_scheme or TransformerConfig
         super(Transformer, self).__init__(*args, name=name, n_workers=n_workers, n_chunks=n_chunks,
                                           store_path=store_path, partition=partition, chunksize=chunksize,
                                           mp_method=mp_method, squeeze=squeeze, reduce=reduce, reduce_dim=reduce_dim,
@@ -76,7 +77,7 @@ class Transformer(Processor):
                                           split_by=split_by, store_suffix=store_suffix, shuffle=shuffle,
                                           return_results=return_results, reduce_func=reduce_func,
                                           override=override, use_dill=use_dill, use_cache=use_cache,
-                                          _config_scheme=TransformerConfig, retries=retries, silent=silent,
+                                          _config_scheme=_config_scheme, retries=retries, silent=silent,
                                           retries_delay=retries_delay, **kwargs)
 
         self.func = func

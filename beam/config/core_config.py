@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
 from ..path import beam_path
 from ..meta import MetaBeamInit
+from ..base import base_paths
 
 
 @dataclass
@@ -26,6 +27,7 @@ class BeamParam:
 class BeamConfig(Namespace, metaclass=MetaBeamInit):
     parameters = [
         BeamParam('debug', bool, False, 'Whether to run in debug mode (logger is set to DEBUG level)'),
+        BeamParam('beam-logs-path', str, base_paths.logs, 'Where to store the beam-logger output'),
     ]
     defaults = {}
 
