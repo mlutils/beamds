@@ -10,8 +10,8 @@ class K8SUnits:
             return value.value
         elif isinstance(value, str):
             return self.parse_str(value)
-        elif isinstance(value, (int, float)):
-            return self.parse_numeric(value)
+        elif isinstance(value, (float, int)):
+            return self.parse_numeric(float(value))
         else:
             raise ValueError(f"Unsupported type for K8SUnits value: {type(value)}")
 
@@ -31,28 +31,33 @@ class K8SUnits:
                 # e.g., "500Mi" -> 500 MiB in bytes
                 return int(float(value.replace('Mi', '')) * 1000 ** 2)
             else:
-                # Default: if float < 1, interpret as MiB; otherwise, as GiB
-                return int(float(value) * (1000 ** 3 if float(value) >= 1 else 1000 ** 2))
+                # Interpret decimal as a mix of GiB and MiB, e.g., 1.3 means 1 GiB + 300 MiB
+                return self.parse_mixed_memory(float(value))
+    @staticmethod
+    def parse_mixed_memory(value: float):
+        gi = int(value)  # Whole GiB
+        mi_fraction = (value - gi) * 1024  # Remaining fraction as MiB
+        return gi * 1024 ** 3 + int(mi_fraction) * 1024 ** 2
 
     def parse_numeric(self, value: Union[int, float]):
         if self.resource_type == "cpu":
-            # Convert CPU float to millicores (e.g., 0.5 -> 500m)
-            return int(value * 1000) if isinstance(value, float) else value * 1000
+            return int(value * 1000)
         elif self.resource_type == "memory":
-            # Convert integer to GiB and float to MiB
-            return int(value * 1000 ** 3) if isinstance(value, int) else int(value * 1000 ** 2)
+            if isinstance(value, int):
+                return value * 1024 ** 3  # Treat integers as GiB
+            else:
+                return self.parse_mixed_memory(value)  # Treat floats as mixed GiB + MiB
         else:
             raise ValueError(f"Unsupported resource type: {self.resource_type}")
 
     @property
     def as_str(self):
         if self.resource_type == "memory":
-            if self.value >= 1000 ** 3:
-                return f"{self.value / 1000 ** 3}Gi"
-            elif self.value >= 1000 ** 2:
-                return f"{self.value / 1000 ** 2}Mi"
+            # If the value is not an exact GiB, display it in MiB for accuracy
+            if self.value % 1024 ** 3 != 0:
+                return f"{self.value / 1024 ** 2:.0f}Mi"
             else:
-                return f"{self.value}B"  # Default to bytes if very small
+                return f"{self.value / 1024 ** 3:.0f}Gi"
         elif self.resource_type == "cpu":
             if self.value % 1000 == 0:
                 return str(self.value // 1000)  # Full cores

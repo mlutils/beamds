@@ -11,6 +11,7 @@ from ..logging import beam_logger as logger
 from .dataclasses import *
 from ..resources import resource
 from .config import K8SConfig
+from .utils import ensure_rfc1123_compliance
 from datetime import datetime
 import json
 
@@ -56,7 +57,11 @@ class BeamDeploy(BeamBase):
         self.cron_job_name = self.get_hparam('cron_job_name')
         self.container_name = self.get_hparam('container_name')
         self.job_name = self.get_hparam('job_name')
-        self.deployment_name = self.get_hparam('deployment_name')
+
+        # Retrieve and ensure RFC 1123 compliance for deployment name
+        deployment_name = self.get_hparam('deployment_name')
+        self.deployment_name = ensure_rfc1123_compliance(deployment_name)
+
         self.job_schedule = self.get_hparam('job_schedule')
         self.service_type = self.get_hparam('service_type')
         self.service_account_name = f"{self.deployment_name}svc"
