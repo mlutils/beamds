@@ -21,7 +21,7 @@ class BeamCICD(BeamBase):
         """
         Create a GitLab CI/CD pipeline configuration based on the provided parameters.
 
-        config: Dictionary containing configuration like GITLAB_PROJECT, IMAGE_NAME, etc.
+        config: Dictionary containing configuration like GITLAB_PROJECT, IMAGE_NAME,  etc.
         @param config:
         """
         try:
