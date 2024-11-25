@@ -4,7 +4,7 @@ from beam.git import BeamCICD
 
 # Example usage of BeamCICD class
 def example_create_cicd_pipeline():
-    api_url, api_token, namespace = 'https://gitlab.dt.local', 'example-token', 'your_namespace'
+    api_url, api_token, namespace = 'https://gitlab.example.com', 'example-token', 'your_namespace'
     beam_cicd = BeamCICD(gitlab_url=api_url, gitlab_token=api_token)
 
     config = {
