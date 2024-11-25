@@ -1,0 +1,16 @@
+gitlab_url: https://gitlab.dt.local
+gitlab_token: ssha256~rUZfScCW746EPQJ4ON_R1ENta2xOQj2Zk7dxoBtvAOw
+branch: main
+namespace: dayosupp
+gitlab_project: dayosupp/yolo
+image_name: harbor.dt.local/public/beam:20240801
+registry_user: admin
+registry_url: harbor.dt.local
+registry_password: Har@123
+python_file: main.py
+python_function: main
+bash_script: run_yolo.sh
+working_dir: /opt/yolo
+
+
+

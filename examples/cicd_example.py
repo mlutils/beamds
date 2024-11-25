@@ -1,21 +1,16 @@
-from beam.git import BeamCICD
-
+from beam.git import BeamCICD, BeamCICDConfig
+from beam.logging import beam_logger as logger
 
 
 # Example usage of BeamCICD class
 def example_create_cicd_pipeline():
-    api_url, api_token, namespace = 'https://gitlab.example.com', 'your_gitlab_token', 'your_namespace'
-    beam_cicd = BeamCICD(gitlab_url=api_url, gitlab_token=api_token)
+    api_url, api_token, namespace = 'https://gitlab.dt.local', 'glpat-_fKCXzehNxPP3Do8QRx-', 'dayosupp'
 
-    params = {
-        'GITLAB_PROJECT': 'researchers/yolo_project',
-        'IMAGE_NAME': 'harbor.dt.local/public/beam:20240801',
-        'REGISTRY_USER': 'admin',
-        'REGISTRY_PASSWORD': 'Har@123',
-        'CI_REGISTRY': 'harbor.dt.local'
-    }
 
-    beam_cicd.create_cicd_pipeline(params)
+    conf = BeamCICDConfig(gitlab_url=api_url, gitlab_token=api_token, git_namespace=namespace)
+    beam_cicd = BeamCICD(conf)
+
+    beam_cicd.create_cicd_pipeline()
 
 
 if __name__ == "__main__":
