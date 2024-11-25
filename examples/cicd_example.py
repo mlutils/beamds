@@ -4,10 +4,10 @@ from beam.git import BeamCICD
 
 # Example usage of BeamCICD class
 def example_create_cicd_pipeline():
-    api_url, api_token, namespace = 'https://gitlab.example.com', 'your_gitlab_token', 'your_namespace'
+    api_url, api_token, namespace = 'https://gitlab.dt.local', 'glpat-_fKCXzehNxPP3Do8QRx-', 'your_namespace'
     beam_cicd = BeamCICD(gitlab_url=api_url, gitlab_token=api_token)
 
-    params = {
+    config = {
         'GITLAB_PROJECT': 'researchers/yolo_project',
         'IMAGE_NAME': 'harbor.dt.local/public/beam:20240801',
         'REGISTRY_USER': 'admin',
@@ -15,7 +15,7 @@ def example_create_cicd_pipeline():
         'CI_REGISTRY': 'harbor.dt.local'
     }
 
-    beam_cicd.create_cicd_pipeline(params)
+    beam_cicd.create_cicd_pipeline(config)
 
 
 if __name__ == "__main__":
