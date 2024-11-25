@@ -29,7 +29,6 @@ class BeamCICD(BeamBase):
 
             # Prepare .gitlab-ci.yml content using provided parameters
             ci_template = {
-                'stages': ['run'],
                 'variables': {
                     'IMAGE_NAME': self.get_hparam('image_name'),
                     'REGISTRY_USER': self.get_hparam('registry_user'),
@@ -39,8 +38,10 @@ class BeamCICD(BeamBase):
                     'PYTHON_FUNCTION': self.get_hparam('python_function'),
                     'BASH_SCRIPT': self.get_hparam('bash_script'),
                     'WORKING_DIR': self.get_hparam('working_dir'),
-
                 },
+                'stages': [
+                    'run'
+                ],
                 'before_script': [
                     'echo "Starting run_yolo job..."'
                 ],
@@ -62,31 +63,21 @@ class BeamCICD(BeamBase):
             # Create or update the .gitlab-ci.yml file in the repository
             file_path = '.gitlab-ci.yml'
             try:
-                file = project.files.get(file_path=file_path, ref='main')
+                # Try to fetch the file
+                file = project.files.get(file_path=file_path, ref=self.get_hparam('branch'))
+                # If the file exists, update it
                 file.content = ci_yaml_content
-                file.save(branch='main', commit_message='Update CI/CD pipeline configuration')
-                logger.info(f"Updated .gitlab-ci.yml for project {config['GITLAB_PROJECT']}")
-
-            except Exception as e:
+                file.save(branch=self.get_hparam('branch'), commit_message='Update CI/CD pipeline configuration')
+                logger.info(f"Updated .gitlab-ci.yml for project {self.get_hparam('gitlab_project')}")
+            except gitlab.exceptions.GitlabGetError:
+                # If the file doesn't exist, create it
                 project.files.create({
                     'file_path': file_path,
-                    'branch': 'main',
+                    'branch': self.get_hparam('branch'),
                     'content': ci_yaml_content,
                     'commit_message': 'Add CI/CD pipeline configuration'
                 })
-                logger.info(f"Created .gitlab-ci.yml for project {config['GITLAB_PROJECT']}")
-
-            # Commit and push changes
-            project.commits.create({
-                'branch': self.get_hparam('branch'),
-                'commit_message':  config.get('commit_message'),
-                'actions': [{
-                    'action': 'update',
-                    'file_path': file_path,
-                    'content': ci_yaml_content
-                }]
-            })
-            logger.info(f"Committed and pushed changes for project {config['GITLAB_PROJECT']}")
+                logger.info(f"Created .gitlab-ci.yml for project {self.get_hparam('gitlab_project')}")
 
         except Exception as e:
             logger.error(f"Failed to create or update CI/CD pipeline: {str(e)}")
