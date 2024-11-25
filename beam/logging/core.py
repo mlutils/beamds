@@ -1,14 +1,17 @@
 import sys
 from contextlib import contextmanager
+from http.cookiejar import debug
+
 import loguru
 import atexit
 
 
 class BeamLogger:
 
-    def __init__(self, path=None, print=True):
+    def __init__(self, path=None, print=True, colors=True):
         self.logger = loguru.logger.opt(depth=1)
         self._level = None
+        self.colors = colors
         self.logger.remove()
         self.handlers_queue = []
 
@@ -23,7 +26,6 @@ class BeamLogger:
             self.add_file_handlers(path)
 
         self.set_verbosity('INFO')
-
         atexit.register(self.cleanup)
 
     @property
@@ -161,10 +163,10 @@ class BeamLogger:
     def __setstate__(self, state):
         self.__init__(state['path'])
 
-    def stdout_handler(self, level='INFO', file_info=True):
+    def stdout_handler(self, level='INFO', file_info=True, colors=True):
 
         file_info = f' <cyan>(∫{{file}}:{{function}}-#{{line}})</cyan>' if file_info else ''
-        return self.logger.add(sys.stdout, level=level, colorize=True,
+        return self.logger.add(sys.stdout, level=level, colorize=colors,
                                format=f'🔥 | <green>{{time:HH:mm:ss}} ({{elapsed}})</green> | '
                                       f'<level>{{level:<8}}</level> 🗎 <level>{{message}}</level>{file_info}')
 
@@ -183,7 +185,17 @@ class BeamLogger:
         if 'stdout' in self.handlers:
             self.logger.remove(self.handlers['stdout'])
 
-        self.handlers['stdout'] = self.stdout_handler(level=level, file_info=file_info)
+        self.handlers['stdout'] = self.stdout_handler(level=level, file_info=file_info, colors=self.colors)
+
+    def turn_colors_off(self, **kwargs):
+        self.colors = False
+        self.set_verbosity(self.level, **kwargs)
+        self.debug('Colors in logs turned off')
+
+    def turn_colors_on(self, **kwargs):
+        self.colors = True
+        self.set_verbosity(self.level, **kwargs)
+        self.debug('Colors in logs turned on')
 
     def debug_mode(self, **kwargs):
         self.set_verbosity('DEBUG', **kwargs)

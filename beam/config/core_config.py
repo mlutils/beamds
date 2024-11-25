@@ -27,6 +27,7 @@ class BeamParam:
 class BeamConfig(Namespace, metaclass=MetaBeamInit):
     parameters = [
         BeamParam('debug', bool, False, 'Whether to run in debug mode (logger is set to DEBUG level)'),
+        BeamParam('colors', bool, True, 'Whether to use colors in the logger output'),
         BeamParam('beam-logs-path', str, base_paths.logs, 'Where to store the beam-logger output'),
     ]
     defaults = {}
