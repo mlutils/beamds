@@ -2,7 +2,7 @@ from beam.git import BeamCICD, BeamCICDConfig
 from beam.logging import beam_logger as logger
 
 
-# Example usage of BeamCICD class
+# Example usage of BeamCICD classs
 def example_create_cicd_pipeline():
     api_url, api_token, git_namespace = 'https://gitlab.dt.local', 'glpat-_fKCXzehNxPP3Do8QRx-', 'dayosupp'
 
