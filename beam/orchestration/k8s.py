@@ -17,7 +17,7 @@ from .dataclasses import *
 import time
 import json
 import subprocess
-
+import re
 
 class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits the method of processor
     """BeamK8S is a class  that  provides a simple interface to the Kubernetes API."""
@@ -114,6 +114,71 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             else:
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
+
+    def create_image_stream(self, namespace, container_image):
+        """
+        Create or retrieve an OpenShift ImageStream for the specified container image.
+
+        Args:
+            namespace (str): The OpenShift namespace to create the ImageStream in.
+            container_image (str): The full container image reference (e.g., quay.io/my-app:v1).
+
+        Returns:
+            str: The name of the ImageStream created or retrieved.
+        """
+        # Extract the container name and tag from the image
+        if ":" in container_image:
+            container_name, _ = container_image.rsplit(":", 1)
+        else:
+            container_name = container_image
+
+        # Auto-generate ImageStream name from the container name
+        image_stream_name = re.sub(r"[^a-z0-9-]", "-", container_name.split("/")[-1].lower())
+
+        # Initialize the ImageStream API client
+        api = self.dyn_client.resources.get(api_version="image.openshift.io/v1", kind="ImageStream")
+
+        try:
+            # Check if the ImageStream already exists
+            image_stream = api.get(name=image_stream_name, namespace=namespace)
+            logger.info(f"ImageStream '{image_stream_name}' already exists in namespace '{namespace}'.")
+        except ApiException as e:
+            if e.status == 404:
+                # ImageStream does not exist, create it
+                imagestream = {
+                    "apiVersion": "image.openshift.io/v1",
+                    "kind": "ImageStream",
+                    "metadata": {
+                        "name": image_stream_name,
+                        "namespace": namespace,
+                    },
+                    "spec": {
+                        "tags": [
+                            {
+                                "name": "latest",  # Default tag
+                                "from": {
+                                    "kind": "DockerImage",
+                                    "name": container_image,  # Reference the container image
+                                },
+                                "importPolicy": {"insecure": False},
+                            }
+                        ]
+                    },
+                }
+                try:
+                    api.create(body=imagestream, namespace=namespace)
+                    logger.info(f"ImageStream '{image_stream_name}' created successfully in namespace '{namespace}'.")
+                except Exception as creation_error:
+                    logger.error(
+                        f"Failed to create ImageStream '{image_stream_name}' in namespace '{namespace}': {creation_error}"
+                    )
+                    raise
+            else:
+                logger.error(f"Failed to check ImageStream '{image_stream_name}': {e}")
+                raise
+
+        # Return the ImageStream name
+        return image_stream_name
 
     def bind_service_account_to_role(self, service_account_name, namespace, role='admin'):
         from kubernetes.client import V1RoleBinding, V1RoleRef, V1ObjectMeta
@@ -1363,25 +1428,149 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         except ApiException as e:
             logger.error(f"Failed to delete resources labeled with app '{app_name}' in namespace '{namespace}': {e}")
 
+    def job_exists(self, job_name, namespace):
+        """
+        Check if a Job exists in the specified namespace.
+        """
+        try:
+            self.batch_v1_api.read_namespaced_job(name=job_name, namespace=namespace)
+            logger.info(f"Job '{job_name}' exists in namespace '{namespace}'.")
+            return True
+        except ApiException as e:
+            if e.status == 404:
+                logger.info(f"Job '{job_name}' not found in namespace '{namespace}', skipping.")
+                return False
+            else:
+                logger.error(f"Unexpected error while checking job '{job_name}': {e}")
+                raise
+
+    def cronjob_exists(self, cronjob_name, namespace):
+        """
+        Check if a CronJob exists in the specified namespace.
+        """
+        try:
+            self.batch_v1_api.read_namespaced_cron_job(name=cronjob_name, namespace=namespace)
+            logger.info(f"CronJob '{cronjob_name}' exists in namespace '{namespace}'.")
+            return True
+        except ApiException as e:
+            if e.status == 404:
+                logger.info(f"CronJob '{cronjob_name}' not found in namespace '{namespace}', skipping.")
+                return False
+            else:
+                logger.error(f"Unexpected error while checking cronjob '{cronjob_name}': {e}")
+                raise
+
     def delete_cronjobs_by_name(self, app_name, namespace):
         try:
+            # Check if a specific CronJob by name exists
+            cronjob = None
+            try:
+                cronjob = self.batch_v1_api.read_namespaced_cron_job(app_name, namespace)
+            except ApiException as e:
+                if e.status != 404:
+                    logger.error(f"Failed to retrieve CronJob '{app_name}' in namespace '{namespace}': {e}")
+                    return
+
+            if cronjob:
+                # If a CronJob with the given name exists, delete it
+                self.batch_v1_api.delete_namespaced_cron_job(app_name, namespace)
+                logger.info(f"Deleted CronJob '{app_name}' in namespace '{namespace}'.")
+                return
+
+            # If no specific CronJob name, use label selector to delete associated CronJobs
             cronjobs = self.batch_v1_api.list_namespaced_cron_job(namespace, label_selector=f"app={app_name}")
             for cronjob in cronjobs.items:
                 self.batch_v1_api.delete_namespaced_cron_job(cronjob.metadata.name, namespace)
-                logger.debug(f"Deleted cronjob '{cronjob.metadata.name}' in namespace '{namespace}'.")
+                logger.debug(f"Deleted CronJob '{cronjob.metadata.name}' in namespace '{namespace}'.")
             logger.info(f"Deleted all CronJobs associated with app '{app_name}' in namespace '{namespace}'.")
-        except ApiException as e:
-            logger.error(f"Failed to delete CronJobs associated with '{app_name}': {e}")
 
-    def delete_jobs_by_name(self, app_name, namespace):
+        except ApiException as e:
+            logger.error(f"Failed to delete CronJobs for '{app_name}' in namespace '{namespace}': {e}")
+
+
+    def delete_jobs_by_name(self, app_name, namespace, wait_for_deletion=True, timeout=60):
         try:
+            job = None
+            try:
+                job = self.batch_v1_api.read_namespaced_job(app_name, namespace)
+            except ApiException as e:
+                if e.status != 404:
+                    logger.error(f"Failed to retrieve Job '{app_name}' in namespace '{namespace}': {e}")
+                    return
+
+            if job:
+                self.batch_v1_api.delete_namespaced_job(
+                    app_name,
+                    namespace,
+                    body=kubernetes.client.V1DeleteOptions(propagation_policy='Foreground')
+                )
+                logger.info(f"Deleted Job '{app_name}' in namespace '{namespace}'.")
+
+                if wait_for_deletion:
+                    start_time = time.time()
+                    while time.time() - start_time < timeout:
+                        try:
+                            self.batch_v1_api.read_namespaced_job(app_name, namespace)
+                            time.sleep(1)  # Wait for 1 second before re-checking
+                        except ApiException as e:
+                            if e.status == 404:
+                                logger.info(f"Job '{app_name}' successfully deleted.")
+                                break
+                            else:
+                                logger.error(f"Error checking deletion status for Job '{app_name}': {e}")
+                                break
+                    else:
+                        logger.warning(f"Timed out waiting for Job '{app_name}' to be deleted.")
+                return
+
+            # If no specific Job name, use label selector to delete associated Jobs
             jobs = self.batch_v1_api.list_namespaced_job(namespace, label_selector=f"app={app_name}")
             for job in jobs.items:
-                self.batch_v1_api.delete_namespaced_job(job.metadata.name, namespace)
-                logger.debug(f"Deleted job '{job.metadata.name}' in namespace '{namespace}'.")
+                self.batch_v1_api.delete_namespaced_job(
+                    job.metadata.name,
+                    namespace,
+                    body=kubernetes.client.V1DeleteOptions(propagation_policy='Foreground')
+                )
+                logger.debug(f"Deleted Job '{job.metadata.name}' in namespace '{namespace}'.")
+
+                if wait_for_deletion:
+                    start_time = time.time()
+                    while time.time() - start_time < timeout:
+                        try:
+                            self.batch_v1_api.read_namespaced_job(job.metadata.name, namespace)
+                            time.sleep(1)
+                        except ApiException as e:
+                            if e.status == 404:
+                                logger.info(f"Job '{job.metadata.name}' successfully deleted.")
+                                break
+                            else:
+                                logger.error(f"Error checking deletion status for Job '{job.metadata.name}': {e}")
+                                break
+                    else:
+                        logger.warning(f"Timed out waiting for Job '{job.metadata.name}' to be deleted.")
+
             logger.info(f"Deleted all Jobs associated with app '{app_name}' in namespace '{namespace}'.")
+
         except ApiException as e:
-            logger.error(f"Failed to delete Jobs associated with '{app_name}': {e}")
+            logger.error(f"Failed to delete Jobs for '{app_name}' in namespace '{namespace}': {e}")
+
+    def cleanup_cronjobs(self, namespace, app_name):
+        """
+        Cleanup CronJobs associated with the application.
+        """
+        if self.cronjob_exists(app_name, namespace):
+            self.delete_cronjobs_by_name(app_name, namespace)
+        else:
+            logger.info(f"No CronJobs found for '{app_name}' in namespace '{namespace}' to clean up.")
+
+    def cleanup_jobs(self, namespace, app_name):
+        """
+        Cleanup Jobs associated with the application.
+        """
+        if self.job_exists(app_name, namespace):
+            self.delete_jobs_by_name(app_name, namespace)
+        else:
+            logger.info(f"No Jobs found for '{app_name}' in namespace '{namespace}' to clean up.")
 
     def delete_services_by_deployment(self, deployment_name, namespace):
         try:
