@@ -1,9 +1,10 @@
 import yaml
 import gitlab
 
-from beam.utils import cached_property
-from beam.logging import beam_logger as logger
-from beam.base import BeamBase
+from ..path import beam_path
+from ..utils import cached_property
+from ..logging import beam_logger as logger
+from ..base import BeamBase
 
 
 class BeamCICD(BeamBase):
@@ -23,6 +24,10 @@ class BeamCICD(BeamBase):
         config: Dictionary containing configuration like GITLAB_PROJECT, IMAGE_NAME, etc.
         @param config:
         """
+
+        current_dir = beam_path(__file__).parent
+        path_to_runner = current_dir.joinpath('cicd_runner.py')
+
         try:
             # Retrieve GitLab project
             project = self.gitlab_client.projects.get(self.get_hparam('gitlab_project'))
@@ -36,14 +41,16 @@ class BeamCICD(BeamBase):
                     'CI_REGISTRY': self.get_hparam('ci_registry'),
                     'PYTHON_FILE': self.get_hparam('python_file'),
                     'PYTHON_FUNCTION': self.get_hparam('python_function'),
-                    'BASH_SCRIPT': self.get_hparam('bash_script'),
+                    'PYTHON_SCRIPT': path_to_runner,
+                    # 'PYTHON_SCRIPT': self.get_hparam('python_script'),
                     'WORKING_DIR': self.get_hparam('working_dir'),
+                    'CMD': self.get_hparam('cmd')
                 },
                 'stages': [
                     'run'
                 ],
                 'before_script': [
-                    'echo "Starting run_yolo job..."'
+                    'echo "Starting run_yolo job..."' #Todo: replace with message parameters
                 ],
                 'run_yolo_script': {
                     'stage': 'run',
@@ -51,7 +58,7 @@ class BeamCICD(BeamBase):
                     'script': [
                         'echo "$REGISTRY_PASSWORD" | docker login -u $REGISTRY_USER --password-stdin $CI_REGISTRY',
                         '# - docker pull $IMAGE_NAME',
-                        'docker run --rm --gpus all --entrypoint "/bin/bash" -v "$CI_PROJECT_DIR:$WORKING_DIR" $IMAGE_NAME $WORKING_DIR/$BASH_SCRIPT'
+                        'docker run --rm --gpus all --entrypoint "/bin/bash" -v "$CI_PROJECT_DIR:$WORKING_DIR" $IMAGE_NAME $CMD $WORKING_DIR/$PYTHON_SCRIPT'
                     ],
                     'only': ['main']
                 }

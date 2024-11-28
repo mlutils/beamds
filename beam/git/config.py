@@ -1,4 +1,5 @@
 from ..config import BeamConfig, BeamParam
+from ..orchestration import ServeClusterConfig
 
 class BeamCICDConfig(BeamConfig):
 
@@ -15,10 +16,15 @@ class BeamCICDConfig(BeamConfig):
         BeamParam('registry_url', str, 'harbor.dt.local', 'Registry URL'),
         BeamParam('registry_name', str, 'Registry User'),
         BeamParam('registry_password', str, 'Registry Password'),
-        BeamParam('python_file', str, 'main.py', 'Python File'),
-        BeamParam('python_function', str, 'main', 'Python Function'),
+        BeamParam('python_script', str, 'cicd_runner.py', 'Python Script'),
+        BeamParam('cmd', str, 'python3', 'Command'),
+        BeamParam('python_file', str, 'main.py', 'Python File where the algorithm is defined'),
+        BeamParam('python_function', str, 'main', 'Python Function in the Python File which builds the object/algorithm'),
         BeamParam('bash_script', str, 'run_yolo.sh', 'Bash Script'),
-        BeamParam('working_dir', str, '/opt/yolo', 'Working Directory'),
+        BeamParam('working_dir', str, '/app/', 'Working Directory'),
         BeamParam('ssl_verify', bool, False, 'SSL Verify'),
 
     ]
+
+class ServeCICDConfig(BeamCICDConfig, ServeClusterConfig):
+    pass
