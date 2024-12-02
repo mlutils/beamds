@@ -1,6 +1,7 @@
 import yaml
 import gitlab
-
+from urllib.parse import urlparse
+from pathlib import Path
 from ..path import beam_path
 from ..utils import cached_property
 from ..logging import beam_logger as logger
@@ -41,8 +42,7 @@ class BeamCICD(BeamBase):
                     'CI_REGISTRY': self.get_hparam('ci_registry'),
                     'PYTHON_FILE': self.get_hparam('python_file'),
                     'PYTHON_FUNCTION': self.get_hparam('python_function'),
-                    'PYTHON_SCRIPT': path_to_runner,
-                    # 'PYTHON_SCRIPT': self.get_hparam('python_script'),
+                    'PYTHON_SCRIPT': path_to_runner.str,
                     'WORKING_DIR': self.get_hparam('working_dir'),
                     'CMD': self.get_hparam('cmd')
                 },

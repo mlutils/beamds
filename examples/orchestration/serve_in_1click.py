@@ -13,5 +13,7 @@ TODO: this example will automatically commit and push to git the ci/cd pipeline.
     the configuration file should be associated with a specific project but its location in the base image should be predefined
     the configuration file should include the path to the manager
 
+1. CICD Builds the ci/cd pipeline configuration file and commits it to the git repository
+2.
 
 '''
