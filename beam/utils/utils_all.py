@@ -765,7 +765,7 @@ def jupyter_like_traceback(exc_type=None, exc_value=None, tb=None, context=3):
     return f"{traceback_text}\n{exc_type.__name__}: {exc_value}"
 
 
-def retry(func=None, retries=3, logger=None, name=None, verbose=False, sleep=1):
+def retry(func=None, retries=3, logger=None, name=None, verbose=False, sleep=1, timeout=None):
     if func is None:
         return partial(retry, retries=retries, sleep=sleep)
 
@@ -776,7 +776,14 @@ def retry(func=None, retries=3, logger=None, name=None, verbose=False, sleep=1):
         last_exception = None
         while local_retries > 0:
             try:
-                return func(*args, **kwargs)
+                if timeout is not None:
+                    # Use Timer to run the task with timeout
+                    timer = Timer(logger=logger, name=name, silent=not verbose, timeout=timeout, task=func,
+                                  task_args=args, task_kwargs=kwargs)
+                    return timer.run()  # Run the task within the Timer and return the result
+                else:
+                    # Run the task without timeout
+                    return func(*args, **kwargs)
             except KeyboardInterrupt as e:
                 raise e
             except Exception as e:
@@ -1014,9 +1021,9 @@ class Timer(object):
             self.executor = ThreadPoolExecutor(max_workers=1)
             self.future = self.executor.submit(self.task, *self.task_args, **self.task_kwargs)
 
+            res = None
             try:
-                if self.future:
-                    self.future.result(timeout=self.timeout)
+                res = self.future.result(timeout=self.timeout)
             except TimeoutError:
                 self.logger.info(f"Timer {self.name} exceeded timeout of {self.timeout} seconds.")
             finally:
@@ -1025,6 +1032,8 @@ class Timer(object):
                     self.logger.info(f"Timer {self.name} paused. Elapsed time: {elapsed} Sec")
                 if self.executor:
                     self.executor.shutdown()
+
+            return res
 
     def __str__(self):
         return f"Timer {self.name}: state: {'paused' if self.paused else 'running'}, elapsed: {self.elapsed}"

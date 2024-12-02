@@ -29,7 +29,7 @@ class Transformer(Processor):
                  chunksize=None, mp_method='joblib', squeeze=False, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
                  use_dill=False, return_results=None, use_cache=False, retries=1, silent=False, reduce_func=None,
-                 retries_delay=1., _config_scheme=None, **kwargs):
+                 chunksize_policy='round', retries_delay=1., _config_scheme=None, **kwargs):
         """
 
         @param args:
@@ -78,7 +78,7 @@ class Transformer(Processor):
                                           return_results=return_results, reduce_func=reduce_func,
                                           override=override, use_dill=use_dill, use_cache=use_cache,
                                           _config_scheme=_config_scheme, retries=retries, silent=silent,
-                                          retries_delay=retries_delay, **kwargs)
+                                          retries_delay=retries_delay, chunksize_policy=chunksize_policy, **kwargs)
 
         self.func = func
         self.reduce_func = reduce_func
@@ -109,6 +109,7 @@ class Transformer(Processor):
         self.retries = self.hparams.retries
         self.retries_delay = self.hparams.retries_delay
         self.silent = self.hparams.silent
+        self.chunksize_policy = self.hparams.chunksize_policy
 
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
@@ -135,7 +136,8 @@ class Transformer(Processor):
     def reset(self):
         self.counter = 0
 
-    def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None, split_by=None, partition=None):
+    def chunks(self, x, chunksize=None, n_chunks=None, squeeze=None, split_by=None, partition=None,
+               chunksize_policy=None):
 
         split_by = split_by or self.split_by
         partition = partition or self.partition
@@ -146,14 +148,19 @@ class Transformer(Processor):
         if squeeze is None:
             squeeze = self.squeeze
 
+        if chunksize_policy is None:
+            return self.chunksize_policy
+
         if is_beam_data(x):
-            for k, c in x.divide_chunks(chunksize=chunksize, n_chunks=n_chunks, partition=partition, split_by=split_by):
+            for k, c in x.divide_chunks(chunksize=chunksize, n_chunks=n_chunks, partition=partition,
+                                        split_by=split_by, chunksize_policy=chunksize_policy):
                 yield k, c
 
         else:
 
             dim = 0 if split_by == 'index' else 1 if split_by == 'column' else None
-            for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze, dim=dim):
+            for k, c in recursive_chunks(x, chunksize=chunksize, n_chunks=n_chunks, squeeze=squeeze, dim=dim,
+                                         chunksize_policy=chunksize_policy):
                 yield k, c
 
     def transform_callback(self, x, _key=None, _is_chunk=False, _fit=False, path=None, _store=False, **kwargs):
@@ -278,6 +285,7 @@ class Transformer(Processor):
         reduce_dim = transform_kwargs.pop('reduce_dim', self.reduce_dim)
         use_cache = transform_kwargs.pop('use_cache', self.use_cache)
         silent = transform_kwargs.pop('silent', self.silent)
+        chunksize_policy = transform_kwargs.pop('chunksize_policy', self.chunksize_policy)
 
         parallel_kwargs = parallel_kwargs or {}
         n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
@@ -391,7 +399,8 @@ class Transformer(Processor):
         if is_chunk:
             logger.info(f"Splitting data to chunks for transformer: {self.name}")
             for k, c in tqdm(self.chunks(x, chunksize=chunksize, n_chunks=n_chunks,
-                                         squeeze=squeeze, split_by=split_by, partition=partition)):
+                                         squeeze=squeeze, split_by=split_by, partition=partition,
+                                         chunksize_policy=chunksize_policy)):
 
                 sorted_keys.append(k)
                 chunk_path = None

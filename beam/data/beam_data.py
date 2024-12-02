@@ -41,7 +41,8 @@ class BeamData(BeamName):
                  override=False, compress=None, split_by='keys', chunksize=int(1e9), chunklen=None, n_chunks=None,
                  key_map=None, partition=None, archive_size=int(1e6), preferred_orientation='index', read_kwargs=None,
                  write_kwargs=None, quick_getitem=False, orientation=None, glob_filter=None, info=None, synced=False,
-                 write_metadata=True, read_metadata=True, metadata_path_prefix=None, key_fold_map=None, **kwargs):
+                 write_metadata=True, read_metadata=True, metadata_path_prefix=None, key_fold_map=None,
+                 chunksize_policy='round', **kwargs):
 
         '''
 
@@ -107,6 +108,7 @@ class BeamData(BeamName):
         self.read_metadata = read_metadata
         self.metadata_path_prefix = beam_path(metadata_path_prefix)
         self.key_fold_map = key_fold_map
+        self.chunksize_policy = chunksize_policy
 
         self.is_stored = False
         self.is_cached = True
@@ -1085,7 +1087,7 @@ class BeamData(BeamName):
     @staticmethod
     def write_tree(data, path, sizes=None, split_by='keys', archive_size=int(1e6), chunksize=int(1e9), override=True,
                    chunklen=None, n_chunks=None, partition=None, file_type=None, root=False, schema=None,
-                   split=False, textual_serialization=False, blacklist_priority=None, **kwargs):
+                   split=False, textual_serialization=False, blacklist_priority=None, chunksize_policy='round', **kwargs):
 
         path = beam_path(path)
 
@@ -1114,7 +1116,7 @@ class BeamData(BeamName):
                                     split_by=split_by, n_chunks=n_chunks, partition=partition, root=False,
                                     file_type=file_type, schema=s, override=override, split=split,
                                     textual_serialization=textual_serialization,
-                                    blacklist_priority=blacklist_priority, **kwargs)
+                                    blacklist_priority=blacklist_priority, chunksize_policy=chunksize_policy, **kwargs)
 
         else:
 
@@ -1125,13 +1127,13 @@ class BeamData(BeamName):
                                   chunksize=chunksize, chunklen=chunklen, split_by=split_by,
                                   n_chunks=n_chunks, partition=partition, schema=schema,
                                   file_type=file_type, split=split, textual_serialization=textual_serialization,
-                                  blacklist_priority=blacklist_priority, **kwargs)
+                                  blacklist_priority=blacklist_priority, chunksize_policy=chunksize_policy, **kwargs)
 
     @staticmethod
     def write_object(data, path, override=True, size=None, archive=False, compress=None, chunksize=int(1e9),
                      chunklen=None, n_chunks=None, partition=None, file_type=None, schema=None,
                      textual_serialization=False, split_by=None, split=True, priority=None,
-                     blacklist_priority=None, **kwargs):
+                     blacklist_priority=None, chunksize_policy='round', **kwargs):
 
         path = beam_path(path)
 
@@ -1149,7 +1151,7 @@ class BeamData(BeamName):
 
             if split and split_by != 'keys':
                 n_chunks = BeamData.get_n_chunks(data, chunksize=chunksize, chunklen=chunklen,
-                                                 n_chunks=n_chunks, size=size)
+                                                 n_chunks=n_chunks, size=size, chunksize_policy=chunksize_policy)
             else:
                 n_chunks = 1
 
@@ -1438,7 +1440,7 @@ class BeamData(BeamName):
 
     def store(self, path=None, data=None, compress=None, chunksize=None,
               chunklen=None, n_chunks=None, partition=None, split_by=None,
-              archive_size=None, override=None, split=True, **kwargs):
+              archive_size=None, override=None, split=True, chunksize_policy=None, **kwargs):
 
         override = override or self.override
         path = beam_path(path)
@@ -1459,10 +1461,10 @@ class BeamData(BeamName):
 
         kwargs = self.get_default_params(compress=compress, chunksize=chunksize, chunklen=chunklen, n_chunks=n_chunks,
                                          partition=partition, split_by=split_by, archive_size=archive_size,
-                                         **kwargs)
+                                         chunksize_policy=chunksize_policy, **kwargs)
 
         BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, override=override,
-                            split=split, **kwargs)
+                            chunksize_policy=chunksize_policy, split=split, **kwargs)
 
         # store info and conf files
         if self.write_metadata:
@@ -2107,6 +2109,7 @@ class BeamData(BeamName):
         write_metadata = kwargs.pop('write_metadata', self.write_metadata)
         read_metadata = kwargs.pop('read_metadata', self.read_metadata)
         metadata_path_prefix = kwargs.pop('metadata_path_prefix', self.metadata_path_prefix)
+        chunksize_policy = kwargs.pop('chunksize_policy', self.chunksize_policy)
         # key_fold_map = kwargs.pop('key_fold_map', self.key_fold_map)
 
         if constructor is None:
@@ -2118,8 +2121,8 @@ class BeamData(BeamName):
                  chunklen=chunklen, n_chunks=n_chunks, partition=partition, archive_size=archive_size, schema=schema,
                  preferred_orientation=preferred_orientation, read_kwargs=read_kwargs, write_kwargs=write_kwargs,
                  quick_getitem=quick_getitem, orientation=orientation, glob_filter=glob_filter, info=info,
-                 write_metadata=write_metadata, read_metadata=read_metadata, metadata_path_prefix=metadata_path_prefix,
-                           key_fold_map=key_fold_map, **kwargs)
+                 chunksize_policy=chunksize_policy, write_metadata=write_metadata, read_metadata=read_metadata,
+                 metadata_path_prefix=metadata_path_prefix, key_fold_map=key_fold_map, **kwargs)
 
     def inverse_columns_map(self, columns):
 
@@ -2275,12 +2278,21 @@ class BeamData(BeamName):
         return self.clone(self.data, index=None, label=self.label, schema=self.schema)
 
     @staticmethod
-    def get_n_chunks(data, n_chunks=None, chunklen=None, chunksize=None, size=None):
+    def get_n_chunks(data, n_chunks=None, chunklen=None, chunksize=None, size=None, chunksize_policy='round'):
+
+        if chunksize_policy == 'round':
+            round_func = np.round
+        elif chunksize_policy == 'ceil':
+            round_func = np.ceil
+        elif chunksize_policy == 'floor':
+            round_func = np.floor
+        else:
+            raise ValueError(f"Unsupported chunksize_policy: {chunksize_policy}")
 
         if (n_chunks is None) and (chunklen is None):
             if size is None:
                 size = sum(recursive_flatten(recursive_size(data), flat_array=True))
-            n_chunks = max(int(np.round(size / chunksize)), 1)
+            n_chunks = max(int(round_func(size / chunksize)), 1)
         elif (n_chunks is not None) and (chunklen is not None):
             logger.warning("splitting to chunks requires only one of chunklen|n_chunks. Defaults to using n_chunks")
         elif n_chunks is None:
@@ -2301,6 +2313,7 @@ class BeamData(BeamName):
         chunklen = kwargs.pop('chunklen', self.chunklen)
         n_chunks = kwargs.pop('n_chunks', self.n_chunks)
         partition = kwargs.pop('partition', self.partition)
+        chunksize_policy = kwargs.pop('chunksize_policy', self.chunksize_policy)
 
         if not self.is_cached and split_by != 'keys':
 
@@ -2342,7 +2355,7 @@ class BeamData(BeamName):
         else:
 
             n_chunks = BeamData.get_n_chunks(self.data, n_chunks=n_chunks, chunklen=chunklen, chunksize=chunksize,
-                                             size=self.total_size)
+                                             size=self.total_size, chunksize_policy=chunksize_policy)
 
             if split_by == 'column':
                 dim = 1
