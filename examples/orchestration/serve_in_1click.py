@@ -1,3 +1,46 @@
+from beam.orchestration import (RayClusterConfig, RayCluster, RnDCluster, RnDClusterConfig, ServeClusterConfig, ServeCluster)
+from beam.resources import resource, this_dir
+import os
+import sys
+
+# if sys.argv[1:]:
+#     conf_path = sys.argv[1]
+# else:
+#     conf_path = this_dir().joinpath('orchestration_raydeploy.yaml')
+
+
+script_dir = os.path.dirname(os.path.realpath(__file__))
+conf_path = resource(os.path.join(script_dir, 'orchestration_raydeploy.yaml')).str
+# config = RayClusterConfig(conf_path)
+config = RnDClusterConfig(conf_path)
+
+print('hello world')
+print("API URL:", config.api_url)
+print("API Token:", config.api_token)
+
+# Create an instance of RayCluster or RnDCluster
+# ray_cluster = RayCluster(deployment=None, n_pods=config['n_pods'], config=config)
+rnd_cluster = RnDCluster(deployment=None, replicas=config['replicas'], config=config)
+
+# n_pods = '2'
+# Deploy the Ray cluster/ Rnd cluster
+
+# ray_cluster.deploy_ray_cluster_s_deployment(n_pods=config['n_pods'], config=config)
+rnd_cluster.deploy_and_launch(replicas=config['replicas'], config=config)
+# replicas=1
+
+
+# print(ray_cluster.deployment.cluster_info)
+
+# # run on daemon mode the monitor of the cluster
+# try:
+#     # ray_cluster.get_cluster_logs()
+#     ray_cluster.monitor_cluster()
+# except KeyboardInterrupt:
+#     ray_cluster.stop_monitoring()
+#     print("Monitoring stopped.")
+
+
 
 '''
 
@@ -17,3 +60,18 @@ TODO: this example will automatically commit and push to git the ci/cd pipeline.
 2.
 
 '''
+
+
+
+from beam.git import GitlabCICD, GitlabCICDConfig
+
+conf = GitlabCICDConfig(python_file='/home/dayosupp/projects/beamds/examples/yolo_function.py',
+                        python_function='build_yolo',
+                        path_to_state='/tmp/yolo-bundle',
+                        manager_url='/home/dayosupp/projects/beamds/examples/orchestration/orchestration_manager.yaml')
+
+cicd = GitlabCICD(conf)
+
+cicd.create_cicd_pipeline()
+
+

@@ -1,5 +1,5 @@
 gitlab_url: https://gitlab.dt.local
-gitlab_token: ssha256~rUZfScCW746EPQJ4ON_R1ENta2xOQj2Zk7dxoBtvAOw
+gitlab_token: glpat-_fKCXzehNxPP3Do8QRx-
 branch: main
 git_namespace: dayosupp
 gitlab_project: dayosupp/yolo
@@ -12,7 +12,4 @@ python_function: build_yolo
 bash_script: run_yolo.sh
 python_script: cicd_runner.py
 working_dir: /home/dayosupp/projects/beamds/examples
-path_to_state: s3:
-
-
-
+path_to_state: s3://10.0.7.213:9000/models/yolo.abm?access-key=D1CR9dy2kHPEWjsWlFmu&secret-key=2ZabDTK2LXwxFGhWdPNxqIOYGIO52cdJIqRc7ea8&tls=false

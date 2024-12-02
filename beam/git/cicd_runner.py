@@ -29,6 +29,7 @@ def import_module_from_path(module_path):
 
     return module
 
+# the working directory of the runner is the git repository root
 
 def main():
 

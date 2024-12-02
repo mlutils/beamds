@@ -2,6 +2,9 @@ import yaml
 import gitlab
 from urllib.parse import urlparse
 from pathlib import Path
+
+from comet_ml.bootstrap.sitecustomize import current_dir
+
 from ..path import beam_path
 from ..utils import cached_property
 from ..logging import beam_logger as logger
@@ -28,6 +31,7 @@ class BeamCICD(BeamBase):
 
         current_dir = beam_path(__file__).parent
         path_to_runner = current_dir.joinpath('cicd_runner.py')
+        current_dir.joinpath('config.yaml').write(config)
 
         try:
             # Retrieve GitLab project
@@ -44,6 +48,7 @@ class BeamCICD(BeamBase):
                     'PYTHON_FUNCTION': self.get_hparam('python_function'),
                     'PYTHON_SCRIPT': path_to_runner.str,
                     'WORKING_DIR': self.get_hparam('working_dir'),
+                    'CONFIG_FILE': self.get_hparam('config_file'),
                     'CMD': self.get_hparam('cmd')
                 },
                 'stages': [
@@ -58,6 +63,8 @@ class BeamCICD(BeamBase):
                     'script': [
                         'echo "$REGISTRY_PASSWORD" | docker login -u $REGISTRY_USER --password-stdin $CI_REGISTRY',
                         '# - docker pull $IMAGE_NAME',
+                        'docker cp {path_to_runner} $WORKING_DIR/$PYTHON_SCRIPT',
+                        'docker cp $CONFIG_FILE $WORKING_DIR/$CONFIG_FILE',
                         'docker run --rm --gpus all --entrypoint "/bin/bash" -v "$CI_PROJECT_DIR:$WORKING_DIR" $IMAGE_NAME $CMD $WORKING_DIR/$PYTHON_SCRIPT'
                     ],
                     'only': ['main']
