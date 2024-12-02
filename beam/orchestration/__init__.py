@@ -4,6 +4,7 @@ if len([]):
 
     from .k8s import BeamK8S
     from .deploy import BeamDeploy
+    from .statefulsets import BeamStatefulSet
     from .pod import BeamPod
     from .jobs import BeamJob, BeamCronJob
     from .units import K8SUnits
@@ -16,7 +17,7 @@ if len([]):
 
 __all__ = ['BeamK8S', 'BeamDeploy', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig', 'ServeClusterConfig',
            'JobConfig', 'CronJobConfig', 'RnDClusterConfig','BeamManagerConfig', 'ServeCluster', 'RayCluster',
-           'RnDCluster', 'BeamManager', 'deploy_server']
+           'RnDCluster', 'BeamManager', 'deploy_server', 'BeamStatefulSet']
 
 
 def __getattr__(name):
@@ -71,6 +72,9 @@ def __getattr__(name):
     elif name == 'BeamDeploy':
         from .deploy import BeamDeploy
         return BeamDeploy
+    elif name == 'BeamStatefulSet':
+        from .statefulsets import BeamStatefulSet
+        return BeamStatefulSet
     elif name == 'BeamK8S':
         from .k8s import BeamK8S
         return BeamK8S

@@ -752,6 +752,199 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         return selector_str
 
+    def statefulset_exists(self, statefulset_name, namespace):
+        """
+        Check if a StatefulSet exists in the specified namespace.
+        """
+        try:
+            self.apps_v1_api.read_namespaced_stateful_set(name=statefulset_name, namespace=namespace)
+            logger.info(f"StatefulSet '{statefulset_name}' exists in namespace '{namespace}'.")
+            return True
+        except ApiException as e:
+            if e.status == 404:
+                logger.info(f"StatefulSet '{statefulset_name}' not found in namespace '{namespace}', skipping.")
+                return False
+            else:
+                logger.error(f"Unexpected error while checking StatefulSet '{statefulset_name}': {e}")
+                raise
+
+    def create_statefulset(self, image_name, command=None, labels=None, statefulset_name=None,
+                           namespace=None, project_name=None, replicas=None, ports=None,
+                           volume_claims=None, entrypoint_args=None, entrypoint_envs=None):
+        if namespace is None:
+            namespace = self.namespace
+
+        if project_name is None:
+            project_name = self.project_name
+
+        # Generate a unique name for the StatefulSet if it's not provided
+        if statefulset_name is None:
+            statefulset_name = self.generate_unique_deployment_name(base_name=image_name.split(':')[0], namespace=namespace)
+            if labels is None:
+                labels = {}
+            labels['app'] = statefulset_name  # Set the 'app' label
+        else:
+            statefulset_name = self.generate_unique_deployment_name(statefulset_name, namespace)
+
+        # Ensure StatefulSet name complies with RFC 1123
+        statefulset_name = ensure_rfc1123_compliance(statefulset_name)
+
+        # Create the StatefulSet spec using create_statefulset_spec
+        statefulset_spec = self.create_statefulset_spec(
+            image_name=image_name,
+            command=command,
+            labels=labels,
+            statefulset_name=statefulset_name,
+            project_name=project_name,
+            replicas=replicas,
+            ports=ports,
+            storage_configs=volume_claims,  # Assuming `volume_claims` matches `storage_configs` structure
+            entrypoint_args=entrypoint_args,
+            entrypoint_envs=entrypoint_envs
+        )
+
+        # Build StatefulSet metadata
+        statefulset_metadata = client.V1ObjectMeta(
+            name=statefulset_name,
+            namespace=namespace,
+            labels={"project": project_name}
+        )
+
+        # Create StatefulSet object
+        statefulset = client.V1StatefulSet(
+            api_version="apps/v1",
+            kind="StatefulSet",
+            metadata=statefulset_metadata,
+            spec=statefulset_spec
+        )
+
+        logger.info(f"Created StatefulSet '{statefulset_name}' in namespace '{namespace}'.")
+        return statefulset
+
+    def create_statefulset_spec(self, image_name, command=None, labels=None, statefulset_name=None,
+                                project_name=None, replicas=None, restart_policy_configs=None,
+                                ports=None, create_service_account=None, service_account_name=None,
+                                storage_configs=None,
+                                cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=None,
+                                node_selector=None, memory_limits=None, use_gpu=None,
+                                gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
+                                security_context_config=None, entrypoint_args=None,
+                                entrypoint_envs=None):
+        # Ensure pvc_mounts are prepared correctly from storage_configs if needed
+        pvc_mounts = [
+            {
+                'pvc_name': sc.pvc_name,
+                'mount_path': sc.pvc_mount_path
+            } for sc in storage_configs if sc.create_pvc
+        ] if storage_configs else []
+
+        # Create the pod template with correct arguments
+        pod_template = self.create_pod_template(
+            image_name=image_name,
+            command=command,
+            labels=labels,
+            deployment_name=statefulset_name,  # Reuse the StatefulSet name
+            project_name=project_name,
+            ports=ports,
+            use_node_selector=use_node_selector,
+            node_selector=node_selector,
+            create_service_account=create_service_account,
+            service_account_name=service_account_name,
+            pvc_mounts=pvc_mounts,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_storage_configs=memory_storage_configs,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            use_gpu=use_gpu,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            security_context_config=security_context_config,
+            restart_policy_configs=restart_policy_configs,
+            entrypoint_args=entrypoint_args,
+            entrypoint_envs=entrypoint_envs
+        )
+
+        # Create volume claim templates for StatefulSet
+        volume_claim_templates = [
+            client.V1PersistentVolumeClaim(
+                metadata=client.V1ObjectMeta(name=vc['pvc_name']),
+                spec=vc['spec']
+            ) for vc in storage_configs if vc.create_pvc
+        ] if storage_configs else []
+
+        # Create and return the StatefulSet spec
+        return client.V1StatefulSetSpec(
+            replicas=int(replicas) if replicas else 1,  # Ensure replicas is an int
+            template=pod_template,
+            selector=client.V1LabelSelector(match_labels=pod_template.metadata.labels),
+            service_name=f"{statefulset_name}-service",  # Service name is mandatory for StatefulSets
+            volume_claim_templates=volume_claim_templates
+        )
+
+    def scale_statefulset_to_zero(self, statefulset_name, namespace):
+        """
+        Scale down the StatefulSet to zero replicas.
+        """
+        try:
+            self.apps_v1_api.patch_namespaced_stateful_set_scale(
+                name=statefulset_name,
+                namespace=namespace,
+                body={'spec': {'replicas': 0}}
+            )
+            logger.info(f"Scaled down StatefulSet '{statefulset_name}' to zero replicas.")
+        except ApiException as e:
+            logger.error(f"Failed to scale StatefulSet '{statefulset_name}' to zero replicas: {e}")
+
+    def cleanup_statefulsets(self, namespace, app_name):
+        """
+        Cleanup StatefulSets associated with the application.
+        """
+        if self.statefulset_exists(app_name, namespace):
+            self.scale_statefulset_to_zero(app_name, namespace)
+            self.delete_statefulsets_by_name(app_name, namespace)
+            logger.info(f"StatefulSet '{app_name}' cleaned up successfully in namespace '{namespace}'.")
+        else:
+            logger.info(f"No StatefulSets found for '{app_name}' in namespace '{namespace}' to clean up.")
+
+    def delete_statefulsets_by_name(self, app_name, namespace):
+        """
+        Delete a StatefulSet by name or associated StatefulSets by app label in the specified namespace.
+        """
+        try:
+            # Check if a specific StatefulSet by name exists
+            statefulset = None
+            try:
+                statefulset = self.apps_v1_api.read_namespaced_stateful_set(app_name, namespace)
+            except ApiException as e:
+                if e.status != 404:
+                    logger.error(f"Failed to retrieve StatefulSet '{app_name}' in namespace '{namespace}': {e}")
+                    return
+
+            if statefulset:
+                # If a StatefulSet with the given name exists, delete it
+                self.apps_v1_api.delete_namespaced_stateful_set(
+                    name=app_name,
+                    namespace=namespace,
+                    body=client.V1DeleteOptions()
+                )
+                logger.info(f"Deleted StatefulSet '{app_name}' in namespace '{namespace}'.")
+                return
+
+            # If no specific StatefulSet name, use label selector to delete associated StatefulSets
+            statefulsets = self.apps_v1_api.list_namespaced_stateful_set(namespace, label_selector=f"app={app_name}")
+            for sts in statefulsets.items:
+                self.apps_v1_api.delete_namespaced_stateful_set(
+                    name=sts.metadata.name,
+                    namespace=namespace,
+                    body=client.V1DeleteOptions()
+                )
+                logger.debug(f"Deleted StatefulSet '{sts.metadata.name}' in namespace '{namespace}'.")
+            logger.info(f"Deleted all StatefulSets associated with app '{app_name}' in namespace '{namespace}'.")
+
+        except ApiException as e:
+            logger.error(f"Failed to delete StatefulSets for '{app_name}' in namespace '{namespace}': {e}")
+
     @staticmethod
     def extract_pod_info(pod):
         # Extract pod name, namespace, ports, and PVCs
