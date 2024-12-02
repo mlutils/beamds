@@ -118,3 +118,16 @@ class JobConfig(K8SConfig):
     parameters = [
         BeamParam('job_name', str, 'beam-job', 'Job Name'),
     ]
+
+class StatefulSetConfig(K8SConfig):
+    """
+    Configuration for StatefulSets
+    """
+    parameters = [
+        BeamParam('statefulset_name', str, 'beam-statefulset', 'StatefulSet name'),
+        BeamParam('replicas', int, 1, 'Number of StatefulSet replicas'),
+        BeamParam('service_name', str, None, 'Service name associated with the StatefulSet'),
+        BeamParam('volume_claims', list, [], 'Volume claims for the StatefulSet'),
+        BeamParam('update_strategy', str, 'RollingUpdate', 'Update strategy for the StatefulSet'),
+        BeamParam('pod_management_policy', str, 'OrderedReady', 'Pod management policy'),
+    ]
