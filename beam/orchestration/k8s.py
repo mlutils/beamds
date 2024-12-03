@@ -115,33 +115,89 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 logger.error(f"Failed to check or create Service Account {name} in namespace {namespace}: {e}")
                 raise
 
-    def create_image_stream(self, namespace, container_image):
+    @staticmethod
+    def validate_container_image(image):
         """
-        Create or retrieve an OpenShift ImageStream for the specified container image.
-
-        Args:
-            namespace (str): The OpenShift namespace to create the ImageStream in.
-            container_image (str): The full container image reference (e.g., quay.io/my-app:v1).
-
-        Returns:
-            str: The name of the ImageStream created or retrieved.
+        Validate the container image format.
         """
-        # Extract the container name and tag from the image
-        if ":" in container_image:
-            container_name, _ = container_image.rsplit(":", 1)
-        else:
-            container_name = container_image
+        pattern = r"^[a-zA-Z0-9\-._]+(/[a-zA-Z0-9\-._]+)*(:[a-zA-Z0-9\-._]+)?$"
+        if not re.match(pattern, image):
+            raise ValueError(f"Invalid container image format: {image}")
 
-        # Auto-generate ImageStream name from the container name
+    @staticmethod
+    def parse_container_image(image):
+        """
+        Parse the container image into registry, container name, and tag.
+        """
+        registry, tag = None, "latest"
+        container_name = image
+
+        if "/" in image:
+            registry_and_name = image.split("/", 1)
+            if "." in registry_and_name[0]:  # Registry detected
+                registry = registry_and_name[0]
+                container_name = registry_and_name[1]
+            else:
+                container_name = image
+
+        if ":" in container_name:  # Extract tag
+            container_name, tag = container_name.rsplit(":", 1)
+
+        return registry, container_name, tag
+
+    def create_image_stream(self, namespace, container_image, overwrite_registry=None):
+        """
+        Create or update an OpenShift ImageStream for the specified container image.
+        """
+        # Default OpenShift local registry
+        default_registry = "default-route-openshift-image-registry.apps.cluster.local"
+
+        # Validate and parse container image
+        self.validate_container_image(container_image)
+        registry, container_name, tag = self.parse_container_image(container_image)
+
+        # Use the overwrite_registry if provided
+        registry = overwrite_registry or registry or default_registry
+
+        # Construct the full container image
+        full_container_image = f"{registry}/{container_name}:{tag}"
+
+        # Generate a valid ImageStream name
         image_stream_name = re.sub(r"[^a-z0-9-]", "-", container_name.split("/")[-1].lower())
 
         # Initialize the ImageStream API client
         api = self.dyn_client.resources.get(api_version="image.openshift.io/v1", kind="ImageStream")
 
+        result = {
+            "image_stream_name": image_stream_name,
+            "full_container_image": full_container_image,
+            "status": None,
+            "message": None,
+        }
+
         try:
             # Check if the ImageStream already exists
-            image_stream = api.get(name=image_stream_name, namespace=namespace)
-            logger.info(f"ImageStream '{image_stream_name}' already exists in namespace '{namespace}'.")
+            existing_imagestream = api.get(name=image_stream_name, namespace=namespace)
+
+            # Create a mutable copy of the spec to modify
+            updated_imagestream = existing_imagestream.to_dict()
+            updated_imagestream["spec"] = updated_imagestream.get("spec", {})
+            updated_imagestream["spec"]["tags"] = [
+                {
+                    "name": tag,
+                    "from": {
+                        "kind": "DockerImage",
+                        "name": full_container_image,
+                    },
+                    "importPolicy": {"insecure": False},
+                }
+            ]
+
+            # Update the existing ImageStream
+            api.replace(body=updated_imagestream, name=image_stream_name, namespace=namespace)
+            result["status"] = "updated"
+            result["message"] = f"ImageStream '{image_stream_name}' updated successfully in namespace '{namespace}'."
+            logger.info(result["message"])
         except ApiException as e:
             if e.status == 404:
                 # ImageStream does not exist, create it
@@ -155,10 +211,10 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                     "spec": {
                         "tags": [
                             {
-                                "name": "latest",  # Default tag
+                                "name": tag,
                                 "from": {
                                     "kind": "DockerImage",
-                                    "name": container_image,  # Reference the container image
+                                    "name": full_container_image,
                                 },
                                 "importPolicy": {"insecure": False},
                             }
@@ -167,18 +223,23 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 }
                 try:
                     api.create(body=imagestream, namespace=namespace)
-                    logger.info(f"ImageStream '{image_stream_name}' created successfully in namespace '{namespace}'.")
+                    result["status"] = "created"
+                    result[
+                        "message"] = f"ImageStream '{image_stream_name}' created successfully in namespace '{namespace}'."
+                    logger.info(result["message"])
                 except Exception as creation_error:
-                    logger.error(
-                        f"Failed to create ImageStream '{image_stream_name}' in namespace '{namespace}': {creation_error}"
-                    )
+                    result["status"] = "error"
+                    result[
+                        "message"] = f"Failed to create ImageStream '{image_stream_name}' in namespace '{namespace}': {creation_error}"
+                    logger.error(result["message"])
                     raise
             else:
-                logger.error(f"Failed to check ImageStream '{image_stream_name}': {e}")
+                result["status"] = "error"
+                result["message"] = f"Failed to check ImageStream '{image_stream_name}': {e}"
+                logger.error(result["message"])
                 raise
 
-        # Return the ImageStream name
-        return image_stream_name
+        return result
 
     def bind_service_account_to_role(self, service_account_name, namespace, role='admin'):
         from kubernetes.client import V1RoleBinding, V1RoleRef, V1ObjectMeta

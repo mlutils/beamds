@@ -27,20 +27,56 @@ k8s = BeamK8S(
     namespace=config['project_name'],
 )
 
-try:
-    # Parameters for the ImageStream
-    namespace = config['project_name']  # Use the project namespace from config
-    container_image = "docker.io/library/nginx:latest"
+# Test cases
+test_cases = [
+    {
+        "description": "Valid container image with explicit registry (nginx)",
+        "container_image": "docker.io/library/nginx:1.21",
+        "overwrite_registry": None,
+    },
+    {
+        "description": "Valid container image with overwrite to harbor (PostgreSQL)",
+        "container_image": "docker.io/library/postgres:15.1",
+        "overwrite_registry": "harbor.dt.local",
+    },
+    {
+        "description": "Valid container image without registry with overwrite to harbor (Alpine)",
+        "container_image": "alpine:3.18",
+        "overwrite_registry": "harbor.dt.local",
+    },
+    {
+        "description": "Container image without registry, default registry applied (Python)",
+        "container_image": "python:3.11-slim",
+        "overwrite_registry": None,
+    },
+    {
+        "description": "Overwrite registry to OpenShift default (Grafana)",
+        "container_image": "grafana/grafana:10.1.0",
+        "overwrite_registry": "default-route-openshift-image-registry.apps.cluster.local",
+    },
+    {
+        "description": "Invalid container image format (invalid format with extra colon)",
+        "container_image": "nginx:latest:extra",
+        "overwrite_registry": None,
+    },
+]
 
-    # Call the method to create the ImageStream
-    image_stream = k8s.create_image_stream(namespace, container_image)
+# Run test cases
+for test_case in test_cases:
+    print(f"\nRunning Test: {test_case['description']}")
+    logger.info(f"Running Test: {test_case['description']}")
+    try:
+        namespace = config['project_name']
+        container_image = test_case["container_image"]
+        overwrite_registry = test_case["overwrite_registry"]
 
-    # Log and print the result
-    logger.info(f"Test Passed: ImageStream '{image_stream}'")
+        # Call the method to create the ImageStream
+        result = k8s.create_image_stream(namespace, container_image, overwrite_registry)
 
-except Exception as e:
-    # Log and print any errors that occur
-    logger.error(f"Test Failed: {e}")
-    print(f"Test Failed: {e}")
-
-
+        # Log and print the result
+        logger.info(f"Test Result: {result}")
+        print(f"Test Result: {result}")
+    except Exception as e:
+        # Log and print any errors that occur
+        logger.error(f"Test Failed: {test_case['description']} - {e}")
+        print(f"Test Failed: {test_case['description']} - {e}")
