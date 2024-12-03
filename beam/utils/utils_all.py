@@ -456,12 +456,12 @@ def is_notebook() -> bool:
     return running_platform() == 'notebook'
 
 
-def recursive_func(x, func, *args, **kwargs):
+def recursive_func(x, func, *args, _ignore_none=False, **kwargs):
     if isinstance(x, dict):
-        return {k: recursive_func(v, func, *args, **kwargs) for k, v in x.items()}
+        return {k: recursive_func(v, func, *args, _ignore_none=_ignore_none, **kwargs) for k, v in x.items()}
     elif isinstance(x, list):
-        return [recursive_func(s, func, *args, **kwargs) for s in x]
-    elif x is None:
+        return [recursive_func(s, func, *args, _ignore_none=_ignore_none, **kwargs) for s in x]
+    elif _ignore_none and x is None:
         return None
     else:
         return func(x, *args, **kwargs)

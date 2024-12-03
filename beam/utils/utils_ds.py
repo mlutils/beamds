@@ -537,12 +537,26 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
 
     else:
 
+        if hasattr(x, '__len__') and chunksize_policy != 'tail':
+            l = len(x)
+
+            if chunksize is None:
+                chunksize = l // n_chunks
+
+            if n_chunks is None:
+                n_chunks = max(int(round_func(l / chunksize)), 1)
+
+            effective_chunksize = l // n_chunks
+
+        else:
+            effective_chunksize = chunksize
+
         c = []
         i = 0
         for xi in iter(x):
 
             c.append(xi)
-            if len(c) == chunksize:
+            if len(c) == effective_chunksize:
 
                 if squeeze and len(c) == 1:
                     c = c[0]
