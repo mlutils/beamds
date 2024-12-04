@@ -13,6 +13,7 @@ from .utils import to_dict, empty_beam_parser, boolean_feature, _beam_arguments
 from ..path import beam_path
 from ..meta import MetaBeamInit
 from ..base import base_paths
+from ..logging import beam_logger
 
 
 @dataclass
@@ -114,6 +115,12 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
         self._tags = tags
 
         super().__init__(**config)
+
+        if self.get('debug'):
+            beam_logger.debug_mode()
+
+        if not self.get('colors'):
+            beam_logger.turn_colors_off()
 
     @property
     def is_initialized(self):

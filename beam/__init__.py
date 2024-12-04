@@ -31,12 +31,6 @@ from .logging import beam_logger
 from .config import BeamConfig
 conf = BeamConfig(silent=True, load_config_files=False, load_script_arguments=True)
 
-if not conf.colors:
-    beam_logger.turn_colors_off()
-
-if conf.debug:
-    beam_logger.debug_mode()
-
 log_file_generated = False
 
 # Initialize timer with beam_logger
