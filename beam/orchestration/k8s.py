@@ -830,8 +830,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 raise
 
     def create_statefulset(self, image_name, command=None, labels=None, statefulset_name=None,
-                           namespace=None, project_name=None, replicas=None, ports=None,
-                           volume_claims=None, entrypoint_args=None, entrypoint_envs=None):
+                           namespace=None, project_name=None, replicas=None, ports=None, create_service_account=None, service_account_name=None,
+                          storage_configs=None, cpu_requests=None, cpu_limits=None, memory_requests=None,
+                          use_node_selector=None, node_selector=None, memory_storage_configs=None,
+                          memory_limits=None, use_gpu=False, gpu_requests=None, gpu_limits=None,
+                          security_context_config=None, restart_policy_configs=None,
+                          entrypoint_args=None, entrypoint_envs=None):
         if namespace is None:
             namespace = self.namespace
 
@@ -840,7 +844,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         # Generate a unique name for the StatefulSet if it's not provided
         if statefulset_name is None:
-            statefulset_name = self.generate_unique_deployment_name(base_name=image_name.split(':')[0], namespace=namespace)
+            statefulset_name = self.generate_unique_deployment_name(base_name=image_name.split(':')[0],
+                                                                    namespace=namespace)
             if labels is None:
                 labels = {}
             labels['app'] = statefulset_name  # Set the 'app' label
@@ -859,7 +864,21 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             project_name=project_name,
             replicas=replicas,
             ports=ports,
-            storage_configs=volume_claims,  # Assuming `volume_claims` matches `storage_configs` structure
+            create_service_account=create_service_account,
+            service_account_name=service_account_name,
+            use_node_selector=use_node_selector,
+            node_selector=node_selector,
+            storage_configs=storage_configs,
+            cpu_requests=cpu_requests,
+            cpu_limits=cpu_limits,
+            memory_requests=memory_requests,
+            memory_limits=memory_limits,
+            memory_storage_configs=memory_storage_configs,
+            use_gpu=use_gpu,
+            gpu_requests=gpu_requests,
+            gpu_limits=gpu_limits,
+            restart_policy_configs=restart_policy_configs,
+            security_context_config=security_context_config,
             entrypoint_args=entrypoint_args,
             entrypoint_envs=entrypoint_envs
         )
@@ -885,13 +904,15 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
     def create_statefulset_spec(self, image_name, command=None, labels=None, statefulset_name=None,
                                 project_name=None, replicas=None, restart_policy_configs=None,
                                 ports=None, create_service_account=None, service_account_name=None,
-                                storage_configs=None,
-                                cpu_requests=None, cpu_limits=None, memory_requests=None, use_node_selector=None,
-                                node_selector=None, memory_limits=None, use_gpu=None,
-                                gpu_requests=None, gpu_limits=None, memory_storage_configs=None,
-                                security_context_config=None, entrypoint_args=None,
-                                entrypoint_envs=None):
-        # Ensure pvc_mounts are prepared correctly from storage_configs if needed
+                                storage_configs=None, cpu_requests=None, cpu_limits=None,
+                                memory_requests=None, memory_limits=None, use_node_selector=None,
+                                node_selector=None, use_gpu=None, gpu_requests=None, gpu_limits=None,
+                                memory_storage_configs=None, security_context_config=None,
+                                entrypoint_args=None, entrypoint_envs=None):
+        """
+        Create the StatefulSet spec for deployment in Kubernetes.
+        """
+        # Prepare PersistentVolumeClaim mounts
         pvc_mounts = [
             {
                 'pvc_name': sc.pvc_name,
@@ -910,8 +931,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             use_node_selector=use_node_selector,
             node_selector=node_selector,
             create_service_account=create_service_account,
-            service_account_name=service_account_name,
-            pvc_mounts=pvc_mounts,
+            service_account_name=service_account_name,  # Use it here
+            pvc_mounts=pvc_mounts,  # Assuming pvc_mounts is prepared earlier in the method
             cpu_requests=cpu_requests,
             cpu_limits=cpu_limits,
             memory_storage_configs=memory_storage_configs,
@@ -926,7 +947,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             entrypoint_envs=entrypoint_envs
         )
 
-        # Create volume claim templates for StatefulSet
+        # Create volume claim templates for the StatefulSet
         volume_claim_templates = [
             client.V1PersistentVolumeClaim(
                 metadata=client.V1ObjectMeta(name=vc['pvc_name']),
@@ -934,14 +955,66 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             ) for vc in storage_configs if vc.create_pvc
         ] if storage_configs else []
 
-        # Create and return the StatefulSet spec
-        return client.V1StatefulSetSpec(
+        # Create StatefulSet spec
+        statefulset_spec = client.V1StatefulSetSpec(
             replicas=int(replicas) if replicas else 1,  # Ensure replicas is an int
             template=pod_template,
             selector=client.V1LabelSelector(match_labels=pod_template.metadata.labels),
             service_name=f"{statefulset_name}-service",  # Service name is mandatory for StatefulSets
             volume_claim_templates=volume_claim_templates
         )
+
+        # Apply node selector if enabled
+        if use_node_selector and node_selector:
+            statefulset_spec.template.spec.node_selector = node_selector
+
+        # Return the StatefulSet spec
+        return statefulset_spec
+
+    def apply_statefulset(self, statefulset, namespace=None):
+        """
+        Applies a StatefulSet to the specified namespace in the Kubernetes cluster.
+        Creates or replaces the StatefulSet based on its existence.
+
+        :param statefulset: The StatefulSet manifest (as a Python dictionary or object).
+        :param namespace: Namespace where the StatefulSet should be applied. Defaults to self.namespace.
+        :return: List of pods created by the StatefulSet.
+        """
+        if namespace is None:
+            namespace = self.namespace
+
+        try:
+            # Check if the StatefulSet already exists
+            existing = self.apps_v1_api.read_namespaced_stateful_set(
+                name=statefulset.metadata.name, namespace=namespace
+            )
+            logger.info(f"StatefulSet '{statefulset.metadata.name}' exists. Replacing it.")
+
+            # Replace the existing StatefulSet
+            self.apps_v1_api.replace_namespaced_stateful_set(
+                name=statefulset.metadata.name, namespace=namespace, body=statefulset
+            )
+        except ApiException as e:
+            if e.status == 404:  # StatefulSet does not exist
+                logger.info(f"StatefulSet '{statefulset.metadata.name}' does not exist. Creating it.")
+                self.apps_v1_api.create_namespaced_stateful_set(
+                    namespace=namespace, body=statefulset
+                )
+            else:
+                logger.exception(f"Exception when applying the StatefulSet: {e}")
+                return None
+
+        logger.info(f"Successfully applied StatefulSet '{statefulset.metadata.name}' in namespace '{namespace}'")
+
+        # Wait briefly for pods to be created
+        time.sleep(5)  # Adjust this value as needed
+
+        # Get pods created by the StatefulSet
+        selector = ",".join([f"{k}={v}" for k, v in statefulset.spec.selector.match_labels.items()])
+        pod_list = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=selector)
+        pod_infos = [self.extract_pod_info(pod) for pod in pod_list.items if pod.metadata.labels is not None]
+
+        return pod_infos
 
     def scale_statefulset_to_zero(self, statefulset_name, namespace):
         """
@@ -1005,6 +1078,44 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
         except ApiException as e:
             logger.error(f"Failed to delete StatefulSets for '{app_name}' in namespace '{namespace}': {e}")
+
+    def get_logs_for_statefulset(self, statefulset_name, namespace):
+        """
+        Retrieve logs for all pods of a StatefulSet in the specified namespace.
+
+        :param statefulset_name: Name of the StatefulSet
+        :param namespace: Namespace of the StatefulSet
+        :return: Dictionary of pod names to their logs
+        """
+        try:
+            # Get the StatefulSet to determine the number of replicas
+            statefulset = self.apps_v1_api.read_namespaced_stateful_set(statefulset_name, namespace)
+            replicas = int(statefulset.spec.replicas)
+
+            all_logs = {}
+
+            # Iterate over the expected pod names
+            for i in range(replicas):
+                pod_name = f"{statefulset_name}-{i}"
+                label_selector = f"statefulset.kubernetes.io/pod-name={pod_name}"
+
+                # Retrieve pods matching the label selector
+                pods = self.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=label_selector).items
+
+                for pod in pods:
+                    # Get logs for each pod
+                    pod_logs = self.core_v1_api.read_namespaced_pod_log(name=pod.metadata.name, namespace=namespace)
+                    all_logs[pod.metadata.name] = pod_logs
+
+            logger.info(f"Successfully retrieved logs for StatefulSet '{statefulset_name}' in namespace '{namespace}'.")
+            return all_logs
+        except ApiException as e:
+            logger.error(
+                f"API error retrieving logs for StatefulSet '{statefulset_name}' in namespace '{namespace}': {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error retrieving logs for StatefulSet '{statefulset_name}': {str(e)}")
+            return None
 
     @staticmethod
     def extract_pod_info(pod):

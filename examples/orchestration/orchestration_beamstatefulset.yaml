@@ -1,0 +1,135 @@
+alg_image_name: fake-alg-http-server:latest
+api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZXYiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoieW9zLXRva2VuLWQycDUyIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InlvcyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImNlOWUzNzkyLThmZTAtNDgxNC05YTVlLWNlMTdmODJjOGU5MiIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZXY6eW9zIn0.mKgXusdiiEVN3MzjQ6mZOTfjoY8LFz-1RxVCrDcq38V5AcxaEiTvOGm-6-Vd4ZTV15DR7ds2OqBqZcpcdeuD_eSqZofsfF_dFM8483mXsA8obzBjXiOw0sLeUAq7ZCzb0sTVOySfz4v84MGHgCbMOfD92sfVsfbXhvAXYY2HLX2Vh5og6spjz0P__BBpL--8rfaR1bpua8bMhR5gOreuednJ8hTFPsxTtgZkNppBdHC6WO0j6rm5APDLhu0CMj1_Dwdee4KL0xtt5vKK1YDqy2fdq4ApFP5kYIZu0YnIsliI-msGgX1ioT_eqj_7oz6Hdi5gdSiNDVGnXbhwkdYchslB4evLCEGXAEI2uFQ0d2wVkCcFjGqiVjHdpQa6JCxWClXBveap8o78eM_c59WV343YQri2pfiGthAZUYxIz5mXddV9237OHUh6YwUFyosaKv853c_W-py8rCsxUVFA_o7PFkfHnVogPETjJw-ZzVTxk_PYzxGl9Dh8kEVhJCiPrFBlNtoJVnaEcdNKD_z8I2hr3ca6DB6k6Ws-ABIYWOKO3yu07wp6RdTYeoS3wjWB9GkcjW52UHBi1hQ2qrR1m-X0DsdTrg_PTuw-9KgXz5LnekPJwMrzRn2DFaswOmXOynTEM_PbvlsQ55DBntix_r2df2rWnCWgxbw9MuFog44
+api_url: https://api.kh-dev.dt.local:6443
+base_image: eladsar/beam:20240605
+base_url: tcp://10.0.7.55:2375
+# client = docker.APIClient(base_url='unix://var/run/docker.sock')
+#client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+# client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
+# client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
+beam_version: 2.6.4
+body: 'Here is the cluster information:'
+check_project_exists: true
+#command:
+#  arguments:
+#  - -c
+#  - sleep infinity
+#  executable: /bin/bash
+#debug_sleep: true
+cpu_limits: '2'
+cpu_requests: '2'
+create_service_account: true
+statefulset_name: statefulbanana
+enable_ray_ports: true
+entrypoint_args:
+- '63'
+entrypoint_envs:
+  TEST: test
+from_email: dayotech2018@gmail.com
+from_email_password: mkhdokjqwwmazyrf
+gpu_limits: '1'
+gpu_requests: '1'
+#image_name: harbor.dt.local/public/nerdctl:v2.0.0-rc.0
+image_name: harbor.dt.local/public/beam:20240729ocp-dev
+labels:
+  app: 1clickmanager
+memory_limits: '6'
+memory_requests: '6'
+memory_storage_configs:
+- enabled: true
+  mount_path: /dev/shm
+  name: dshm
+  size_gb: 8
+n_pods: '2'
+node_selector:
+  gpu-type: tesla-a100
+project_name: banana
+push_image: true
+ray_ports_configs:
+- ray_ports:
+  - 6379
+  - 8265
+registry_password: Har@123
+registry_url: harbor.dt.local
+registry_username: admin
+registry_project_name: public
+replicas: '1'
+restart_policy_configs:
+  condition: Always
+  delay: 5s
+  active_deadline_seconds: 300
+  max_attempts: 3
+  window: 120s
+send_mail: false
+scc_name: anyuid
+security_context_config:
+  add_capabilities:
+  - SYS_CHROOT
+  - CAP_AUDIT_CONTROL
+  - CAP_AUDIT_WRITE
+  enable_security_context: false
+  privileged: true
+  runAsUser: 0
+kopf_username: "kubeadmin"
+kopf_password: "6tLRh-tqHpC-TLPjj-WzRkS"
+kopf_server: "https://api.kh-dev.dt.local:6443"
+service_configs:
+- create_ingress: false
+  create_route: false
+  ingress_host: ssh.example.com
+  port: 22022
+  port_name: ssh-port
+  service_name: ssh
+  service_type: NodePort
+- create_ingress: false
+  create_route: true
+  ingress_host: jupyter.example.com
+  port: 22088
+  port_name: jupyter-port
+  service_name: jupyter
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: mlflow.example.com
+  port: 22080
+  port_name: mlflow-port
+  service_name: mlflow
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: web.example.com
+  port: 22044
+  port_name: web-port
+  service_name: web
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: home-page.example.com
+  port: 22001
+  port_name: home-page-port
+  service_name: home-page
+  service_type: ClusterIP
+smtp_port: 587
+smtp_server: smtp.gmail.com
+storage_configs:
+- create_pvc: false
+  pvc_access_mode: ReadWriteMany
+  pvc_mount_path: /data-pvc
+  pvc_name: data-pvc
+  pvc_size: '500'
+subject: Cluster Deployment Information
+to_email: yossi@dayo-tech.com
+use_gpu: false
+use_node_selector: false
+use_scc: true
+user_idm_configs:
+- create_role_binding: false
+  project_name: ben-guryon
+  role_binding_name: yos
+  role_name: admin
+  user_name: yos
+- create_role_binding: false
+  project_name: ben-guryon
+  role_binding_name: asafe
+  role_name: admin
+  user_name: asafe
