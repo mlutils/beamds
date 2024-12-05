@@ -1,6 +1,6 @@
 import sys
 from contextlib import contextmanager
-from http.cookiejar import debug
+import logstash
 
 import loguru
 import atexit
@@ -251,6 +251,44 @@ class BeamLogger:
         self.critical_mode()
         yield
         self.set_verbosity(mode)
+
+    def add_logstash(self, host, port=5044, version=1):
+        """
+        Adds a Logstash handler to send logs to a Logstash server.
+
+        :param host: The host of the Logstash server.
+        :param port: The port of the Logstash server (default: 5044).
+        :param version: Logstash message format version (default: 1).
+        """
+        handler_name = 'logstash'
+
+        if handler_name in self.handlers:
+            self.debug("Logstash handler already exists. Skipping addition.")
+            return
+
+        logstash_handler = logstash.TCPLogstashHandler(host, port, version=version)
+        self.handlers[handler_name] = self.logger.add(
+            logstash_handler,
+            level=self.level,
+        )
+
+        self.debug(f"Logstash handler added. Logs will be sent to {host}:{port}")
+
+
+    def remove_logstash(self):
+        """
+        Removes the Logstash handler if it exists.
+        """
+        handler_name = 'logstash'
+
+        if handler_name not in self.handlers:
+            self.debug("Logstash handler not found. Nothing to remove.")
+            return
+
+        self.logger.remove(self.handlers[handler_name])
+        del self.handlers[handler_name]
+
+        self.debug("Logstash handler removed successfully.")
 
 
 beam_logger = BeamLogger()

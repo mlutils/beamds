@@ -17,7 +17,7 @@ from ..importer import torch
 class BeamServer(MetaDispatcher):
 
     def __init__(self, obj, *args, use_torch=True, batch=None, max_wait_time=1.0, max_batch_size=10,
-                 tls=False, n_threads=4, application=None, **kwargs):
+                 tls=False, n_threads=4, queue_size=None, application=None, **kwargs):
 
         super().__init__(obj, *args, asynchronous=False, **kwargs)
 
@@ -34,6 +34,7 @@ class BeamServer(MetaDispatcher):
         self.max_batch_size = max_batch_size
         self.tls = tls
         self.n_threads = n_threads
+        self.queue_size = queue_size
 
         self._request_queue = None
         self._response_queue = None

@@ -29,7 +29,7 @@ class Transformer(Processor):
                  chunksize=None, mp_method='joblib', squeeze=False, reduce=True, reduce_dim=0, store_chunk=None,
                  transform_strategy=None, split_by='keys', store_suffix=None, shuffle=False, override=False,
                  use_dill=False, return_results=None, use_cache=False, retries=1, silent=False, reduce_func=None,
-                 chunksize_policy='round', retries_delay=1., _config_scheme=None, **kwargs):
+                 chunksize_policy='round', retries_delay=1., _config_scheme=None, strict=False, **kwargs):
         """
 
         @param args:
@@ -78,7 +78,8 @@ class Transformer(Processor):
                                           return_results=return_results, reduce_func=reduce_func,
                                           override=override, use_dill=use_dill, use_cache=use_cache,
                                           _config_scheme=_config_scheme, retries=retries, silent=silent,
-                                          retries_delay=retries_delay, chunksize_policy=chunksize_policy, **kwargs)
+                                          retries_delay=retries_delay, chunksize_policy=chunksize_policy, strict=strict,
+                                          **kwargs)
 
         self.func = func
         self.reduce_func = reduce_func
@@ -110,6 +111,7 @@ class Transformer(Processor):
         self.retries_delay = self.hparams.retries_delay
         self.silent = self.hparams.silent
         self.chunksize_policy = self.hparams.chunksize_policy
+        self.strict = strict or self.hparams.strict_transform
 
         if self.transform_strategy in [TransformStrategy.SC, TransformStrategy.SS] and self.split_by != 'keys':
             logger.warning(f'transformation strategy {self.transform_strategy} supports only split_by=\"keys\", '
@@ -286,6 +288,7 @@ class Transformer(Processor):
         use_cache = transform_kwargs.pop('use_cache', self.use_cache)
         silent = transform_kwargs.pop('silent', self.silent)
         chunksize_policy = transform_kwargs.pop('chunksize_policy', self.chunksize_policy)
+        strict = transform_kwargs.pop('strict', self.strict)
 
         parallel_kwargs = parallel_kwargs or {}
         n_workers = parallel_kwargs.pop('n_workers', self.n_workers)
@@ -468,11 +471,19 @@ class Transformer(Processor):
                 if store and not store_chunk:
                     logger.warning("Due to exceptions, the data will not be stored, "
                                    "the data is returned as a dictionary of all the successful tasks.")
+                if strict:
+                    logger.error(exceptions)
+                    raise Exception("Exceptions occurred during the transformation, the strict mode is enabled.")
+
                 return x
 
         else:
             if len(exceptions) > 0:
                 logger.warning("Exception occurred, the exception object and the task are returned.")
+                if strict:
+                    logger.error(exceptions)
+                    raise Exception("Exceptions occurred during the transformation, the strict mode is enabled.")
+
                 return results
             logger.info(f"Finished transformer process: {self.name}.")
             x = results[0].result[1]
