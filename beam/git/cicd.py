@@ -3,7 +3,7 @@ import gitlab
 from urllib.parse import urlparse
 from pathlib import Path
 
-from comet_ml.bootstrap.sitecustomize import current_dir
+
 
 from ..path import beam_path
 from ..utils import cached_property
@@ -52,11 +52,20 @@ class BeamCICD(BeamBase):
                     'CMD': self.get_hparam('cmd')
                 },
                 'stages': [
+                    'before_run',
                     'run'
                 ],
-                'before_script': [
-                    'echo "Starting run_yolo job..."' #Todo: replace with message parameters
-                ],
+                'before_script': {
+                    'stage': 'before_run',
+                    'tags': ['shell'],
+                    'script': [
+                        'echo "CI_PROJECT_NAMESPACE is :" $CI_PROJECT_NAMESPACE',
+                        'git reset --hard',
+                        'git clean -xdf',
+                        'echo "Starting run_yolo job..."' #Todo: replace with message parameters
+                    ],
+                    'only': ['main']
+                },
                 'run_yolo_script': {
                     'stage': 'run',
                     'tags': ['shell'],
