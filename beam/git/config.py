@@ -17,7 +17,7 @@ class BeamCICDConfig(BeamConfig):
         BeamParam('commit_message', str, 'Update CI/CD pipeline configuration', 'Commit Message'),
         BeamParam('image_name', str, 'harbor.dt.local/public/beam:20240801', 'Image Name'),
         BeamParam('registry_user', str, 'admin', 'Registry User'),
-        BeamParam('registry_url', str, 'harbor.dt.local', 'Registry URL'),
+        BeamParam('registry_url', str, 'https://harbor.dt.local', 'Registry URL'),
         BeamParam('registry_name', str, 'Registry Name'),
         BeamParam('registry_password', str, 'Registry Password'),
         BeamParam('python_script', str, 'cicd_runner.py', 'Python Script'),
@@ -25,9 +25,10 @@ class BeamCICDConfig(BeamConfig):
         BeamParam('python_file', str, 'main.py', 'Python File where the algorithm is defined'),
         BeamParam('python_function', str, 'main', 'Python Function in the Python File which builds the object/algorithm'),
         BeamParam('bash_script', str, 'run_yolo.sh', 'Bash Script'),
-        BeamParam('tags', list, ['shell'], 'Tags'),
+        BeamParam('pipeline_tags', list, ['shell'], 'Pipeline Tags'),
         BeamParam('working_dir', str, '/app/', 'Working Directory'),
         BeamParam('ssl_verify', bool, False, 'SSL Verify'),
+        BeamParam('stages', list, ['build', 'test', 'deploy', 'release', 'run', 'deploy', 'before_script'], 'Stages'),
 
     ]
 

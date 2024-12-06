@@ -33,7 +33,8 @@ class BeamCICD(BeamBase):
         try:
             # Retrieve GitLab project
             project = self.gitlab_client.projects.get(self.get_hparam('gitlab_project'))
-
+            stages = self.get_hparam('stages')
+            pipeline_tags = self.get_hparam('pipeline_tags')
             # Prepare .gitlab-ci.yml content using provided parameters
             ci_template = {
                 'variables': {
@@ -49,21 +50,16 @@ class BeamCICD(BeamBase):
                     'CONFIG_FILE': self.get_hparam('config_file'),
                     'CMD': self.get_hparam('cmd')
                 },
-                'stages': [ self.get_hparam('stages')],
-                'before_script': {
-                    'stage': [self.get_hparam('stages')[5]],
-                    'tags': [self.get_hparam('pipeline_tags:')[0]],
-                    'script': [
+                'stages': stages,
+                'before_script': [
                         'echo "CI_PROJECT_NAMESPACE is :" $CI_PROJECT_NAMESPACE',
                         'git reset --hard',
                         'git clean -xdf',
                         'echo "Starting run_yolo job..."' #Todo: replace with message parameters
-                    ],
-                    'only': [{self.get_hparam('branch')}]
-                },
+                ],
                 'run_yolo_script': {
-                    'stage': [self.get_hparam('stages')[6]],
-                    'tags': [self.get_hparam('pipeline_tags:')[0]],
+                    'stage': stages[6],
+                    'tags': [pipeline_tags[0]],
                     'script': [
                         'echo "$REGISTRY_PASSWORD" | docker login -u $REGISTRY_USER --password-stdin $REGISTRY_URL',
                         '# - docker pull $IMAGE_NAME',
@@ -71,7 +67,7 @@ class BeamCICD(BeamBase):
                         'docker cp $CONFIG_FILE $WORKING_DIR/$CONFIG_FILE',
                         'docker run --rm --gpus all --entrypoint "/bin/bash" -v "$CI_PROJECT_DIR:$WORKING_DIR" $IMAGE_NAME $CMD $WORKING_DIR/$PYTHON_SCRIPT'
                     ],
-                    'only': [{self.get_hparam('branch')}]
+                    'only': [self.get_hparam('branch')]
                 }
             }
 
@@ -89,7 +85,7 @@ class BeamCICD(BeamBase):
                     # If the file exists, update it with a commit
                     logger.info(f"File '{file_path}' exists. Preparing to update it.")
                     commit_data = {
-                        'branch': {self.get_hparam('branch')},
+                        'branch': self.get_hparam('branch'),
                         'commit_message': self.get_hparam('commit_message'),
                         'actions': [
                             {
@@ -101,11 +97,17 @@ class BeamCICD(BeamBase):
                     }
                     project.commits.create(commit_data)
                     logger.info(f"Updated and committed {file_path} for project {self.get_hparam('gitlab_project')}")
+                    pipeline_data = {
+                        'ref': self.get_hparam('branch'),
+                    }
+                    pipeline = project.pipelines.create(pipeline_data)
+                    logger.info(
+                        f"Pipeline triggered for branch '{self.get_hparam('branch')}'. Pipeline ID: {pipeline.id}")
                 elif file_path not in file_paths:
                     # If the file does not exist, create it with a commit
                     logger.info(f"File '{file_path}' does not exist. Preparing to create it.")
                     commit_data = {
-                        'branch': {self.get_hparam('branch')},
+                        'branch': self.get_hparam('branch'),
                         'commit_message': self.get_hparam('commit_message'),
                         'actions': [
                             {
@@ -117,6 +119,12 @@ class BeamCICD(BeamBase):
                     }
                     project.commits.create(commit_data)
                     logger.info(f"Created and committed {file_path} for project {self.get_hparam('gitlab_project')}")
+                    pipeline_data = {
+                        'ref': self.get_hparam('branch'),
+                    }
+                    pipeline = project.pipelines.create(pipeline_data)
+                    logger.info(
+                        f"Pipeline triggered for branch '{self.get_hparam('branch')}'. Pipeline ID: {pipeline.id}")
             except Exception as e:
                 logger.error(f"Failed to create or update CI/CD pipeline: {str(e)}")
                 raise
