@@ -33,7 +33,7 @@ def import_module_from_path(module_path):
 
 def main():
 
-    config = ServeCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example.yaml'))
+    config = ServeCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example.yaml').read())
     logger.info(f"Config: {config}")
     logger.info("Building python object from python function...")
 

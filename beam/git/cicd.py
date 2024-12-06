@@ -39,6 +39,7 @@ class BeamCICD(BeamBase):
             ci_template = {
                 'variables': {
                     'IMAGE_NAME': self.get_hparam('image_name'),
+                    'BEAM_DIR': self.get_hparam('beam_dir'),
                     'REGISTRY_USER': self.get_hparam('registry_user'),
                     'REGISTRY_PASSWORD': self.get_hparam('registry_password'),
                     'REGISTRY_URL': self.get_hparam('registry_url'),
@@ -61,11 +62,9 @@ class BeamCICD(BeamBase):
                     'stage': stages[6],
                     'tags': [pipeline_tags[0]],
                     'script': [
-                        'echo "$REGISTRY_PASSWORD" | docker login -u $REGISTRY_USER --password-stdin $REGISTRY_URL',
-                        '# - docker pull $IMAGE_NAME',
-                        'docker cp {path_to_runner} $WORKING_DIR/$PYTHON_SCRIPT',
-                        'docker cp $CONFIG_FILE $WORKING_DIR/$CONFIG_FILE',
-                        'docker run --rm --gpus all --entrypoint "/bin/bash" -v "$CI_PROJECT_DIR:$WORKING_DIR" $IMAGE_NAME $CMD $WORKING_DIR/$PYTHON_SCRIPT'
+                        'echo $REGISTRY_PASSWORD | docker login -u $REGISTRY_USER --password-stdin $REGISTRY_URL',
+                        'echo "mount : " $WORKING_DIR/$(basename $PYTHON_SCRIPT)," image : ", $IMAGE_NAME, " cmd : ", $CMD, " working dir : ", $WORKING_DIR/$(basename $PYTHON_SCRIPT), " ci project dir : ", $CI_PROJECT_DIR',
+                        'docker run --rm --gpus all --entrypoint "/bin/bash" -v "$CI_PROJECT_DIR:$WORKING_DIR" -v "$BEAM_DIR:$BEAM_DIR" "$IMAGE_NAME" -c "export PYTHONPATH=$BEAM_DIR:$PYTHONPATH && $CMD $WORKING_DIR/$(basename $PYTHON_SCRIPT)"'
                     ],
                     'only': [self.get_hparam('branch')]
                 }
@@ -81,50 +80,55 @@ class BeamCICD(BeamBase):
                 file_tree = project.repository_tree(ref=self.get_hparam('branch'))
                 file_paths = [f['path'] for f in file_tree]
 
+                actions = []
+
+                # Include cicd_runner.py as part of the commit
+                logger.info(f"Preparing to include 'cicd_runner.py' in the commit.")
+                with open(str(path_to_runner), 'r') as f:
+                    cicd_runner_content = f.read()
+                actions.append({
+                    'action': 'create' if 'cicd_runner.py' not in file_paths else 'update',
+                    'file_path': 'cicd_runner.py',
+                    'content': cicd_runner_content
+                })
+
                 if file_path in file_paths:
                     # If the file exists, update it with a commit
                     logger.info(f"File '{file_path}' exists. Preparing to update it.")
-                    commit_data = {
-                        'branch': self.get_hparam('branch'),
-                        'commit_message': self.get_hparam('commit_message'),
-                        'actions': [
-                            {
-                                'action': 'update',
-                                'file_path': '.gitlab-ci.yml',
-                                'content': ci_yaml_content
-                            }
-                        ]
-                    }
-                    project.commits.create(commit_data)
-                    logger.info(f"Updated and committed {file_path} for project {self.get_hparam('gitlab_project')}")
-                    pipeline_data = {
-                        'ref': self.get_hparam('branch'),
-                    }
-                    pipeline = project.pipelines.create(pipeline_data)
-                    logger.info(
-                        f"Pipeline triggered for branch '{self.get_hparam('branch')}'. Pipeline ID: {pipeline.id}")
+
+                    actions.append({
+                        'action': 'update',
+                        'file_path': file_path,
+                        'content': ci_yaml_content
+                    })
+
                 elif file_path not in file_paths:
                     # If the file does not exist, create it with a commit
                     logger.info(f"File '{file_path}' does not exist. Preparing to create it.")
-                    commit_data = {
-                        'branch': self.get_hparam('branch'),
-                        'commit_message': self.get_hparam('commit_message'),
-                        'actions': [
-                            {
-                                'action': 'create',
-                                'file_path': file_path,
-                                'content': ci_yaml_content
-                            }
-                        ]
-                    }
-                    project.commits.create(commit_data)
-                    logger.info(f"Created and committed {file_path} for project {self.get_hparam('gitlab_project')}")
-                    pipeline_data = {
-                        'ref': self.get_hparam('branch'),
-                    }
-                    pipeline = project.pipelines.create(pipeline_data)
-                    logger.info(
-                        f"Pipeline triggered for branch '{self.get_hparam('branch')}'. Pipeline ID: {pipeline.id}")
+
+                    actions.append({
+                        'action': 'create',
+                        'file_path': file_path,
+                        'content': ci_yaml_content
+                    })
+
+                # Commit both .gitlab-ci.yml and cicd_runner.py in one go
+                commit_data = {
+                    'branch': self.get_hparam('branch'),
+                    'commit_message': self.get_hparam('commit_message'),
+                    'actions': actions
+                }
+
+                logger.info(f"Committing and pushing changes...")
+                project.commits.create(commit_data)
+
+                pipeline_data = {
+                    'ref': self.get_hparam('branch'),
+                }
+
+                pipeline = project.pipelines.create(pipeline_data)
+                logger.info(
+                    f"Pipeline triggered for branch '{self.get_hparam('branch')}'. Pipeline ID: {pipeline.id}")
             except Exception as e:
                 logger.error(f"Failed to create or update CI/CD pipeline: {str(e)}")
                 raise
