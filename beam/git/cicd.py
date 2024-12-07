@@ -122,13 +122,13 @@ class BeamCICD(BeamBase):
                 logger.info(f"Committing and pushing changes...")
                 project.commits.create(commit_data)
 
-                pipeline_data = {
-                    'ref': self.get_hparam('branch'),
-                }
-
-                pipeline = project.pipelines.create(pipeline_data)
-                logger.info(
-                    f"Pipeline triggered for branch '{self.get_hparam('branch')}'. Pipeline ID: {pipeline.id}")
+                # pipeline_data = {
+                #     'ref': self.get_hparam('branch'),
+                # }
+                #
+                # pipeline = project.pipelines.create(pipeline_data)
+                # logger.info(
+                #     f"Pipeline triggered for branch '{self.get_hparam('branch')}'. Pipeline ID: {pipeline.id}")
             except Exception as e:
                 logger.error(f"Failed to create or update CI/CD pipeline: {str(e)}")
                 raise

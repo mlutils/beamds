@@ -1,4 +1,5 @@
 # todo: need to config hparam to fill missing values
+alg: /tmp/bundle
 gitlab_url: https://gitlab.dt.local
 gitlab_token: glpat-_fKCXzehNxPP3Do8QRx-
 branch: main
@@ -11,6 +12,7 @@ file_path: '.gitlab-ci.yml'
 git_namespace: dayosupp
 gitlab_project: dayosupp/yolo
 image_name: harbor.dt.local/public/beam:20240801
+manager_url: http://api-35000-beam-manager-c8gxh-dev.apps.kh-dev.dt.local
 registry_user: admin
 registry_url: https://harbor.dt.local
 registry_password: Har@123

@@ -33,7 +33,10 @@ def import_module_from_path(module_path):
 
 def main():
 
-    config = ServeCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example.yaml').read())
+    base_config = ServeCICDConfig()
+    yaml_config = ServeCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example.yaml').read())
+    config = ServeCICDConfig(**{**base_config, **yaml_config})
+
     logger.info(f"Config: {config}")
     logger.info("Building python object from python function...")
 
@@ -47,9 +50,9 @@ def main():
 
     logger.info("Building bundle from python object...")
     AutoBeam.to_bundle(obj, config.path_to_state)
-
     logger.info("Deploying bundle via manager...")
-    config.update(alg=config.path_to_state)
+    config.update(hparams={'alg': config.path_to_state})
+    # config.update(alg=config.path_to_state)
 
     manager = resource(config.manager_url)
     manager.launch_serve_cluster(config)
