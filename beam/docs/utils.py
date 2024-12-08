@@ -11,6 +11,7 @@ def parse_kql_to_dsl(kql):
     - Numerical ranges (>, <, >=, <=)
     - Boolean values
     - Wildcards (*, ?)
+    - Exact matches (using double quotes around values)
     """
 
     def translate_logical_op(op):
@@ -37,6 +38,10 @@ def parse_kql_to_dsl(kql):
         elif value.lower() in {"true", "false"}:
             # Boolean value
             return Q("term", **{field: value.lower() == "true"})
+        elif value.startswith('"') and value.endswith('"'):
+            # Exact match (term query)
+            exact_value = value.strip('"')
+            return Q("term", **{field: exact_value})
         else:
             # Default to match
             return Q("match", **{field: value})
@@ -54,7 +59,6 @@ def parse_kql_to_dsl(kql):
             stack.append(operator)
         elif ":" in token:
             field, value = token.split(":", 1)
-            value = value.strip('"')  # Remove quotes if any
             query_part = handle_value(field, value)
 
             # Attach to bool query

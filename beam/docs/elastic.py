@@ -1,6 +1,6 @@
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
-from elasticsearch_dsl import Search, Q
+from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index
 from mlflow.store.artifact.artifact_repository_registry import scheme
 
 from ..path import BeamPath, normalize_host
@@ -13,12 +13,15 @@ from .utils import parse_kql_to_dsl
 class BeamElastic(BeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
-                 tls=False, client=None, **kwargs):
+                 tls=False, client=None, keep_alive='1m', **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password,
                          scheme='elastic', **kwargs)
         self.verify = verify
         self.tls = tls
         self.client = client or self._get_client()
+        self.keep_alive = keep_alive
+        self._values = None
+        self._metadata = None
 
     def _get_client(self):
         protocol = 'https' if self.tls else 'http'
@@ -54,6 +57,12 @@ class BeamElastic(BeamPath, BeamDoc):
             q = q & parse_kql_to_dsl(self.parts[-1])
 
         return q
+
+    @property
+    def s(self):
+        if self.path_type in ['root', 'index']:
+            return self._search
+        return self._search.query(self.query)
 
     @property
     def path_type(self):
@@ -103,6 +112,8 @@ class BeamElastic(BeamPath, BeamDoc):
     def get_document(self, index, id):
         return self.client.get(index=index, id=id)
 
+    # def create_vector_search_index(self, index, body):
+
     def iterdir(self):
 
         if not self.is_dir():
@@ -111,12 +122,50 @@ class BeamElastic(BeamPath, BeamDoc):
         if self.path_type == 'root':
             for index in self.client.indices.get('*'):
                 yield self.gen(f"/{index}")
-        elif self.path_type == 'index':
-            for doc in self._search.scan():
-                yield self.gen(f"/{self.index}/{doc.meta.id}")
         else:
-            for doc in self._search.query(self.query).scan():
+            s = self.s.source(False)
+            for doc in s.iterate(keep_alive=self.keep_alive):
                 yield self.gen(f"/{self.index}/{doc.meta.id}")
 
 
-    def read(self):
+    @property
+    def values(self):
+        if self.path_type == 'root':
+            return list(self.client.indices.get('*'))
+        else:
+            return self._get_values()
+
+
+    def _get_values(self):
+        if self._values is None:
+            self._values, self._metadata = self._get_values_and_metadata()
+        return self._values
+
+    def _get_metadata(self):
+        if self._metadata is None:
+            self._metadata = self._get_values_and_metadata(source=False)[1]
+        return self._metadata
+
+    def _get_values_and_metadata(self, source=True):
+        v = []
+        meta = []
+        s = self.s if source else self.s.source(False)
+        for doc in s.iterate(keep_alive=self.keep_alive):
+            v.append(doc.to_dict())
+            meta.append(doc.meta.to_dict())
+        return v, meta
+
+
+    @cached_property
+    def df(self):
+        import pandas as pd
+        return pd.DataFrame(self.values)
+
+
+    # def search(self, x, k=10, **kwargs):
+    #     # use knn search to find similar documents kwargs is assumed to be a list of terms to filter the search
+    #     q = Q('knn', **x)
+
+
+
+
