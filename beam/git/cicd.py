@@ -84,8 +84,7 @@ class BeamCICD(BeamBase):
 
                 # Include cicd_runner.py as part of the commit
                 logger.info(f"Preparing to include 'cicd_runner.py' in the commit.")
-                with open(str(path_to_runner), 'r') as f:
-                    cicd_runner_content = f.read()
+                cicd_runner_content = path_to_runner.read()
                 actions.append({
                     'action': 'create' if 'cicd_runner.py' not in file_paths else 'update',
                     'file_path': 'cicd_runner.py',

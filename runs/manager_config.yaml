@@ -93,6 +93,9 @@ service_configs:
   port_name: ssh-port
   service_name: ssh
   service_type: NodePort
+  annotations:
+    haproxy.router.openshift.io/timeout: "599"
+    haproxy.router.openshift.io/balance: "leastconn"
 - create_ingress: false
   create_route: true
   ingress_host: jupyter.example.com
@@ -100,6 +103,9 @@ service_configs:
   port_name: jupyter-port
   service_name: jupyter
   service_type: ClusterIP
+  annotations:
+    haproxy.router.openshift.io/timeout: "599"
+    haproxy.router.openshift.io/balance: "leastconn"
 - create_ingress: false
   create_route: true
   ingress_host: api.example.com
@@ -107,6 +113,9 @@ service_configs:
   port_name: port
   service_name: api
   service_type: ClusterIP
+  annotations:
+    haproxy.router.openshift.io/timeout: "599"
+    haproxy.router.openshift.io/balance: "leastconn"
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
