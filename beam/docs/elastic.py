@@ -1,13 +1,12 @@
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
-from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index
-from mlflow.store.artifact.artifact_repository_registry import scheme
+from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text
 
 from ..path import BeamPath, normalize_host
 from ..utils import lazy_property as cached_property
 
 from .core import BeamDoc
-from .utils import parse_kql_to_dsl
+from .utils import parse_kql_to_dsl, generate_document_class
 
 
 class BeamElastic(BeamPath, BeamDoc):
@@ -22,22 +21,38 @@ class BeamElastic(BeamPath, BeamDoc):
         self.keep_alive = keep_alive
         self._values = None
         self._metadata = None
+        self._doc_cls: Document | None = None
+        self._index: Index | None = None
 
     def _get_client(self):
         protocol = 'https' if self.tls else 'http'
         host = f"{protocol}://{normalize_host(self.hostname, self.port)}"
-        return Elasticsearch([host], http_auth=(self.username, self.password), verify_certs=self.verify)
+
+        if (self.username, self.password) != (None, None):
+            auth = (self.username, self.password)
+        else:
+            auth = None
+
+        return Elasticsearch([host], http_auth=auth, verify_certs=self.verify)
 
     def _search_index(self, index):
         return Search(using=self.client, index=index)
 
     @property
-    def index(self):
-        return self.parts[0]
+    def index_name(self):
+        if self.path_type in ['index', 'query', 'document']:
+            return self.parts[0]
+        return None
+
+    @property
+    def index(self) -> Index:
+        if self._index is None:
+            self._index = Index(self.index_name, using=self.client)
+        return self._index
 
     @property
     def _search(self):
-        return self._search_index(self.index)
+        return self._search_index(self.index_name)
 
     @property
     def query(self):
@@ -74,6 +89,19 @@ class BeamElastic(BeamPath, BeamDoc):
             return 'document'
         else:
             return 'query'
+
+    def get_document_class(self):
+        if self.path_type == 'root':
+            return None
+        if self._doc_cls is None:
+            self._doc_cls = generate_document_class(self.client, self.index_name)
+        return self._doc_cls
+
+    def set_document_class(self, doc_cls):
+        if self.path_type == 'root':
+            return ValueError("Cannot set document class for root path")
+        self._doc_cls = doc_cls
+        self.index.document(doc_cls)
 
     @property
     def _is_file_path(self):
@@ -112,6 +140,33 @@ class BeamElastic(BeamPath, BeamDoc):
     def get_document(self, index, id):
         return self.client.get(index=index, id=id)
 
+    def mkdir(self, *args, **kwargs):
+        if self.path_type in ['root', 'document']:
+            raise ValueError("Cannot create root path")
+        if self.path_type in ['index', 'query']:
+            self.index.create(using=self.client)
+
+    def rmdir(self, *args, **kwargs):
+        if self.path_type in ['root', 'document']:
+            raise ValueError("Cannot delete root path")
+        if self.path_type in ['index', 'query']:
+            self.index.delete(using=self.client)
+
+    def exists(self):
+        if self.path_type == 'root':
+            return bool(self.client.ping())
+        if self.path_type == 'index':
+            return self.index.exists(using=self.client)
+        if self.path_type == 'document':
+            return self.client.exists(index=self.index_name, id=self.parts[-1])
+        # if it is a query type, check that at least one document matches the query
+        return self.s.count() > 0
+
+    def __len__(self):
+        if self.path_type == 'root':
+            return len(self.client.indices.get('*'))
+        return self.s.count()
+
     # def create_vector_search_index(self, index, body):
 
     def iterdir(self):
@@ -125,7 +180,9 @@ class BeamElastic(BeamPath, BeamDoc):
         else:
             s = self.s.source(False)
             for doc in s.iterate(keep_alive=self.keep_alive):
-                yield self.gen(f"/{self.index}/{doc.meta.id}")
+                yield self.gen(f"/{self.index_name}/{doc.meta.id}")
+
+
 
 
     @property
