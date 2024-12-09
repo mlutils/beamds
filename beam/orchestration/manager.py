@@ -50,8 +50,8 @@ class BeamManager(BeamBase):
         self.k8s.delete_all_resources_by_app_label(app_name, deployment_name=deployment_name, namespace=namespace)
 
         # Delete CronJobs, Jobs, ConfigMaps, Services, Routes
-        self.k8s.delete_cronjobs_by_name(app_name, namespace)
-        self.k8s.delete_jobs_by_name(app_name, namespace)
+        self.k8s.cleanup_cronjobs(namespace, app_name)
+        self.k8s.cleanup_jobs(namespace, app_name)
         self.k8s.delete_services_by_deployment(deployment_name, namespace)
         self.k8s.delete_routes_by_deployment_name(deployment_name, namespace)
         self.k8s.delete_configmap_by_deployment(deployment_name, namespace)
@@ -111,6 +111,10 @@ class BeamManager(BeamBase):
         name = self.get_cluster_name(config)
 
         from .jobs import BeamJob
+        # Cleanup any existing job before deploying the new one
+        self.k8s.cleanup_jobs(namespace=config['project_name'], app_name=config['job_name'])
+
+        # Deploy a new job
         job = BeamJob.deploy_job(config=config, k8s=self.k8s)
         self.clusters[name] = job
 
@@ -132,6 +136,10 @@ class BeamManager(BeamBase):
 
         name = self.get_cluster_name(config)
 
+        # Cleanup any existing job before deploying the new one
+        self.k8s.cleanup_cronjobs(namespace=config['project_name'], app_name=config['cron_job_name'])
+
+        # Deploy a new cron job
         from .jobs import BeamCronJob
         cron_job = BeamCronJob.deploy_cron_job(config=config, k8s=self.k8s)
         self.clusters[name] = cron_job
