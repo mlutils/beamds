@@ -5,6 +5,7 @@ import docker
 import waitress
 import namegenerator
 import loguru
+import boto3
 
 
 class BeamManagerWrapper(BeamManager):
