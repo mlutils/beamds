@@ -1,7 +1,7 @@
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 from elasticsearch_dsl import Search, Q
-from mlflow.store.artifact.artifact_repository_registry import scheme
+import eland as ed
 
 from ..path import BeamPath, normalize_host
 from ..utils import lazy_property as cached_property
@@ -119,4 +119,13 @@ class BeamElastic(BeamPath, BeamDoc):
                 yield self.gen(f"/{self.index}/{doc.meta.id}")
 
 
-    def read(self):
+    def as_df(self):
+        return ed.eland_to_pandas(self._search.query(self.query))
+
+
+    @property
+    def values(self):
+        return self._get_values()
+
+    def get_values(self):
+        self._search.execute()
