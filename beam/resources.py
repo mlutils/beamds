@@ -40,6 +40,10 @@ def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     elif scheme in resource_names['embedding']:
         from .embedding import beam_embedding
         return beam_embedding(uri, **kwargs)
+    elif scheme in resource_names['elastic']:
+        from .elastic import beam_elastic
+        return beam_elastic(uri, **kwargs)
+
     elif scheme in dynamic_resources:
         return dynamic_resources[scheme](uri, **kwargs)
     else:

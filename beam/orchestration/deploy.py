@@ -228,7 +228,7 @@ class BeamDeploy(BeamBase):
                         namespace=self.namespace,
                         protocol=svc_config.route_protocol,
                         port=svc_config.port,
-                        route_timeout=svc_config.route_timeout,
+                        annotations=svc_config.annotations,
                     )
                     rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_NAME", 'value': route_details['name']})
                     rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_HOST", 'value': route_details['host']})
@@ -241,71 +241,71 @@ class BeamDeploy(BeamBase):
 
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
 
-    def launch_job(self):
-
-        # Delegate Job creation to the k8s class
-        job = self.k8s.create_job(
-            namespace=self.namespace,
-            job_name=self.job_name,
-            image_name=self.image_name,
-            container_name=self.container_name,
-            command=self.command,
-            entrypoint_args=self.entrypoint_args,
-            entrypoint_envs=self.entrypoint_envs,
-            cpu_requests=self.cpu_requests,
-            cpu_limits=self.cpu_limits,
-            memory_requests=self.memory_requests,
-            memory_limits=self.memory_limits,
-            use_node_selector=self.use_node_selector,
-            node_selector=self.node_selector,
-            use_gpu=self.use_gpu,
-            gpu_requests=self.gpu_requests,
-            gpu_limits=self.gpu_limits,
-            labels=self.labels,
-            storage_configs=self.storage_configs,
-            security_context_config=self.security_context_config,
-            restart_policy_configs=self.restart_policy_configs
-        )
-
-        logger.info(f"Job '{self.job_name}' created successfully.")
-
-        return job
-
-    def launch_cron_job(self):
-        if not self.job_schedule:
-            logger.error("CronJob schedule not provided.")
-            return
-
-
-        # Delegate CronJob creation to k8s class
-        cronjob = self.k8s.create_cron_job(
-            namespace=self.namespace,
-            cron_job_name=self.cron_job_name,
-            image_name=self.image_name,
-            job_schedule=self.job_schedule,
-            container_name=self.container_name,
-            command=self.command,
-            entrypoint_args=self.entrypoint_args,
-            entrypoint_envs=self.entrypoint_envs,
-            cpu_requests=self.cpu_requests,
-            cpu_limits=self.cpu_limits,
-            memory_requests=self.memory_requests,
-            memory_limits=self.memory_limits,
-            use_node_selector=self.use_node_selector,
-            node_selector=self.node_selector,
-            use_gpu=self.use_gpu,
-            gpu_requests=self.gpu_requests,
-            gpu_limits=self.gpu_limits,
-            labels=self.labels,
-            storage_configs=self.storage_configs,
-            security_context_config=self.security_context_config,
-            restart_policy_configs=self.restart_policy_configs
-        )
-
-        logger.info(
-            f"CronJob '{self.cron_job_name}' created. Pods will be scheduled according to '{self.job_schedule}'.")
-
-        return cronjob
+    # def launch_job(self):
+    #
+    #     # Delegate Job creation to the k8s class
+    #     job = self.k8s.create_job(
+    #         namespace=self.namespace,
+    #         job_name=self.job_name,
+    #         image_name=self.image_name,
+    #         container_name=self.container_name,
+    #         command=self.command,
+    #         entrypoint_args=self.entrypoint_args,
+    #         entrypoint_envs=self.entrypoint_envs,
+    #         cpu_requests=self.cpu_requests,
+    #         cpu_limits=self.cpu_limits,
+    #         memory_requests=self.memory_requests,
+    #         memory_limits=self.memory_limits,
+    #         use_node_selector=self.use_node_selector,
+    #         node_selector=self.node_selector,
+    #         use_gpu=self.use_gpu,
+    #         gpu_requests=self.gpu_requests,
+    #         gpu_limits=self.gpu_limits,
+    #         labels=self.labels,
+    #         storage_configs=self.storage_configs,
+    #         security_context_config=self.security_context_config,
+    #         restart_policy_configs=self.restart_policy_configs
+    #     )
+    #
+    #     logger.info(f"Job '{self.job_name}' created successfully.")
+    #
+    #     return job
+    #
+    # def launch_cron_job(self):
+    #     if not self.job_schedule:
+    #         logger.error("CronJob schedule not provided.")
+    #         return
+    #
+    #
+    #     # Delegate CronJob creation to k8s class
+    #     cronjob = self.k8s.create_cron_job(
+    #         namespace=self.namespace,
+    #         cron_job_name=self.cron_job_name,
+    #         image_name=self.image_name,
+    #         job_schedule=self.job_schedule,
+    #         container_name=self.container_name,
+    #         command=self.command,
+    #         entrypoint_args=self.entrypoint_args,
+    #         entrypoint_envs=self.entrypoint_envs,
+    #         cpu_requests=self.cpu_requests,
+    #         cpu_limits=self.cpu_limits,
+    #         memory_requests=self.memory_requests,
+    #         memory_limits=self.memory_limits,
+    #         use_node_selector=self.use_node_selector,
+    #         node_selector=self.node_selector,
+    #         use_gpu=self.use_gpu,
+    #         gpu_requests=self.gpu_requests,
+    #         gpu_limits=self.gpu_limits,
+    #         labels=self.labels,
+    #         storage_configs=self.storage_configs,
+    #         security_context_config=self.security_context_config,
+    #         restart_policy_configs=self.restart_policy_configs
+    #     )
+    #
+    #     logger.info(
+    #         f"CronJob '{self.cron_job_name}' created. Pods will be scheduled according to '{self.job_schedule}'.")
+    #
+    #     return cronjob
 
     # TODO: use process_pod_infos in regular deployment as well
     def process_pod_infos(self, pod_infos):

@@ -29,3 +29,6 @@ langchain-community
 
 PyGitHub
 python-gitlab
+
+python-logstash
+logstash-formatter

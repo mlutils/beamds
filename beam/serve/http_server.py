@@ -186,6 +186,7 @@ class HTTPServer(BeamServer):
             'wsgi-file': 'your_wsgi_file.py',  # Replace with your WSGI file
             'callable': 'app',  # Replace with your WSGI application callable
             'processes': self.n_threads,
+            'listen': self.queue_size,
         }
 
         if self.tls:
@@ -205,9 +206,11 @@ class HTTPServer(BeamServer):
             ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
             ssl_context.load_cert_chain('cert.pem', 'key.pem')  # Path to your cert and key files
             serve(self.app, host=host, port=port, threads=self.n_threads, _sock=ssl_context.wrap_socket(
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_side=True))
+                socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_side=True),
+                  max_request_queue_size=self.queue_size)
         else:
-            serve(self.app, host=host, port=port, threads=self.n_threads)
+            serve(self.app, host=host, port=port, threads=self.n_threads,
+                  max_request_queue_size=self.queue_size)
 
     def run_cherrypy(self, host, port):
 
@@ -218,6 +221,7 @@ class HTTPServer(BeamServer):
             'serve.socket_host': host,
             'serve.socket_port': port,
             'engine.autoreload.on': False,
+            'server.socket_queue_size': self.queue_size,
             'serve.thread_pool': self.n_threads
         }
         if self.tls:
@@ -239,6 +243,7 @@ class HTTPServer(BeamServer):
             'workers': 1,  # Gunicorn forks multiple processes and is generally not thread-safe
             'threads': self.n_threads,
             'accesslog': '-',
+            'backlog': self.queue_size,
         }
 
         if self.tls:
@@ -269,7 +274,7 @@ class HTTPServer(BeamServer):
         else:
             context = None
 
-        http_server = WSGIServer((host, port), self.app, ssl_context=context)
+        http_server = WSGIServer((host, port), self.app, ssl_context=context, backlog=self.queue_size)
         http_server.serve_forever()
 
     def serve_resource(self, filename):

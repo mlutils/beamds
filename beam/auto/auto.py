@@ -626,6 +626,7 @@ class AutoBeam(BeamBase):
             config = dict(config) if config else {}
             docker_dir.joinpath('config.yaml').write(config)
 
+
             entrypoint = beam_path(entrypoint)
             if entrypoint.is_file() and not entrypoint.suffix:
                 source_entrypoint = entrypoint.read()

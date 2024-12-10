@@ -1,14 +1,17 @@
 import sys
 from contextlib import contextmanager
+import logstash
+
 import loguru
 import atexit
 
 
 class BeamLogger:
 
-    def __init__(self, path=None, print=True):
+    def __init__(self, path=None, print=True, colors=True):
         self.logger = loguru.logger.opt(depth=1)
         self._level = None
+        self.colors = colors
         self.logger.remove()
         self.handlers_queue = []
 
@@ -23,7 +26,6 @@ class BeamLogger:
             self.add_file_handlers(path)
 
         self.set_verbosity('INFO')
-
         atexit.register(self.cleanup)
 
     @property
@@ -161,10 +163,10 @@ class BeamLogger:
     def __setstate__(self, state):
         self.__init__(state['path'])
 
-    def stdout_handler(self, level='INFO', file_info=True):
+    def stdout_handler(self, level='INFO', file_info=True, colors=True):
 
         file_info = f' <cyan>(∫{{file}}:{{function}}-#{{line}})</cyan>' if file_info else ''
-        return self.logger.add(sys.stdout, level=level, colorize=True,
+        return self.logger.add(sys.stdout, level=level, colorize=colors,
                                format=f'🔥 | <green>{{time:HH:mm:ss}} ({{elapsed}})</green> | '
                                       f'<level>{{level:<8}}</level> 🗎 <level>{{message}}</level>{file_info}')
 
@@ -183,7 +185,17 @@ class BeamLogger:
         if 'stdout' in self.handlers:
             self.logger.remove(self.handlers['stdout'])
 
-        self.handlers['stdout'] = self.stdout_handler(level=level, file_info=file_info)
+        self.handlers['stdout'] = self.stdout_handler(level=level, file_info=file_info, colors=self.colors)
+
+    def turn_colors_off(self, **kwargs):
+        self.colors = False
+        self.set_verbosity(self.level, **kwargs)
+        self.debug('Colors in logs turned off')
+
+    def turn_colors_on(self, **kwargs):
+        self.colors = True
+        self.set_verbosity(self.level, **kwargs)
+        self.debug('Colors in logs turned on')
 
     def debug_mode(self, **kwargs):
         self.set_verbosity('DEBUG', **kwargs)
@@ -239,6 +251,44 @@ class BeamLogger:
         self.critical_mode()
         yield
         self.set_verbosity(mode)
+
+    def add_logstash(self, host, port=5044, version=1):
+        """
+        Adds a Logstash handler to send logs to a Logstash server.
+
+        :param host: The host of the Logstash server.
+        :param port: The port of the Logstash server (default: 5044).
+        :param version: Logstash message format version (default: 1).
+        """
+        handler_name = 'logstash'
+
+        if handler_name in self.handlers:
+            self.debug("Logstash handler already exists. Skipping addition.")
+            return
+
+        logstash_handler = logstash.TCPLogstashHandler(host, port, version=version)
+        self.handlers[handler_name] = self.logger.add(
+            logstash_handler,
+            level=self.level,
+        )
+
+        self.debug(f"Logstash handler added. Logs will be sent to {host}:{port}")
+
+
+    def remove_logstash(self):
+        """
+        Removes the Logstash handler if it exists.
+        """
+        handler_name = 'logstash'
+
+        if handler_name not in self.handlers:
+            self.debug("Logstash handler not found. Nothing to remove.")
+            return
+
+        self.logger.remove(self.handlers[handler_name])
+        del self.handlers[handler_name]
+
+        self.debug("Logstash handler removed successfully.")
 
 
 beam_logger = BeamLogger()

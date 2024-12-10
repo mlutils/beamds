@@ -16,7 +16,8 @@ class ServiceConfig:
     ingress_host: str = None  # Optional: specify a host for the ingress
     ingress_path: str = '/'  # Default path for ingress, can be overridden
     ingress_tls_secret: str = None  # Optional: specify a TLS secret for ingress TLS
-    route_timeout: str = '599'
+    # route_timeout: str = '599'
+    annotations: Optional[Dict[str, str]] = field(default_factory=dict)
 
 
 
@@ -90,14 +91,6 @@ class PodInfos:
     def name(self):
         return self.metadata.name
 
-
-# @dataclass
-# class RestartPolicyConfig:
-#     condition: str  # "OnFailure" or "Never"
-#     max_attempts: int  # Kubernetes backoffLimit
-#     delay: str  # Delay between retries, e.g., "5s"
-#     active_deadline_seconds: int  # Maximum time a pod can be active
-#     window: str  # Optional, custom retry window, might require custom logic in your app
 
 
 

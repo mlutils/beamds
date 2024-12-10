@@ -52,6 +52,9 @@ class Types:
     function = 'function'
     method = 'method'
 
+def is_nan(x):
+    return (pd.isna(x) or (isinstance(x, float) and np.isnan(x)) or (isinstance(x, np.ndarray) and np.isnan(x).all())
+            or (isinstance(x, pd.Series) and x.isna().all()) or (isinstance(x, pd.DataFrame) and x.isna().all().all()))
 
 def is_function(obj, include_class=False):
     """

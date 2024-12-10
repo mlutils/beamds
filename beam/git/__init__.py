@@ -4,9 +4,9 @@ if len([]):
     # from .gitlab import BeamGitlab
     # from .github import BeamGithub
     from .core import BeamGit
-    from .config import BeamCICDConfig
+    from .config import BeamCICDConfig, ServeCICDConfig
 
-__all__ = ['BeamCICD', 'BeamGit', 'BeamCICDConfig']
+__all__ = ['BeamCICD', 'BeamGit', 'BeamCICDConfig', 'ServeCICDConfig']
 
 def __getattr__(name):
     if name == 'BeamCICD':
@@ -18,6 +18,9 @@ def __getattr__(name):
     elif name == 'BeamCICDConfig':
         from .config import BeamCICDConfig
         return BeamCICDConfig
+    elif name == 'ServeCICDConfig':
+        from .config import ServeCICDConfig
+        return ServeCICDConfig
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 
