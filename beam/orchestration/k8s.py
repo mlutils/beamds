@@ -1,5 +1,5 @@
 import base64
-from dataclasses import make_dataclass
+from dataclasses import make_dataclass # todo: why is this needed?
 import kubernetes
 from kubernetes import client, watch
 from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions, BatchV1Api,
@@ -390,6 +390,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         for key, value in entrypoint_envs.items():
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
+        # todo - fix this with the existing CommandConfig dataclass
         if command is not None and command.executable is not None:
             command = command.dict()
         else:
