@@ -391,8 +391,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
         # todo - fix this with the existing CommandConfig dataclass
-        if command is not None and command.executable is not None:
-            command = command.dict()
+        # if command is not None and command.executable is not None:
+        #     command = command.dict()
+        # else:
+        #     command = None
+        if command and command.executable:
+            command = command.as_list()
         else:
             command = None
 

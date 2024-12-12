@@ -1,7 +1,7 @@
 from beam.experiment.utils import cleanup
 from beam.orchestration import ServeClusterConfig, BeamManager
 from beam.orchestration import deploy_server
-from runs.manager import BeamManagerWrapper
+from runs.beamwrapper import BeamManagerWrapper
 from beam import logger
 
 
