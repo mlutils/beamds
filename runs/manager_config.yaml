@@ -12,9 +12,7 @@ body: 'Here is the cluster information:'
 check_project_exists: true
 command:
   arguments:
-    - -c
-    - sleep infinity
-  executable: /bin/bash
+  executable:
 #  arguments:
 #  - -c
 #  - /workspace/bash-run-scripts/entrypoint.sh --no-ray #TODO: check if can specify only arguments without executable
