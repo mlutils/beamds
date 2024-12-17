@@ -387,6 +387,7 @@ class TransformerConfig(CacheConfig):
                                             'if cache exists'),
         BeamParam('retries', int, 1, 'The number of retries to apply for each chunk'),
         BeamParam('retries_delay', float, 1., 'The delay between retries'),
+        BeamParam('strict-transform', bool, False, 'Whether to raise an exception if the transformation fails'),
 
     ]
 

@@ -1,9 +1,13 @@
 from typing import Union
 
 class K8SUnits:
+    MAX_MEMORY = 512 * 1024 ** 3  # 512Gi in bytes
+    MAX_CPU = 24 * 1000  # 24 cores in millicores
+
     def __init__(self, value: Union[int, float, str, "K8SUnits"], resource_type="memory"):
         self.resource_type = resource_type
         self.value = self.parse_value(value)
+        self.validate_limits()
 
     def parse_value(self, value: Union[int, float, str, "K8SUnits"]):
         if isinstance(value, K8SUnits):
@@ -49,6 +53,12 @@ class K8SUnits:
                 return self.parse_mixed_memory(value)  # Treat floats as mixed GiB + MiB
         else:
             raise ValueError(f"Unsupported resource type: {self.resource_type}")
+
+    def validate_limits(self):
+        if self.resource_type == "memory" and self.value > self.MAX_MEMORY:
+            raise ValueError(f"Memory limit exceeded: {self.value / 1024 ** 3:.2f}Gi exceeds max {self.MAX_MEMORY / 1024 ** 3:.2f}Gi")
+        if self.resource_type == "cpu" and self.value > self.MAX_CPU:
+            raise ValueError(f"CPU limit exceeded: {self.value / 1000:.2f} cores exceed max {self.MAX_CPU / 1000:.2f} cores")
 
     @property
     def as_str(self):

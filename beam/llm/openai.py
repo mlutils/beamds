@@ -40,7 +40,13 @@ class OpenAIBase(BeamLLM):
     @cached_property
     def client(self):
         from openai import OpenAI
-        return OpenAI(organization=self.organization, api_key=self.api_key, base_url=self.api_base)
+        http_client = None
+        if self.api_base:
+            import httpx
+            http_client = httpx.Client(transport=httpx.HTTPTransport(verify=False))
+
+        return OpenAI(organization=self.organization, api_key=self.api_key, base_url=self.api_base,
+                      http_client=http_client)
 
     def update_usage(self, response):
 
@@ -181,7 +187,7 @@ class SamurOpenAI(OpenAIBase):
 
     def __init__(self, model=None, hostname=None, api_key=None, port=None, chat=True, *args, **kwargs):
 
-        api_base = f"http://{normalize_host(hostname, port)}/openai/v1"
+        api_base = f"https://{normalize_host(hostname, port)}/openai/v1"
         super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  scheme='samur-openai', **kwargs)
         self._is_chat = chat
 

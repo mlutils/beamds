@@ -90,6 +90,9 @@ service_configs:
   port_name: ssh-port
   service_name: ssh
   service_type: NodePort
+  annotations:
+    haproxy.router.openshift.io/timeout: "599"
+    haproxy.router.openshift.io/balance: "leastconn"
 - create_ingress: false
   create_route: true
   ingress_host: jupyter.example.com

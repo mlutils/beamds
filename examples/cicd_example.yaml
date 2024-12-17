@@ -1,0 +1,35 @@
+# todo: need to config hparam to fill missing values
+alg: /tmp/bundle
+gitlab_url: https://gitlab.dt.local
+gitlab_token: glpat-_fKCXzehNxPP3Do8QRx-
+branch: main
+beam_dir: /home/dayosupp/projects/beamds
+ci_registry: harbor.dt.local
+cmd: python3
+config_file: cicd_example.yaml
+commit_message: 'Update CI/CD pipeline configuration'
+file_path: '.gitlab-ci.yml'
+git_namespace: dayosupp
+gitlab_project: dayosupp/yolo
+image_name: harbor.dt.local/public/beam:20240801
+manager_url: http://api-35000-beam-manager-c8gxh-dev.apps.kh-dev.dt.local
+registry_user: admin
+registry_url: https://harbor.dt.local
+registry_password: Har@123
+python_file: /home/dayosupp/projects/beamds/examples/yolo_function.py
+python_function: build_yolo
+bash_script: run_yolo.sh
+python_script: cicd_runner.py
+pipeline_tags:
+  - shell
+stages:
+  - build
+  - test
+  - deploy
+  - release
+  - cleanup
+  - before_run
+  - run
+#working_dir: /home/dayosupp/projects/beamds/examples
+working_dir: /app
+path_to_state: s3://10.0.7.213:9000/models/yolo.abm?access-key=D1CR9dy2kHPEWjsWlFmu&secret-key=2ZabDTK2LXwxFGhWdPNxqIOYGIO52cdJIqRc7ea8&tls=false

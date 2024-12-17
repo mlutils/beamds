@@ -12,6 +12,7 @@ resource_names = {
     'triton': ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs'],
     'ray': ['ray'],
     'embedding': ['emb-openai', 'emb-stt'],
+    'elastic': ['elastic']
 }
 
 

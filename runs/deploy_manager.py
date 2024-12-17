@@ -1,13 +1,15 @@
-from beam.orchestration import ServeClusterConfig
+from beam.experiment.utils import cleanup
+from beam.orchestration import ServeClusterConfig, BeamManager
 from beam.orchestration import deploy_server
-from runs.manager import BeamManagerWrapper
+from runs.beamwrapper import BeamManagerWrapper
 from beam import logger
 
 
 def main():
     config = ServeClusterConfig(path_to_state='/tmp/manager')
     # config = ServeClusterConfig()
-
+    # clean_current = BeamManager(config)
+    # clean_current.cleanup()
     logger.info("deploy manager with config :")
     logger.info(str(config))
     manager = BeamManagerWrapper(config)

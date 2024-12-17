@@ -72,7 +72,8 @@ class BeamFeature(Processor):
         self.prefer_name = prefer_name
         self.kind = kind or FeaturesCategories.numerical
         self.my_hparams = BeamConfig({k.removeprefix(f"{name}-"): v for k, v in self.hparams.dict().items()
-                                      if k.startswith(f"{name}-")})
+                                      if k.startswith(f"{name}-")}, silent=True,
+                                     load_config_files=False, load_script_arguments=False)
 
         self.input_columns_blacklist = defaultdict(return_constant(False))
         if input_columns_blacklist is not None:

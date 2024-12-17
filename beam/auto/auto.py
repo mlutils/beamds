@@ -373,6 +373,7 @@ class AutoBeam(BeamBase):
         ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'), blacklist=blacklist)
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
+        logger.info(f"Contents of {path}/requirements.txt: {open(f'{path}/requirements.txt').read()}")
 
         blacklist_priority = None
         if ab.in_main_script:
@@ -625,6 +626,7 @@ class AutoBeam(BeamBase):
 
             config = dict(config) if config else {}
             docker_dir.joinpath('config.yaml').write(config)
+
 
             entrypoint = beam_path(entrypoint)
             if entrypoint.is_file() and not entrypoint.suffix:

@@ -421,7 +421,18 @@ def set_seed(seed=-1, constant=0, increment=False, deterministic=False):
         torch.backends.cudnn.benchmark = True
 
 
-def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0, x_type=None):
+def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0, x_type=None,
+                  chunksize_policy='round'):
+
+    if chunksize_policy == 'round':
+        round_func = np.round
+    elif chunksize_policy == 'ceil':
+        round_func = np.ceil
+    elif chunksize_policy == 'floor':
+        round_func = np.floor
+    else:
+        raise ValueError(f"Unsupported chunksize_policy: {chunksize_policy}")
+
     assert ((chunksize is None) != (n_chunks is None)), "divide_chunks requires only one of chunksize|n_chunks"
     x_type = x_type or check_type(x, element=False)
 
@@ -439,7 +450,7 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             chunksize = l // n_chunks
 
         if n_chunks is None:
-            n_chunks = max(int(np.round(l / chunksize)), 1)
+            n_chunks = max(int(round_func(l / chunksize)), 1)
 
         if x_type.minor == Types.tensor:
             for i, c in enumerate(torch.tensor_split(x, n_chunks, dim=dim)):
@@ -513,25 +524,39 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
                     v = v[0]
                 yield j, v
 
-    elif x_type.major == Types.container and x_type.minor ==Types.dict:
+    elif x_type.major == Types.container and x_type.minor == Types.dict:
 
-            if chunksize == 1:
-                for k, v in x.items():
-                    yield k, v
-            else:
-                items = list(x.items())
-                chunks = [items[i:i + chunksize] for i in range(0, len(items), n_chunks)]
-                for i, c in enumerate(chunks):
-                    yield i, dict(c)
+        if chunksize == 1:
+            for k, v in x.items():
+                yield k, v
+        else:
+            items = list(x.items())
+            chunks = [items[i:i + chunksize] for i in range(0, len(items), n_chunks)]
+            for i, c in enumerate(chunks):
+                yield i, dict(c)
 
     else:
+
+        if hasattr(x, '__len__') and chunksize_policy != 'tail':
+            l = len(x)
+
+            if chunksize is None:
+                chunksize = l // n_chunks
+
+            if n_chunks is None:
+                n_chunks = max(int(round_func(l / chunksize)), 1)
+
+            effective_chunksize = l // n_chunks
+
+        else:
+            effective_chunksize = chunksize
 
         c = []
         i = 0
         for xi in iter(x):
 
             c.append(xi)
-            if len(c) == chunksize:
+            if len(c) == effective_chunksize:
 
                 if squeeze and len(c) == 1:
                     c = c[0]
@@ -544,18 +569,19 @@ def divide_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=Fals
             yield i, c
 
 
-def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0, x_type=None):
+def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=False, dim=0,
+                     x_type=None, chunksize_policy='round'):
     x_type = x_type or check_type(x)
 
     try:
 
         if dim is None:
             for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
-                                      squeeze=squeeze, dim=0, x_type=x_type):
+                                      squeeze=squeeze, dim=0, x_type=x_type, chunksize_policy=chunksize_policy):
                 yield k, c
 
         elif (x_type.major == Types.container) and (x_type.minor == Types.dict):
-            gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks,
+            gen = {k: recursive_chunks(v, chunksize=chunksize, n_chunks=n_chunks, chunksize_policy=chunksize_policy,
                                        partition=partition, squeeze=squeeze, dim=dim) for k, v in x.items()}
 
             for i in itertools.count():
@@ -569,7 +595,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
         elif x_type.major == Types.container:
 
             gen = [recursive_chunks(s, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
-                                    squeeze=squeeze, dim=dim) for s in x]
+                                    squeeze=squeeze, dim=dim, chunksize_policy=chunksize_policy) for s in x]
             for i in itertools.count():
                 # yield [next(s) for s in gen]
                 l = []
@@ -584,7 +610,7 @@ def recursive_chunks(x, chunksize=None, n_chunks=None, partition=None, squeeze=F
                 yield i, None
         else:
             for k, c in divide_chunks(x, chunksize=chunksize, n_chunks=n_chunks, partition=partition,
-                                      squeeze=squeeze, dim=dim, x_type=x_type):
+                                      squeeze=squeeze, dim=dim, x_type=x_type, chunksize_policy=chunksize_policy):
                 yield k, c
 
     except StopIteration:

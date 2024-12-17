@@ -33,8 +33,12 @@ class K8SConfig(BeamConfig):
         BeamParam('use_gpu', bool, False, 'Use GPU'),
         BeamParam('n_pods', int, 1, 'Number of pods'),
         BeamParam('storage_configs', list, [{"create_pvc": False, "pvc_access_mode": "ReadWriteMany", "pvc_mount_path": "/data-pvc", "pvc_name": "data-pvc", "pvc_size": "500"}], 'Storage configuration for the deployment'),
-        BeamParam('service_configs', list, [], 'Service configurations'),
-        BeamParam('service_configs', list, [{"create_ingress": False, "create_route": True, "ingress_host": "home-page.example.com", "port": 35000, "port_name": "flask-port", "service_name": "flask", "service_type": "ClusterIP"}], 'Service configuration for the deployment'),
+        BeamParam('service_configs', list, [
+            {"create_ingress": False, "create_route": True, "ingress_host": "home-page.example.com", "port": 35000,
+             "port_name": "flask-port", "service_name": "flask", "service_type": "ClusterIP",
+             "annotations": {"haproxy.router.openshift.io/timeout": "599", "aproxy.router.openshift.io/balance:": "roundrobin"}}],
+                  'Service configuration for the deployment'),
+        # BeamParam('service_configs', list, [{"create_ingress": False, "create_route": True, "ingress_host": "home-page.example.com", "port": 35000, "port_name": "flask-port", "service_name": "flask", "service_type": "ClusterIP"}], 'Service configuration for the deployment'),
         BeamParam('user_idm_configs', list, [{"create_role_binding": False, "project_name": "ben-guryon", "role_binding_name": "yos", "role_name": "admin", "user_name": "yos"}], 'User IDM configurations'),
         BeamParam('route_timeout', int, 599, 'Route timeout'),
         BeamParam('memory_storage_configs', list, [{"enabled": True, "mount_path": "/dev/shm", "name": "dshm", "size_gb": 8}], 'Memory storage configuration for the deployment'),
@@ -76,6 +80,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
     parameters = [
         BeamParam('alg', str, '/tmp/bundle', 'Algorithm object can be - bundle, object, image'),
         BeamParam('alg_image_name', str, 'alg-demo:latest', 'Algorithm image name'),
+        BeamParam('deployment_method', str, 'bundle', 'Deploy - bundle, object, image'),
         BeamParam('base_image', str, 'harbor.dt.local/public/beam:20240801', 'Base image'),
         BeamParam('base_url', str, 'tcp://10.0.7.55:2375', 'Base URL'),
         BeamParam('requirements_blacklist', list, ['sklearn'], 'Requirements blacklist'),
@@ -117,4 +122,17 @@ class CronJobConfig(K8SConfig):
 class JobConfig(K8SConfig):
     parameters = [
         BeamParam('job_name', str, 'beam-job', 'Job Name'),
+    ]
+
+class StatefulSetConfig(K8SConfig):
+    """
+    Configuration for StatefulSets
+    """
+    parameters = [
+        BeamParam('statefulset_name', str, 'beam-statefulset', 'StatefulSet name'),
+        BeamParam('replicas', int, 1, 'Number of StatefulSet replicas'),
+        BeamParam('service_name', str, None, 'Service name associated with the StatefulSet'),
+        BeamParam('volume_claims', list, [], 'Volume claims for the StatefulSet'),
+        BeamParam('update_strategy', str, 'RollingUpdate', 'Update strategy for the StatefulSet'),
+        BeamParam('pod_management_policy', str, 'OrderedReady', 'Pod management policy'),
     ]
