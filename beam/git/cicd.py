@@ -19,11 +19,21 @@ class BeamCICD(BeamBase):
         return gitlab.Gitlab(self.gitlab_url, private_token=self.gitlab_token, ssl_verify=False)
 
     def create_build_pipeline(self, config=None):
+        """
+        Create a GitLab build CI/CD pipeline configuration based on the provided parameters.
+        Parameters
+        builds a docker image, pushes it to the registry and deploys it to openshift
+        """
+
+        project = self.gitlab_client.projects.get(self.get_hparam('gitlab_project'))
+        current_dir = beam_path(__file__).parent
+        git_files_path = project.repository_tree(ref=self.get_hparam('branch'))
+
         pass
 
     def create_run_pipeline(self, config=None):
         """
-        Create a GitLab CI/CD pipeline configuration based on the provided parameters.
+        Create a GitLab running CI/CD pipeline configuration based on the provided parameters.
 
         config: Dictionary containing configuration like GITLAB_PROJECT, IMAGE_NAME, etc.
         @param config:

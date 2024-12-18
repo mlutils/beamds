@@ -8,7 +8,9 @@ ci_registry: harbor.dt.local
 cmd: python3
 config_file: cicd_example.yaml
 commit_message: 'Update CI/CD pipeline configuration'
+dest_dir: /app
 file_path: '.gitlab-ci.yml'
+git_files: ['requirements.txt', 'entrypoint.sh']
 git_namespace: dayosupp
 gitlab_project: dayosupp/yolo
 image_name: harbor.dt.local/public/beam:20240801

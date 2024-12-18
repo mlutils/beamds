@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 
 @dataclass
-class FilePathConfig:
+class GitFilesConfig:
     src_dir: str
     dest_dir: str
     file_path: List[str]
