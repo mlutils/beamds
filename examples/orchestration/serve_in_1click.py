@@ -72,6 +72,6 @@ conf = GitlabCICDConfig(python_file='/home/dayosupp/projects/beamds/examples/yol
 
 cicd = GitlabCICD(conf)
 
-cicd.create_cicd_pipeline()
+cicd.create_run_pipeline()
 
 

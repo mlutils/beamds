@@ -1,16 +1,23 @@
 import os
 import shutil
 from pathlib import Path
-from auto import AutoBeam  # Importing your existing AutoBeam class
-from manager import resource
+from ..auto import AutoBeam  # Importing your existing AutoBeam class
+from ..resources import resource
+from ..git import BeamCICDConfig, BeamCICD
+from .git_resource import deploy_cicd
 
-# Configuration class to store parameters
-class Config:
-    def __init__(self, entrypoint, requirements, base_image, manager_url):
-        self.entrypoint = entrypoint
-        self.requirements = requirements
-        self.base_image = base_image
-        self.manager_url = manager_url
+
+def copy_files_from_path(file_path, dest_dir):
+    """
+    Copies specified files to the destination directory. Logs a warning for missing files.
+
+    :param file_path: List of file paths to copy.
+    :param dest_dir: Destination directory to copy the files into.
+    """
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+    shutil.copy2(file_path, dest_dir)
+
 
 # Copy Git files to /app directory
 def copy_git_files(src_dir, dest_dir):
@@ -60,7 +67,8 @@ def main():
     base_image = "python:3.9-slim"
     manager_url = "http://example.com/manager"
 
-    config = Config(entrypoint, requirements, base_image, manager_url)
+    conf = BeamCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example.yaml').read())
+    beam_cicd = BeamCICD(conf)
 
     # Step 1: Copy Git files to /app
     print("Copying Git files to /app...")
