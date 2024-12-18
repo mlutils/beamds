@@ -5,7 +5,7 @@ from ..logging import beam_logger as logger
 
 
 # DeployServer
-def build_cicd(config):
+def deploy_cicd(config):
     obj_type = check_type(obj)
     config_type = check_type(config)
 

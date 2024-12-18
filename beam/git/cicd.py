@@ -18,7 +18,10 @@ class BeamCICD(BeamBase):
     def gitlab_client(self):
         return gitlab.Gitlab(self.gitlab_url, private_token=self.gitlab_token, ssl_verify=False)
 
-    def create_cicd_pipeline(self, config=None):
+    def create_build_pipeline(self, config=None):
+        pass
+
+    def create_run_pipeline(self, config=None):
         """
         Create a GitLab CI/CD pipeline configuration based on the provided parameters.
 
