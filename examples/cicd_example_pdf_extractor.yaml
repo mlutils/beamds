@@ -1,4 +1,4 @@
-# todo: need to config hparam to fill missing values
+# todo: need to config hparam to fill missing valuess
 alg: /tmp/bundle
 gitlab_url: https://gitlab.dt.local
 gitlab_token: glpat-vxrBXak89zUNyjPy46Hh
