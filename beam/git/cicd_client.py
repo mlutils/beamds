@@ -8,7 +8,7 @@ from ..logging import beam_logger as logger
 from ..base import BeamBase
 
 
-class BeamCICD(BeamBase):
+class BeamCICDClient(BeamBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.gitlab_url = self.get_hparam('gitlab_url')
@@ -25,11 +25,141 @@ class BeamCICD(BeamBase):
         builds a docker image, pushes it to the registry and deploys it to openshift
         """
 
-        project = self.gitlab_client.projects.get(self.get_hparam('gitlab_project'))
         current_dir = beam_path(__file__).parent
-        git_files_path = project.repository_tree(ref=self.get_hparam('branch'))
+        current_dir.joinpath('config.yaml').write(config)
 
-        pass
+        try:
+            # Retrieve GitLab project
+            project = self.gitlab_client.projects.get(self.get_hparam('gitlab_project'))
+            stages = self.get_hparam('stages')
+            pipeline_tags = self.get_hparam('pipeline_tags')
+
+            # Prepare Dockerfile content dynamically
+            dockerfile_template = (
+                """
+                ARG BASE_IMAGE
+                FROM ${BASE_IMAGE}
+
+                ARG WORKING_DIR
+                
+                RUN mkdir -p ${WORKING_DIR}
+                
+                ARG ENTRYPOINT_SCRIPT
+                
+                WORKDIR ${WORKING_DIR}
+
+                ARG REQUIREMENTS_FILE
+                COPY ${REQUIREMENTS_FILE} ${REQUIREMENTS_FILE}
+
+                RUN pip install --no-cache-dir -r ${WORKING_DIR}/${REQUIREMENTS_FILE}
+
+                ARG PYTHON_FILE
+                
+                COPY ${PYTHON_FILE}  ${WORKING_DIR}/
+
+                ARG ENTRYPOINT
+                COPY ${ENTRYPOINT_SCRIPT} ${WORKING_DIR}/entrypoint.sh
+
+
+                RUN chmod +x ${WORKING_DIR}/${ENTRYPOINT_SCRIPT}
+                
+                ENV PATH="${WORKING_DIR}:$PATH"
+                
+                RUN echo "PATH is : $PATH"
+                
+                ENV ENTRYPOINT="${WORKING_DIR}/${ENTRYPOINT_SCRIPT}"
+                
+                RUN echo "ENTRYPOINT is : ${ENTRYPOINT}"
+                
+                ENTRYPOINT ["entrypoint.sh"]
+                """
+            )
+
+            # Prepare .gitlab-ci.yml content using provided parameters
+            ci_template = {
+                'variables': {
+                    'BASE_IMAGE': self.get_hparam('base_image'),
+                    'BEAM_DIR': self.get_hparam('beam_dir'),
+                    'REGISTRY_USER': self.get_hparam('registry_user'),
+                    'REGISTRY_PASSWORD': self.get_hparam('registry_password'),
+                    'REGISTRY_URL': self.get_hparam('registry_url'),
+                    'CI_REGISTRY': self.get_hparam('ci_registry'),
+                    'CI_REGISTRY_PROJECT': self.get_hparam('ci_registry_project'),
+                    'ENTRYPOINT_SCRIPT': self.get_hparam('entrypoint'),
+                    'REQUIREMENTS_FILE': self.get_hparam('requirements_file'),
+                    'PYTHON_FILE': self.get_hparam('python_script'),
+                    'WORKING_DIR': self.get_hparam('working_dir'),
+                    'CONFIG_FILE': self.get_hparam('config_file'),
+                    'CMD': self.get_hparam('cmd')
+                },
+                'stages': stages,
+                'before_script': [
+                        'echo "CI_PROJECT_NAMESPACE is :" $CI_PROJECT_NAMESPACE',
+                        'git reset --hard',
+                        'git clean -xdf',
+                        ''
+                        'echo "Starting build job..."'
+                ],
+                'build': {
+                    'stage': stages[0],
+                    'tags': [pipeline_tags[0]],
+                    'script': [
+                        'echo $REGISTRY_PASSWORD | docker login -u $REGISTRY_USER --password-stdin $REGISTRY_URL',
+                        'docker build \
+                            --build-arg BASE_IMAGE=$BASE_IMAGE \
+                            --build-arg WORKING_DIR=$WORKING_DIR \
+                            --build-arg REQUIREMENTS_FILE=$REQUIREMENTS_FILE \
+                            --build-arg APP_FILES=$CI_PROJECT_DIR \
+                            --build-arg PYTHON_FILE=$PYTHON_FILE \
+                            --build-arg ENTRYPOINT_SCRIPT=$ENTRYPOINT_SCRIPT \
+                            -t $CI_REGISTRY/$CI_REGISTRY_PROJECT/$CI_PROJECT_NAME:$CI_COMMIT_SHA .',
+                        'docker push $CI_REGISTRY/$CI_REGISTRY_PROJECT/$CI_PROJECT_NAME:$CI_COMMIT_SHA'
+                    ],
+                    'only': [self.get_hparam('branch')]
+                }
+            }
+
+            # Convert CI/CD template to YAML format
+            ci_yaml_content = yaml.dump(ci_template)
+
+            try:
+                # Try to fetch the file tree to check if the file exists
+                file_tree = project.repository_tree(ref=self.get_hparam('branch'))
+                file_paths = [f['path'] for f in file_tree]
+
+                actions = []
+
+                # Include Dockerfile as part of the commit
+                actions.append({
+                    'action': 'create' if 'Dockerfile' not in file_paths else 'update',
+                    'file_path': 'Dockerfile',
+                    'content': dockerfile_template
+                })
+
+                # Include .gitlab-ci.yml as part of the commit
+                actions.append({
+                    'action': 'create' if '.gitlab-ci.yml' not in file_paths else 'update',
+                    'file_path': '.gitlab-ci.yml',
+                    'content': ci_yaml_content
+                })
+
+                # Commit both Dockerfile and .gitlab-ci.yml in one go
+                commit_data = {
+                    'branch': self.get_hparam('branch'),
+                    'commit_message': 'Add or update CI/CD configuration',
+                    'actions': actions
+                }
+
+                project.commits.create(commit_data)
+
+            except Exception as e:
+                logger.error(f"Failed to create or update CI/CD pipeline: {str(e)}")
+                raise
+
+        except Exception as e:
+            raise RuntimeError(f"Error creating build pipeline: {e}")
+        # todo: this function generate yaml file which describes the build process and push it to registry
+        # pass
 
     def create_run_pipeline(self, config=None):
         """

@@ -1,4 +1,4 @@
-from beam.git import BeamCICD, BeamCICDConfig
+from beam.git import BeamCICDClient, BeamCICDConfig
 from beam.resources import resource
 from beam.logging import beam_logger as logger
 
@@ -9,10 +9,11 @@ def example_create_cicd_pipeline():
 
 
     # conf = BeamCICDConfig(gitlab_url=api_url, gitlab_token=api_token, git_namespace=git_namespace)
-    conf = BeamCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example.yaml').read())
-    beam_cicd = BeamCICD(conf)
+    conf = BeamCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example_yolo.yaml').read())
+    beam_cicd = BeamCICDClient(conf)
 
-    beam_cicd.create_run_pipeline()
+    # beam_cicd.create_run_pipeline()
+    beam_cicd.create_build_pipeline()
 
 
 if __name__ == "__main__":

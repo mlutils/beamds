@@ -1,18 +1,18 @@
 if len([]):
 
-    from .cicd import BeamCICD
+    from .cicd_client import BeamCICDClient
     # from .gitlab import BeamGitlab
     # from .github import BeamGithub
     from .core import BeamGit
     from .config import BeamCICDConfig, ServeCICDConfig
     from .git_resource import deploy_cicd
 
-__all__ = ['BeamCICD', 'BeamGit', 'deploy_cicd', 'BeamCICDConfig', 'ServeCICDConfig']
+__all__ = ['BeamCICDClient', 'BeamGit', 'deploy_cicd', 'BeamCICDConfig', 'ServeCICDConfig']
 
 def __getattr__(name):
-    if name == 'BeamCICD':
-        from .cicd import BeamCICD
-        return BeamCICD
+    if name == 'BeamCICDClient':
+        from .cicd_client import BeamCICDClient
+        return BeamCICDClient
     elif name == 'BeamGit':
         from .core import BeamGit
         return BeamGit

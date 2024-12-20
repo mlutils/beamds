@@ -4,13 +4,15 @@ gitlab_url: https://gitlab.dt.local
 gitlab_token: glpat-_fKCXzehNxPP3Do8QRx-
 branch: main
 beam_dir: /home/dayosupp/projects/beamds
+base_image: python:3.9-slim
 ci_registry: harbor.dt.local
 cmd: python3
-config_file: cicd_example.yaml
+config_file: cicd_example_yolo.yaml
 commit_message: 'Update CI/CD pipeline configuration'
 dest_dir: /app
+entrypoint: entrypoint.sh
 file_path: '.gitlab-ci.yml'
-git_files: ['requirements.txt', 'entrypoint.sh']
+git_aux_files: ['requirements.txt', 'entrypoint.sh']
 git_namespace: dayosupp
 gitlab_project: dayosupp/yolo
 image_name: harbor.dt.local/public/beam:20240801

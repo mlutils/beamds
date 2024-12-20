@@ -34,7 +34,7 @@ def import_module_from_path(module_path):
 def main():
 
     base_config = ServeCICDConfig()
-    yaml_config = ServeCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example.yaml').read())
+    yaml_config = ServeCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example_yolo.yaml').read())
     config = ServeCICDConfig(**{**base_config, **yaml_config})
 
     logger.info(f"Config: {config}")
