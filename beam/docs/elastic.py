@@ -9,6 +9,7 @@ from .core import BeamDoc
 from .utils import parse_kql_to_dsl, generate_document_class
 
 
+
 class BeamElastic(BeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
@@ -160,14 +161,21 @@ class BeamElastic(BeamPath, BeamDoc):
         if self.path_type == 'document':
             return self.client.exists(index=self.index_name, id=self.parts[-1])
         # if it is a query type, check that at least one document matches the query
-        return self.s.count() > 0
+        s = self.s.extra(terminate_after=1)
+        return s.execute().hits.total.value > 0
 
     def __len__(self):
         if self.path_type == 'root':
             return len(self.client.indices.get('*'))
         return self.s.count()
 
-    # def create_vector_search_index(self, index, body):
+    def create_vector_search_index(self, index_name, field_name, dims=32, **other_fields):
+
+        class SimpleVectorDocument(Document):
+            vector = DenseVector(dims=dims)
+            for field, field_type in other_fields.items():
+                locals()[field] = field_type
+
 
     def iterdir(self):
 
@@ -182,16 +190,12 @@ class BeamElastic(BeamPath, BeamDoc):
             for doc in s.iterate(keep_alive=self.keep_alive):
                 yield self.gen(f"/{self.index_name}/{doc.meta.id}")
 
-
-
-
     @property
     def values(self):
         if self.path_type == 'root':
             return list(self.client.indices.get('*'))
         else:
             return self._get_values()
-
 
     def _get_values(self):
         if self._values is None:
@@ -211,7 +215,6 @@ class BeamElastic(BeamPath, BeamDoc):
             v.append(doc.to_dict())
             meta.append(doc.meta.to_dict())
         return v, meta
-
 
     @cached_property
     def df(self):
