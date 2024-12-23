@@ -206,8 +206,9 @@ class HTTPServer(BeamServer):
             ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
             ssl_context.load_cert_chain('cert.pem', 'key.pem')  # Path to your cert and key files
             serve(self.app, host=host, port=port, threads=self.n_threads, _sock=ssl_context.wrap_socket(
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_side=True),
-                  max_request_queue_size=self.queue_size)
+                socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_side=True),)
+                  # todo: add max_request_queue_size=self.queue_size
+                  # max_request_queue_size=self.queue_size)
         else:
             serve(self.app, host=host, port=port, threads=self.n_threads,
                   max_request_queue_size=self.queue_size)

@@ -7,7 +7,8 @@ base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: null
+beam_version: 'null'
+beam_ds_path: '/home/dayosupp/projects/beamds/dist/beam_ds-2.7.3-py3-none-any.whl'
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:

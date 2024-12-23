@@ -17,15 +17,18 @@ def example_create_cicd_pipeline():
     config = ServeCICDConfig(**{**base_conf, **yaml_conf})
     beam_cicd = BeamCICDClient(config)
 
+    # logger.info(f"the config is: {config}")
     # beam_cicd.create_run_pipeline()
-    obj = beam_cicd.create_build_pipeline()
+    image_name = beam_cicd.create_build_pipeline()
 
 
     logger.info("Deploying bundle via manager...")
-    config.update(hparams={'alg': obj  })
+    logger.info(f"Updating config with image name: {image_name}")
+    config.update({'alg': image_name, 'path_to_state': image_name})
+    logger.info(f"the config is: {config}")
     # config.update(alg=config.path_to_state)
 
-    manager = resource(config.manager_url)
+    manager = resource('http://api-35000-beam-manager-9xhrw-dev.apps.kh-dev.dt.local')
     manager.launch_serve_cluster(config)
 
     logger.info('Done!')
