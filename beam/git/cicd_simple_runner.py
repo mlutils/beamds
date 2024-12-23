@@ -13,10 +13,13 @@ from .git_resource import deploy_cicd
 def main():
 
     base_config = ServeCICDConfig()
-    yaml_config = ServeCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example_yolo.yaml').read())
+    yaml_config = ServeCICDConfig(resource('/home/dayosupp/projects/beamds/examples/cicd_example_pdf_extractor.yaml').read())
     config = ServeCICDConfig(**{**base_config, **yaml_config})
     logger.info(f"Config: {config}")
     # Step 3: Use manager.py to launch serve cluster
+
+
+
     launch_manager(config)
 
 if __name__ == "__main__":

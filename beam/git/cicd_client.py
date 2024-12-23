@@ -6,6 +6,7 @@ from ..path import beam_path
 from ..utils import cached_property
 from ..logging import beam_logger as logger
 from ..base import BeamBase
+from datetime import datetime
 
 
 class BeamCICDClient(BeamBase):
@@ -33,6 +34,7 @@ class BeamCICDClient(BeamBase):
             project = self.gitlab_client.projects.get(self.get_hparam('gitlab_project'))
             stages = self.get_hparam('stages')
             pipeline_tags = self.get_hparam('pipeline_tags')
+
 
             # Prepare Dockerfile content dynamically
             dockerfile_template = (
@@ -75,9 +77,14 @@ class BeamCICDClient(BeamBase):
                 """
             )
 
+            current_time = datetime.now().strftime("%d%m%Y_%H%M")
+            # Construct the image name dynamically
+            image_name = f"{self.get_hparam('ci_registry')}/{self.get_hparam('ci_registry_project')}/{self.get_hparam('gitlab_project')}:{current_time}"
+
             # Prepare .gitlab-ci.yml content using provided parameters
             ci_template = {
                 'variables': {
+                    'IMAGE_NAME': image_name,
                     'BASE_IMAGE': self.get_hparam('base_image'),
                     'BEAM_DIR': self.get_hparam('beam_dir'),
                     'REGISTRY_USER': self.get_hparam('registry_user'),
@@ -112,8 +119,8 @@ class BeamCICDClient(BeamBase):
                             --build-arg APP_FILES=$CI_PROJECT_DIR \
                             --build-arg PYTHON_FILE=$PYTHON_FILE \
                             --build-arg ENTRYPOINT_SCRIPT=$ENTRYPOINT_SCRIPT \
-                            -t $CI_REGISTRY/$CI_REGISTRY_PROJECT/$CI_PROJECT_NAME:$CI_COMMIT_SHA .',
-                        'docker push $CI_REGISTRY/$CI_REGISTRY_PROJECT/$CI_PROJECT_NAME:$CI_COMMIT_SHA'
+                            -t $IMAGE_NAME .',
+                        'docker push $IMAGE_NAME'
                     ],
                     'only': [self.get_hparam('branch')]
                 }
@@ -155,6 +162,8 @@ class BeamCICDClient(BeamBase):
             except Exception as e:
                 logger.error(f"Failed to create or update CI/CD pipeline: {str(e)}")
                 raise
+
+            return image_name
 
         except Exception as e:
             raise RuntimeError(f"Error creating build pipeline: {e}")
