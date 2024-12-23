@@ -561,7 +561,7 @@ class AutoBeam(BeamBase):
 
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
-                  entrypoint='synchronous-server', beam_version='latest', dockerfile='simple-entrypoint',
+                  entrypoint='synchronous-server', beam_version='latest', beam_ds_path=None, dockerfile='simple-entrypoint',
                   registry_url=None, base_url=None, registry_project_name=None, path_to_state=None,
                   username=None, password=None, copy_bundle=False, requirements_blacklist=None,
                   **kwargs):
@@ -573,7 +573,7 @@ class AutoBeam(BeamBase):
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         full_image_name = (
             AutoBeam._build_image(bundle_path, base_image, config=serve_config, image_name=image_name,
-                                  entrypoint=entrypoint, beam_version=beam_version, username=username,
+                                  entrypoint=entrypoint, beam_version=beam_version, beam_ds_path=beam_ds_path, username=username,
                                   password=password, base_url=base_url, registry_project_name=registry_project_name,
                                   registry_url=registry_url, copy_bundle=copy_bundle, dockerfile=dockerfile))
         logger.info(f"full_image_name: {full_image_name}")
@@ -582,7 +582,7 @@ class AutoBeam(BeamBase):
     @staticmethod
     def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint=None,
                      copy_bundle=False, registry_url=None, username=None, password=None, override_image=False,
-                     beam_version='latest', base_url=None, registry_project_name=None, dockerfile=None):
+                     beam_version='latest', beam_ds_path=None, base_url=None, registry_project_name=None, dockerfile=None):
 
         assert base_image is not None, "You must provide a base_image."
         if not bool(beam_version):
@@ -656,6 +656,7 @@ class AutoBeam(BeamBase):
                 'ENTRYPOINT_SCRIPT': entrypoint.relative_to(bundle_path).str,
                 'CONFIG_FILE': '.docker/config.yaml',
                 'BEAM_DS_VERSION': beam_version,
+                'BEAM_DS_PATH': beam_ds_path,
                 'DOCKER_TOOLS_DIR': '.docker/docker-tools',
             }
 
