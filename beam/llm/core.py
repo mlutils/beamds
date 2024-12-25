@@ -512,7 +512,7 @@ class BeamLLM(PedanticBeamResource):
             self._chat.add_tool_message(self.tool_message(tools), overwrite=True)
 
         response = self.chat_completion(chat=self._chat, prompt_type=prompt_type, guidance=guidance, tools=tools,
-                                        system=system, **default_params)
+                                        system=system, **default_params, **kwargs)
 
         if not response.is_valid:
             return response
