@@ -42,7 +42,7 @@ class BeamElastic(BeamPath, BeamDoc):
     @property
     def index_name(self):
         if self.path_type in ['index', 'query', 'document']:
-            return self.parts[0]
+            return self.parts[1]
         return None
 
     @property
@@ -56,12 +56,12 @@ class BeamElastic(BeamPath, BeamDoc):
         return self._search_index(self.index_name)
 
     @property
-    def query(self):
+    def q(self):
 
         if self.path_type in ['root', 'index']:
             return BeamElastic.match_all
 
-        qs = self.parts[1:-1]
+        qs = self.parts[2:-1]
         q = BeamElastic.match_all
 
         for part in qs:
@@ -78,13 +78,13 @@ class BeamElastic(BeamPath, BeamDoc):
     def s(self):
         if self.path_type in ['root', 'index']:
             return self._search
-        return self._search.query(self.query)
+        return self._search.query(self.q)
 
     @property
     def path_type(self):
-        if len(self.parts) == 0:
+        if len(self.parts) == 1:
             return 'root'
-        elif len(self.parts) == 1:
+        elif len(self.parts) == 2:
             return 'index'
         elif self._is_file_path:
             return 'document'
@@ -220,6 +220,12 @@ class BeamElastic(BeamPath, BeamDoc):
     def df(self):
         import pandas as pd
         return pd.DataFrame(self.values)
+
+    def add(self, x):
+        if self.path_type == 'index':
+            self.index_document(self.index_name, x)
+        else:
+            raise ValueError("Cannot add document to non-index path")
 
 
     # def search(self, x, k=10, **kwargs):
