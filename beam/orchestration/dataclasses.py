@@ -43,6 +43,7 @@ class StorageConfig:
     create_pvc: bool = False  # Indicates whether to create a route for this service
     pvc_size: Union[K8SUnits, str, int] = '1Gi'
     pvc_access_mode: str = 'ReadWriteMany'
+    storage_class_name: Optional[str] = None
 
     def __post_init__(self):
         self.pvc_size = K8SUnits(self.pvc_size)

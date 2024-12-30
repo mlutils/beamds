@@ -608,12 +608,12 @@ class AutoBeam(BeamBase):
         finally:
             client.close()
 
-        entrypoint = entrypoint or 'synchronous-server' #todo: not used
-        dockerfile = dockerfile or 'simple-entrypoint' #todo: not used
+        entrypoint = entrypoint or 'synchronous-server'
+        dockerfile = dockerfile or 'simple-entrypoint'
 
         bundle_path = beam_path(bundle_path)
         # current_dir = this_dir()
-        current_dir = beam_path(__file__).parent #todo: not used
+        current_dir = beam_path(__file__).parent
 
         if image_name is None:
             image_name = f"autobeam-{bundle_path.name}-{base_image}"
@@ -626,17 +626,6 @@ class AutoBeam(BeamBase):
 
             config = dict(config) if config else {}
             docker_dir.joinpath('config.yaml').write(config)
-
-            # beam_ds_path = beam_path(beam_ds_path)
-            # if not beam_ds_path.is_file():
-            #     raise FileNotFoundError(f"Beam-DS path is invalid or file not found: {beam_ds_path}")
-            # if beam_ds_path.is_file():
-            #     # Copy the Beam-DS file into the .docker directory
-            #     target_beam_ds_path = docker_dir.joinpath('beam-ds.whl')
-            #     target_beam_ds_path.write_bytes(beam_ds_path.read_bytes())
-            #     print(f"Beam-DS file copied to: {beam_ds_path}")
-            # else:
-            #     raise FileNotFoundError(f"The specified BEAM_DS_PATH does not exist or is not a file: {beam_ds_path}")
 
 
             entrypoint = beam_path(entrypoint)
@@ -663,9 +652,14 @@ class AutoBeam(BeamBase):
                 raise FileNotFoundError(f"Beam-DS path is invalid or file not found: {beam_ds_path}")
             if beam_ds_path.is_file():
                 # Copy the Beam-DS file into the .docker directory
-                target_beam_ds_path = docker_tools_dir.joinpath(beam_ds_path)
-                beam_ds_path.copy(target_beam_ds_path)
+                target_beam_ds_path = docker_tools_dir.joinpath(beam_ds_path.name)
+                target_beam_ds_path.parent.mkdir(parents=True, exist_ok=True)
+                target_beam_ds_path.write_bytes(beam_ds_path.read_bytes())
+
+                # target_beam_ds_path.copy(target_beam_ds_path)
+                # beam_ds_path.copy(target_beam_ds_path)
                 # target_beam_ds_path.write_bytes(beam_ds_path.read_bytes())
+
                 logger.info(f"Beam-DS file copied to: {target_beam_ds_path}")
             else:
                 raise FileNotFoundError(f"The specified BEAM_DS_PATH does not exist or is not a file: {beam_ds_path}")
@@ -698,8 +692,8 @@ class AutoBeam(BeamBase):
                 'ENTRYPOINT_SCRIPT': entrypoint.relative_to(bundle_path).str,
                 'CONFIG_FILE': '.docker/config.yaml',
                 'BEAM_DS_VERSION': beam_version,
-                # 'BEAM_DS_PATH': '.docker/docker-tools/beam-ds.whl',
-                'BEAM_DS_PATH': beam_ds_path,
+                'BEAM_DS_PATH': target_beam_ds_path,
+                # 'BEAM_DS_PATH': beam_ds_path.name,
                 'DOCKER_TOOLS_DIR': '.docker/docker-tools',
             }
 

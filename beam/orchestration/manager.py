@@ -202,9 +202,9 @@ class BeamManager(BeamBase):
         # self.clusters[name] = serve_cluster.deploy_from_image(config=config, image_name=config['image_name'])
         self.clusters[name] = deploy_server(obj=config.alg, config=config)
 
-        # Start monitoring the cluster
-        monitor_thread = Thread(target=serve_cluster.monitor_cluster)
-        monitor_thread.start()
+        # # Start monitoring the cluster
+        # monitor_thread = Thread(target=serve_cluster.monitor_cluster)
+        # monitor_thread.start()
 
         return name
 
@@ -254,6 +254,47 @@ class BeamManager(BeamBase):
         # import randomname
         import namegenerator
         return namegenerator.gen()
+
+    def get_cluster_service(self, deployment_name, namespace, port):
+        """
+        Retrieve the URL of a pod associated with a specific deployment and port.
+        :param deployment_name: Name of the deployment.
+        :param namespace: Namespace of the deployment.
+        :param port: Target port to match.
+        :return: URL of the pod (http://<pod_name>:<port>) if found, otherwise None.
+        """
+        try:
+            # Get the deployment details
+            deployment = self.k8s.apps_v1_api.read_namespaced_deployment(name=deployment_name, namespace=namespace)
+            selector = deployment.spec.selector.match_labels
+
+            # Get all pods matching the deployment's selector
+            label_selector = ",".join([f"{key}={value}" for key, value in selector.items()])
+            pods = self.k8s.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=label_selector).items
+
+            for pod in pods:
+                if pod.status.phase == "Running":
+                    # Check if the pod has a container with the specific port
+                    for container in pod.spec.containers:
+                        if container.ports:
+                            for container_port in container.ports:
+                                if container_port.container_port == port:
+                                    # Construct the URL
+                                    pod_name = pod.metadata.name
+                                    url = f"http://{pod_name}:{port}"
+                                    return url
+
+            logger.info(f"No pod with port {port} found for deployment '{deployment_name}' in namespace '{namespace}'.")
+            return None
+
+        except self.k8s.client.exceptions.ApiException as e:
+            logger.error(f"Error retrieving pod URL for deployment '{deployment_name}': {e}")
+            return None
+
+        except self.k8s.client.exceptions.ApiException as e:
+            logger.error(f"Error retrieving pod hostname for deployment '{deployment_name}': {e}")
+            return None
+
 
     def retrieve_cluster_logs(self, cluster_name):
         if cluster_name not in self.clusters:

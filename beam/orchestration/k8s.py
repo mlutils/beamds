@@ -1100,12 +1100,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the service in the specified namespace
         try:
             self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
-            print(f"Service '{service_name}' created successfully in namespace '{namespace}'.")
+            logger.info(f"Service '{service_name}' created successfully in namespace '{namespace}'.")
             logger.info(
                 f"Service '{service_name}' of type '{service_type}' created with ports: "
                 f"{', '.join([f'Port: {port.port}, TargetPort: {port.target_port}' for port in service_ports])}")
         except client.exceptions.ApiException as e:
-            print(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
+            logger.info(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
 
         service_url = f"http://{base_name}.{namespace}.svc.cluster.local:{ports[0]}"
         service_details = {
