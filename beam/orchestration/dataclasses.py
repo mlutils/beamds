@@ -42,7 +42,7 @@ class StorageConfig:
     pvc_mount_path: str
     create_pvc: bool = False  # Indicates whether to create a route for this service
     pvc_size: Union[K8SUnits, str, int] = '1Gi'
-    pvc_access_mode: str = 'ReadWriteMany'
+    pvc_access_mode: str = 'ReadWriteOnce'
     storage_class_name: Optional[str] = None
 
     def __post_init__(self):

@@ -513,6 +513,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Handle PVC mounts
         if pvc_mounts:
             for mount in pvc_mounts:
+
                 volumes.append(client.V1Volume(
                     name=mount['pvc_name'],
                     persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=mount['pvc_name'])
@@ -561,7 +562,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             spec=pod_spec
         )
 
-    def create_pvc(self, pvc_name, pvc_size, pvc_access_mode, namespace):
+    def create_pvc(self, pvc_name, pvc_size, pvc_access_mode, namespace, storage_class_name=None):
         logger.info(f"Attempting to create PVC: {pvc_name} in namespace: {namespace}")
         pvc_manifest = {
             "apiVersion": "v1",
@@ -572,6 +573,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 "resources": {"requests": {"storage": pvc_size}}
             }
         }
+        if storage_class_name:
+            pvc_manifest["spec"]["storageClassName"] = storage_class_name
+
         self.core_v1_api.create_namespaced_persistent_volume_claim(namespace=namespace, body=pvc_manifest)
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 

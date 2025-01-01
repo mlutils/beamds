@@ -106,7 +106,6 @@ class BeamDeploy(BeamBase):
             self.service_account_name = 'default'
             logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
 
-
         if self.storage_configs:
             for storage_config in self.storage_configs:
                 try:
@@ -120,7 +119,8 @@ class BeamDeploy(BeamBase):
                             pvc_name=storage_config.pvc_name,
                             pvc_size=storage_config.pvc_size.as_str,
                             pvc_access_mode=storage_config.pvc_access_mode,
-                            namespace=self.namespace
+                            namespace=self.namespace,
+                            storage_class_name = storage_config.storage_class_name
                         )
                     else:
                         logger.info(f"Skipping PVC creation for: {storage_config.pvc_name} as create_pvc is False")

@@ -84,11 +84,12 @@ service_configs:
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
-- create_pvc: true
-  pvc_access_mode: ReadWriteMany
-  pvc_mount_path: /pvc
-  pvc_name: data-pvc
-  pvc_size: '500'
+- create_pvc: false
+  pvc_access_mode: ReadWriteOnce
+  pvc_mount_path: /usr/share/logstash/pipeline
+  pvc_name: kibana-pvc
+  pvc_size: '100'
+  storage_class_name: "local-sc"
 subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
 use_gpu: false
@@ -96,7 +97,7 @@ use_node_selector: false
 use_scc: true
 user_idm_configs:
 - create_role_binding: false
-  project_name: ben-guryon
+  project_name: dev
   role_binding_name: yos
   role_name: admin
   user_name: yos
