@@ -68,13 +68,13 @@ restart_policy_configs:
   max_attempts: 3
   window: 120s
 send_mail: false
-scc_name: anyuid
+scc_name: privileged
 security_context_config:
   add_capabilities:
 #  - SYS_CHROOT
 #  - CAP_AUDIT_CONTROL
 #  - CAP_AUDIT_WRITE
-  enable_security_context: false
+  enable_security_context: true
   privileged: true
   runAsUser: 0
 service_configs:
@@ -100,7 +100,7 @@ storage_configs:
   pvc_mount_path: /usr/share/elasticsearch/data
   pvc_name: elasticsearch-pvc
   pvc_size: '100'
-  storage_class_name: "local-sc"
+  storage_class_name: "local-sc-elastic"
 subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
 use_gpu: false

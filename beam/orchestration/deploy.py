@@ -324,7 +324,7 @@ class BeamDeploy(BeamBase):
 
     def update_config_maps_rs_env_vars(self, deployment_name, namespace, rs_env_vars):
         # Prepare ConfigMap data
-        config_map_name = f"{deployment_name}-config"
+        config_map_name = f"{deployment_name}-var-config"
         config_data = {var['name']: var['value'] for var in rs_env_vars}
 
         # Create or update ConfigMap

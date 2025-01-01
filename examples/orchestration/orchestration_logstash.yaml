@@ -26,7 +26,7 @@ debug_sleep: false
 entrypoint_args:
 - '--no-ray'
 entrypoint_envs:
-  xpack.monitoring.enabled: false
+  xpack.monitoring.enabled: 'false'
 from_email: dayotech2018@gmail.com
 from_email_password: mkhdokjqwwmazyrf
 job_name: beam-job
@@ -64,13 +64,13 @@ restart_policy_configs:
   max_attempts: 3
   window: 120s
 send_mail: false
-scc_name: anyuid
+scc_name: privileged
 security_context_config:
   add_capabilities:
 #  - SYS_CHROOT
 #  - CAP_AUDIT_CONTROL
 #  - CAP_AUDIT_WRITE
-  enable_security_context: false
+  enable_security_context: true
   privileged: true
   runAsUser: 0
 service_configs:
@@ -93,10 +93,10 @@ smtp_server: smtp.gmail.com
 storage_configs:
 - create_pvc: true
   pvc_access_mode: ReadWriteOnce
-  pvc_mount_path: /usr/share/logstash/pipeline
+  pvc_mount_path: /usr/share/logstash/data
   pvc_name: logstash-pvc
-  pvc_size: '100'
-  storage_class_name: "local-sc"
+  pvc_size: '199'
+  storage_class_name: "local-sc-logstash"
 subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
 use_gpu: false
