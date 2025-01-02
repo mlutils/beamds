@@ -5,6 +5,8 @@ thop
 nbtop
 requests_ntlm
 twine
+
+# throw error in nvidia image 12.24 (python 3.12)
 # livereload
 # myst-parser
 # sphinx[myst-parser]

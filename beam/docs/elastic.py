@@ -3,6 +3,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text
 from elasticsearch_dsl.query import Query
+from datetime import datetime
 
 from ..path import PureBeamPath, normalize_host
 from ..utils import lazy_property as cached_property, recursive_elementwise
@@ -16,7 +17,7 @@ from .utils import parse_kql_to_dsl, generate_document_class
 class BeamElastic(PureBeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
-                 tls=False, client=None, keep_alive='1m', **kwargs):
+                 tls=False, client=None, keep_alive='1m', document=None, **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password,
                          scheme='elastic', **kwargs)
         self.verify = verify
@@ -25,8 +26,23 @@ class BeamElastic(PureBeamPath, BeamDoc):
         self.keep_alive = keep_alive
         self._values = None
         self._metadata = None
-        self._doc_cls: Document | None = None
+        self._doc_cls: Document | None = document
         self._index: Index | None = None
+
+    # elasticsearch timestamp format with timezone
+    timestamp_format = '%Y-%m-%dT%H:%M:%S%z'
+
+    @staticmethod
+    def to_datetime(timestamp: str | datetime) -> datetime:
+        if isinstance(timestamp, datetime):
+            return timestamp
+        return datetime.strptime(timestamp, BeamElastic.timestamp_format)
+
+    @staticmethod
+    def to_timestamp(timestamp: str | datetime) -> str:
+        if isinstance(timestamp, str):
+            return timestamp
+        return timestamp.strftime(BeamElastic.timestamp_format)
 
     def _get_client(self):
         protocol = 'https' if self.tls else 'http'
@@ -101,11 +117,27 @@ class BeamElastic(PureBeamPath, BeamDoc):
             self._doc_cls = generate_document_class(self.client, self.index_name)
         return self._doc_cls
 
+    @property
+    def document_class(self):
+        return self.get_document_class()
+
     def set_document_class(self, doc_cls):
         if self.path_type == 'root':
             return ValueError("Cannot set document class for root path")
         self._doc_cls = doc_cls
         self.index.document(doc_cls)
+
+    def _init_index(self):
+        if self.document_class is not None:
+            self.document_class.init(using=self.client)
+        else:
+            self.index.create(using=self.client)
+
+    def _delete_index(self):
+        if self.document_class is not None:
+            self.document_class.delete(using=self.client)
+        else:
+            self.index.delete(using=self.client)
 
     @property
     def _is_file_path(self):
@@ -123,6 +155,12 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def match_none():
         return Q('match_none')
 
+    def gen(self, path):
+        PathType = type(self)
+        return PathType(path, client=self.client, hostname=self.hostname, port=self.port, username=self.username,
+                        password=self.password, fragment=self.fragment, params=self.params, document=self._doc_cls,
+                        **self.query)
+
     def index_exists(self, index):
         return self.client.indices.exists(index=index)
 
@@ -135,7 +173,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def index_document(self, index, body, id=None):
         return self.client.index(index=index, body=body, id=id)
 
-    def bulk_index(self, index, docs):
+    def index_bulk(self, index, docs):
         return bulk(self.client, docs, index=index)
 
     def search(self, index, body):
@@ -235,7 +273,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def write_bulk(self, docs):
         if self.path_type == 'index':
-            self.bulk_index(self.index_name, docs)
+            self.index_bulk(self.index_name, docs)
         else:
             raise ValueError("Cannot write bulk to non-index path")
 
@@ -253,11 +291,17 @@ class BeamElastic(PureBeamPath, BeamDoc):
             else:
                 raise ValueError(f"Cannot write object of type {x_type}")
 
+    def init(self):
+        if self.path_type in ['index', 'query']:
+            self._init_index()
+        else:
+            raise ValueError("Cannot init document or root path")
+
     def get_schema(self, index_name):
         s = self.client.indices.get_mapping(index=index_name)
         return dict(s)[index_name]['mappings']['properties']
 
-    def _search_native(self, index, query: dict | Query, sort=None, size=None, serach_after=None):
+    def _search_native(self, index, query: dict | Query, sort=None, size=None, search_after=None):
 
         if size is None:
             size = 1000
@@ -266,7 +310,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
             query = query.to_dict()
 
         while True:
-            res = self.client.search(index=index, query=query, sort=sort, size=size, search_after=serach_after)
+            res = self.client.search(index=index, query=query, sort=sort, size=size, search_after=search_after)
             hits = res['hits']['hits']
             h = None
             for h in hits:
@@ -274,7 +318,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
             if h is None:
                 break
             if sort is not None:
-                serach_after = h['sort']
+                search_after = h['sort']
             else:
                 if size is not None:
                     total = res['hits']['total']['value']
@@ -298,7 +342,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
                 if pd.isna(d['_id']):
                     d.pop('_id')
 
-        self.bulk_index(index, data)
+        self.index_bulk(index, data)
 
     def _delete_docs(self, ids, index):
         actions = [{
