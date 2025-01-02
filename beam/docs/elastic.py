@@ -1,9 +1,11 @@
+import pandas as pd
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text
+from elasticsearch_dsl.query import Query
 
 from ..path import BeamPath, normalize_host
-from ..utils import lazy_property as cached_property
+from ..utils import lazy_property as cached_property, recursive_elementwise
 from ..type import check_type
 
 from .core import BeamDoc
@@ -250,6 +252,75 @@ class BeamElastic(BeamPath, BeamDoc):
                 x.save(using=self.client, index=self.index_name)
             else:
                 raise ValueError(f"Cannot write object of type {x_type}")
+
+    def get_schema(self, index_name):
+        s = self.client.indices.get_mapping(index=index_name)
+        return dict(s)[index_name]['mappings']['properties']
+
+    def _search_native(self, index, query: dict | Query, sort=None, size=None, serach_after=None):
+
+        if size is None:
+            size = 1000
+
+        if isinstance(query, Query):
+            query = query.to_dict()
+
+        while True:
+            res = self.client.search(index=index, query=query, sort=sort, size=size, search_after=serach_after)
+            hits = res['hits']['hits']
+            h = None
+            for h in hits:
+                yield h
+            if h is None:
+                break
+            if sort is not None:
+                serach_after = h['sort']
+            else:
+                if size is not None:
+                    total = res['hits']['total']['value']
+                    if total >= size:
+                        pass
+                        # logger.warning(f"Total hits: {total}, returning only {size}")
+                break
+
+    def _write_df(self, df, index):
+
+        @recursive_elementwise
+        def clearn_none(x):
+            if pd.isna(x):
+                return None
+            return x
+
+        data = df.to_dict(orient='records')
+        data = clearn_none(data)
+        if '_id' in df.columns:
+            for d in data:
+                if pd.isna(d['_id']):
+                    d.pop('_id')
+
+        self.bulk_index(index, data)
+
+    def _delete_docs(self, ids, index):
+        actions = [{
+            '_op_type': 'delete',
+            '_index': index,
+            '_id': i
+        } for i in ids]
+        bulk(self.client, actions)
+
+    def query_df(self, query, index, sort=None, size=None, search_after=None, **kwargs):
+        if size is None:
+            size = 1000
+
+        l = []
+        i = []
+        for r in self._search_native(index, query, sort=sort, size=size, search_after=search_after):
+            l.append(r['_source'])
+            i.append(r['_id'])
+
+        df = pd.DataFrame(l, index=i)
+        df.index.name = '_id'
+        return df
 
     # def search(self, x, k=10, **kwargs):
     #     # use knn search to find similar documents kwargs is assumed to be a list of terms to filter the search
