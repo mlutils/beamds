@@ -14,7 +14,7 @@ import itertools
 import re
 from .utils_all import (check_type, check_minor_type, slice_array, is_arange, DataObject, is_container,
                         jupyter_like_traceback)
-from ..type import BeamType, Types
+from ..type import BeamType, Types, is_scalar
 
 from ..importer import torch
 from ..importer import scipy
@@ -799,6 +799,20 @@ def object_size(x, x_type=None):
         return len(x) * np.mean([sys.getsizeof(x[i]) for i in ind])
     else:
         return sys.getsizeof(x)
+
+
+def recursive_elementwise(func):
+    def apply_recursively(x, *args, **kwargs):
+
+        if isinstance(x, dict):
+            return {k: apply_recursively(v, *args, **kwargs) for k, v in x.items()}
+        if isinstance(x, list):
+            return [apply_recursively(v, *args, **kwargs) for v in x]
+        if isinstance(x, tuple):
+            return tuple(apply_recursively(v, *args, **kwargs) for v in x)
+        return func(x, *args, **kwargs)
+
+    return apply_recursively
 
 
 def recursive(func):
