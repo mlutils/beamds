@@ -5,9 +5,9 @@ thop
 nbtop
 requests_ntlm
 twine
-livereload
-myst-parser
+# livereload
+# myst-parser
 # sphinx[myst-parser]
 # sphinx-rtd-theme
 # sphinx_mdinclude
-jdc
+# jdc

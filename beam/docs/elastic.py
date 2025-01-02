@@ -2,7 +2,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text
 
-from ..path import BeamPath, normalize_host
+from ..path import PureBeamPath, normalize_host
 from ..utils import lazy_property as cached_property
 from ..type import check_type
 
@@ -11,7 +11,7 @@ from .utils import parse_kql_to_dsl, generate_document_class
 
 
 
-class BeamElastic(BeamPath, BeamDoc):
+class BeamElastic(PureBeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
                  tls=False, client=None, keep_alive='1m', **kwargs):
