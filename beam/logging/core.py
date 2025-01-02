@@ -1,6 +1,5 @@
 import sys
 from contextlib import contextmanager
-import logstash
 
 import loguru
 import atexit
@@ -260,6 +259,7 @@ class BeamLogger:
         :param port: The port of the Logstash server (default: 5044).
         :param version: Logstash message format version (default: 1).
         """
+        import logstash
         handler_name = 'logstash'
 
         if handler_name in self.handlers:

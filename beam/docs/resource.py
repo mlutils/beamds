@@ -34,6 +34,8 @@ def beam_elastic(path, username=None, hostname=None, port=None, private_key=None
     #     secret_key = kwargs.pop('secret_key')
 
     path = url.path
+    if path == '':
+        path = '/'
 
     return BeamElastic(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
 

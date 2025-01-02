@@ -41,7 +41,7 @@ def resource(uri, **kwargs) -> Union[BeamResource, Any]:
         from .embedding import beam_embedding
         return beam_embedding(uri, **kwargs)
     elif scheme in resource_names['elastic']:
-        from .elastic import beam_elastic
+        from .docs import beam_elastic
         return beam_elastic(uri, **kwargs)
 
     elif scheme in dynamic_resources:

@@ -62,10 +62,14 @@ class OpenAIBase(BeamLLM):
         res = self.client.completions.create(model=self.model, prompt=prompt,  **kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
-    def _chat_completion(self, chat, **kwargs):
+    def _chat_completion(self, chat, response_format=None, stream=None, **kwargs):
         kwargs = self.filter_chat_kwargs(kwargs)
         messages = chat.openai_format
-        res = self.client.chat.completions.create(model=self.model, messages=messages, **kwargs)
+        if response_format is None:
+            res = self.client.chat.completions.create(model=self.model, messages=messages,
+                                                      stream=stream, **kwargs)
+        else:
+            res = self.client.beta.chat.completions.parse(model=self.model, messages=messages, **kwargs)
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 
     @staticmethod

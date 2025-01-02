@@ -4,6 +4,7 @@ from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, In
 
 from ..path import BeamPath, normalize_host
 from ..utils import lazy_property as cached_property
+from ..type import check_type
 
 from .core import BeamDoc
 from .utils import parse_kql_to_dsl, generate_document_class
@@ -42,7 +43,7 @@ class BeamElastic(BeamPath, BeamDoc):
     @property
     def index_name(self):
         if self.path_type in ['index', 'query', 'document']:
-            return self.parts[0]
+            return self.parts[1]
         return None
 
     @property
@@ -56,12 +57,12 @@ class BeamElastic(BeamPath, BeamDoc):
         return self._search_index(self.index_name)
 
     @property
-    def query(self):
+    def q(self):
 
         if self.path_type in ['root', 'index']:
             return BeamElastic.match_all
 
-        qs = self.parts[1:-1]
+        qs = self.parts[2:-1]
         q = BeamElastic.match_all
 
         for part in qs:
@@ -78,13 +79,13 @@ class BeamElastic(BeamPath, BeamDoc):
     def s(self):
         if self.path_type in ['root', 'index']:
             return self._search
-        return self._search.query(self.query)
+        return self._search.query(self.q)
 
     @property
     def path_type(self):
-        if len(self.parts) == 0:
+        if len(self.parts) == 1:
             return 'root'
-        elif len(self.parts) == 1:
+        elif len(self.parts) == 2:
             return 'index'
         elif self._is_file_path:
             return 'document'
@@ -216,11 +217,39 @@ class BeamElastic(BeamPath, BeamDoc):
             meta.append(doc.meta.to_dict())
         return v, meta
 
+    def ping(self):
+        return self.client.ping()
+
     @cached_property
     def df(self):
         import pandas as pd
         return pd.DataFrame(self.values)
 
+    def add(self, x):
+        if self.path_type == 'index':
+            self.index_document(self.index_name, x)
+        else:
+            raise ValueError("Cannot add document to non-index path")
+
+    def write_bulk(self, docs):
+        if self.path_type == 'index':
+            self.bulk_index(self.index_name, docs)
+        else:
+            raise ValueError("Cannot write bulk to non-index path")
+
+    def write(self, *args, ext=None, **kwargs):
+
+        for x in args:
+            x_type = check_type(x)
+            if x_type.minor == 'pandas':
+                docs = x.to_dict(orient='records')
+                self.write_bulk(docs)
+            elif x_type.minor == 'dict':
+                self.add(x)
+            elif isinstance(x, Document):
+                x.save(using=self.client, index=self.index_name)
+            else:
+                raise ValueError(f"Cannot write object of type {x_type}")
 
     # def search(self, x, k=10, **kwargs):
     #     # use knn search to find similar documents kwargs is assumed to be a list of terms to filter the search
