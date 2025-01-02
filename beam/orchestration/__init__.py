@@ -6,7 +6,7 @@ if len([]):
     from .deploy import BeamDeploy
     from .statefulsets import BeamStatefulSet
     from .pod import BeamPod
-    from .jobs import BeamJob, BeamCronJob
+    from .jobs import JobManager, BeamJob, BeamCronJob
     from .units import K8SUnits
     from .config import (K8SConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig, BeamManagerConfig,
                          JobConfig, CronJobConfig)
@@ -17,7 +17,7 @@ if len([]):
 
 __all__ = ['BeamK8S', 'BeamDeploy', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig', 'ServeClusterConfig',
            'JobConfig', 'CronJobConfig', 'RnDClusterConfig','BeamManagerConfig', 'ServeCluster', 'RayCluster',
-           'RnDCluster', 'BeamManager', 'deploy_server', 'BeamStatefulSet']
+           'JobManager', 'RnDCluster', 'BeamManager', 'deploy_server', 'BeamStatefulSet']
 
 
 def __getattr__(name):
@@ -36,6 +36,9 @@ def __getattr__(name):
     elif name == 'RnDCluster':
         from .cluster import RnDCluster
         return RnDCluster
+    elif name == 'JobManager':
+        from .jobs import JobManager
+        return JobManager
     elif name == 'BeamJob':
         from .jobs import BeamJob
         return BeamJob

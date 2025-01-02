@@ -115,7 +115,7 @@ class BeamManager(BeamBase):
         self.k8s.cleanup_jobs(namespace=config['project_name'], app_name=config['job_name'])
 
         # Deploy a new job
-        job = BeamJob.deploy_job(config=config, k8s=self.k8s)
+        job = BeamJob.deploy(config=config, k8s=self.k8s)
         self.clusters[name] = job
 
         # Start monitoring the job
@@ -141,7 +141,7 @@ class BeamManager(BeamBase):
 
         # Deploy a new cron job
         from .jobs import BeamCronJob
-        cron_job = BeamCronJob.deploy_cron_job(config=config, k8s=self.k8s)
+        cron_job = BeamCronJob.deploy(config=config, k8s=self.k8s)
         self.clusters[name] = cron_job
 
         # Start monitoring the cron job
@@ -197,8 +197,8 @@ class BeamManager(BeamBase):
 
         name = self.get_cluster_name(config)
         from .cluster import ServeCluster
-        serve_cluster = ServeCluster(config=config, pods=[], k8s=self.k8s, deployment=name, **kwargs)
 
+        # serve_cluster = ServeCluster(config=config, pods=[], k8s=self.k8s, deployment=name, **kwargs)
         # self.clusters[name] = serve_cluster.deploy_from_image(config=config, image_name=config['image_name'])
         self.clusters[name] = deploy_server(obj=config.alg, config=config)
 
@@ -280,8 +280,10 @@ class BeamManager(BeamBase):
                             for container_port in container.ports:
                                 if container_port.container_port == port:
                                     # Construct the URL
-                                    pod_name = pod.metadata.name
-                                    url = f"http://{pod_name}:{port}"
+                                    # pod_name = pod.metadata.name
+                                    # url = f"http://{pod_name}:{port}"
+                                    pod_ip = pod.status.pod_ip
+                                    url = f"http://{pod_ip}:{port}"
                                     return url
 
             logger.info(f"No pod with port {port} found for deployment '{deployment_name}' in namespace '{namespace}'.")

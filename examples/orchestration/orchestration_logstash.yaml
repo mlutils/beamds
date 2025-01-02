@@ -27,6 +27,7 @@ entrypoint_args:
 - '--no-ray'
 entrypoint_envs:
   xpack.monitoring.enabled: 'false'
+  ELASTICSEARCH_HOSTS: http://elasticsearch:9200
 from_email: dayotech2018@gmail.com
 from_email_password: mkhdokjqwwmazyrf
 job_name: beam-job
@@ -91,9 +92,9 @@ service_configs:
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
-- create_pvc: true
+- create_pvc: false
   pvc_access_mode: ReadWriteOnce
-  pvc_mount_path: /usr/share/logstash/data
+  pvc_mount_path: /mnt/data
   pvc_name: logstash-pvc
   pvc_size: '199'
   storage_class_name: "local-sc-logstash"

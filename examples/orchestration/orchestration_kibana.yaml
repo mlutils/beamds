@@ -80,7 +80,7 @@ service_configs:
   port: 5601
   port_name: kibana_ui
   service_name: kibanaui
-  service_type: LoadBalancer
+  service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
