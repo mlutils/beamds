@@ -1,6 +1,6 @@
 import pandas as pd
 from elasticsearch import Elasticsearch
-from elasticsearch.helpers import bulk
+from elasticsearch.helpers import bulk, scan
 from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text
 from elasticsearch_dsl.query import Query
 from datetime import datetime
@@ -17,7 +17,7 @@ from .utils import parse_kql_to_dsl, generate_document_class
 class BeamElastic(PureBeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
-                 tls=False, client=None, keep_alive='1m', document=None, **kwargs):
+                 tls=False, client=None, keep_alive='1m', document=None, eql=None, **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password,
                          scheme='elastic', **kwargs)
         self.verify = verify
@@ -28,9 +28,42 @@ class BeamElastic(PureBeamPath, BeamDoc):
         self._metadata = None
         self._doc_cls: Document | None = document
         self._index: Index | None = None
+        self._eql: Query = eql or None
 
     # elasticsearch timestamp format with timezone
     timestamp_format = '%Y-%m-%dT%H:%M:%S%z'
+
+    @property
+    def eql(self):
+        return self._eql or BeamElastic.match_all
+
+    def __and__(self, other):
+        if type(other) is Query:
+            query = self.eql & other
+        elif type(other) is BeamElastic:
+            query = self.eql & other.eql
+        else:
+            raise ValueError(f"Cannot combine {type(other)} with {type(self)}")
+        return self.gen(self.path, eql=query)
+
+    def __or__(self, other):
+        if type(other) is Query:
+            q = other
+        elif type(other) is BeamElastic:
+            q = other.eql
+        else:
+            raise ValueError(f"Cannot combine {type(other)} with {type(self)}")
+
+        if self._eql is None:
+            query = q
+        else:
+            query = self.eql | q
+
+        return self.gen(self.path, eql=query)
+
+    @property
+    def full_query(self):
+        return self.kql & self.eql
 
     @staticmethod
     def to_datetime(timestamp: str | datetime) -> datetime:
@@ -55,9 +88,6 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         return Elasticsearch([host], http_auth=auth, verify_certs=self.verify)
 
-    def _search_index(self, index):
-        return Search(using=self.client, index=index)
-
     @property
     def index_name(self):
         if self.path_type in ['index', 'query', 'document']:
@@ -70,12 +100,23 @@ class BeamElastic(PureBeamPath, BeamDoc):
             self._index = Index(self.index_name, using=self.client)
         return self._index
 
-    @property
-    def _search(self):
-        return self._search_index(self.index_name)
+    def search(self, query=None, as_df=False, as_dict=False, as_iter=True):
+
+        if query is None:
+            query = self.full_query
+
+        s = self.index.search().query(query)
+
+        if as_df:
+            return pd.DataFrame([doc.to_dict() for doc in s.scan()])
+        if as_dict:
+            return [doc.to_dict() for doc in s.scan()]
+        if as_iter:
+            for doc in s.scan():
+                yield doc.to_dict()
 
     @property
-    def q(self):
+    def kql(self):
 
         if self.path_type in ['root', 'index']:
             return BeamElastic.match_all
@@ -96,8 +137,8 @@ class BeamElastic(PureBeamPath, BeamDoc):
     @property
     def s(self):
         if self.path_type in ['root', 'index']:
-            return self._search
-        return self._search.query(self.q)
+            return self.index.search()
+        return self.index.search().query(self.full_query)
 
     @property
     def path_type(self):
@@ -113,7 +154,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def get_document_class(self):
         if self.path_type == 'root':
             return None
-        if self._doc_cls is None:
+        if self._doc_cls is None and self.index_exists(self.index_name):
             self._doc_cls = generate_document_class(self.client, self.index_name)
         return self._doc_cls
 
@@ -143,7 +184,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def _is_file_path(self):
         # check if last part of the path is _id value
         p = self.parts[-1]
-        return ':' not in p and '.' not in p
+        return ':' not in p and '.' not in p and len(self.parts) > 2
 
     @staticmethod
     @property
@@ -155,32 +196,48 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def match_none():
         return Q('match_none')
 
-    def gen(self, path):
+    def gen(self, path, eql=None):
         PathType = type(self)
         return PathType(path, client=self.client, hostname=self.hostname, port=self.port, username=self.username,
                         password=self.password, fragment=self.fragment, params=self.params, document=self._doc_cls,
-                        **self.query)
+                        eql=eql, **self.query)
 
-    def index_exists(self, index):
-        return self.client.indices.exists(index=index)
+    def index_exists(self, index_name):
+        return self.client.indices.exists(index=index_name)
 
-    def create_index(self, index, body):
-        return self.client.indices.create(index=index, body=body)
+    def create_index(self, index_name, body):
+        return self.client.indices.create(index=index_name, body=body)
 
-    def delete_index(self, index):
-        return self.client.indices.delete(index=index)
+    def delete_index(self, index_name):
+        return self.client.indices.delete(index=index_name)
 
-    def index_document(self, index, body, id=None):
-        return self.client.index(index=index, body=body, id=id)
+    def index_document(self, index_name, body, id=None):
+        return self.client.index(index=index_name, body=body, id=id)
 
-    def index_bulk(self, index, docs):
-        return bulk(self.client, docs, index=index)
+    def index_bulk(self, index_name, docs):
+        return bulk(self.client, docs, index=index_name)
 
-    def search(self, index, body):
-        return self.client.search(index=index, body=body)
+    def search_index(self, index_name, body):
+        return self.client.search(index=index_name, body=body)
 
-    def get_document(self, index, id):
-        return self.client.get(index=index, id=id)
+    def delete_by_query(self, index_name, body):
+        return self.client.delete_by_query(index=index_name, body=body)
+
+    def delete_document(self, index_name, id):
+        return self.client.delete(index=index_name, id=id)
+
+    def get_document(self, index_name, id):
+        return self.client.get(index=index_name, id=id)
+
+    def delete(self):
+        if self.path_type == 'index':
+            self.delete_index(self.index_name)
+        elif self.path_type == 'document':
+            self.delete_document(self.index_name, self.parts[-1])
+        elif self.path_type == 'query':
+            self.delete_by_query(self.index_name, self.kql.to_dict())
+        else:
+            raise ValueError("Cannot delete root path")
 
     def mkdir(self, *args, **kwargs):
         if self.path_type in ['root', 'document']:
@@ -216,7 +273,6 @@ class BeamElastic(PureBeamPath, BeamDoc):
             vector = DenseVector(dims=dims)
             for field, field_type in other_fields.items():
                 locals()[field] = field_type
-
 
     def iterdir(self):
 

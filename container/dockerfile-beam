@@ -86,7 +86,8 @@ RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
 
 #install pytesseract
 # REMOVE FOR LITE VERSION
-RUN bash /workspace/bash-build-scripts/install_tesseract.sh
+# throws errors in nvidia image 12.24 (python 3.12)
+# RUN bash /workspace/bash-build-scripts/install_tesseract.sh
 
 #install pytorch geometric
 # REMOVE FOR LITE VERSION
