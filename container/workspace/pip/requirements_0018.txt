@@ -33,3 +33,5 @@ python-gitlab
 python-logstash
 logstash-formatter
 rich
+
+apache-airflow-client
