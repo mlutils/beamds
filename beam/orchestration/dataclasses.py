@@ -93,8 +93,6 @@ class PodInfos:
         return self.metadata.name
 
 
-
-
 @dataclass
 class RestartPolicyConfig:
     condition: str  # "OnFailure" or "Never"

@@ -118,7 +118,6 @@ class CronJobConfig(K8SConfig):
 
     parameters = [
         BeamParam('cron_job_name', str, 'beam-cron-job', 'Cron job name'),
-        BeamParam('active_deadline_seconds', int, 86400, 'Active deadline seconds'),
         BeamParam('job_schedule', str, '*/2 * * * *', 'Cron job schedule'),
         BeamParam('restart_policy_configs', dict, {"condition": "OnFailure", "delay": "5s", "active_deadline_seconds": 300, "max_attempts": 3, "window": "120s"}, 'Restart policy configuration for the deployment'),
     ]

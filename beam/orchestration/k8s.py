@@ -1289,7 +1289,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         job_spec = client.V1JobSpec(
             template=pod_template,
             backoff_limit=config.restart_policy_configs.max_attempts,
-            active_deadline_seconds=config.active_deadline_seconds
+            active_deadline_seconds=config.restart_policy_configs.active_deadline_seconds
         )
 
         # Create the cron job spec
