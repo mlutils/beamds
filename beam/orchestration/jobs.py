@@ -48,11 +48,15 @@ class BeamCronJob(BeamBase):
     def _deploy_and_launch(cls, config, k8s=None):
 
         if k8s is None:
-
-
+            k8s = BeamK8S(
+                api_url=config['api_url'],
+                api_token=config['api_token'],
+                project_name=config['project_name'],
+                namespace=config['project_name'],
+            )
 
         cron_job =  BeamDeploy(config, k8s)
-        pods = cron_job.manager.deploy_cron_job(cron_job.config)
+        pods = cron_job.deploy_cron_job(cron_job.config)
         return cls(config, k8s), pods
 
     def delete(self):
@@ -60,8 +64,6 @@ class BeamCronJob(BeamBase):
 
     def monitor(self):
         self.manager.monitor_cron_job(self.config.cron_job_name, self.config.project_name)
-
-
 
 
 
