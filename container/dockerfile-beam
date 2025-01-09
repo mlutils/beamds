@@ -146,5 +146,8 @@ RUN bash /workspace/bash-build-scripts/usermode_ssh_server.sh
 RUN bash /workspace/bash-build-scripts/configure_jupyter.sh
 
 RUN chmod +x /workspace/bash-run-scripts/entrypoint.sh
+
+RUN pip install 'numpy<2.0'
+
 ENTRYPOINT ["/workspace/bash-run-scripts/entrypoint.sh"]
 CMD ["10"]

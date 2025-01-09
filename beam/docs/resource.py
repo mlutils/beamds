@@ -1,3 +1,4 @@
+from oauthlib.uri_validate import fragment
 
 from .elastic import BeamElastic
 from ..path import BeamURL
@@ -37,5 +38,8 @@ def beam_elastic(path, username=None, hostname=None, port=None, private_key=None
     if path == '':
         path = '/'
 
-    return BeamElastic(path, hostname=hostname, port=port, username=username, password=password, **kwargs)
+    fragment = url.fragment
+
+    return BeamElastic(path, hostname=hostname, port=port, username=username, password=password,
+                       fragment=fragment, **kwargs)
 

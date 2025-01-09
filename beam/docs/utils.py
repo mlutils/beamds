@@ -16,6 +16,7 @@ def parse_kql_to_dsl(kql):
 
     def translate_logical_op(op):
         """Map logical operators to Elasticsearch bool components."""
+        op = op.upper()
         if op == "AND":
             return "must"
         elif op == "OR":
@@ -54,11 +55,14 @@ def parse_kql_to_dsl(kql):
     while i < len(tokens):
         token = tokens[i]
 
-        if token in {"AND", "OR", "NOT"}:
+        if token in {"AND", "OR", "NOT", "and", "or", "not"}:
             operator = translate_logical_op(token)
             stack.append(operator)
         elif ":" in token:
             field, value = token.split(":", 1)
+            if not len(value):
+                value = tokens[i + 1]
+                i += 1
             query_part = handle_value(field, value)
 
             # Attach to bool query
