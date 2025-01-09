@@ -1,13 +1,14 @@
 import pandas as pd
 from elasticsearch import Elasticsearch
-from elasticsearch.helpers import bulk, scan
+from elasticsearch.helpers import bulk, scan, BulkIndexError
 from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text
 from elasticsearch_dsl.query import Query
 from datetime import datetime
 
 from ..path import PureBeamPath, normalize_host
 from ..utils import lazy_property as cached_property, recursive_elementwise
-from ..type import check_type
+from ..type import check_type, Types
+from ..utils import divide_chunks, retry
 
 from .core import BeamDoc
 from .utils import parse_kql_to_dsl, generate_document_class
@@ -16,32 +17,60 @@ from .utils import parse_kql_to_dsl, generate_document_class
 
 class BeamElastic(PureBeamPath, BeamDoc):
 
+    '''
+    Higher level (external) API methods:
+
+    read() - read data from the index, given the path and its queries
+    write() - write many types of data to the index
+    # add() - add a document to the index
+    delete() - delete the queried data from the index
+    '''
+
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
-                 tls=False, client=None, keep_alive='1m', document=None, eql=None, **kwargs):
-        super().__init__(*args, hostname=hostname, port=port, username=username, password=password,
-                         scheme='elastic', **kwargs)
+                 tls=False, client=None, keep_alive=None, sleep=None, document=None, eql=None, max_actions=None, retries=None,
+                 **kwargs):
+        super().__init__(*args, hostname=hostname, port=port, username=username, password=password, tls=tls,
+                         keep_alive=keep_alive, scheme='elastic', max_actions=max_actions, retries=retries,
+                         sleep=sleep, **kwargs)
+
         self.verify = verify
+
+        if type(tls) is str:
+            tls = tls.lower() == 'true'
         self.tls = tls
+
         self.client = client or self._get_client()
-        self.keep_alive = keep_alive
+        self.keep_alive = keep_alive or '1m'
         self._values = None
         self._metadata = None
         self._doc_cls: Document | None = document
         self._index: Index | None = None
         self._eql: Query = eql or None
 
+        if max_actions is None:
+            max_actions = 1000
+        self.max_actions = int(max_actions)
+
+        if retries is None:
+            retries = 3
+        self.retries = int(retries)
+
+        if sleep is None:
+            sleep = 0.1
+        self.sleep = int(sleep)
+
     # elasticsearch timestamp format with timezone
     timestamp_format = '%Y-%m-%dT%H:%M:%S%z'
 
     @property
-    def eql(self):
+    def dsl(self):
         return self._eql or BeamElastic.match_all
 
     def __and__(self, other):
         if type(other) is Query:
-            query = self.eql & other
+            query = self.dsl & other
         elif type(other) is BeamElastic:
-            query = self.eql & other.eql
+            query = self.dsl & other.dsl
         else:
             raise ValueError(f"Cannot combine {type(other)} with {type(self)}")
         return self.gen(self.path, eql=query)
@@ -50,20 +79,20 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if type(other) is Query:
             q = other
         elif type(other) is BeamElastic:
-            q = other.eql
+            q = other.dsl
         else:
             raise ValueError(f"Cannot combine {type(other)} with {type(self)}")
 
         if self._eql is None:
             query = q
         else:
-            query = self.eql | q
+            query = self.dsl | q
 
         return self.gen(self.path, eql=query)
 
     @property
     def full_query(self):
-        return self.kql & self.eql
+        return self.kql & self.dsl
 
     @staticmethod
     def to_datetime(timestamp: str | datetime) -> datetime:
@@ -90,7 +119,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     @property
     def index_name(self):
-        if self.path_type in ['index', 'query', 'document']:
+        if len(self.parts) > 1:
             return self.parts[1]
         return None
 
@@ -144,7 +173,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def path_type(self):
         if len(self.parts) == 1:
             return 'root'
-        elif len(self.parts) == 2:
+        elif len(self.parts) == 2 and self._eql is None:
             return 'index'
         elif self._is_file_path:
             return 'document'
@@ -154,7 +183,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def get_document_class(self):
         if self.path_type == 'root':
             return None
-        if self._doc_cls is None and self.index_exists(self.index_name):
+        if self._doc_cls is None and self._index_exists(self.index_name):
             self._doc_cls = generate_document_class(self.client, self.index_name)
         return self._doc_cls
 
@@ -169,12 +198,13 @@ class BeamElastic(PureBeamPath, BeamDoc):
         self.index.document(doc_cls)
 
     def _init_index(self):
-        if self.document_class is not None:
-            self.document_class.init(using=self.client)
-        else:
-            self.index.create(using=self.client)
+        if not self.index.exists():
+            if self.document_class is not None:
+                self.document_class.init(index=self.index_name, using=self.client)
+            else:
+                self.index.create(using=self.client)
 
-    def _delete_index(self):
+    def _delete_index2(self):
         if self.document_class is not None:
             self.document_class.delete(using=self.client)
         else:
@@ -202,40 +232,59 @@ class BeamElastic(PureBeamPath, BeamDoc):
                         password=self.password, fragment=self.fragment, params=self.params, document=self._doc_cls,
                         eql=eql, **self.query)
 
-    def index_exists(self, index_name):
+    # list of native api methods
+    def _index_exists(self, index_name):
         return self.client.indices.exists(index=index_name)
 
-    def create_index(self, index_name, body):
+    def _create_index(self, index_name, body):
         return self.client.indices.create(index=index_name, body=body)
 
-    def delete_index(self, index_name):
+    def _delete_index(self, index_name):
         return self.client.indices.delete(index=index_name)
 
-    def index_document(self, index_name, body, id=None):
+    def _index_document(self, index_name, body, id=None):
         return self.client.index(index=index_name, body=body, id=id)
 
-    def index_bulk(self, index_name, docs):
-        return bulk(self.client, docs, index=index_name)
+    def _index_bulk(self, index_name, docs, ids=None, sanitize=False):
 
-    def search_index(self, index_name, body):
+        if sanitize:
+            docs = self.sanitize_input(docs)
+
+        if ids is None:
+            actions = [{"_index": index_name, "_source": doc} for doc in docs]
+        else:
+            actions = [{"_index": index_name, "_source": doc, "_id": i} for doc, i in zip(docs, ids)]
+
+        retry_bulk = retry(func=bulk, retries=self.retries, logger=None, name=None, verbose=False, sleep=1)
+
+        for i, c in divide_chunks(actions, chunksize=self.max_actions, chunksize_policy='ceil'):
+            try:
+                retry_bulk(self.client, c)
+            except BulkIndexError as e:
+                print(f"{len(e.errors)} document(s) failed to index.")
+                for error in e.errors:
+                    print("Error details:", error)
+                raise e
+
+    def _search_index(self, index_name, body):
         return self.client.search(index=index_name, body=body)
 
-    def delete_by_query(self, index_name, body):
+    def _delete_by_query(self, index_name, body):
         return self.client.delete_by_query(index=index_name, body=body)
 
-    def delete_document(self, index_name, id):
+    def _delete_document(self, index_name, id):
         return self.client.delete(index=index_name, id=id)
 
-    def get_document(self, index_name, id):
+    def _get_document(self, index_name, id):
         return self.client.get(index=index_name, id=id)
 
     def delete(self):
         if self.path_type == 'index':
-            self.delete_index(self.index_name)
+            self._delete_index(self.index_name)
         elif self.path_type == 'document':
-            self.delete_document(self.index_name, self.parts[-1])
+            self._delete_document(self.index_name, self.parts[-1])
         elif self.path_type == 'query':
-            self.delete_by_query(self.index_name, self.kql.to_dict())
+            self._delete_by_query(self.index_name, self.kql.to_dict())
         else:
             raise ValueError("Cannot delete root path")
 
@@ -316,31 +365,30 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def ping(self):
         return self.client.ping()
 
-    @cached_property
-    def df(self):
+    def as_df(self):
         import pandas as pd
         return pd.DataFrame(self.values)
 
     def add(self, x):
         if self.path_type == 'index':
-            self.index_document(self.index_name, x)
+            self._index_document(self.index_name, x)
         else:
             raise ValueError("Cannot add document to non-index path")
 
-    def write_bulk(self, docs):
-        if self.path_type == 'index':
-            self.index_bulk(self.index_name, docs)
-        else:
-            raise ValueError("Cannot write bulk to non-index path")
-
-    def write(self, *args, ext=None, **kwargs):
+    def write(self, *args, ids=None, sanitize=False, **kwargs):
 
         for x in args:
             x_type = check_type(x)
-            if x_type.minor == 'pandas':
+            if x_type.minor in [Types.pandas, Types.cudf, Types.polars]:
+                if x_type.minor != Types.pandas:
+                    x = x.to_pandas()
                 docs = x.to_dict(orient='records')
-                self.write_bulk(docs)
-            elif x_type.minor == 'dict':
+                if ids is True:
+                    ids = x.index.tolist()
+                self._index_bulk(self.index_name, docs, ids=ids, sanitize=sanitize)
+            elif x_type.minor == Types.list:
+                self._index_bulk(self.index_name, x, sanitize=sanitize)
+            elif x_type.minor == Types.dict:
                 self.add(x)
             elif isinstance(x, Document):
                 x.save(using=self.client, index=self.index_name)
@@ -356,6 +404,17 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def get_schema(self, index_name):
         s = self.client.indices.get_mapping(index=index_name)
         return dict(s)[index_name]['mappings']['properties']
+
+    @staticmethod
+    @recursive_elementwise
+    def _clear_none(x):
+        if pd.isna(x):
+            return None
+        return x
+
+    def sanitize_input(self, x):
+        x = self._clear_none(x)
+        return x
 
     def _search_native(self, index, query: dict | Query, sort=None, size=None, search_after=None):
 
@@ -398,7 +457,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
                 if pd.isna(d['_id']):
                     d.pop('_id')
 
-        self.index_bulk(index, data)
+        self._index_bulk(index, data)
 
     def _delete_docs(self, ids, index):
         actions = [{
@@ -422,10 +481,17 @@ class BeamElastic(PureBeamPath, BeamDoc):
         df.index.name = '_id'
         return df
 
+    def count(self):
+        if self.path_type == 'root':
+            return len(self.client.indices.get('*'))
+        elif self.path_type == 'index':
+            return self.client.count(index=self.index_name)['count']
+        elif self.path_type == 'document':
+            return 1
+        else:
+            return self.s.count()
+
+
     # def search(self, x, k=10, **kwargs):
     #     # use knn search to find similar documents kwargs is assumed to be a list of terms to filter the search
     #     q = Q('knn', **x)
-
-
-
-
