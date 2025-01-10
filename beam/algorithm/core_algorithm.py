@@ -55,7 +55,9 @@ class Algorithm(Processor):
     @classmethod
     @property
     def excluded_attributes(cls) -> set[str]:
-        return super(Algorithm, cls).excluded_attributes.union(['_experiment', 'reporter', 'trial', 'datasets'])
+        return super(Algorithm, cls).excluded_attributes.union(['_experiment', 'reporter', 'trial',
+                                                                'datasets', 'persistent_dataloaders',
+                                                                'dataloaders'])
 
     def calculate_objective_and_report(self, i):
 

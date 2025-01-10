@@ -771,7 +771,7 @@ class BeamData(BeamName):
                         shapes = set(list(filter(lambda x: x is not None, shapes)))
                         if len(shapes) > 1 and 'other' not in shapes:
                             self._orientation = 'columns'
-                        elif len(shapes) == 1:
+                        elif len(shapes) == 1 and 'other' not in shapes:
                             self._orientation = 'index'
                         else:
                             self._orientation = 'packed'
@@ -779,7 +779,7 @@ class BeamData(BeamName):
                     shapes = recursive_flatten(recursive(shape_of)([self.data]))
                     shapes = list(filter(lambda x: x is not None, shapes))
 
-                    if len(set(shapes)) == 1 and shapes[0] != 'other':
+                    if len(set(shapes)) == 1 and shapes[0] != 'other' and len(shapes[0]):
                         self._orientation = 'index'
                     else:
                         self._orientation = 'packed'
@@ -1464,7 +1464,7 @@ class BeamData(BeamName):
                                          chunksize_policy=chunksize_policy, **kwargs)
 
         BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, override=override,
-                            chunksize_policy=chunksize_policy, split=split, **kwargs)
+                            split=split, **kwargs)
 
         # store info and conf files
         if self.write_metadata:
