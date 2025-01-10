@@ -244,26 +244,26 @@ class Transformer(Processor):
     def fit_transform(self, x, **kwargs):
         return self.transform(x, fit=True, **kwargs)
 
-    def reduce(self, x, reduce_dim=None, split_by=None, squeeze=True):
+    def reduce(self, y, reduce_dim=None, split_by=None, squeeze=True, x_in=None):
 
         if self.reduce_func is not None:
-            x = self.reduce_func(x)
-        elif isinstance(next(iter_container(x))[1], BeamData):
-            x = BeamData.collate(x, split_by=split_by)
+            y = self.reduce_func(y)
+        elif isinstance(next(iter_container(y))[1], BeamData):
+            y = BeamData.collate(y, split_by=split_by)
         else:
 
             if reduce_dim is None:
                 reduce_dim = self.reduce_dim
 
-            if isinstance(x, list):
-                x = collate_chunks(*x, dim=reduce_dim, squeeze=squeeze)
-            elif isinstance(x, dict):
-                x = collate_chunks(*list(x.values()), keys=list(x.keys()),  dim=reduce_dim, squeeze=squeeze,
+            if isinstance(y, list):
+                y = collate_chunks(*y, dim=reduce_dim, squeeze=squeeze)
+            elif isinstance(y, dict):
+                y = collate_chunks(*list(y.values()), keys=list(y.keys()), dim=reduce_dim, squeeze=squeeze,
                                    logger=logger)
             else:
-                raise TypeError(f"Unsupported type for reduction: {type(x)} (supports list and dict).")
+                raise TypeError(f"Unsupported type for reduction: {type(y)} (supports list and dict).")
 
-        return x
+        return y
 
     @beam_cache(exception_keys=['parallel_kwargs'])
     def cached_transform(self, x, transform_kwargs=None, parallel_kwargs=None, **kwargs):
@@ -458,14 +458,14 @@ class Transformer(Processor):
             keys = [xi.name for xi in results]
             keys = [ki if type(ki) is tuple else (ki,) for ki in keys]
             sorted_keys = [ki if type(ki) is tuple else (ki,) for ki in sorted_keys]
-            x = build_container_from_tupled_keys(keys, values, sorted_keys=sorted_keys)
+            y = build_container_from_tupled_keys(keys, values, sorted_keys=sorted_keys)
 
             if len(exceptions) == 0:
 
                 logger.info(f"Finished transformer process: {self.name}. Collating results...")
 
                 if reduce and not (store_chunk and not store):
-                    x = self.reduce(x, split_by=split_by)
+                    y = self.reduce(y, split_by=split_by, x_in=x)
             else:
                 # x = {k[0] if type(k) is tuple and len(k) == 1 else k: v for k, v in zip(keys, values)}
                 if store and not store_chunk:
@@ -475,7 +475,7 @@ class Transformer(Processor):
                     logger.error(exceptions)
                     raise Exception("Exceptions occurred during the transformation, the strict mode is enabled.")
 
-                return x
+                return y
 
         else:
             if len(exceptions) > 0:
@@ -486,20 +486,20 @@ class Transformer(Processor):
 
                 return results
             logger.info(f"Finished transformer process: {self.name}.")
-            x = results[0].result[1]
+            y = results[0].result[1]
 
         if store and not store_chunk:
 
             logger.info(f"Storing aggregated transformed data in: {store_path}")
-            if not isinstance(x, BeamData):
-                x = BeamData(x)
-            x.store(path=store_path)
+            if not isinstance(y, BeamData):
+                y = BeamData(y)
+            y.store(path=store_path)
 
         if return_results:
-            return x
+            return y
         elif store or store_chunk:
             return
         else:
-            return x
+            return y
 
 

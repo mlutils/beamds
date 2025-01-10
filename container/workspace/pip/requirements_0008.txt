@@ -1,7 +1,9 @@
 # network analysis
 pyshark
 scapy
-nfstream
+
+# throws error in nvidia image 12.24 (python 3.12)
+# nfstream
 
 
 # commercial frameworks

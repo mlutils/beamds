@@ -289,9 +289,7 @@ class PureBeamPath(BeamResource):
         return p.as_uri() == o.as_uri()
 
     def gen(self, path):
-
         PathType = type(self)
-
         return PathType(path, client=self.client, hostname=self.hostname, port=self.port, username=self.username,
                         password=self.password, fragment=self.fragment, params=self.params, **self.query)
 

@@ -41,6 +41,9 @@ def beam_embedding(url, username=None, hostname=None, port=None, api_key=None,  
     if api_path and api_base:
         api_base = f"{api_base}{api_path}"
 
+    if hostname is None:
+        api_base = None
+
     if url.protocol == 'emb-openai':
         api_key = beam_key('OPENAI_API_KEY', api_key)
         return OpenAIEmbedding(model=model, api_base=api_base, api_key=api_key, **kwargs)

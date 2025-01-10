@@ -17,7 +17,7 @@ plotly>=5.9.0
 
 kornia>=0.6.6
 huggingface-hub>=0.8.1
-pandas>=2.0.1
+pandas>=2.0.1,<=2.2.2
 ipython>=8.14.0
 optuna>=2.10.1
 jupyter_server
@@ -31,5 +31,10 @@ Werkzeug >= 3.0.0
 setuptools < 70.0.0
 ml_dtypes >= 0.4.0
 
-# numpy<2.0
+# for nvidia image 12.24
+numpy<2.0
+# pandas<=2.2.2
+scipy>=1.15.0
+jupyter_bbox_widget
+ultralytics
 

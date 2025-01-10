@@ -17,8 +17,8 @@ HEBO
 # GPy
 botorch
 
-retriv
-ludwig
+# retriv
+# ludwig
 
 # requires torch<=2.1.0
 tsai
