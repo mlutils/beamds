@@ -94,7 +94,7 @@ class BeamJob:
         self.manager.monitor_job(self.config.job_name, self.config.project_name)
 
 # class BeamJob:
-#     # Handles Job deployment, monitoring, logs, and interaction via k8s API
+#     Handles Job deployment, monitoring, logs, and interaction via k8s API
 #
 #     def __init__(self, config, job_name=None, pods=None, *args, **kwargs):
 #         super(BeamJob, self).__init__(deployment=None, job_name=job_name, config=config,
