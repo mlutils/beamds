@@ -22,7 +22,7 @@ class DenseEmbeddingFeature(BeamFeature):
                                  default=32, description='Size of embeddings'),
         }
 
-    def _fit(self, x=None, v=None):
+    def fit_callback(self, x=None, v=None):
         if v is None:
             v = self.encoder.encode(x, **self.encoder_kwargs)
 
@@ -31,7 +31,7 @@ class DenseEmbeddingFeature(BeamFeature):
         self.model.fit(v)
         return v
 
-    def _transform(self, x, v=None):
+    def transform_callback(self, x, v=None):
         if v is None:
             v = self.encoder.encode(x, **self.encoder_kwargs)
         v = self.model.transform(v)
@@ -87,7 +87,7 @@ class SparseEmbeddingFeature(BeamFeature):
 
         }
 
-    def _fit(self, x, **kwargs):
+    def fit_callback(self, x, **kwargs):
 
         x = list(x.squeeze().values)
         v = self.encoder.fit_transform(x)
@@ -98,7 +98,7 @@ class SparseEmbeddingFeature(BeamFeature):
         self.model.fit(v)
         return v
 
-    def _transform(self, x, v=None):
+    def transform_callback(self, x, v=None):
         if v is None:
             x = list(x.squeeze().values)
             v = self.encoder.transform(x)

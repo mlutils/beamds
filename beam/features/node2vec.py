@@ -64,7 +64,7 @@ class Node2Vec(BeamFeature):
     def na_value(self):
         return np.zeros(self.model.vector_size)
 
-    def _fit(self, x, source='source', target='target', directed=False, weight='weight', weighted=False):
+    def fit_callback(self, x, source='source', target='target', directed=False, weight='weight', weighted=False):
 
         x = x[[source, target, weight]] if weighted else x[[source, target]]
         from gensim.models.word2vec import Word2Vec
@@ -83,7 +83,7 @@ class Node2Vec(BeamFeature):
 
         self.model = w2v_model
 
-    def _transform(self, x, **kwargs):
+    def transform_callback(self, x, **kwargs):
         assert self.model is not None, 'Model is not trained'
         return x.applymap(self.transform_cell)
 
@@ -120,7 +120,7 @@ class Set2Vec(Node2Vec):
         except KeyError:
             return np.stack([Node2Vec.transform_cell(self, j) for j in i])
 
-    def _fit(self, x, **kwargs):
+    def fit_callback(self, x, **kwargs):
         # Step 1: Generate pairs and count their occurrences
         pair_counts = Counter()
 
@@ -140,9 +140,9 @@ class Set2Vec(Node2Vec):
 
         # Step 2: Construct the DataFrame
         df = pd.DataFrame([{'n1': n1, 'n2': n2, 'weight': weight} for (n1, n2), weight in pair_counts.items()])
-        Node2Vec._fit(self, df, source='n1', target='n2', weight='weight', weighted=True, directed=False)
+        Node2Vec.fit_callback(self, df, source='n1', target='n2', weight='weight', weighted=True, directed=False)
 
-    def _transform(self, x: pd.DataFrame, **kwargs):
+    def transform_callback(self, x: pd.DataFrame, **kwargs):
         assert self.model is not None, 'Model is not trained'
 
         x = x.squeeze()

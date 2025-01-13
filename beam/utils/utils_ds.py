@@ -126,10 +126,14 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
         dtype = str(x.dtype)
         if 'int' in dtype:
             dtype = torch.int64
-        elif 'float' in dtype:
+        elif 'float' in dtype or 'object' in dtype:
             dtype = (torch.bfloat16 if brain else torch.float16) if half else torch.float32
         elif 'complex' in dtype:
             dtype = torch.complex32 if half else torch.complex64
+        elif 'double' in dtype:
+            dtype = torch.float64
+        else:
+            dtype = torch.float32
 
     if x_type.minor in [Types.pandas, Types.cudf]:
         x = x.values
