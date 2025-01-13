@@ -91,7 +91,7 @@ class Experiment(object):
             root_path = beam_path(self.hparams.logs_path)
             base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
 
-            pattern = re.compile("\A\d{6}_\d{8}_\d{6}\Z")
+            pattern = re.compile(r"\A\d{6}_\d{8}_\d{6}\Z")
 
             if base_dir.exists():
                 assert base_dir.is_dir(), f"Experiment directory contains an existing file: {base_dir}"
