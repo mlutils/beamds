@@ -1591,7 +1591,7 @@ class NeuralAlgorithm(Algorithm):
         '''
         return self.evaluate(*args, predicting=False, **kwargs)
 
-    def predict(self, dataset, *args, lazy=False, kpi=True, **kwargs):
+    def predict(self, dataset, *args, lazy=False, kpi=False, **kwargs):
         '''
         For real data purposes (when labels are unknown)
         '''

@@ -1,3 +1,4 @@
+import os
 from typing import Union, Any
 import sys
 
@@ -93,3 +94,8 @@ def this_dir():
 
 def cwd():
     return resource('.').resolve()
+
+
+def chdir(path):
+    p = str(resource(path).resolve())
+    os.chdir(p)

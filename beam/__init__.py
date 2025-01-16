@@ -16,7 +16,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'beam_logger', 'beam_kpi', 'logger',
            'beam_path', 'beam_key', 'pretty_format_number', 'resource',
            'tqdm', 'Transformer', 'Processor',
-           'parallel', 'task', 'this_dir', 'cwd',
+           'parallel', 'task', 'this_dir', 'cwd', 'chdir',
            # Orchestration
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
            'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server',
@@ -180,6 +180,9 @@ def __getattr__(name):
     elif name == 'cwd':
         from .resources import cwd
         return cwd
+    elif name == 'chdir':
+        from .resources import chdir
+        return chdir
     # Orchestration
     elif name == 'BeamDeploy':
         from .orchestration import BeamDeploy
@@ -230,7 +233,7 @@ if len([]):
     from .path import beam_path, beam_key
     from .serve import beam_server, beam_client
     from ._version import __version__
-    from .resources import resource, this_dir, cwd
+    from .resources import resource, this_dir, cwd, chdir
     from .transformer import Transformer
     from .processor import Processor
     from .concurrent import parallel, task

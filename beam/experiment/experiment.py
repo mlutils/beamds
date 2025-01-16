@@ -245,7 +245,7 @@ class Experiment(object):
         path = beam_path(path)
         logger.info(f"Reload experiment from path: {path}")
 
-        args = BeamConfig.from_path(path.joinpath('args.yaml'))
+        args = BeamConfig.from_path(path.joinpath('args.pkl'))
         args.override = False
         args.reload = True
 
