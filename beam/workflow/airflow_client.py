@@ -116,3 +116,12 @@ class AirflowClient(PureBeamPath):
 
         if self.level == 'task_instance':
             self.task_instance_api.clear_task_instance(self.dag_id, self.run_id, self.task_id, clear)
+
+
+    # set airflow environment variable
+    def set_var(self, key, value):
+        self.config_api.set_airflow_config(key, value)
+
+    # get airflow environment variable
+    def get_var(self, key):
+        return self.config_api.get_airflow_config(key)
