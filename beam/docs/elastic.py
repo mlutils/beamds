@@ -51,7 +51,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         self.fields = self.fragment.split(',') if bool(self.fragment) else None
 
         if max_actions is None:
-            max_actions = 1000
+            max_actions = 10000
         self.max_actions = int(max_actions)
 
         if retries is None:
@@ -169,9 +169,11 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     @property
     def s(self):
-        if self.level in ['root', 'index']:
-            return self.index.search()
-        return self.index.search().query(self.q).source(self.fields)
+        if self.level == 'root':
+            return Search(using=self.client).source(self.fields).params(size=self.max_actions)
+        if self.level == 'index':
+            return self.index.search().source(self.fields).params(size=self.max_actions)
+        return self.index.search().query(self.q).params(size=self.max_actions).source(self.fields)
 
     @property
     def level(self):
@@ -320,7 +322,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def iterdir(self):
 
         if self.level == 'root':
-            for index in self.client.indices.get('*'):
+            for index in self.client.indices.get(index='*'):
                 yield self.gen(f"/{index}")
         else:
             s = self.s.source(False)
@@ -452,7 +454,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         raise ValueError(f"No dense vector field found in schema for index {self.index_name}")
 
     # search knn query
-    def search(self, x: np.array | list | torch.Tensor, k=10, field=None):
+    def search(self, x: np.ndarray | list | torch.Tensor, k=10, field=None):
 
         if isinstance(x, np.ndarray):
             x = x.tolist()
