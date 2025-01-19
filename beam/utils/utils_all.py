@@ -967,7 +967,8 @@ def dict_to_list(x, convert_str=True):
 
 
 class Timer(object):
-    def __init__(self, logger, name='', silent=False, timeout=None, task=None, task_args=None, task_kwargs=None):
+    def __init__(self, logger, name='', silent=False, timeout=None, task=None, task_args=None, task_kwargs=None,
+                 graceful=False):
         self.name = name
         self.logger = logger
         self.silent = silent
@@ -980,6 +981,7 @@ class Timer(object):
         self.t0 = None
         self.executor = None
         self.future = None
+        self.graceful = graceful
 
     def __enter__(self):
         if not self.silent:
@@ -1011,21 +1013,28 @@ class Timer(object):
         self.paused = True
         return self._elapsed
 
-    def run(self):
+    def run(self, *args, **kwargs):
         self.paused = False
         self.t0 = time.time()
+
+        args = [*args, *self.task_args]
+        kwargs = {**kwargs, **self.task_kwargs}
 
         if self.task is not None:
 
             self.logger.info(f"Starting task with timeout of {self.timeout} seconds.")
             self.executor = ThreadPoolExecutor(max_workers=1)
-            self.future = self.executor.submit(self.task, *self.task_args, **self.task_kwargs)
+            self.future = self.executor.submit(self.task, *args, **kwargs)
 
             res = None
             try:
                 res = self.future.result(timeout=self.timeout)
             except TimeoutError:
                 self.logger.info(f"Timer {self.name} exceeded timeout of {self.timeout} seconds.")
+                if self.graceful:
+                    self.future.cancel()
+                else:
+                    raise TimeoutError(f"Timer {self.name} exceeded timeout of {self.timeout} seconds.")
             finally:
                 elapsed = self.pause()
                 if not self.silent:
