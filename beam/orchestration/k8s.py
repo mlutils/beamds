@@ -1301,7 +1301,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             )
         )
 
-        cron_job_metadata = client.V1ObjectMeta(name=config.cron_job_name, namespace=config.namespace, labels={"project": config.namespace})
+        cron_job_metadata = client.V1ObjectMeta(name=config.cron_job_name, namespace=config.project_name, labels={"project": config.project_name})
 
         # Create the cron job definition
         cron_job = client.V1CronJob(
@@ -1312,12 +1312,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         )
 
         try:
-            self.batch_v1_api.create_namespaced_cron_job(body=cron_job, namespace=config.namespace)
-            logger.info(f"CronJob '{config.cron_job_name}' created successfully in namespace '{config.namespace}'.")
+            self.batch_v1_api.create_namespaced_cron_job(body=cron_job, namespace=config.project_name)
+            logger.info(f"CronJob '{config.cron_job_name}' created successfully in namespace '{config.project_name}'.")
 
-            return self.get_pods_by_label(config.labels, config.namespace)
+            return self.get_pods_by_label(config.labels, config.project_name)
         except ApiException as e:
-            logger.error(f"Failed to create CronJob '{config.cron_job_name}' in namespace '{config.namespace}': {e}")
+            logger.error(f"Failed to create CronJob '{config.cron_job_name}' in namespace '{config.project_name}': {e}")
             return None
 
     def monitor_job(self, job_name, namespace):
@@ -1778,7 +1778,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         Cleanup CronJobs associated with the application.
         """
         if self.cronjob_exists(app_name, namespace):
-            self.delete_cronjobs_by_name(app_name, namespace)
+            self.delete_cronjobs_by_name(namespace, app_name)
         else:
             logger.info(f"No CronJobs found for '{app_name}' in namespace '{namespace}' to clean up.")
 

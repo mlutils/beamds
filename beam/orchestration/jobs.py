@@ -8,7 +8,7 @@ from .config import JobConfig, CronJobConfig
 from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmConfig,
                           MemoryStorageConfig, SecurityContextConfig)
 
-class JobManager(BeamBase):
+class BeamJobManager(BeamBase):
     def __init__(self, deployment: Union[BeamDeploy, Dict[str, BeamDeploy], None], config, pods: List[BeamPod] = None,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -32,7 +32,7 @@ class JobManager(BeamBase):
         self.entrypoint_envs = config['entrypoint_envs']
 
 
-class BeamCronJob(BeamBase):
+class BeamCronJob(BeamJobManager):
     def __init__(self, *args, k8s=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.k8s = BeamK8S(
@@ -42,7 +42,7 @@ class BeamCronJob(BeamBase):
             namespace=self.hparams.project_name,
         )
 
-        self.manager = JobManager(self.k8s)
+        self.manager = BeamJobManager(self.k8s)
 
     @classmethod
     def _deploy_and_launch(cls, config, k8s=None):
@@ -56,15 +56,19 @@ class BeamCronJob(BeamBase):
             )
 
         cron_job =  BeamDeploy(config, k8s)
-        pods = cron_job.deploy_cron_job(cron_job.config)
+        # pods = cron_job.launch_cron_job(job_schedule=config.get('job_schedule'))
+        pods = cron_job.launch_cron_job()
         return cls(config, k8s), pods
+
+    @classmethod
+    def deploy_cron_job(cls, config, k8s=None):
+        return cls._deploy_and_launch(config=config, k8s=k8s)
 
     def delete(self):
         self.manager.delete_cron_job(self.config.cron_job_name, self.config.project_name)
 
     def monitor(self):
         self.manager.monitor_cron_job(self.config.cron_job_name, self.config.project_name)
-
 
 
 class BeamJob:
@@ -79,7 +83,7 @@ class BeamJob:
                 namespace=config['project_name'],
             )
 
-        self.manager = JobManager(self.k8s)
+        self.manager = BeamJobManager(self.k8s)
 
     @classmethod
     def _deploy(cls, config, k8s=None):

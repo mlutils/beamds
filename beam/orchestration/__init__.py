@@ -6,24 +6,28 @@ if len([]):
     from .deploy import BeamDeploy
     from .statefulsets import BeamStatefulSet
     from .pod import BeamPod
-    from .jobs import JobManager, BeamJob, BeamCronJob
+    from .jobs import BeamJobManager, BeamJob, BeamCronJob
     from .units import K8SUnits
+    from .utils import ensure_rfc1123_compliance
     from .config import (K8SConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig, BeamManagerConfig,
                          JobConfig, CronJobConfig)
     from .cluster import ServeCluster, RayCluster, RnDCluster
     from .manager import BeamManager
-    from .resource import deploy_server
+    from .resource import deploy_server, deploy_job
 
 
 __all__ = ['BeamK8S', 'BeamDeploy', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig', 'ServeClusterConfig',
            'JobConfig', 'CronJobConfig', 'RnDClusterConfig','BeamManagerConfig', 'ServeCluster', 'RayCluster',
-           'JobManager', 'RnDCluster', 'BeamManager', 'deploy_server', 'BeamStatefulSet']
+           'BeamJobManager', 'RnDCluster', 'BeamManager', 'deploy_server', 'BeamStatefulSet', 'deploy_job', 'ensure_rfc1123_compliance']
 
 
 def __getattr__(name):
     if name == 'deploy_server':
         from .resource import deploy_server
         return deploy_server
+    elif name == 'deploy_job':
+        from .resource import deploy_job
+        return deploy_job
     elif name == 'BeamManager':
         from .manager import BeamManager
         return BeamManager
@@ -36,9 +40,9 @@ def __getattr__(name):
     elif name == 'RnDCluster':
         from .cluster import RnDCluster
         return RnDCluster
-    elif name == 'JobManager':
-        from .jobs import JobManager
-        return JobManager
+    elif name == 'BeamJobManager':
+        from .jobs import BeamJobManager
+        return BeamJobManager
     elif name == 'BeamJob':
         from .jobs import BeamJob
         return BeamJob
@@ -69,6 +73,9 @@ def __getattr__(name):
     elif name == 'K8SUnits':
         from .units import K8SUnits
         return K8SUnits
+    elif name == 'ensure_rfc1123_compliance':
+        from .utils import ensure_rfc1123_compliance
+        return ensure_rfc1123_compliance
     elif name == 'BeamPod':
         from .pod import BeamPod
         return BeamPod

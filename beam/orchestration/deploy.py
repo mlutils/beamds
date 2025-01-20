@@ -1,4 +1,5 @@
 from logging import debug
+from multiprocessing.managers import Namespace
 
 from numpy.f2py.crackfortran import true_intent_list
 
@@ -278,8 +279,8 @@ class BeamDeploy(BeamBase):
 
 
         # Delegate CronJob creation to k8s class
-        cronjob = self.k8s.create_cron_job(
-            namespace=self.namespace,
+        cronjob = self.k8s.create_cron_job(Namespace(
+            project_name=self.project_name,
             cron_job_name=self.cron_job_name,
             image_name=self.image_name,
             job_schedule=self.job_schedule,
@@ -299,7 +300,7 @@ class BeamDeploy(BeamBase):
             labels=self.labels,
             storage_configs=self.storage_configs,
             security_context_config=self.security_context_config,
-            restart_policy_configs=self.restart_policy_configs
+            restart_policy_configs=self.restart_policy_configs)
         )
 
         logger.info(

@@ -12,7 +12,7 @@ from ..logging import beam_logger as logger
 from ..resources import resource
 from ..orchestration import BeamManagerConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
 
-from .resource import deploy_server
+from .resource import deploy_server, deploy_job
 
 
 # BeamManager class
@@ -27,6 +27,7 @@ class BeamManager(BeamBase):
             namespace=config['project_name']
         )
         self.clusters = {}
+        self.jobs = {}
         self._stop_monitoring = threading.Event()
         # add monitor thread
         # self.monitor_thread = Thread(target=self._monitor)
@@ -134,19 +135,22 @@ class BeamManager(BeamBase):
             # Convert the path to a BeamManagerConfig object
             config = BeamManagerConfig(resource(conf_path).str)
 
-        name = self.get_cluster_name(config)
-
+        project_name = config.get('project_name', self.hparams.project_name)
+        app_name = config.get('cron_job_name', self.hparams.cron_job_name)
+        name = config.get('cron_job_name', self.hparams.cron_job_name)
         # Cleanup any existing job before deploying the new one
-        self.k8s.cleanup_cronjobs(namespace=config['project_name'], app_name=config['cron_job_name'])
+        self.k8s.cleanup_cronjobs(namespace=project_name, app_name=app_name)
 
-        # Deploy a new cron job
-        from .jobs import BeamCronJob
-        cron_job = BeamCronJob.deploy(config=config, k8s=self.k8s)
-        self.clusters[name] = cron_job
+        # # Deploy a new cron job
+        # from .jobs import BeamCronJob
+        # cron_job = BeamCronJob.deploy(config=config, k8s=self.k8s)
+        # self.jobs[name] = config['alg']
 
-        # Start monitoring the cron job
-        monitor_thread = Thread(target=cron_job.monitor_cron_job)
-        monitor_thread.start()
+        self.jobs[name] = deploy_job(config=config)
+
+        # # Start monitoring the cron job
+        # monitor_thread = Thread(target=cron_job.monitor_cron_job)
+        # monitor_thread.start()
 
         return name
 
