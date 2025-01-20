@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, scan, BulkIndexError
-from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text
+from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text, A
 from elasticsearch_dsl.query import Query
 from datetime import datetime
 
@@ -30,10 +30,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
                  tls=False, client=None, keep_alive=None, sleep=None, document=None, q=None, max_actions=None, retries=None,
-                 fragment=None, **kwargs):
+                 fragment=None, maximum_bucket_limit=None, **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password, tls=tls,
                          keep_alive=keep_alive, scheme='elastic', max_actions=max_actions, retries=retries,
-                         sleep=sleep, fragment=fragment, **kwargs)
+                         sleep=sleep, fragment=fragment, maximum_bucket_limit=maximum_bucket_limit, **kwargs)
 
         self.verify = verify
 
@@ -61,6 +61,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if sleep is None:
             sleep = 0.1
         self.sleep = int(sleep)
+
+        if maximum_bucket_limit is None:
+            maximum_bucket_limit = 10000
+        self.maximum_bucket_limit = int(maximum_bucket_limit)
 
     # elasticsearch timestamp format with timezone
     timestamp_format = '%Y-%m-%dT%H:%M:%S%z'
@@ -467,6 +471,94 @@ class BeamElastic(PureBeamPath, BeamDoc):
         q = Q('knn', field=field, vector=x)
         s = self.s.query(q).extra(size=k)
         return s.execute()
+
+    def unique(self, field_name, size=None):
+
+        field_name = self.keyword_field(field_name)
+        s = self.s.source([field_name])
+
+        if size is not None and size <= self.maximum_bucket_limit:
+            terms_agg = A("terms", field=field_name, size=size)  # Increase size for more unique values
+            s.aggs.bucket("unique_values", terms_agg)
+
+            # Execute the search
+            response = s.execute()
+
+            # Retrieve the unique values
+            unique_values = [bucket.key for bucket in response.aggregations.unique_values.buckets]
+
+        else:
+
+            unique_values = self.value_counts(field_name).index.tolist()
+
+        return unique_values
+
+    def keyword_field(self, field_name):
+
+        schema = self.schema
+        if field_name in schema:
+            if 'fields' in schema[field_name] and 'keyword' in schema[field_name]['fields']:
+                return f"{field_name}.keyword"
+
+        return field_name
+
+    def nunique(self, field_name):
+
+        s = self.s
+        field_name = self.keyword_field(field_name)
+
+        cardinality_agg = A("cardinality", field=field_name)
+        s.aggs.metric("unique_count", cardinality_agg)
+
+        # Execute the search
+        response = s.execute()
+
+        # Retrieve the count of unique values
+        unique_count = response.aggregations.unique_count.value
+        return unique_count
+
+    def is_date_field(self, field_name):
+        schema = self.schema
+        return schema[field_name]['type'] == 'date'
+
+    def value_counts(self, field_name, sort=True, normalize=False):
+
+        # Execute the search and paginate
+        counts = {}
+        after_key = None  # Initialize the after_key
+        field_name = self.keyword_field(field_name)
+
+        while True:
+
+            composite_kwargs = dict(sources=[{"unique_values": {"terms": {"field": field_name}}}],
+                                    size=self.maximum_bucket_limit, )  # Maximum allowed size per request
+
+            if after_key:
+                composite_kwargs["after"] = after_key
+
+            # Use terms aggregation
+            composite_agg = A("composite", **composite_kwargs)
+            s = self.s
+            s.aggs.bucket("unique_values", composite_agg)
+
+            response = s.execute()
+            buckets = response.aggregations.unique_values.buckets
+            counts.update({bucket.key.unique_values: bucket.doc_count for bucket in buckets})
+
+            if len(buckets) < self.maximum_bucket_limit:
+                break
+            else:
+                after_key = response.aggregations.unique_values.after_key
+
+        if self.is_date_field(field_name):
+            counts = {pd.to_datetime(k, unit="ms"): v for k, v in counts.items()}
+
+        c = pd.Series(counts)
+        if sort:
+            c = c.sort_values(ascending=False)
+        if normalize:
+            c = c / c.sum()
+        return c
 
     # def add(self, x):
     #     if self.level == 'index':
