@@ -8,12 +8,34 @@ class TimeFilter(Query):
 
     def __init__(self, field=None, start=None, end=None, period=None, pattern=None, **kwargs):
         super().__init__(**kwargs)
-        self.field_name = field or "timestamp"
-        self._time_pattern = pattern
+        field_name = field or "timestamp"
+        time_pattern = pattern
         start = self.parse_time(start)
         end = self.parse_time(end)
         period = self.parse_period(period)
-        self.start, self.end, self.period = self.resolve_time_range(start, end, period)
+        start, end, period = self.resolve_time_range(start, end, period)
+        self._params = {"start": start, "end": end, "period": period, "field_name": field_name,
+                        "time_pattern": time_pattern}
+
+    @property
+    def start(self):
+        return self._params["start"]
+
+    @property
+    def end(self):
+        return self._params["end"]
+
+    @property
+    def period(self):
+        return self._params["period"]
+
+    @property
+    def field_name(self):
+        return self._params["field_name"]
+
+    @property
+    def time_pattern(self):
+        return self._params["time_pattern"]
 
     def parse_period(self, period):
         if isinstance(period, timedelta):
@@ -62,8 +84,8 @@ class TimeFilter(Query):
                 return datetime.now() - timedelta(hours=1)
             elif time == "last_24_hours":
                 return datetime.now() - timedelta(days=1)
-            if self._time_pattern:
-                return datetime.strptime(time, self._time_pattern)
+            if self.time_pattern:
+                return datetime.strptime(time, self.time_pattern)
             return dateutil.parser.parse(time)
         elif time is None:
             return None
@@ -94,9 +116,12 @@ class TimeFilter(Query):
         elif end is None and period is not None and start is None:
             end = datetime.now()
             start = end - period
-        if start is None and end is None:
-            raise ValueError("Cannot determine both start and end")
         return start, end, period
+
+    def _clone(self):
+        c = self.__class__(field=self.field_name, start=self.start, end=self.end, period=self.period,
+                           pattern=self.time_pattern)
+        return c
 
     def to_dict(self):
         d = {"range": {self.field_name: dict()}}
@@ -111,7 +136,7 @@ class TimeFilter(Query):
     def __str__(self):
         # use timeformat to print the time in a human readable format, if format is not provided,
         # use elasticsearch format (with time zone)
-        pattern = self._time_pattern or "%Y-%m-%d %H:%M:%S"
+        pattern = self.time_pattern or "%Y-%m-%d %H:%M:%S"
         start = None
         if self.start:
             start = self.start.strftime(pattern)

@@ -519,6 +519,8 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def is_date_field(self, field_name):
         schema = self.schema
+        if field_name not in schema:
+            return False
         return schema[field_name]['type'] == 'date'
 
     def value_counts(self, field_name, sort=True, normalize=False):
