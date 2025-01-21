@@ -5,7 +5,7 @@ from typing import Any, Optional, Union, List, Type, Literal
 from pydantic import BaseModel, Field
 from ..utils import cached_property
 
-from ..path import beam_path
+from ..path import beam_path, local_copy
 from ..type import BeamType, Types
 from ..utils import jupyter_like_traceback
 from dataclasses import dataclass
@@ -237,7 +237,8 @@ class ImageContent(LLMContent):
             image = Image.fromarray(self.image.cpu().numpy())
         elif (self.image_type.major == Types.path or
               (self.image_type.major == Types.native and self.image_type.element == Types.str)):
-            image = Image.open(beam_path(self.image))
+            with local_copy(self.image) as path:
+                image = Image.open(path)
         else:
             raise ValueError(f"Cannot convert {self.image_type} to PIL Image.")
         return image
