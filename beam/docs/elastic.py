@@ -375,8 +375,12 @@ class BeamElastic(PureBeamPath, BeamDoc):
                     yield self.gen(f"/{index}")
 
             if alias:
-                for alias in self.client.indices.get_alias(wildcard).keys():
-                    yield self.gen(f"/{alias}")
+
+                for ind, av in self.client.indices.get_alias(index=wildcard).items():
+                    for a in av['aliases'].keys():
+                        if a.startswith('.') and not hidden:
+                            continue
+                        yield self.gen(f"/{ind}/{a}")
 
         else:
             s = self.s.source(False)
