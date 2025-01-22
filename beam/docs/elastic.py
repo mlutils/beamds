@@ -101,13 +101,17 @@ class BeamElastic(PureBeamPath, BeamDoc):
         raise ValueError("Invalid query type")
 
     def __repr__(self):
+        if self.q is None:
+            return str(self.url)
         return f"{str(self.url)} | {self.q}"
 
     @property
     def q(self):
-        if self._q is None:
+        if self.level == 'query':
+            return self._q
+        if self.level == 'document':
             return self.document_query
-        return self._q & self.document_query
+        return None
 
     def has_query(self):
         return self._q is not None
@@ -121,21 +125,29 @@ class BeamElastic(PureBeamPath, BeamDoc):
         return self & query
 
     def __and__(self, other):
-        q = self.q or BeamElastic.match_all()
+        q = self.q
         if type(other) is BeamElastic:
             self._assert_other_type(other)
-            query = q & other.q
+            query = other.q
         else:
-            query = q & self.parse_query(other)
+            query = self.parse_query(other)
+
+        if q is not None:
+            query = q & query
+
         return self.gen(self.path, q=query)
 
     def __or__(self, other):
-        q = self.q or BeamElastic.match_none()
+        q = self.q
         if type(other) is BeamElastic:
             self._assert_other_type(other)
-            query = q | other.q
+            query = other.q
         else:
-            query = q | self.parse_query(other)
+            query = self.parse_query(other)
+
+        if q is not None:
+            query = q | query
+
         return self.gen(self.path, q=query)
 
     @staticmethod
@@ -183,7 +195,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def document_query(self):
         if self.level == 'document':
             return Q('ids', values=[self.document_id])
-        return BeamElastic.match_all()
+        return None
 
     @property
     def s(self):
@@ -191,7 +203,11 @@ class BeamElastic(PureBeamPath, BeamDoc):
             return Search(using=self.client).source(self.fields).params(size=self.max_actions)
         if self.level == 'index':
             return self.index.search().source(self.fields).params(size=self.max_actions)
-        return self.index.search().query(self.q).params(size=self.max_actions).source(self.fields)
+        return self._s.params(size=self.max_actions).source(self.fields)
+
+    @property
+    def _s(self):
+        return self.index.search().query(self.q)
 
     @property
     def level(self):
@@ -479,7 +495,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         elif self.level == 'document':
             return 1
         else:
-            return self.s.count()
+            return self._s.count()
 
     def unlink(self, **kwargs):
         return self.delete()
