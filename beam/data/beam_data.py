@@ -9,7 +9,7 @@ import pandas as pd
 from ..logging import beam_logger as logger
 from ..path import beam_path, prioritized_extensions
 
-from .elements import Groups, Iloc, Loc, Key, return_none
+from ..base import Groups, Iloc, Loc, Key, return_none
 from ..meta import BeamName
 from ..type import BeamType, is_beam_processor, is_beam_data, Types
 from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
@@ -19,8 +19,7 @@ from ..utils import (is_container, Slicer, recursive, iter_container, recursive_
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
-                     DataBatch, recursive_same_device, recursive_concatenate, recursive_items,
-                     recursive_keys, concat_polars_horizontally, beam_traceback)
+                     DataBatch, recursive_same_device, recursive_concatenate, recursive_keys, concat_polars_horizontally, beam_traceback)
 
 
 class BeamData(BeamName):

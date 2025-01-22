@@ -4,7 +4,7 @@ import torch
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, scan, BulkIndexError
 from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text, A
-from elasticsearch_dsl.query import Query
+from elasticsearch_dsl.query import Query, Term
 from datetime import datetime
 
 from ..path import PureBeamPath, normalize_host
@@ -14,6 +14,7 @@ from ..utils import divide_chunks, retry
 
 from .core import BeamDoc
 from .utils import parse_kql_to_dsl, generate_document_class
+from ..base import Loc, Groups
 
 
 
@@ -30,7 +31,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
                  tls=False, client=None, keep_alive=None, sleep=None, document=None, q=None, max_actions=None, retries=None,
-                 fragment=None, maximum_bucket_limit=None, **kwargs):
+                 fragment=None, maximum_bucket_limit=None, fields=None, **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password, tls=tls,
                          keep_alive=keep_alive, scheme='elastic', max_actions=max_actions, retries=retries,
                          sleep=sleep, fragment=fragment, maximum_bucket_limit=maximum_bucket_limit, **kwargs)
@@ -48,7 +49,17 @@ class BeamElastic(PureBeamPath, BeamDoc):
         self._doc_cls: Document | None = document
         self._index: Index | None = None
         self._q: Query | None = self.parse_query(q)
-        self.fields = self.fragment.split(',') if bool(self.fragment) else None
+
+        if fields is not None:
+            fields = fields if isinstance(fields, list) else [fields]
+        else:
+            fields = []
+
+        more_fields = self.fragment.split(',') if bool(self.fragment) else []
+        fields = list(set(fields + more_fields))
+
+        # concatenate fields from more_fields and fields
+        self.fields = fields if fields else None
 
         if max_actions is None:
             max_actions = 10000
@@ -65,6 +76,9 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if maximum_bucket_limit is None:
             maximum_bucket_limit = 10000
         self.maximum_bucket_limit = int(maximum_bucket_limit)
+
+        # self.groupby = Groups(self)
+        self.loc = Loc(self)
 
     # elasticsearch timestamp format with timezone
     timestamp_format = '%Y-%m-%dT%H:%M:%S%z'
@@ -228,11 +242,19 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def match_none():
         return Q('match_none')
 
-    def gen(self, path, q=None):
+    def gen(self, path, q=None, **kwargs):
+        hostname = kwargs.pop('hostname', self.hostname)
+        port = kwargs.pop('port', self.port)
+        username = kwargs.pop('username', self.username)
+        password = kwargs.pop('password', self.password)
+        fragment = kwargs.pop('fragment', self.fragment)
+        params = kwargs.pop('params', self.params)
+        doc_cls = kwargs.pop('document', self._doc_cls)
+        query = kwargs.pop('query', {})
+        query = {**query, **kwargs}
         PathType = type(self)
-        return PathType(path, client=self.client, hostname=self.hostname, port=self.port, username=self.username,
-                        password=self.password, fragment=self.fragment, params=self.params, document=self._doc_cls,
-                        q=q, **self.query)
+        return PathType(path, client=self.client, hostname=hostname, port=port, username=username,
+                        password=password, fragment=fragment, params=params, document=doc_cls, q=q, **query)
 
     # list of native api methods
     def _index_exists(self, index_name):
@@ -323,11 +345,23 @@ class BeamElastic(PureBeamPath, BeamDoc):
             for field, field_type in other_fields.items():
                 locals()[field] = field_type
 
-    def iterdir(self):
+    def iterdir(self, wildcard=None, alias=True, hidden=False, alias_only=False):
+
+        wildcard = wildcard or '*'
+
 
         if self.level == 'root':
-            for index in self.client.indices.get(index='*'):
-                yield self.gen(f"/{index}")
+
+            if not alias_only:
+                for index in self.client.indices.get(index=wildcard):
+                    if index.startswith('.') and not hidden:
+                        continue
+                    yield self.gen(f"/{index}")
+
+            if alias:
+                for alias in self.client.indices.get_alias(wildcard).keys():
+                    yield self.gen(f"/{alias}")
+
         else:
             s = self.s.source(False)
             for doc in s.iterate(keep_alive=self.keep_alive):
@@ -502,10 +536,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         return field_name
 
-    def nunique(self, field_name):
+    def nunique(self, field_name=None):
 
         s = self.s
-        field_name = self.keyword_field(field_name)
+        field_name = self.get_unique_field(field_name)
 
         cardinality_agg = A("cardinality", field=field_name)
         s.aggs.metric("unique_count", cardinality_agg)
@@ -523,12 +557,28 @@ class BeamElastic(PureBeamPath, BeamDoc):
             return False
         return schema[field_name]['type'] == 'date'
 
-    def value_counts(self, field_name, sort=True, normalize=False):
+    def get_unique_field(self, field_name=None, as_keyword=True):
+
+        if field_name is None:
+            if len(self.fields) == 1:
+                field_name = self.fields[0]
+            else:
+                raise ValueError("Cannot infer field name from multiple fields object")
+
+        field_name = self.keyword_field(field_name)
+
+        if as_keyword:
+            field_name = self.keyword_field(field_name)
+
+        return field_name
+
+
+    def value_counts(self, field_name=None, sort=True, normalize=False):
 
         # Execute the search and paginate
         counts = {}
         after_key = None  # Initialize the after_key
-        field_name = self.keyword_field(field_name)
+        field_name = self.get_unique_field(field_name)
 
         while True:
 
@@ -562,83 +612,60 @@ class BeamElastic(PureBeamPath, BeamDoc):
             c = c / c.sum()
         return c
 
-    # def add(self, x):
-    #     if self.level == 'index':
-    #         self._index_document(self.index_name, x)
-    #     else:
-    #         raise ValueError("Cannot add document to non-index path")
+    def __getitem__(self, item):
 
-    # def search(self, x, k=10, **kwargs):
-    #     # use knn search to find similar documents kwargs is assumed to be a list of terms to filter the search
-    #     q = Q('knn', **x)
+        if self.level == 'root':
+            return self.gen(f"/{item}")
+        else:
+            fields = [item] if isinstance(item, str) else item
+            if self.fields is not None:
+                if set(fields) - set(self.fields):
+                    raise ValueError(f"Cannot select fields {list(set(fields) - set(self.fields))} not in {self.fields}")
+            return self.gen(self.path, fields=fields)
 
-    # def  _search_native(self, index, query: dict | Query, sort=None, size=None, search_after=None):
-    #
-    #     if size is None:
-    #         size = 1000
-    #
-    #     if isinstance(query, Query):
-    #         query = query.to_dict()
-    #
-    #     while True:
-    #         res = self.client.search(index=index, query=query, sort=sort, size=size, search_after=search_after)
-    #         hits = res['hits']['hits']
-    #         h = None
-    #         for h in hits:
-    #             yield h
-    #         if h is None:
-    #             break
-    #         if sort is not None:
-    #             search_after = h['sort']
-    #         else:
-    #             if size is not None:
-    #                 total = res['hits']['total']['value']
-    #                 if total >= size:
-    #                     pass
-    #                     # logger.warning(f"Total hits: {total}, returning only {size}")
-    #             break
-    #
-    # def _write_df(self, df, index):
-    #
-    #     @recursive_elementwise
-    #     def clearn_none(x):
-    #         if pd.isna(x):
-    #             return None
-    #         return x
-    #
-    #     data = df.to_dict(orient='records')
-    #     data = clearn_none(data)
-    #     if '_id' in df.columns:
-    #         for d in data:
-    #             if pd.isna(d['_id']):
-    #                 d.pop('_id')
-    #
-    #     self._index_bulk(index, data)
-    #
-    # def _delete_docs(self, ids, index):
-    #     actions = [{
-    #         '_op_type': 'delete',
-    #         '_index': index,
-    #         '_id': i
-    #     } for i in ids]
-    #     bulk(self.client, actions)
-    #
-    # def query_df(self, query, index, sort=None, size=None, search_after=None, **kwargs):
-    #     if size is None:
-    #         size = 1000
-    #
-    #     l = []
-    #     i = []
-    #     for r in self._search_native(index, query, sort=sort, size=size, search_after=search_after):
-    #         l.append(r['_source'])
-    #         i.append(r['_id'])
-    #
-    #     df = pd.DataFrame(l, index=i)
-    #     df.index.name = '_id'
-    #     return df
+    def _loc(self, ind):
 
-    # @property
-    # def _is_file_path(self):
-    #     # check if last part of the path is _id value
-    #     p = self.parts[-1]
-    #     return ':' not in p and '.' not in p and len(self.parts) > 2
+        if isinstance(ind, str):
+            return self.joinpath(ind)
+        else:
+            q = Q('ids', values=ind)
+            return self & q
+
+
+    def add_alias(self, alias_name, routing=None, **kwargs):
+
+        if self.level not in ['index', 'query']:
+            raise ValueError("Cannot add alias to non-index/query paths")
+
+        body = kwargs
+        if routing is not None:
+            body['routing'] = routing
+
+        if self.q is not None:
+            body['query'] = self.q.to_dict()
+
+        return self.client.indices.put_alias(index=self.index_name, name=alias_name, body=body)
+
+    def remove_alias(self, alias_name, **kwargs):
+
+        if self.level not in ['index', 'query']:
+            raise ValueError("Cannot remove alias from non-index/query paths")
+
+        return self.client.indices.delete_alias(index=self.index_name, name=alias_name, **kwargs)
+
+    def reindex(self, target_index: str, **kwargs):
+        return self.client.reindex(body={"source": {"index": self.index_name},
+                                         "dest": {"index": target_index.index_name}}, **kwargs)
+
+    def copy(self, path, **kwargs):
+        # use reindex to copy data from one index to another
+        if type(path) is BeamElastic:
+            target_index = path.index_name
+        else:
+            target_index = path
+
+        return self.reindex(target_index, **kwargs)
+
+
+    def term(self, field, value):
+        return Q('term', **{self.keyword_field(field): value})

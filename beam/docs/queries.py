@@ -1,7 +1,8 @@
-from elasticsearch_dsl import Q, Query
+from elasticsearch_dsl.query import Query
 from datetime import datetime, timedelta
 import dateutil.parser
 import calendar
+
 
 class TimeFilter(Query):
     name = "time_filter"
