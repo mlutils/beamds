@@ -14,7 +14,9 @@ from ..utils import divide_chunks, retry
 
 from .core import BeamDoc
 from .utils import parse_kql_to_dsl, generate_document_class
-from ..base import Loc, Groups
+from ..base import Loc
+from .queries import TimeFilter
+from .groupby import Groupby
 
 
 
@@ -31,7 +33,8 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
                  tls=False, client=None, keep_alive=None, sleep=None, document=None, q=None, max_actions=None, retries=None,
-                 fragment=None, maximum_bucket_limit=None, fields=None, **kwargs):
+                 fragment=None, maximum_bucket_limit=None, fields=None, sort_by=None,
+                 **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password, tls=tls,
                          keep_alive=keep_alive, scheme='elastic', max_actions=max_actions, retries=retries,
                          sleep=sleep, fragment=fragment, maximum_bucket_limit=maximum_bucket_limit, **kwargs)
@@ -60,6 +63,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         # concatenate fields from more_fields and fields
         self.fields = fields if fields else None
+        self.sort_by = sort_by
 
         if max_actions is None:
             max_actions = 10000
@@ -103,7 +107,18 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def __repr__(self):
         if self.q is None:
             return str(self.url)
-        return f"{str(self.url)} | {self.q}"
+
+        fixed_q = str(self.q)
+        if len(fixed_q) > 50:
+            fixed_q = fixed_q[:50] + "..."
+
+        s = f"{str(self.url)} | query: {fixed_q}"
+        if self.fields:
+            s += f" | fields: {self.fields}"
+        if self.sort_by:
+            s += f" | sort: {self.sort_by}"
+
+        return s
 
     @property
     def q(self):
@@ -202,8 +217,12 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if self.level == 'root':
             return Search(using=self.client).source(self.fields).params(size=self.max_actions)
         if self.level == 'index':
-            return self.index.search().source(self.fields).params(size=self.max_actions)
-        return self._s.params(size=self.max_actions).source(self.fields)
+            s = self.index.search().source(self.fields).params(size=self.max_actions)
+        else:
+            s = self._s.params(size=self.max_actions).source(self.fields)
+        if self.sort_by is not None:
+            s = s.sort(self.sort_by)
+        return s
 
     @property
     def _s(self):
@@ -258,7 +277,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def match_none():
         return Q('match_none')
 
-    def gen(self, path, q=None, **kwargs):
+    def gen(self, path, **kwargs):
         hostname = kwargs.pop('hostname', self.hostname)
         port = kwargs.pop('port', self.port)
         username = kwargs.pop('username', self.username)
@@ -267,10 +286,21 @@ class BeamElastic(PureBeamPath, BeamDoc):
         params = kwargs.pop('params', self.params)
         doc_cls = kwargs.pop('document', self._doc_cls)
         query = kwargs.pop('query', {})
+        fields = kwargs.pop('fields', self.fields)
+        sort_by = kwargs.pop('sort_by', self.sort_by)
+        q = self.q
+        q_new = kwargs.pop('q', None)
+
+        if q is not None and q_new is not None:
+            q = q & q_new
+        elif q_new is not None:
+            q = q_new
+
+        # must be after extracting all other kwargs
         query = {**query, **kwargs}
         PathType = type(self)
-        return PathType(path, client=self.client, hostname=hostname, port=port, username=username,
-                        password=password, fragment=fragment, params=params, document=doc_cls, q=q, **query)
+        return PathType(path, client=self.client, hostname=hostname, port=port, username=username, fields=fields,
+                        password=password, fragment=fragment, params=params, document=doc_cls, q=q, sort_by=sort_by, **query)
 
     # list of native api methods
     def _index_exists(self, index_name):
@@ -392,33 +422,53 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if self.level == 'root':
             return list(self.client.indices.get('*'))
         else:
-            return self._get_values()
+            return self.as_df(add_ids=False, add_score=False, add_index_name=False)
 
-    def _get_values(self):
+    def _get_values(self, size=None):
         if self._values is None:
-            self._values, self._metadata = self._get_values_and_metadata()
+            self._values, self._metadata = self._get_values_and_metadata(size=size)
         return self._values
 
-    def _get_metadata(self):
+    def _get_metadata(self, size=None):
         if self._metadata is None:
-            self._metadata = self._get_values_and_metadata(source=False)[1]
+            self._metadata = self._get_values_and_metadata(source=False, size=size)[1]
         return self._metadata
 
-    def _get_values_and_metadata(self, source=True):
+    def _get_values_and_metadata(self, source=True, size=None):
         v = []
         meta = []
         s = self.s if source else self.s.source(False)
-        for doc in s.iterate(keep_alive=self.keep_alive):
+        for i, doc in enumerate(s.iterate(keep_alive=self.keep_alive)):
             v.append(doc.to_dict())
             meta.append(doc.meta.to_dict())
+            if size is not None and i >= size:
+                break
         return v, meta
 
     def ping(self):
         return self.client.ping()
 
-    def as_df(self):
+    def as_df(self, add_ids=True, add_score=False, add_index_name=False, size=None):
         import pandas as pd
-        return pd.DataFrame(self.values)
+        v, m = self._get_values_and_metadata(size=size)
+        index = None
+        if add_ids:
+            index = [x['id'] for x in m]
+
+        df = pd.DataFrame(v, index=index)
+        if add_score:
+            df['_score'] = [x['score'] for x in m]
+        if add_index_name:
+            df['_index_name'] = self.index_name
+
+        return df
+
+    def as_dict(self, add_metadata=False, size=None):
+        v, m = self._get_values_and_metadata(size=size)
+        if add_metadata:
+            return v, m
+        return v
+
 
     def items(self):
         if self.level == 'root':
@@ -448,7 +498,8 @@ class BeamElastic(PureBeamPath, BeamDoc):
             else:
                 raise ValueError(f"Cannot write object of type {x_type}")
 
-    def read(self, as_df=False, as_dict=False, as_iter=True, source=True):
+    def read(self, as_df=False, as_dict=False, as_iter=True, source=True, add_ids=True, add_score=False,
+             add_index_name=False, add_metadata=False, size=None):
 
         if self.level == 'document':
             doc = self._get_document(self.index_name, self.document_id)
@@ -457,10 +508,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
             return doc
 
         if as_df:
-            return pd.DataFrame(self.values)
+            return self.as_df(add_ids=add_ids, add_score=add_score, add_index_name=add_index_name, size=size)
 
         if as_dict:
-            return self.values
+            return self.as_dict(add_metadata=add_metadata, size=size)
 
         if as_iter:
             for doc in self.s.iterate(keep_alive=self.keep_alive):
@@ -632,6 +683,43 @@ class BeamElastic(PureBeamPath, BeamDoc):
             c = c / c.sum()
         return c
 
+    def agg(self, agg, field_name=None, **kwargs):
+
+        s = self.s
+
+        if self.fields is None or len(self.fields) == 1:
+            field_name = self.get_unique_field(field_name)
+            s.aggs.metric(agg, A(agg, field=field_name, **kwargs))
+            response = s.execute()
+            return response.aggregations[agg].value
+        else:
+            for field in self.fields:
+                s.aggs.metric(f"{agg}_{field}", A(agg, field=field, **kwargs))
+            response = s.execute()
+            v = {field: response.aggregations[f"{agg}_{field}"].value for field in self.fields}
+            return pd.Series(v, name=agg)
+
+    def mean(self, field_name=None):
+        return self.agg('avg', field_name)
+
+    def sum(self, field_name=None):
+        return self.agg('sum', field_name)
+
+    def min(self, field_name=None):
+        return self.agg('min', field_name)
+
+    def max(self, field_name=None):
+        return self.agg('max', field_name)
+
+    def median(self, field_name=None):
+        return self.agg('percentiles', field_name)
+
+    def std(self, field_name=None):
+        return self.agg('std_deviation', field_name)
+
+    def percentile(self, field_name=None, percentiles=[25, 50, 75]):
+        return self.agg('percentiles', field_name, percents=percentiles)
+
     def __getitem__(self, item):
 
         if self.level == 'root':
@@ -687,5 +775,90 @@ class BeamElastic(PureBeamPath, BeamDoc):
         return self.reindex(target_index, **kwargs)
 
 
-    def term(self, field, value):
-        return Q('term', **{self.keyword_field(field): value})
+    def filter_term(self, value, field=None, as_keyword=True):
+        field = self.get_unique_field(field, as_keyword=as_keyword)
+        return self & Q('term', **{field: value})
+
+    def filter_terms(self, values, field=None, as_keyword=True):
+        field = self.get_unique_field(field, as_keyword=as_keyword)
+        return self & Q('terms', **{self.keyword_field(field): values})
+
+    def filter_time_range(self, field=None, start=None, end=None, period=None, pattern=None):
+        field = self.get_unique_field(field, as_keyword=False)
+        return self & TimeFilter(field=field, start=start, end=end, period=period, pattern=pattern)
+
+    def filter_whitelist(self, values, field=None, as_keyword=True):
+        return self.filter_terms(values, field=field, as_keyword=as_keyword)
+
+    def filter_blacklist(self, values, field=None, as_keyword=True):
+        return ~self.filter_terms(values, field=field, as_keyword=as_keyword)
+
+    def filter_gte(self, value, field=None):
+        field = self.get_unique_field(field, as_keyword=False)
+        return self & Q('range', **{field: {'gte': value}})
+
+    def filter_gt(self, value, field=None):
+        field = self.get_unique_field(field, as_keyword=False)
+        return self & Q('range', **{field: {'gt': value}})
+
+    def filter_lte(self, value, field=None):
+        field = self.get_unique_field(field, as_keyword=False)
+        return self & Q('range', **{field: {'lte': value}})
+
+    def filter_lt(self, value, field=None):
+        field = self.get_unique_field(field, as_keyword=False)
+        return self & Q('range', **{field: {'lt': value}})
+
+    def groupby(self, field_names, size=None):
+        maximum_bucket_limit = size or self.maximum_bucket_limit
+        return Groupby(self, field_names, size=maximum_bucket_limit)
+
+    def __ge__(self, other):
+        return self.filter_gte(other)
+
+    def __gt__(self, other):
+        return self.filter_gt(other)
+
+    def __le__(self, other):
+        return self.filter_lte(other)
+
+    def __lt__(self, other):
+        return self.filter_lt(other)
+
+    def __eq__(self, other):
+        return self.filter_term(other)
+
+    def head(self, n=5):
+        return self.as_df(size=n)
+
+    def sort_values(self, field, ascending=True):
+        return self & Q('sort', **{field: 'asc' if ascending else 'desc'})
+
+    def random_generator(self, seed=None):
+        if seed is None:
+            seed = np.random.randint(2**32)
+        q = Q('function_score', functions=[{'random_score': {'seed': seed}}])
+        return self & q
+
+    def sample(self, n=1, seed=None, as_df=True):
+        ind = self & self.random_generator(seed)
+        if as_df:
+            return ind.as_df(size=n)
+        return ind.as_dict(size=n)
+
+    @property
+    def ids(self):
+        m = self._get_metadata()
+        return [x['id'] for x in m]
+
+    def dropna(self, subset=None):
+        if subset is None:
+            subset = self.fields
+        if type(subset) is str:
+            subset = [subset]
+        # add filter to remove None values
+        q = Q('exists', field=subset[0])
+        for field in subset[1:]:
+            q &= Q('exists', field=field)
+        return self & q
+

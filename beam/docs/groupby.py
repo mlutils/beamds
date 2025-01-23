@@ -7,12 +7,12 @@ class Groupby:
 
     def __init__(self, es, gb_field_names: str|list[str], size=10000):
         self.buckets = {}
-        self.field_name = None
 
         self.es = es
         gb_field_names = gb_field_names if isinstance(gb_field_names, list) else [gb_field_names]
+        self.gb_field_names = [es.keyword_field(field_name) for field_name in gb_field_names]
 
-        self.groups = [A('terms', field=es.keyword_field(field_name), size=size)
+        self.groups = [A('terms', field=field_name, size=size)
                        for field_name in gb_field_names]
 
     def add_aggregator(self, field_name, agg_type):
@@ -52,7 +52,7 @@ class Groupby:
 
     def agg(self, d):
         for k, v in d.items():
-            self.add_aggregator(self.field_name, self.agg_name_mapping.get(k, k))
+            self.add_aggregator(k, self.agg_name_mapping.get(v, v))
         return self
 
     def _apply(self):
@@ -70,12 +70,13 @@ class Groupby:
 
         response = s.execute()
 
+        # # extract all the buckets from the response
+        # for bucket_name, bucket in self.buckets.items():
+        #     self.buckets[bucket_name] = response.aggregations[f'groupby_{g.field}'][bucket_name]
+
         return response
 
 
-    # @property
-    # def values(self):
-    #     return None
 
 
 

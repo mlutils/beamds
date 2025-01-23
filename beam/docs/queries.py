@@ -2,9 +2,41 @@ from elasticsearch_dsl.query import Query
 from datetime import datetime, timedelta
 import dateutil.parser
 import calendar
+from .dsl2kql import dsl_to_kql
+from .utils import parse_kql_to_dsl
 
 
-class TimeFilter(Query):
+class BeamQuery(Query):
+    name = 'beam_query'
+
+    def __init__(self, query_dict=None, **kwargs):
+        """
+        Initialize the custom query with a query dictionary or keyword arguments.
+
+        Args:
+            query_dict (dict): A dictionary representation of the query.
+            kwargs: Additional arguments to build the query.
+        """
+        if query_dict:
+            # Pass the query dictionary to the parent Query constructor
+            super().__init__(**query_dict)
+        else:
+            # Initialize with kwargs if no dictionary is provided
+            super().__init__(**kwargs)
+
+    @classmethod
+    def from_kql(cls, kql):
+        q = parse_kql_to_dsl(kql).to_dict()
+        return cls(query_dict=q)
+
+
+    @property
+    def kql(self):
+        return dsl_to_kql(self.to_dict()[self.name])
+
+
+
+class TimeFilter(BeamQuery):
     name = "time_filter"
 
     def __init__(self, field=None, start=None, end=None, period=None, pattern=None, **kwargs):
