@@ -10,10 +10,14 @@ if __name__ == '__main__':
 
     # r = (ind & "ticker: avgo")['open, close']
 
-    r = (ind & "ticker: avgo")
-    r.set_fields(['open', 'close'])
+    # r = (ind & "ticker: avgo")
+    # r.set_fields(['open', 'close'])
 
-    print(r.values)
+    q = ind & "ticker: av*"
+    g = q.dropna(subset=['open', 'close']).groupby(['ticker'])
+    gg = g.agg({'open': 'sum', 'close': 'max'})
+
+    print(gg.values)
 
     # t = ind['ticker']
     #
