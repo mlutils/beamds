@@ -14,8 +14,8 @@ if __name__ == '__main__':
     # r.set_fields(['open', 'close'])
 
     q = ind & "ticker: av*"
-    g = q.dropna(subset=['open', 'close']).groupby(['ticker'])
-    gg = g.agg({'open': 'sum', 'close': 'max'})
+    g = q.dropna(subset=['open', 'close']).groupby(['ticker', 'version'])
+    gg = g.agg({'open': 'sum', 'close': 'max', 'date': ['count', 'nunique']})
 
     print(gg.values)
 

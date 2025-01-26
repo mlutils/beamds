@@ -14,7 +14,7 @@ class Groupby:
         gb_field_names = gb_field_names if isinstance(gb_field_names, list) else [gb_field_names]
         self.gb_field_names = [es.keyword_field(field_name) for field_name in gb_field_names]
 
-        self.groups = [A('terms', field=field_name.removesuffix('.keyword'), size=size)
+        self.groups = [A('terms', field=field_name, size=size)
                        for field_name in self.gb_field_names]
 
     def add_aggregator(self, field_name, agg_type):
@@ -56,8 +56,13 @@ class Groupby:
 
     def agg(self, d):
         for k, v in d.items():
-            agg_func = getattr(self, k)
-            agg_func(v)
+            if type(v) is list:
+                for agg_i in v:
+                    agg_func = getattr(self, agg_i)
+                    agg_func(k)
+            else:
+                agg_func = getattr(self, v)
+                agg_func(k)
             # self.add_aggregator(k, self.agg_name_mapping.get(v, v))
         return self
 
@@ -164,7 +169,7 @@ class Groupby:
         index = [r.pop('index') for r in res]
         if len(self.gb_field_names) > 1:
             # construct multi-index
-            index = pd.MultiIndex.from_tuples(index, names=[f for f in self.gb_field_names])
+            index = pd.MultiIndex.from_tuples(index, names=[f.removesuffix('.keyword') for f in self.gb_field_names])
         df = pd.DataFrame(res, index=index)
         return df
 

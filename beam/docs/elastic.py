@@ -563,7 +563,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         raise ValueError(f"No dense vector field found in schema for index {self.index_name}")
 
     # search knn query
-    def search(self, x: np.ndarray | list | torch.Tensor, k=10, field=None):
+    def search(self, x: np.ndarray | list | torch.Tensor, k=10, field=None, num_candidates=1000):
 
         if isinstance(x, np.ndarray):
             x = x.tolist()
@@ -571,11 +571,18 @@ class BeamElastic(PureBeamPath, BeamDoc):
             x = x.cpu().numpy().tolist()
 
         if field is None:
-            self.get_vector_field()
+            field = self.get_vector_field()
 
-        q = Q('knn', field=field, vector=x)
-        s = self.s.query(q).extra(size=k)
-        return s.execute()
+        knn = {"field": field, "vector": x, "k": k}
+        c = self.client
+        r = c.search(index=self.index_name, knn={"vector": x, "field": field, "k": k}, num_candidates=num_candidates)
+
+        r = r['hits']['hits']
+        return r
+
+        # q = Q('knn', field=field, vector=x)
+        # s = self.s.query(q).extra(size=k)
+        # return s.execute()
 
     def unique(self, field_name, size=None):
 
