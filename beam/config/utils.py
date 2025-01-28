@@ -235,6 +235,7 @@ def _beam_arguments(*args, return_defaults=False, return_tags=False, silent=Fals
             args_with_unknowns = add_unknown_arguments(args, unknown, silent=silent)
             if config_files_should_be_loaded:
                 keys_with_non_default_values.update(set(vars(args_with_unknowns).keys()).difference(vars(args).keys()))
+            args = args_with_unknowns
 
     for k, v in kwargs.items():
         if k.startswith('_'):

@@ -228,6 +228,9 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def _s(self):
         return self.index.search().query(self.q)
 
+    def sort(self, field):
+        return self.gen(self.path, sort_by=field)
+
     @property
     def level(self):
         if len(self.parts) == 1:
