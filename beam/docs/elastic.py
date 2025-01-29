@@ -1,3 +1,5 @@
+from argparse import Namespace
+
 import numpy as np
 import pandas as pd
 import torch
@@ -6,6 +8,7 @@ from elasticsearch.helpers import bulk, scan, BulkIndexError
 from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text, A
 from elasticsearch_dsl.query import Query, Term
 from datetime import datetime
+from pydantic import BaseModel
 
 from ..path import PureBeamPath, normalize_host
 from ..utils import lazy_property as cached_property, recursive_elementwise
@@ -13,11 +16,17 @@ from ..type import check_type, Types
 from ..utils import divide_chunks, retry
 
 from .core import BeamDoc
-from .utils import parse_kql_to_dsl, generate_document_class
+from .utils import parse_kql_to_dsl, generate_document_class, describe_dataframe
 from ..base import Loc
+from ..resources import resource
 from .queries import TimeFilter
 from .groupby import Groupby
 
+
+class LLMQueryResponse(BaseModel):
+    index: str = None
+    query: dict
+    short_description: str
 
 
 class BeamElastic(PureBeamPath, BeamDoc):
@@ -31,9 +40,11 @@ class BeamElastic(PureBeamPath, BeamDoc):
     delete() - delete the queried data from the index
     '''
 
+    exclude_hidden_pattern = '-.*'
+
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
                  tls=False, client=None, keep_alive=None, sleep=None, document=None, q=None, max_actions=None, retries=None,
-                 fragment=None, maximum_bucket_limit=None, fields=None, sort_by=None,
+                 fragment=None, maximum_bucket_limit=None, fields=None, sort_by=None, llm=None,
                  **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password, tls=tls,
                          keep_alive=keep_alive, scheme='elastic', max_actions=max_actions, retries=retries,
@@ -64,6 +75,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         # concatenate fields from more_fields and fields
         self.fields = fields if fields else None
         self.sort_by = sort_by
+        self.llm = resource(llm)
 
         if max_actions is None:
             max_actions = 10000
@@ -127,6 +139,58 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if self.level == 'document':
             return self.document_query
         return None
+
+    def ask(self, question, execute=False, answer=True, **kwargs):
+        if self.llm is None:
+            raise ValueError("LLM resource not set")
+        has_index = self.index_name is not None
+        if has_index:
+            index_string = f"Index: {self.index_name}\n"
+        else:
+            index_string = ""
+
+        base_query = self.q
+        if base_query is not None:
+            query_string = f"A base query is already set: {base_query.to_dict()}, you should assume that your query will be added (with and) to this query\n"
+        else:
+            query_string = ""
+
+        from ..llm.tools import LLMGuidance
+        guidance = LLMGuidance(guided_json=LLMQueryResponse)
+        prompt = (f"You are an agent that interacts with an ElasticSearch database. "
+                  f"You are required to answer the users' questions based on the data in the database. "
+                  f"You can generate a DSL query to retrieve the relevant data in order to answer the question.\n\n"
+                  f"The dataset schema is:\n"
+                  f"{index_string}"
+                  f"{self.schema}\n\n"
+                  f"{query_string}"
+                  f"User's question: {question}\n\n"
+                  f"Your response should follow the following JSON format:\n"
+                  f"{LLMQueryResponse.model_json_schema()}")
+
+        self.llm.reset_chat()
+        res = self.llm.chat(prompt, guidance=guidance, **kwargs).json
+
+        query = res['query']
+        description = res['short_description']
+        index = res['index']
+
+        q = Q(query)
+        df = None
+        text_answer = None
+        if execute:
+            df = (self & q).as_df()
+            # get some statistics:
+
+            if answer:
+                info = describe_dataframe(df, n_samples=10)
+                prompt = (f"Based on the data retrieved from the database:"
+                          f"{info}\n\n"
+                          f" please provide a text answer to the user's question: {question}\n\n")
+
+                text_answer = self.llm.chat(prompt, **kwargs).text
+
+        return Namespace(query=q, description=description, index=index, df=df, text_answer=text_answer)
 
     def has_query(self):
         return self._q is not None
@@ -291,6 +355,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         query = kwargs.pop('query', {})
         fields = kwargs.pop('fields', self.fields)
         sort_by = kwargs.pop('sort_by', self.sort_by)
+        llm = kwargs.pop('llm', self.llm)
         q = self.q
         q_new = kwargs.pop('q', None)
 
@@ -303,7 +368,8 @@ class BeamElastic(PureBeamPath, BeamDoc):
         query = {**query, **kwargs}
         PathType = type(self)
         return PathType(path, client=self.client, hostname=hostname, port=port, username=username, fields=fields,
-                        password=password, fragment=fragment, params=params, document=doc_cls, q=q, sort_by=sort_by, **query)
+                        password=password, fragment=fragment, params=params, document=doc_cls, q=q, sort_by=sort_by,
+                        llm=llm, **query)
 
     # list of native api methods
     def _index_exists(self, index_name):
@@ -532,6 +598,9 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     @cached_property
     def schema(self):
+        ind = self.index_name
+        if ind is None:
+            return self.get_schema(self.exclude_hidden_pattern)
         return self.get_schema(self.index_name)
 
     @staticmethod
@@ -652,7 +721,6 @@ class BeamElastic(PureBeamPath, BeamDoc):
             field_name = self.keyword_field(field_name)
 
         return field_name
-
 
     def value_counts(self, field_name=None, sort=True, normalize=False):
 

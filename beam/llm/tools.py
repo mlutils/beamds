@@ -188,10 +188,13 @@ class LLMGuidance(BaseModel):
             "If specified, will override the default whitespace pattern "
             "for guided json decoding."))
 
+    guided_model: Type[BaseModel] = None
+
     def __init__(self, **data):
         super().__init__(**data)
         if self.guided_json is not None:
             if isinstance(self.guided_json, type) and issubclass(self.guided_json, BaseModel):
+                self.guided_model = self.guided_json
                 self.guided_json = self.guided_json.model_json_schema()
 
     def arguments(self, filter=None):

@@ -117,6 +117,11 @@ class LLMResponse:
         return self._protocol(text, protocol=protocol)
 
     def parse(self, protocol='json'):
+        if hasattr(self.llm, f"parse_{protocol}"):
+            res = getattr(self.llm, f"parse_{protocol}")(self.response)
+            if res is not None:
+                return res
+
         return self._protocol(self.text, protocol=protocol)
 
     def _protocol(self, text, protocol='json'):

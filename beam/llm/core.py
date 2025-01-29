@@ -671,8 +671,6 @@ class BeamLLM(PedanticBeamResource):
         else:
             res = self.ask(prompt, **kwargs)
 
-        # res = res.choices[0].text
-
         return res
 
     def openai_format(self, res, finish_reason="stop", tokens=None, completion_tokens=0, prompt_tokens=0,
