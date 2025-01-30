@@ -1,6 +1,7 @@
 from elasticsearch_dsl import Q, Document, Text, Keyword, Integer, Float, Boolean, Date, DenseVector
 import re
-
+import pandas as pd
+from io import StringIO
 
 def parse_kql_to_dsl(kql):
     """
@@ -119,3 +120,46 @@ def generate_document_class(client, index_name):
         setattr(DynamicDocument, field_name, field)
 
     return DynamicDocument
+
+
+def describe_dataframe(df: pd.DataFrame, n_samples: int = 5, include_info: bool = True,
+                       include_stats: bool = True, include_sample: bool = True, include_corr: bool = False) -> str:
+    """
+    Returns a string summary of a DataFrame, including metadata, statistics, and sample rows.
+
+    Parameters:
+    - df (pd.DataFrame): The DataFrame to describe.
+    - n_samples (int): Number of sample rows to include.
+    - include_info (bool): Whether to include df.info() output.
+    - include_stats (bool): Whether to include statistical summary.
+    - include_sample (bool): Whether to include sample rows.
+
+    Returns:
+    - str: Formatted string containing the DataFrame description.
+    """
+    output = StringIO()
+
+    summary_parts = []
+
+    if include_info:
+        df.info(buf=output)
+        summary_parts.append("\n**DataFrame Info:**\n" + output.getvalue())
+        output.seek(0)
+        output.truncate(0)
+
+    summary_parts.append(f"\n**Shape:** {df.shape}")
+    summary_parts.append(f"\n**Columns:** {list(df.columns)}")
+    summary_parts.append(f"\n**Data Types:**\n{df.dtypes}")
+    summary_parts.append(f"\n**Memory Usage:**\n{df.memory_usage(deep=True)}")
+
+    if include_stats:
+        summary_parts.append("\n**Descriptive Statistics:**\n" + str(df.describe(include='all')))
+        summary_parts.append(f"\n**Unique Values per Column:**\n{df.nunique()}\n")
+        summary_parts.append(f"\n**Missing Values per Column:**\n{df.isnull().sum()}\n")
+        if include_corr and not df.select_dtypes(include=['number']).empty:
+            summary_parts.append(f"\n**Correlation Matrix:**\n{df.corr()}\n")
+
+    if include_sample:
+        summary_parts.append(f"\n**Sample Rows ({n_samples}):**\n{df.sample(min(n_samples, len(df)))}\n")
+
+    return "\n".join(summary_parts)

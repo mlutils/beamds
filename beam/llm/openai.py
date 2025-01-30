@@ -2,11 +2,13 @@ import json
 from typing import Optional, Any, ClassVar, List
 import pandas as pd
 import numpy as np
+
 from ..utils import lazy_property as cached_property
 
 from ..logging import beam_logger as logger
 from ..path import normalize_host
 from .core import BeamLLM, CompletionObject
+from .tools import LLMGuidance
 from pydantic import Field, PrivateAttr
 from ..path import beam_key
 
@@ -20,7 +22,7 @@ class OpenAIBase(BeamLLM):
 
     chat_kwargs: ClassVar[List[str]] = \
                   ['frequency_penalty', 'function_call', 'functions', 'logit_bias', 'logprobs', 'max_tokens',
-                   'n', 'presence_penalty', 'response_format', 'seed', 'stop', 'stream', 'temperature',
+                   'n', 'presence_penalty', 'seed', 'stop', 'stream', 'temperature',
                    'tool_choice', 'tools', 'top_logprobs', 'top_p', 'user', 'extra_headers', 'extra_query',
                    'extra_body', 'timeout']
 
@@ -62,14 +64,16 @@ class OpenAIBase(BeamLLM):
         res = self.client.completions.create(model=self.model, prompt=prompt,  **kwargs)
         return CompletionObject(prompt=prompt, kwargs=kwargs, response=res)
 
-    def _chat_completion(self, chat, response_format=None, stream=None, **kwargs):
+    def _chat_completion(self, chat, stream=None, guidance=None, **kwargs):
         kwargs = self.filter_chat_kwargs(kwargs)
         messages = chat.openai_format
-        if response_format is None:
+        if guidance is None:
             res = self.client.chat.completions.create(model=self.model, messages=messages,
                                                       stream=stream, **kwargs)
         else:
-            res = self.client.beta.chat.completions.parse(model=self.model, messages=messages, **kwargs)
+            assert isinstance(guidance, LLMGuidance), "guidance must be an instance of LLMGuidance"
+            res = self.client.beta.chat.completions.parse(model=self.model, messages=messages,
+                                                          response_format=guidance.guided_model, **kwargs)
         return CompletionObject(prompt=messages, kwargs=kwargs, response=res)
 
     @staticmethod
@@ -108,6 +112,14 @@ class OpenAIBase(BeamLLM):
             else:
                 res = res.choices[0].delta.content
         return res
+
+    def parse_json(self, res):
+        res = res.response
+        if self.is_chat:
+            res = res.choices[0].message
+            if hasattr(res, 'parsed'):
+                return res.parsed
+        return None
 
     def openai_format(self, res):
 
