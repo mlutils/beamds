@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from beam.workflow.core import beam_flow
+from beam.flow.core import beam_flow
 from prefect import flow, task
 from prefect.task_runners import SequentialTaskRunner
 import datetime

@@ -2,7 +2,7 @@ from argparse import Namespace
 
 import numpy as np
 import pandas as pd
-import torch
+
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, scan, BulkIndexError
 from elasticsearch_dsl import Search, Q, DenseVector, SparseVector, Document, Index, Text, A
@@ -14,6 +14,7 @@ from ..path import PureBeamPath, normalize_host
 from ..utils import lazy_property as cached_property, recursive_elementwise
 from ..type import check_type, Types
 from ..utils import divide_chunks, retry
+from ..importer import torch
 
 from .core import BeamDoc
 from .utils import parse_kql_to_dsl, generate_document_class, describe_dataframe
@@ -635,7 +636,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         raise ValueError(f"No dense vector field found in schema for index {self.index_name}")
 
     # search knn query
-    def search(self, x: np.ndarray | list | torch.Tensor, k=10, field=None, num_candidates=1000):
+    def search(self, x, k=10, field=None, num_candidates=1000):
 
         if isinstance(x, np.ndarray):
             x = x.tolist()
