@@ -297,6 +297,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     @property
     def _s(self):
+        if self.level == 'root':
+            return Search(using=self.client)
+        elif self.level == 'index':
+            return self.index.search()
         return self.index.search().query(self.q)
 
     def sort(self, field):
@@ -557,18 +561,28 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def as_pl(self, add_ids=True, add_score=False, add_index_name=False, size=None):
         import polars as pl
         v, m = self._get_values_and_metadata(size=size)
-        index = None
-        if add_ids:
-            index = [x['id'] for x in m]
-
+        # Convert values to a Polars DataFrame
         df = pl.DataFrame(v)
-        df['id'] = index
+
+        # Add index column if needed
+        if add_ids:
+            ids = [x['id'] for x in m]
+            df = df.with_columns(pl.Series("_id", ids))
+            # make the _id column the first column
+            df = df.select(["_id"] + [c for c in df.columns if c != "_id"])
+
+
+        # Add score column if requested
         if add_score:
-            df['_score'] = [x['score'] for x in m]
+            scores = [x['score'] for x in m]
+            df = df.with_columns(pl.Series("_score", scores))
+
+        # Add index name column if requested
         if add_index_name:
-            df['_index_name'] = self.index_name
+            df = df.with_columns(pl.lit(self.index_name).alias("_index_name"))
 
         return df
+
 
     def as_dict(self, add_metadata=False, size=None):
         v, m = self._get_values_and_metadata(size=size)

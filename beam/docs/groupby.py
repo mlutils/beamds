@@ -181,6 +181,42 @@ class Groupby:
             df.index.name = self.gb_field_names[0].removesuffix('.keyword')
         return df
 
+    def as_pl(self):
+
+        import polars as pl
+        res = self._apply()
+        df = pl.DataFrame(res)
+
+        # Set index
+        if "index" in df.columns:
+            df = df.rename({"index": "_id"})
+
+        # Handle multi-index or single index name
+        if len(self.gb_field_names) > 1:
+            df = df.with_columns(pl.struct(self.gb_field_names).alias("_id"))
+        else:
+            df = df.rename({"_id": self.gb_field_names[0].removesuffix('.keyword')})
+
+        return df
+
+    def as_cudf(self):
+        import cudf
+        res = self._apply()
+        df = cudf.DataFrame(res)
+
+        # Set index
+        if "index" in df.columns:
+            df = df.set_index("index")
+
+        # Handle multi-index or single index name
+        if len(self.gb_field_names) > 1:
+            df.index = cudf.MultiIndex.from_tuples(df.index.to_pandas(),
+                                                   names=[f.removesuffix('.keyword') for f in self.gb_field_names])
+        else:
+            df.index.name = self.gb_field_names[0].removesuffix('.keyword')
+
+        return df
+
     @property
     def values(self):
         v = self.as_df()
