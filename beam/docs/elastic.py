@@ -42,10 +42,11 @@ class BeamElastic(PureBeamPath, BeamDoc):
     '''
 
     exclude_hidden_pattern = '-.*'
+    date_format = '%Y-%m-%d %H:%M:%S'
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
                  tls=False, client=None, keep_alive=None, sleep=None, document=None, q=None, max_actions=None, retries=None,
-                 fragment=None, maximum_bucket_limit=None, fields=None, sort_by=None, llm=None,
+                 fragment=None, maximum_bucket_limit=None, fields=None, sort_by=None, llm=None, timeout=None,
                  **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password, tls=tls,
                          keep_alive=keep_alive, scheme='elastic', max_actions=max_actions, retries=retries,
@@ -56,6 +57,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if type(tls) is str:
             tls = tls.lower() == 'true'
         self.tls = tls
+        self.timeout = float(timeout) if timeout is not None else None
 
         self.client = client or self._get_client()
         self.keep_alive = keep_alive or '1m'
@@ -250,6 +252,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
             auth = (self.username, self.password)
         else:
             auth = None
+
+        kwargs = {}
+        if self.timeout is not None:
+            kwargs['request_timeout'] = self.timeout
 
         return Elasticsearch([host], http_auth=auth, verify_certs=self.verify)
 
@@ -526,6 +532,37 @@ class BeamElastic(PureBeamPath, BeamDoc):
             index = [x['id'] for x in m]
 
         df = pd.DataFrame(v, index=index)
+        if add_score:
+            df['_score'] = [x['score'] for x in m]
+        if add_index_name:
+            df['_index_name'] = self.index_name
+
+        return df
+
+    def as_cudf(self, add_ids=True, add_score=False, add_index_name=False, size=None):
+        import cudf
+        v, m = self._get_values_and_metadata(size=size)
+        index = None
+        if add_ids:
+            index = [x['id'] for x in m]
+
+        df = cudf.DataFrame(v, index=index)
+        if add_score:
+            df['_score'] = [x['score'] for x in m]
+        if add_index_name:
+            df['_index_name'] = self.index_name
+
+        return df
+
+    def as_pl(self, add_ids=True, add_score=False, add_index_name=False, size=None):
+        import polars as pl
+        v, m = self._get_values_and_metadata(size=size)
+        index = None
+        if add_ids:
+            index = [x['id'] for x in m]
+
+        df = pl.DataFrame(v)
+        df['id'] = index
         if add_score:
             df['_score'] = [x['score'] for x in m]
         if add_index_name:
@@ -853,18 +890,44 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         return self.reindex(target_index, **kwargs)
 
+    def with_filter_term(self, value, field=None, as_keyword=True):
+        return self & self.filter_term(value, field=field, as_keyword=as_keyword)
+
+    def with_filter_terms(self, values, field=None, as_keyword=True):
+        return self & self.filter_terms(values, field=field, as_keyword=as_keyword)
+
+    def with_filter_time_range(self, field=None, start=None, end=None, period=None, pattern=None):
+        return self & self.filter_time_range(field=field, start=start, end=end, period=period, pattern=pattern)
+
+    def with_filter_whitelist(self, values, field=None, as_keyword=True):
+        return self & self.filter_whitelist(values, field=field, as_keyword=as_keyword)
+
+    def with_filter_blacklist(self, values, field=None, as_keyword=True):
+        return self & self.filter_blacklist(values, field=field, as_keyword=as_keyword)
+
+    def with_filter_gte(self, value, field=None):
+        return self & self.filter_gte(value, field=field)
+
+    def with_filter_gt(self, value, field=None):
+        return self & self.filter_gt(value, field=field)
+
+    def with_filter_lte(self, value, field=None):
+        return self & self.filter_lte(value, field=field)
+
+    def with_filter_lt(self, value, field=None):
+        return self & self.filter_lt(value, field=field)
 
     def filter_term(self, value, field=None, as_keyword=True):
         field = self.get_unique_field(field, as_keyword=as_keyword)
-        return self & Q('term', **{field: value})
+        return  Q('term', **{self.keyword_field(field): value})
 
     def filter_terms(self, values, field=None, as_keyword=True):
         field = self.get_unique_field(field, as_keyword=as_keyword)
-        return self & Q('terms', **{self.keyword_field(field): values})
+        return Q('terms', **{self.keyword_field(field): values})
 
     def filter_time_range(self, field=None, start=None, end=None, period=None, pattern=None):
         field = self.get_unique_field(field, as_keyword=False)
-        return self & TimeFilter(field=field, start=start, end=end, period=period, pattern=pattern)
+        return TimeFilter(field=field, start=start, end=end, period=period, pattern=pattern)
 
     def filter_whitelist(self, values, field=None, as_keyword=True):
         return self.filter_terms(values, field=field, as_keyword=as_keyword)
@@ -874,19 +937,19 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def filter_gte(self, value, field=None):
         field = self.get_unique_field(field, as_keyword=False)
-        return self & Q('range', **{field: {'gte': value}})
+        return Q('range', **{field: {'gte': value}})
 
     def filter_gt(self, value, field=None):
         field = self.get_unique_field(field, as_keyword=False)
-        return self & Q('range', **{field: {'gt': value}})
+        return Q('range', **{field: {'gt': value}})
 
     def filter_lte(self, value, field=None):
         field = self.get_unique_field(field, as_keyword=False)
-        return self & Q('range', **{field: {'lte': value}})
+        return Q('range', **{field: {'lte': value}})
 
     def filter_lt(self, value, field=None):
         field = self.get_unique_field(field, as_keyword=False)
-        return self & Q('range', **{field: {'lt': value}})
+        return Q('range', **{field: {'lt': value}})
 
     def groupby(self, field_names, size=None):
         maximum_bucket_limit = size or self.maximum_bucket_limit

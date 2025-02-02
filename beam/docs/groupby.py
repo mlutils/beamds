@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from elasticsearch_dsl import A
 import pandas as pd
 
@@ -17,10 +19,13 @@ class Groupby:
         self.groups = [A('terms', field=field_name, size=size)
                        for field_name in self.gb_field_names]
 
+        self.date_buckets = []
+
     def add_aggregator(self, field_name, agg_type):
         bucket_name = f"{field_name.removesuffix('.keyword')}_{agg_type}"
+        if self.es.is_date_field(field_name) and agg_type in ['min', 'max', 'avg']:
+            self.date_buckets.append(bucket_name)
         self.buckets[bucket_name] = A(agg_type, field=field_name)
-
 
     def sum(self, field_name):
         self.add_aggregator(field_name, 'sum')
@@ -149,7 +154,10 @@ class Groupby:
                         # ES DSL aggregator result is typically b[bucket_name].value
                         # If there's no aggregator result, store None
                         if hasattr(b, bucket_name):
-                            row[bucket_name] = b[bucket_name].value
+                            if bucket_name in self.date_buckets:
+                                row[bucket_name] = datetime.fromtimestamp(b[bucket_name].value / 1000)
+                            else:
+                                row[bucket_name] = b[bucket_name].value
                         else:
                             row[bucket_name] = None
 
@@ -165,12 +173,12 @@ class Groupby:
 
     def as_df(self):
         res = self._apply()
-        # pop index to different column
-        index = [r.pop('index') for r in res]
+        df = pd.DataFrame(res)
+        df = df.set_index('index')
         if len(self.gb_field_names) > 1:
-            # construct multi-index
-            index = pd.MultiIndex.from_tuples(index, names=[f.removesuffix('.keyword') for f in self.gb_field_names])
-        df = pd.DataFrame(res, index=index)
+            df.index = pd.MultiIndex.from_tuples(df.index, names=[f.removesuffix('.keyword') for f in self.gb_field_names])
+        else:
+            df.index.name = self.gb_field_names[0].removesuffix('.keyword')
         return df
 
     @property
