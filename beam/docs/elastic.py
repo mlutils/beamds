@@ -502,16 +502,16 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if self.level == 'root':
             return list(self.client.indices.get('*'))
         else:
-            return self.as_df(add_ids=False, add_score=False, add_index_name=False)
+            return self._get_all_values()
 
-    def _get_values(self, size=None):
+    def _get_all_values(self):
         if self._values is None:
-            self._values, self._metadata = self._get_values_and_metadata(size=size)
+            self._values, self._metadata = self._get_values_and_metadata()
         return self._values
 
-    def _get_metadata(self, size=None):
+    def _get_all_metadata(self):
         if self._metadata is None:
-            self._metadata = self._get_values_and_metadata(source=False, size=size)[1]
+            self._metadata = self._get_values_and_metadata(source=False)[1]
         return self._metadata
 
     def _get_values_and_metadata(self, source=True, size=None):
@@ -1002,10 +1002,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
         q = Q('function_score', functions=[{'random_score': rs}])
         return self & q
 
-    def get_best_field_to_random_score(self):
+    def get_best_field_to_sort(self):
         schema = self.schema
         for field, field_metadata in schema.items():
-            if field_metadata['type'] == 'keyword':
+            if 'type' in field_metadata and field_metadata['type'] == 'keyword':
                 return field
         for field, field_metadata in schema.items():
             if 'fields' in field_metadata and 'keyword' in field_metadata['fields']:
@@ -1013,14 +1013,15 @@ class BeamElastic(PureBeamPath, BeamDoc):
         return '_id'
 
     def sample(self, n=1, seed=None, as_df=True):
-        ind = self.random_generator(seed)
+        field = self.get_best_field_to_sort()
+        ind = self.random_generator(seed, field=field)
         if as_df:
             return ind.as_df(size=n)
         return ind.as_dict(size=n)
 
     @property
     def ids(self):
-        m = self._get_metadata()
+        m = self._get_all_metadata()
         return [x['id'] for x in m]
 
     def dropna(self, subset=None):
