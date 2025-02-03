@@ -391,14 +391,18 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
         # todo - fix this with the existing CommandConfig dataclass
-        # if command is not None and command.executable is not None:
-        #     command = command.dict()
+        cmd = []
+        args_ = []
+
+        if command and "executable" in command:
+            cmd = [command["executable"]]
+            args_ = command.get("args", [])
+
+
+        # if command and 'executable' in command:
+        #     [command["executable"]] + command.get("args", [])
         # else:
         #     command = None
-        if command and command.executable:
-            command = command.as_list()
-        else:
-            command = None
 
         # Preparing volume mounts
         volume_mounts = []
@@ -432,18 +436,19 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         if use_gpu is True:
             resources['requests']['nvidia.com/gpu'] = gpu_requests
             resources['limits']['nvidia.com/gpu'] = gpu_limits
-        if security_context_config and security_context_config.enable_security_context:
+        if security_context_config and security_context_config['enable_security_context']:
             security_context = {
                 "capabilities": {
-                    "add": security_context_config.add_capabilities
+                    "add": security_context_config['add_capabilities']
                 },
-                "privileged": security_context_config.privileged  # Setting the privileged status
+                "privileged": security_context_config['privileged']  # Setting the privileged status
             }
 
         return client.V1Container(
             name=container_name,
             image=image_name,
-            command=command,
+            command=cmd,
+            args=args_,
             ports=[client.V1ContainerPort(container_port=port) for port in ports] if ports else [],
             env=env_vars,
             volume_mounts=volume_mounts,
@@ -1245,10 +1250,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_cron_job(self, config):
 
-        pvc_mounts = [{
-            'pvc_name': sc.pvc_name,
-            'mount_path': sc.pvc_mount_path
-        } for sc in config.storage_configs if sc.create_pvc] if config.storage_configs else []
+        pvc_mounts = [{'pvc_name': sc['pvc_name'], 'mount_path': sc['pvc_mount_path']}
+                      for sc in config.storage_configs if sc['create_pvc']] if config.storage_configs else []
 
         # Create the container definition
         container = self.create_container(
@@ -1267,13 +1270,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             entrypoint_envs=config.entrypoint_envs
         )
 
-        if config.restart_policy_configs.condition == "Always":
-            config.restart_policy_configs.condition = "OnFailure"
+        if config.restart_policy_configs['condition'] == "Always":
+            config.restart_policy_configs['condition'] = "OnFailure"
 
         # Create the pod template spec
         pod_spec = client.V1PodSpec(
             containers=[container],
-            restart_policy=config.restart_policy_configs.condition,
+            restart_policy=config.restart_policy_configs['condition'],
         )
 
         if config.use_node_selector is True:
@@ -1288,8 +1291,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the job spec
         job_spec = client.V1JobSpec(
             template=pod_template,
-            backoff_limit=config.restart_policy_configs.max_attempts,
-            active_deadline_seconds=config.restart_policy_configs.active_deadline_seconds
+            backoff_limit=config.restart_policy_configs['max_attempts'],
+            active_deadline_seconds=config.restart_policy_configs['active_deadline_seconds']
         )
 
         # Create the cron job spec

@@ -279,29 +279,7 @@ class BeamDeploy(BeamBase):
 
 
         # Delegate CronJob creation to k8s class
-        cronjob = self.k8s.create_cron_job(Namespace(
-            project_name=self.project_name,
-            cron_job_name=self.cron_job_name,
-            image_name=self.image_name,
-            job_schedule=self.job_schedule,
-            container_name=self.container_name,
-            command=self.command,
-            entrypoint_args=self.entrypoint_args,
-            entrypoint_envs=self.entrypoint_envs,
-            cpu_requests=self.cpu_requests,
-            cpu_limits=self.cpu_limits,
-            memory_requests=self.memory_requests,
-            memory_limits=self.memory_limits,
-            use_node_selector=self.use_node_selector,
-            node_selector=self.node_selector,
-            use_gpu=self.use_gpu,
-            gpu_requests=self.gpu_requests,
-            gpu_limits=self.gpu_limits,
-            labels=self.labels,
-            storage_configs=self.storage_configs,
-            security_context_config=self.security_context_config,
-            restart_policy_configs=self.restart_policy_configs)
-        )
+        cronjob = self.k8s.create_cron_job(config=self.hparams)
 
         logger.info(
             f"CronJob '{self.cron_job_name}' created. Pods will be scheduled according to '{self.job_schedule}'.")

@@ -11,10 +11,9 @@ from .dataclasses import (ServiceConfig, StorageConfig, RayPortsConfig, UserIdmC
 class BeamJobManager(BeamBase):
     def __init__(self, deployment: Union[BeamDeploy, Dict[str, BeamDeploy], None], config, pods: List[BeamPod] = None,
                  *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, hparams=config, **kwargs)
         self.pods = pods
         self.deployment = deployment
-        self.config = config
         self.k8s = BeamK8S(
             api_url=self.hparams.api_url,
             api_token=self.hparams.api_token,
@@ -65,15 +64,15 @@ class BeamCronJob(BeamJobManager):
         return cls._deploy_and_launch(config=config, k8s=k8s)
 
     def delete(self):
-        self.manager.delete_cron_job(self.config.cron_job_name, self.config.project_name)
+        self.manager.delete_cron_job(self.hparams.cron_job_name, self.hparams.project_name)
 
     def monitor(self):
-        self.manager.monitor_cron_job(self.config.cron_job_name, self.config.project_name)
+        self.manager.monitor_cron_job(self.hparams.cron_job_name, self.hparams.project_name)
 
 
 class BeamJob:
     def __init__(self, config, k8s=None):
-        self.config = JobConfig(**config)
+        self.hparams = JobConfig(**config)
 
         if k8s is None:
             self.k8s = k8s or BeamK8S(
@@ -92,10 +91,10 @@ class BeamJob:
         return cls(config, k8s), pods
 
     def delete(self):
-        self.manager.delete_job(self.config.job_name, self.config.project_name)
+        self.manager.delete_job(self.hparams.job_name, self.hparams.project_name)
 
     def monitor(self):
-        self.manager.monitor_job(self.config.job_name, self.config.project_name)
+        self.manager.monitor_job(self.hparams.job_name, self.hparams.project_name)
 
 # class BeamJob:
 #     Handles Job deployment, monitoring, logs, and interaction via k8s API
@@ -137,7 +136,7 @@ class BeamJob:
 #         Delete the Job.
 #         """
 #         try:
-#             self.k8s.delete_job(self.job.metadata.name, self.config['project_name'])
+#             self.k8s.delete_job(self.job.metadata.name, self.hparams['project_name'])
 #             logger.info(f"Job {self.job.metadata.name} deleted successfully.")
 #         except Exception as e:
 #             logger.error(f"Error occurred while deleting the Job: {str(e)}")
@@ -148,14 +147,14 @@ class BeamJob:
 #         """
 #         try:
 #             # Monitor the job status
-#             self.k8s.monitor_job(job_name=self.config['job_name'], namespace=self.config['project_name'])
+#             self.k8s.monitor_job(job_name=self.hparams['job_name'], namespace=self.hparams['project_name'])
 #
 #             # Once completed, fetch and print logs
-#             logs = self.k8s.get_job_logs(job_name=self.config['job_name'], namespace=self.config['project_name'])
+#             logs = self.k8s.get_job_logs(job_name=self.hparams['job_name'], namespace=self.hparams['project_name'])
 #             if logs:
-#                 logger.info(f"Logs for Job '{self.config['job_name']}':\n{logs}")
+#                 logger.info(f"Logs for Job '{self.hparams['job_name']}':\n{logs}")
 #         except Exception as e:
-#             logger.error(f"Failed to monitor job '{self.config['job_name']}': {str(e)}")
+#             logger.error(f"Failed to monitor job '{self.hparams['job_name']}': {str(e)}")
 
 
 
@@ -198,7 +197,7 @@ class BeamJob:
 #         Delete the CronJob.
 #         """
 #         try:
-#             self.k8s.delete_cron_job(self.deployment.metadata.name, self.config['project_name'])
+#             self.k8s.delete_cron_job(self.deployment.metadata.name, self.hparams['project_name'])
 #             logger.info(f"CronJob {self.deployment.metadata.name} deleted successfully.")
 #         except Exception as e:
 #             logger.error(f"Error occurred while deleting the CronJob: {str(e)}")
@@ -209,17 +208,17 @@ class BeamJob:
 #         """
 #         try:
 #             # Monitor the cron job's spawned jobs
-#             self.k8s.monitor_cron_job(cron_job_name=self.config['cron_job_name'], namespace=self.config['project_name'])
+#             self.k8s.monitor_cron_job(cron_job_name=self.hparams['cron_job_name'], namespace=self.hparams['project_name'])
 #
 #             # Fetch logs from jobs spawned by the cron job
-#             jobs = self.k8s.get_pods_by_label({'cronjob-name': self.config['cron_job_name']}, self.config['project_name'])
+#             jobs = self.k8s.get_pods_by_label({'cronjob-name': self.hparams['cron_job_name']}, self.hparams['project_name'])
 #             if jobs:
 #                 for job in jobs:
-#                     logs = self.k8s.get_job_logs(job.metadata.name, namespace=self.config['project_name'])
+#                     logs = self.k8s.get_job_logs(job.metadata.name, namespace=self.hparams['project_name'])
 #                     if logs:
-#                         logger.info(f"Logs for CronJob '{self.config['cron_job_name']}':\n{logs}")
+#                         logger.info(f"Logs for CronJob '{self.hparams['cron_job_name']}':\n{logs}")
 #         except Exception as e:
-#             logger.error(f"Failed to monitor cron job '{self.config['cron_job_name']}': {str(e)}")
+#             logger.error(f"Failed to monitor cron job '{self.hparams['cron_job_name']}': {str(e)}")
 #
 #     def get_cron_job_logs(self):
 #         """
