@@ -221,6 +221,7 @@ def as_scipy_csr(x):
     # Handle PyTorch Tensors
     if isinstance(x, torch.Tensor):
         x = x.cpu()  # Ensure the tensor is on CPU
+        x = x.coalesce()
         if x.layout == torch.sparse_coo:
             # Convert sparse COO tensor to CSR
             ind = x.indices().numpy()
@@ -265,6 +266,7 @@ def as_scipy_coo(x):
     # Handle PyTorch Tensors
     if isinstance(x, torch.Tensor):
         x = x.cpu()  # Ensure the tensor is on CPU
+        x = x.coalesce()
         if x.layout == torch.sparse_coo:
             # Extract indices and values for sparse COO tensor
             ind = x.indices().numpy()

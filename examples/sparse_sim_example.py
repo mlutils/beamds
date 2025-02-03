@@ -1,5 +1,5 @@
 import torch
-from beam.similarity import SparseSimilarity
+from beam import Timer
 
 
 if __name__ == '__main__':
@@ -7,7 +7,7 @@ if __name__ == '__main__':
     M = 40000
 
     nel = 100
-    k1 = 20000
+    k1 = 15000
     k2 = 20
 
     def gen_coo_vectors(k):
@@ -27,15 +27,20 @@ if __name__ == '__main__':
     s1 = gen_coo_vectors(k1)
     s2 = gen_coo_vectors(k2)
 
-    sparse_sim = SparseSimilarity(metric='cosine', format='coo', vec_size=M, device='cuda')
+    # from beam.similarity.sparse import SparseSimilarity as Similarity
+    from beam.similarity.sparnn import SparnnSimilarity as Similarity
+    sparse_sim = Similarity(metric='cosine', format='coo', vec_size=M, device='cuda')
     sparse_sim.add(s1)
 
-    import time
-    t = time.time()
-    dist, ind = sparse_sim.search(s2, k=10)
-    print(time.time() - t)
-    print(dist.shape, ind.shape)
-    print(dist)
-    print(ind)
+    with Timer(name='sparnn_fit_and_search'):
+        sim = sparse_sim.search(s2, k=10)
+
+    s3 = gen_coo_vectors(k2)
+    with Timer(name='sparnn__search'):
+        sim = sparse_sim.search(s3, k=10)
+
+    print(sim.distance.shape, sim.index.shape)
+    print(sim.distance)
+    print(sim.index)
     print(sparse_sim.index.shape)
     print(sparse_sim.index)

@@ -31,7 +31,12 @@ if pydantic.__version__ < '2.0.0':
     except ImportError:
         logger.warning("langchain not found, using pydantic only as the LLM base")
 else:
-    logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
+    from langchain import __version__ as langchain_version
+    if langchain_version < '0.3.0':
+        logger.warning("pydantic version >= 2.0.0 is incompatible with langchain < 0.3.0, using pydantic only as the LLM base")
+    else:
+        from langchain.llms.base import LLM
+        from langchain.callbacks.manager import CallbackManagerForLLMRun
 
 from pydantic import Field, PrivateAttr
 from .utils import get_conversation_template

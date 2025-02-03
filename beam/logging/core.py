@@ -7,7 +7,7 @@ import atexit
 
 class BeamLogger:
 
-    def __init__(self, path=None, print=True, colors=True):
+    def __init__(self, paths=None, print=True, colors=True):
         self.logger = loguru.logger.opt(depth=1)
         self._level = None
         self.colors = colors
@@ -20,9 +20,15 @@ class BeamLogger:
             self.print()
 
         self.file_objects = {}
-        self.path = None
-        if path is not None:
-            self.add_file_handlers(path)
+        self.paths = {}
+        if type(paths) is dict:
+            for t, p in paths.items():
+                self.add_file_handlers(p, tag=t)
+        elif type(paths) is str:
+            self.add_file_handlers(paths, tag='default')
+        elif type(paths) is list:
+            for p in paths:
+                self.add_file_handlers(p)
 
         self.set_verbosity('INFO')
         atexit.register(self.cleanup)
@@ -77,7 +83,7 @@ class BeamLogger:
 
         debug_path = path.joinpath('debug.log')
         file_object = debug_path.open('w')
-        self.file_objects[str(debug_path)] = file_object
+        self.file_objects[file_object.as_uri()] = file_object
 
         if self.running_platform == 'script':
             format = '{time:YYYY-MM-DD HH:mm:ss} ({elapsed}) | BeamLog | {level} | {file} | {function} | {line} | {message}'
@@ -87,18 +93,22 @@ class BeamLogger:
 
         handler = self.logger.add(file_object, level='DEBUG', format=format)
 
-        self.handlers[str(debug_path)] = handler
+        self.handlers[file_object.as_uri()] = handler
 
         json_path = path.joinpath('json.log')
         file_object = json_path.open('w')
-        self.file_objects[str(json_path)] = file_object
+        self.file_objects[file_object.as_uri()] = file_object
 
         format = 'JSON LOGGER'
         handler = self.logger.add(file_object, level='DEBUG', format=format, serialize=True)
 
-        self.handlers[str(json_path)] = handler
+        self.handlers[file_object.as_uri()] = handler
         if tag is not None:
             self.tags[tag] = path
+            self.paths[tag] = path
+        else:
+            self.paths[path.as_uri()] = path
+
 
     def remove_tag(self, tag):
         path = self.tags[tag]
@@ -150,17 +160,12 @@ class BeamLogger:
 
     def __getstate__(self):
 
-        if self.path is None:
-            path = None
-        elif isinstance(self.path, str):
-            path = self.path
-        else:
-            path = self.path.as_uri()
-        state = {'path': path}
+        paths = {k: v.as_uri() for k, v in self.paths.items()}
+        state = {'paths': paths}
         return state
 
     def __setstate__(self, state):
-        self.__init__(state['path'])
+        self.__init__(state['paths'])
 
     def stdout_handler(self, level='INFO', file_info=True, colors=True):
 

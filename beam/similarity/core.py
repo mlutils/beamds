@@ -94,9 +94,13 @@ class BeamSimilarity(Processor):
 
     def add_index(self, x, index=None):
 
-        if not len(self.index):
+        if self.index is None or not len(self.index):
             if index is None:
-                index = np.arange(len(x))
+                try:
+                    l = len(x)
+                except TypeError:
+                    l = x.shape[0]
+                index = np.arange(l)
                 self._is_range_index = True
                 self._is_numeric_index = True
             else:

@@ -518,11 +518,13 @@ class BeamElastic(PureBeamPath, BeamDoc):
         v = []
         meta = []
         s = self.s if source else self.s.source(False)
+        if size is not None:
+            s = s.params(size=size)
         for i, doc in enumerate(s.iterate(keep_alive=self.keep_alive)):
+            if i == size:
+                break
             v.append(doc.to_dict())
             meta.append(doc.meta.to_dict())
-            if size is not None and i >= size:
-                break
         return v, meta
 
     def ping(self):
@@ -990,14 +992,28 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def sort_values(self, field, ascending=True):
         return self & Q('sort', **{field: 'asc' if ascending else 'desc'})
 
-    def random_generator(self, seed=None):
+    def random_generator(self, seed=None, field=None):
         if seed is None:
             seed = np.random.randint(2**32)
-        q = Q('function_score', functions=[{'random_score': {'seed': seed}}])
+        rs = {'seed': seed}
+        if field is not None:
+            rs['field'] = self.keyword_field(field)
+
+        q = Q('function_score', functions=[{'random_score': rs}])
         return self & q
 
+    def get_best_field_to_random_score(self):
+        schema = self.schema
+        for field, field_metadata in schema.items():
+            if field_metadata['type'] == 'keyword':
+                return field
+        for field, field_metadata in schema.items():
+            if 'fields' in field_metadata and 'keyword' in field_metadata['fields']:
+                return f"{field}.keyword"
+        return '_id'
+
     def sample(self, n=1, seed=None, as_df=True):
-        ind = self & self.random_generator(seed)
+        ind = self.random_generator(seed)
         if as_df:
             return ind.as_df(size=n)
         return ind.as_dict(size=n)

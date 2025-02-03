@@ -174,11 +174,11 @@ class SparseSimilarity(BeamSimilarity):
             if self.layout == 'csr':
                 x = x.to_dense()
 
-            ab = self.index @ x.T
+            ab = self.vectors @ x.T
 
             if self.metric in ['l2', 'cosine']:
 
-                a2 = (self.index * self.index).sum(dim=1, keepdim=True)
+                a2 = (self.vectors * self.vectors).sum(dim=1, keepdim=True)
                 b2 = (x * x).sum(dim=1, keepdim=True)
 
                 if self.metric == 'cosine':
@@ -206,7 +206,7 @@ class SparseSimilarity(BeamSimilarity):
 
             dist = []
             for xi in x:
-                d = self.index * xi.unsqueeze(0)
+                d = self.vectors * xi.unsqueeze(0)
                 i = d._indices()
                 v = d._values()
 
