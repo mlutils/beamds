@@ -3,7 +3,7 @@ import string
 from .model_adapter import get_model_adapter
 
 
-default_token_pattern = f" ?[{re.escape(string.whitespace + string.punctuation)}]| ?[A-Za-z]{{1,4}}| ?\d{{1,3}}"
+default_token_pattern = fr" ?[{re.escape(string.whitespace + string.punctuation)}]| ?[A-Za-z]{{1,4}}| ?\d{{1,3}}"
 
 
 def text_splitter(text, chunk_size=100, separators=["\n\n", ". ", " "], length_function=None):

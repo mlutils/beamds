@@ -9,7 +9,7 @@ class Groupby:
     agg_name_mapping = {'mean': 'avg', 'sum': 'sum', 'min': 'min', 'max': 'max', 'nunique': 'cardinality',
                         'count': 'value_count'}
 
-    def __init__(self, es, gb_field_names: str|list[str], size=10000):
+    def __init__(self, es, gb_field_names: str|list[str], size=10000, max_items=None, max_buckets=None):
         self.buckets = {}
 
         self.es = es
@@ -20,6 +20,8 @@ class Groupby:
                        for field_name in self.gb_field_names]
 
         self.date_buckets = []
+        self.max_items = max_items
+        self.max_buckets = max_buckets
 
     def add_aggregator(self, field_name, agg_type):
         bucket_name = f"{field_name.removesuffix('.keyword')}_{agg_type}"
@@ -71,6 +73,15 @@ class Groupby:
             # self.add_aggregator(k, self.agg_name_mapping.get(v, v))
         return self
 
+    def circuit_breaker(self):
+        if self.max_items is not None:
+            if self.es.count() > self.max_items:
+                raise ValueError(f"Number of documents in the index exceeds the limit of {self.max_items}")
+        if self.max_buckets is not None:
+            for field in self.gb_field_names:
+                if self.es.nunique(field) > self.max_buckets:
+                    raise ValueError(f"Number of unique values in the field {field} exceeds the limit of {self.max_buckets}")
+
     def _apply(self):
         """
         Build the nested Elasticsearch aggregation, execute it,
@@ -83,6 +94,8 @@ class Groupby:
               ...
             }
         """
+
+        self.circuit_breaker()
 
         # -------------------------------------------------
         # 1) Build the nested aggregation structure

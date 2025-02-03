@@ -26,6 +26,7 @@ class MetaBeamInit(type):
 class BeamName:
 
     def __init__(self, name=None, dynamic_name=True, **kwargs):
+        super().__init__(**kwargs)
         self._name = name
         self._dynamic_name = dynamic_name
 

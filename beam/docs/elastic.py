@@ -1,3 +1,4 @@
+import json
 from argparse import Namespace
 
 import numpy as np
@@ -19,14 +20,14 @@ from ..importer import torch
 from .core import BeamDoc
 from .utils import parse_kql_to_dsl, generate_document_class, describe_dataframe
 from ..base import Loc
-from ..resources import resource
+from ..llm import beam_llm
 from .queries import TimeFilter
 from .groupby import Groupby
 
 
 class LLMQueryResponse(BaseModel):
-    index: str = None
-    query: dict
+    index: str
+    query_json_format: str
     short_description: str
 
 
@@ -59,6 +60,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
         self.tls = tls
         self.timeout = float(timeout) if timeout is not None else None
 
+        if retries is None:
+            retries = 3
+        self.retries = int(retries)
+
         self.client = client or self._get_client()
         self.keep_alive = keep_alive or '1m'
         self._values = None
@@ -78,15 +83,11 @@ class BeamElastic(PureBeamPath, BeamDoc):
         # concatenate fields from more_fields and fields
         self.fields = fields if fields else None
         self.sort_by = sort_by
-        self.llm = resource(llm)
+        self.llm = beam_llm(llm)
 
         if max_actions is None:
             max_actions = 10000
         self.max_actions = int(max_actions)
-
-        if retries is None:
-            retries = 3
-        self.retries = int(retries)
 
         if sleep is None:
             sleep = 0.1
@@ -143,8 +144,12 @@ class BeamElastic(PureBeamPath, BeamDoc):
             return self.document_query
         return None
 
-    def ask(self, question, execute=False, answer=True, **kwargs):
-        if self.llm is None:
+    def ask(self, question, llm=None, execute=False, answer=True, **kwargs):
+
+        if llm is None:
+            llm = self.llm
+
+        if llm is None:
             raise ValueError("LLM resource not set")
         has_index = self.index_name is not None
         if has_index:
@@ -171,10 +176,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
                   f"Your response should follow the following JSON format:\n"
                   f"{LLMQueryResponse.model_json_schema()}")
 
-        self.llm.reset_chat()
-        res = self.llm.chat(prompt, guidance=guidance, **kwargs).json
+        llm.reset_chat()
+        res = llm.chat(prompt, guidance=guidance, **kwargs).json
 
-        query = res['query']
+        query = json.loads(res['query_json_format'])
         description = res['short_description']
         index = res['index']
 
@@ -183,15 +188,18 @@ class BeamElastic(PureBeamPath, BeamDoc):
         text_answer = None
         if execute:
             df = (self & q).as_df()
-            # get some statistics:
 
             if answer:
-                info = describe_dataframe(df, n_samples=10)
+
+                if df is None or df.empty:
+                    info = "No matching documents found."
+                else:
+                    info = describe_dataframe(df, n_samples=10)
                 prompt = (f"Based on the data retrieved from the database:"
                           f"{info}\n\n"
                           f" please provide a text answer to the user's question: {question}\n\n")
 
-                text_answer = self.llm.chat(prompt, **kwargs).text
+                text_answer = llm.chat(prompt, **kwargs).text
 
         return Namespace(query=q, description=description, index=index, df=df, text_answer=text_answer)
 
@@ -257,7 +265,9 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if self.timeout is not None:
             kwargs['request_timeout'] = self.timeout
 
-        return Elasticsearch([host], http_auth=auth, verify_certs=self.verify)
+        return Elasticsearch([host], http_auth=auth, verify_certs=self.verify, max_retries=self.retries,  # Number of retries
+                             retry_on_status={500, 502, 503, 504},  # Retry on these errors
+                             retry_on_timeout=True)  # Retry when a timeout occurs
 
     @property
     def index_name(self):
@@ -511,13 +521,13 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def _get_all_metadata(self):
         if self._metadata is None:
-            self._metadata = self._get_values_and_metadata(source=False)[1]
+            self._metadata = self._get_values_and_metadata(_source=False)[1]
         return self._metadata
 
-    def _get_values_and_metadata(self, source=True, size=None):
+    def _get_values_and_metadata(self, _source=True, size=None):
         v = []
         meta = []
-        s = self.s if source else self.s.source(False)
+        s = self.s if _source else self.s.source(False)
         if size is not None:
             s = s.params(size=size)
         for i, doc in enumerate(s.iterate(keep_alive=self.keep_alive)):
@@ -527,12 +537,17 @@ class BeamElastic(PureBeamPath, BeamDoc):
             meta.append(doc.meta.to_dict())
         return v, meta
 
+    def get_values_and_metadata(self, size=None):
+        if size is None:
+            return self._get_all_values(), self._get_all_metadata()
+        return self._get_values_and_metadata(size=size)
+
     def ping(self):
         return self.client.ping()
 
     def as_df(self, add_ids=True, add_score=False, add_index_name=False, size=None):
         import pandas as pd
-        v, m = self._get_values_and_metadata(size=size)
+        v, m = self.get_values_and_metadata(size=size)
         index = None
         if add_ids:
             index = [x['id'] for x in m]
@@ -547,7 +562,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def as_cudf(self, add_ids=True, add_score=False, add_index_name=False, size=None):
         import cudf
-        v, m = self._get_values_and_metadata(size=size)
+        v, m = self.get_values_and_metadata(size=size)
         index = None
         if add_ids:
             index = [x['id'] for x in m]
@@ -562,7 +577,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def as_pl(self, add_ids=True, add_score=False, add_index_name=False, size=None):
         import polars as pl
-        v, m = self._get_values_and_metadata(size=size)
+        v, m = self.get_values_and_metadata(size=size)
         # Convert values to a Polars DataFrame
         df = pl.DataFrame(v)
 
@@ -572,7 +587,6 @@ class BeamElastic(PureBeamPath, BeamDoc):
             df = df.with_columns(pl.Series("_id", ids))
             # make the _id column the first column
             df = df.select(["_id"] + [c for c in df.columns if c != "_id"])
-
 
         # Add score column if requested
         if add_score:
@@ -585,13 +599,11 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         return df
 
-
     def as_dict(self, add_metadata=False, size=None):
-        v, m = self._get_values_and_metadata(size=size)
+        v, m = self.get_values_and_metadata(size=size)
         if add_metadata:
             return v, m
         return v
-
 
     def items(self):
         if self.level == 'root':
@@ -870,7 +882,6 @@ class BeamElastic(PureBeamPath, BeamDoc):
         else:
             q = Q('ids', values=ind)
             return self & q
-
 
     def add_alias(self, alias_name, routing=None, **kwargs):
 
