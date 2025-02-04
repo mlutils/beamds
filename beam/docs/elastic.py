@@ -781,8 +781,6 @@ class BeamElastic(PureBeamPath, BeamDoc):
             else:
                 raise ValueError("Cannot infer field name from multiple fields object")
 
-        field_name = self.keyword_field(field_name)
-
         if as_keyword:
             field_name = self.keyword_field(field_name)
 
@@ -835,13 +833,23 @@ class BeamElastic(PureBeamPath, BeamDoc):
             field_name = self.get_unique_field(field_name)
             s.aggs.metric(agg, A(agg, field=field_name, **kwargs))
             response = s.execute()
-            return response.aggregations[agg].value
+            v = response.aggregations[agg].value
+            v = self.format_aggregation_data(v, field_name, agg)
+            return v
+
         else:
+
             for field in self.fields:
                 s.aggs.metric(f"{agg}_{field}", A(agg, field=field, **kwargs))
             response = s.execute()
-            v = {field: response.aggregations[f"{agg}_{field}"].value for field in self.fields}
+            v = {field: self.format_aggregation_data(response.aggregations[f"{agg}_{field}"].value,
+                                                     field, agg) for field in self.fields}
             return pd.Series(v, name=agg)
+
+    def format_aggregation_data(self, value, field, agg):
+        if self.is_date_field(field) and agg in ['min', 'max', 'avg']:
+            value = datetime.fromtimestamp(value / 1000)
+        return value
 
     def mean(self, field_name=None):
         return self.agg('avg', field_name)
@@ -861,7 +869,8 @@ class BeamElastic(PureBeamPath, BeamDoc):
     def std(self, field_name=None):
         return self.agg('std_deviation', field_name)
 
-    def percentile(self, field_name=None, percentiles=[25, 50, 75]):
+    def percentile(self, field_name=None, percentiles=(25, 50, 75)):
+        percentiles = list(percentiles)
         return self.agg('percentiles', field_name, percents=percentiles)
 
     def __getitem__(self, item):
@@ -1014,14 +1023,32 @@ class BeamElastic(PureBeamPath, BeamDoc):
         return self & q
 
     def get_best_field_to_sort(self):
+        """
+        Determines the best field for sorting:
+        1. Prefers a date field if available.
+        2. Uses a dedicated keyword field next.
+        3. Falls back to a `.keyword` sub-field if available.
+        4. Defaults to `_id` if no suitable field is found.
+        """
         schema = self.schema
+
+        # 1️⃣ Prioritize date fields first
+        for field, field_metadata in schema.items():
+            if 'type' in field_metadata and field_metadata['type'] == 'date':
+                return field  # Best option for sorting
+
+        # 2️⃣ Check for dedicated keyword fields
         for field, field_metadata in schema.items():
             if 'type' in field_metadata and field_metadata['type'] == 'keyword':
                 return field
+
+        # 3️⃣ Check for `.keyword` sub-fields in text fields
         for field, field_metadata in schema.items():
             if 'fields' in field_metadata and 'keyword' in field_metadata['fields']:
                 return f"{field}.keyword"
-        return '_id'
+
+        # 4️⃣ Default fallback
+        return "_doc" if "_doc" in schema else "_id"
 
     def sample(self, n=1, seed=None, as_df=True):
         field = self.get_best_field_to_sort()
@@ -1045,4 +1072,22 @@ class BeamElastic(PureBeamPath, BeamDoc):
         for field in subset[1:]:
             q &= Q('exists', field=field)
         return self & q
+
+    def isna(self, subset=None):
+        if subset is None:
+            subset = self.fields
+        if type(subset) is str:
+            subset = [subset]
+        # add filter to remove None values
+        q = Q('missing', field=subset[0])
+        for field in subset[1:]:
+            q = q | Q('missing', field=field)
+        return self & q
+
+    def drop_duplicates(self, subset=None):
+        if subset is None:
+            subset = self.fields
+        if type(subset) is str:
+            subset = [subset]
+        return self.groupby(subset).agg('first')
 
