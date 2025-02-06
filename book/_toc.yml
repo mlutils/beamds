@@ -6,5 +6,4 @@ root: intro
 chapters:
 - file: readme
 - file: beam-resource
-- file: beam-resource
 - file: beam-with-elasticsearch
