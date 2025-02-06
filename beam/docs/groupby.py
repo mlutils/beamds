@@ -138,26 +138,29 @@ class Groupby:
 
         self.circuit_breaker()
 
-        s = self.es._s  # the underlying Search object
         results = []
 
         if self.use_composite:
             # ---------------------------------------
             # COMPOSITE AGGREGATION IMPLEMENTATION
             # ---------------------------------------
-            sources = [{field: {"terms": {"field": field}}} for field in self.gb_field_names]
-            composite_agg = A('composite', sources=sources, size=1000)  # 1000 buckets per batch
-
-            # Attach aggregations to the composite aggregation
-            for bucket_name, bucket in self.buckets.items():
-                composite_agg.metric(bucket_name, bucket)
-
-            s.aggs.bucket('composite_group', composite_agg)
 
             after_key = None
             while True:
+
+                s = self.es._s  # the underlying Search object
+                composite_kwargs = {}
                 if after_key:
-                    s.aggs['composite_group'].update({'after': after_key})
+                    composite_kwargs['after'] = after_key
+
+                sources = [{field: {"terms": {"field": field}}} for field in self.gb_field_names]
+                composite_agg = A('composite', sources=sources, size=1000, **composite_kwargs)  # 1000 buckets per batch
+
+                # Attach aggregations to the composite aggregation
+                for bucket_name, bucket in self.buckets.items():
+                    composite_agg.metric(bucket_name, bucket)
+
+                s.aggs.bucket('composite_group', composite_agg)
 
                 response = s.execute()
                 buckets = response.aggregations.composite_group.buckets
@@ -178,9 +181,10 @@ class Groupby:
 
                     results.append(row)
 
-                after_key = response.aggregations.composite_group.after_key
-                if not after_key:
+                if len(buckets) < self.es.maximum_bucket_limit:
                     break
+                after_key = response.aggregations.composite_group.after_key
+
         else:
 
             # -------------------------------------------------
@@ -188,6 +192,9 @@ class Groupby:
             # -------------------------------------------------
             # Start from the last grouping field and add all the metric buckets
             # g = self.groups[-1]
+
+            s = self.es._s  # the underlying Search object
+
             g = A('terms', field=self.gb_field_names[-1], size=self.size)
 
             # attach each aggregator bucket (sum, avg, etc.) at the deepest level

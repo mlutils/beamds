@@ -183,12 +183,26 @@ class BeamElastic(PureBeamPath, BeamDoc):
         description = res['short_description']
         index = res['index']
 
-        q = Q(query)
+        fields = None
+        sort = None
+        if 'query' in query:
+            q = Q(query['query'])
+            if '_source' in query:
+                fields = query['_source']
+            if 'sort' in query:
+                sort = query['sort']
+        else:
+            q = Q(query)
         df = None
         text_answer = None
         if execute:
-            df = (self & q).as_df()
+            ind = self & q
+            if fields is not None:
+                ind.set_fields(fields)
+            if sort is not None:
+                ind.sort(sort)
 
+            df = ind.as_df()
             if answer:
 
                 if df is None or df.empty:
@@ -377,13 +391,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         fields = kwargs.pop('fields', self.fields)
         sort_by = kwargs.pop('sort_by', self.sort_by)
         llm = kwargs.pop('llm', self.llm)
-        q = self.q
-        q_new = kwargs.pop('q', None)
-
-        if q is not None and q_new is not None:
-            q = q & q_new
-        elif q_new is not None:
-            q = q_new
+        q = kwargs.pop('q', self.q)
 
         # must be after extracting all other kwargs
         query = {**query, **kwargs}
@@ -514,40 +522,51 @@ class BeamElastic(PureBeamPath, BeamDoc):
         else:
             return self._get_all_values()
 
-    def _get_all_values(self):
+    def _get_all_values(self, **kwargs):
         if self._values is None:
-            self._values, self._metadata = self._get_values_and_metadata()
+            self._values, self._metadata = self._get_values_and_metadata(**kwargs)
         return self._values
 
-    def _get_all_metadata(self):
+    def _get_all_metadata(self, **kwargs):
         if self._metadata is None:
-            self._metadata = self._get_values_and_metadata(_source=False)[1]
+            self._metadata = self._get_values_and_metadata(_source=False, **kwargs)[1]
         return self._metadata
 
-    def _get_values_and_metadata(self, _source=True, size=None):
+    def _get_values_and_metadata(self, _source=True, size=None, pagination=None, add_score=False, **kwargs):
         v = []
         meta = []
         s = self.s if _source else self.s.source(False)
         if size is not None:
             s = s.params(size=size)
-        for i, doc in enumerate(s.iterate(keep_alive=self.keep_alive)):
+
+        if pagination is None:
+            pagination = size is None or size > self.max_actions
+
+        if pagination:
+            iterator = enumerate(s.iterate(keep_alive=self.keep_alive))
+        elif not pagination and add_score:
+            iterator = enumerate(s.execute())
+        else:
+            iterator = enumerate(s.scan())
+        for i, doc in iterator:
             if i == size:
                 break
             v.append(doc.to_dict())
             meta.append(doc.meta.to_dict())
         return v, meta
 
-    def get_values_and_metadata(self, size=None):
+    def get_values_and_metadata(self, size=None, **kwargs):
         if size is None:
-            return self._get_all_values(), self._get_all_metadata()
-        return self._get_values_and_metadata(size=size)
+            return self._get_all_values(**kwargs), self._get_all_metadata(**kwargs)
+        return self._get_values_and_metadata(size=size, **kwargs)
 
     def ping(self):
         return self.client.ping()
 
-    def as_df(self, add_ids=True, add_score=False, add_index_name=False, size=None):
+    def as_df(self, add_ids=True, add_score=False, add_index_name=False, size=None, pagination=None, use_score=False):
         import pandas as pd
-        v, m = self.get_values_and_metadata(size=size)
+        return_score = add_score or use_score
+        v, m = self.get_values_and_metadata(size=size, pagination=pagination, add_score=return_score)
         index = None
         if add_ids:
             index = [x['id'] for x in m]
@@ -560,9 +579,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         return df
 
-    def as_cudf(self, add_ids=True, add_score=False, add_index_name=False, size=None):
+    def as_cudf(self, add_ids=True, add_score=False, add_index_name=False, size=None, pagination=None, use_score=False):
         import cudf
-        v, m = self.get_values_and_metadata(size=size)
+        return_score = add_score or use_score
+        v, m = self.get_values_and_metadata(size=size, pagination=pagination, add_score=return_score)
         index = None
         if add_ids:
             index = [x['id'] for x in m]
@@ -575,9 +595,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         return df
 
-    def as_pl(self, add_ids=True, add_score=False, add_index_name=False, size=None):
+    def as_pl(self, add_ids=True, add_score=False, add_index_name=False, size=None, pagination=None, use_score=False):
         import polars as pl
-        v, m = self.get_values_and_metadata(size=size)
+        return_score = add_score or use_score
+        v, m = self.get_values_and_metadata(size=size, pagination=pagination, add_score=return_score)
         # Convert values to a Polars DataFrame
         df = pl.DataFrame(v)
 
@@ -599,8 +620,8 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         return df
 
-    def as_dict(self, add_metadata=False, size=None):
-        v, m = self.get_values_and_metadata(size=size)
+    def as_dict(self, add_metadata=False, size=None, pagination=None, add_score=False):
+        v, m = self.get_values_and_metadata(size=size, pagination=pagination, add_score=add_score)
         if add_metadata:
             return v, m
         return v
@@ -987,9 +1008,9 @@ class BeamElastic(PureBeamPath, BeamDoc):
         field = self.get_unique_field(field, as_keyword=False)
         return Q('range', **{field: {'lt': value}})
 
-    def groupby(self, field_names, size=None):
+    def groupby(self, field_names, size=None, **kwargs):
         maximum_bucket_limit = size or self.maximum_bucket_limit
-        return Groupby(self, field_names, size=maximum_bucket_limit)
+        return Groupby(self, field_names, size=maximum_bucket_limit, **kwargs)
 
     def __ge__(self, other):
         return self.filter_gte(other)
@@ -1022,6 +1043,30 @@ class BeamElastic(PureBeamPath, BeamDoc):
         q = Q('function_score', functions=[{'random_score': rs}])
         return self & q
 
+    def get_best_field_to_randomize(self):
+        """
+        Determines the best field for use with `random_score`:
+        1. Prefers a numeric field (integer, long, float) for stable randomization.
+        2. Uses `_seq_no` if available (good for recent documents).
+        3. Falls back to `_id` (random but not evenly distributed).
+        4. Returns `None` if no suitable field is found.
+        """
+        schema = self.schema
+        n = self.count()
+
+        # 1️⃣ Prefer numeric fields (better for consistent randomization)
+        for field, field_metadata in schema.items():
+            if 'type' in field_metadata and field_metadata['type'] in {'integer', 'long', 'float', 'double'}:
+                if self[field].dropna().count() / n > 0.5:
+                    return field  # Best choice
+
+        # 2️⃣ Use `_seq_no` if available (for stable ordering)
+        if "_seq_no" in schema:
+            return "_seq_no"
+
+        # 3️⃣ Use `_id` if nothing else is found
+        return "_id" if "_id" in schema else None  # If None, random_score will work without a field
+
     def get_best_field_to_sort(self):
         """
         Determines the best field for sorting:
@@ -1031,31 +1076,45 @@ class BeamElastic(PureBeamPath, BeamDoc):
         4. Defaults to `_id` if no suitable field is found.
         """
         schema = self.schema
+        n = self.count()
 
         # 1️⃣ Prioritize date fields first
         for field, field_metadata in schema.items():
             if 'type' in field_metadata and field_metadata['type'] == 'date':
-                return field  # Best option for sorting
+                if self[field].dropna().count() / n > 0.5:
+                    return field  # Best option for sorting
 
         # 2️⃣ Check for dedicated keyword fields
         for field, field_metadata in schema.items():
             if 'type' in field_metadata and field_metadata['type'] == 'keyword':
-                return field
+                if self[field].dropna().count() / n > 0.5:
+                    return field
 
         # 3️⃣ Check for `.keyword` sub-fields in text fields
         for field, field_metadata in schema.items():
             if 'fields' in field_metadata and 'keyword' in field_metadata['fields']:
-                return f"{field}.keyword"
+                f = f"{field}.keyword"
+                if self[field].dropna().count() / n > 0.5:
+                    return f
 
         # 4️⃣ Default fallback
         return "_doc" if "_doc" in schema else "_id"
 
-    def sample(self, n=1, seed=None, as_df=True):
-        field = self.get_best_field_to_sort()
+    @cached_property
+    def best_field_to_randomize(self):
+        return self.get_best_field_to_randomize()
+
+    @cached_property
+    def best_field_to_sort(self):
+        return self.get_best_field_to_sort()
+
+    def sample(self, n=1, seed=None, as_df=True, field=None):
+        if field is None:
+            field = self.best_field_to_randomize
         ind = self.random_generator(seed, field=field)
         if as_df:
-            return ind.as_df(size=n)
-        return ind.as_dict(size=n)
+            return ind.as_df(size=n, use_score=True)
+        return ind.as_dict(size=n, add_score=True)
 
     @property
     def ids(self):
