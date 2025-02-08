@@ -1017,6 +1017,7 @@ class NeuralAlgorithm(Algorithm):
 
             if 'DataBatch' in str(type(subset)):
                 dataset = UniversalDataset(subset.data, index=subset.index, label=subset.label)
+                index = subset.index
             elif subset_type.minor in [Types.list, Types.tuple]:
                 dataset = UniversalDataset(*subset)
             elif subset_type.minor in [Types.dict]:
@@ -1025,13 +1026,22 @@ class NeuralAlgorithm(Algorithm):
                 dataset = UniversalDataset(subset)
 
             if index is None:
-                index = len(dataset)
+                if hasattr(dataset, 'index'):
+                    index = dataset.index
+                else:
+                    index = len(dataset)
             sampler = UniversalBatchSampler(index, self.get_hparam('batch_size_eval'), shuffle=False,
                                             tail=True, once=True)
+
+            if str(dataset.device) == 'cpu' and self.pin_memory:
+                pin_memory = True
+            else:
+                pin_memory = False
+
             dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler, batch_size=None,
                                                      num_workers=self.get_hparam('cpu_workers'),
                                                      timeout=self.get_hparam('data_fetch_timeout'),
-                                                     pin_memory=self.pin_memory)
+                                                     pin_memory=pin_memory)
         return dataloader
 
     def schedulers_step(self, objective=None, step_type=None):

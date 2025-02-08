@@ -57,6 +57,7 @@ class UniversalDataset(torch.utils.data.Dataset):
             args = args[1:]
 
         self._data_type = None
+        self._device = None
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if len(args) == 1:
@@ -122,7 +123,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
     @property
     def data_type(self):
-        if self._data_type is None:
+        if self._data_type is None or self._data_type.major == Types.none:
             self._data_type = check_type(self.data)
         return self._data_type
 
@@ -157,7 +158,6 @@ class UniversalDataset(torch.utils.data.Dataset):
             return UniversalDataset.get_subset(self, ind)
 
         if self.index is not None:
-
             ind = slice_to_index(ind, l=self.index.index.max()+1)
 
             ind_type = check_type(ind, element=False)
@@ -177,6 +177,8 @@ class UniversalDataset(torch.utils.data.Dataset):
             ind = slice_to_index(ind, l=len(self))
             iloc = ind
 
+        if type(iloc) is int:
+            iloc = [iloc]
         sample = self.getitem(iloc)
         if self.to_torch:
             sample = as_tensor(sample, device=self.target_device)
@@ -189,19 +191,21 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         return DataBatch(index=ind, data=sample, label=label)
 
-    @cached_property
+    @property
     def device(self):
 
-        if self.data_type.minor == Types.dict:
-            device = recursive_device(next(iter(self.data.values())))
-        elif self.data_type.minor == Types.list:
-            device = recursive_device(self.data[0])
-        elif hasattr(self.data, 'device') and self.data.device is not None:
-            device = self.data.device
-        else:
-            device = None
+        if self._device is None:
+            if self.data_type.minor == Types.dict:
+                device = recursive_device(next(iter(self.data.values())))
+            elif self.data_type.minor == Types.list:
+                device = recursive_device(self.data[0])
+            elif hasattr(self.data, 'device') and self.data.device is not None:
+                device = self.data.device
+            else:
+                device = None
+            self._device = beam_device(device)
 
-        return beam_device(device)
+        return self._device
 
     def __repr__(self):
         return repr(self.data)

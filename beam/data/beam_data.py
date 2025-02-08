@@ -264,7 +264,7 @@ class BeamData(BeamName):
     def has_index(self):
         if self._has_index is None:
             _ = self.index
-        self._has_index = self._index is not None
+        self._has_index = self._index is not None and len(self._index)
         return self._has_index
 
     @property
@@ -1851,7 +1851,7 @@ class BeamData(BeamName):
                 label = None
 
             if self.has_index:
-                iloc = self.info['map'].loc[index].values
+                iloc = self.info['map'].loc[as_numpy(index)].values
             else:
                 iloc = index
 
@@ -2145,6 +2145,9 @@ class BeamData(BeamName):
             BeamData.write_file(self.all_paths, path)
 
     def __str__(self):
+
+        if self.is_cached and self.orientation == 'simple':
+            return f"BeamData (simple): {self.name}\n{self.data}"
 
         params = {'orientation': self.orientation, 'lazy': self.lazy, 'stored': self.is_stored,
                   'cached': self.is_cached, 'device': self.device, 'objects_type': self.objects_type,

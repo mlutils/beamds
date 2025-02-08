@@ -3,7 +3,7 @@ import os
 import math
 from .core_config import BeamConfig, BeamParam
 from .deepspeed import DeepspeedConfig
-from .utils import _beam_arguments
+from .utils import _beam_arguments, empty_beam_parser
 from ..base import base_paths
 
 
@@ -402,7 +402,7 @@ def beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
         pr = args[0]
         args = args[1:]
     else:
-        pr = UniversalConfig()
+        pr = empty_beam_parser()
 
     args = [pr] + list(args)
     return _beam_arguments(*args, return_defaults=return_defaults, return_tags=return_tags, **kwargs)
