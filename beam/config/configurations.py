@@ -67,6 +67,9 @@ class DatasetConfig(BeamConfig):
         BeamParam('split_dataset_seed', int, 5782, 'Seed dataset split (set to zero to get random split)'),
         BeamParam('test_size', float, .2, 'Test set percentage'),
         BeamParam('validation_size', float, .2, 'Validation set percentage'),
+        BeamParam('stratify_dataset', bool, False, 'Stratify the dataset split by the labels'),
+        BeamParam('dataset_time_index', str, None, 'The time index to use for time-based splits'),
+        BeamParam('test_split_method', str, 'uniform', 'The method to split the test set [uniform|time_based]'),
     ]
 
 

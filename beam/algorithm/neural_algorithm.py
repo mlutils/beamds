@@ -1026,7 +1026,7 @@ class NeuralAlgorithm(Algorithm):
                 dataset = UniversalDataset(subset)
 
             if index is None:
-                if hasattr(dataset, 'index'):
+                if hasattr(dataset, 'index') and dataset.index is not None:
                     index = dataset.index
                 else:
                     index = len(dataset)
@@ -1173,7 +1173,6 @@ class NeuralAlgorithm(Algorithm):
 
             self.preprocess_epoch(epoch=n, training=training)
             desc = f"{subset} (epoch {n+1}/{self.n_epochs + self.swa_epochs})"
-
 
             data_generator = self.finite_data_generator(subset, self.epoch_length[subset])
             for i, samples in self.reporter.iterate(data_generator,

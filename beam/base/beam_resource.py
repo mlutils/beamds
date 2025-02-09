@@ -108,3 +108,12 @@ class BeamResource(BeamName):
 
     def __str__(self):
         return self.str
+
+    def __getstate__(self):
+        return self.as_uri()
+
+    def __setstate__(self, state):
+        # initialize class from uri
+        obj = self.from_uri(state)
+        self.__dict__.update(obj.__dict__)
+

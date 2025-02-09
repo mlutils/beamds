@@ -242,7 +242,10 @@ class CIFAR10Algorithm(NeuralAlgorithm):
     def inference_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
-            x = sample
+            if type(sample) is dict:
+                x = sample['x']
+            else:
+                x = sample
         else:
             x, y = sample['x'], sample['y']
 
@@ -290,17 +293,32 @@ if __name__ == '__main__':
         dropout=.0, activation='gelu', channels=512, label_smoothing=.2, padding=4, scale_down=.7,
         scale_up=1.4, ratio_down=.7, ratio_up=1.4)
 
-    experiment = Experiment(args)
+    # experiment = Experiment(args)
+    #
+    # alg = experiment.fit(CIFAR10Algorithm, CIFAR10Dataset, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})
+    #
+    # # ## Inference
+    # inference = alg('test')
+    #
+    # logger.info('Test inference results:')
+    # for n, v in inference.statistics['test']['metrics'].items():
+    #     logger.info(f'{n}:')
+    #     logger.info(v)
 
-    # alg = CIFAR10Algorithm.from_pretrained('/root/beam_data/projects/experiment/cifar10/CIFAR10Algorithm/debug/000017_20250208_215142',
-    #                                        dataset=CIFAR10Dataset(args))
-    alg = experiment.fit(CIFAR10Algorithm, CIFAR10Dataset, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})
+    dataset = CIFAR10Dataset(args)
+    alg = CIFAR10Algorithm.from_pretrained(
+        '/root/beam_data/projects/experiment/cifar10/CIFAR10Algorithm/debug/000017_20250208_215142',
+        dataset=CIFAR10Dataset(args))
 
-    # ## Inference
-    inference = alg('test')
+    subset = dataset[5:7]
+    res = alg.predict(subset, return_dataset=True)
 
     logger.info('Test inference results:')
-    for n, v in inference.statistics['test']['metrics'].items():
+    for n, v in res.statistics['metrics'].items():
         logger.info(f'{n}:')
         logger.info(v)
+
+    from beam import beam_server
+    beam_server(alg)
+
 
