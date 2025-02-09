@@ -71,5 +71,10 @@ if __name__ == '__main__':
 
     beam_server(alg)
 
+
+    # to connect and query the model use:
+    # alg = resource('http://localhost:<port>')
+    # preds = alg.predict(torch.randn(n_examples, n_features))
+
     logger.warning("Done!")
 
