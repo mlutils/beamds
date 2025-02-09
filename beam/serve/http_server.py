@@ -11,7 +11,7 @@ from statsmodels.tsa.statespace.tests.test_mlemodel import kwargs
 from ..logging import beam_logger as logger
 from ..path import beam_path
 from .server import BeamServer
-from ..utils import DataClassEncoder
+from ..utils import BeamJsonEncoder
 
 try:
     import torch
@@ -22,7 +22,7 @@ except ImportError:
 
 class CustomJSONProvider(DefaultJSONProvider):
     def dumps(self, obj, **kwargs):
-        return json.dumps(obj, cls=DataClassEncoder, **kwargs)
+        return json.dumps(obj, cls=BeamJsonEncoder, **kwargs)
 
     def loads(self, s, **kwargs):
         return json.loads(s, **kwargs)
@@ -85,6 +85,7 @@ class HTTPServer(BeamServer):
         super().__init__(*args, application=application, **kwargs)
         self.app = Flask(__name__)
         self.app.json_provider_class = CustomJSONProvider
+        self.app.json = CustomJSONProvider(self.app)
         self.app.add_url_rule('/', view_func=self.homepage)
         self.app.add_url_rule('/info', view_func=self.get_info)
         # Add a route to serve the image

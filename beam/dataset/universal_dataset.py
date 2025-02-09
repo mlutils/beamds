@@ -8,16 +8,17 @@ from ..type import Types
 from ..utils import cached_property, slice_array
 from ..path import beam_path
 from ..data import BeamData
+from ..base import BeamBase
 
 from .sampler import UniversalBatchSampler
 from ..utils import (recursive_batch, to_device, recursive_device, container_len, beam_device, as_tensor, check_type,
                      as_numpy, slice_to_index, DataBatch)
 
 
-class UniversalDataset(torch.utils.data.Dataset):
+class UniversalDataset(torch.utils.data.Dataset, BeamBase):
 
     def __init__(self, *args, index=None, label=None, device=None, target_device=None, to_torch=True,
-                 index_mapping='backward', preprocess=True, **kwargs):
+                 index_mapping='backward', preprocess=True, hparams=None, **kwargs):
         """
         Universal Beam dataset class
 
@@ -29,10 +30,12 @@ class UniversalDataset(torch.utils.data.Dataset):
         computation.
         @param kwargs:
         """
-        super().__init__()
+        torch.utils.data.Dataset.__init__(self)
+        BeamBase.__init__(self, hparams=hparams, device=device, target_device=target_device, to_torch=to_torch,
+                          index_mapping=index_mapping, preprocess=preprocess)
 
-        device = beam_device(device)
-        target_device = beam_device(target_device)
+        device = beam_device(self.hparams.device)
+        target_device = beam_device(self.hparams.target_device)
 
         self.index = None
         self.set_index(index, mapping=index_mapping)
@@ -47,16 +50,18 @@ class UniversalDataset(torch.utils.data.Dataset):
         # The training label is to be used when one wants to apply some data transformations/augmentations
         # only in training mode
         self.training = False
-        self.preprocess = preprocess
+        self.preprocess = self.hparams.preprocess
         self.statistics = None
-        self._target_device = target_device
-        self.to_torch = to_torch
+        self._target_device = self.hparams.target_device
+        self.to_torch = self.hparams.to_torch
 
         if len(args) >= 1 and isinstance(args[0], argparse.Namespace):
             self.hparams = args[0]
             args = args[1:]
 
         self._data_type = None
+        self._device = None
+        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('_')}
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if len(args) == 1:
@@ -122,7 +127,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
     @property
     def data_type(self):
-        if self._data_type is None:
+        if self._data_type is None or self._data_type.major == Types.none:
             self._data_type = check_type(self.data)
         return self._data_type
 
@@ -157,7 +162,6 @@ class UniversalDataset(torch.utils.data.Dataset):
             return UniversalDataset.get_subset(self, ind)
 
         if self.index is not None:
-
             ind = slice_to_index(ind, l=self.index.index.max()+1)
 
             ind_type = check_type(ind, element=False)
@@ -177,6 +181,8 @@ class UniversalDataset(torch.utils.data.Dataset):
             ind = slice_to_index(ind, l=len(self))
             iloc = ind
 
+        if type(iloc) is int:
+            iloc = [iloc]
         sample = self.getitem(iloc)
         if self.to_torch:
             sample = as_tensor(sample, device=self.target_device)
@@ -189,19 +195,21 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         return DataBatch(index=ind, data=sample, label=label)
 
-    @cached_property
+    @property
     def device(self):
 
-        if self.data_type.minor == Types.dict:
-            device = recursive_device(next(iter(self.data.values())))
-        elif self.data_type.minor == Types.list:
-            device = recursive_device(self.data[0])
-        elif hasattr(self.data, 'device') and self.data.device is not None:
-            device = self.data.device
-        else:
-            device = None
+        if self._device is None:
+            if self.data_type.minor == Types.dict:
+                device = recursive_device(next(iter(self.data.values())))
+            elif self.data_type.minor == Types.list:
+                device = recursive_device(self.data[0])
+            elif hasattr(self.data, 'device') and self.data.device is not None:
+                device = self.data.device
+            else:
+                device = None
+            self._device = beam_device(device)
 
-        return beam_device(device)
+        return self._device
 
     def __repr__(self):
         return repr(self.data)
@@ -232,8 +240,8 @@ class UniversalDataset(torch.utils.data.Dataset):
         else:
             raise NotImplementedError(f"For data type: {type(self.data)}")
 
-    def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None,
-                    test_split_method='uniform', time_index=None, window=None):
+    def split(self, labels=None, validation=None, test=None, seed=None, stratify=None,
+                    test_split_method=None, time_index=None, window=None):
         """
                 partition the data into train/validation/split folds.
                 Parameters
@@ -253,6 +261,19 @@ class UniversalDataset(torch.utils.data.Dataset):
                 labels: iterable
                     The corresponding ground truth for the examples in data
                 """
+
+        if validation is None:
+            validation = self.get_hparam('validation_size', None)
+        if test is None:
+            test = self.get_hparam('test_size', None)
+        if seed is None:
+            seed = self.get_hparam('split_dataset_seed', 5782)
+        if stratify is None:
+            stratify = self.get_hparam('stratify_dataset', False)
+        if test_split_method is None:
+            test_split_method = self.get_hparam('test_split_method', 'uniform')
+        if time_index is None:
+            time_index = self.get_hparam('time_index', None)
 
         from sklearn.model_selection import train_test_split
 

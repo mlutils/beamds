@@ -8,7 +8,7 @@ from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 import os
 
-from beam import beam_arguments, Experiment
+from beam import Experiment, beam_device
 from beam import UniversalDataset
 from beam import NeuralAlgorithm, as_numpy
 from beam import BeamOptimizer
@@ -18,6 +18,7 @@ import torchvision
 import kornia
 from kornia.augmentation.container import AugmentationSequential
 from beam import beam_logger as logger
+from beam.config import UniversalConfig
 
 
 class ReBlock(nn.Module):
@@ -118,7 +119,7 @@ class CIFAR10Dataset(UniversalDataset):
         super().__init__()
 
         path = hparams.data_path
-        device = hparams.device
+        device = beam_device(hparams.device)
         padding = hparams.padding
 
         self.augmentations = AugmentationSequential(kornia.augmentation.RandomHorizontalFlip(),
@@ -191,28 +192,28 @@ class LRPolicy(object):
 
 class CIFAR10Algorithm(NeuralAlgorithm):
 
-    def __init__(self, hparams):
+    def __init__(self, hparams, **kwargs):
 
         # choose your network
         net = Cifar10Network(hparams.channels, dropout=hparams.dropout,
                              activation=hparams.activation, weight=hparams.temperature)
-
+        amp = hparams.training_framework == 'amp'
         if 'prototype' in hparams and hparams.prototype:
             optimizer = BeamOptimizer.prototype(dense_args={'lr': hparams.lr_dense,
                                                             'weight_decay': hparams.weight_decay,
                                                            'momentum': hparams.momentum, 'nesterov': True},
                                                 clip=hparams.clip_gradient, accumulate=hparams.accumulate,
-                                                amp=hparams.amp,
+                                                amp=amp,
                                                 sparse_args=None, dense_optimizer='SGD')
         else:
             optimizer = BeamOptimizer(net, dense_args={'lr': hparams.lr_dense,
                                                             'weight_decay': hparams.weight_decay,
                                                            'momentum': hparams.momentum, 'nesterov': True},
                                                 clip=hparams.clip_gradient, accumulate=hparams.accumulate,
-                                                amp=hparams.amp,
+                                                amp=amp,
                                                 sparse_args=None, dense_optimizer='SGD')
 
-        super().__init__(hparams, networks=net, optimizers=optimizer)
+        super().__init__(hparams, networks=net, optimizers=optimizer, **kwargs)
         # self.scheduler = self.optimizers['net'].set_scheduler(torch.optim.lr_scheduler.LambdaLR, last_epoch=- 1,
         #                                                       lr_lambda=LRPolicy(gain=hparams.gain,
         #                                                                          turn_point=hparams.turn_point,
@@ -241,7 +242,10 @@ class CIFAR10Algorithm(NeuralAlgorithm):
     def inference_iteration(self, sample=None, subset=None, predicting=True, **kwargs):
 
         if predicting:
-            x = sample
+            if type(sample) is dict:
+                x = sample['x']
+            else:
+                x = sample
         else:
             x, y = sample['x'], sample['y']
 
@@ -282,21 +286,39 @@ if __name__ == '__main__':
     # for example, setting running arguments and experiment:
 
 
-    args = beam_arguments(
-        f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=1 --half --lr-d=1e-4 --batch-size=512",
-        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip=0 --n-gpus=1 --accumulate=1 --no-deterministic",
+    args = UniversalConfig(
+        f"--project-name=cifar10 --algorithm=CIFAR10Algorithm --device=0 --half --lr-d=1e-4 --batch-size=512",
+        "--n-epochs=50 --epoch-length-train=50000 --epoch-length-eval=10000 --clip-gradient=0 --n-gpus=1 --accumulate=1 --no-deterministic",
         "--weight-decay=.00256 --momentum=0.9 --beta2=0.999 --temperature=1 --objective=acc --scheduler=one_cycle",
         dropout=.0, activation='gelu', channels=512, label_smoothing=.2, padding=4, scale_down=.7,
         scale_up=1.4, ratio_down=.7, ratio_up=1.4)
 
-    experiment = Experiment(args)
-    alg = experiment.fit(CIFAR10Algorithm, CIFAR10Dataset, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})
+    # experiment = Experiment(args)
+    #
+    # alg = experiment.fit(CIFAR10Algorithm, CIFAR10Dataset, tensorboard_arguments={'images': {'sample': {'dataformats': 'NCHW'}}})
+    #
+    # # ## Inference
+    # inference = alg('test')
+    #
+    # logger.info('Test inference results:')
+    # for n, v in inference.statistics['test']['metrics'].items():
+    #     logger.info(f'{n}:')
+    #     logger.info(v)
 
-    # ## Inference
-    inference = alg('test')
+    dataset = CIFAR10Dataset(args)
+    alg = CIFAR10Algorithm.from_pretrained(
+        '/root/beam_data/projects/experiment/cifar10/CIFAR10Algorithm/debug/000017_20250208_215142',
+        dataset=CIFAR10Dataset(args))
+
+    subset = dataset[5:7]
+    res = alg.predict(subset, return_dataset=True)
 
     logger.info('Test inference results:')
-    for n, v in inference.statistics['metrics'].items():
+    for n, v in res.statistics['metrics'].items():
         logger.info(f'{n}:')
         logger.info(v)
+
+    from beam import beam_server
+    beam_server(alg)
+
 

@@ -36,8 +36,8 @@ from dataclasses import asdict, is_dataclass
 
 
 # do not delete this import (it is required as some modules import the following imported functions from this file)
-from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container, is_cached_property, Types
-
+from ..type import check_type, check_minor_type, check_element_type, is_scalar, is_container, is_cached_property, Types, \
+    is_beam_path
 
 DataBatch = namedtuple("DataBatch", "index label data")
 
@@ -1280,10 +1280,12 @@ def safe_getmembers(obj, predicate=None):
     return getmembers(obj, predicate=lambda key, value: predicate(value) and not key.startswith('_'))
 
 
-class DataClassEncoder(json.JSONEncoder):
+class BeamJsonEncoder(json.JSONEncoder):
     def default(self, obj):
         if is_dataclass(obj):
             return asdict(obj)
+        if is_beam_path(obj):
+            return obj.as_uri()
         return json.JSONEncoder.default(self, obj)
 
 
@@ -1355,6 +1357,7 @@ def return_constant(a):
 
 def get_number_of_cores():
     try:
-        return os.cpu_count() or multiprocessing.cpu_count()
+        import multiprocessing as mp
+        return os.cpu_count() or mp.cpu_count()
     except (AttributeError, NotImplementedError):
         return 1  # Fallback to 1 if the number of cores cannot be determined

@@ -153,13 +153,13 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
 
 
 @as_something_recursively
-def as_numpy(x, dtype=None, **kwargs):
+def as_numpy(x, dtype=None, squeeze=False, **kwargs):
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
     else:
         x = np.array(x, dtype=dtype)
 
-    if x.size == 1:
+    if squeeze and x.size == 1:
         str_type = str(x.dtype)
         if 'float' in str_type:
             x = float(x)
@@ -992,6 +992,8 @@ def recursive_len(x, data_array_only=False):
     if data_array_only:
         if x_type.is_data_array:
             return len(x)
+        if empty_element(x, x_type=x_type):
+            return 0
         return 1
     else:
         if hasattr(x, '__len__'):
@@ -1207,8 +1209,9 @@ def recursive_squeeze(x):
         return x
 
 
-def empty_element(x):
-    x_type = check_type(x)
+def empty_element(x, x_type=None):
+    if x_type is None:
+        x_type = check_type(x)
     if x_type.minor in [Types.numpy, Types.pandas, Types.tensor, Types.scipy_sparse, Types.cudf]:
         return x.size == 0
     if x_type.minor in [Types.list, Types.tuple, Types.set, Types.dict, Types.polars]:

@@ -26,7 +26,15 @@ class MetaBeamInit(type):
 class BeamName:
 
     def __init__(self, name=None, dynamic_name=True, **kwargs):
-        super().__init__(**kwargs)
+
+        # Get the next class in the MRO
+        mro = type(self).mro()
+        base = mro[mro.index(BeamName) + 1]
+        if base == object:
+            super().__init__()
+        else:
+            super().__init__(**kwargs)
+
         self._name = name
         self._dynamic_name = dynamic_name
 
