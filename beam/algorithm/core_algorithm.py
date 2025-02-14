@@ -44,6 +44,7 @@ class Algorithm(Processor):
         self.best_epoch = None
         self.best_state = False
         self.datasets = None
+        self._n_epochs = None
 
         self.clear_experiment_properties()
         if experiment is not None:
@@ -131,10 +132,11 @@ class Algorithm(Processor):
     def enable_tqdm(self):
         return self.get_hparam('enable_tqdm') if (self.get_hparam('tqdm_threshold') == 0
                                                               or not self.get_hparam('enable_tqdm')) else None
-
-    @cached_property
+    @property
     def n_epochs(self):
-        return self.get_hparam('n_epochs')
+        if self._n_epochs is None:
+            self._n_epochs = self.get_hparam('n_epochs')
+        return self._n_epochs
 
     def training_closure(self, *args, **kwargs):
         pass

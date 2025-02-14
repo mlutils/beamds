@@ -8,16 +8,17 @@ from ..type import Types
 from ..utils import cached_property, slice_array
 from ..path import beam_path
 from ..data import BeamData
+from ..base import BeamBase
 
 from .sampler import UniversalBatchSampler
 from ..utils import (recursive_batch, to_device, recursive_device, container_len, beam_device, as_tensor, check_type,
                      as_numpy, slice_to_index, DataBatch)
 
 
-class UniversalDataset(torch.utils.data.Dataset):
+class UniversalDataset(torch.utils.data.Dataset, BeamBase):
 
     def __init__(self, *args, index=None, label=None, device=None, target_device=None, to_torch=True,
-                 index_mapping='backward', preprocess=True, **kwargs):
+                 index_mapping='backward', preprocess=True, hparams=None, **kwargs):
         """
         Universal Beam dataset class
 
@@ -29,10 +30,11 @@ class UniversalDataset(torch.utils.data.Dataset):
         computation.
         @param kwargs:
         """
-        super().__init__()
+        torch.utils.data.Dataset.__init__(self)
+        BeamBase.__init__(self, *args, hparams=hparams, device=device, target_device=target_device, to_torch=to_torch,
+                          index_mapping=index_mapping, preprocess=preprocess, **kwargs)
 
-        device = beam_device(device)
-        target_device = beam_device(target_device)
+        device = beam_device(self.hparams.device)
 
         self.index = None
         self.set_index(index, mapping=index_mapping)
@@ -47,10 +49,10 @@ class UniversalDataset(torch.utils.data.Dataset):
         # The training label is to be used when one wants to apply some data transformations/augmentations
         # only in training mode
         self.training = False
-        self.preprocess = preprocess
+        self.preprocess = self.hparams.preprocess
         self.statistics = None
-        self._target_device = target_device
-        self.to_torch = to_torch
+        self._target_device = beam_device(self.hparams.target_device)
+        self.to_torch = self.hparams.to_torch
 
         if len(args) >= 1 and isinstance(args[0], argparse.Namespace):
             self.hparams = args[0]
@@ -58,6 +60,7 @@ class UniversalDataset(torch.utils.data.Dataset):
 
         self._data_type = None
         self._device = None
+        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('_')}
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if len(args) == 1:
@@ -236,8 +239,8 @@ class UniversalDataset(torch.utils.data.Dataset):
         else:
             raise NotImplementedError(f"For data type: {type(self.data)}")
 
-    def split(self, validation=None, test=None, seed=5782, stratify=False, labels=None,
-                    test_split_method='uniform', time_index=None, window=None):
+    def split(self, labels=None, validation=None, test=None, seed=None, stratify=None,
+                    test_split_method=None, time_index=None, window=None):
         """
                 partition the data into train/validation/split folds.
                 Parameters
@@ -257,6 +260,19 @@ class UniversalDataset(torch.utils.data.Dataset):
                 labels: iterable
                     The corresponding ground truth for the examples in data
                 """
+
+        if validation is None:
+            validation = self.get_hparam('validation_size', None)
+        if test is None:
+            test = self.get_hparam('test_size', None)
+        if seed is None:
+            seed = self.get_hparam('split_dataset_seed', 5782)
+        if stratify is None:
+            stratify = self.get_hparam('stratify_dataset', False)
+        if test_split_method is None:
+            test_split_method = self.get_hparam('test_split_method', 'uniform')
+        if time_index is None:
+            time_index = self.get_hparam('time_index', None)
 
         from sklearn.model_selection import train_test_split
 
