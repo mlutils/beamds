@@ -983,11 +983,11 @@ def recursive_batch(x, index):
 def recursive_len(x, data_array_only=False):
     x_type = BeamType.check(x)
 
+    if x is None:
+        return 0
+
     if x_type.minor == Types.scipy_sparse:
         return x.shape[0]
-
-    if x_type.element == Types.none:
-        return 0
 
     if data_array_only:
         if x_type.is_data_array:
@@ -1003,8 +1003,8 @@ def recursive_len(x, data_array_only=False):
                 print(jupyter_like_traceback())
                 return 1
 
-    if x is None:
-        return 0
+    if x_type.element == Types.none:
+        return 1
 
     return 1
 
