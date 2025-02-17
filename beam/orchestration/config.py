@@ -8,6 +8,7 @@ class K8SConfig(BeamConfig):
         BeamParam('api_url', str, 'https://api.kh-dev.dt.local:6443', 'URL of the Kubernetes API server'),
         BeamParam('api_token', str, 'eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZXYiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoieW9zLXRva2VuLWQycDUyIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InlvcyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImNlOWUzNzkyLThmZTAtNDgxNC05YTVlLWNlMTdmODJjOGU5MiIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZXY6eW9zIn0.mKgXusdiiEVN3MzjQ6mZOTfjoY8LFz-1RxVCrDcq38V5AcxaEiTvOGm-6-Vd4ZTV15DR7ds2OqBqZcpcdeuD_eSqZofsfF_dFM8483mXsA8obzBjXiOw0sLeUAq7ZCzb0sTVOySfz4v84MGHgCbMOfD92sfVsfbXhvAXYY2HLX2Vh5og6spjz0P__BBpL--8rfaR1bpua8bMhR5gOreuednJ8hTFPsxTtgZkNppBdHC6WO0j6rm5APDLhu0CMj1_Dwdee4KL0xtt5vKK1YDqy2fdq4ApFP5kYIZu0YnIsliI-msGgX1ioT_eqj_7oz6Hdi5gdSiNDVGnXbhwkdYchslB4evLCEGXAEI2uFQ0d2wVkCcFjGqiVjHdpQa6JCxWClXBveap8o78eM_c59WV343YQri2pfiGthAZUYxIz5mXddV9237OHUh6YwUFyosaKv853c_W-py8rCsxUVFA_o7PFkfHnVogPETjJw-ZzVTxk_PYzxGl9Dh8kEVhJCiPrFBlNtoJVnaEcdNKD_z8I2hr3ca6DB6k6Ws-ABIYWOKO3yu07wp6RdTYeoS3wjWB9GkcjW52UHBi1hQ2qrR1m-X0DsdTrg_PTuw-9KgXz5LnekPJwMrzRn2DFaswOmXOynTEM_PbvlsQ55DBntix_r2df2rWnCWgxbw9MuFog44', 'API token for the Kubernetes API server'),
         BeamParam('beam_version', str, None, 'Beam version'),
+        BeamParam('beam_ds_path', str, '/app/docker-tools/beam-ds.whl', 'Beam DS local path to compiled package'),
         BeamParam('project_name', str, 'dev', 'Name of the project'),
         BeamParam('deployment_name', str, 'demo', 'Name of the deployment'),
         BeamParam('debug_sleep', bool, False, 'Sleep Infinity deployment'),
@@ -33,8 +34,12 @@ class K8SConfig(BeamConfig):
         BeamParam('use_gpu', bool, False, 'Use GPU'),
         BeamParam('n_pods', int, 1, 'Number of pods'),
         BeamParam('storage_configs', list, [{"create_pvc": False, "pvc_access_mode": "ReadWriteMany", "pvc_mount_path": "/data-pvc", "pvc_name": "data-pvc", "pvc_size": "500"}], 'Storage configuration for the deployment'),
-        BeamParam('service_configs', list, [], 'Service configurations'),
-        BeamParam('service_configs', list, [{"create_ingress": False, "create_route": True, "ingress_host": "home-page.example.com", "port": 35000, "port_name": "flask-port", "service_name": "flask", "service_type": "ClusterIP"}], 'Service configuration for the deployment'),
+        BeamParam('service_configs', list, [
+            {"create_ingress": False, "create_route": True, "ingress_host": "home-page.example.com", "port": 35000,
+             "port_name": "flask-port", "service_name": "flask", "service_type": "ClusterIP",
+             "annotations": {"haproxy.router.openshift.io/timeout": "599", "aproxy.router.openshift.io/balance:": "roundrobin"}}],
+                  'Service configuration for the deployment'),
+        # BeamParam('service_configs', list, [{"create_ingress": False, "create_route": True, "ingress_host": "home-page.example.com", "port": 35000, "port_name": "flask-port", "service_name": "flask", "service_type": "ClusterIP"}], 'Service configuration for the deployment'),
         BeamParam('user_idm_configs', list, [{"create_role_binding": False, "project_name": "ben-guryon", "role_binding_name": "yos", "role_name": "admin", "user_name": "yos"}], 'User IDM configurations'),
         BeamParam('route_timeout', int, 599, 'Route timeout'),
         BeamParam('memory_storage_configs', list, [{"enabled": True, "mount_path": "/dev/shm", "name": "dshm", "size_gb": 8}], 'Memory storage configuration for the deployment'),
@@ -76,6 +81,7 @@ class ServeClusterConfig(K8SConfig, BeamServeConfig):
     parameters = [
         BeamParam('alg', str, '/tmp/bundle', 'Algorithm object can be - bundle, object, image'),
         BeamParam('alg_image_name', str, 'alg-demo:latest', 'Algorithm image name'),
+        BeamParam('deployment_method', str, 'bundle', 'Deploy - bundle, object, image'),
         BeamParam('base_image', str, 'harbor.dt.local/public/beam:20240801', 'Base image'),
         BeamParam('base_url', str, 'tcp://10.0.7.55:2375', 'Base URL'),
         BeamParam('requirements_blacklist', list, ['sklearn'], 'Requirements blacklist'),
@@ -107,6 +113,9 @@ class BeamManagerConfig(K8SConfig):
 
 
 class CronJobConfig(K8SConfig):
+
+    defaults = dict(cron_job_name='beam-cron-job', active_deadline_seconds=300)
+
     parameters = [
         BeamParam('cron_job_name', str, 'beam-cron-job', 'Cron job name'),
         BeamParam('job_schedule', str, '*/2 * * * *', 'Cron job schedule'),
@@ -115,8 +124,12 @@ class CronJobConfig(K8SConfig):
 
 
 class JobConfig(K8SConfig):
+
+    defaults = dict(job_name='beam-job', active_deadline_seconds=300)
+
     parameters = [
         BeamParam('job_name', str, 'beam-job', 'Job Name'),
+        BeamParam('active_deadline_seconds', int, 86400, 'Active deadline seconds'),
     ]
 
 class StatefulSetConfig(K8SConfig):

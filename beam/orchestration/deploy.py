@@ -1,4 +1,5 @@
 from logging import debug
+from multiprocessing.managers import Namespace
 
 from numpy.f2py.crackfortran import true_intent_list
 
@@ -106,7 +107,6 @@ class BeamDeploy(BeamBase):
             self.service_account_name = 'default'
             logger.info(f"using default service account '{self.service_account_name}' in namespace '{self.namespace}'.")
 
-
         if self.storage_configs:
             for storage_config in self.storage_configs:
                 try:
@@ -120,7 +120,8 @@ class BeamDeploy(BeamBase):
                             pvc_name=storage_config.pvc_name,
                             pvc_size=storage_config.pvc_size.as_str,
                             pvc_access_mode=storage_config.pvc_access_mode,
-                            namespace=self.namespace
+                            namespace=self.namespace,
+                            storage_class_name = storage_config.storage_class_name
                         )
                     else:
                         logger.info(f"Skipping PVC creation for: {storage_config.pvc_name} as create_pvc is False")
@@ -228,7 +229,7 @@ class BeamDeploy(BeamBase):
                         namespace=self.namespace,
                         protocol=svc_config.route_protocol,
                         port=svc_config.port,
-                        route_timeout=svc_config.route_timeout,
+                        annotations=svc_config.annotations,
                     )
                     rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_NAME", 'value': route_details['name']})
                     rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_HOST", 'value': route_details['host']})
@@ -237,7 +238,7 @@ class BeamDeploy(BeamBase):
                         service_configs=[svc_config],
                     )
             rs_env_vars.append({'name': f"PLATFORM_ENGINE", 'value': 'Kuberenetes'})
-            self.update_config_maps_rs_env_vars(self.deployment_name, self.namespace, rs_env_vars)
+            # self.update_config_maps_rs_env_vars(self.deployment_name, self.namespace, rs_env_vars) #todo: uncomment this line to inject vars into pods
 
         return self.beam_pod_instances if len(self.beam_pod_instances) > 1 else self.beam_pod_instances[0]
 
@@ -278,8 +279,8 @@ class BeamDeploy(BeamBase):
 
 
         # Delegate CronJob creation to k8s class
-        cronjob = self.k8s.create_cron_job(
-            namespace=self.namespace,
+        cronjob = self.k8s.create_cron_job(Namespace(
+            project_name=self.project_name,
             cron_job_name=self.cron_job_name,
             image_name=self.image_name,
             job_schedule=self.job_schedule,
@@ -299,7 +300,7 @@ class BeamDeploy(BeamBase):
             labels=self.labels,
             storage_configs=self.storage_configs,
             security_context_config=self.security_context_config,
-            restart_policy_configs=self.restart_policy_configs
+            restart_policy_configs=self.restart_policy_configs)
         )
 
         logger.info(
@@ -324,7 +325,7 @@ class BeamDeploy(BeamBase):
 
     def update_config_maps_rs_env_vars(self, deployment_name, namespace, rs_env_vars):
         # Prepare ConfigMap data
-        config_map_name = f"{deployment_name}-config"
+        config_map_name = f"{deployment_name}-var-config"
         config_data = {var['name']: var['value'] for var in rs_env_vars}
 
         # Create or update ConfigMap

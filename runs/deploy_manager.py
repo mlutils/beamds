@@ -1,11 +1,12 @@
 from beam.experiment.utils import cleanup
 from beam.orchestration import ServeClusterConfig, BeamManager
 from beam.orchestration import deploy_server
-from runs.manager import BeamManagerWrapper
+from runs.beamwrapper import BeamManagerWrapper
 from beam import logger
 
 
 def main():
+    # config = ServeClusterConfig(path_to_state='/tmp/manager', beam_version='/home/dayosupp/projects/beamds/dist/beam_ds-2.7.3-py3-none-any.whl')
     config = ServeClusterConfig(path_to_state='/tmp/manager')
     # config = ServeClusterConfig()
     # clean_current = BeamManager(config)

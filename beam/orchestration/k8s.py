@@ -1,5 +1,5 @@
 import base64
-from dataclasses import make_dataclass
+from dataclasses import make_dataclass # todo: why is this needed?
 import kubernetes
 from kubernetes import client, watch
 from kubernetes.client import (Configuration, RbacAuthorizationV1Api, V1DeleteOptions, BatchV1Api,
@@ -390,8 +390,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         for key, value in entrypoint_envs.items():
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
-        if command is not None and command.executable is not None:
-            command = command.dict()
+        # todo - fix this with the existing CommandConfig dataclass
+        # if command is not None and command.executable is not None:
+        #     command = command.dict()
+        # else:
+        #     command = None
+        if command and command.executable:
+            command = command.as_list()
         else:
             command = None
 
@@ -508,6 +513,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Handle PVC mounts
         if pvc_mounts:
             for mount in pvc_mounts:
+
                 volumes.append(client.V1Volume(
                     name=mount['pvc_name'],
                     persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=mount['pvc_name'])
@@ -556,7 +562,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             spec=pod_spec
         )
 
-    def create_pvc(self, pvc_name, pvc_size, pvc_access_mode, namespace):
+    def create_pvc(self, pvc_name, pvc_size, pvc_access_mode, namespace, storage_class_name=None):
         logger.info(f"Attempting to create PVC: {pvc_name} in namespace: {namespace}")
         pvc_manifest = {
             "apiVersion": "v1",
@@ -567,6 +573,9 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 "resources": {"requests": {"storage": pvc_size}}
             }
         }
+        if storage_class_name:
+            pvc_manifest["spec"]["storageClassName"] = storage_class_name
+
         self.core_v1_api.create_namespaced_persistent_volume_claim(namespace=namespace, body=pvc_manifest)
         logger.info(f"Created PVC '{pvc_name}' in namespace '{namespace}'.")
 
@@ -634,7 +643,18 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                 logger.error(f"Unexpected error while checking deployment '{deployment_name}': {e}")
                 raise
 
-    def create_deployment(self, image_name, command=None, labels=None, deployment_name=None,
+    def get_relevant_configuration(self, key, value, config=None):
+        """
+        Get the relevant configuration value for the given key from the config object.
+        """
+        if value is None and config is not None:
+            default = getattr(config, key, None)
+            value = config.get(key, default=default)
+
+        return  value
+
+
+    def create_deployment(self, image_name, config=None, command=None, labels=None, deployment_name=None,
                           namespace=None, project_name=None,
                           replicas=None, ports=None, create_service_account=None, service_account_name=None,
                           storage_configs=None, cpu_requests=None, cpu_limits=None, memory_requests=None,
@@ -642,9 +662,11 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
                           memory_limits=None, use_gpu=False, gpu_requests=None, gpu_limits=None,
                           security_context_config=None, restart_policy_configs=None,
                           entrypoint_args=None, entrypoint_envs=None):
+
         if namespace is None:
             namespace = self.namespace
 
+        # project_name = self.get_relevant_configuration('project_name', project_name, config)
         if project_name is None:
             project_name = self.project_name
 
@@ -1095,12 +1117,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the service in the specified namespace
         try:
             self.core_v1_api.create_namespaced_service(namespace=namespace, body=service)
-            print(f"Service '{service_name}' created successfully in namespace '{namespace}'.")
+            logger.info(f"Service '{service_name}' created successfully in namespace '{namespace}'.")
             logger.info(
                 f"Service '{service_name}' of type '{service_type}' created with ports: "
                 f"{', '.join([f'Port: {port.port}, TargetPort: {port.target_port}' for port in service_ports])}")
         except client.exceptions.ApiException as e:
-            print(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
+            logger.info(f"Failed to create service '{service_name}' in namespace '{namespace}': {e}")
 
         service_url = f"http://{base_name}.{namespace}.svc.cluster.local:{ports[0]}"
         service_details = {
@@ -1216,67 +1238,70 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             logger.error(f"Failed to create Job '{job_name}' in namespace '{namespace}': {e}")
             return None
 
-    def create_cron_job(self, namespace, cron_job_name, image_name, container_name, job_schedule, command,
-                        entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
-                        use_gpu, gpu_requests, gpu_limits, labels, node_selector,
-                        use_node_selector, storage_configs, security_context_config, restart_policy_configs):
+    # def create_cron_job(self, namespace, cron_job_name, image_name, container_name, job_schedule, command,
+    #                     entrypoint_args, entrypoint_envs, cpu_requests, cpu_limits, memory_requests, memory_limits,
+    #                     use_gpu, gpu_requests, gpu_limits, labels, node_selector,
+    #                     use_node_selector, storage_configs, security_context_config, restart_policy_configs):
+
+    def create_cron_job(self, config):
 
         pvc_mounts = [{
             'pvc_name': sc.pvc_name,
             'mount_path': sc.pvc_mount_path
-        } for sc in storage_configs if sc.create_pvc] if storage_configs else []
+        } for sc in config.storage_configs if sc.create_pvc] if config.storage_configs else []
 
         # Create the container definition
         container = self.create_container(
-            image_name=image_name,
-            command=command,
+            image_name=config.image_name,
+            command=config.command,
             pvc_mounts=pvc_mounts,
-            cpu_requests=cpu_requests,
-            cpu_limits=cpu_limits,
-            memory_requests=memory_requests,
-            memory_limits=memory_limits,
-            use_gpu=use_gpu,
-            gpu_requests=gpu_requests,
-            gpu_limits=gpu_limits,
-            security_context_config=security_context_config,
-            entrypoint_args=entrypoint_args,
-            entrypoint_envs=entrypoint_envs
+            cpu_requests=config.cpu_requests,
+            cpu_limits=config.cpu_limits,
+            memory_requests=config.memory_requests,
+            memory_limits=config.memory_limits,
+            use_gpu=config.use_gpu,
+            gpu_requests=config.gpu_requests,
+            gpu_limits=config.gpu_limits,
+            security_context_config=config.security_context_config,
+            entrypoint_args=config.entrypoint_args,
+            entrypoint_envs=config.entrypoint_envs
         )
 
-        if restart_policy_configs.condition == "Always":
-            restart_policy_configs.condition = "OnFailure"
+        if config.restart_policy_configs.condition == "Always":
+            config.restart_policy_configs.condition = "OnFailure"
 
         # Create the pod template spec
         pod_spec = client.V1PodSpec(
             containers=[container],
-            restart_policy=restart_policy_configs.condition,
+            restart_policy=config.restart_policy_configs.condition,
         )
 
-        if use_node_selector is True:
-            pod_spec.node_selector = node_selector
+        if config.use_node_selector is True:
+            pod_spec.node_selector = config.node_selector
 
         # Create the pod template
         pod_template = client.V1PodTemplateSpec(
-            metadata=client.V1ObjectMeta(labels=labels),
+            metadata=client.V1ObjectMeta(labels=config.labels),
             spec=pod_spec
         )
 
         # Create the job spec
         job_spec = client.V1JobSpec(
             template=pod_template,
-            backoff_limit=restart_policy_configs.max_attempts
+            backoff_limit=config.restart_policy_configs.max_attempts,
+            active_deadline_seconds=config.restart_policy_configs.active_deadline_seconds
         )
 
         # Create the cron job spec
         cron_job_spec = client.V1CronJobSpec(
-            schedule=job_schedule,
+            schedule=config.job_schedule,
             job_template=client.V1JobTemplateSpec(
-                metadata=client.V1ObjectMeta(labels=labels),
+                metadata=client.V1ObjectMeta(labels=config.labels),
                 spec=job_spec
             )
         )
 
-        cron_job_metadata = client.V1ObjectMeta(name=cron_job_name, namespace=namespace, labels={"project": namespace})
+        cron_job_metadata = client.V1ObjectMeta(name=config.cron_job_name, namespace=config.project_name, labels={"project": config.project_name})
 
         # Create the cron job definition
         cron_job = client.V1CronJob(
@@ -1287,12 +1312,12 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         )
 
         try:
-            self.batch_v1_api.create_namespaced_cron_job(body=cron_job, namespace=namespace)
-            logger.info(f"CronJob '{cron_job_name}' created successfully in namespace '{namespace}'.")
+            self.batch_v1_api.create_namespaced_cron_job(body=cron_job, namespace=config.project_name)
+            logger.info(f"CronJob '{config.cron_job_name}' created successfully in namespace '{config.project_name}'.")
 
-            return self.get_pods_by_label(labels, namespace)
+            return self.get_pods_by_label(config.labels, config.project_name)
         except ApiException as e:
-            logger.error(f"Failed to create CronJob '{cron_job_name}' in namespace '{namespace}': {e}")
+            logger.error(f"Failed to create CronJob '{config.cron_job_name}' in namespace '{config.project_name}': {e}")
             return None
 
     def monitor_job(self, job_name, namespace):
@@ -1448,7 +1473,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             "Node external IPs cannot be retrieved with namespace-scoped "
             "permissions. Use known node IPs to access NodePort services.")
 
-    def create_route(self, service_name, namespace, protocol, port, route_timeout=None):
+    def create_route(self, service_name, namespace, protocol, port, annotations, route_timeout=None):
         from openshift.dynamic.exceptions import NotFoundError
         from openshift.dynamic import DynamicClient
 
@@ -1490,8 +1515,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             }
         }
 
-        if route_timeout:
-            route_manifest["metadata"]["annotations"] = {"haproxy.router.openshift.io/timeout": route_timeout}
+        # if route_timeout:
+        #     route_manifest["metadata"]["annotations"] = {"haproxy.router.openshift.io/timeout": route_timeout}
 
         # Add TLS termination if protocol is 'https'
         if protocol.lower() == 'https':
@@ -1509,6 +1534,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             route_details = {
                 'host': created_route.spec.host,
                 'name': service_name,
+                "annotations": annotations or {},
             }
             return route_details
         except Exception as e:
@@ -1752,7 +1778,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         Cleanup CronJobs associated with the application.
         """
         if self.cronjob_exists(app_name, namespace):
-            self.delete_cronjobs_by_name(app_name, namespace)
+            self.delete_cronjobs_by_name(namespace, app_name)
         else:
             logger.info(f"No CronJobs found for '{app_name}' in namespace '{namespace}' to clean up.")
 

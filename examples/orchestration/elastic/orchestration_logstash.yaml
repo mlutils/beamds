@@ -1,4 +1,4 @@
-alg: /tmp/bundle
+alg: docker.elastic.co/logstash/logstash:8.16.1
 alg_image_name: beam-manager:latest
 api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZXYiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoieW9zLXRva2VuLWQycDUyIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InlvcyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImNlOWUzNzkyLThmZTAtNDgxNC05YTVlLWNlMTdmODJjOGU5MiIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZXY6eW9zIn0.mKgXusdiiEVN3MzjQ6mZOTfjoY8LFz-1RxVCrDcq38V5AcxaEiTvOGm-6-Vd4ZTV15DR7ds2OqBqZcpcdeuD_eSqZofsfF_dFM8483mXsA8obzBjXiOw0sLeUAq7ZCzb0sTVOySfz4v84MGHgCbMOfD92sfVsfbXhvAXYY2HLX2Vh5og6spjz0P__BBpL--8rfaR1bpua8bMhR5gOreuednJ8hTFPsxTtgZkNppBdHC6WO0j6rm5APDLhu0CMj1_Dwdee4KL0xtt5vKK1YDqy2fdq4ApFP5kYIZu0YnIsliI-msGgX1ioT_eqj_7oz6Hdi5gdSiNDVGnXbhwkdYchslB4evLCEGXAEI2uFQ0d2wVkCcFjGqiVjHdpQa6JCxWClXBveap8o78eM_c59WV343YQri2pfiGthAZUYxIz5mXddV9237OHUh6YwUFyosaKv853c_W-py8rCsxUVFA_o7PFkfHnVogPETjJw-ZzVTxk_PYzxGl9Dh8kEVhJCiPrFBlNtoJVnaEcdNKD_z8I2hr3ca6DB6k6Ws-ABIYWOKO3yu07wp6RdTYeoS3wjWB9GkcjW52UHBi1hQ2qrR1m-X0DsdTrg_PTuw-9KgXz5LnekPJwMrzRn2DFaswOmXOynTEM_PbvlsQ55DBntix_r2df2rWnCWgxbw9MuFog44
 api_url: https://api.kh-dev.dt.local:6443
@@ -20,13 +20,14 @@ command:
 cpu_limits: '2'
 cpu_requests: '2'
 create_service_account: false
-deployment_name: beam-manager
+deployment_name: logstash
 debug_sleep: false
 #enable_ray_ports: true
 entrypoint_args:
 - '--no-ray'
 entrypoint_envs:
-  TEST: test
+  xpack.monitoring.enabled: 'false'
+  ELASTICSEARCH_HOSTS: http://elasticsearch:9200
 from_email: dayotech2018@gmail.com
 from_email_password: mkhdokjqwwmazyrf
 job_name: beam-job
@@ -35,31 +36,22 @@ container_name: beam-cron-container
 job_schedule: "*/2 * * * *" # every 2 minutes
 gpu_limits: '1'
 gpu_requests: '1'
-# image_name: harbor.dt.local/public/fake-alg-http-server:latestddddd
-#image_name: None
-image_name: harbor.dt.local/public/ubunto_slim:python-3-10
-#image_name: rocker/rstudio:latest
+image_name: docker.elastic.co/logstash/logstash:8.16.1
 labels:
-  app: beam-manager
-memory_limits: '0.4Gi'
-memory_requests: '0.4Gi'
+  app: elk
+memory_limits: 4
+memory_requests: 4
 memory_storage_configs:
 - enabled: true
   mount_path: /dev/shm
   name: dshm
   size_gb: 8
-#new_image: harbor.dt.local/public/fake-alg-http-server:test1
-new_image:  rocker/rstudio:latest
+new_image: docker.elastic.co/logstash/logstash:8.16.1
 n_pods: '1'
 node_selector:
   gpu-type: tesla-a100
 project_name: dev
 path_to_state: /tmp
-# push_image: false - this is removed
-#ray_ports_configs:
-#- ray_ports:
-#  - 6379
-#  - 8265
 registry_password: Har@123
 registry_url: harbor.dt.local
 registry_username: admin
@@ -73,84 +65,47 @@ restart_policy_configs:
   max_attempts: 3
   window: 120s
 send_mail: false
-scc_name: anyuid
+scc_name: privileged
 security_context_config:
   add_capabilities:
 #  - SYS_CHROOT
 #  - CAP_AUDIT_CONTROL
 #  - CAP_AUDIT_WRITE
-  enable_security_context: false
+  enable_security_context: true
   privileged: true
   runAsUser: 0
 service_configs:
 - create_ingress: false
-  create_route: false
-  ingress_host: ssh.example.com
-  port: 22022
-  port_name: ssh-port
-  service_name: ssh
-  service_type: NodePort
-  annotations:
-    haproxy.router.openshift.io/timeout: "599"
-    haproxy.router.openshift.io/balance: "leastconn"
+  create_route: true
+  ingress_host: logstashdata.example.com
+  port: 5000
+  port_name: logstashdata
+  service_name: logstashdata
+  service_type: ClusterIP
 - create_ingress: false
   create_route: true
-  ingress_host: jupyter.example.com
-  port: 22088
-  port_name: jupyter-port
-  service_name: jupyter
+  ingress_host: logstashapi.example.com
+  port: 9600
+  port_name: logstashapi
+  service_name: logstashapi
   service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: mlflow.example.com
-#  port: 22080
-#  port_name: port
-#  service_name: mlflow
-#  service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: ray-port.example.com
-#  port: 6379
-#  port_name: port
-#  service_name: ray
-#  service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: ray-port.example.com
-#  port: 8265
-#  port_name: port
-#  service_name: ray
-#  service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: rstudio.example.com
-#  port: 8787
-#  port_name: port
-#  service_name: ray
-#  service_type: ClusterIP
-#- create_ingress: false
-#  create_route: true
-#  ingress_host: home-page.example.com
-#  port: 22089
-#  port_name: home-page-port
-#  service_name: home-page
-#  service_type: ClusterIP
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
-- create_pvc: true
-  pvc_access_mode: ReadWriteMany
-  pvc_mount_path: /pvc
-  pvc_name: data-pvc
-  pvc_size: '500'
+- create_pvc: false
+  pvc_access_mode: ReadWriteOnce
+  pvc_mount_path: /mnt/data
+  pvc_name: logstash-pvc
+  pvc_size: '199'
+  storage_class_name: "local-sc-logstash"
 subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
 use_gpu: false
 use_node_selector: false
-use_scc: false
+use_scc: true
 user_idm_configs:
 - create_role_binding: false
-  project_name: ben-guryon
+  project_name: dev
   role_binding_name: yos
   role_name: admin
   user_name: yos

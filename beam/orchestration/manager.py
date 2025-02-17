@@ -12,7 +12,7 @@ from ..logging import beam_logger as logger
 from ..resources import resource
 from ..orchestration import BeamManagerConfig, RayClusterConfig, ServeClusterConfig, RnDClusterConfig
 
-from .resource import deploy_server
+from .resource import deploy_server, deploy_job
 
 
 # BeamManager class
@@ -27,6 +27,7 @@ class BeamManager(BeamBase):
             namespace=config['project_name']
         )
         self.clusters = {}
+        self.jobs = {}
         self._stop_monitoring = threading.Event()
         # add monitor thread
         # self.monitor_thread = Thread(target=self._monitor)
@@ -115,7 +116,7 @@ class BeamManager(BeamBase):
         self.k8s.cleanup_jobs(namespace=config['project_name'], app_name=config['job_name'])
 
         # Deploy a new job
-        job = BeamJob.deploy_job(config=config, k8s=self.k8s)
+        job = BeamJob.deploy(config=config, k8s=self.k8s)
         self.clusters[name] = job
 
         # Start monitoring the job
@@ -134,19 +135,22 @@ class BeamManager(BeamBase):
             # Convert the path to a BeamManagerConfig object
             config = BeamManagerConfig(resource(conf_path).str)
 
-        name = self.get_cluster_name(config)
-
+        project_name = config.get('project_name', self.hparams.project_name)
+        app_name = config.get('cron_job_name', self.hparams.cron_job_name)
+        name = config.get('cron_job_name', self.hparams.cron_job_name)
         # Cleanup any existing job before deploying the new one
-        self.k8s.cleanup_cronjobs(namespace=config['project_name'], app_name=config['cron_job_name'])
+        self.k8s.cleanup_cronjobs(namespace=project_name, app_name=app_name)
 
-        # Deploy a new cron job
-        from .jobs import BeamCronJob
-        cron_job = BeamCronJob.deploy_cron_job(config=config, k8s=self.k8s)
-        self.clusters[name] = cron_job
+        # # Deploy a new cron job
+        # from .jobs import BeamCronJob
+        # cron_job = BeamCronJob.deploy(config=config, k8s=self.k8s)
+        # self.jobs[name] = config['alg']
 
-        # Start monitoring the cron job
-        monitor_thread = Thread(target=cron_job.monitor_cron_job)
-        monitor_thread.start()
+        self.jobs[name] = deploy_job(config=config)
+
+        # # Start monitoring the cron job
+        # monitor_thread = Thread(target=cron_job.monitor_cron_job)
+        # monitor_thread.start()
 
         return name
 
@@ -197,14 +201,14 @@ class BeamManager(BeamBase):
 
         name = self.get_cluster_name(config)
         from .cluster import ServeCluster
-        serve_cluster = ServeCluster(config=config, pods=[], k8s=self.k8s, deployment=name, **kwargs)
 
+        # serve_cluster = ServeCluster(config=config, pods=[], k8s=self.k8s, deployment=name, **kwargs)
         # self.clusters[name] = serve_cluster.deploy_from_image(config=config, image_name=config['image_name'])
         self.clusters[name] = deploy_server(obj=config.alg, config=config)
 
-        # Start monitoring the cluster
-        monitor_thread = Thread(target=serve_cluster.monitor_cluster)
-        monitor_thread.start()
+        # # Start monitoring the cluster
+        # monitor_thread = Thread(target=serve_cluster.monitor_cluster)
+        # monitor_thread.start()
 
         return name
 
@@ -254,6 +258,49 @@ class BeamManager(BeamBase):
         # import randomname
         import namegenerator
         return namegenerator.gen()
+
+    def get_cluster_service(self, deployment_name, namespace, port):
+        """
+        Retrieve the URL of a pod associated with a specific deployment and port.
+        :param deployment_name: Name of the deployment.
+        :param namespace: Namespace of the deployment.
+        :param port: Target port to match.
+        :return: URL of the pod (http://<pod_name>:<port>) if found, otherwise None.
+        """
+        try:
+            # Get the deployment details
+            deployment = self.k8s.apps_v1_api.read_namespaced_deployment(name=deployment_name, namespace=namespace)
+            selector = deployment.spec.selector.match_labels
+
+            # Get all pods matching the deployment's selector
+            label_selector = ",".join([f"{key}={value}" for key, value in selector.items()])
+            pods = self.k8s.core_v1_api.list_namespaced_pod(namespace=namespace, label_selector=label_selector).items
+
+            for pod in pods:
+                if pod.status.phase == "Running":
+                    # Check if the pod has a container with the specific port
+                    for container in pod.spec.containers:
+                        if container.ports:
+                            for container_port in container.ports:
+                                if container_port.container_port == port:
+                                    # Construct the URL
+                                    # pod_name = pod.metadata.name
+                                    # url = f"http://{pod_name}:{port}"
+                                    pod_ip = pod.status.pod_ip
+                                    url = f"http://{pod_ip}:{port}"
+                                    return url
+
+            logger.info(f"No pod with port {port} found for deployment '{deployment_name}' in namespace '{namespace}'.")
+            return None
+
+        except self.k8s.client.exceptions.ApiException as e:
+            logger.error(f"Error retrieving pod URL for deployment '{deployment_name}': {e}")
+            return None
+
+        except self.k8s.client.exceptions.ApiException as e:
+            logger.error(f"Error retrieving pod hostname for deployment '{deployment_name}': {e}")
+            return None
+
 
     def retrieve_cluster_logs(self, cluster_name):
         if cluster_name not in self.clusters:

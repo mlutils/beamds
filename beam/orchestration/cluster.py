@@ -72,7 +72,8 @@ class ServeCluster(BeamCluster):
         if image_name is None:
             image_name = AutoBeam.to_docker(obj=obj, bundle_path=bundle_path, base_image=config.base_image,
                                             image_name=config.alg_image_name, copy_bundle=config.copy_bundle,
-                                            beam_version=config.beam_version, base_url=config.base_url,
+                                            beam_version=config.beam_version, beam_ds_path=config.beam_ds_path,
+                                            base_url=config.base_url,
                                             registry_url=config.registry_url, username=config.registry_username,
                                             password=config.registry_password, serve_config=config,
                                             registry_project_name=config.registry_project_name,

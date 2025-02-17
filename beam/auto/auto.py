@@ -373,6 +373,7 @@ class AutoBeam(BeamBase):
         ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'), blacklist=blacklist)
         ab.modules_to_tar(path.joinpath('modules.tar.gz'))
         path.joinpath('metadata.json').write(ab.metadata)
+        logger.info(f"Contents of {path}/requirements.txt: {open(f'{path}/requirements.txt').read()}")
 
         blacklist_priority = None
         if ab.in_main_script:
@@ -560,7 +561,7 @@ class AutoBeam(BeamBase):
 
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
-                  entrypoint='synchronous-server', beam_version='latest', dockerfile='simple-entrypoint',
+                  entrypoint='synchronous-server', beam_version='latest', beam_ds_path=None, dockerfile='simple-entrypoint',
                   registry_url=None, base_url=None, registry_project_name=None, path_to_state=None,
                   username=None, password=None, copy_bundle=False, requirements_blacklist=None,
                   **kwargs):
@@ -572,7 +573,7 @@ class AutoBeam(BeamBase):
         logger.info(f"Building a Docker image with the requirements and the object bundle. Base image: {base_image}")
         full_image_name = (
             AutoBeam._build_image(bundle_path, base_image, config=serve_config, image_name=image_name,
-                                  entrypoint=entrypoint, beam_version=beam_version, username=username,
+                                  entrypoint=entrypoint, beam_version=beam_version, beam_ds_path=beam_ds_path, username=username,
                                   password=password, base_url=base_url, registry_project_name=registry_project_name,
                                   registry_url=registry_url, copy_bundle=copy_bundle, dockerfile=dockerfile))
         logger.info(f"full_image_name: {full_image_name}")
@@ -581,7 +582,7 @@ class AutoBeam(BeamBase):
     @staticmethod
     def _build_image(bundle_path, base_image=None, config=None, image_name=None, entrypoint=None,
                      copy_bundle=False, registry_url=None, username=None, password=None, override_image=False,
-                     beam_version='latest', base_url=None, registry_project_name=None, dockerfile=None):
+                     beam_version='latest', beam_ds_path=None, base_url=None, registry_project_name=None, dockerfile=None):
 
         assert base_image is not None, "You must provide a base_image."
         if not bool(beam_version):
@@ -645,7 +646,43 @@ class AutoBeam(BeamBase):
             docker_tools_dir = current_dir.joinpath('docker-tools')
 
             docker_dir.joinpath('dockerfile').write(source_dockerfile, ext='.txt')
+
+            beam_ds_path = beam_path(beam_ds_path)
+            if not beam_ds_path.is_file():
+                raise FileNotFoundError(f"Beam-DS path is invalid or file not found: {beam_ds_path}")
+            if beam_ds_path.is_file():
+                # Copy the Beam-DS file into the .docker directory
+                target_beam_ds_path = docker_tools_dir.joinpath(beam_ds_path.name)
+                target_beam_ds_path.parent.mkdir(parents=True, exist_ok=True)
+                target_beam_ds_path.write_bytes(beam_ds_path.read_bytes())
+
+                # target_beam_ds_path.copy(target_beam_ds_path)
+                # beam_ds_path.copy(target_beam_ds_path)
+                # target_beam_ds_path.write_bytes(beam_ds_path.read_bytes())
+
+                logger.info(f"Beam-DS file copied to: {target_beam_ds_path}")
+            else:
+                raise FileNotFoundError(f"The specified BEAM_DS_PATH does not exist or is not a file: {beam_ds_path}")
+
+            # Log the current directory and its contents
+            logger.info(f"Contents of the specified directory Before copy '{docker_tools_dir}':")
+            for file_name in docker_tools_dir.iterdir():  # Utilize Path.iterdir() for simplicity
+                if file_name.is_dir():
+                    logger.info(f"Dir: {file_name.name}")
+                elif file_name.is_file():
+                    logger.info(f"File: {file_name.name}")
+
             docker_tools_dir.copy(docker_dir.joinpath('docker-tools'))
+
+            # Log the contents of the new docker-tools directory
+            logger.info(f"Contents of the copied directory '{docker_dir.joinpath('docker-tools')}':")
+            for file_name in docker_dir.joinpath('docker-tools').iterdir():  # Use Path.iterdir()
+                if file_name.is_dir():
+                    logger.info(f"Dir: {file_name.name}")
+                elif file_name.is_file():
+                    logger.info(f"File: {file_name.name}")
+
+
 
             # Define build arguments
             build_args = {
@@ -655,6 +692,8 @@ class AutoBeam(BeamBase):
                 'ENTRYPOINT_SCRIPT': entrypoint.relative_to(bundle_path).str,
                 'CONFIG_FILE': '.docker/config.yaml',
                 'BEAM_DS_VERSION': beam_version,
+                'BEAM_DS_PATH': target_beam_ds_path,
+                # 'BEAM_DS_PATH': beam_ds_path.name,
                 'DOCKER_TOOLS_DIR': '.docker/docker-tools',
             }
 

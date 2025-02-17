@@ -126,7 +126,7 @@ def write_config(file_path, config):
 # Initialize session state for configuration
 if 'config' not in st.session_state:
     conf_path = this_dir().parent.joinpath('examples', 'orchestration_beamdemo.yaml')
-    st.session_state.config = read_config(conf_path)
+    st.session_state.hparams = read_config(conf_path)
 
 
 def generate_ui(config):
@@ -165,7 +165,7 @@ def generate_ui(config):
 def main():
     st.title("Configuration UI")
 
-    config = K8SConfig(st.session_state.config)
+    config = K8SConfig(st.session_state.hparams)
 
     param_values = generate_ui(config)
 
@@ -174,16 +174,16 @@ def main():
 
         # Update session state with new values
         for param, value in param_values.items():
-            st.session_state.config[param] = value
+            st.session_state.hparams[param] = value
 
         # Save updated config to file
         conf_path = this_dir().parent.joinpath('examples', 'orchestration_beamdemo.yaml')
-        write_config(conf_path, st.session_state.config)
+        write_config(conf_path, st.session_state.hparams)
 
     if st.button("Launch"):
         with tempfile.TemporaryDirectory() as tmp_dir:
             user_config_path = Path(tmp_dir).joinpath('config.yaml')
-            user_config_path.write_text(yaml.dump(st.session_state.config))
+            user_config_path.write_text(yaml.dump(st.session_state.hparams))
 
             logger.info(f"Running the deployment script from {this_dir().parent}...")
             base_dir = str(this_dir().parent)

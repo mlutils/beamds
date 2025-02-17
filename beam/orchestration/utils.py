@@ -12,6 +12,7 @@ def convert_datetimes(data):
     else:
         return data
 
+
 def ensure_rfc1123_compliance(name):
     """
     Ensures that a name complies with RFC 1123 by:

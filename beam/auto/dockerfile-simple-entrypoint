@@ -8,20 +8,30 @@ ARG CONFIG_FILE
 ARG ALGORITHM_DIR
 ARG ENTRYPOINT_SCRIPT
 ARG BEAM_DS_VERSION
+ARG BEAM_DS_PATH
 ARG DOCKER_TOOLS_DIR
 
 COPY ${DOCKER_TOOLS_DIR} /app/docker-tools
 # Copy the requirements.txt file and install Python dependencies
 COPY ${REQUIREMENTS_FILE} /app/requirements.txt
+
+COPY ${BEAM_DS_PATH} /app/
+RUN ls -lah /app
+
 RUN pip install --no-cache-dir packaging
 # RUN pip install --no-cache-dir -r /tmp/requirements.txt
 RUN python3 /app/docker-tools/gracefull-pip.py /app/requirements.txt
 
 
-RUN if [ -z "${BEAM_DS_VERSION}" ]; then \
-        echo "BEAM_DS_VERSION is not set: will not install Beam-DS"; \
+RUN if [ -z "${BEAM_DS_PATH}" ]; then \
+        echo "BEAM_DS_PATH is not set: will not install Beam-DS"; \
     elif [ "${BEAM_DS_VERSION}" = "latest" ]; then \
         pip install beam-ds[serve]; \
+    #check that the parameter resolves to existing file\
+    elif [ -f "/app/$(basename ${BEAM_DS_PATH})" ]; then \
+        echo ""${BEAM_DS_PATH}" -  is a path: will install from path"; \
+        # install from path \
+        pip install /app/beam-ds.whl[serve]; \
     else \
         pip install beam-ds[serve]==${BEAM_DS_VERSION}; \
     fi

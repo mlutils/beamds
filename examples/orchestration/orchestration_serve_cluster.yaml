@@ -82,6 +82,9 @@ service_configs:
   port_name: flask-port
   service_name: flask
   service_type: ClusterIP
+  annotations:
+    haproxy.router.openshift.io/timeout: "599"
+    haproxy.router.openshift.io/balance: "leastconn"
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:
