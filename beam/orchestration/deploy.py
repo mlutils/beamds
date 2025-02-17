@@ -136,7 +136,6 @@ class BeamDeploy(BeamBase):
 
         deployment = self.k8s.create_deployment(
             image_name=self.image_name,
-
             command=self.command,
             labels=self.labels,
             deployment_name=self.deployment_name,
