@@ -32,15 +32,8 @@ class BeamJobManager(BeamBase):
 
 
 class BeamCronJob(BeamJobManager):
-    def __init__(self, *args, k8s=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.k8s = BeamK8S(
-            api_url=self.hparams.api_url,
-            api_token=self.hparams.api_token,
-            project_name=self.hparams.project_name,
-            namespace=self.hparams.project_name,
-        )
-
+    def __init__(self, config, *args, k8s=None, **kwargs):
+        super().__init__(None, config,*args,  k8s=k8s, **kwargs)
         self.manager = BeamJobManager(self.k8s)
 
     @classmethod
@@ -57,7 +50,8 @@ class BeamCronJob(BeamJobManager):
         cron_job =  BeamDeploy(config, k8s)
         # pods = cron_job.launch_cron_job(job_schedule=config.get('job_schedule'))
         pods = cron_job.launch_cron_job()
-        return cls(config, k8s), pods
+        # return cls(config, k8s), pods
+        return cls(config, k8s, pods)
 
     @classmethod
     def deploy_cron_job(cls, config, k8s=None):
