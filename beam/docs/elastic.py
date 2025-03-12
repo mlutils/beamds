@@ -493,7 +493,6 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
         wildcard = wildcard or '*'
 
-
         if self.level == 'root':
 
             if not alias_only:
@@ -703,7 +702,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def count(self):
         if self.level == 'root':
-            return len(self.client.indices.get('*'))
+            return len(list(self.client.indices.get('*')))
         elif self.level == 'index':
             return self.client.count(index=self.index_name)['count']
         elif self.level == 'document':
