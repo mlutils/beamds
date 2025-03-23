@@ -110,7 +110,7 @@ class BeamTask(BeamName):
                     logger.info(f"Finished task: {self.name} {metadata}. Elapsed time: {t.elapsed}")
         except Exception as e:
             self.exception = e
-            logger.error(f"Task {self.name}{metadata} failed with exception: {e}")
+            logger.error(f"Task {self.name}{metadata} failed with exception: {e} (set --debug to see full traceback or check in log file)")
             res = jupyter_like_traceback()
             logger.debug(res)
         finally:

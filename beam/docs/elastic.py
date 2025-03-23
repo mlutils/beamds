@@ -742,7 +742,7 @@ class BeamElastic(PureBeamPath, BeamDoc):
         # s = self.s.query(q).extra(size=k)
         # return s.execute()
 
-    def unique(self, field_name, size=None):
+    def unique(self, field_name=None, size=None):
 
         field_name = self.keyword_field(field_name)
         s = self.s.source([field_name])

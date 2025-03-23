@@ -987,7 +987,7 @@ class MultiHeadHashedEmbeddingAdaptive(nn.Module):
 
         # Create independent embedding tables for each head
         self.embeddings = nn.ModuleList([
-            nn.Embedding(num_buckets, self.head_dim) for _ in range(num_heads)
+            nn.Embedding(num_buckets, self.head_dim, sparse=True) for _ in range(num_heads)
         ])
 
         # Initialize weights
@@ -1023,8 +1023,10 @@ class MultiHeadHashedEmbeddingAdaptive(nn.Module):
         Returns: Concatenated embedding from all heads
         """
         indices = [(hashed_value + i * self.offset) % self.num_buckets for i in range(self.num_heads)]
-        indices = torch.tensor(indices, dtype=torch.long)
+        # indices = torch.tensor(indices, dtype=torch.long)
 
         # Fetch embeddings for all heads
-        embeddings = [self.embeddings[i](indices[i].unsqueeze(0)) for i in range(self.num_heads)]
+        # embeddings = [self.embeddings[i](indices[i].unsqueeze(0)) for i in range(self.num_heads)]
+        embeddings = [self.embeddings[i](indices[i]) for i in range(self.num_heads)]
+
         return torch.cat(embeddings, dim=-1)  # Concatenate embeddings from all heads

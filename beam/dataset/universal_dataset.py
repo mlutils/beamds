@@ -105,6 +105,8 @@ class UniversalDataset(torch.utils.data.Dataset, BeamBase):
         self.index = None
         if index is not None:
             index_type = check_type(index)
+            if index_type.element != Types.int:
+                mapping = 'forward'
             if index_type.minor == Types.tensor:
                 index = as_numpy(index)
             if mapping == 'backward':
