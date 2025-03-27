@@ -37,6 +37,7 @@ class UniversalDataset(torch.utils.data.Dataset, BeamBase):
         device = beam_device(self.hparams.device)
 
         self.index = None
+        self.reversed_index = None
         self.set_index(index, mapping=index_mapping)
 
         if not hasattr(self, 'indices_split'):
@@ -119,6 +120,9 @@ class UniversalDataset(torch.utils.data.Dataset, BeamBase):
                 self.index = index
             else:
                 raise NotImplementedError(f"Mapping type: {mapping} not supported")
+
+            r = pd.Series(index)
+            self.reversed_index = pd.Series(data=r.index, index=r.values)
 
     def train(self):
         self.training = True
@@ -354,18 +358,21 @@ class UniversalDataset(torch.utils.data.Dataset, BeamBase):
     def set_statistics(self, stats):
         self.statistics = stats
 
-    def build_sampler(self, batch_size, subset=None, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
+    def build_sampler(self, batch_size, subset=None, indices=None, persistent=True, oversample=False, weight_factor=1., expansion_size=int(1e7),
                        dynamic=False, buffer_size=None, probs_normalization='sum', tail=True, sample_size=100000):
 
         from sklearn.utils.class_weight import compute_sample_weight
 
-        if subset is None:
-            if self.index is not None:
-                indices = self.index.index.values
+        if indices is None:
+            if subset is None:
+                if self.index is not None:
+                    indices = self.index.index.values
+                else:
+                    indices = torch.arange(len(self))
             else:
-                indices = torch.arange(len(self))
+                indices = self.indices[subset]
         else:
-            indices = self.indices[subset]
+            indices = self.as_something(indices, dtype=torch.long)
 
         if not persistent:
             return UniversalBatchSampler(indices, batch_size, shuffle=False,

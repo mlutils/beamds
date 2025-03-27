@@ -141,6 +141,11 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
     elif x_type.minor == Types.polars:
         x = x.to_numpy()
 
+    elif x_type.minor in [Types.PackedTensor, Types.PackedArray]:
+        data = torch.as_tensor(x.data, dtype=dtype, device=device)
+        length = torch.as_tensor(x.length, dtype=torch.int64, device=device)
+        return PackedTensor(data, length)
+
     if copy:
         x = torch.tensor(x, device=device, dtype=dtype)
     else:
@@ -319,18 +324,26 @@ def concat_polars_horizontally(data, **kwargs):
     return d.drop_in_place("key")
 
 
-def recursive_concatenate(data, dim=0):
+def recursive_concatenate(data, dim=0, check_equal_batch_length=False):
     d0 = data[0]
     if isinstance(d0, dict):
-        return {k: recursive_concatenate([di[k] for di in data], dim=dim) for k in d0.keys()}
+        return {k: recursive_concatenate([di[k] for di in data], dim=dim,
+                                         check_equal_batch_length=check_equal_batch_length) for k in d0.keys()}
     elif isinstance(d0, list) or isinstance(d0, tuple):
-        return [recursive_concatenate([di[n] for di in data], dim=dim) for n in range(len(d0))]
+        return [recursive_concatenate([di[n] for di in data], dim=dim,
+                                      check_equal_batch_length=check_equal_batch_length) for n in range(len(d0))]
     else:
         minor_type = check_minor_type(d0)
 
         if minor_type == Types.tensor:
             func = torch.cat
             kwargs = {'dim': dim}
+
+            if check_equal_batch_length and dim == 0:
+                if len(set([len(d) for d in data])) != 1:
+                    func = PackedTensor
+                    kwargs = {}
+
         elif minor_type == Types.pandas:
             func = pd.concat
             data = [pd.Series(v.values) if isinstance(v, pd.Index) else v for v in data]
@@ -342,6 +355,10 @@ def recursive_concatenate(data, dim=0):
                 kwargs = {'axis': dim}
             else:
                 func = concat_polars_horizontally
+        elif minor_type == Types.PackedSet:
+            func = d0.concat
+            kwargs = {}
+
         elif minor_type == Types.cudf:
             import cudf
             func = cudf.concat
@@ -350,6 +367,12 @@ def recursive_concatenate(data, dim=0):
         elif minor_type == Types.numpy:
             func = np.concatenate
             kwargs = {'axis': dim}
+
+            if check_equal_batch_length and dim == 0:
+                if len(set([len(d) for d in data])) != 1:
+                    func = PackedArray
+                    kwargs = {}
+
         else:
             raise ValueError(f"Concatenation not implemented for {minor_type}, returning the original data")
 
@@ -1350,3 +1373,143 @@ class GPUManager:
         local_physical_devices = GPUManager.physical_devices()
         return [local_physical_devices.index(d) for d in physical_devices]
 
+
+class PackedSet:
+    def __init__(self, data, length=None):
+        raise NotImplementedError("PackedSet is a base class and cannot be instantiated directly.")
+
+    def __len__(self):
+        return len(self.offset)
+
+    def clone(self):
+        raise NotImplementedError
+
+    def aggregate(self, func):
+        raise NotImplementedError
+
+    def __getitem__(self, index):
+        raise NotImplementedError
+
+    def __repr__(self):
+        return repr(self.data)
+
+    @property
+    def beam_class_name(self):
+        return self.__class__.__name__
+
+
+class PackedTensor(PackedSet):
+    def __init__(self, data, length=None, device=None):
+
+        if length is None:
+            self.data = torch.cat(data, dim=0)
+            self.length = torch.tensor([0] + [len(x) for x in data], device=self.data.device)
+        else:
+            self.data = data
+            self.length = torch.tensor([0] + list(length), device=self.data.device)
+
+        self._offset = self.length.cumsum(dim=0)
+        self.length = self.length[1:]
+        self.offset = self._offset[:-1]
+        self.index = torch.arange(len(self.offset), device=self.data.device)
+
+        if device is not None:
+            self.to(device)
+
+    def clone(self):
+        return PackedTensor(self.data.clone(), self.length.clone())
+
+    def to(self, device):
+        self.data = self.data.to(device)
+        self._offset = self._offset.to(device)
+        self.length = self.length.to(device)
+        self.offset = self.offset.to(device)
+        self.index = self.index.to(device)
+        return self
+
+    def aggregate(self, func):
+        return torch.stack([func(self.data[self._offset[i]:self._offset[i + 1]]) for i in range(len(self))])
+
+    def __getitem__(self, index):
+
+        if isinstance(index, int):
+            return self.data[self._offset[index]:self._offset[index + 1]]
+
+        if isinstance(index, slice):
+            index = self.index[index]
+
+        if isinstance(index, torch.Tensor):
+            if index.dtype == torch.bool:
+                index = self.index[index]
+            shape = index.shape
+            if len(shape) == 1:
+                return PackedTensor([self.data[self._offset[i]:self._offset[i + 1]] for i in index])
+            else:
+                raise NotImplementedError
+
+        elif isinstance(index, tuple):
+            assert len(index) == 2
+            a, b = index
+            return self.data[b + self._offset[a]]
+
+        else:
+            raise NotImplementedError
+
+    @classmethod
+    def concat(cls, *args):
+        return cls(torch.cat([a.data for a in args], dim=0),
+                            torch.cat([a.length for a in args], dim=0))
+
+
+class PackedArray(PackedSet):
+    def __init__(self, data, length=None):
+
+        if length is None:
+            self.data = np.concatenate(data, axis=0)
+            self.length = np.array([0] + [len(x) for x in data])
+        else:
+            self.data = data
+            self.length = np.array([0] + list(length))
+
+        self._offset = np.cumsum(self.length)
+        self.length = self.length[1:]
+        self.offset = self._offset[:-1]
+        self.index = np.arange(len(self.offset))
+
+    def clone(self):
+        return PackedArray(self.data.copy(), self.length.copy())
+
+    def aggregate(self, func):
+        return np.stack([func(self.data[self._offset[i]:self._offset[i + 1]]) for i in range(len(self))])
+
+    def __getitem__(self, index):
+
+        if isinstance(index, slice):
+            index = np.arange(len(self))[index]
+
+        if isinstance(index, np.ndarray):
+            if index.dtype == bool:
+                index = self.index[index]
+        elif isinstance(index, int):
+            return self.data[self._offset[index]:self._offset[index + 1]]
+
+        if isinstance(index, (np.ndarray, list)):
+            if np.isscalar(index):
+                return self.data[self._offset[index]:self._offset[index + 1]]
+            elif len(np.shape(index)) == 1:
+                return PackedArray([self.data[self._offset[i]:self._offset[i + 1]] for i in index])
+            else:
+                raise NotImplementedError
+
+        elif isinstance(index, tuple):
+            assert len(index) == 2
+            a, b = index
+            return self.data[b + self._offset[a]]
+
+        else:
+            raise NotImplementedError
+
+    @classmethod
+    def concat(cls, *args):
+        return cls(np.concatenate([a.data for a in args], axis=0),
+                           np.concatenate([a.length for a in args], axis=0))

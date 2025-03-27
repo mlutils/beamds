@@ -63,3 +63,5 @@ class LLMTask(Processor):
 
     def parse(self, response):
         raise NotImplementedError
+
+

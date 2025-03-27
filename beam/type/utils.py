@@ -51,6 +51,8 @@ class Types:
     cls = 'class'
     function = 'function'
     method = 'method'
+    PackedTensor = 'PackedTensor'
+    PackedArray = 'PackedArray'
 
 def is_nan(x):
     return (pd.isna(x) or (isinstance(x, float) and np.isnan(x)) or (isinstance(x, np.ndarray) and np.isnan(x).all())
@@ -212,25 +214,28 @@ def check_minor_type(x):
     if isinstance(x, slice):
         return Types.slice
     if isinstance(x, Counter):
-        return Types.counter
-    elif is_scalar(x):
-        return Types.scalar
+      return Types.counter
+    if is_scalar(x):
+      return Types.scalar
     if is_polars(x):
-        return Types.polars
+      return Types.polars
     if is_scipy_sparse(x):
-        return Types.scipy_sparse
-    elif is_pil(x):
-        return Types.pil
-    elif isinstance(x, PurePath) or is_beam_path(x):
-        return Types.path
-    elif is_beam_data(x):
-        return Types.beam_data
-    elif is_beam_processor(x):
-        return Types.beam_processor
+      return Types.scipy_sparse
+    if is_pil(x):
+      return Types.pil
+    if isinstance(x, PurePath) or is_beam_path(x):
+      return Types.path
+    if is_beam_data(x):
+      return Types.beam_data
+    if is_packed_tensor(x):
+      return Types.PackedTensor
+    if is_packed_array(x):
+      return Types.PackedArray
+    if is_beam_processor(x):
+      return Types.beam_processor
     if is_cudf(x):
         return Types.cudf
-    else:
-        return Types.other
+    return Types.other
 
 
 def elt_of_list(x, sample_size=20):
@@ -429,5 +434,15 @@ def is_beam_config(x):
 
 def is_beam_resource(x):
     if hasattr(x, 'beam_class_name') and 'BeamResource' in x.beam_class_name:
+        return True
+    return False
+
+def is_packed_tensor(x):
+    if hasattr(x, 'beam_class_name') and 'PackedTensor' == x.beam_class_name:
+        return True
+    return False
+
+def is_packed_array(x):
+    if hasattr(x, 'beam_class_name') and 'PackedArray' == x.beam_class_name:
         return True
     return False

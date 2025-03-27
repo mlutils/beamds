@@ -434,19 +434,20 @@ class NeuralAlgorithm(Algorithm):
                 momentum = self.get_hparam('beta1')
 
             for k, v in networks.items():
-                if k not in optimizers and not self.deepspeed:
-                    optimizers[k] = BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', specific=k),
-                                                                  'weight_decay': self.get_hparam('weight_decay', specific=k),
-                                                                  'betas': (self.get_hparam('momentum', specific=k, default=momentum),
-                                                                            self.get_hparam('beta2', specific=k)),
-                                                                  'eps': self.get_hparam('eps', specific=k),},
-                                                   sparse_args={'lr': self.get_hparam('lr_sparse', specific=k),
-                                                                'betas': (self.get_hparam('momentum', specific=k, default=momentum),
-                                                                          self.get_hparam('beta2', specific=k)),
-                                                                'eps': self.get_hparam('eps', specific=k)},
-                                                   clip=self.get_hparam('clip_gradient', specific=k), amp=self.amp,
-                                                   accumulate=self.get_hparam('accumulate', specific=k),
-                                                   model_dtype=self.mixed_precision_dtype)
+                if len(list(v.parameters())):
+                    if k not in optimizers and not self.deepspeed:
+                        optimizers[k] = BeamOptimizer(v, dense_args={'lr': self.get_hparam('lr_dense', specific=k),
+                                                                      'weight_decay': self.get_hparam('weight_decay', specific=k),
+                                                                      'betas': (self.get_hparam('momentum', specific=k, default=momentum),
+                                                                                self.get_hparam('beta2', specific=k)),
+                                                                      'eps': self.get_hparam('eps', specific=k),},
+                                                       sparse_args={'lr': self.get_hparam('lr_sparse', specific=k),
+                                                                    'betas': (self.get_hparam('momentum', specific=k, default=momentum),
+                                                                              self.get_hparam('beta2', specific=k)),
+                                                                    'eps': self.get_hparam('eps', specific=k)},
+                                                       clip=self.get_hparam('clip_gradient', specific=k), amp=self.amp,
+                                                       accumulate=self.get_hparam('accumulate', specific=k),
+                                                       model_dtype=self.mixed_precision_dtype)
 
         if processors is None:
             processors = {}
@@ -1241,7 +1242,7 @@ class NeuralAlgorithm(Algorithm):
         pass
 
     def __call__(self, subset, dataset_name='dataset', predicting=False, enable_tqdm=None, max_iterations=None,
-                 head=None, eval_mode=True, return_dataset=None, **kwargs):
+                 head=None, eval_mode=True, return_dataset=None, collate=True,  **kwargs):
 
         self.set_reporter(BeamReport(objective=self.get_hparam('objective'),
                                      optimization_mode=self.optimization_mode))
@@ -1286,8 +1287,9 @@ class NeuralAlgorithm(Algorithm):
                     transforms.append(transform)
                     index.append(ind)
 
-                index = torch.cat(index)
-                transforms = recursive_concatenate(transforms)
+                if collate:
+                    index = torch.cat(index)
+                    transforms = recursive_concatenate(transforms)
 
                 self.postprocess_inference(sample=sample, index=ind, transforms=transforms, label=label,
                                                      subset=subset, dataset=dataset, predicting=predicting, **kwargs)

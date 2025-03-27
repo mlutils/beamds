@@ -67,7 +67,7 @@ class BeamType:
 
     @cached_property
     def is_torch(self):
-        return self._minor == Types.tensor
+        return self._minor in [Types.tensor, Types.PackedTensor]
 
     @cached_property
     def is_str(self):
