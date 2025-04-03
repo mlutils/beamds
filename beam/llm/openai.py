@@ -201,9 +201,10 @@ class SamurOpenAI(OpenAIBase):
 
     _is_chat: Any = PrivateAttr(default=None)
 
-    def __init__(self, model=None, hostname=None, api_key=None, port=None, chat=True, *args, **kwargs):
+    def __init__(self, model=None, hostname=None, api_key=None, port=None, chat=True, tls=False, *args, **kwargs):
 
-        api_base = f"https://{normalize_host(hostname, port)}/openai/v1"
+        http_scheme = 'http' if not tls else 'https'
+        api_base = f"{http_scheme}://{normalize_host(hostname, port)}/openai/v1"
         super().__init__(*args, model=model, api_key=api_key, api_base=api_base,  scheme='samur-openai', **kwargs)
         self._is_chat = chat
 
