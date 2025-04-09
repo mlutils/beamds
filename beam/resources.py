@@ -44,6 +44,9 @@ def resource(uri, **kwargs) -> Union[BeamResource, Any]:
     elif scheme in resource_names['elastic']:
         from .docs import beam_elastic
         return beam_elastic(uri, **kwargs)
+    elif scheme in resource_names['airflow']:
+        from .flow import airflow_client
+        return airflow_client(uri, **kwargs)
 
     elif scheme in dynamic_resources:
         return dynamic_resources[scheme](uri, **kwargs)

@@ -1,33 +1,57 @@
+import json
+
 from airflow_client.client import ApiClient, Configuration
 from airflow_client.client.api.dag_run_api import DAGRunApi
 from airflow_client.client.api.dag_api import DAGApi
 from airflow_client.client.api.config_api import ConfigApi
-from airflow_client.client.model.clear_task_instance import ClearTaskInstance
+from airflow_client.client.model.clear_task_instances import ClearTaskInstances
 from airflow_client.client.api.task_instance_api import TaskInstanceApi
 from airflow_client.client.model.dag_run import DAGRun
 from datetime import datetime
 
 from ..path import PureBeamPath, normalize_host
 
+
 class AirflowClient(PureBeamPath):
 
+    limit = 100
+
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, username=None,
-                 password=None, tls=False, **kwargs):
+                 password=None, tls=False, verify=False, **kwargs):
+
+        if not len(pathsegments):
+            pathsegments = ('/',)
+
         super().__init__(*pathsegments, scheme='airflow', client=client, hostname=hostname, port=port,
-                          username=username, password=password, tls=tls, **kwargs)
+                          username=username, password=password, tls=tls, verify=verify, **kwargs)
 
         if type(tls) is str:
             tls = (tls.lower() == 'true')
 
         tls = 'https' if tls else 'http'
-        url = f'{tls}://{normalize_host(hostname, port)}'
+        url = f'{tls}://{normalize_host(hostname, port)}/api/v1'
+        self._url = url
 
         if client is None:
-            client = ApiClient(Configuration(host=url, username=username, password=password))
+            configuration = Configuration(host=url, username=username, password=password)
+            client = ApiClient(configuration)
+            if not verify:
+                client.configuration.verify_ssl = False
         self.client = client
 
         l = len(self.parts[1:])
         self.level = {0: 'root', 1: 'dag', 2: 'dag_run', 3: 'task_instance'}[l]
+
+    def health(self):
+        try:
+            res = self.client.rest_client.GET(f"{self._url}/health")
+            res = json.loads(res.data)
+            return res['metadatabase']['status'] == 'healthy'
+        except Exception as e:
+            return str(e)
+
+    def ping(self):
+        return self.health() == 'healthy'
 
     @property
     def dag_id(self):
@@ -61,13 +85,23 @@ class AirflowClient(PureBeamPath):
         if self.level == 'root':
             # iter over all dags
             dags = self.dag_api.get_dags()
-            for dag in dags:
+            for dag in dags.dags:
                 yield self.joinpath(dag.dag_id)
+
         elif self.level == 'dag':
             # iter over all dag_runs
-            dag_runs = self.dag_run_api.get_dag_runs(self.dag_id)
-            for dag_run in dag_runs:
-                yield self.joinpath(dag_run.run_id)
+            i = 0
+            while True:
+                dag_runs = self.dag_run_api.get_dag_runs(self.dag_id, offset=i, limit=self.limit * i)
+
+                for dag_run in dag_runs.dag_runs:
+                    yield self.joinpath(dag_run.run_id)
+
+                if len(dag_runs.dag_runs) < self.limit:
+                    break
+
+                i += 1
+
         elif self.level == 'dag_run':
             # iter over all task_instances
             task_instances = self.task_instance_api.get_task_instances(self.dag_id, self.run_id)
@@ -87,7 +121,6 @@ class AirflowClient(PureBeamPath):
     def execution_date(self, item):
         # Extract execution time from an item if available
         return getattr(item, 'execution_date', None)
-
 
     def get_running(self, time_start=None, time_end=None):
         if self.level == 'root':
@@ -166,7 +199,7 @@ class AirflowClient(PureBeamPath):
 
     def unlink(self):
         if self.level == 'root':
-            raise ValueError('Cannot delete dags')
+            raise ValueError('Cannot delete all dags')
         elif self.level == 'dag':
             # delete dag
             self.dag_api.delete_dag(self.dag_id)
@@ -179,12 +212,11 @@ class AirflowClient(PureBeamPath):
     def clear(self, upstream=False, downstream=False, future=False, past=False, dry_run=False):
 
         # clear task_instance
-        clear = ClearTaskInstance(upstream=upstream, downstream=downstream, future=future,
+        clear = ClearTaskInstances(upstream=upstream, downstream=downstream, future=future,
                                   past=past, dry_run=dry_run)
 
         if self.level == 'task_instance':
             self.task_instance_api.clear_task_instance(self.dag_id, self.run_id, self.task_id, clear)
-
 
     # set airflow environment variable
     def set_var(self, key, value):
@@ -200,7 +232,7 @@ class AirflowClient(PureBeamPath):
 
         if self.level == 'dag_run':
             for task_id in failed_items:
-                self.task_instance_api.clear_task_instance(self.dag_id, self.run_id, task_id, ClearTaskInstance())
+                self.task_instance_api.clear_task_instance(self.dag_id, self.run_id, task_id, ClearTaskInstances())
 
         elif self.level == 'dag':
             for run_id in failed_items:
@@ -218,7 +250,7 @@ class AirflowClient(PureBeamPath):
             run_id = f"manual_{datetime.utcnow().isoformat()}"
             self.dag_run_api.post_dag_run(self.dag_id, DAGRun(run_id=run_id))
         elif self.level == 'task_instance':
-            self.task_instance_api.clear_task_instance(self.dag_id, self.run_id, self.task_id, ClearTaskInstance())
+            self.task_instance_api.clear_task_instance(self.dag_id, self.run_id, self.task_id, ClearTaskInstances())
 
     def stop(self):
         """ Stop a running DAG Run or Task """

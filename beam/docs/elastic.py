@@ -937,14 +937,32 @@ class BeamElastic(PureBeamPath, BeamDoc):
         return self.client.reindex(body={"source": {"index": self.index_name},
                                          "dest": {"index": target_index.index_name}}, **kwargs)
 
-    def copy(self, path, **kwargs):
-        # use reindex to copy data from one index to another
-        if type(path) is BeamElastic:
-            target_index = path.index_name
-        else:
-            target_index = path
+    def copy(self, dst, **kwargs):
 
-        return self.reindex(target_index, **kwargs)
+        if self.level in ['document', 'query']:
+
+            if type(dst) is str:
+                if '://' in dst:
+                    from .resource import beam_path
+                    dst = beam_path(dst)
+                else:
+                    dst = self.gen(dst)
+
+            values = self.read(as_dict=True)
+            dst.write(values, sanitize=True)
+
+        elif self.level == 'index':
+
+            # use reindex to copy data from one index to another
+            if type(dst) is BeamElastic:
+                target_index = dst.index_name
+            else:
+                target_index = dst
+
+            return self.reindex(target_index, **kwargs)
+
+        else:
+            raise ValueError("Cannot copy from root path")
 
     def with_filter_term(self, value, field=None, as_keyword=True):
         return self & self.filter_term(value, field=field, as_keyword=as_keyword)
