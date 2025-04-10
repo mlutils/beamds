@@ -7,7 +7,7 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'Experiment', 'nn_algorithm_generator',
            'NeuralAlgorithm',
-           'LinearNet', 'PackedSet', 'copy_network', 'reset_network', 'DataTensor', 'BeamOptimizer', 'BeamScheduler',
+           'LinearNet', 'PackedTensor', 'copy_network', 'reset_network', 'DataTensor', 'BeamOptimizer', 'BeamScheduler',
            'BeamNN',
            'BeamData',
            'slice_to_index', 'beam_device', 'as_tensor', 'batch_augmentation', 'as_numpy', 'DataBatch', 'beam_hash',
@@ -16,7 +16,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'beam_logger', 'beam_kpi', 'logger',
            'beam_path', 'beam_key', 'pretty_format_number', 'resource',
            'tqdm', 'Transformer', 'Processor',
-           'parallel', 'task', 'this_dir', 'cwd',
+           'parallel', 'task', 'this_dir', 'cwd', 'chdir',
            # Orchestration
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
            'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server',
@@ -66,8 +66,8 @@ def __getattr__(name):
         from .nn import LinearNet
         return LinearNet
     elif name == 'PackedSet':
-        from .nn import PackedSet
-        return PackedSet
+        from .nn import PackedTensor
+        return PackedTensor
     elif name == 'copy_network':
         from .nn import copy_network
         return copy_network
@@ -180,6 +180,9 @@ def __getattr__(name):
     elif name == 'cwd':
         from .resources import cwd
         return cwd
+    elif name == 'chdir':
+        from .resources import chdir
+        return chdir
     # Orchestration
     elif name == 'BeamDeploy':
         from .orchestration import BeamDeploy
@@ -221,7 +224,7 @@ if len([]):
     from .dataset import UniversalBatchSampler, UniversalDataset
     from .experiment import Experiment, nn_algorithm_generator
     from .algorithm import NeuralAlgorithm
-    from .nn import LinearNet, PackedSet, copy_network, reset_network, DataTensor, BeamOptimizer, BeamScheduler, BeamNN
+    from .nn import LinearNet, PackedTensor, copy_network, reset_network, DataTensor, BeamOptimizer, BeamScheduler, BeamNN
     from .data import BeamData
     from .utils import slice_to_index, beam_device, as_tensor, batch_augmentation, as_numpy, DataBatch, beam_hash
     from .config import UniversalConfig, beam_arguments, BeamConfig, BeamParam
@@ -230,7 +233,7 @@ if len([]):
     from .path import beam_path, beam_key
     from .serve import beam_server, beam_client
     from ._version import __version__
-    from .resources import resource, this_dir, cwd
+    from .resources import resource, this_dir, cwd, chdir
     from .transformer import Transformer
     from .processor import Processor
     from .concurrent import parallel, task

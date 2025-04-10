@@ -1,5 +1,6 @@
 import json
 from typing import Dict, List, Any
+from argparse import Namespace
 
 from ..llm import beam_llm
 from ..llm import LLMGuidance
@@ -32,13 +33,14 @@ class ArgumentsSelection(BaseModel):
 class BeamAssistant(MetaDispatcher):
 
     def __init__(self, obj, *args, llm=None, llm_kwargs=None, summary_len=10, eval_arguments=True, retries=3,
-                 _summary=None, **kwargs):
+                 _summary=None, execute=True, **kwargs):
 
         super().__init__(obj, *args, summary_len=summary_len,
                          eval_arguments=eval_arguments, retries=retries, **kwargs)
 
         self.summary_len = self.get_hparam('summary_len', summary_len)
         self.eval_arguments = self.get_hparam('eval_arguments', eval_arguments)
+        self.execute = self.get_hparam('execute', execute)
         self.retries = self.get_hparam('retries', retries)
         self.guidance = {'method_selection': LLMGuidance(guided_json=MethodSelection),
                          'arguments_selection': LLMGuidance(guided_json=ArgumentsSelection)}
@@ -189,7 +191,8 @@ class BeamAssistant(MetaDispatcher):
 
         return BeamAssistant(instance, llm=self.llm, summary_len=self.summary_len, _summary=self.summary)
 
-    def exec_method(self, query, method_name=None, ask_kwargs=None, user_kwargs=None, eval_arguments=None):
+    def exec_method(self, query, method_name=None, ask_kwargs=None, user_kwargs=None, eval_arguments=None,
+                    execute=True):
 
         eval_arguments = eval_arguments or self.eval_arguments
 
@@ -260,6 +263,9 @@ class BeamAssistant(MetaDispatcher):
 
         # iterate over args and kwargs and look for tags <eval> and <user_arg>
         # use re to match the pattern <tag>content</tag>
+
+        if not execute:
+            return Namespace(args=args, kwargs=kwargs, method=method)
 
         eval_pattern = re.compile(r"<eval>(.*)</eval>")
         user_arg_pattern = re.compile(r"<user_arg>(.*)</user_arg>")
@@ -336,8 +342,11 @@ class BeamAssistant(MetaDispatcher):
 
         return method_name
 
-    def exec(self, query, method=None, ask_kwargs=None, eval_arguments=None, **kwargs):
+    def exec(self, query, method=None, ask_kwargs=None, eval_arguments=None, execute=None, **kwargs):
         # execute code according to the prompt
+
+        if execute is None:
+            execute = self.execute
 
         user_kwargs = {k: {'value': v, 'str': str(v), 'metadata': check_type(v)} for k, v in kwargs.items()}
 
@@ -347,10 +356,10 @@ class BeamAssistant(MetaDispatcher):
         elif self.type == 'instance':
             if method is None:
                 method = self.choose_method(query, ask_kwargs=ask_kwargs, user_kwargs=user_kwargs)
-            res = self.exec_method(query, method_name=method, ask_kwargs=ask_kwargs,
+            res = self.exec_method(query, method_name=method, ask_kwargs=ask_kwargs, execute=execute,
                                    user_kwargs=user_kwargs, eval_arguments=eval_arguments)
         elif self.type == 'function':
-            res = self.exec_method(query, ask_kwargs=ask_kwargs,
+            res = self.exec_method(query, ask_kwargs=ask_kwargs, execute=execute,
                                    user_kwargs=user_kwargs, eval_arguments=eval_arguments)
         else:
             raise ValueError(f"Unknown type: {self.type}")

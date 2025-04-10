@@ -1,5 +1,3 @@
-from oauthlib.uri_validate import fragment
-
 from .elastic import BeamElastic
 from ..path import BeamURL
 

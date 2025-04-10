@@ -1,6 +1,7 @@
 import copy
 import math
 import random
+import sympy
 from collections import defaultdict
 from functools import partial
 
@@ -10,76 +11,7 @@ from torch import nn
 
 from .optim import BeamOptimizer
 from ..logging import beam_logger as logger
-from ..utils import slice_to_index, hash_tensor
-
-
-class PackedSet(object):
-
-    def __init__(self, data, length=None, device=None):
-
-        if length is None:
-            self.data = torch.cat(data, dim=0)
-            self.length = torch.LongTensor([0] + [len(x) for x in data], device=self.data.device)
-        else:
-            self.data = data
-            self.length = torch.LongTensor([0] + list(length), device=self.data.device)
-
-        self._offset = self.length.cumsum(dim=0)
-        self.length = self.length[1:]
-        self.offset = self._offset[:-1]
-        self.index = torch.arange(len(self.offset), device=self.data.device)
-
-        if device is not None:
-            self.to(device)
-
-    def __len__(self):
-        return len(self.offset)
-
-    def clone(self):
-        return PackedSet(self.data.clone(), self.length.clone())
-
-    def to(self, device):
-        self.data = self.data.to(device)
-        self._offset = self._offset.to(device)
-        self.length = self.length.to(device)
-        self.offset = self.offset.to(device)
-        self.index = self.index.to(device)
-        return self
-
-    def aggregate(self, func):
-        return torch.stack([func(self.data[self._offset[i]:self._offset[i + 1]]) for i in range(len(self))])
-
-    def __getitem__(self, index):
-
-        index = slice_to_index(index, l=len(self))
-        if isinstance(index, np.ndarray):
-            if index.dtype == np.dtype('bool'):
-                index = torch.BoolTensor(index)
-            else:
-                index = torch.LongTensor(index)
-        elif type(index) is int:
-            index = torch.scalar_tensor(index, dtype=torch.int64)
-        if isinstance(index, torch.Tensor):
-            if index.dtype == torch.bool:
-                index = self.index[index]
-            shape = index.shape
-            if len(shape) == 0:
-                return self.data[self._offset[index]:self._offset[index + 1]]
-            elif len(shape) == 1:
-                return PackedSet([self.data[self._offset[i]:self._offset[i + 1]] for i in index])
-            else:
-                raise NotImplementedError
-
-        elif type(index) is tuple:
-            assert len(index) == 2
-            a, b = index
-            return self.data[b + self._offset[a]]
-
-        else:
-            raise NotImplementedError
-
-    def __repr__(self):
-        return repr(self.data)
+from ..utils import slice_to_index, hash_tensor, PackedTensor
 
 
 class PositionalHarmonicExpansion(object):
@@ -925,3 +857,107 @@ def reset_networks_and_optimizers(networks=None, optimizers=None):
                 opt.reset()
             else:
                 opt.state = defaultdict(dict)
+
+
+
+# Function to find an optimal offset based on bucket size
+def find_optimal_offset(num_buckets, num_heads):
+    """
+    Finds an optimal offset to separate different heads in multi-head hashing.
+
+    num_buckets: Total number of buckets (B)
+    num_heads: Number of heads (H)
+
+    Returns: Optimal offset (O)
+    """
+    min_offset = num_buckets // 2  # Ensuring sufficient separation
+    max_offset = num_buckets
+
+    # Find a prime number that does not divide num_buckets
+    for candidate in range(min_offset, max_offset):
+        if sympy.isprime(candidate) and num_buckets % candidate != 0:
+            return candidate
+
+    # Fallback: If no prime found, return a large odd number
+    return min_offset | 1  # Ensure it's odd
+
+
+# Define the class with adaptive bucket and head selection
+class MultiHeadHashedEmbeddingAdaptive(nn.Module):
+    def __init__(self, embedding_dim, num_buckets=None, num_heads=None, num_categories=None, collision_rate=.1,
+                 offset=None):
+        """
+        Initializes the Multi-Head Hashed Embedding module with adaptive bucket and head selection.
+
+        embedding_dim: Total embedding dimension
+        num_buckets: Number of unique buckets (optional)
+        num_heads: Number of independent heads (optional)
+        num_categories: Number of unique categorical values (optional, used to compute optimal num_buckets and num_heads)
+        collision_rate: Desired maximum collision rate (optional, used with num_categories)
+        offset: Optional offset for shifting hashes between heads; if None, an optimal offset is chosen.
+        """
+        super().__init__()
+
+        # Determine num_buckets and num_heads dynamically if not provided
+        if num_buckets is None or num_heads is None:
+            if num_categories is not None and collision_rate is not None:
+                # Solve for the optimal num_buckets and num_heads given collision_rate
+                num_buckets, num_heads = self._determine_buckets_and_heads(num_categories, embedding_dim,
+                                                                           collision_rate)
+            else:
+                raise ValueError("Either provide (num_buckets and num_heads) or (num_categories and collision_rate).")
+
+        assert embedding_dim % num_heads == 0, "Embedding dim must be divisible by num_heads"
+
+        self.num_heads = num_heads
+        self.head_dim = embedding_dim // num_heads  # Split embedding into heads
+        self.num_buckets = num_buckets
+
+        # If no offset is provided, find an optimal one
+        self.offset = offset if offset else find_optimal_offset(num_buckets, num_heads)
+
+        # Create independent embedding tables for each head
+        self.embeddings = nn.ModuleList([
+            nn.Embedding(num_buckets, self.head_dim, sparse=True) for _ in range(num_heads)
+        ])
+
+        # Initialize weights
+        for emb in self.embeddings:
+            nn.init.xavier_uniform_(emb.weight)
+
+    def _determine_buckets_and_heads(self, num_categories, embedding_dim, target_collision_rate):
+        """
+        Computes optimal num_buckets and num_heads based on the desired collision rate.
+
+        num_categories: Number of unique categorical values
+        embedding_dim: Total embedding dimension
+        target_collision_rate: Desired max collision rate (threshold)
+
+        Returns: (optimal_num_buckets, optimal_num_heads)
+        """
+
+        if not (0 < target_collision_rate < 1):
+            raise ValueError("target_collision_rate must be between 0 and 1 (exclusive).")
+
+        num_heads = 2 ** int(math.log2(1 / target_collision_rate))
+
+        # Ensure num_heads divides embedding_dim
+        num_heads = math.gcd(embedding_dim, num_heads)
+
+        num_buckets = max(1, int(num_categories / target_collision_rate))
+
+        return num_buckets, num_heads
+
+    def forward(self, hashed_value):
+        """
+        hashed_value: Precomputed integer hash value
+        Returns: Concatenated embedding from all heads
+        """
+        indices = [(hashed_value + i * self.offset) % self.num_buckets for i in range(self.num_heads)]
+        # indices = torch.tensor(indices, dtype=torch.long)
+
+        # Fetch embeddings for all heads
+        # embeddings = [self.embeddings[i](indices[i].unsqueeze(0)) for i in range(self.num_heads)]
+        embeddings = [self.embeddings[i](indices[i]) for i in range(self.num_heads)]
+
+        return torch.cat(embeddings, dim=-1)  # Concatenate embeddings from all heads

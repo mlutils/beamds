@@ -1,4 +1,5 @@
-__all__ = ['BeamBase', 'beam_cache', 'BeamURL', 'BeamResource', 'resource_names', 'base_paths', 'tmp_paths']
+__all__ = ['BeamBase', 'beam_cache', 'BeamURL', 'BeamResource', 'resource_names', 'base_paths', 'tmp_paths',
+           'Iloc', 'Loc', 'Key', 'Groups', 'return_none']
 
 
 # Explicit imports for IDE
@@ -10,6 +11,7 @@ if len([]):
     from .beam_resource import resource_names
     from .consts import base_paths
     from .consts import tmp_paths
+    from .elements import Iloc, Loc, Key, Groups, return_none
 
 
 def __getattr__(name):
@@ -34,6 +36,21 @@ def __getattr__(name):
     elif name == 'tmp_paths':
         from .consts import tmp_paths
         return tmp_paths
+    elif name == 'Iloc':
+        from .elements import Iloc
+        return Iloc
+    elif name == 'Loc':
+        from .elements import Loc
+        return Loc
+    elif name == 'Key':
+        from .elements import Key
+        return Key
+    elif name == 'Groups':
+        from .elements import Groups
+        return Groups
+    elif name == 'return_none':
+        from .elements import return_none
+        return return_none
     else:
         raise AttributeError(f"module {__name__} has no attribute {name}")
 

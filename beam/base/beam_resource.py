@@ -12,7 +12,8 @@ resource_names = {
     'triton': ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs'],
     'ray': ['ray'],
     'embedding': ['emb-openai', 'emb-stt'],
-    'elastic': ['elastic']
+    'elastic': ['elastic', 'elasticsearch', 'es'],
+    'airflow': ['airflow', 'flow'],
 }
 
 
@@ -108,3 +109,12 @@ class BeamResource(BeamName):
 
     def __str__(self):
         return self.str
+
+    def __getstate__(self):
+        return self.as_uri()
+
+    def __setstate__(self, state):
+        # initialize class from uri
+        obj = self.from_uri(state)
+        self.__dict__.update(obj.__dict__)
+

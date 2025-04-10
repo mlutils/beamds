@@ -9,6 +9,7 @@ import torch
 from ..path import beam_path
 from ..utils import check_type, slice_to_index, as_tensor, is_boolean, as_numpy, beam_device
 from ..type import Types
+from ..base import Loc, Iloc
 
 
 class LazyTensor:
@@ -165,24 +166,6 @@ class LazyTensor:
             data = data[index]
 
         return data
-
-
-class Iloc(object):
-
-    def __init__(self, pointer):
-        self.pointer = pointer
-
-    def __getitem__(self, ind):
-        return self.pointer._iloc(ind)
-
-
-class Loc(object):
-
-    def __init__(self, pointer):
-        self.pointer = pointer
-
-    def __getitem__(self, ind):
-        return self.pointer._loc(ind)
 
 
 class DataTensor(object):

@@ -36,6 +36,12 @@ class BeamPath(PureBeamPath):
     def home(cls):
         return cls(str(Path.home()))
 
+    def absolute(self):
+        return self.gen(self.path.absolute())
+
+    def relative_to(self, *other):
+        return self.gen(self.path.relative_to(*other))
+
     def stat(self):  # add follow_symlinks=False for python 3.10
         return self.path.stat()
 

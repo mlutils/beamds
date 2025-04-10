@@ -31,7 +31,12 @@ if pydantic.__version__ < '2.0.0':
     except ImportError:
         logger.warning("langchain not found, using pydantic only as the LLM base")
 else:
-    logger.warning("pydantic version >= 2.0.0 is incompatible with langchain, using pydantic only as the LLM base")
+    from langchain import __version__ as langchain_version
+    if langchain_version < '0.3.0':
+        logger.warning("pydantic version >= 2.0.0 is incompatible with langchain < 0.3.0, using pydantic only as the LLM base")
+    else:
+        from langchain.llms.base import LLM
+        from langchain.callbacks.manager import CallbackManagerForLLMRun
 
 from pydantic import Field, PrivateAttr
 from .utils import get_conversation_template
@@ -505,7 +510,12 @@ class BeamLLM(PedanticBeamResource):
         if image is not None:
             images.insert(0, image)
 
-        self._chat.add_user_message(message, images=images)
+        if type(message) is str:
+            self._chat.add_user_message(message, images=images)
+        elif type(message) is BeamChat:
+            self._chat = message
+        else:
+            raise ValueError("message should be a string or a BeamChat object")
 
         tools = tools or self.tools
         if tools:
@@ -666,8 +676,6 @@ class BeamLLM(PedanticBeamResource):
         else:
             res = self.ask(prompt, **kwargs)
 
-        # res = res.choices[0].text
-
         return res
 
     def openai_format(self, res, finish_reason="stop", tokens=None, completion_tokens=0, prompt_tokens=0,
@@ -778,7 +786,7 @@ class BeamLLM(PedanticBeamResource):
             max_new_tokens=None,
             presence_penalty=None, stop=None, n=None, stream=None, logprobs=None, logit_bias=None, echo=False,
             parse_retries=None, sleep=None, ask_retries=None, prompt_type='completion', tools=None,
-            image=None, images=None, fastchat_format=True, guidance=None, **kwargs):
+            image=None, images=None, guidance=None, **kwargs):
         """
 
         @param prompt:
@@ -816,21 +824,17 @@ class BeamLLM(PedanticBeamResource):
                                                  max_new_tokens=max_new_tokens, ask_retries=ask_retries,
                                                  parse_retries=parse_retries, sleep=sleep)
 
-        if fastchat_format:
-            chat = BeamChat(scheme=self.scheme, adapter=self.adapter, messages=[{'role': 'system', 'content': prompt}],
-                            system_message=system, tool_message=self.tool_message(tools))
-            prompt = chat.fastchat_format
-        else:
-            if system is not None:
-                logger.warning("system is ignored, use fastchat_format=True to add system message to the prompt")
-            if tools is not None:
-                logger.warning("tools are ignored, use fastchat_format=True to add tools to the prompt")
+        chat = BeamChat(scheme=self.scheme, adapter=self.adapter, messages=[{'role': 'user', 'content': prompt}],
+                        system_message=system, tool_message=self.tool_message(tools))
+
 
         if not self.is_completions:
             kwargs = {**default_params, **kwargs}
-            response = self.chat(prompt, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat',
+            response = self.chat(chat, reset_chat=True, prompt_type=f'simulated_{prompt_type}_with_chat',
                                  guidance=guidance, image=image, images=images, **kwargs)
         else:
+
+            prompt = chat.fastchat_format
             response = self.completion(prompt, logprobs=logprobs, echo=echo,
                                        prompt_type=prompt_type, guidance=guidance, **default_params)
 

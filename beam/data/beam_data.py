@@ -9,7 +9,7 @@ import pandas as pd
 from ..logging import beam_logger as logger
 from ..path import beam_path, prioritized_extensions
 
-from .elements import Groups, Iloc, Loc, Key, return_none
+from ..base import Groups, Iloc, Loc, Key, return_none
 from ..meta import BeamName
 from ..type import BeamType, is_beam_processor, is_beam_data, Types
 from ..utils import (is_container, Slicer, recursive, iter_container, recursive_collate_chunks,
@@ -19,8 +19,7 @@ from ..utils import (is_container, Slicer, recursive, iter_container, recursive_
                      recursive_types, recursive_shape, recursive_slice, recursive_slice_columns, recursive_batch,
                      get_closest_item_with_tuple_key, get_item_with_tuple_key, set_item_with_tuple_key,
                      recursive_chunks, as_numpy, check_type, as_tensor, slice_to_index, beam_device, beam_hash,
-                     DataBatch, recursive_same_device, recursive_concatenate, recursive_items,
-                     recursive_keys, concat_polars_horizontally, beam_traceback)
+                     DataBatch, recursive_same_device, recursive_concatenate, recursive_keys, concat_polars_horizontally, beam_traceback)
 
 
 class BeamData(BeamName):
@@ -265,7 +264,7 @@ class BeamData(BeamName):
     def has_index(self):
         if self._has_index is None:
             _ = self.index
-        self._has_index = self._index is not None
+        self._has_index = self._index is not None and len(self._index)
         return self._has_index
 
     @property
@@ -771,7 +770,7 @@ class BeamData(BeamName):
                         shapes = set(list(filter(lambda x: x is not None, shapes)))
                         if len(shapes) > 1 and 'other' not in shapes:
                             self._orientation = 'columns'
-                        elif len(shapes) == 1:
+                        elif len(shapes) == 1 and 'other' not in shapes:
                             self._orientation = 'index'
                         else:
                             self._orientation = 'packed'
@@ -779,7 +778,7 @@ class BeamData(BeamName):
                     shapes = recursive_flatten(recursive(shape_of)([self.data]))
                     shapes = list(filter(lambda x: x is not None, shapes))
 
-                    if len(set(shapes)) == 1 and shapes[0] != 'other':
+                    if len(set(shapes)) == 1 and shapes[0] != 'other' and len(shapes[0]):
                         self._orientation = 'index'
                     else:
                         self._orientation = 'packed'
@@ -1464,7 +1463,7 @@ class BeamData(BeamName):
                                          chunksize_policy=chunksize_policy, **kwargs)
 
         BeamData.write_tree(data, path, root=True, sizes=sizes, schema=self.schema, override=override,
-                            chunksize_policy=chunksize_policy, split=split, **kwargs)
+                            split=split, **kwargs)
 
         # store info and conf files
         if self.write_metadata:
@@ -1852,7 +1851,7 @@ class BeamData(BeamName):
                 label = None
 
             if self.has_index:
-                iloc = self.info['map'].loc[index].values
+                iloc = self.info['map'].loc[as_numpy(index)].values
             else:
                 iloc = index
 
@@ -2146,6 +2145,9 @@ class BeamData(BeamName):
             BeamData.write_file(self.all_paths, path)
 
     def __str__(self):
+
+        if self.is_cached and self.orientation == 'simple':
+            return f"BeamData (simple): {self.name}\n{self.data}"
 
         params = {'orientation': self.orientation, 'lazy': self.lazy, 'stored': self.is_stored,
                   'cached': self.is_cached, 'device': self.device, 'objects_type': self.objects_type,

@@ -51,7 +51,7 @@ class BeamFeature(Processor):
     def __init__(self, name, *args, func=None,
                  input_columns: int | str | list[str | int] | range | slice = None,
                  output_columns: str | list[str] = None,
-                 kind=None, n_input_columns: int = None, add_name_prefix=True,
+                 kind=None, n_input_columns: int = None, add_name_prefix=False,
                  prefer_name=True,
                  input_columns_blacklist=None,
                  output_columns_blacklist=None,
@@ -207,7 +207,7 @@ class BeamFeature(Processor):
             return pd.DataFrame(index=x.index)
         if not _preprocessed:
             x = self.preprocess(x)
-        y = self._transform(x, **kwargs)
+        y = self.transform_callback(x, **kwargs)
         if self.output_columns is not None:
             y.columns = self.output_columns
         if self.enabled_column_names is not None:
@@ -220,10 +220,10 @@ class BeamFeature(Processor):
                 y.columns = [f"{self.name}-{c}" for c in y.columns]
         return y
 
-    def _transform(self, x: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def transform_callback(self, x: pd.DataFrame, **kwargs) -> pd.DataFrame:
         return self.func(x)
 
-    def _fit(self, x: pd.DataFrame, **kwargs):
+    def fit_callback(self, x: pd.DataFrame, **kwargs):
         pass
 
     def fit(self, x: pd.DataFrame, _preprocessed=False, **kwargs):
@@ -234,7 +234,7 @@ class BeamFeature(Processor):
             if self.is_fitted:
                 logger.warning(f"Feature {self.name} is already fitted, skipping (use reset() to re-fit)")
 
-            self._fit(x, **kwargs)
+            self.fit_callback(x, **kwargs)
         self._is_fitted = True
 
     def fit_transform(self, x, **kwargs) -> pd.DataFrame:
@@ -251,10 +251,10 @@ class BinarizedFeature(BeamFeature):
         from sklearn.preprocessing import MultiLabelBinarizer
         self.encoder = MultiLabelBinarizer()
 
-    def _fit(self, x, **kwargs):
+    def fit_callback(self, x, **kwargs):
         self.encoder.fit(x.squeeze().values)
 
-    def _transform(self, x, **kwargs):
+    def transform_callback(self, x, **kwargs):
 
         v = self.encoder.transform(x.squeeze().values)
         # Create a DataFrame with the binary indicator columns
@@ -273,10 +273,10 @@ class DiscretizedFeature(BeamFeature):
         self.encoder = KBinsDiscretizer(n_bins=self.n_bins, encode='ordinal', subsample=subsample,
                                         strategy=self.strategy)
 
-    def _fit(self, x, **kwargs):
+    def fit_callback(self, x, **kwargs):
         self.encoder.fit(as_numpy(x))
 
-    def _transform(self, x, **kwargs):
+    def transform_callback(self, x, **kwargs):
 
         v = self.encoder.transform(x.values)
         # Create a DataFrame with the binary indicator columns
@@ -305,10 +305,10 @@ class ScalingFeature(BeamFeature):
         self.add_to_schema('method', ParameterType.categorical, choices=['standard', 'minmax', 'robust'],
                            default='standard', description='Scaling method')
 
-    def _fit(self, x, **kwargs):
+    def fit_callback(self, x, **kwargs):
         self.encoder.fit(as_numpy(x))
 
-    def _transform(self, x, **kwargs):
+    def transform_callback(self, x, **kwargs):
 
         v = self.encoder.transform(as_numpy(x))
         # Create a DataFrame with the binary indicator columns
@@ -324,10 +324,10 @@ class CategorizedFeature(BeamFeature):
         from sklearn.preprocessing import OrdinalEncoder
         self.encoder = OrdinalEncoder()
 
-    def _fit(self, x, **kwargs):
+    def fit_callback(self, x, **kwargs):
         self.encoder.fit(as_numpy(x))
 
-    def _transform(self, x, **kwargs):
+    def transform_callback(self, x, **kwargs):
 
         v = self.encoder.transform(as_numpy(x))
         # Create a DataFrame with the binary indicator columns
@@ -341,7 +341,7 @@ class InverseOneHotFeature(BeamFeature):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, kind=FeaturesCategories.categorical, **kwargs)
 
-    def _transform(self, x, **kwargs):
+    def transform_callback(self, x, **kwargs):
 
         if self.input_columns is not None and len(self.input_columns) == 1:
             column = self.input_columns[0]

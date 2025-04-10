@@ -3,6 +3,7 @@ import copy
 import os
 from argparse import Namespace
 from collections import defaultdict
+from functools import partial
 from typing import List, Union, Set
 import json
 
@@ -81,6 +82,7 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
 
             # we cannot store parser as it does not support serialization (pickling)
             self._help = parser.format_help()
+            kwargs = {k: v for k, v in kwargs.items() if not k.startswith('_')}
             config, more_tags = _beam_arguments(parser, *args, return_defaults=return_defaults,
                                                 return_tags=True, silent=silent,
                                                 strict=strict, load_config_files=load_config_files,
@@ -211,6 +213,9 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
     @staticmethod
     def update_parser(parser, defaults=None, parameters=None, source=None):
 
+        def list_parser(s, cast):
+            return [cast(i.strip()) for i in s.split(',')]
+
         if defaults is not None:
             # set defaults
             parser.set_defaults(**{k.replace('-', '_').strip(): v for k, v in defaults.items()})
@@ -237,9 +242,19 @@ class BeamConfig(Namespace, metaclass=MetaBeamInit):
                     boolean_feature(parser, name_to_parse, v.default, v.help)
                 else:
                     parse_kwargs = {'type': v.type, 'default': v.default, 'metavar': tags, 'help': v.help}
-                    if v.type is list:
-                        parse_kwargs['nargs'] = '+'
-                    elif v.type is dict:
+
+                    t = v.type
+                    t_arg = str
+                    if hasattr(t, '__origin__'):
+                        if hasattr(t, '__args__'):
+                            t_arg = t.__args__[0]
+                        t = t.__origin__
+
+                    if t is list:
+                        parse_kwargs['type'] = partial(list_parser, cast=t_arg)
+                        # parse_kwargs['nargs'] = '+'
+
+                    elif t is dict:
                         parse_kwargs['type'] = json.loads
 
                     if type(v.name) is list:

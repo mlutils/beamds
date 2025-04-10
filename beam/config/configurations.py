@@ -3,7 +3,7 @@ import os
 import math
 from .core_config import BeamConfig, BeamParam
 from .deepspeed import DeepspeedConfig
-from .utils import _beam_arguments
+from .utils import _beam_arguments, empty_beam_parser
 from ..base import base_paths
 
 
@@ -67,6 +67,9 @@ class DatasetConfig(BeamConfig):
         BeamParam('split_dataset_seed', int, 5782, 'Seed dataset split (set to zero to get random split)'),
         BeamParam('test_size', float, .2, 'Test set percentage'),
         BeamParam('validation_size', float, .2, 'Validation set percentage'),
+        BeamParam('stratify_dataset', bool, False, 'Stratify the dataset split by the labels'),
+        BeamParam('dataset_time_index', str, None, 'The time index to use for time-based splits'),
+        BeamParam('test_split_method', str, 'uniform', 'The method to split the test set [uniform|time_based]'),
     ]
 
 
@@ -402,7 +405,7 @@ def beam_arguments(*args, return_defaults=False, return_tags=False, **kwargs):
         pr = args[0]
         args = args[1:]
     else:
-        pr = UniversalConfig()
+        pr = empty_beam_parser()
 
     args = [pr] + list(args)
     return _beam_arguments(*args, return_defaults=return_defaults, return_tags=return_tags, **kwargs)

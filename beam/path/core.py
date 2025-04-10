@@ -137,7 +137,11 @@ class PureBeamPath(BeamResource):
     def copy(self, dst, ignore=None, include=None):
 
         if type(dst) is str:
-            dst = self.gen(dst)
+            if '://' in dst:
+                from .resource import beam_path
+                dst = beam_path(dst)
+            else:
+                dst = self.gen(dst)
 
         if self.is_dir():
             dst.mkdir(parents=True, exist_ok=True)

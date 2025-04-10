@@ -6,11 +6,12 @@ from threading import Thread
 
 from flask import Flask, request, jsonify, send_file, render_template_string, url_for, send_from_directory
 from flask.json.provider import DefaultJSONProvider
+from statsmodels.tsa.statespace.tests.test_mlemodel import kwargs
 
 from ..logging import beam_logger as logger
 from ..path import beam_path
 from .server import BeamServer
-from ..utils import DataClassEncoder
+from ..utils import BeamJsonEncoder
 
 try:
     import torch
@@ -21,7 +22,7 @@ except ImportError:
 
 class CustomJSONProvider(DefaultJSONProvider):
     def dumps(self, obj, **kwargs):
-        return json.dumps(obj, cls=DataClassEncoder, **kwargs)
+        return json.dumps(obj, cls=BeamJsonEncoder, **kwargs)
 
     def loads(self, s, **kwargs):
         return json.loads(s, **kwargs)
@@ -84,6 +85,7 @@ class HTTPServer(BeamServer):
         super().__init__(*args, application=application, **kwargs)
         self.app = Flask(__name__)
         self.app.json_provider_class = CustomJSONProvider
+        self.app.json = CustomJSONProvider(self.app)
         self.app.add_url_rule('/', view_func=self.homepage)
         self.app.add_url_rule('/info', view_func=self.get_info)
         # Add a route to serve the image
@@ -185,9 +187,12 @@ class HTTPServer(BeamServer):
             'http': f'{host}:{port}',
             'wsgi-file': 'your_wsgi_file.py',  # Replace with your WSGI file
             'callable': 'app',  # Replace with your WSGI application callable
-            'processes': self.n_threads,
-            'listen': self.queue_size,
         }
+        if self.n_threads is not None:
+            uwsgi_opts['processes'] = self.n_threads
+        if self.queue_size is not None:
+            uwsgi_opts['listen'] = self.queue_size
+
 
         if self.tls:
             uwsgi_opts['https-socket'] = f'{host}:{port}'
@@ -200,18 +205,20 @@ class HTTPServer(BeamServer):
 
         from waitress import serve
 
+        kwargs = {}
+        if self.n_threads is not None:
+            kwargs['threads'] = self.n_threads
+        if self.queue_size is not None:
+            kwargs['backlog'] = self.queue_size
         if self.tls:
             import ssl, socket
 
             ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
             ssl_context.load_cert_chain('cert.pem', 'key.pem')  # Path to your cert and key files
-            serve(self.app, host=host, port=port, threads=self.n_threads, _sock=ssl_context.wrap_socket(
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_side=True),)
-                  # todo: add max_request_queue_size=self.queue_size
-                  # max_request_queue_size=self.queue_size)
-        else:
-            serve(self.app, host=host, port=port, threads=self.n_threads,
-                  max_request_queue_size=self.queue_size)
+            _sock = ssl_context.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_side=True)
+            kwargs['_sock'] = _sock
+
+        serve(self.app, host=host, port=port, **kwargs)
 
     def run_cherrypy(self, host, port):
 
@@ -222,9 +229,13 @@ class HTTPServer(BeamServer):
             'serve.socket_host': host,
             'serve.socket_port': port,
             'engine.autoreload.on': False,
-            'server.socket_queue_size': self.queue_size,
-            'serve.thread_pool': self.n_threads
         }
+
+        if self.n_threads is not None:
+            config['server.thread_pool'] = self.n_threads
+        if self.queue_size is not None:
+            config['server.socket_queue_size'] = self.queue_size
+
         if self.tls:
             config.update({
                 'serve.ssl_module': 'builtin',
@@ -242,10 +253,13 @@ class HTTPServer(BeamServer):
         options = {
             'bind': f'{host}:{port}',
             'workers': 1,  # Gunicorn forks multiple processes and is generally not thread-safe
-            'threads': self.n_threads,
             'accesslog': '-',
-            'backlog': self.queue_size,
         }
+
+        if self.n_threads is not None:
+            options['threads'] = self.n_threads
+        if self.queue_size is not None:
+            options['backlog'] = self
 
         if self.tls:
             options['keyfile'] = 'path/to/keyfile.pem'
@@ -275,7 +289,10 @@ class HTTPServer(BeamServer):
         else:
             context = None
 
-        http_server = WSGIServer((host, port), self.app, ssl_context=context, backlog=self.queue_size)
+        kwargs = {}
+        if self.queue_size is not None:
+            kwargs['backlog'] = self.queue_size
+        http_server = WSGIServer((host, port), self.app, ssl_context=context, **kwargs)
         http_server.serve_forever()
 
     def serve_resource(self, filename):

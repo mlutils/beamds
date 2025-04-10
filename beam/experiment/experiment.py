@@ -91,7 +91,7 @@ class Experiment(object):
             root_path = beam_path(self.hparams.logs_path)
             base_dir = root_path.joinpath(self.hparams.project_name, self.hparams.algorithm, self.hparams.identifier)
 
-            pattern = re.compile("\A\d{6}_\d{8}_\d{6}\Z")
+            pattern = re.compile(r"\A\d{6}_\d{8}_\d{6}\Z")
 
             if base_dir.exists():
                 assert base_dir.is_dir(), f"Experiment directory contains an existing file: {base_dir}"
@@ -245,7 +245,7 @@ class Experiment(object):
         path = beam_path(path)
         logger.info(f"Reload experiment from path: {path}")
 
-        args = BeamConfig.from_path(path.joinpath('args.yaml'))
+        args = BeamConfig.from_path(path.joinpath('args.pkl'))
         args.override = False
         args.reload = True
 

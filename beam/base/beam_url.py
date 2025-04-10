@@ -137,3 +137,56 @@ class BeamURL(BeamName):
     def from_string(cls, url):
         parsed_url = urlparse(url)
         return cls(url, parsed_url)
+
+    def replace_hostname(self, hostname):
+        self._parsed_url = self._parsed_url._replace(netloc=BeamURL.to_netloc(hostname=hostname, port=self.port))
+        self._url = None
+        return self
+
+    def replace_port(self, port):
+        self._parsed_url = self._parsed_url._replace(netloc=BeamURL.to_netloc(hostname=self.hostname, port=port))
+        self._url = None
+        return self
+
+    def replace_username(self, username):
+        self._parsed_url = self._parsed_url._replace(username=username)
+        self._url = None
+        return self
+
+    def replace_password(self, password):
+        self._parsed_url = self._parsed_url._replace(password=password)
+        self._url = None
+        return self
+
+    def replace_path(self, path):
+        self._parsed_url = self._parsed_url._replace(path=path)
+        self._url = None
+        return self
+
+    def replace_query(self, query):
+        self._parsed_url = self._parsed_url._replace(query=query)
+        self._url = None
+        return self
+
+    def replace_fragment(self, fragment):
+        self._parsed_url = self._parsed_url._replace(fragment=fragment)
+        self._url = None
+        return self
+
+    def replace_params(self, params):
+        self._parsed_url = self._parsed_url._replace(params=params)
+        self._url = None
+        return self
+
+    def replace_scheme(self, scheme):
+        self._parsed_url = self._parsed_url._replace(scheme=scheme)
+        self._url = None
+        return self
+
+    def remove_query(self, key):
+        query = self.query
+        query.pop(key, None)
+        self._parsed_url = self._parsed_url._replace(query=BeamURL.dict_to_query(**query))
+        self._url = None
+        return self
+
