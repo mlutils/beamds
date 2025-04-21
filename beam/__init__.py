@@ -65,7 +65,7 @@ def __getattr__(name):
     elif name == 'LinearNet':
         from .nn import LinearNet
         return LinearNet
-    elif name == 'PackedSet':
+    elif name == 'PackedTensor':
         from .nn import PackedTensor
         return PackedTensor
     elif name == 'copy_network':

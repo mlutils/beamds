@@ -460,7 +460,9 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if self.level in ['root', 'document']:
             raise ValueError("Cannot create root path")
         if self.level in ['index', 'query']:
-            self.index.create(using=self.client)
+            # if not exists
+            if not self.index.exists():
+                self.index.create(using=self.client)
 
     def rmdir(self, *args, **kwargs):
         if self.level in ['root', 'document']:

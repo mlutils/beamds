@@ -438,6 +438,7 @@ def include_patterns(*patterns):
 
 def running_platform() -> str:
     try:
+        from IPython import get_ipython
         shell = get_ipython().__class__.__name__
         if shell == 'ZMQInteractiveShell':
             return 'notebook'  # Jupyter notebook or qtconsole

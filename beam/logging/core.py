@@ -1,6 +1,6 @@
 import sys
 from contextlib import contextmanager
-
+import random
 import loguru
 import atexit
 
@@ -119,14 +119,12 @@ class BeamLogger:
         level: str = "DEBUG",
         fmt: str = None,
         *,
-        with_extra: bool = False,
         serialize: bool = False
     ):
         """
         Log each record into its own file inside `directory`.  Filename is:
           {timestamp}_{level}_{file}_{function}_{line}.(log|json)
 
-        :param with_extra: if True, write a dict containing _record, _ts, _level, etc.
         :param serialize:  if True, output JSON (record dict); otherwise plain text.
         """
         # 1. prepare path
@@ -145,24 +143,34 @@ class BeamLogger:
             record = message.record
             ts = record["time"].strftime("%Y%m%d-%H%M%S-%f")[:-3]
             lvl = record["level"].name
-            base = f"{ts}_{lvl}_{record['file'].name}_{record['function']}_{record['line']}"
+            # add 6-digits rand to avoid collisions
+            rand_ = f"{random.randint(0, 999999):06}"
+            f_name = record['function'].replace(' ', '_').replace("<", "_").replace(">", "_")
+            base = f"{ts}_{rand_}_{lvl}_{record['file'].name}_{f_name}_{record['line']}"
 
             # choose extension & content
+            extra_write_args = {}
             if serialize:
                 filename = f"{base}.json"
-                # dump the full record + extras (note: message.output is ignored in JSON mode)
-                content = {**record, "_ts": ts, "_level": lvl, "_filename": base, "_message": message}
-            else:
-                filename = f"{base}.log"
-                # message.output is already formatted according to `fmt`
-                # but we passed fmt to add() so message.output uses it
-                if with_extra:
-                    extra = {"_ts": ts, "_level": lvl, "_filename": base, "_record": record}
-                    content = f"{message.output.strip()}  ║  {extra}\n"
-                else:
-                    content = message.output
 
-            directory.joinpath(filename).write(content)
+                content = {"ts": ts, "level": lvl, "filename": base, "message": record["message"],
+                    "extra": record["extra"],
+                    # explicitly turn non‑serializables into strings:
+                    "elapsed": str(record["elapsed"]), "time": record["time"].isoformat(),
+                    "file": record["file"].name, "function": record["function"], "line": record["line"],}
+
+                extra_write_args = {'indent': 4}
+
+            else:
+                message = record["message"]
+                extra = record.get("extra", {})
+                filename = f"{base}.log"
+                if extra:
+                    content = f"{message}  ║  {extra}\n"
+                else:
+                    content = f"{message}\n"
+
+            directory.joinpath(filename).write(content, **extra_write_args)
 
         # 4. register with Loguru
         handler_id = self.logger.add(
