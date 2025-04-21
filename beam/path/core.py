@@ -64,7 +64,7 @@ class PureBeamPath(BeamResource):
 
     # all the extensions that are considered textual (should be read as .txt)
     textual_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css',
-                          '.html', '.md']
+                          '.html', '.md', '.log']
     text_based_extensions = textual_extensions + ['.json', '.orc', '.yaml', '.yml', '.ndjson', '.csv', '.ini']
 
     def __init__(self, *pathsegments, scheme=None, client=None, **kwargs):
@@ -491,7 +491,7 @@ class PureBeamPath(BeamResource):
 
         target = get_target(self, target=target)
         if target == 'pyarrow':
-            if ext == '.fea':
+            if ext in ['.fea', '.feather']:
                 import pyarrow.feather as pdu
             elif ext == '.orc':
                 import pyarrow.orc as pdu
@@ -524,7 +524,7 @@ class PureBeamPath(BeamResource):
 
         with self(mode=PureBeamPath.mode('read', ext)) as fo:
 
-            if ext == '.fea':
+            if ext in ['.fea', '.feather']:
 
                 import pyarrow as pa
                 # x = feather.read_feather(pa.BufferReader(fo.read()), **kwargs)
@@ -788,7 +788,7 @@ class PureBeamPath(BeamResource):
 
         with self(mode=PureBeamPath.mode('write', ext)) as fo:
 
-            if ext == '.fea':
+            if ext in ['.fea', '.feather']:
 
                 if x_type.minor == Types.polars:
                     import polars as pl
