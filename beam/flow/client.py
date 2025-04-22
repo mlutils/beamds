@@ -46,7 +46,7 @@ class AirflowClient(PureBeamPath):
         try:
             res = self.client.rest_client.GET(f"{self._url}/health")
             res = json.loads(res.data)
-            return res['metadatabase']['status'] == 'healthy'
+            return res['metadatabase']['status']
         except Exception as e:
             return str(e)
 
