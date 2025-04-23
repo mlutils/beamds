@@ -59,7 +59,7 @@ class AirflowQuery:
             raise TypeError("Operands must be AirflowQuery instances")
 
         return AirflowQuery(
-            state=self.state or other.state,
+            state=list(set(self.state or []).intersection(set(other.state or []))),
             execution_date_gte=max(filter(None, [self.execution_date_gte, other.execution_date_gte]), default=None),
             execution_date_lte=min(filter(None, [self.execution_date_lte, other.execution_date_lte]), default=None),
             start_date_gte=max(filter(None, [self.start_date_gte, other.start_date_gte]), default=None),
@@ -69,9 +69,32 @@ class AirflowQuery:
             order_by=self.order_by or other.order_by
         )
 
+    def __or__(self, other):
+        if not isinstance(other, AirflowQuery):
+            raise TypeError("Operands must be AirflowQuery instances")
+
+        return AirflowQuery(
+            state=list(set(self.state or []).union(set(other.state or []))),
+            execution_date_gte=min(filter(None, [self.execution_date_gte, other.execution_date_gte]), default=None),
+            execution_date_lte=max(filter(None, [self.execution_date_lte, other.execution_date_lte]), default=None),
+            start_date_gte=min(filter(None, [self.start_date_gte, other.start_date_gte]), default=None),
+            start_date_lte=max(filter(None, [self.start_date_lte, other.start_date_lte]), default=None),
+            end_date_gte=min(filter(None, [self.end_date_gte, other.end_date_gte]), default=None),
+            end_date_lte=max(filter(None, [self.end_date_lte, other.end_date_lte]), default=None),
+            order_by=self.order_by or other.order_by
+        )
+
     def __str__(self):
         params = self.to_params()
         return ", ".join(f"{key}={value}" for key, value in params.items())
+
+    @classmethod
+    def parser(cls, q):
+        if isinstance(q, cls):
+            return q
+        elif isinstance(q, dict):
+            return cls(**q)
+        return None
 
 
 class AirflowClient(PureBeamPath):
@@ -104,14 +127,18 @@ class AirflowClient(PureBeamPath):
         self._q: AirflowQuery | None = self.parse_query(q)
 
         l = len(self.parts[1:])
-        self.level = {0: 'root', 1: 'dag', 2: 'dag_run', 3: 'task_instance'}[l]
+        self._level = {0: 'root', 1: 'dag', 2: 'dag_run', 3: 'task_instance'}[l]
+
+    @property
+    def level(self):
+        l = len(self.parts[1:])
+        if self.q is None:
+            return {0: 'root', 1: 'dag', 2: 'dag_run', 3: 'task_instance'}[l]
+
+        return {0: 'root', 1: 'filtered_dag_runs', 2: 'filtered_tasks', 3: 'task_instance'}[l]
 
     def parse_query(self, q):
-        if isinstance(q, AirflowQuery):
-            return q
-        elif isinstance(q, dict):
-            return AirflowQuery(**q)
-        return None
+        return AirflowQuery.parser(q) if q else None
 
     def health(self):
         try:
