@@ -96,7 +96,10 @@ class AirflowQuery:
             start_date_lte=max(filter(None, [self.start_date_lte, other.start_date_lte]), default=None),
             end_date_gte=min(filter(None, [self.end_date_gte, other.end_date_gte]), default=None),
             end_date_lte=max(filter(None, [self.end_date_lte, other.end_date_lte]), default=None),
-            order_by=self.order_by or other.order_by
+            order_by=self.order_by or other.order_by,
+            only_active=self.only_active if self.only_active is not None else other.only_active,
+            paused=self.paused if self.paused is not None else other.paused,
+            dag_id_pattern=self.dag_id_pattern or other.dag_id_pattern
         )
 
     def __str__(self):
