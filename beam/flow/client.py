@@ -23,7 +23,10 @@ class AirflowQuery:
             start_date_lte: Optional[datetime] = None,  # filter DAG runs starting before or at this date
             end_date_gte: Optional[datetime] = None,  # filter DAG runs ending after or at this date
             end_date_lte: Optional[datetime] = None,  # filter DAG runs ending before or at this date
-            order_by: Optional[str] = None  # e.g., 'execution_date', '-execution_date' for descending
+            order_by: Optional[str] = None,  # e.g., 'execution_date', '-execution_date' for descending
+            only_active: Optional[bool] = None,  # Only filter active DAGs.  *New in version 2.1.1* . [optional]
+            paused: Optional[bool] = None,  # Only filter paused/unpaused DAGs. If absent or null, it returns paused and unpaused DAGs.  *New in version 2.6.0* . [optional]
+            dag_id_pattern: Optional[str] = None,  # If set, only return DAGs with dag_ids matching this pattern. . [optional]
     ):
         self.state = state if isinstance(state, list) else [state] if state else None
         self.execution_date_gte = execution_date_gte
@@ -33,6 +36,9 @@ class AirflowQuery:
         self.end_date_gte = end_date_gte
         self.end_date_lte = end_date_lte
         self.order_by = order_by
+        self.only_active = only_active
+        self.paused = paused
+        self.dag_id_pattern = dag_id_pattern
 
     def to_params(self):
         params = {}
@@ -52,6 +58,12 @@ class AirflowQuery:
             params['end_date_lte'] = self.end_date_lte
         if self.order_by:
             params['order_by'] = self.order_by
+        if self.only_active:
+            params['only_active'] = self.only_active
+        if self.paused is not None:
+            params['paused'] = self.paused
+        if self.dag_id_pattern:
+            params['dag_id_pattern'] = self.dag_id_pattern
         return params
 
     def __and__(self, other):
@@ -66,6 +78,9 @@ class AirflowQuery:
             start_date_lte=min(filter(None, [self.start_date_lte, other.start_date_lte]), default=None),
             end_date_gte=max(filter(None, [self.end_date_gte, other.end_date_gte]), default=None),
             end_date_lte=min(filter(None, [self.end_date_lte, other.end_date_lte]), default=None),
+            only_active=self.only_active if self.only_active is not None else other.only_active,
+            paused=self.paused if self.paused is not None else other.paused,
+            dag_id_pattern=self.dag_id_pattern or other.dag_id_pattern,
             order_by=self.order_by or other.order_by
         )
 
