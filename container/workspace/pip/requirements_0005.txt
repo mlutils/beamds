@@ -4,9 +4,9 @@
 
 # vision and image Packages
 opencv-contrib-python-headless<4.5.5.64
-opencv-python==4.8.0.74
+# opencv-python==4.8.0.74 (looks like the latest version 4.11 is stable 2025-04-23)
+opencv-python
 opencv-fixer==0.2.5
-# opencv-python-headless<4.5.5.64
 
 scikit-image
 Pillow

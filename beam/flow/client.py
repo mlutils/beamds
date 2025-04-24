@@ -119,6 +119,15 @@ class AirflowClient(PureBeamPath):
 
     limit = 100
 
+    # --------------------------------------------------------------------------- #
+    # Helper constants – add these right after the class docstring
+    _ROOT_LEVELS = {"root", "filtered_dags"}
+    _DAG_LEVELS = {"dag", "filtered_dag_runs"}
+    _DAG_RUN_LEVELS = {"dag_run", "filtered_tasks"}
+    _TASK_INSTANCE_LVL = {"task_instance"}
+
+    # --------------------------------------------------------------------------- #
+
     def __init__(self, *pathsegments, client=None, hostname=None, port=None, username=None,
                  password=None, tls=False, verify=False, q=None, **kwargs):
 
@@ -152,8 +161,7 @@ class AirflowClient(PureBeamPath):
         l = len(self.parts[1:])
         if self.q is None:
             return {0: 'root', 1: 'dag', 2: 'dag_run', 3: 'task_instance'}[l]
-
-        return {0: 'root', 1: 'filtered_dag_runs', 2: 'filtered_tasks', 3: 'task_instance'}[l]
+        return {0: 'filtered_dags', 1: 'filtered_dag_runs', 2: 'filtered_tasks', 3: 'task_instance'}[l]
 
     def parse_query(self, q):
         return AirflowQuery.parser(q) if q else None
@@ -201,7 +209,17 @@ class AirflowClient(PureBeamPath):
     def q(self):
         return self._q
 
-    # Enhanced methods inside AirflowClient:
+    @property
+    def obj(self):
+        if self.level in ['root', 'filtered_dags']:
+            return self.dag_api.get_dags()
+        elif self.level in ['dag', 'filtered_dag_runs']:
+            return self.dag_api.get_dag(self.dag_id)
+        elif self.level in ['task_instance', 'filtered_tasks']:
+            return self.dag_run_api.get_dag_run(self.dag_id, self.run_id)
+        elif self.level == 'task_instance':
+            return self.task_instance_api.get_task_instance(self.dag_id, self.run_id, self.task_id)
+        return None
 
     def iterdir(self, query: AirflowQuery = None):
 
@@ -210,12 +228,12 @@ class AirflowClient(PureBeamPath):
 
         query_params = query.to_params() if query else {}
 
-        if self.level == 'root':
-            dags = self.dag_api.get_dags()
+        if self.level in ['root', 'filtered_dags']:
+            dags = self.dag_api.get_dags(**query_params)
             for dag in dags.dags:
                 yield self.joinpath(dag.dag_id)
 
-        elif self.level == 'dag':
+        elif self.level in ['dag', 'filtered_dag_runs']:
             i = 0
             while True:
                 dag_runs = self.dag_run_api.get_dag_runs(
@@ -228,7 +246,7 @@ class AirflowClient(PureBeamPath):
                     break
                 i += 1
 
-        elif self.level == 'dag_run':
+        elif self.level in ['dag_run', 'filtered_tasks']:
             task_instances = self.task_instance_api.get_task_instances(
                 self.dag_id, self.run_id, **query_params
             )
@@ -238,109 +256,145 @@ class AirflowClient(PureBeamPath):
         else:
             raise ValueError('Cannot iterate at task_instance level')
 
-    def start(self, query: AirflowQuery = None):
+    # ────────────────────────────  LIFE-CYCLE ACTIONS  ──────────────────────────── #
+    def start(self, query: AirflowQuery | None = None) -> None:
+        """
+        • filtered_dags          → trigger a *new* run for every DAG that survives `query`
+        • dag / filtered_dag_runs→ re-run every DAG-run that survives `query`
+        • dag_run / filtered_tasks
+                                  → clear (re-start) every task instance that survives `query`
+        • task_instance          → clear the single task instance
+        """
+        query = query or self.q
+        params = query.to_params() if query else {}
 
-        if query is None:
-            query = self.q
+        # ---- (a) ROOT / FILTERED-DAGS ------------------------------------------------
+        if self.level in self._ROOT_LEVELS:
+            dags = self.dag_api.get_dags(**params).dags
+            for dag in dags:
+                run_id = f"manual__{datetime.utcnow().isoformat()}"
+                self.dag_run_api.post_dag_run(dag.dag_id, DAGRun(run_id=run_id))
+            return
 
-        query_params = query.to_params() if query else {}
+        # ---- (b) DAG / FILTERED-DAG-RUNS --------------------------------------------
+        if self.level in self._DAG_LEVELS:
+            for dr in self.dag_run_api.get_dag_runs(self.dag_id, **params).dag_runs:
+                # Re-fire the *same* run-id (keeps it idempotent for "rerun failed")
+                self.dag_run_api.post_dag_run(self.dag_id,
+                                              DAGRun(run_id=dr.dag_run_id))
+            return
 
-        if self.level == 'dag':
-            dag_runs = self.dag_run_api.get_dag_runs(self.dag_id, **query_params)
-            for dag_run in dag_runs.dag_runs:
-                self.dag_run_api.post_dag_run(
-                    self.dag_id, DAGRun(run_id=dag_run.dag_run_id)
-                )
+        # ---- (c) DAG-RUN / FILTERED-TASKS -------------------------------------------
+        if self.level in self._DAG_RUN_LEVELS:
+            for ti in self.task_instance_api.get_task_instances(self.dag_id,
+                                                                self.run_id,
+                                                                **params):
+                self.task_instance_api.clear_task_instance(self.dag_id,
+                                                           self.run_id,
+                                                           ti.task_id,
+                                                           ClearTaskInstances())
+            return
 
-        elif self.level == 'dag_run':
-            tasks = self.task_instance_api.get_task_instances(self.dag_id, self.run_id, **query_params)
-            for task in tasks:
-                self.task_instance_api.clear_task_instance(
-                    self.dag_id, self.run_id, task.task_id, ClearTaskInstances()
-                )
+        # ---- (d) SINGLE TASK-INSTANCE ------------------------------------------------
+        if self.level in self._TASK_INSTANCE_LVL:
+            self.task_instance_api.clear_task_instance(self.dag_id,
+                                                       self.run_id,
+                                                       self.task_id,
+                                                       ClearTaskInstances())
+            return
 
-        elif self.level == 'task_instance':
-            self.task_instance_api.clear_task_instance(
-                self.dag_id, self.run_id, self.task_id, ClearTaskInstances()
-            )
+        raise ValueError(f"start() not supported at level '{self.level}'")
 
-        else:
-            raise ValueError('Starting operation not supported at root level')
+    def stop(self, query: AirflowQuery | None = None) -> None:
+        """
+        Mark runs / tasks as *failed* (a cheap “stop” implementation).
+        """
+        query = query or self.q
+        params = query.to_params() if query else {}
 
-    def stop(self, query: AirflowQuery = None):
+        if self.level in self._ROOT_LEVELS:
+            for dag in self.dag_api.get_dags(**params).dags:
+                for dr in self.dag_run_api.get_dag_runs(dag.dag_id, **params).dag_runs:
+                    self.dag_run_api.update_dag_run_state(dag.dag_id, dr.dag_run_id,
+                                                          state="failed")
+            return
 
-        if query is None:
-            query = self.q
+        if self.level in self._DAG_LEVELS:
+            for dr in self.dag_run_api.get_dag_runs(self.dag_id, **params).dag_runs:
+                self.dag_run_api.update_dag_run_state(self.dag_id, dr.dag_run_id,
+                                                      state="failed")
+            return
 
-        query_params = query.to_params() if query else {}
+        if self.level in self._DAG_RUN_LEVELS:
+            for ti in self.task_instance_api.get_task_instances(self.dag_id,
+                                                                self.run_id,
+                                                                **params):
+                self.task_instance_api.update_task_instance_state(self.dag_id,
+                                                                  self.run_id,
+                                                                  ti.task_id,
+                                                                  state="failed")
+            return
 
-        if self.level == 'dag':
-            dag_runs = self.dag_run_api.get_dag_runs(self.dag_id, **query_params)
-            for dag_run in dag_runs.dag_runs:
-                self.dag_run_api.update_dag_run_state(
-                    self.dag_id, dag_run.dag_run_id, state="failed"
-                )
+        if self.level in self._TASK_INSTANCE_LVL:
+            self.task_instance_api.update_task_instance_state(self.dag_id,
+                                                              self.run_id,
+                                                              self.task_id,
+                                                              state="failed")
+            return
 
-        elif self.level == 'dag_run':
-            tasks = self.task_instance_api.get_task_instances(self.dag_id, self.run_id, **query_params)
-            for task in tasks:
-                self.task_instance_api.update_task_instance_state(
-                    self.dag_id, self.run_id, task.task_id, state="failed"
-                )
+        raise ValueError(f"stop() not supported at level '{self.level}'")
 
-        elif self.level == 'task_instance':
-            self.task_instance_api.update_task_instance_state(
-                self.dag_id, self.run_id, self.task_id, state="failed"
-            )
+    def unlink(self, query: AirflowQuery | None = None) -> None:
+        """
+        Destructive delete.
+        """
+        query = query or self.q
+        params = query.to_params() if query else {}
 
-        else:
-            raise ValueError('Stopping operation not supported at root level')
+        if self.level in self._ROOT_LEVELS:
+            for dag in self.dag_api.get_dags(**params).dags:
+                self.dag_api.delete_dag(dag.dag_id)
+            return
 
-    def unlink(self, query: AirflowQuery = None):
+        if self.level in self._DAG_LEVELS:
+            for dr in self.dag_run_api.get_dag_runs(self.dag_id, **params).dag_runs:
+                self.dag_run_api.delete_dag_run(self.dag_id, dr.dag_run_id)
+            return
 
-        if query is None:
-            query = self.q
+        if self.level in self._DAG_RUN_LEVELS:
+            raise ValueError("Deleting individual task-instances in bulk "
+                             "not supported by Airflow API")
 
-        query_params = query.to_params() if query else {}
+        if self.level in self._TASK_INSTANCE_LVL:
+            raise ValueError("Cannot delete a single `task_instance` via API")
 
-        if self.level == 'dag':
-            dag_runs = self.dag_run_api.get_dag_runs(self.dag_id, **query_params)
-            for dag_run in dag_runs.dag_runs:
-                self.dag_run_api.delete_dag_run(self.dag_id, dag_run.dag_run_id)
+        raise ValueError(f"unlink() not supported at level '{self.level}'")
 
-        elif self.level == 'dag_run':
-            tasks = self.task_instance_api.get_task_instances(self.dag_id, self.run_id, **query_params)
-            for task in tasks:
-                raise ValueError('Deleting task instances individually is not supported')
+    # ───────────────────────────────  META OPS  ─────────────────────────────────── #
+    def stat(self):
+        """
+        • filtered_dags          → list of DAG objects
+        • filtered_dag_runs      → list of DAGRun objects
+        • filtered_tasks         → list of TaskInstance objects
+        • other levels           → same object you had before
+        """
+        params = self.q.to_params() if self.q else {}
 
-        elif self.level == 'task_instance':
-            raise ValueError('Cannot delete individual task_instance directly')
-
-        else:
-            raise ValueError('Cannot delete all dags at root level')
+        if self.level in self._ROOT_LEVELS:
+            return self.dag_api.get_dags(**params)
+        if self.level in self._DAG_LEVELS:
+            return self.dag_api.get_dag(self.dag_id)
+        if self.level in self._DAG_RUN_LEVELS:
+            return self.dag_run_api.get_dag_run(self.dag_id, self.run_id)
+        if self.level in self._TASK_INSTANCE_LVL:
+            return self.task_instance_api.get_task_instance(self.dag_id,
+                                                            self.run_id,
+                                                            self.task_id)
+        return None
 
     def execution_date(self, item):
         # Extract execution time from an item if available
         return getattr(item, 'execution_date', None)
-
-    def stat(self):
-        if self.level == 'root':
-            # get all dags and their status
-            info = self.config_api.get_config()
-            return info
-        elif self.level == 'dag':
-            # get current dag info
-            info = self.dag_api.get_dag(self.dag_id)
-            return info
-        elif self.level == 'dag_run':
-            # get current dag_run info
-            info = self.dag_run_api.get_dag_run(self.dag_id, self.run_id)
-            return info
-        elif self.level == 'task_instance':
-            # get current task_instance info
-            info = self.task_instance_api.get_task_instance(self.dag_id, self.run_id, self.task_id)
-            return info
-        return None
 
     def exists(self):
         return self.stat() is not None
@@ -379,51 +433,42 @@ class AirflowClient(PureBeamPath):
             s = f"{s} | query: {fixed_q}"
         return s
 
-    def __and__(self, other):
-        q = self.q
-        if type(other) is AirflowClient:
-            self._assert_other_type(other)
-            query = other.q
-        else:
-            query = self.parse_query(other)
+    def __and__(self, other: "AirflowClient | AirflowQuery | dict"):
+        """
+        Combine path *and* queries with `&`   (AND / intersection semantics).
+        """
+        other_q = (other.q if isinstance(other, AirflowClient)
+                   else self.parse_query(other))
+        merged = (self.q & other_q) if self.q else other_q
+        return self.gen(self.path, q=merged)
 
-        if q is not None:
-            query = q & query
-
-        return self.gen(self.path, q=query)
-
+    # ───────────────────────────  CONVENIENCE ITERATORS  ───────────────────────── #
     def iter_success(self, **kwargs):
-        query = AirflowQuery(state='success', **kwargs)
-        yield from self.iterdir(query)
+        yield from self.iterdir(AirflowQuery(state="success", **kwargs))
 
     def iter_failed(self, **kwargs):
-        query = AirflowQuery(state='failed', **kwargs)
-        yield from self.iterdir(query)
+        yield from self.iterdir(AirflowQuery(state="failed", **kwargs))
 
     def iter_running(self, **kwargs):
-        query = AirflowQuery(state='running', **kwargs)
-        yield from self.iterdir(query)
+        yield from self.iterdir(AirflowQuery(state="running", **kwargs))
 
+    # ───────────────────────────  BULK SHORTCUTS  ──────────────────────────────── #
     def start_failed(self, **kwargs):
-        query = AirflowQuery(state='failed', **kwargs)
-        self.start(query)
+        self.start(AirflowQuery(state="failed", **kwargs))
 
     def stop_running(self, **kwargs):
-        query = AirflowQuery(state='running', **kwargs)
-        self.stop(query)
+        self.stop(AirflowQuery(state="running", **kwargs))
 
     def unlink_failed(self, **kwargs):
-        query = AirflowQuery(state='failed', **kwargs)
-        self.unlink(query)
+        self.unlink(AirflowQuery(state="failed", **kwargs))
 
+    # ───────────────────────────────  PAUSE / RESUME  ──────────────────────────── #
     def pause_dag(self):
-        """ Pause a DAG """
-        if self.level == 'dag':
+        if self.level in self._DAG_LEVELS:
             self.dag_api.update_dag(self.dag_id, {"is_paused": True})
 
     def unpause_dag(self):
-        """ Unpause a DAG """
-        if self.level == 'dag':
+        if self.level in self._DAG_LEVELS:
             self.dag_api.update_dag(self.dag_id, {"is_paused": False})
 
     # def iterdir(self):
