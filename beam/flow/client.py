@@ -153,7 +153,7 @@ class AirflowClient(PureBeamPath):
         if self.q is None:
             return {0: 'root', 1: 'dag', 2: 'dag_run', 3: 'task_instance'}[l]
 
-        return {0: 'root', 1: 'filtered_dag_runs', 2: 'filtered_tasks', 3: 'task_instance'}[l]
+        return {0: 'filtered_dags', 1: 'filtered_dag_runs', 2: 'filtered_tasks', 3: 'task_instance'}[l]
 
     def parse_query(self, q):
         return AirflowQuery.parser(q) if q else None
