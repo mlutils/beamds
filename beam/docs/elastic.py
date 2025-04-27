@@ -121,16 +121,18 @@ class BeamElastic(PureBeamPath, BeamDoc):
         raise ValueError("Invalid query type")
 
     def __repr__(self):
-        if self.q is None:
-            return str(self.url)
 
-        fixed_q = str(self.q)
-        if len(fixed_q) > 50:
-            fixed_q = fixed_q[:50] + "..."
+        s = str(self.url)
 
-        s = f"{str(self.url)} | query: {fixed_q}"
+        if self.q is not None:
+            fixed_q = str(self.q)
+            if len(fixed_q) > 50:
+                fixed_q = fixed_q[:50] + "..."
+            s = f"{s} | query: {fixed_q}"
+
         if self.fields:
             s += f" | fields: {self.fields}"
+
         if self.sort_by:
             s += f" | sort: {self.sort_by}"
 
@@ -460,7 +462,9 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if self.level in ['root', 'document']:
             raise ValueError("Cannot create root path")
         if self.level in ['index', 'query']:
-            self.index.create(using=self.client)
+            # if not exists
+            if not self.index.exists():
+                self.index.create(using=self.client)
 
     def rmdir(self, *args, **kwargs):
         if self.level in ['root', 'document']:

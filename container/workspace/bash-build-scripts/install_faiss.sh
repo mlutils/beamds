@@ -21,7 +21,9 @@ cd faiss/
 # The Compute Capability 9.0 (CC 9.0) is associated with NVIDIA's Hopper GPU family, specifically the H100 model.
 # The Ada Lovelace GPUs, including the RTX 4090, are classified under Compute Capability 8.9 (CC 8.9).
 
-cmake -B build -DFAISS_ENABLE_GPU=ON -DFAISS_ENABLE_PYTHON=ON -DCMAKE_CUDA_ARCHITECTURES="80;75;86" .
+CUDA_CAPABILITIES_1=${CUDA_CAPABILITIES//./}
+
+cmake -B build -DFAISS_ENABLE_GPU=ON -DFAISS_ENABLE_PYTHON=ON -DCMAKE_CUDA_ARCHITECTURES=$CUDA_CAPABILITIES_1 .
 make -C build -j faiss
 make -C build -j swigfaiss
 (cd build/faiss/python && python setup.py install)

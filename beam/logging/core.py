@@ -1,6 +1,6 @@
 import sys
 from contextlib import contextmanager
-
+import random
 import loguru
 import atexit
 
@@ -77,6 +77,17 @@ class BeamLogger:
     def add_default_file_handler(self, path):
         self.add_file_handlers(path, tag='default')
 
+    @property
+    def text_format(self):
+
+        if self.running_platform == 'script':
+            format = '{time:YYYY-MM-DD HH:mm:ss} ({elapsed}) | BeamLog | {level} | {file} | {function} | {line} | {message}'
+        else:
+            format = '{time:YYYY-MM-DD HH:mm:ss} ({elapsed}) | BeamLog | {level} | %s | {function} | {line} | {message}' \
+                     % self.running_platform
+
+        return format
+
     def add_file_handlers(self, path, tag=None):
         from ..path import beam_path
         path = beam_path(path)
@@ -85,13 +96,7 @@ class BeamLogger:
         file_object = debug_path.open('w')
         self.file_objects[file_object.as_uri()] = file_object
 
-        if self.running_platform == 'script':
-            format = '{time:YYYY-MM-DD HH:mm:ss} ({elapsed}) | BeamLog | {level} | {file} | {function} | {line} | {message}'
-        else:
-            format = '{time:YYYY-MM-DD HH:mm:ss} ({elapsed}) | BeamLog | {level} | %s | {function} | {line} | {message}' \
-                     % self.running_platform
-
-        handler = self.logger.add(file_object, level='DEBUG', format=format)
+        handler = self.logger.add(file_object, level='DEBUG', format=self.text_format)
 
         self.handlers[file_object.as_uri()] = handler
 
@@ -99,8 +104,7 @@ class BeamLogger:
         file_object = json_path.open('w')
         self.file_objects[file_object.as_uri()] = file_object
 
-        format = 'JSON LOGGER'
-        handler = self.logger.add(file_object, level='DEBUG', format=format, serialize=True)
+        handler = self.logger.add(file_object, level='DEBUG', format='JSON LOGGER', serialize=True)
 
         self.handlers[file_object.as_uri()] = handler
         if tag is not None:
@@ -109,6 +113,77 @@ class BeamLogger:
         else:
             self.paths[path.as_uri()] = path
 
+    def add_directory_handler(
+        self,
+        directory,
+        level: str = "DEBUG",
+        fmt: str = None,
+        *,
+        serialize: bool = False
+    ):
+        """
+        Log each record into its own file inside `directory`.  Filename is:
+          {timestamp}_{level}_{file}_{function}_{line}.(log|json)
+
+        :param serialize:  if True, output JSON (record dict); otherwise plain text.
+        """
+        # 1. prepare path
+        from ..path import beam_path
+        directory = beam_path(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+
+        # 2. decide format string
+        if serialize:
+            fmt = 'JSON LOGGER'
+        else:
+            fmt = fmt or self.text_format  # fall back to your existing text_format attribute
+
+        # 3. define the per-record sink
+        def _directory_sink(message):
+            record = message.record
+            ts = record["time"].strftime("%Y%m%d-%H%M%S-%f")[:-3]
+            lvl = record["level"].name
+            # add 6-digits rand to avoid collisions
+            rand_ = f"{random.randint(0, 999999):06}"
+            f_name = record['function'].replace(' ', '_').replace("<", "_").replace(">", "_")
+            base = f"{ts}_{rand_}_{lvl}_{record['file'].name}_{f_name}_{record['line']}"
+
+            # choose extension & content
+            extra_write_args = {}
+            if serialize:
+                filename = f"{base}.json"
+
+                content = {"ts": ts, "level": lvl, "filename": base, "message": record["message"],
+                    "extra": record["extra"],
+                    # explicitly turn non‑serializables into strings:
+                    "elapsed": str(record["elapsed"]), "time": record["time"].isoformat(),
+                    "file": record["file"].name, "function": record["function"], "line": record["line"],}
+
+                extra_write_args = {'indent': 4}
+
+            else:
+                message = record["message"]
+                extra = record.get("extra", {})
+                filename = f"{base}.log"
+                if extra:
+                    content = f"{message}  ║  {extra}\n"
+                else:
+                    content = f"{message}\n"
+
+            directory.joinpath(filename).write(content, **extra_write_args)
+
+        # 4. register with Loguru
+        handler_id = self.logger.add(
+            _directory_sink,
+            level=level,
+            format=fmt,
+            colorize=False,    # per-file logs usually shouldn’t have ANSI codes
+            backtrace=False,
+            diagnose=False,
+        )
+        # keep track so you can remove it later
+        self.handlers[directory.as_uri()] = handler_id
+        return handler_id
 
     def remove_tag(self, tag):
         path = self.tags[tag]

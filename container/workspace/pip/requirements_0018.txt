@@ -35,3 +35,5 @@ logstash-formatter
 rich
 
 apache-airflow-client
+
+torchpq

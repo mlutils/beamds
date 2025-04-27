@@ -4,6 +4,50 @@ from termcolor import colored
 import sys
 import os
 
+if len([]):
+    from beam import *
+    import pandas as pd
+    import numpy as np
+    import torch
+    import torch.nn.functional as F
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+    import seaborn as sns
+    import torch_geometric as tg
+    import torch.nn as nn
+    import torch.optim as optim
+    import torch.distributions as distributions
+    import os
+    import sys
+    import inspect
+    import time
+    import datetime
+    import random
+    import networkx as nx
+    import re
+    import glob
+    import pickle
+    import json
+    import datetime
+    import tqdm
+    import collections
+    import functools
+    import copy
+    import warnings
+    import yaml
+    from collections import defaultdict, Counter, OrderedDict
+    from functools import partial, reduce
+    import itertools
+    from copy import deepcopy
+    from datetime import timedelta
+    from collections import namedtuple
+
+__all__ = ['copy', 'deepcopy', 'timedelta', 'namedtuple', 'partial', 'reduce', 'itertools', 'defaultdict', 'Counter',
+           'OrderedDict', 'warnings', 'yaml', 'json', 'pickle', 'glob', 're', 'nx', 'random',
+           'datetime', 'time', 'inspect', 'sys', 'os', 'BeamImporter',
+           'pd', 'np', 'torch', 'F', 'Path', 'plt', 'sns', 'tg', 'nn', 'optim', 'resource', 'distributions',
+           'tqdm']
+
 
 class BeamImporter:
     def __init__(self):
@@ -94,26 +138,28 @@ def load_ipython_extension(ipython, beam_path=None):
                   'so you can use them without explicit import', attrs=['bold'])
     print(f'🚀 | {msg}')
 
-    if ipython is not None:
-        ipython.run_line_magic('load_ext', 'autoreload')
-        ipython.run_line_magic('autoreload', '2')
-
     beam_path = beam_path or os.getenv('BEAM_PATH', None)
     if beam_path is not None:
         sys.path.insert(0, beam_path)
-        sys.path.insert(0, os.path.join(beam_path, 'src'))
-    else:
-        sys.path.insert(0, '..')
-        sys.path.insert(0, '../src')
+    # else:
+    #     sys.path.insert(0, '..')
+
+    if ipython is not None:
+        ipython.run_line_magic('load_ext', 'autoreload')
+        ipython.run_line_magic('autoreload', '2')
+        # import beam.meta, beam.config.utils
+        # automatically skip our problematic modules
+        # ipython.run_line_magic('aimport', '-beam.meta')
+        # ipython.run_line_magic('aimport', '-beam.config.utils')
 
     beam_args = os.getenv('BEAM_ARGS', '')
     sys.argv.append('---BEAM-JUPYTER---')
     if beam_args:
         sys.argv.extend(beam_args.split(' '))
 
-    for k in list(sys.modules.keys()):
-        if k.startswith('beam'):
-            del sys.modules[k]
+    # for k in list(sys.modules.keys()):
+    #     if k.startswith('beam'):
+    #         del sys.modules[k]
 
     beam_importer = BeamImporter()
     msg = colored(f'Beam library is loaded from path: '
@@ -134,6 +180,7 @@ def load_ipython_extension(ipython, beam_path=None):
     # print(f"The Beam version is: {beam_importer.beam.__version__}")
 
 
+
 if __name__ == '__main__':
 
     beam_path = None
@@ -144,3 +191,9 @@ if __name__ == '__main__':
             beam_path = os.path.abspath(beam_path)
 
     load_ipython_extension(None, beam_path=beam_path)
+else:
+
+    beam_path = None
+    from IPython import get_ipython
+    ipython = get_ipython()
+    load_ipython_extension(ipython, beam_path=beam_path)

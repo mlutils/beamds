@@ -1,4 +1,4 @@
-from ..path import BeamURL
+from ..path import BeamURL, beam_key
 from .client import AirflowClient
 
 
@@ -27,6 +27,9 @@ def airflow_client(path, username=None, hostname=None, port=None, password=None,
         path = '/'
 
     fragment = url.fragment
+
+    username = beam_key('AIRFLOW_USERNAME', username)
+    password = beam_key('AIRFLOW_PASSWORD', password)
 
     return AirflowClient(path, hostname=hostname, port=port, username=username, password=password,
                        fragment=fragment, **kwargs)

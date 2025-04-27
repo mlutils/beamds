@@ -7,7 +7,8 @@ pip install jupyterlab-tensorboard-pro notebook-shim async_lru
 rm -f /root/.jupyter/jupyter_lab_config.py
 
 jupyter-lab --generate-config
-echo "c.ServerApp.notebook_dir = '/home/'" >> /root/.jupyter/jupyter_lab_config.py
+#echo "c.ServerApp.notebook_dir = '/home/'" >> /root/.jupyter/jupyter_lab_config.py
+echo "c.ServerApp.root_dir = '/home/'" >> /root/.jupyter/jupyter_lab_config.py
 echo "c.ServerApp.allow_remote_access = True" >> /root/.jupyter/jupyter_lab_config.py
 echo "c.ServerApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_lab_config.py
 echo "c.ServerApp.token = ''" >> /root/.jupyter/jupyter_lab_config.py
