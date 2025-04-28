@@ -8,7 +8,10 @@ graphviz
 # do not install pygraphviz as it causes errors
 # pygraphviz
 
-gensim
+# gensim is quite deprecated and i wish to install some modern replacements
+# gensim
+fastText
+
 networkx
 
 # do not install cdlib[all] as infomap, leidenalg cause errors, install separately in requirements_0017
