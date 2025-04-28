@@ -83,7 +83,7 @@ RUN bash /workspace/bash-build-scripts/install_huggingface_ecosystem.sh
 
 RUN pip install -U --no-deps -r /workspace/pip/requirements_no_deps.txt
 #RUN pip list
-RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
+# RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
 
 #install pytesseract
 # REMOVE FOR LITE VERSION
