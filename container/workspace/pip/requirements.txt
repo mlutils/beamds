@@ -6,6 +6,7 @@ build
 johnnydep
 mpi4py
 # protobuf==3.20.3 # resolve juperlab error  TypeError: Descriptors cannot not be created directly
+# try to use the updated version of protobuf
 protobuf
 # jupyter ipywidgets
 jupyterhub
