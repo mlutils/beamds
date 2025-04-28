@@ -397,29 +397,25 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         if command:
             # 1) If it's a dictionary
             if isinstance(command, dict):
-                executable = command.get("executable")
-                if executable:
-                    cmd = [executable]
-                # arguments could be "arguments" or "args" in a dict. Decide which one you have
-                if "arguments" in command:
-                    args_ = command["arguments"]
-                elif "args" in command:
-                    args_ = command["args"]
+
+                logger.error("Wrong type of command provided. It should be a string or CommandConfig dataclass.")
+                raise TypeError("Command should be a string or CommandConfig dataclass.")
+
+                # executable = command.get("executable")
+                # if executable:
+                #     cmd = [executable]
+                # # arguments could be "arguments" or "args" in a dict. Decide which one you have
+                # if "arguments" in command:
+                #     args_ = command["arguments"]
+                # elif "args" in command:
+                #     args_ = command["args"]
 
             # 2) If it's a CommandConfig dataclass
             elif isinstance(command, CommandConfig):
+
                 if command.executable:
                     cmd = [command.executable]
                 args_ = command.arguments or []
-
-        # if command and "executable" in command:
-        #     cmd = [command["executable"]]
-        #     args_ = [command["arguments"]]
-
-        #
-        # if command and 'executable' in command:
-        #     [command["executable"]] + command.get("args", [])
-
 
         # Preparing volume mounts
         volume_mounts = []

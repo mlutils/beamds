@@ -648,21 +648,16 @@ class AutoBeam(BeamBase):
             docker_dir.joinpath('dockerfile').write(source_dockerfile, ext='.txt')
 
             beam_ds_path = beam_path(beam_ds_path)
-            if not beam_ds_path.is_file():
-                raise FileNotFoundError(f"Beam-DS path is invalid or file not found: {beam_ds_path}")
-            if beam_ds_path.is_file():
+            target_beam_ds_path = None
+            if beam_ds_path is None or not beam_ds_path.is_file():
+                logger.warning(f"Beam-DS path is invalid or file not found: {beam_ds_path}, requires pip installation")
+            else:
                 # Copy the Beam-DS file into the .docker directory
                 target_beam_ds_path = docker_tools_dir.joinpath(beam_ds_path.name)
                 target_beam_ds_path.parent.mkdir(parents=True, exist_ok=True)
                 target_beam_ds_path.write_bytes(beam_ds_path.read_bytes())
 
-                # target_beam_ds_path.copy(target_beam_ds_path)
-                # beam_ds_path.copy(target_beam_ds_path)
-                # target_beam_ds_path.write_bytes(beam_ds_path.read_bytes())
-
                 logger.info(f"Beam-DS file copied to: {target_beam_ds_path}")
-            else:
-                raise FileNotFoundError(f"The specified BEAM_DS_PATH does not exist or is not a file: {beam_ds_path}")
 
             # Log the current directory and its contents
             logger.info(f"Contents of the specified directory Before copy '{docker_tools_dir}':")
@@ -681,8 +676,6 @@ class AutoBeam(BeamBase):
                     logger.info(f"Dir: {file_name.name}")
                 elif file_name.is_file():
                     logger.info(f"File: {file_name.name}")
-
-
 
             # Define build arguments
             build_args = {
