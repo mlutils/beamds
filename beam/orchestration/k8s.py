@@ -1212,7 +1212,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         #     route_manifest["metadata"]["annotations"] = {"haproxy.router.openshift.io/timeout": route_timeout}
 
         # Add TLS termination if protocol is 'https'
-        # if protocol.lower() == 'https':
+        #  if protocol.lower() == 'https':
         if annotations and annotations.get("route.openshift.io/termination") == "passthrough":
             route_manifest["spec"]["tls"] = {
                 "termination": "passthrough"
