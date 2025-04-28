@@ -63,7 +63,7 @@ RUN pip install -r /workspace/pip/requirements_0009.txt
 #RUN pip list
 RUN pip install -U -r /workspace/pip/requirements_0010.txt
 #RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0011.txt
+# RUN pip install -U -r /workspace/pip/requirements_0011.txt
 #RUN pip list
 RUN pip install -U -r /workspace/pip/requirements_0012.txt
 #RUN pip list
