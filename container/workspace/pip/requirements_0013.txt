@@ -4,7 +4,9 @@ jax[cuda]
 jaxlib
 objax
 
-torchlars
+# doesnt work with pytorch > 2.5
+# torchlars
+
 torch_pruning
 git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 
