@@ -104,6 +104,12 @@ echo "Installing sudo"
 apt install -y sudo
 echo "Installing acl"
 apt install -y acl
+echo "Installing libmariadb-dev"
+apt install -y libmariadb-dev
+
+
+# remove blinker (to be installed via pip)
+apt-get remove -y python3-blinker
 
 #
 ## don't install libopenmpi as it messes up the pytorch geometric installation

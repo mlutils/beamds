@@ -9,6 +9,5 @@ captum
 # too many dependencies
 # seldon-core
 
-mlflow
 onnx
 onnxruntime

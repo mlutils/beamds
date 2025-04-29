@@ -4,6 +4,7 @@ fastai
 fastcore
 fastdownload
 fastprogress
+fasttransform
 
 lightning-flash
 functorch
@@ -17,9 +18,16 @@ HEBO
 # GPy
 botorch
 
+# requires gensim
+gensim
+pecanpy
+
 # retriv
 # ludwig
 
 # requires torch<=2.1.0
 tsai
 beam-ds
+
+xeus-python
+xeus-python-shell

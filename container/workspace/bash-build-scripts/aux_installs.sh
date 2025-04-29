@@ -18,3 +18,15 @@ echo "cd /home" >> ~/.bashrc
 # make a default home directory if does not exist
 mkdir -p /home
 
+# add the beam message (only when not in SSH)
+cat << 'EOF' >> ~/.bashrc
+
+if [ -z "$SSH_CONNECTION" ]; then
+    cat /etc/motd
+fi
+EOF
+
+# disable system-wide pip environment protections
+rm /usr/lib/python3.12/EXTERNALLY-MANAGED
+
+
