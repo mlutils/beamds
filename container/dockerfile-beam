@@ -41,7 +41,7 @@ RUN pip install --upgrade pip setuptools wheel
 RUN pip install -U -r /workspace/pip/requirements.txt
 
 #RUN pip list
-#RUN pip install -U -r /workspace/pip/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+RUN pip install -r /workspace/pip/requirements_0013.txt -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 #RUN pip list
 RUN pip install -U -r /workspace/pip/requirements_0001.txt
 #RUN pip list
@@ -69,21 +69,24 @@ RUN pip install -U -r /workspace/pip/requirements_0012.txt
 #RUN pip list
 RUN pip install -U -r /workspace/pip/requirements_0014.txt
 #RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0015.txt
+RUN pip install -r /workspace/pip/requirements_0015.txt
 # RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0016.txt
+RUN pip install -r /workspace/pip/requirements_0016.txt
 # RUN pip list
 RUN pip install -U -r /workspace/pip/requirements_0017.txt
 # RUN pip list
-RUN pip install -U -r /workspace/pip/requirements_0018.txt
+RUN pip install -r /workspace/pip/requirements_0018.txt
 
 #install huggingface ecosystem
 # REMOVE FOR LITE VERSION
 RUN bash /workspace/bash-build-scripts/install_huggingface_ecosystem.sh
 
+# install without upgrading dependencies
+RUN pip install -r /workspace/pip/requirements_no_upgrade.txt
+
 RUN pip install -U --no-deps -r /workspace/pip/requirements_no_deps.txt
 #RUN pip list
-RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
+# RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
 
 #install pytesseract
 # REMOVE FOR LITE VERSION

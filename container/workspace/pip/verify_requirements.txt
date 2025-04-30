@@ -17,8 +17,8 @@ plotly>=5.9.0
 
 kornia>=0.6.6
 huggingface-hub>=0.8.1
-pandas>=2.0.1,<=2.2.2
-ipython>=8.14.0
+pandas>=2.0.1
+ipython>=9.2.0
 optuna>=2.10.1
 jupyter_server
 jupyterlab
@@ -37,4 +37,6 @@ numpy<2.0
 scipy>=1.15.0
 jupyter_bbox_widget
 ultralytics
+
+prometheus-client>=0.9
 

@@ -1,6 +1,10 @@
 # utilities and documentation
 gunicorn
-xeus-python
+
+# currently requires xeus-python-shell[ipython] 0.5.0 depends on ipython<9 and >=7.21; extra == "ipython"
+# (The user requested (constraint) ipython==9.0.1)
+#xeus-python
+
 thop
 nbtop
 requests_ntlm

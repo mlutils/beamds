@@ -6,7 +6,8 @@ captum
 
 
 # project deployment
-seldon-core
-mlflow
+# too many dependencies
+# seldon-core
+
 onnx
 onnxruntime

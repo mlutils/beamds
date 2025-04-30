@@ -1,4 +1,3 @@
-pecanpy
 rocketchat-API
 mattermostdriver
 
