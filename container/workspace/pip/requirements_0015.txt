@@ -9,7 +9,7 @@ chainlit
 s3fs
 rank_bm25
 netcal
-ibis-framework[pandas,duckdb,mysql,sqlite]
+ibis-framework[polars,mysql,sqlite,mssql]
 ordered_set
 PyPDF2
 streamlit-aggrid
