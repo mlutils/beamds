@@ -2,3 +2,4 @@ mlflow
 oauthlib
 seldon-core
 
+netcal

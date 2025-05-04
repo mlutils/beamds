@@ -8,7 +8,6 @@ uwsgi
 chainlit
 s3fs
 rank_bm25
-netcal
 ibis-framework[polars,mysql,sqlite,mssql]
 ordered_set
 PyPDF2
