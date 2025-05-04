@@ -85,8 +85,6 @@ RUN bash /workspace/bash-build-scripts/install_huggingface_ecosystem.sh
 RUN pip install -r /workspace/pip/requirements_no_upgrade.txt
 
 RUN pip install -U --no-deps -r /workspace/pip/requirements_no_deps.txt
-#RUN pip list
-# RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
 
 #install pytesseract
 # REMOVE FOR LITE VERSION
@@ -109,7 +107,7 @@ RUN bash /workspace/bash-build-scripts/install_dgl.sh
 
 # download datasets and models
 # REMOVE FOR LITE VERSION
-RUN python /workspace/python-scripts/downloader.py
+# RUN python /workspace/python-scripts/downloader.py
 # download nlp data
 RUN bash /workspace/bash-build-scripts/models_downloads.sh
 
@@ -151,7 +149,8 @@ RUN bash /workspace/bash-build-scripts/configure_jupyter.sh
 
 RUN chmod +x /workspace/bash-run-scripts/entrypoint.sh
 
-RUN pip install 'numpy<2.0'
+#RUN pip list
+RUN pip install -U --no-deps -r /workspace/pip/verify_requirements.txt
 
 ENTRYPOINT ["/workspace/bash-run-scripts/entrypoint.sh"]
 CMD ["10"]
