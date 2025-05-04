@@ -133,3 +133,7 @@ sed -i 's/UsePAM yes/UsePAM no/g' /etc/ssh/sshd_config
 
 # delete cache files
 apt-get clean
+
+
+# fix NVIDIA dependency issues
+sed -i 's/^grpcio==1.62.1$/grpcio>=1.62.1/' /etc/pip/constraint.txt
