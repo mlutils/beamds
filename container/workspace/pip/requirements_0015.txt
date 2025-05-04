@@ -15,7 +15,6 @@ rank_bm25
 ibis-framework[polars,mysql,sqlite,mssql]
 ordered_set
 PyPDF2
-streamlit-aggrid
 pyahocorasick
 pdfplumber
 pdfminer.six
