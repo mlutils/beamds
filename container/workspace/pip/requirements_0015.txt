@@ -5,7 +5,11 @@ streamlit
 waitress
 cherrypy
 uwsgi
+
+# chainlit package creates dependencies collisions so we need to update the grpcio version
+grpcio>=1.63.2,<2.0.0
 chainlit
+
 s3fs
 rank_bm25
 ibis-framework[polars,mysql,sqlite,mssql]
