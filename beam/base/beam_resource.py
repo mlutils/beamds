@@ -8,7 +8,7 @@ resource_names = {
              'mlflow'],
     'serve': ['beam-http', 'beam-https', 'beam-grpc', 'beam-grpcs', 'http', 'https', 'grpc', 'grpcs'],
     'distributed': ['async-http', 'async-https'],
-    'llm': ['openai', 'vllm', 'tgi', 'fastchat', 'huggingface', 'samurai', 'samur-openai', 'fastapi-dp'],
+    'llm': ['openai', 'vllm', 'tgi', 'fastchat', 'huggingface', 'samurai', 'samur-openai', 'fastapi-dp', 'ai21',],
     'triton': ['triton', 'triton-http', 'triton-grpc', 'triton-https', 'triton-grpcs'],
     'ray': ['ray'],
     'embedding': ['emb-openai', 'emb-stt'],

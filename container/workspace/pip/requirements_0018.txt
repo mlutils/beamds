@@ -37,3 +37,5 @@ rich
 apache-airflow-client
 
 torchpq
+
+ai21

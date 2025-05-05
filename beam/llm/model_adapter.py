@@ -525,6 +525,18 @@ class AlpacaAdapter(BaseModelAdapter):
         return get_conv_template("alpaca")
 
 
+class JambaAdapter(BaseModelAdapter):
+    """The model adapter for Alpaca"""
+
+    use_fast_tokenizer = False
+
+    def match(self, model_path: str):
+        return "jamba" in model_path.lower()
+
+    def get_default_conv_template(self, model_path: str) -> Conversation:
+        return get_conv_template("jamba")
+
+
 class ChatGLMAdapter(BaseModelAdapter):
     """The model adapter for THUDM/chatglm-6b, THUDM/chatglm2-6b"""
 
@@ -2215,6 +2227,7 @@ register_model_adapter(YandexGPTAdapter)
 register_model_adapter(CllmAdapter)
 register_model_adapter(RekaAdapter)
 register_model_adapter(SmaugChatAdapter)
+register_model_adapter(JambaAdapter)
 
 # After all adapters, try the default base adapter.
 register_model_adapter(BaseModelAdapter)
