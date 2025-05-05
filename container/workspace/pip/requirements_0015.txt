@@ -1,7 +1,6 @@
 pip-tools
 pulearn
 text-generation
-streamlit
 waitress
 cherrypy
 uwsgi

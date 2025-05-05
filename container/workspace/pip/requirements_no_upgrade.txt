@@ -3,4 +3,5 @@ oauthlib
 seldon-core
 
 netcal
+# streamlit
 # streamlit-aggrid
