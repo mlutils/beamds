@@ -1,293 +1,392 @@
-from ..processor.core import Processor
-from ..data import BeamData
-from ..path import beam_key
-import pandas as pd
-import re
-from sqlalchemy.engine import create_engine
+
+import datetime as _dt
+import functools as _ft
+import json as _json
+import os as _os
+import re as _re
+import typing as _t
+from dataclasses import dataclass as _dataclass
+from pathlib import PurePosixPath as _PurePosixPath
+
+import ibis
+import numpy as _np
+import pandas as _pd
+
+__all__ = [
+    "BeamBigQuery",
+]
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
 
 
-class BeamSQL(Processor):
+def _now():
+    return _dt.datetime.now(tz=_dt.timezone.utc)
 
-    # Build a beam class that provides an abstraction layer to different databases and lets us develop our tools without committing to a database technology.
-    #
-    # The class will be based on sqlalchemy+pandas but it can be inherited by subclasses that use 3rd party packages such as pyathena.
-    #
-    # some key features:
-    # 1. the interface will be based on url addresses as in the BeamPath class
-    # 2. two levels will be supported, db level where each index is a table and table level where each index is a column.
-    # 3. minimizing the use of schemas and inferring the schemas from existing pandas dataframes and much as possible
-    # 4. adding pandas like api whenever possible, for example, selecting columns with __getitem__, uploading columns and tables with __setitem__, loc, iloc
-    # 5. the use of sqlalchemy and direct raw sql queries will be allowed.
 
-    def __init__(self, *args, llm=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._connection = None
-        self._engine = None
-        self._table = None
-        self._database = None
-        self._index = None
-        self._columns = None
-        self._llm = llm
+# ---------------------------------------------------------------------------
+# Path handling & connection cache
+# ---------------------------------------------------------------------------
 
+_BQ_CONN_CACHE: dict[str, ibis.backends.bigquery.Backend] = {}
+
+
+def _get_connection(project: str | None) -> ibis.backends.bigquery.Backend:  # type: ignore[name-defined]
+    key = project or "_default_"
+    if key not in _BQ_CONN_CACHE:
+        _BQ_CONN_CACHE[key] = ibis.bigquery.connect(project_id=project)
+    return _BQ_CONN_CACHE[key]
+
+
+# ---------------------------------------------------------------------------
+# Core class
+# ---------------------------------------------------------------------------
+
+class BeamBigQuery:
+    """Path‑like BigQuery wrapper with an Elastic‑like fluent API."""
+
+    # ---------------------------------------------------------------------
+    # construction helpers
+    # ---------------------------------------------------------------------
+    _TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%S%z"  # match BeamElastic for parity
+
+    def __init__(
+        self,
+        path: str | _PurePosixPath | None = None,
+        *,
+        project: str | None = None,
+        dataset: str | None = None,
+        table: str | None = None,
+        expr: ibis.Expr | None = None,
+        fields: list[str] | None = None,
+        sort_by: str | None = None,
+        max_rows: int | None = None,
+    ) -> None:
+        # Normalise path like "bigquery://project/dataset/table"
+        if isinstance(path, str) and path.startswith("bigquery://"):
+            parts = _PurePosixPath(path[len("bigquery://") :]).parts  # drop scheme
+            if parts:
+                project = project or parts[0]
+            if len(parts) > 1:
+                dataset = dataset or parts[1]
+            if len(parts) > 2:
+                table = table or parts[2]
+        self.project = project
+        self.dataset = dataset
+        self.table = table
+        self._expr = expr  # ibis expression (lazy)
+        self._fields = fields  # projection
+        self._sort_by = sort_by
+        self._max_rows = max_rows or 10_000
+
+        # Connection is established lazily to avoid needless auth in pickled objs
+        self._conn: ibis.backends.bigquery.Backend | None = None
+
+    # ------------------------------------------------------------------
+    # private utilities
+    # ------------------------------------------------------------------
     @property
-    def llm(self):
-        return self._llm
+    def _connection(self):
+        if self._conn is None:
+            self._conn = _get_connection(self.project)
+        return self._conn
 
-    @property
-    def database(self):
-        return self._database
+    # ------------------------------------------------------------------
+    # path helpers (mimic pathlib / BeamElastic behaviour)
+    # ------------------------------------------------------------------
+    def gen(self, *path_parts, **kwargs):
+        """Return *new* instance, cloning current settings and overriding *kwargs*."""
+        merged = dict(
+            project=self.project,
+            dataset=self.dataset,
+            table=self.table,
+            expr=self._expr,
+            fields=self._fields,
+            sort_by=self._sort_by,
+            max_rows=self._max_rows,
+        )
+        merged.update(kwargs)
+        return type(self)(None, **merged)  # type: ignore[arg-type]
 
-    @property
-    def table(self):
-        return self._table
-
-    @property
-    def index(self):
-        return self._index
-
-    @property
-    def columns(self):
-        return self._columns
-
-    def set_database(self, database):
-        self._database = database
-
-    def set_llm(self, llm):
-        self._llm = llm
-
-    def set_index(self, index):
-        self._index = index
-
-    def set_columns(self, columns):
-        self._columns = columns
-
-    def set_table(self, table):
-        self._table = table
-
-    def __getitem__(self, item):
-
-        if not isinstance(item, tuple):
-            item = (item,)
-
+    # ------------------------------------------------------------------
+    # navigation – /, [] and .joinpath() like PurePath
+    # ------------------------------------------------------------------
+    def __truediv__(self, key: str):  # / operator
+        if self.project is None:
+            return self.gen(project=key)
+        if self.dataset is None:
+            return self.gen(dataset=key)
         if self.table is None:
-            axes = ['table', 'index', 'columns']
-        else:
-            axes = ['index', 'columns']
+            return self.gen(table=key)
+        raise ValueError("Cannot descend deeper than table level – BigQuery has only 3 levels")
 
-        for i, ind_i in enumerate(item):
-            a = axes.pop(0)
-            if a == 'table':
-                self.set_table(ind_i)
-            elif a == 'index':
-                self.set_index(ind_i)
-            elif a == 'columns':
-                self.set_columns(ind_i)
+    # Allow dict‑like field selection: client["col1"] -> restrict projection
+    def __getitem__(self, item: str | list[str]):
+        if isinstance(item, str):
+            item = [item]
+        fields = item
+        if self._fields is not None:
+            missing = set(fields) - set(self._fields)
+            if missing:
+                raise ValueError(f"Cannot select unknown fields {missing} not in {self._fields}")
+        return self.gen(fields=fields)
 
-        return self
+    # ------------------------------------------------------------------
+    # level inspection (root/dataset/table/query)  – similar to BeamElastic.level
+    # ------------------------------------------------------------------
+    @property
+    def level(self):
+        if self.table is not None and self._expr is not None:
+            return "query"
+        if self.table is not None:
+            return "table"
+        if self.dataset is not None:
+            return "dataset"
+        return "root"
 
-    def sql(self, query, **kwargs):
-        return pd.read_sql(query, self._connection, **kwargs)
-
-    def get_sample(self, n=1, **kwargs):
-        raise NotImplementedError
-
-    def get_schema(self):
-        raise NotImplementedError
-
-    def nlp(self, query, **kwargs):
-
-        schema = self.get_schema()
-
-        prompt = f"Task: generate an SQL query that best describes the following text:\n {query}\n\n" \
-                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n" \
-                 f"Additional instructions:\n\n" \
-                 f"1. The queried table name is: {self.database}.{self.table}\n" \
-                 f"2. Assume that the schema for the queried table is:\n{schema}\n\n" \
-                 f"3. Here are 4 example rows {self.get_sample(n=4)}\n\n" \
-                 f"4. In your response use only valid column names that best match the text\n\n" \
-                 f"5. Important: your response must contain only the SQL query and nothing else, and it must be valid.\n\n" \
-                 f"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n" \
-                 f"Response: \"\"\"\n{{text input here}}\n\"\"\""
-
-        response = self.llm.ask(prompt, **kwargs)
-
-        query = response.choices[0].text
-        query = re.sub(r'\"\"\"', '', query)
-
-        return self.sql(query)
-
-    @staticmethod
-    def df2table(df, name, metadata=None):
-
-        from sqlalchemy import Table, Column
-        from sqlalchemy.schema import MetaData
-
-        if metadata is None:
-            metadata = MetaData()
-
-        # Define the SQLAlchemy table object based on the DataFrame
-        columns = [column for column in df.columns]
-        types = {column: df.dtypes[column].name for column in df.columns}
-        table = Table(name, metadata, *(Column(column, types[column]) for column in columns))
-
+    # ------------------------------------------------------------------
+    # building ibis expression lazily
+    # ------------------------------------------------------------------
+    def _base_table_expr(self) -> ibis.Table:
+        if self.level in {"root", "dataset"}:
+            raise ValueError("Table expression requires table-level path")
+        table = self._connection.table(self.table, dataset=self.dataset)
+        if self._fields is not None:
+            table = table[self._fields]
+        if self._sort_by is not None:
+            table = table.sort_by(self._sort_by)
         return table
 
-    @property
-    def engine(self):
-        raise NotImplementedError
+    def _current_expr(self) -> ibis.Expr:
+        if self._expr is not None:
+            return self._expr
+        if self.level == "table":
+            return self._base_table_expr()
+        raise ValueError("No expression at this level – navigate into a table or set a query")
 
-    def __enter__(self):
-        self._connection = self.engine.connect()
-        return self
+    # ------------------------------------------------------------------
+    # filters (parallel to BeamElastic.filter_* helpers)
+    # ------------------------------------------------------------------
+    def _with_filter(self, predicate: ibis.Expr):
+        base = self._current_expr()
+        new_expr = base.filter(predicate)
+        return self.gen(expr=new_expr)
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._connection.close()
-        self._connection = None
+    def parse_column(self, field: str | None):
+        if field is None:
+            # default: first field if projection set, else raise
+            if self._fields:
+                return self._fields[0]
+            raise ValueError("Field must be specified when no default context")
+        return field
 
+    # Equality / membership
+    def filter_term(self, value, field: str | None = None):
+        col = self.parse_column(field)
+        return ibis.field(col) == value
 
-class BeamAthena(BeamSQL):
-    def __init__(self, s3_staging_dir, role_session_name=None, region_name=None, access_key=None, secret_key=None,
-                 *args, **kwargs):
+    def filter_terms(self, values, field: str | None = None):
+        col = self.parse_column(field)
+        return ibis.field(col).isin(list(values))
 
-        self.access_key = beam_key('AWS_ACCESS_KEY_ID', access_key)
-        self.secret_key = beam_key('aws_secret_key', secret_key)
-        self.s3_staging_dir = s3_staging_dir
+    # Range filters
+    def filter_gte(self, value, field: str | None = None):
+        col = self.parse_column(field)
+        return ibis.field(col) >= value
 
-        if role_session_name is None:
-            role_session_name = "PyAthena-session"
-        self.role_session_name = role_session_name
+    def filter_gt(self, value, field: str | None = None):
+        col = self.parse_column(field)
+        return ibis.field(col) > value
 
-        if region_name is None:
-            region_name = "eu-north-1"
-        self.region_name = region_name
+    def filter_lte(self, value, field: str | None = None):
+        col = self.parse_column(field)
+        return ibis.field(col) <= value
 
-        state = {'s3_staging_dir': self.s3_staging_dir, 'role_session_name': self.role_session_name,
-                      'region_name': self.region_name, 'access_key': self.access_key, 'secret_key': self.secret_key}
+    def filter_lt(self, value, field: str | None = None):
+        col = self.parse_column(field)
+        return ibis.field(col) < value
 
-        super().__init__(*args, state=state, **kwargs)
+    # Time range filter similar to TimeFilter => accept kwargs like start/end/period
+    def filter_time_range(
+        self,
+        *,
+        field: str | None = None,
+        start: _dt.datetime | str | None = None,
+        end: _dt.datetime | str | None = None,
+        period: _dt.timedelta | str | None = None,
+    ):
+        field = self.parse_column(field)
 
-    def get_sample(self, n=1, **kwargs):
+        if start and isinstance(start, str):
+            if start == "now":
+                start = _now()
+            else:
+                start = _dt.datetime.fromisoformat(start)
+        if end and isinstance(end, str):
+            if end == "now":
+                end = _now()
+            else:
+                end = _dt.datetime.fromisoformat(end)
+        if period is not None and isinstance(period, str):
+            _period_re = _re.compile(r"(\d+)([smhdw])")
+            m = _period_re.fullmatch(period.strip())
+            if not m:
+                raise ValueError("Invalid period string – use e.g. '5d', '12h'")
+            qty, unit = m.groups()
+            qty = int(qty)
+            delta_map = {
+                "s": _dt.timedelta(seconds=qty),
+                "m": _dt.timedelta(minutes=qty),
+                "h": _dt.timedelta(hours=qty),
+                "d": _dt.timedelta(days=qty),
+                "w": _dt.timedelta(weeks=qty),
+            }
+            period = delta_map[unit]
 
-        from pyathena.pandas.util import as_pandas
+        # Resolve start & end from period
+        if period is not None:
+            if start is None and end is None:
+                end = _now()
+                start = end - period
+            elif start is None:
+                start = end - period
+            elif end is None:
+                end = start + period
+        predicate = True
+        if start is not None:
+            predicate = predicate & (ibis.field(field) >= start)
+        if end is not None:
+            predicate = predicate & (ibis.field(field) <= end)
+        return predicate
 
-        query = f"SELECT * FROM {self.database}.{self.table} LIMIT {n}"
+    # Fluent wrappers like with_filter_term etc.
+    def with_filter_term(self, value, field: str | None = None):
+        return self._with_filter(self.filter_term(value, field))
 
-        cursor = self.connection.cursor()
-        cursor.execute(query)
-        df = as_pandas(cursor)
+    def with_filter_terms(self, values, field: str | None = None):
+        return self._with_filter(self.filter_terms(values, field))
 
-        return df
+    def with_filter_gte(self, value, field: str | None = None):
+        return self._with_filter(self.filter_gte(value, field))
 
-    def get_schema(self):
+    def with_filter_gt(self, value, field: str | None = None):
+        return self._with_filter(self.filter_gt(value, field))
 
-        query = f"DESCRIBE {self.database}.{self.table}"
+    def with_filter_lte(self, value, field: str | None = None):
+        return self._with_filter(self.filter_lte(value, field))
 
-        cursor = self.connection.cursor()
-        cursor.execute(query)
-        # Fetch the result
-        result = cursor.fetchall()
+    def with_filter_lt(self, value, field: str | None = None):
+        return self._with_filter(self.filter_lt(value, field))
 
-        return result
+    def with_filter_time_range(self, **kwargs):
+        return self._with_filter(self.filter_time_range(**kwargs))
 
-    @property
-    def engine(self):
-        if self._engine is None:
-            self._engine = create_engine('athena+pyathena://', creator=lambda: self.connection)
-        return self._engine
+    # Operator overloads for & / |
+    def __and__(self, other: "BeamBigQuery"):
+        if not isinstance(other, BeamBigQuery):
+            raise TypeError("& expects another BeamBigQuery instance")
+        if (self.project, self.dataset, self.table) != (other.project, other.dataset, other.table):
+            raise ValueError("Cannot combine queries from different tables")
+        combined = self._current_expr().filter(other._current_expr())  # this will fail; easier: & over preds unsupported
+        # Simpler: convert to ibis.bool exprs and combine. We'll treat _expr as predicate only if not table.
+        raise NotImplementedError("Chaining two BeamBigQuery queries is not yet implemented – use ._with_filter")
 
-    @property
-    def connection(self):
+    def __or__(self, other: "BeamBigQuery"):
+        raise NotImplementedError("OR combination not yet supported – use ibis.boolean_or explicitly")
 
-        if self._connection is None:
+    # Comparison overloads – produce predicate (like BeamElastic)
+    def __eq__(self, other):  # noqa: D401, E743
+        return self.filter_term(other)
 
-            from pyathena import connect
+    def __ge__(self, other):
+        return self.filter_gte(other)
 
-            self._connection = connect(s3_staging_dir=self.s3_staging_dir,
-                                       role_session_name=self.role_session_name,
-                                       region_name=self.region_name, aws_access_key_id=self.access_key,
-                                       aws_secret_access_key=self.secret_key)
+    def __gt__(self, other):
+        return self.filter_gt(other)
 
-        return self._connection
+    def __le__(self, other):
+        return self.filter_lte(other)
 
-    def sql(self, query):
+    def __lt__(self, other):
+        return self.filter_lt(other)
 
-        from pyathena.pandas.util import as_pandas
+    def groupby(self, fields: str | list[str]):
+        if isinstance(fields, str):
+            fields = [fields]
+        return BeamBigQuery.GroupByHelper(self, fields)
 
-        cursor = self.connection.cursor()
-        cursor.execute(query)
-        df = as_pandas(cursor)
-        bd = BeamData(df)
+    # ------------------------------------------------------------------
+    # materialisers – as_df(), as_dict(), etc.
+    # ------------------------------------------------------------------
+    def as_df(self, limit: int | None = None):
+        expr = self._current_expr()
+        lim = limit or self._max_rows
+        return expr.execute(limit=lim)
 
-        return bd
+    def as_dict(self, limit: int | None = None):
+        return self.as_df(limit=limit).to_dict(orient="records")
 
+    def as_pl(self, limit: int | None = None):
+        import polars as pl
+        return pl.from_pandas(self.as_df(limit))
 
-# from sqlalchemy import create_engine, func, MetaData, Table, and_
-# import pandas as pd
-#
-#
-# class BeamSQL:
-#     def __init__(self, uri):
-#         self.engine = create_engine(uri)
-#         self.metadata = MetaData(bind=self.engine)
-#         self.current_table = None
-#         self.groupby_columns = []
-#         self.filter_conditions = []
-#
-#     def table(self, table_name):
-#         """Select the current working table."""
-#         self.current_table = Table(table_name, self.metadata, autoload=True)
-#         return self
-#
-#     def groupby(self, *column_names):
-#         self.groupby_columns = column_names
-#         return self
-#
-#     def count(self):
-#         if not self.current_table or not self.groupby_columns:
-#             raise Exception("Table not selected or columns for grouping not provided")
-#
-#         columns_to_select = [getattr(self.current_table.c, col) for col in self.groupby_columns]
-#         s = select(columns_to_select + [func.count()]) \
-#             .where(and_(*self.filter_conditions)) \
-#             .group_by(*columns_to_select)
-#
-#         result = self.engine.execute(s)
-#         return pd.DataFrame(result.fetchall(), columns=self.groupby_columns + ['count'])
-#
-#     def filter(self, column_name, operator, value):
-#         column = getattr(self.current_table.c, column_name)
-#         op_map = {
-#             "==": column.__eq__,
-#             ">": column.__gt__,
-#             "<": column.__lt__,
-#             ">=": column.__ge__,
-#             "<=": column.__le__,
-#         }
-#
-#         if operator not in op_map:
-#             raise Exception(f"Operator {operator} not supported")
-#
-#         condition = op_map[operator](value)
-#         self.filter_conditions.append(condition)
-#         return self
-#
-#     def query(self, raw_sql):
-#         result = self.engine.execute(raw_sql)
-#         columns = result.keys()
-#         return pd.DataFrame(result.fetchall(), columns=columns)
-#
-#
-# # Sample usage:
-# bs = BeamSQL("sqlite:////path/to/sqlite3.db")
-#
-# # Equivalent to df.groupby(['name', 'age']).count()
-# result = bs.table('your_table_name').groupby('name', 'age').count()
-# print(result)
-#
-# # Equivalent to df[df['age'] > 25].groupby(['name']).count()
-# result = bs.table('your_table_name').filter('age', '>', 25).groupby('name').count()
-# print(result)
-#
-# # Raw SQL
-# result = bs.query("SELECT name, COUNT(*) FROM your_table_name GROUP BY name")
-# print(result)
+    def as_cudf(self, limit: int | None = None):
+        import cudf
+        return cudf.from_pandas(self.as_df(limit))
+
+    def head(self, n: int = 5):
+        return self.as_df(limit=n)
+
+    # ------------------------------------------------------------------
+    # Writing helpers (only DataFrame -> table append for now)
+    # ------------------------------------------------------------------
+    def write(self, df: _pd.DataFrame, *, if_exists: str = "append", **load_kwargs):
+        if self.level != "table":
+            raise ValueError("Write only supported at table level")
+        tmp_uri = None
+        try:
+            tmp_uri = f"gs://{_os.environ.get('TEMP_GCS_BUCKET')}/beam_tmp_{_now().timestamp()}.parquet"
+        except Exception as exc:  # pragma: no cover – env may not exist
+            raise RuntimeError("Set TEMP_GCS_BUCKET env var for staging") from exc
+        df.to_parquet("/tmp/_beam_tmp.parquet")
+        from google.cloud import storage  # lazy import
+
+        client = storage.Client()
+        bucket_name, blob_name = tmp_uri[5:].split("/", 1)
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename("/tmp/_beam_tmp.parquet")
+
+        tbl = self._connection.load_data(
+            _pd.read_parquet("/tmp/_beam_tmp.parquet"),
+            table_name=self.table,
+            dataset=self.dataset,
+            project=self.project,
+            if_exists=if_exists,
+            **load_kwargs,
+        )
+        return tbl
+
+    # ------------------------------------------------------------------
+    # misc utils
+    # ------------------------------------------------------------------
+    def count(self):
+        return int(self._current_expr().count().execute())
+
+    def __repr__(self):
+        parts = ["bigquery://"]
+        if self.project:
+            parts.append(self.project)
+        if self.dataset:
+            parts.append("/" + self.dataset)
+        if self.table:
+            parts.append("/" + self.table)
+        s = "".join(parts)
+        if self._expr is not None and self.level == "query":
+            s += " | expr=[…]"
+        if self._fields:
+            s += f" | fields={self._fields}"
+        if self._sort_by:
+            s += f" | sort={self._sort_by}"
+        return s

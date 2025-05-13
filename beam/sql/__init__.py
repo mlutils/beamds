@@ -1,1 +1,1 @@
-from .core import BeamSQL
+from .bu import BeamSQL
