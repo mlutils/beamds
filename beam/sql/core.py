@@ -22,7 +22,7 @@ class BeamIbis(PureBeamPath):
         self,
         *args,
         hostname=None, port=None, username=None, password=None, verify=False, fragment=None, client=None,
-        expr: ibis.Expr | None = None,
+        q=None, llm=None,
         columns: list[str] | None = None,
         backend: str | None = None,
         backend_kwargs: dict[str, _t.Any] | None = None, **kwargs,
@@ -31,8 +31,7 @@ class BeamIbis(PureBeamPath):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password,
                             fragment=fragment, client=client, **kwargs)
 
-        self._expr = expr  # ibis expression (lazy)
-        self._columns = columns  # projection
+        self.columns = columns  # projection
 
         # Connection is established lazily to avoid needless auth in pickled objs
         self.backend = backend
@@ -40,7 +39,21 @@ class BeamIbis(PureBeamPath):
         self.verify = verify
 
         self._database = None
+        self._table_name = None
         self._table = None
+
+        self.q = q
+
+    @property
+    def table(self):
+        if self._table is None:
+            table_args = {}
+            if self.backend == "bigquery":
+                table_args = dict(
+                    database=self.database,
+                )
+            self._table = self.client.table(self.table_name, **table_args)
+        return self._table
 
     @property
     def project(self):
@@ -50,36 +63,35 @@ class BeamIbis(PureBeamPath):
         raise ValueError(f"Project not supported for {self.backend} backend")
 
     @property
-    def dataset(self):
-        if self.backend == "bigquery":
-            return self.parts[1] if len(self.parts) > 1 else None
-        raise ValueError(f"Dataset not supported for {self.backend} backend")
-
-    @property
     def database(self):
         if self._database is None:
-            path = BeamPath(*self.parts[:-1])
-            if path.is_file() or any(path.parts[-1].endswith(ext) for ext in [".db", ".sqlite"]):
-                d = str(path)
-                self._table = self.parts[-1]
+            if self.backend == "bigquery":
+                d = self.parts[1] if len(self.parts) > 1 else None
+            elif self.backend == "sqlite":
+                path = BeamPath(*self.parts[:-1])
+                if path.is_file() or any(path.parts[-1].endswith(ext) for ext in [".db", ".sqlite"]):
+                    d = str(path)
+                    self._table_name = self.parts[-1]
+                else:
+                    d = self.path
+                    self._table_name = None
             else:
-                d = self.path
-                self._table = None
+                raise ValueError(f"Database not supported for {self.backend} backend")
 
             self._database = d
         return self._database
 
     @property
-    def table(self):
+    def table_name(self):
 
-        if self._table is not None:
-            return self._table
+        if self._table_name is not None:
+            return self._table_name
 
         if self.backend == "bigquery":
             return self.parts[2] if len(self.parts) > 2 else None
         elif self.backend == "sqlite":
             _ = self.database  # force database resolution
-            return self._table
+            return self._table_name
 
         raise ValueError(f"Table not supported for {self.backend} backend")
 
@@ -88,7 +100,6 @@ class BeamIbis(PureBeamPath):
             c = ibis.bigquery.connect(host=self.hostname, port=self.port,
                 username=self.username, password=self.password, verify=self.verify,
                 project_id=self.project,
-                dataset_id=self.dataset,
                 **self.backend_kwargs,
             )
         else:
@@ -105,15 +116,6 @@ class BeamIbis(PureBeamPath):
             self._client = self.get_client()
         return self._client
 
-    def gen(self, *path_parts, **kwargs):
-        """Return *new* instance, cloning current settings and overriding *kwargs*."""
-        merged = dict(
-            expr=self._expr,
-            columns=self._columns,
-        )
-        merged.update(kwargs)
-        return type(self)(None, **merged)
-
     def gen(self, path, **kwargs):
         hostname = kwargs.pop('hostname', self.hostname)
         port = kwargs.pop('port', self.port)
@@ -121,88 +123,70 @@ class BeamIbis(PureBeamPath):
         password = kwargs.pop('password', self.password)
         fragment = kwargs.pop('fragment', self.fragment)
         params = kwargs.pop('params', self.params)
-        doc_cls = kwargs.pop('document', self._doc_cls)
         query = kwargs.pop('query', {})
-        fields = kwargs.pop('fields', self.fields)
-        sort_by = kwargs.pop('sort_by', self.sort_by)
+        columns = kwargs.pop('columns', self.columns)
         llm = kwargs.pop('llm', self.llm)
         q = kwargs.pop('q', self.q)
 
         # must be after extracting all other kwargs
         query = {**query, **kwargs}
         PathType = type(self)
-        return PathType(path, client=self.client, hostname=hostname, port=port, username=username, fields=fields,
-                        password=password, fragment=fragment, params=params, document=doc_cls, q=q, sort_by=sort_by,
-                        llm=llm, **query)
+        return PathType(path, client=self.client, hostname=hostname, port=port, username=username, columns=columns,
+                        password=password, fragment=fragment, params=params, llm=llm, q=q, **query)
 
-    def __truediv__(self, key: str):  # / operator
-        if self.project is None:
-            return self.gen(project=key)
-        if self.dataset is None:
-            return self.gen(dataset=key)
-        if self.table is None:
-            return self.gen(table=key)
-        raise ValueError("Cannot descend deeper than table level – BigQuery has only 3 levels")
+    @property
+    def query_table(self):
+        if self.q is not None:
+            return self.q
+        return self.table
 
     # Allow dict‑like field selection: client["col1"] -> restrict projection
     def __getitem__(self, item: str | list[str]):
-        if isinstance(item, str):
-            item = [item]
-        fields = item
-        if self._columns is not None:
-            missing = set(fields) - set(self._columns)
-            if missing:
-                raise ValueError(f"Cannot select unknown fields {missing} not in {self._columns}")
-        return self.gen(fields=fields)
+        q = self.query_table[item]
+        return self.gen(self.path, q=q)
 
-    # ------------------------------------------------------------------
-    # level inspection (root/dataset/table/query)  – similar to BeamElastic.level
-    # ------------------------------------------------------------------
+    def order_by(self, field: str | list[str]):
+        q = self.query_table.order_by(field)
+        return self.gen(self.path, q=q)
+
+    def filter(self, field: str | list[str], value: _t.Any):
+        q = self.query_table.filter(field, value)
+        return self.gen(self.path, q=q)
+
+    def iterdir(self):
+        """Iterate over the directory contents."""
+        if self.level == "root":
+            return [self.gen(self.path, q=self.client.table(t)) for t in self.client.list_tables()]
+        elif self.level == "dataset":
+            return [self.gen(self.path, q=self.client.table(t)) for t in self.client.list_tables(self.database)]
+        raise ValueError("Iterdir only supported at root or dataset level")
+
+    def mkdir(self):
+        """Create a new directory."""
+        if self.level == "root":
+            raise ValueError("Cannot create root directory")
+        elif self.level == "dataset":
+            raise ValueError("Cannot create dataset directory")
+        elif self.level == "table":
+            # create table
+            if self.backend == "bigquery":
+                self.client.create_table(self.table_name, database=self.database)
+            elif self.backend == "sqlite":
+                self.client.create_table(self.table_name, database=self.database)
+            else:
+                raise ValueError(f"Create table not supported for {self.backend} backend")
+        else:
+            raise ValueError("Cannot create table in query mode")
+
     @property
     def level(self):
-        if self.table is not None and self._expr is not None:
+        if self.table_name is not None and self.q is not None:
             return "query"
-        if self.table is not None:
+        if self.table_name is not None:
             return "table"
-        if self.dataset is not None:
+        if self.database is not None:
             return "dataset"
         return "root"
-
-    # ------------------------------------------------------------------
-    # building ibis expression lazily
-    # ------------------------------------------------------------------
-    def _base_table_expr(self) -> ibis.Table:
-        if self.level in {"root", "dataset"}:
-            raise ValueError("Table expression requires table-level path")
-        table = self.client.table(self.table, dataset=self.dataset)
-        if self._columns is not None:
-            table = table[self._columns]
-        if self._sort_by is not None:
-            table = table.sort_by(self._sort_by)
-        return table
-
-    def _current_expr(self) -> ibis.Expr:
-        if self._expr is not None:
-            return self._expr
-        if self.level == "table":
-            return self._base_table_expr()
-        raise ValueError("No expression at this level – navigate into a table or set a query")
-
-    # ------------------------------------------------------------------
-    # filters (parallel to BeamElastic.filter_* helpers)
-    # ------------------------------------------------------------------
-    def _with_filter(self, predicate: ibis.Expr):
-        base = self._current_expr()
-        new_expr = base.filter(predicate)
-        return self.gen(expr=new_expr)
-
-    def parse_column(self, field: str | None):
-        if field is None:
-            # default: first field if projection set, else raise
-            if self._columns:
-                return self._columns[0]
-            raise ValueError("Field must be specified when no default context")
-        return field
 
     # Equality / membership
     def filter_term(self, value, field: str | None = None):
@@ -305,19 +289,6 @@ class BeamIbis(PureBeamPath):
     def with_filter_time_range(self, **kwargs):
         return self._with_filter(self.filter_time_range(**kwargs))
 
-    # Operator overloads for & / |
-    def __and__(self, other: "BeamIbis"):
-        if not isinstance(other, BeamIbis):
-            raise TypeError("& expects another BeamBigQuery instance")
-        if (self.project, self.dataset, self.table) != (other.project, other.dataset, other.table):
-            raise ValueError("Cannot combine queries from different tables")
-        combined = self._current_expr().filter(other._current_expr())  # this will fail; easier: & over preds unsupported
-        # Simpler: convert to ibis.bool exprs and combine. We'll treat _expr as predicate only if not table.
-        raise NotImplementedError("Chaining two BeamBigQuery queries is not yet implemented – use ._with_filter")
-
-    def __or__(self, other: "BeamIbis"):
-        raise NotImplementedError("OR combination not yet supported – use ibis.boolean_or explicitly")
-
     # Comparison overloads – produce predicate (like BeamElastic)
     def __eq__(self, other):  # noqa: D401, E743
         return self.filter_term(other)
@@ -343,9 +314,7 @@ class BeamIbis(PureBeamPath):
     # materialisers – as_df(), as_dict(), etc.
     # ------------------------------------------------------------------
     def as_df(self, limit: int | None = None):
-        expr = self._current_expr()
-        lim = limit or self._max_rows
-        return expr.execute(limit=lim)
+        return self.query_table.execute(limit=limit)
 
     def as_dict(self, limit: int | None = None):
         return self.as_df(limit=limit).to_dict(orient="records")
@@ -364,52 +333,35 @@ class BeamIbis(PureBeamPath):
     # ------------------------------------------------------------------
     # Writing helpers (only DataFrame -> table append for now)
     # ------------------------------------------------------------------
-    def write(self, df: _pd.DataFrame, *, if_exists: str = "append", **load_kwargs):
-        if self.level != "table":
+    def write(self, data, **kwargs):
+        """Write a DataFrame to the table."""
+        if self.level == "table":
+            if isinstance(data, _pd.DataFrame):
+                data.to_sql(self.table_name, self.client, if_exists="append", index=False)
+            else:
+                raise ValueError("Data must be a pandas DataFrame")
+        else:
             raise ValueError("Write only supported at table level")
-        tmp_uri = None
-        try:
-            tmp_uri = f"gs://{_os.environ.get('TEMP_GCS_BUCKET')}/beam_tmp_{_now().timestamp()}.parquet"
-        except Exception as exc:  # pragma: no cover – env may not exist
-            raise RuntimeError("Set TEMP_GCS_BUCKET env var for staging") from exc
-        df.to_parquet("/tmp/_beam_tmp.parquet")
-        from google.cloud import storage  # lazy import
 
-        client = storage.Client()
-        bucket_name, blob_name = tmp_uri[5:].split("/", 1)
-        bucket = client.bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-        blob.upload_from_filename("/tmp/_beam_tmp.parquet")
-
-        tbl = self.client.load_data(
-            _pd.read_parquet("/tmp/_beam_tmp.parquet"),
-            table_name=self.table,
-            dataset=self.dataset,
-            project=self.project,
-            if_exists=if_exists,
-            **load_kwargs,
-        )
-        return tbl
-
-    # ------------------------------------------------------------------
-    # misc utils
-    # ------------------------------------------------------------------
     def count(self):
-        return int(self._current_expr().count().execute())
+        """Count rows in the table."""
+        if self.level in ['query', 'table']:
+            return self.query_table.count()
+        raise ValueError("Count only supported at table or query level")
 
     def __repr__(self):
         parts = ["bigquery://"]
         if self.project:
             parts.append(self.project)
-        if self.dataset:
-            parts.append("/" + self.dataset)
-        if self.table:
-            parts.append("/" + self.table)
+        if self.database:
+            parts.append("/" + self.database)
+        if self.table_name:
+            parts.append("/" + self.table_name)
         s = "".join(parts)
-        if self._expr is not None and self.level == "query":
+        if self.expr is not None and self.level == "query":
             s += " | expr=[…]"
-        if self._columns:
-            s += f" | fields={self._columns}"
+        if self.columns:
+            s += f" | fields={self.columns}"
         if self._sort_by:
             s += f" | sort={self._sort_by}"
         return s
