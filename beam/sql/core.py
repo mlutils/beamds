@@ -1,113 +1,140 @@
 
 import datetime as _dt
-import functools as _ft
-import json as _json
 import os as _os
 import re as _re
 import typing as _t
-from dataclasses import dataclass as _dataclass
-from pathlib import PurePosixPath as _PurePosixPath
 
 import ibis
-import numpy as _np
+from ..path import PureBeamPath, BeamPath
 import pandas as _pd
-
-__all__ = [
-    "BeamIbis",
-]
 
 
 def _now():
     return _dt.datetime.now(tz=_dt.timezone.utc)
 
 
-# ---------------------------------------------------------------------------
-# Path handling & connection cache
-# ---------------------------------------------------------------------------
+class BeamIbis(PureBeamPath):
+    """Path‑like Ibis wrapper pandas+lazy query API."""
 
-_BQ_CONN_CACHE: dict[str, ibis.backends.bigquery.Backend] = {}
-
-
-def _get_connection(project: str | None) -> ibis.backends.bigquery.Backend:  # type: ignore[name-defined]
-    key = project or "_default_"
-    if key not in _BQ_CONN_CACHE:
-        _BQ_CONN_CACHE[key] = ibis.bigquery.connect(project_id=project)
-    return _BQ_CONN_CACHE[key]
-
-
-# ---------------------------------------------------------------------------
-# Core class
-# ---------------------------------------------------------------------------
-
-class BeamIbis:
-    """Path‑like BigQuery wrapper with an Elastic‑like fluent API."""
-
-    # ---------------------------------------------------------------------
-    # construction helpers
-    # ---------------------------------------------------------------------
     _TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%S%z"  # match BeamElastic for parity
 
     def __init__(
         self,
-        path: str | _PurePosixPath | None = None,
-        *,
-        project: str | None = None,
-        dataset: str | None = None,
-        table: str | None = None,
+        *args,
+        hostname=None, port=None, username=None, password=None, verify=False, fragment=None, client=None,
         expr: ibis.Expr | None = None,
-        fields: list[str] | None = None,
-        sort_by: str | None = None,
-        max_rows: int | None = None,
+        columns: list[str] | None = None,
+        backend: str | None = None,
+        backend_kwargs: dict[str, _t.Any] | None = None, **kwargs,
     ) -> None:
-        # Normalise path like "bigquery://project/dataset/table"
-        if isinstance(path, str) and path.startswith("bigquery://"):
-            parts = _PurePosixPath(path[len("bigquery://") :]).parts  # drop scheme
-            if parts:
-                project = project or parts[0]
-            if len(parts) > 1:
-                dataset = dataset or parts[1]
-            if len(parts) > 2:
-                table = table or parts[2]
-        self.project = project
-        self.dataset = dataset
-        self.table = table
+
+        super().__init__(*args, hostname=hostname, port=port, username=username, password=password,
+                            fragment=fragment, client=client, **kwargs)
+
         self._expr = expr  # ibis expression (lazy)
-        self._fields = fields  # projection
-        self._sort_by = sort_by
-        self._max_rows = max_rows or 10_000
+        self._columns = columns  # projection
 
         # Connection is established lazily to avoid needless auth in pickled objs
-        self._conn: ibis.backends.bigquery.Backend | None = None
+        self.backend = backend
+        self.backend_kwargs = backend_kwargs or {}
+        self.verify = verify
 
-    # ------------------------------------------------------------------
-    # private utilities
-    # ------------------------------------------------------------------
+        self._database = None
+        self._table = None
+
     @property
-    def _connection(self):
-        if self._conn is None:
-            self._conn = _get_connection(self.project)
-        return self._conn
+    def project(self):
+        if self.backend == "bigquery":
+            return self.parts[0] if len(self.parts) > 0 else None
+        # assume sqlite
+        raise ValueError(f"Project not supported for {self.backend} backend")
 
-    # ------------------------------------------------------------------
-    # path helpers (mimic pathlib / BeamElastic behaviour)
-    # ------------------------------------------------------------------
+    @property
+    def dataset(self):
+        if self.backend == "bigquery":
+            return self.parts[1] if len(self.parts) > 1 else None
+        raise ValueError(f"Dataset not supported for {self.backend} backend")
+
+    @property
+    def database(self):
+        if self._database is None:
+            path = BeamPath(*self.parts[:-1])
+            if path.is_file() or any(path.parts[-1].endswith(ext) for ext in [".db", ".sqlite"]):
+                d = str(path)
+                self._table = self.parts[-1]
+            else:
+                d = self.path
+                self._table = None
+
+            self._database = d
+        return self._database
+
+    @property
+    def table(self):
+
+        if self._table is not None:
+            return self._table
+
+        if self.backend == "bigquery":
+            return self.parts[2] if len(self.parts) > 2 else None
+        elif self.backend == "sqlite":
+            _ = self.database  # force database resolution
+            return self._table
+
+        raise ValueError(f"Table not supported for {self.backend} backend")
+
+    def get_client(self):
+        if self.backend == 'bigquery':
+            c = ibis.bigquery.connect(host=self.hostname, port=self.port,
+                username=self.username, password=self.password, verify=self.verify,
+                project_id=self.project,
+                dataset_id=self.dataset,
+                **self.backend_kwargs,
+            )
+        else:
+            # assume sqlite
+            c = ibis.sqlite.connect(
+                database=self.database,
+                **self.backend_kwargs,
+            )
+        return c
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = self.get_client()
+        return self._client
+
     def gen(self, *path_parts, **kwargs):
         """Return *new* instance, cloning current settings and overriding *kwargs*."""
         merged = dict(
-            project=self.project,
-            dataset=self.dataset,
-            table=self.table,
             expr=self._expr,
-            fields=self._fields,
-            sort_by=self._sort_by,
-            max_rows=self._max_rows,
+            columns=self._columns,
         )
         merged.update(kwargs)
-        return type(self)(None, **merged)  # type: ignore[arg-type]
+        return type(self)(None, **merged)
 
-    # ------------------------------------------------------------------
-    # navigation – /, [] and .joinpath() like PurePath
-    # ------------------------------------------------------------------
+    def gen(self, path, **kwargs):
+        hostname = kwargs.pop('hostname', self.hostname)
+        port = kwargs.pop('port', self.port)
+        username = kwargs.pop('username', self.username)
+        password = kwargs.pop('password', self.password)
+        fragment = kwargs.pop('fragment', self.fragment)
+        params = kwargs.pop('params', self.params)
+        doc_cls = kwargs.pop('document', self._doc_cls)
+        query = kwargs.pop('query', {})
+        fields = kwargs.pop('fields', self.fields)
+        sort_by = kwargs.pop('sort_by', self.sort_by)
+        llm = kwargs.pop('llm', self.llm)
+        q = kwargs.pop('q', self.q)
+
+        # must be after extracting all other kwargs
+        query = {**query, **kwargs}
+        PathType = type(self)
+        return PathType(path, client=self.client, hostname=hostname, port=port, username=username, fields=fields,
+                        password=password, fragment=fragment, params=params, document=doc_cls, q=q, sort_by=sort_by,
+                        llm=llm, **query)
+
     def __truediv__(self, key: str):  # / operator
         if self.project is None:
             return self.gen(project=key)
@@ -122,10 +149,10 @@ class BeamIbis:
         if isinstance(item, str):
             item = [item]
         fields = item
-        if self._fields is not None:
-            missing = set(fields) - set(self._fields)
+        if self._columns is not None:
+            missing = set(fields) - set(self._columns)
             if missing:
-                raise ValueError(f"Cannot select unknown fields {missing} not in {self._fields}")
+                raise ValueError(f"Cannot select unknown fields {missing} not in {self._columns}")
         return self.gen(fields=fields)
 
     # ------------------------------------------------------------------
@@ -147,9 +174,9 @@ class BeamIbis:
     def _base_table_expr(self) -> ibis.Table:
         if self.level in {"root", "dataset"}:
             raise ValueError("Table expression requires table-level path")
-        table = self._connection.table(self.table, dataset=self.dataset)
-        if self._fields is not None:
-            table = table[self._fields]
+        table = self.client.table(self.table, dataset=self.dataset)
+        if self._columns is not None:
+            table = table[self._columns]
         if self._sort_by is not None:
             table = table.sort_by(self._sort_by)
         return table
@@ -172,8 +199,8 @@ class BeamIbis:
     def parse_column(self, field: str | None):
         if field is None:
             # default: first field if projection set, else raise
-            if self._fields:
-                return self._fields[0]
+            if self._columns:
+                return self._columns[0]
             raise ValueError("Field must be specified when no default context")
         return field
 
@@ -354,7 +381,7 @@ class BeamIbis:
         blob = bucket.blob(blob_name)
         blob.upload_from_filename("/tmp/_beam_tmp.parquet")
 
-        tbl = self._connection.load_data(
+        tbl = self.client.load_data(
             _pd.read_parquet("/tmp/_beam_tmp.parquet"),
             table_name=self.table,
             dataset=self.dataset,
@@ -381,8 +408,8 @@ class BeamIbis:
         s = "".join(parts)
         if self._expr is not None and self.level == "query":
             s += " | expr=[…]"
-        if self._fields:
-            s += f" | fields={self._fields}"
+        if self._columns:
+            s += f" | fields={self._columns}"
         if self._sort_by:
             s += f" | sort={self._sort_by}"
         return s

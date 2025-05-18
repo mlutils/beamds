@@ -82,9 +82,17 @@ class PureBeamPath(BeamResource):
         self.mode = "rb"
         self.file_object = None
         self.close_fo_after_read = None
-        self.client = client
+        self._client = client
         self.open_kwargs = dict(mode="rb", buffering=- 1, encoding=None, errors=None,
                                 newline=None, closefd=True, opener=None)
+
+    @property
+    def client(self):
+        return self._client
+
+    @client.setter
+    def client(self, value):
+        self._client = value
 
     @property
     def str(self):
