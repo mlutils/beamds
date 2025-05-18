@@ -13,12 +13,8 @@ import numpy as _np
 import pandas as _pd
 
 __all__ = [
-    "BeamBigQuery",
+    "BeamIbis",
 ]
-
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
 
 
 def _now():
@@ -43,7 +39,7 @@ def _get_connection(project: str | None) -> ibis.backends.bigquery.Backend:  # t
 # Core class
 # ---------------------------------------------------------------------------
 
-class BeamBigQuery:
+class BeamIbis:
     """Path‑like BigQuery wrapper with an Elastic‑like fluent API."""
 
     # ---------------------------------------------------------------------
@@ -283,8 +279,8 @@ class BeamBigQuery:
         return self._with_filter(self.filter_time_range(**kwargs))
 
     # Operator overloads for & / |
-    def __and__(self, other: "BeamBigQuery"):
-        if not isinstance(other, BeamBigQuery):
+    def __and__(self, other: "BeamIbis"):
+        if not isinstance(other, BeamIbis):
             raise TypeError("& expects another BeamBigQuery instance")
         if (self.project, self.dataset, self.table) != (other.project, other.dataset, other.table):
             raise ValueError("Cannot combine queries from different tables")
@@ -292,7 +288,7 @@ class BeamBigQuery:
         # Simpler: convert to ibis.bool exprs and combine. We'll treat _expr as predicate only if not table.
         raise NotImplementedError("Chaining two BeamBigQuery queries is not yet implemented – use ._with_filter")
 
-    def __or__(self, other: "BeamBigQuery"):
+    def __or__(self, other: "BeamIbis"):
         raise NotImplementedError("OR combination not yet supported – use ibis.boolean_or explicitly")
 
     # Comparison overloads – produce predicate (like BeamElastic)
@@ -314,7 +310,7 @@ class BeamBigQuery:
     def groupby(self, fields: str | list[str]):
         if isinstance(fields, str):
             fields = [fields]
-        return BeamBigQuery.GroupByHelper(self, fields)
+        return BeamIbis.GroupByHelper(self, fields)
 
     # ------------------------------------------------------------------
     # materialisers – as_df(), as_dict(), etc.
