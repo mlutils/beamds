@@ -1,7 +1,99 @@
+[tool.poetry]
+name = "beam-ds"
+version = "2.8.0c"  # This will be updated by the build script
+description = "Beam Datascience package"
+authors = ["Beam Maintainer <author@example.com>"]
+readme = "README.md"
+packages = [{include = "beam"}]
+repository = "https://github.com/mlutils/beamds"
+documentation = "https://github.com/mlutils/beamds"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.9"
+loguru = "*"
+pandas = "*"
+tqdm = "*"
+urllib3 = "*"
+requests = "*"
+joblib = "*"
+PyYAML = "*"
+google-cloud-storage = "*"
+
+[tool.poetry.group.ds.dependencies]
+scipy = "*"
+torch = "*"
+tensorboard = "*"
+optuna = "*"
+tensorboardX = "*"
+ray = {extras = ["tune"], version = "*"}
+
+[tool.poetry.group.llm.dependencies]
+langchain = "*"
+openai = "*"
+tiktoken = "*"
+transformers = "*"
+sentence-transformers = "*"
+
+[tool.poetry.group.serve.dependencies]
+websockets = "*"
+coolname = "*"
+waitress = "*"
+flask = "*"
+celery = "*"
+boto3 = "*"
+openshift = "*"
+docker = "*"
+namegenerator = "*"
+python-logstash = "*"
+
+[tool.poetry.group.orchestration.dependencies]
+kubernetes = "*"
+docker = "*"
+packaging = "*"
+psutil = "*"
+pynvml = "*"
+openshift = "*"
+python-gitlab = "*"
+namegenerator = "*"
+python-logstash = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+black = "^24.0.0"
+isort = "^5.13.0"
+mypy = "^1.8.0"
+flake8 = "^7.0.0"
+
 [build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
-requires = ["setuptools>=42", "wheel", "numpy"]
-build-backend = "setuptools.build_meta"
+[tool.black]
+line-length = 88
+target-version = ['py312']
+include = '\.pyi?$'
 
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=beam"
+[tool.flake8]
 
 

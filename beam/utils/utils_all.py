@@ -225,6 +225,9 @@ def find_port(port=None, get_port_from_beam_port_range=True, application='none',
     elif application == 'distributed':
         first_beam_range = 64
         first_global_range = 28264
+    elif application == 'debugpy':
+        first_beam_range = 63
+        first_global_range = 28263
     else:
         first_beam_range = 2
         first_global_range = 30000
@@ -446,7 +449,7 @@ def running_platform() -> str:
             return 'ipython'  # Terminal running IPython
         else:
             return 'other'  # Other type (?)
-    except NameError:
+    except (NameError, ModuleNotFoundError):
         if hasattr(__main__, '__file__'):
             return 'script'
         else:
@@ -1362,3 +1365,16 @@ def get_number_of_cores():
         return os.cpu_count() or mp.cpu_count()
     except (AttributeError, NotImplementedError):
         return 1  # Fallback to 1 if the number of cores cannot be determined
+
+
+
+def remote_debugger(port=None, logger=None):
+    if port is None:
+        port = int(find_port(application='debugpy'))
+    import debugpy
+    debugpy.listen(port)
+    print(f"Waiting for debugger to attach on port {port}...")
+    debugpy.wait_for_client()
+    print("Debugger attached")
+
+
