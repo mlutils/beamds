@@ -1,7 +1,7 @@
 from typing import Any
 
 from .models import (BeamPath, S3Path, S3PAPath, HDFSPath, HDFSPAPath, SFTPPath, CometAsset,
-                     RedisPath, SMBPath, MLFlowPath)
+                     RedisPath, SMBPath, MLFlowPath, GoogleStoragePath)
 from .core import BeamKey, BeamURL, IOPath, DictPath
 from pathlib import PurePath
 
@@ -10,7 +10,7 @@ beam_key = BeamKey()
 
 
 def beam_path(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
-              password=None, **kwargs) -> BeamPath | Any:
+              password=None, project_id=None, **kwargs) -> BeamPath | Any:
     """
 
     @param port:
@@ -67,6 +67,9 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     if secret_key is None and 'secret_key' in kwargs:
         secret_key = kwargs.pop('secret_key')
 
+    if project_id is None and 'project_id' in kwargs:
+        project_id = kwargs.pop('project_id')
+
     path = url.path
 
     if url.protocol is None or (url.protocol == 'file'):
@@ -115,8 +118,12 @@ def beam_path(path, username=None, hostname=None, port=None, private_key=None, a
     elif url.protocol == 'dict':
         return DictPath(path, **kwargs)
 
-    elif url.protocol == 'gs':
-        raise NotImplementedError
+    elif url.protocol in ['gs', 'gcs']:
+        if url.protocol == 'gs':
+            path = f'/{hostname}/{path.lstrip("/")}'  # Google Storage requires a leading slash
+            hostname = None
+        return GoogleStoragePath(path, hostname=hostname, port=port, 
+                                 access_key=access_key, project_id=project_id, **kwargs)
     elif url.protocol == 'http':
         raise NotImplementedError
     elif url.protocol == 'https':

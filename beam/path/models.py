@@ -1534,3 +1534,228 @@ class MLFlowPath(PureBeamPath):
 
     def rename(self, target):
         raise NotImplementedError("MLFlowPath: rename is not supported")
+
+
+class GoogleStoragePath(PureBeamPath):
+
+    def __init__(self, *pathsegments, client=None, hostname=None, port=None, access_key=None,
+                 project_id=None, tls=True, **kwargs):
+        super().__init__(*pathsegments, scheme='gs', client=client, hostname=hostname, port=port,
+                         access_key=access_key, project_id=project_id, tls=tls, **kwargs)
+
+        if not self.is_absolute():
+            self.path = PurePath('/').joinpath(self.path)
+
+        # Parse the path to get bucket name and key
+        parts = self.path.parts
+        if len(parts) > 1:
+            self.bucket_name = parts[1]
+            if len(parts) > 2:
+                self.key = '/'.join(parts[2:])
+            else:
+                self.key = None
+        else:
+            self.bucket_name = None
+            self.key = None
+
+        if client is None:
+            from google.cloud import storage
+
+            if hostname is not None:
+                scheme = 'https' if tls else 'http'
+                kwargs['endpoint_url'] = f'{scheme}://{normalize_host(hostname, port)}'
+            
+            if access_key is not None:
+                # If service account file is provided, use it
+                client = storage.Client.from_service_account_json(
+                    credentials_file=access_key,
+                    project=project_id  # project_id is optional here
+                )
+            else:
+                # Use default credentials
+                client = storage.Client(project=project_id)  # project_id is optional here
+
+        self.client = client
+        self._bucket = None
+        self._object = None
+
+    @property
+    def bucket(self):
+        if self.bucket_name is None:
+            self._bucket = None
+        elif self._bucket is None:
+            self._bucket = self.client.bucket(self.bucket_name)
+        return self._bucket
+
+    @property
+    def object(self):
+        if self._object is None and self.key is not None:
+            self._object = self.bucket.blob(self.key)
+        return self._object
+
+    def exists(self):
+        if self.bucket_name is None:
+            return True
+        if self.key is None:
+            return self._check_if_bucket_exists()
+        return self._exists(self.bucket_name, self.key) or self.is_dir()
+
+    def _check_if_bucket_exists(self):
+        try:
+            self.client.get_bucket(self.bucket_name)
+            return True
+        except Exception:
+            return False
+
+    def _exists(self, bucket_name, key):
+        try:
+            self.client.get_bucket(bucket_name).get_blob(key)
+            return True
+        except Exception:
+            return False
+
+    def is_file(self):
+        if self.bucket_name is None or self.key is None:
+            return False
+        key = self.key.rstrip('/')
+        return self._exists(self.bucket_name, key)
+
+    def is_dir(self):
+        if self.bucket_name is None:
+            return True
+        if self.key is None:
+            return self._check_if_bucket_exists()
+        key = self.normalize_directory_key()
+        return self._exists(self.bucket_name, key) or \
+               (self._check_if_bucket_exists() and (not self._is_empty(key)))
+
+    def normalize_directory_key(self, key=None):
+        if key is None:
+            key = self.key
+        if key is None:
+            return None
+        if not key.endswith('/'):
+            key += '/'
+        return key
+
+    def _is_empty(self, key=None):
+        if key is None:
+            key = self.key
+        for blob in self.bucket.list_blobs(prefix=key):
+            if blob.name.rstrip('/') != self.key.rstrip('/'):
+                return False
+        return True
+
+    def mkdir(self, parents=True, exist_ok=True):
+        if not parents:
+            raise NotImplementedError("parents=False is not supported")
+
+        if exist_ok and self.exists():
+            return
+
+        if not self._check_if_bucket_exists():
+            self.bucket.create()
+
+        if self.key is not None:
+            key = self.normalize_directory_key()
+            self.bucket.blob(key).upload_from_string('')
+
+    def rmdir(self):
+        if self.key is None:
+            if not self._is_empty():
+                raise OSError("Directory not empty: %s" % self)
+            self.bucket.delete()
+        else:
+            if self.is_file():
+                raise NotADirectoryError("Not a directory: %s" % self)
+            if not self._is_empty():
+                raise OSError("Directory not empty: %s" % self)
+            self.unlink()
+
+    def unlink(self, missing_ok=False):
+        if self.is_file():
+            self.object.delete()
+        if self.is_dir():
+            obj = self.bucket.blob(f"{self.key}/")
+            obj.delete()
+
+    def rename(self, target):
+        self.object.copy_to(target.object)
+        self.unlink()
+
+    def replace(self, target):
+        self.rename(target)
+
+    def iterdir(self):
+        if self.bucket is None:
+            for bucket in self.client.list_buckets():
+                yield self.gen(bucket.name)
+            return
+
+        key = self.normalize_directory_key()
+        if key is None:
+            key = ''
+
+        for blob in self.bucket.list_blobs(prefix=key, delimiter='/'):
+            if blob.name == key:
+                continue
+            path = f"{self.bucket_name}/{blob.name}"
+            yield self.gen(path)
+
+    def read_bytes(self):
+        return self.object.download_as_bytes()
+
+    def read_text(self, encoding=None, errors=None):
+        return self.object.download_as_text(encoding=encoding)
+
+    def write_bytes(self, data):
+        self.object.upload_from_string(data)
+
+    def write_text(self, data, encoding=None, errors=None):
+        self.object.upload_from_string(data, content_type='text/plain')
+
+    def __enter__(self):
+        if self.mode in ["rb", "r"]:
+            encoding = self.open_kwargs['encoding'] or 'utf-8'
+            content = self.read_bytes() if 'b' in self.mode else self.read_text(encoding=encoding)
+            self.file_object = BytesIO(content) if 'b' in self.mode else StringIO(content,
+                                                                                  newline=self.open_kwargs['newline'])
+        elif self.mode in ['wb', 'w']:
+            self.file_object = BytesIO() if 'b' in self.mode else StringIO(newline=self.open_kwargs['newline'])
+        else:
+            raise ValueError
+
+        return self.file_object
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.mode in ["wb", "w"]:
+            self.file_object.seek(0)
+            content = self.file_object.getvalue()
+            if 'b' in self.mode:
+                self.write_bytes(content)
+            else:
+                self.write_text(content)
+        self.close_at_exit()
+
+    def stat(self):
+        if not self.exists():
+            raise FileNotFoundError(f"No such file or directory: '{self}'")
+
+        self.object.reload()  # Fetch latest metadata from GCS
+
+        return {
+            'size': self.object.size,
+            'last_modified': self.object.updated.timestamp() if self.object.updated else datetime.now().timestamp(),
+            'etag': self.object.etag,
+            'content_type': self.object.content_type,
+            'owner': self.object.owner.get('entity') if self.object.owner else None,
+            'permissions': os.stat_result((
+                0, 0, 0, 0, 0, 0,
+                self.object.size,
+                self.object.updated.timestamp() if self.object.updated else datetime.now().timestamp(),
+                self.object.updated.timestamp() if self.object.updated else datetime.now().timestamp(),
+                self.object.updated.timestamp() if self.object.updated else datetime.now().timestamp(),
+            ))
+        }
+    def getmtime(self):
+        return self.object.updated.timestamp() if self.object else None

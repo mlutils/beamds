@@ -1,8 +1,9 @@
 # jax
 
-jax[cuda]
-jaxlib
-objax
+# less frequent use
+# jax[cuda]
+# jaxlib
+# objax
 
 # doesnt work with pytorch > 2.5
 # torchlars

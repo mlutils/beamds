@@ -2,3 +2,9 @@ mlflow
 oauthlib
 seldon-core
 
+netcal
+
+# currently not installed due to dependency issues
+# chainlit
+# streamlit
+# streamlit-aggrid

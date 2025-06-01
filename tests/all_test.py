@@ -6,8 +6,25 @@ from beam import resource
 from beam import logger
 import numpy as np
 import pandas as pd
-import torch
+from beam.importer import torch
 
+def test_gs():
+    from beam import resource
+    path = resource("gs://ai21-algo-agents-agents-research/elad")
+    print(path.is_dir())
+    print(list(path))
+    for p in path:
+        print(p)
+        if p.is_file():
+            print(p.read())
+        else:
+            print(f"{p} is not a file")
+
+    path.joinpath('test.json').write({'a': 1, 'b': 2})
+    print(path.joinpath('test.json').read())
+    print(path.joinpath('test.json').exists())
+
+    return True
 
 def test_build_container_from_tupled_keys():
     from beam.utils import build_container_from_tupled_keys
@@ -695,6 +712,8 @@ if __name__ == '__main__':
 
     # test_config_conventions()
 
-    test_build_container_from_tupled_keys()
+    # test_build_container_from_tupled_keys()
+
+    test_gs()
 
     print('done')

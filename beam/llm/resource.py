@@ -66,5 +66,9 @@ def beam_llm(url, username=None, hostname=None, port=None, api_key=None, **kwarg
     elif url.protocol == 'tgi':
         return TGILLM(model=model, hostname=hostname, port=port, username=username, **kwargs)
 
+    elif url.protocol == 'ai21':
+        from .ai21 import AI21LLM
+        return AI21LLM(model=model, api_key=api_key, hostname=hostname, **kwargs)
+
     else:
         raise NotImplementedError

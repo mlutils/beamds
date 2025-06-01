@@ -712,6 +712,17 @@ def get_conv_template(name: str) -> Conversation:
 # An empty template for raw conversation.
 register_conv_template(
     Conversation(
+        name="jamba",
+        system_message="",
+        roles=("user", "assistant"),
+        sep_style=SeparatorStyle.NO_COLON_SINGLE,
+        sep="",
+    )
+)
+
+# An empty template for raw conversation.
+register_conv_template(
+    Conversation(
         name="raw",
         system_message="",
         roles=("", ""),

@@ -1,18 +1,19 @@
 pip-tools
 pulearn
 text-generation
-streamlit
 waitress
 cherrypy
 uwsgi
-chainlit
+
+# chainlit package creates dependencies collisions so we need to update the grpcio version
+grpcio>=1.63.2,<2.0.0
+# chainlit
+
 s3fs
 rank_bm25
-netcal
-ibis-framework[pandas,duckdb,mysql,sqlite]
+ibis-framework[polars,mysql,sqlite,mssql]
 ordered_set
 PyPDF2
-streamlit-aggrid
 pyahocorasick
 pdfplumber
 pdfminer.six
