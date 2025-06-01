@@ -82,7 +82,7 @@ service_configs:
   port: 5000
   port_name: flask-port
   service_name: flask
-  service_type: ClusterIP
+  service_type: NodePort
   annotations:
     haproxy.router.openshift.io/timeout: "599"
     haproxy.router.openshift.io/balance: "leastconn"
