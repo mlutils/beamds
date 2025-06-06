@@ -1696,11 +1696,26 @@ class GoogleStoragePath(PureBeamPath):
         if key is None:
             key = ''
 
-        for blob in self.bucket.list_blobs(prefix=key, delimiter='/'):
-            if blob.name == key:
-                continue
-            path = f"{self.bucket_name}/{blob.name}"
-            yield self.gen(path)
+        # Explicitly iterate pages to fetch prefixes
+        iterator = self.client.list_blobs(
+            bucket_or_name=self.bucket_name,
+            prefix=key,
+            delimiter='/',
+            include_trailing_delimiter=True
+        )
+
+        for page in iterator.pages:
+            # First, yield subdirectories from prefixes explicitly
+            for prefix in page.prefixes:
+                path = f"{self.bucket_name}/{prefix.rstrip('/')}"
+                yield self.gen(path)
+
+            # Then yield blobs (files) directly under this prefix
+            for blob in page:
+                if blob.name == key or blob.name.endswith('/'):
+                    continue  # Skip self and explicit folder placeholders
+                path = f"{self.bucket_name}/{blob.name}"
+                yield self.gen(path)
 
     def read_bytes(self):
         return self.object.download_as_bytes()
