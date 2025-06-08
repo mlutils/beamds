@@ -65,7 +65,7 @@ class PureBeamPath(BeamResource):
     # all the extensions that are considered textual (should be read as .txt)
     textual_extensions = ['.txt', '.text', '.py', '.sh', '.c', '.cpp', '.h', '.hpp', '.java', '.js', '.css',
                           '.html', '.md', '.log']
-    text_based_extensions = textual_extensions + ['.json', '.orc', '.yaml', '.yml', '.ndjson', '.csv', '.ini']
+    text_based_extensions = textual_extensions + ['.json', '.orc', '.yaml', '.yml', '.ndjson', '.csv', '.ini', '.jsonl']
 
     def __init__(self, *pathsegments, scheme=None, client=None, **kwargs):
         if len(pathsegments) == 1 and isinstance(pathsegments[0], PureBeamPath):
@@ -597,9 +597,9 @@ class PureBeamPath(BeamResource):
                 x.read_file(fo)
                 x = {section: dict(x.items(section)) for section in x.sections()}
 
-            elif ext in ['.json', '.ndjson']:
+            elif ext in ['.json', '.ndjson', '.jsonl']:
 
-                nd = ext == '.ndjson'
+                nd = ext in ['.ndjson', '.jsonl']
                 try:
                     if 'schema' in kwargs:
                         x = []

@@ -130,11 +130,9 @@ class AutoBeam(BeamBase):
             for f in files:
                 p = r.joinpath(f)
 
-                # if p.suffix == '.py':
-                #     dir_files[f] = p.read()
-
-                #TODO: better filter of undesired files
-                dir_files[f] = p.read()
+                # TODO: better filter of undesired files
+                if p.suffix not in ['.pyc', '.pyo', '.pyd', '.so']:
+                    dir_files[f] = p.read()
 
             if len(dir_files):
                 module_walk[str(r_relative)] = dir_files
@@ -256,7 +254,11 @@ class AutoBeam(BeamBase):
         for i, dist in enumerate(importlib.metadata.distributions()):
 
             egg_info = dist._path
-            project_name = dist.metadata['Name']
+            project_name = dist.metadata.get('Name', None)
+
+            if project_name is None:
+                logger.warning(f"Could not find project name for distribution: {egg_info}, skipping.")
+                continue
 
             if egg_info is None:
                 logger.warning(f"Could not find egg info for package: {project_name}, skipping.")
@@ -352,7 +354,13 @@ class AutoBeam(BeamBase):
                 'main_import_statements': main_import_statements}
 
     @staticmethod
-    def to_bundle(obj, path=None, blacklist=None):
+    def static_bundle(requirements_file=None, root_path=None):
+        return AutoBeam.to_bundle(obj=None, path=None, requirements_file=requirements_file, root_path=root_path,
+                                    add_metadata=False, add_state=False)
+
+    @staticmethod
+    def to_bundle(obj=None, path=None, blacklist=None, requirements_file=None,
+                  root_path=None, add_metadata=True, add_state=True):
 
         if path is None:
             path = beam_path('.')
@@ -369,16 +377,25 @@ class AutoBeam(BeamBase):
         path.clean()
         path.mkdir()
         logger.info(f"Saving object's files to path {path}: [requirements.json, modules.tar.gz, state, requierements.txt]")
-        path.joinpath('requirements.json').write(ab.requirements)
-        ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'), blacklist=blacklist)
-        ab.modules_to_tar(path.joinpath('modules.tar.gz'))
-        path.joinpath('metadata.json').write(ab.metadata)
-        logger.info(f"Contents of {path}/requirements.txt: {open(f'{path}/requirements.txt').read()}")
+        if requirements_file is None:
+            path.joinpath('requirements.json').write(ab.requirements)
+            ab.write_requirements(ab.requirements, path.joinpath('requirements.txt'), blacklist=blacklist)
+        else:
+            beam_path(requirements_file).copy(path.joinpath('requirements.json'))
+        if root_path is None:
+            ab.modules_to_tar(path.joinpath('modules.tar.gz'))
+        else:
+            ab.root_path_to_tar(root_path, path.joinpath('modules.tar.gz'))
 
-        blacklist_priority = None
-        if ab.in_main_script:
-            blacklist_priority = ['.pkl']
-        BeamData.write_object(obj, path.joinpath('state'), blacklist_priority=blacklist_priority)
+        if add_metadata:
+            path.joinpath('metadata.json').write(ab.metadata)
+            logger.info(f"Contents of {path}/requirements.txt: {open(f'{path}/requirements.txt').read()}")
+
+        if add_state:
+            blacklist_priority = None
+            if ab.in_main_script:
+                blacklist_priority = ['.pkl']
+            BeamData.write_object(obj, path.joinpath('state'), blacklist_priority=blacklist_priority)
 
         return path
 
@@ -558,6 +575,38 @@ class AutoBeam(BeamBase):
                                 local_name = root_path.joinpath(sub_path, file_name)
                                 relative_name = local_name.relative_to(root_path.parent)
                                 tar.add(str(local_name), arcname=str(relative_name))
+
+    @staticmethod
+    def root_path_to_tar(root_path, path):
+
+        """
+        This method is used to create a tarball of the root path.
+
+        Parameters:
+        root_path (str): The root path to be archived.
+        path (str): The path where the tarball will be created.
+
+        Returns:
+        None
+
+        """
+        path = beam_path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        root_path = beam_path(root_path).resolve()
+        if not root_path.is_dir():
+            raise ValueError(f"Root path must be a directory: {root_path}")
+
+        import tarfile
+        with local_copy(path, override=True) as local_path:
+            with tarfile.open(local_path, "w:gz") as tar:
+                for _, dirs, files in root_path.walk():
+                    for f in files:
+                        file_path = root_path.joinpath(f)
+                        if file_path.is_file():
+                            relative_name = file_path.relative_to(root_path.parent)
+                            tar.add(str(file_path), arcname=str(relative_name))
+                        else:
+                            logger.warning(f"Skipping non-file: {file_path}")
 
     @staticmethod
     def to_docker(obj=None, base_image=None, serve_config=None, bundle_path=None, image_name=None,
