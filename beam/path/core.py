@@ -850,7 +850,7 @@ class PureBeamPath(BeamResource):
                     json_writer(fo, schema, x)
                 else:
                     json.dump(x, fo, **kwargs)
-            elif ext == '.ndjson':
+            elif ext in ['.ndjson', '.jsonl']:
                 if 'schema' in kwargs:
                     from fastavro import json_writer, parse_schema
                     schema = parse_schema(kwargs['schema'])
