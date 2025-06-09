@@ -260,7 +260,7 @@ class AutoBeam(BeamBase):
                 continue
 
             if egg_info is None:
-                logger.warning(f"Could not find egg info for package: {project_name}, skipping.")
+                logger.warning(f"Could not find egg  info for package: {project_name}, skipping.")
                 continue
 
             egg_info = beam_path(egg_info).resolve()
