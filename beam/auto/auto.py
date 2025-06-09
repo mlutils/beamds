@@ -61,9 +61,8 @@ class AutoBeam(BeamBase):
             self._private_modules = [self.module_spec]
 
         module_spec = importlib.util.find_spec(module_name)
-        if module_spec is None:
-            return
-        self._private_modules.append(module_spec)
+        if module_spec is not None and module_spec.origin != 'frozen':
+            self._private_modules.append(module_spec)
 
     # @cached_property
     # def module_spec(self):
