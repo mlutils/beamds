@@ -15,6 +15,7 @@ def main():
     logger.info(str(config))
     manager = BeamManagerWrapper(config)
 
+    config['requirements_blacklist'] = ['torch', 'pyarrow', 'scipy', 'tensorflow']
     deploy_server(manager, config)
     # TODO: Deploy server does not cleanup the existing manager when deploying, it just adds a new one because it runs directly from ServerCluster and not BeamManager
     print(manager.info())
