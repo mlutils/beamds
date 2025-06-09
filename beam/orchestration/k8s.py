@@ -391,14 +391,31 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             env_vars.append(client.V1EnvVar(name=key, value=str(value)))
 
         # todo - fix this with the existing CommandConfig dataclass
-        # if command is not None and command.executable is not None:
-        #     command = command.dict()
-        # else:
-        #     command = None
-        if command and command.executable:
-            command = command.as_list()
-        else:
-            command = None
+        cmd = []
+        args_ = []
+
+        if command:
+            # 1) If it's a dictionary
+            if isinstance(command, dict):
+
+                logger.error("Wrong type of command provided. It should be a string or CommandConfig dataclass.")
+                raise TypeError("Command should be a string or CommandConfig dataclass.")
+
+                # executable = command.get("executable")
+                # if executable:
+                #     cmd = [executable]
+                # # arguments could be "arguments" or "args" in a dict. Decide which one you have
+                # if "arguments" in command:
+                #     args_ = command["arguments"]
+                # elif "args" in command:
+                #     args_ = command["args"]
+
+            # 2) If it's a CommandConfig dataclass
+            elif isinstance(command, CommandConfig):
+
+                if command.executable:
+                    cmd = [command.executable]
+                args_ = command.arguments or []
 
         # Preparing volume mounts
         volume_mounts = []
@@ -432,18 +449,30 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         if use_gpu is True:
             resources['requests']['nvidia.com/gpu'] = gpu_requests
             resources['limits']['nvidia.com/gpu'] = gpu_limits
-        if security_context_config and security_context_config.enable_security_context:
+
+        if security_context_config and isinstance(security_context_config, SecurityContextConfig):
+            # convert to a dict so the rest of the code can do
+            # security_context_config['enable_security_context'] etc.
+            security_context_config = {
+                'enable_security_context': security_context_config.enable_security_context,
+                'privileged': security_context_config.privileged,
+                'add_capabilities': security_context_config.add_capabilities,
+                'runAsUser': security_context_config.runAsUser,
+            }
+
+        if security_context_config and security_context_config['enable_security_context']:
             security_context = {
                 "capabilities": {
-                    "add": security_context_config.add_capabilities
+                    "add": security_context_config['add_capabilities']
                 },
-                "privileged": security_context_config.privileged  # Setting the privileged status
+                "privileged": security_context_config['privileged']  # Setting the privileged status
             }
 
         return client.V1Container(
             name=container_name,
             image=image_name,
-            command=command,
+            command=cmd,
+            args=args_,
             ports=[client.V1ContainerPort(container_port=port) for port in ports] if ports else [],
             env=env_vars,
             volume_mounts=volume_mounts,
@@ -1132,6 +1161,75 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         }
         return service_details
 
+    def create_route(self, service_name, namespace, protocol, port, annotations, route_timeout=None):
+        from openshift.dynamic.exceptions import NotFoundError
+        from openshift.dynamic import DynamicClient
+
+        dyn_client = DynamicClient(self.api_client)
+
+        # Get the Route resource from the OpenShift API
+        route_resource = dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
+
+        try:
+            # Try to get the existing route
+            existing_route = route_resource.get(name=service_name, namespace=namespace)
+            if existing_route:  # If the route exists, log a message and return
+                logger.warning(f"Route {service_name} already exists in namespace {namespace}, skipping creation.")
+            return
+        except NotFoundError:
+            # The route does not exist, proceed with creation
+            logger.info(f"Route {service_name} does not exist in namespace {namespace}, proceeding with creation.")
+        except Exception as e:
+            # Handle other exceptions that are not related to route not found
+            logger.error(f"Error checking route {service_name} in namespace {namespace}: {e}")
+            return
+
+        # Define the route manifest for creation
+        route_manifest = {
+            "apiVersion": "route.openshift.io/v1",
+            "kind": "Route",
+            "metadata": {
+                "name": service_name,
+                "namespace": namespace,
+                "annotations": annotations or {}
+            },
+            "spec": {
+                "to": {
+                    "kind": "Service",
+                    "name": service_name
+                },
+                "port": {
+                    "targetPort": port  # Use numeric port
+                }
+            }
+        }
+
+        # if route_timeout:
+        #     route_manifest["metadata"]["annotations"] = {"haproxy.router.openshift.io/timeout": route_timeout}
+
+        # Add TLS termination if protocol is 'https'
+        #  if protocol.lower() == 'https':
+        if annotations and annotations.get("route.openshift.io/termination") == "passthrough":
+            route_manifest["spec"]["tls"] = {
+                "termination": "passthrough"
+            }
+
+        # Attempt to create the route
+        try:
+            created_route = route_resource.create(body=route_manifest, namespace=namespace)
+            logger.info(f"Route for service {service_name} created successfully in namespace {namespace}.")
+            # Print the DNS name of the route
+            dns_name = created_route.spec.host  # Accessing the DNS name from the route response
+            logger.info(f"The DNS name of the created route is: {dns_name}")
+            route_details = {
+                'host': created_route.spec.host,
+                'name': service_name,
+                "annotations": annotations or {},
+            }
+            return route_details
+        except Exception as e:
+            logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
+
     def generate_route_service_variables(self):
         rs_env_vars = []
         services_info = self.get_services_info(self.namespace)
@@ -1245,10 +1343,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
 
     def create_cron_job(self, config):
 
-        pvc_mounts = [{
-            'pvc_name': sc.pvc_name,
-            'mount_path': sc.pvc_mount_path
-        } for sc in config.storage_configs if sc.create_pvc] if config.storage_configs else []
+        pvc_mounts = [{'pvc_name': sc['pvc_name'], 'mount_path': sc['pvc_mount_path']}
+                      for sc in config.storage_configs if sc['create_pvc']] if config.storage_configs else []
 
         # Create the container definition
         container = self.create_container(
@@ -1267,13 +1363,13 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             entrypoint_envs=config.entrypoint_envs
         )
 
-        if config.restart_policy_configs.condition == "Always":
-            config.restart_policy_configs.condition = "OnFailure"
+        if config.restart_policy_configs['condition'] == "Always":
+            config.restart_policy_configs['condition'] = "OnFailure"
 
         # Create the pod template spec
         pod_spec = client.V1PodSpec(
             containers=[container],
-            restart_policy=config.restart_policy_configs.condition,
+            restart_policy=config.restart_policy_configs['condition'],
         )
 
         if config.use_node_selector is True:
@@ -1288,8 +1384,8 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
         # Create the job spec
         job_spec = client.V1JobSpec(
             template=pod_template,
-            backoff_limit=config.restart_policy_configs.max_attempts,
-            active_deadline_seconds=config.restart_policy_configs.active_deadline_seconds
+            backoff_limit=config.restart_policy_configs['max_attempts'],
+            active_deadline_seconds=config.restart_policy_configs['active_deadline_seconds']
         )
 
         # Create the cron job spec
@@ -1473,72 +1569,7 @@ class BeamK8S(Processor):  # processor is another class and the BeamK8S inherits
             "Node external IPs cannot be retrieved with namespace-scoped "
             "permissions. Use known node IPs to access NodePort services.")
 
-    def create_route(self, service_name, namespace, protocol, port, annotations, route_timeout=None):
-        from openshift.dynamic.exceptions import NotFoundError
-        from openshift.dynamic import DynamicClient
 
-        dyn_client = DynamicClient(self.api_client)
-
-        # Get the Route resource from the OpenShift API
-        route_resource = dyn_client.resources.get(api_version='route.openshift.io/v1', kind='Route')
-
-        try:
-            # Try to get the existing route
-            existing_route = route_resource.get(name=service_name, namespace=namespace)
-            if existing_route:  # If the route exists, log a message and return
-                logger.warning(f"Route {service_name} already exists in namespace {namespace}, skipping creation.")
-            return
-        except NotFoundError:
-            # The route does not exist, proceed with creation
-            logger.info(f"Route {service_name} does not exist in namespace {namespace}, proceeding with creation.")
-        except Exception as e:
-            # Handle other exceptions that are not related to route not found
-            logger.error(f"Error checking route {service_name} in namespace {namespace}: {e}")
-            return
-
-        # Define the route manifest for creation
-        route_manifest = {
-            "apiVersion": "route.openshift.io/v1",
-            "kind": "Route",
-            "metadata": {
-                "name": service_name,
-                "namespace": namespace,
-            },
-            "spec": {
-                "to": {
-                    "kind": "Service",
-                    "name": service_name
-                },
-                "port": {
-                    "targetPort": port  # Use numeric port
-                }
-            }
-        }
-
-        # if route_timeout:
-        #     route_manifest["metadata"]["annotations"] = {"haproxy.router.openshift.io/timeout": route_timeout}
-
-        # Add TLS termination if protocol is 'https'
-        if protocol.lower() == 'https':
-            route_manifest["spec"]["tls"] = {
-                "termination": "edge"
-            }
-
-        # Attempt to create the route
-        try:
-            created_route = route_resource.create(body=route_manifest, namespace=namespace)
-            logger.info(f"Route for service {service_name} created successfully in namespace {namespace}.")
-            # Print the DNS name of the route
-            dns_name = created_route.spec.host  # Accessing the DNS name from the route response
-            logger.info(f"The DNS name of the created route is: {dns_name}")
-            route_details = {
-                'host': created_route.spec.host,
-                'name': service_name,
-                "annotations": annotations or {},
-            }
-            return route_details
-        except Exception as e:
-            logger.error(f"Failed to create route for service {service_name} in namespace {namespace}: {e}")
 
     def create_ingress(self, service_configs, default_host=None, default_path="/", default_tls_secret=None):
         from kubernetes.client import (V1Ingress, V1IngressSpec, V1IngressRule, V1HTTPIngressRuleValue,

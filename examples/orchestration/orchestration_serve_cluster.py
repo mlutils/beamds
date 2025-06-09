@@ -4,7 +4,7 @@ from beam import this_dir, logger, deploy_server
 
 def main():
 
-    config = ServeClusterConfig(this_dir().joinpath('orchestration_serve_cluster.yaml').str)
+    config = ServeClusterConfig(this_dir().joinpath('orchestration_serve_cluster_ibeam.yaml').str)
 
     logger.info('hello world')
     logger.info("API URL:", config.api_url)
@@ -13,9 +13,9 @@ def main():
     logger.info("deploy manager with config:")
     logger.info(config)
 
-    path_to_bundle = '/tmp/yolo-bundle'
+    # path_to_bundle = '/tmp/yolo-bundle'
+    path_to_bundle = 'voyz/ibeam:latest'
     deploy_server(path_to_bundle, config)
-
 
 if __name__ == '__main__':
     main()

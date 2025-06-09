@@ -1,5 +1,5 @@
 alg_image_name: yolo-algo:latest
-api_token: sha256~wH9jcKM_H-2GyyUHDIHOCy0o3B-7lhhL1QCFMuE1kZM
+api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6Imhtdk5nbTRoenVRenhkd0lWdnBWMUI0MmV2ZGpxMk8wQ0NaMlhmejZBc1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZXYiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoieW9zLXRva2VuLWQycDUyIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6InlvcyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImNlOWUzNzkyLThmZTAtNDgxNC05YTVlLWNlMTdmODJjOGU5MiIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZXY6eW9zIn0.mKgXusdiiEVN3MzjQ6mZOTfjoY8LFz-1RxVCrDcq38V5AcxaEiTvOGm-6-Vd4ZTV15DR7ds2OqBqZcpcdeuD_eSqZofsfF_dFM8483mXsA8obzBjXiOw0sLeUAq7ZCzb0sTVOySfz4v84MGHgCbMOfD92sfVsfbXhvAXYY2HLX2Vh5og6spjz0P__BBpL--8rfaR1bpua8bMhR5gOreuednJ8hTFPsxTtgZkNppBdHC6WO0j6rm5APDLhu0CMj1_Dwdee4KL0xtt5vKK1YDqy2fdq4ApFP5kYIZu0YnIsliI-msGgX1ioT_eqj_7oz6Hdi5gdSiNDVGnXbhwkdYchslB4evLCEGXAEI2uFQ0d2wVkCcFjGqiVjHdpQa6JCxWClXBveap8o78eM_c59WV343YQri2pfiGthAZUYxIz5mXddV9237OHUh6YwUFyosaKv853c_W-py8rCsxUVFA_o7PFkfHnVogPETjJw-ZzVTxk_PYzxGl9Dh8kEVhJCiPrFBlNtoJVnaEcdNKD_z8I2hr3ca6DB6k6Ws-ABIYWOKO3yu07wp6RdTYeoS3wjWB9GkcjW52UHBi1hQ2qrR1m-X0DsdTrg_PTuw-9KgXz5LnekPJwMrzRn2DFaswOmXOynTEM_PbvlsQ55DBntix_r2df2rWnCWgxbw9MuFog44
 api_url: https://api.kh-dev.dt.local:6443
 base_image: harbor.dt.local/public/beam:20240801
 base_url: tcp://10.0.7.55:2375
@@ -7,7 +7,7 @@ base_url: tcp://10.0.7.55:2375
 # client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
 # client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
 # client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
-beam_version: 2.6.9
+beam_version: 2.7.7
 body: 'Here is the cluster information:'
 check_project_exists: true
 command:
@@ -23,6 +23,7 @@ cpu_limits: '2'
 cpu_requests: '2'
 create_service_account: false
 deployment_name: rnd
+debug_sleep: false
 entrypoint_args:
 - '63'
 entrypoint_envs:
@@ -32,7 +33,7 @@ from_email_password: mkhdokjqwwmazyrf
 gpu_limits: '1'
 gpu_requests: '1'
 #image_name: harbor.dt.local/public/nerdctl:v2.0.0-rc.0
-image_name: harbor.dt.local/public/beam:20240801
+image_name: harbor.dt.local/public/beam:20250105
 labels:
   app: rnd
 memory_limits: '6'
@@ -60,15 +61,15 @@ restart_policy_configs:
   max_attempts: 3
   window: 120s
 send_mail: false
-#scc_name: anyuid
-scc_name: privileged
+scc_name: anyuid
+#scc_name: privileged
 security_context_config:
   add_capabilities:
 #  - SYS_CHROOT
 #  - CAP_AUDIT_CONTROL
 #  - CAP_AUDIT_WRITE
-  enable_security_context: true
-  privileged: true
+  enable_security_context: false
+  privileged: false
   runAsUser: 0
 service_configs:
 - create_ingress: false
@@ -123,7 +124,7 @@ storage_configs:
   pvc_size: '500'
 subject: Cluster Deployment Information
 to_email: yossi@dayo-tech.com
-use_gpu: true
+use_gpu: false
 use_node_selector: false
 use_scc: false
 user_idm_configs:
