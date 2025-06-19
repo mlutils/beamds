@@ -992,6 +992,15 @@ class PureBeamPath(BeamResource):
                 assert isinstance(x, str), f"Expected str, got {type(x)}"
                 fo.write(x)
 
+            elif ext == '.xlsx':
+                if x_type.minor == Types.polars:
+                    x.write_excel(fo, **kwargs)
+                elif x_type.minor == Types.cudf:
+                    x.to_excel(fo, **kwargs)
+                else:
+                    x = pd.DataFrame(x)
+                    x.to_excel(fo, **kwargs)
+
             elif ext == '.bin':
                 assert isinstance(x, bytes), f"Expected bytes, got {type(x)}"
                 fo.write(x)
