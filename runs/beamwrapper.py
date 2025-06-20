@@ -7,6 +7,7 @@ import namegenerator
 import loguru
 import boto3
 import logstash
+import pytest
 
 
 

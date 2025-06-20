@@ -1,0 +1,136 @@
+alg_image_name: yolo-algo:latest
+api_token: eyJhbGciOiJSUzI1NiIsImtpZCI6ImNGdm1BODZUd2dGU0k0U29vdjA5QThYY1R3OFpidTJaa3dCaUdRQWZTNjQifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJhZG1pbi11c2VyLXRva2VuIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImFkbWluLXVzZXIiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiI3MjQ0MTkzYy00YmNlLTQyOTYtODQ1OC1mNDdjMmY4YzJiYTUiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06YWRtaW4tdXNlciJ9.PotRe-xNvk4O6h4Ies8qQvtMf3gqG3R1PcmU0LEfiW1kXpsLx4BPx3ji8qday8_WdEu76RBK55yz8rxX-6xQyLEhLHZIN8jbN98mtnNS7i1_l4omYnsVUhB8iXZzRT-AfIQBDHuL9fgW8Um_jojARnxfUseWlD_S2iuOFJQ2EU5dEf0Uq80zUxHd0IG4y8irQMZHVLYWQyUM1K7DsI9D2jxCHNKomWKQ7jIuMYn4OwqEwOx4qkuMlHkZ6bfiiu-4M10B1X-JrDRHrQahZeIkFTsrolCqhxPbvDLzooTLyjVnuzzn2kLYin8tAbssjMT8ULhVCjhVwt6T8iCEfycxJQ
+api_url: https://192.168.76.61:6443
+base_image: harbor.dt.local/public/beam:20240801
+base_url: tcp://10.0.7.55:2375
+# client = docker.APIClient(base_url='unix://var/run/docker.sock')
+# client = docker.APIClient(base_url='tcp://10.0.7.55:2375')
+# client = docker.APIClient(base_url='unix:///home/beam/.docker/run/docker.sock')
+# client = docker.APIClient(base_url='unix:////home/beam/runtime/docker.sock')
+beam_version: 2.7.7
+body: 'Here is the cluster information:'
+check_project_exists: true
+command:
+  arguments:
+#  - -c
+#  - nvidia-smi
+  executable: #/bin/bash
+job_name: beam-job
+cron_job_name: beam-cron-job
+container_name: beam-cron-container
+job_schedule: "*/2 * * * *" # every 2 minutes
+cpu_limits: '2'
+cpu_requests: '2'
+create_service_account: false
+deployment_name: rnd
+debug_sleep: false
+entrypoint_args:
+- '63'
+entrypoint_envs:
+  TEST: test
+from_email: dayotech2018@gmail.com
+from_email_password: mkhdokjqwwmazyrf
+gpu_limits: '1'
+gpu_requests: '1'
+#image_name: harbor.dt.local/public/nerdctl:v2.0.0-rc.0
+image_name: harbor.dt.local/public/beam:20250105
+labels:
+  app: rnd
+memory_limits: '6'
+memory_requests: '6'
+memory_storage_configs:
+- enabled: true
+  mount_path: /dev/shm
+  name: dshm
+  size_gb: 8
+n_pods: '1'
+node_selector:
+  gpu-type: tesla-a100
+project_name: dev
+push_image: true
+registry_password: Har@123
+registry_url: harbor.dt.local
+registry_username: admin
+registry_project_name: public
+replicas: '1'
+restart_policy_configs:
+#  condition: OnFailure
+  condition: Always
+  delay: 5s
+  active_deadline_seconds: 300
+  max_attempts: 3
+  window: 120s
+send_mail: false
+scc_name: anyuid
+#scc_name: privileged
+security_context_config:
+  add_capabilities:
+#  - SYS_CHROOT
+#  - CAP_AUDIT_CONTROL
+#  - CAP_AUDIT_WRITE
+  enable_security_context: false
+  privileged: false
+  runAsUser: 0
+service_configs:
+- create_ingress: false
+  create_route: false
+  ingress_host: ssh.example.com
+  port: 22022
+  port_name: ssh-port
+  service_name: ssh
+  service_type: NodePort
+- create_ingress: false
+  create_route: true
+  ingress_host: jupyter.example.com
+  port: 22088
+  port_name: jupyter-port
+  service_name: jupyter
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: mlflow.example.com
+  port: 22080
+  port_name: mlflow-port
+  service_name: mlflow
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: web.example.com
+  port: 22044
+  port_name: web-port
+  service_name: web
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: home-page.example.com
+  port: 22089
+  port_name: home-page-port
+  service_name: home-page
+  service_type: ClusterIP
+- create_ingress: false
+  create_route: true
+  ingress_host: home-page.example.com
+  port: 35000
+  port_name: flask-port
+  service_name: flask
+  service_type: ClusterIP
+smtp_port: 587
+smtp_server: smtp.gmail.com
+storage_configs:
+- create_pvc: true
+  pvc_access_mode: ReadWriteMany
+  pvc_mount_path: /home/pvc
+  pvc_name: data-pvc
+  pvc_size: '500'
+subject: Cluster Deployment Information
+to_email: yossi@dayo-tech.com
+use_gpu: false
+use_node_selector: false
+use_scc: false
+user_idm_configs:
+- create_role_binding: false
+  project_name: ben-guryon
+  role_binding_name: yos
+  role_name: admin
+  user_name: yos
+
