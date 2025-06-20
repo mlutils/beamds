@@ -250,7 +250,7 @@ class BeamStatefulSet(BeamBase):
                         namespace=self.namespace,
                         protocol=svc_config.route_protocol,
                         port=svc_config.port,
-                        route_timeout=svc_config.route_timeout,
+                        annotations=svc_config.annotations,
                     )
                    # rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_NAME", 'value': route_details['name']})
                    # rs_env_vars.append({'name': f"KUBERNETES_{svc_config.service_name.upper()}_ROUTE_HOST", 'value': route_details['host']})

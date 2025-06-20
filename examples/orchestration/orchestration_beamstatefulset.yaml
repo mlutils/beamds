@@ -10,11 +10,11 @@ base_url: tcp://10.0.7.55:2375
 beam_version: 2.6.4
 body: 'Here is the cluster information:'
 check_project_exists: true
-#command:
-#  arguments:
-#  - -c
-#  - sleep infinity
-#  executable: /bin/bash
+command:
+  arguments:
+  - -c
+  - sleep infinity
+  executable: /bin/bash
 #debug_sleep: true
 cpu_limits: '2'
 cpu_requests: '2'
@@ -81,6 +81,9 @@ service_configs:
   port_name: ssh-port
   service_name: ssh
   service_type: NodePort
+  annotations:
+    haproxy.router.openshift.io/timeout: "599"
+    haproxy.router.openshift.io/balance: "leastconn"
 - create_ingress: false
   create_route: true
   ingress_host: jupyter.example.com
@@ -88,27 +91,9 @@ service_configs:
   port_name: jupyter-port
   service_name: jupyter
   service_type: ClusterIP
-- create_ingress: false
-  create_route: true
-  ingress_host: mlflow.example.com
-  port: 22080
-  port_name: mlflow-port
-  service_name: mlflow
-  service_type: ClusterIP
-- create_ingress: false
-  create_route: true
-  ingress_host: web.example.com
-  port: 22044
-  port_name: web-port
-  service_name: web
-  service_type: ClusterIP
-- create_ingress: false
-  create_route: true
-  ingress_host: home-page.example.com
-  port: 22001
-  port_name: home-page-port
-  service_name: home-page
-  service_type: ClusterIP
+  annotations:
+    haproxy.router.openshift.io/timeout: "599"
+    haproxy.router.openshift.io/balance: "leastconn"
 smtp_port: 587
 smtp_server: smtp.gmail.com
 storage_configs:

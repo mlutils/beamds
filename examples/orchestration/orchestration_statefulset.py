@@ -25,6 +25,7 @@ k8s = BeamK8S(
 
 # Initialize and launch the StatefulSet
 st = BeamStatefulSet(config, k8s)
+
 st.launch()
 print("StatefulSet launched, waiting for 15 seconds to get logs...")
 time.sleep(15)
@@ -32,7 +33,7 @@ logs = st.get_statefulset_logs()
 print(f"Logs: {logs}")
 
 print("\n Try cleanup")
-k8s.cleanup_statefulsets(
-    namespace=config['project_name'],
-    app_name=config['statefulset_name'],
-)
+# k8s.cleanup_statefulsets(
+#     namespace=config['project_name'],
+#     app_name=config['statefulset_name'],
+# )
