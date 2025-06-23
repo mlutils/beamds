@@ -23,6 +23,7 @@ requests = "*"
 joblib = "*"
 PyYAML = "*"
 google-cloud-storage = "*"
+pydantic = ">=2.0"
 
 [tool.poetry.group.ds.dependencies]
 scipy = "*"

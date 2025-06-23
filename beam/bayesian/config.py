@@ -19,7 +19,17 @@ params = [
                    "BernoulliLikelihood, PoissonLikelihood]"),
     BeamParam(name="likelihood_kwargs", type=dict, default={'noise': 0.1},
               help="Additional keyword arguments for the likelihood."),
-
+    BeamParam(name="acquisition_kwargs", type=dict, default={},
+                help="Additional keyword arguments for the acquisition function."),
+    BeamParam(name="num_restarts", type=int, default=5,
+                help="Number of restarts for the optimization process."),
+    BeamParam(name="sequential_opt", type=bool, default=True,
+              help="Whether to perform sequential optimization or not."),
+    BeamParam(name="raw_samples", type=int, default=1000,
+              help="Number of raw samples to generate for Bayesian optimization."),
+    BeamParam(name="n_categorical_features_threshold", type=int, default=5,
+              help="Threshold for the number of categorical features to use a different acquisition function "
+                   "(optimize_acqf_mixed_alternating instead of optimize_acqf_mixed)."),
 ]
 class BayesianConfig(BeamConfig):
     pass
