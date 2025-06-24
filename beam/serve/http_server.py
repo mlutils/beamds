@@ -6,7 +6,6 @@ from threading import Thread
 
 from flask import Flask, request, jsonify, send_file, render_template_string, url_for, send_from_directory
 from flask.json.provider import DefaultJSONProvider
-from statsmodels.tsa.statespace.tests.test_mlemodel import kwargs
 
 from ..logging import beam_logger as logger
 from ..path import beam_path

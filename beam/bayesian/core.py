@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Optional
 import inspect
 
@@ -19,8 +20,8 @@ from ..utils import as_tensor
 from ..dataset import LazyReplayBuffer
 from ..logging import beam_logger as logger
 
-
-class Solution(BaseModel):
+@dataclass
+class Solution:
     x_num: Optional[torch.Tensor] = None
     x_cat: Optional[torch.Tensor] = None
     y: Optional[torch.Tensor] = None
@@ -28,13 +29,15 @@ class Solution(BaseModel):
     c_cat: Optional[torch.Tensor] = None
 
 
-class Status(BaseModel):
+@dataclass
+class Status:
     gp: Optional[torch.nn.Module] = None
     message: str = ""
     solution: Optional[Solution] = None
     acq_val: Optional[torch.Tensor] = None
     candidates: Optional[list[BaseParameters]] = None
     debug: Optional[dict] = None
+    config: Optional[dict] = None
 
 
 class BayesianBeam(Processor):
@@ -49,7 +52,7 @@ class BayesianBeam(Processor):
             c_scheme = BaseParameters.from_json_schema(c_scheme)
         self.c_scheme = c_scheme
         self.gp = None
-        self.acquisition = None
+        self.acquisitions = None
         self.prior = None
         self.belief = None
         self.likelihood = None
@@ -57,7 +60,11 @@ class BayesianBeam(Processor):
         self._x_bounds = None
         self._optimizer_acqf = None
         self._x_cat_cartesian_product_list = None
-        self.rb = LazyReplayBuffer()
+        self.new_points = 0
+        self.rb = LazyReplayBuffer(size=self.hparams.get('buffer_size', 1000))
+
+    def reset_acquisitions(self):
+        self.acquisitions = {'single': None, 'batch': None}
 
     def get_gp_model(self, has_categorical: bool = False) -> type[BatchedMultiOutputGPyTorchModel] | type[MultiTaskGPyTorchModel]:
         """
@@ -103,34 +110,57 @@ class BayesianBeam(Processor):
 
         return ll(**self.hparams.get('likelihood_kwargs', {}))
 
-    def get_acquisition_function(self, model, **kwargs):
+    def get_acquisition_function(self, model, q=1, **kwargs):
         """
         Get the acquisition function for Bayesian optimization.
         :param model: The Gaussian Process model.
+        :param q: Number of points to sample in batch (default is 1).
         :param kwargs: Additional keyword arguments for the acquisition function.
         :return: The acquisition function.
         """
-        acq_func = self.hparams.get('acquisition_function', 'EI')
+        acq_func = self.hparams.get('acquisition_function', 'LogExpectedImprovement')
         acquisition_kwargs = self.hparams.get('acquisition_kwargs', {})
         kwargs = {**acquisition_kwargs, **kwargs}
-        if acq_func == 'EI':
-            from botorch.acquisition import ExpectedImprovement
-            return ExpectedImprovement(model=model, **kwargs)
-        elif acq_func == 'PI':
-            from botorch.acquisition import ProbabilityOfImprovement
-            return ProbabilityOfImprovement(model=model, **kwargs)
-        elif acq_func == 'UCB':
-            from botorch.acquisition import UpperConfidenceBound
-            return UpperConfidenceBound(model=model, **kwargs)
-        elif acq_func == 'qExpectedImprovement':
-            from botorch.acquisition import qExpectedImprovement
-            return qExpectedImprovement(model=model, best_f=self.best_f, **kwargs)
+        use_q = self.hparams.batch_size > 1 or q > 1
+        if acq_func == 'LogExpectedImprovement':
+            if use_q:
+                from botorch.acquisition import qLogExpectedImprovement
+                return qLogExpectedImprovement(model, best_f=self.best_f, **kwargs)
+            else:
+                from botorch.acquisition import LogExpectedImprovement
+                return LogExpectedImprovement(model, best_f=self.best_f, **kwargs)
+        elif acq_func == 'ExpectedImprovement':
+            if use_q:
+                from botorch.acquisition import qExpectedImprovement
+                return qExpectedImprovement(model, best_f=self.best_f, **kwargs)
+            else:
+                from botorch.acquisition import ExpectedImprovement
+                return ExpectedImprovement(model, best_f=self.best_f, **kwargs)
+        elif acq_func == 'ProbabilityOfImprovement':
+            if use_q:
+                from botorch.acquisition import qProbabilityOfImprovement
+                return qProbabilityOfImprovement(model, best_f=self.best_f, **kwargs)
+            else:
+                from botorch.acquisition import ProbabilityOfImprovement
+                return ProbabilityOfImprovement(model, **kwargs)
+        elif acq_func == 'UpperConfidenceBound':
+            if use_q:
+                from botorch.acquisition import qUpperConfidenceBound
+                return qUpperConfidenceBound(model, **kwargs)
+            else:
+                from botorch.acquisition import UpperConfidenceBound
+                return UpperConfidenceBound(model, **kwargs)
         elif acq_func == 'PosteriorMean':
-            from botorch.acquisition import PosteriorMean
-            return PosteriorMean(model=model, **kwargs)
+            if use_q:
+                from botorch.acquisition.analytic import ScalarizedPosteriorMean
+                return ScalarizedPosteriorMean(model, **kwargs)
+            else:
+                from botorch.acquisition import PosteriorMean
+                return PosteriorMean(model, **kwargs)
         else:
             raise ValueError(f"Unsupported acquisition function: {acq_func}. Supported functions are: "
-                             "'EI', 'PI', 'UCB'.")
+                             "'ExpectedImprovement', 'ProbabilityOfImprovement', "
+                             "'UpperConfidenceBound', 'PosteriorMean'.")
 
     @property
     def x_cat_cartesian_product_list(self) -> list[dict[int, float]]:
@@ -144,13 +174,26 @@ class BayesianBeam(Processor):
                 return []
 
             from itertools import product
-            cat_features = self.x_scheme.cat_fields_to_index_map
-            cartesian_product = product(*[self.x_scheme.get_feature_values(k) for k in cat_features])
-            cartesian_prod = [dict(zip(cat_features.values(), values)) for values in cartesian_product]
+            cat_features = self.x_scheme.cat_fields_to_index_map  # {name: idx_in_cat}
+            cartesian_values = product(*[self.x_scheme.get_feature_values(k)
+                                         for k in cat_features])
 
+            cartesian_prod = [
+                {self.len_x_num + idx: float(val)  # correct global index ✅
+                 for idx, val in zip(cat_features.values(), combo)}
+                for combo in cartesian_values
+            ]
             self._x_cat_cartesian_product_list = cartesian_prod
 
         return self._x_cat_cartesian_product_list
+
+    @property
+    def discrete_choices(self) -> list[torch.Tensor]:
+        discrete_choices = [
+            torch.tensor(self.x_scheme.get_feature_values(name))  # choices for each cat dim
+            for name in self.x_scheme.cat_fields_to_index_map
+        ]
+        return discrete_choices
 
     def optimize(self, acq, q=1, **kwargs):
 
@@ -160,6 +203,8 @@ class BayesianBeam(Processor):
         sequential = self.hparams.get('sequential_opt', True)
         sequential = kwargs.pop('sequential_opt', sequential)
 
+        raw_samples = self.hparams.get('raw_samples', 1000)
+        raw_samples = kwargs.pop('raw_samples', raw_samples)
 
         if self.has_categorical():
 
@@ -180,7 +225,8 @@ class BayesianBeam(Processor):
 
             self._optimizer_acqf = optimizer, kwargs
 
-        best_x, acq_val = optimizer(acq, self.x_bounds, q=q, num_restarts=num_restarts, **kwargs)
+        best_x, acq_val = optimizer(acq, self.x_bounds, q=q, num_restarts=num_restarts, raw_samples=raw_samples,
+                                    **kwargs)
 
         return best_x, acq_val
 
@@ -200,9 +246,14 @@ class BayesianBeam(Processor):
 
         x_num, x_cat = self.x_scheme.encode_batch(x) if x is not None else (None, None)
         c_num, c_cat = self.c_scheme.encode_batch(c) if c is not None else (None, None)
+        if y is not None:
+            y = as_tensor(y)
+            if len(y.shape) == 1:
+                y = y.unsqueeze(-1)
+        else:
+            y = None
 
-        return Solution(x_num=x_num, x_cat=x_cat, y=as_tensor(y) if y is not None else None,
-                        c_num=c_num, c_cat=c_cat)
+        return Solution(x_num=x_num, x_cat=x_cat, y=y, c_num=c_num, c_cat=c_cat)
 
     @property
     def len_x_num(self) -> int:
@@ -241,6 +292,61 @@ class BayesianBeam(Processor):
             self._has_categorical = len(s.x_cat) or (s.c_cat is not None and len(s.c_cat))
         return self._has_categorical
 
+    def reset(self):
+        """
+        Reset the Bayesian model and the replay buffer.
+        """
+        self.gp = None
+        self.rb.reset()
+        self._has_categorical = None
+        self._x_bounds = None
+        self._x_cat_cartesian_product_list = None
+        message = "Model and replay buffer reset successfully."
+        logger.info(message)
+        return Status(gp=None, message=message)
+
+    def reshape_batch(self, v):
+        if self.hparams.batch_size > 1:
+            b = self.hparams.batch_size
+            # Reshape x_num and x_cat to have batch size as the second dimension
+            if v is not None:
+                # truncate x_num to the nearest multiple of b
+                v = v[(len(v) - len(v) % b):]
+                v = v.view(-1, b, v.shape[-1])
+        return v
+
+    def get_replay_buffer(self, d=None):
+
+        # get all the replay buffer data
+        if d is None:
+            d = self.rb[:]
+
+        x_num, x_cat = self.reshape_batch(d['x_num']), self.reshape_batch(d['x_cat'])
+        y = self.reshape_batch(d['y'])
+        c_cat, c_num = self.reshape_batch(d['c_cat']), self.reshape_batch(d['c_num'])
+
+        if self.hparams.batch_size > 1:
+            b = self.hparams.batch_size
+            # Reshape x_num and x_cat to have batch size as the second dimension
+            if x_num is not None:
+                # truncate x_num to the nearest multiple of b
+                x_num = x_num[(len(x_num) - len(x_num) % b):]
+                x_num = x_num.view(-1, b, self.len_x_num).mean(dim=1)
+            if x_cat is not None:
+                # truncate x_cat to the nearest multiple of b
+                x_cat = x_cat[(len(x_cat) - len(x_cat) % b):]
+                x_cat = x_cat.view(-1, b, self.len_x_cat).mean(dim=1)
+
+        x = torch.cat([x_num, x_cat], dim=-1)
+
+        if c_num is not None:
+            x = torch.cat([x, c_cat, c_num], dim=-1)
+            cat_features = list(range(self.len_x_num, self.len_x_num + self.len_x_cat + self.len_c_cat))
+        else:
+            cat_features = list(range(self.len_x_num, self.len_x_num + self.len_x_cat))
+
+        return x, y, cat_features
+
     def train(self, x: list[dict], y: list, c: Optional[list[dict]] = None, debug=False, **kwargs):
         """
         Initialize the Bayesian model with the provided data.
@@ -254,24 +360,48 @@ class BayesianBeam(Processor):
         model = self.get_gp_model(has_categorical=self.has_categorical(s))
         self.rb.store_batch(x_num=s.x_num, x_cat=s.x_cat, y=s.y, c_num=s.c_num, c_cat=s.c_cat)
 
-        # get all the replay buffer data
-        d = self.rb[:]
+        if self.new_points > 0 and self.new_points + len(y) < self.hparams.fit_every_n_points:
 
-        x_num = d['x_num']
-        x_cat = d['x_cat']
-        y = d['y']
-        x = torch.cat([x_num, x_cat], dim=-1)
+            incremental_fit = self.hparams.incremental_fit
+            self.new_points += len(y)
 
-        if c is not None:
-            x = torch.cat([x, d['c_cat'], d['c_num']], dim=-1)
-            cat_features = list(range(self.len_x_num, self.len_x_num + self.len_x_cat + self.len_c_cat))
-        else:
-            cat_features = list(range(self.len_x_num, self.len_x_num + self.len_x_cat))
+            if incremental_fit == 'none':
+                message = f"Skipping model training. New points: {self.new_points}, " \
+                          f"Total points: {len(self.rb)}, Fit every N points: {self.hparams.fit_every_n_points}."
+                logger.info(message)
+                return Status(gp=self.gp, message=message)
+
+            elif incremental_fit == 'fantasy':
+                x_star, y_star, cat_features = self.get_replay_buffer({'x_num': s.x_num, 'x_cat': s.x_cat,
+                                                                       'y': s.y, 'c_num': s.c_num, 'c_cat': s.c_cat})
+                self.gp.condition_on_observations(X=x_star, Y=y_star)
+
+                message = f"Model updated with {len(x_star)} fantasy points. New points: {self.new_points}, " \
+                          f"Total points: {len(self.rb)}, Fit every N points: {self.hparams.fit_every_n_points}."
+                logger.info(message)
+                return Status(gp=self.gp, message=message)
+
+            elif incremental_fit == 'full':
+                x, y, cat_features = self.get_replay_buffer()
+                self.gp.set_train_data(inputs=x, targets=y, strict=False)
+                message = f"Model set_train_data with {len(x)} samples. New points: {self.new_points}, " \
+                          f"Total points: {len(self.rb)}, Fit every N points: {self.hparams.fit_every_n_points}."
+                logger.info(message)
+                return Status(gp=self.gp, message=message)
+
+            else:
+                message = "Invalid incremental_fit method. Supported methods are: 'fantasy', 'full', 'none'."
+                logger.error(message)
+                return Status(gp=None, message="Invalid incremental_fit method.")
+
+        x, y, cat_features = self.get_replay_buffer()
 
         if len(cat_features):
-            kwargs['categorical_features'] = cat_features
+            kwargs['cat_dims'] = cat_features
 
         ll = self.get_likelihood()
+        self.reset_acquisitions()
+
         self.gp = model(train_X=x, train_Y=y, likelihood=ll, **kwargs)
         mll = ExactMarginalLogLikelihood(self.gp.likelihood, self.gp)
         fit_gpytorch_mll(mll)
@@ -281,9 +411,9 @@ class BayesianBeam(Processor):
 
         if debug:
             metadata = {
-                'x_num': x_num,
-                'x_cat': x_cat,
-                'y': y,
+                'x_num': s.x_num,
+                'x_cat': s.x_cat,
+                'y': s.y,
                 'c_num': s.c_num,
                 'c_cat': s.c_cat,
                 'model': self.gp.__class__.__name__,
@@ -328,10 +458,34 @@ class BayesianBeam(Processor):
                     indexed_bounds[d_cat[k] + self.len_x_num] = b
                 else:
                     raise ValueError(f"Feature {k} not found in input scheme.")
-            self._x_bounds = indexed_bounds
+
+            logger.debug(f"Indexed bounds: {indexed_bounds}")
+
+            # --- tensor scaffolding ------------------------------------------------
+            d = self.total_n_features
+            # if gp not trained yet, use CPU / float32; will be moved later
+            try:
+                train_X = self.gp.train_inputs[0]
+                dtype, device = train_X.dtype, train_X.device
+            except AttributeError:
+                dtype, device = torch.float32, torch.device("cpu")
+
+            gub = self.hparams.get('global_upper_bound', 1e6)
+            lower = torch.full((d,), -gub, dtype=dtype, device=device)
+            upper = torch.full((d,), gub, dtype=dtype, device=device)
+
+            # --- fill in user-supplied bounds -------------------------------------
+            for j, (lo, hi) in indexed_bounds.items():
+                lower[j] = lo
+                upper[j] = hi
+
+            self._x_bounds = torch.stack([lower, upper])
+
+            logger.debug(f"X bounds: {self._x_bounds}")
+
         return self._x_bounds
 
-    def sample(self, c=None, n_samples=1, debug=False, **kwargs) -> Status:
+    def sample(self, c=None, n_samples=None, debug=False, **kwargs) -> Status:
         """
         Sample from the Bayesian model.
         :param c: Context features (optional).
@@ -339,26 +493,37 @@ class BayesianBeam(Processor):
         :param kwargs: Additional keyword arguments for sampling.
         :return: Generated samples.
         """
+        if n_samples is None:
+            n_samples = self.hparams.batch_size
 
         if self.gp is None:
             message = "Model is not trained yet. Please train the model before sampling."
             logger.error(message)
             return Status(gp=None, message=message)
 
-        acq = self.get_acquisition_function(self.gp, **kwargs)
+        acq_type = 'single' if n_samples == 1 else 'batch'
+        if self.acquisitions.get(acq_type) is None:
+            acq = self.get_acquisition_function(self.gp, q=n_samples, **kwargs)
 
-        if c is not None:
-            s = self.to_tensor(c=c)
-            c = torch.cat([s.c_cat, s.c_num], dim=-1)
-            columns = list(range(self.len_x_num + self.len_x_cat, self.total_n_features))
-            acq = FixedFeatureAcquisitionFunction(acq, d=self.total_n_features,
-                                                      columns=columns, values=c.squeeze(0))
-            fixed_features = {k: v for k, v in self.x_scheme.encode(c).items()
-                              if k in self.x_scheme.cat_fields_to_index_map}
+            if c is not None:
+                s = self.to_tensor(c=c)
+                c = torch.cat([s.c_cat, s.c_num], dim=-1)
+                columns = list(range(self.len_x_num + self.len_x_cat, self.total_n_features))
+                acq = FixedFeatureAcquisitionFunction(acq, d=self.total_n_features,
+                                                          columns=columns, values=c.squeeze(0))
+            self.acquisitions[acq_type] = acq
+        else:
+            logger.debug(f"Using cached acquisition function for {acq_type} sampling.")
+            acq = self.acquisitions[acq_type]
 
         best_x, acq_val = self.optimize(acq, q=n_samples, **kwargs)
 
-        decoded = [self.x_scheme.decode(xi) for xi in best_x]
+        logger.debug(f"Best x: {best_x}, acq_val: {acq_val}")
+
+        best_x_num = best_x[:, :self.len_x_num]
+        best_x_cat = best_x[:, self.len_x_num:self.len_x_num + self.len_x_cat]
+
+        decoded = self.x_scheme.decode_batch(best_x_num, best_x_cat)
 
         message = f"Generated {n_samples} samples with acquisition value: {acq_val}"
         logger.info(message)

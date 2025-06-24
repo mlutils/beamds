@@ -209,11 +209,42 @@ class BaseParameters(BaseModel):
         return bounds
 
     # ───── decode ─────
+
+    @classmethod
+    def decode_batch(cls, x_num, x_cat) -> List["BaseParameters"]:
+        """
+        Recreate a batch of model instances from raw numeric / categorical tensors.
+        Works with either NumPy or Torch inputs.
+        """
+        cls._build()
+
+        # make sure we have NumPy arrays
+        if isinstance(x_num, torch.Tensor):
+            x_num = x_num.detach().cpu().numpy()
+        if isinstance(x_cat, torch.Tensor):
+            x_cat = x_cat.detach().cpu().numpy()
+
+        if x_num.ndim == 1:
+            x_num = x_num.reshape(1, -1)
+        if x_cat.ndim == 1:
+            x_cat = x_cat.reshape(1, -1)
+        if x_num.shape[0] != x_cat.shape[0]:
+            raise ValueError("Numeric and categorical tensors must have the same number of rows.")
+        if x_num.shape[1] != cls.x_num_len:
+            raise ValueError(f"Numeric tensor must have {cls.x_num_len} columns, got {x_num.shape[1]}.")
+        if x_cat.shape[1] != cls.x_cat_len:
+            raise ValueError(f"Categorical tensor must have {cls.x_cat_len} columns, got {x_cat.shape[1]}.")
+        data_list: List[BaseParameters] = []
+        for i in range(x_num.shape[0]):
+            data = cls.decode(x_num[i], x_cat[i])
+            data_list.append(data)
+        return data_list
+
     @classmethod
     def decode(
             cls,
             x_num: np.ndarray | torch.Tensor | list,
-            x_cat: np.ndarray | torch.Tensor | list = None,
+            x_cat: np.ndarray | torch.Tensor | list,
     ) -> "BaseParameters":
         """
         Recreate a model instance from raw numeric / categorical tensors.
