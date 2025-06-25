@@ -25,10 +25,13 @@ class BeamServer(MetaDispatcher):
             self.load_function = torch.load
             self.dump_function = torch.save
             self.serialization_method = 'torch'
+            # check if torch version is >= 2.6.0
+            self.lf_kwargs = {'weights_only': False}
         else:
             self.load_function = pickle.load
             self.dump_function = pickle.dump
             self.serialization_method = 'pickle'
+            self.lf_kwargs = {}
 
         self.max_wait_time = max_wait_time
         self.max_batch_size = max_batch_size
@@ -69,7 +72,7 @@ class BeamServer(MetaDispatcher):
     def set_variable(self, client, name, value, *args, **kwargs):
 
         if client == 'beam':
-            value = self.load_function(value)
+            value = self.load_function(value, **self.lf_kwargs)
 
         setattr(self.obj, name, value)
         return {'success': True}
@@ -227,8 +230,8 @@ class BeamServer(MetaDispatcher):
     def query_algorithm(self, client, method, args, kwargs, return_raw_results=False):
 
         if client == 'beam':
-            args = self.load_function(args)
-            kwargs = self.load_function(kwargs)
+            args = self.load_function(args, **self.lf_kwargs)
+            kwargs = self.load_function(kwargs, **self.lf_kwargs)
 
         if method in self.batch:
             results = self.batched_query_algorithm(method, args, kwargs)

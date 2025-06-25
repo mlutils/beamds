@@ -33,14 +33,21 @@ class BayesianConfig(BeamConfig):
         BeamParam(name="n_categorical_features_threshold", type=int, default=5,
                   help="Threshold for the number of categorical features to use a different acquisition function "
                        "(optimize_acqf_mixed_alternating instead of optimize_acqf_mixed)."),
+        BeamParam(name="start_fitting_after_n_points", type=int, default=10,
+                    help="Number of points after which to start fitting the model."),
         BeamParam(name="fit_every_n_points", type=int, default=100,
                     help="Number of points after which to re-fit the model again during optimization."),
         BeamParam(name="incremental_fit", type=str, default='fantasy',
                   help="Method to use for incremental fitting. Choices: [fantasy, full, none]. "
                        "Fantasy uses fantasy points to update the model without re-fitting."),
+        BeamParam(name="continuous_kernel", type=str, default=None,
+                    help="Kernel to use for continuous features in Bayesian optimization. Choices: [RBFKernel, "
+                         "MaternKernel, RationalQuadraticKernel]"),
+        BeamParam(name="continuous_kernel_kwargs", type=dict, default={},
+                    help="Additional keyword arguments for the continuous kernel."),
     ]
 
-class BayesianHPOService(BayesianConfig):
+class BayesianHPOServiceConfig(BayesianConfig):
     parameters = [
         BeamParam(name="embedding_model", type=str, default="jinaai/jina-embeddings-v3",
                   help="Embedding model to encode text content for Bayesian optimization."),

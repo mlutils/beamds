@@ -76,6 +76,16 @@ class BeamClient(BeamBase, BeamResource):
             return pickle.load
 
     @property
+    def lf_kwargs(self):
+        if self.serialization == 'torch':
+            torch = lzi.torch
+            if not torch:
+                raise ImportError('Cannot use torch serialization without torch installed')
+            return {'weights_only': True}
+        else:
+            return {}
+
+    @property
     def dump_function(self):
         if self.serialization == 'torch':
             torch = lzi.torch

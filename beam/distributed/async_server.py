@@ -134,9 +134,9 @@ class AsyncServer(HTTPServer):
             kwargs = request.files['kwargs']
             ws_client_id = request.files['ws_client_id']
 
-            postrun_args = self.load_function(postrun_args)
-            postrun_kwargs = self.load_function(postrun_kwargs)
-            ws_client_id = self.load_function(ws_client_id)
+            postrun_args = self.load_function(postrun_args, **self.lf_kwargs)
+            postrun_kwargs = self.load_function(postrun_kwargs, **self.lf_kwargs)
+            ws_client_id = self.load_function(ws_client_id, **self.lf_kwargs)
 
         else:
             data = request.get_json()

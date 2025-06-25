@@ -17,7 +17,7 @@ class BaseParameters(BaseModel):
 
     _num_fields_w: ClassVar[list[tuple[str, int]]] = []
     _cat_fields: ClassVar[list[str]] = []
-    _literal_maps: ClassVar[dict[str, dict[Any, int]]] = {}
+    _literal_maps: ClassVar[dict[str, dict[str, dict]]] = {}
     _xnum_len: ClassVar[int] = 0
     _xcat_len: ClassVar[int] = 0
     _num_cols: ClassVar[list[str]] = []
@@ -157,7 +157,7 @@ class BaseParameters(BaseModel):
             if isinstance(v, Enum):
                 cat_vals.append(int(v.value))
             elif name in c._literal_maps:
-                cat_vals.append(c._literal_maps[name][v])
+                cat_vals.append(c._literal_maps[name]['fwd'][v])
             else:
                 cat_vals.append(int(v))
 
@@ -308,7 +308,7 @@ class BaseParameters(BaseModel):
         return create_model(title, __base__=cls, **fields)  # type: ignore[return-value]
 
     @classmethod
-    def get_feature_values(cls, key: str) ->List[Any]:
+    def get_feature_values(cls, key: str, encoded=False) ->List[Any]:
         """
         Returns the values of a specific feature (key) across all instances of the model.
         This is useful for analyzing the distribution of a feature.
@@ -327,11 +327,17 @@ class BaseParameters(BaseModel):
         # switch case of literal, enum, and int
         if cls._is_literal(field_info.annotation):
             # For Literal, return enumeration over values
-            return list(get_args(field_info.annotation))
+            l = list(get_args(field_info.annotation))
+            if encoded:
+                l = [cls._literal_maps[key]['fwd'][v] for v in l]
+            return l
 
         elif isinstance(field_info.annotation, type) and issubclass(field_info.annotation, Enum):
             # For Enum, return the enum values
-            return [e.value for e in field_info.annotation]
+            l = [e.value for e in field_info.annotation]
+            if encoded:
+                l = [cls._literal_maps[key]['fwd'][v] for v in l]
+            return l
         else:
             # For int, use bounds if available, otherwise return None
             bounds = cls.get_bounds().get(key, (None, None))

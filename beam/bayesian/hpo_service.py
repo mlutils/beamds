@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from ..base import BeamBase
 from ..logging import beam_logger as logger
 
-from .config import BayesianHPOService, BayesianConfig
+from .config import BayesianHPOServiceConfig, BayesianConfig
 from .hp_scheme import BaseParameters
 from .core import BayesianBeam
 
@@ -31,7 +31,7 @@ class HPOService(BeamBase):
     """
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, _config_scheme=BayesianHPOService,  **kwargs)
+        super().__init__(*args, _config_scheme=BayesianHPOServiceConfig, **kwargs)
         self._problems: dict[str, ProblemScheme] = {}
         self._embedding_model = None
 
@@ -129,7 +129,7 @@ class HPOService(BeamBase):
             'message': status.message
         }
 
-    def query(self, name, c: list[dict] | dict = None, n_samples: int = 1, **kwargs):
+    def sample(self, name, c: list[dict] | dict = None, n_samples: int = 1, **kwargs):
         """
         Query the HPO service for suggested hyperparameters.
         :param name: Name of the problem.

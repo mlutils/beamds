@@ -36,7 +36,7 @@ class GRPCClient(BeamClient):
         request = GetVariableRequest(client=client, name=name)
         response = self.stub.GetVariable(request)
 
-        response = self.load_function(io.BytesIO(response.value))
+        response = self.load_function(io.BytesIO(response.value), **self.lf_kwargs)
 
         return response
 
@@ -56,7 +56,7 @@ class GRPCClient(BeamClient):
         request = QueryAlgorithmRequest(client=client, method=method, args=io_args, kwargs=io_kwargs)
         response = self.stub.QueryAlgorithm(request)
 
-        response = self.load_function(io.BytesIO(response.results))
+        response = self.load_function(io.BytesIO(response.results), **self.lf_kwargs)
         return response
 
     def get_info(self):

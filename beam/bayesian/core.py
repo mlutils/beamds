@@ -5,7 +5,8 @@ import inspect
 import torch
 from botorch import fit_gpytorch_mll
 from botorch.acquisition.fixed_feature import FixedFeatureAcquisitionFunction
-from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel, MultiTaskGPyTorchModel
+from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel, MultiTaskGPyTorchModel, GPyTorchModel
+from gpytorch.kernels import Kernel
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import Likelihood
 from collections import namedtuple
@@ -66,25 +67,51 @@ class BayesianBeam(Processor):
     def reset_acquisitions(self):
         self.acquisitions = {'single': None, 'batch': None}
 
-    def get_gp_model(self, has_categorical: bool = False) -> type[BatchedMultiOutputGPyTorchModel] | type[MultiTaskGPyTorchModel]:
+    def build_continuous_kernel(self, **kwargs) -> Optional[Kernel]:
+
+        kind = self.hparams.get('continuous_kernel', None)
+        kernel_kwargs = self.hparams.get('continuous_kernel_kwargs', {})
+        if kind is None:
+            return None
+        elif kind == 'RBFKernel':
+            from gpytorch.kernels import RBFKernel, ScaleKernel
+            return RBFKernel(**kernel_kwargs)
+        elif kind == 'MaternKernel':
+            from gpytorch.kernels import MaternKernel, ScaleKernel
+            nu = kernel_kwargs.pop('nu', 1.5)
+            return ScaleKernel(MaternKernel(nu=nu, **kernel_kwargs))
+        elif kind == 'RationalQuadraticKernel':
+            from gpytorch.kernels import RationalQuadraticKernel, ScaleKernel
+            return ScaleKernel(RationalQuadraticKernel(**kernel_kwargs))
+        else:
+            logger.error(f"Unsupported continuous kernel: {kind}.")
+            return None
+
+    def build_gp_model(self, x, y, cat_features: list, **kwargs) -> GPyTorchModel:
         """
         Get the Gaussian Process model.
         :return: The Gaussian Process model.
         """
+
+        ll = self.get_likelihood()
+        has_categorical = len(cat_features) > 0
+
+        cont_kernel = self.build_continuous_kernel(**kwargs)
         gp_model = self.hparams.get('gp_model', 'SingleTaskGP')
         if gp_model == 'SingleTaskGP':
             if has_categorical:
                 from botorch.models import MixedSingleTaskGP
-                return MixedSingleTaskGP
+                return MixedSingleTaskGP(x, y, likelihood=ll, cat_dims=cat_features, cont_kernel_factory=cont_kernel,
+                                         **kwargs)
             else:
                 from botorch.models import SingleTaskGP
-                return SingleTaskGP
+                return SingleTaskGP(x, y, likelihood=ll, covar_module=cont_kernel, **kwargs)
         elif gp_model == 'MultiTaskGP':
             from botorch.models import MultiTaskGP
-            return MultiTaskGP
+            return MultiTaskGP(x, y, likelihood=ll, **kwargs)
         elif gp_model == 'GPClassificationModel':
             from .models import GPClassificationModel
-            return GPClassificationModel
+            return GPClassificationModel(x, y)
         else:
             raise ValueError(f"Unsupported Gaussian Process model: {gp_model}. Supported models are: "
                              "'SingleTaskGP', 'MultiTaskGP', 'MultiOutputGP'.")
@@ -110,7 +137,7 @@ class BayesianBeam(Processor):
 
         return ll(**self.hparams.get('likelihood_kwargs', {}))
 
-    def get_acquisition_function(self, model, q=1, **kwargs):
+    def build_acquisition_function(self, model, q=1, **kwargs):
         """
         Get the acquisition function for Bayesian optimization.
         :param model: The Gaussian Process model.
@@ -175,8 +202,9 @@ class BayesianBeam(Processor):
 
             from itertools import product
             cat_features = self.x_scheme.cat_fields_to_index_map  # {name: idx_in_cat}
-            cartesian_values = product(*[self.x_scheme.get_feature_values(k)
-                                         for k in cat_features])
+            print(cat_features)
+            cartesian_values = product(*[self.x_scheme.get_feature_values(k, encoded=True)
+                                         for k in cat_features.keys()])
 
             cartesian_prod = [
                 {self.len_x_num + idx: float(val)  # correct global index ✅
@@ -190,7 +218,7 @@ class BayesianBeam(Processor):
     @property
     def discrete_choices(self) -> list[torch.Tensor]:
         discrete_choices = [
-            torch.tensor(self.x_scheme.get_feature_values(name))  # choices for each cat dim
+            torch.tensor(self.x_scheme.get_feature_values(name, encoded=True))  # choices for each cat dim
             for name in self.x_scheme.cat_fields_to_index_map
         ]
         return discrete_choices
@@ -357,13 +385,19 @@ class BayesianBeam(Processor):
         """
 
         s = self.to_tensor(x, y, c)
-        model = self.get_gp_model(has_categorical=self.has_categorical(s))
         self.rb.store_batch(x_num=s.x_num, x_cat=s.x_cat, y=s.y, c_num=s.c_num, c_cat=s.c_cat)
 
-        if self.new_points > 0 and self.new_points + len(y) < self.hparams.fit_every_n_points:
+        self.new_points += len(y)
+
+        if len(self.rb) < self.hparams.start_fitting_after_n_points:
+            message = f"Not enough points to train the model. New points: {self.new_points}, " \
+                      f"Total points: {len(self.rb)}, Start fitting after N points: {self.hparams.start_fitting_after_n_points}."
+            logger.info(message)
+            return Status(gp=None, message=message)
+
+        if self.new_points < self.hparams.fit_every_n_points:
 
             incremental_fit = self.hparams.incremental_fit
-            self.new_points += len(y)
 
             if incremental_fit == 'none':
                 message = f"Skipping model training. New points: {self.new_points}, " \
@@ -394,15 +428,17 @@ class BayesianBeam(Processor):
                 logger.error(message)
                 return Status(gp=None, message="Invalid incremental_fit method.")
 
+        # if we are here, we are training the model from scratch
+        self.new_points = 0
+
+        # set this boolean if has_categorical is not set yet
+        self.has_categorical(s)
+
         x, y, cat_features = self.get_replay_buffer()
-
-        if len(cat_features):
-            kwargs['cat_dims'] = cat_features
-
-        ll = self.get_likelihood()
         self.reset_acquisitions()
 
-        self.gp = model(train_X=x, train_Y=y, likelihood=ll, **kwargs)
+        self.gp = self.build_gp_model(x=x, y=y, cat_features=cat_features, **kwargs)
+
         mll = ExactMarginalLogLikelihood(self.gp.likelihood, self.gp)
         fit_gpytorch_mll(mll)
 
@@ -417,7 +453,6 @@ class BayesianBeam(Processor):
                 'c_num': s.c_num,
                 'c_cat': s.c_cat,
                 'model': self.gp.__class__.__name__,
-                'likelihood': ll.__class__.__name__,
                 'num_features': self.total_n_features
             }
         else:
@@ -503,7 +538,7 @@ class BayesianBeam(Processor):
 
         acq_type = 'single' if n_samples == 1 else 'batch'
         if self.acquisitions.get(acq_type) is None:
-            acq = self.get_acquisition_function(self.gp, q=n_samples, **kwargs)
+            acq = self.build_acquisition_function(self.gp, q=n_samples, **kwargs)
 
             if c is not None:
                 s = self.to_tensor(c=c)
