@@ -135,6 +135,15 @@ python -m build
 python -m twine upload --repository pypi dist/* 
 ```
 
+## Upload the package with poetry
+```shell
+# poetry config pypi-token.pypi YOUR_PYPI_API_TOKEN
+bash build.sh
+bash init.sh
+poetry lock
+poetry publish --build
+```
+
 
 
 

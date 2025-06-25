@@ -5,7 +5,10 @@
 # the line to invoke is:
 # __version__ = '2.8.0b'
 # use sed to extract the version number
-VERSION=$(python -c "from beam._version import __version__; print(__version__)")
+
+#VERSION=$(python -c "from beam._version import __version__; print(__version__)")
+# get the version from the _version.py file without importing it
+VERSION=$(sed -n "s/__version__ = ['\"]\([^'\"]*\)['\"]/\\1/p" beam/_version.py)
 
 # Update version in pyproject.toml
 sed -i '' 's/^version = ".*"/version = "'"$VERSION"'"/' pyproject.toml

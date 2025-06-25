@@ -284,27 +284,45 @@ class BaseParameters(BaseModel):
 
         return cls(**data)
 
-    # ───── tiny JSON-schema helper (unchanged) ─────
     @classmethod
     def from_json_schema(cls, schema: Mapping[str, Any]):
         title = schema.get("title", "SchemaModel")
-        props, req = schema["properties"], set(schema.get("required", []))
-        fields = {}
-        for n, spec in props.items():
+        props = schema["properties"]
+        req_set = set(schema.get("required", []))
+
+        fields: dict[str, tuple[Any, Field]] = {}
+
+        for name, spec in props.items():
             t = spec["type"]
-            if t == "number":
+            field_kwargs: dict[str, Any] = {}  # ← ge/le/gt/lt end up here
+
+            # ── numeric ranges ────────────────────────────────────────────
+            if "minimum" in spec: field_kwargs["ge"] = spec["minimum"]
+            if "maximum" in spec: field_kwargs["le"] = spec["maximum"]
+            if "exclusiveMinimum" in spec: field_kwargs["gt"] = spec["exclusiveMinimum"]
+            if "exclusiveMaximum" in spec: field_kwargs["lt"] = spec["exclusiveMaximum"]
+
+            # ── enums (works for string, integer, number) ────────────────
+            if "enum" in spec:
+                ann = Literal[tuple(spec["enum"])]  # type: ignore[misc]
+
+            # ── primitives and fixed-length numeric arrays ───────────────
+            elif t == "number":
                 ann = float
             elif t == "integer":
                 ann = int
             elif t == "array" and spec["items"]["type"] == "number":
                 m, M = spec.get("minItems"), spec.get("maxItems")
-                if m != M: raise ValueError(f"{n}: fixed-length arrays only")
+                if m != M:
+                    raise ValueError(f"{name}: only fixed-length numeric arrays are supported")
                 ann = conlist(float, min_length=m, max_length=M)  # type: ignore
-            elif t == "string" and "enum" in spec:
-                ann = Literal[tuple(spec["enum"])]  # type: ignore[misc]
             else:
-                raise ValueError(f"{n}: unsupported JSON-Schema fragment")
-            fields[n] = (ann, Field(... if n in req else None))
+                raise ValueError(f"{name}: unsupported JSON-Schema fragment")
+
+            # ── assemble ─────────────────────────────────────────────────
+            default = ... if name in req_set else None
+            fields[name] = (ann, Field(default, **field_kwargs))
+
         return create_model(title, __base__=cls, **fields)  # type: ignore[return-value]
 
     @classmethod

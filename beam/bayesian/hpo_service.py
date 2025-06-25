@@ -34,6 +34,7 @@ class HPOService(BeamBase):
         super().__init__(*args, _config_scheme=BayesianHPOServiceConfig, **kwargs)
         self._problems: dict[str, ProblemScheme] = {}
         self._embedding_model = None
+        self._embedding_size = None
 
     @property
     def embedding_model(self):
@@ -48,17 +49,39 @@ class HPOService(BeamBase):
             self._embedding_model = model
         return self._embedding_model
 
-    def register(self, name: str, x_scheme: dict, c_scheme: dict = None, embedding_keys: list[str] = None,
+    @property
+    def embedding_size(self):
+        """
+        Get the size of the embedding used for HPO.
+        """
+        if self._embedding_size is None:
+            self._embedding_size = len(self.embedding_model.encode("test 1 2 3"))
+        return self._embedding_size
+
+    def register(self, name: str, x_scheme: dict, c_scheme: dict = None,
                  config_kwargs: dict = None, **kwargs):
         """
         Register a new HPO problem.
 
         :param x_scheme: The scheme for the input space.
         :param c_scheme: The scheme for the configuration space (optional).
-        :param embedding_keys: Keys for embedding (optional).
         :param config_kwargs: Additional keyword arguments for configuration (optional).
         :param kwargs: Additional keyword arguments.
         """
+
+        embedding_keys = None
+        if c_scheme is not None:
+            embedding_keys = []
+            for k, v in c_scheme['properties'].items():
+                if isinstance(v, dict) and v.get('type') == 'string':
+                    embedding_keys.append(k)
+                    c_scheme['properties'][k] = {
+                        'type': 'array',
+                        'items': {'type': 'number'},
+                        'title': v['title'],
+                        'maxItems': self.embedding_size,
+                        'minItems': self.embedding_size,
+                    }
 
         config_kwargs = config_kwargs or {}
         local_config = copy.copy(self.hparams.dict())
@@ -152,11 +175,12 @@ class HPOService(BeamBase):
                     ci[k] = self.embedding_model.encode(ci[k], convert_to_tensor=True)
 
         solver = problem_scheme.solver
-        suggestions = solver.sample(c=c, n_samples=n_samples, **kwargs)
+        status = solver.sample(c=c, n_samples=n_samples, **kwargs)
         return {
             'name': name,
             'method': 'query',
-            'suggestions': suggestions
+            'message': status.message,
+            'samples': [dict(xi) for xi in status.candidates] if status.candidates else [],
         }
 
 

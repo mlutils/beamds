@@ -202,7 +202,7 @@ class BayesianBeam(Processor):
 
             from itertools import product
             cat_features = self.x_scheme.cat_fields_to_index_map  # {name: idx_in_cat}
-            print(cat_features)
+
             cartesian_values = product(*[self.x_scheme.get_feature_values(k, encoded=True)
                                          for k in cat_features.keys()])
 
