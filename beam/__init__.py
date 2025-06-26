@@ -21,7 +21,7 @@ __all__ = ['UniversalBatchSampler', 'UniversalDataset',
            'BeamDeploy', 'BeamK8S', 'BeamPod', 'K8SUnits', 'K8SConfig', 'RayClusterConfig',
            'ServeClusterConfig', 'ServeCluster', 'RayCluster', 'deploy_server',
            # do not autoreaload these modules
-           # 'beam_server', 'beam_client',
+           'beam_server', 'beam_client',
            ]
 
 

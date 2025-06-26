@@ -96,5 +96,3 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=beam"
 [tool.flake8]
-
-

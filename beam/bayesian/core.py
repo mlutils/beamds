@@ -395,7 +395,7 @@ class BayesianBeam(Processor):
             logger.info(message)
             return Status(gp=None, message=message)
 
-        if self.new_points < self.hparams.fit_every_n_points:
+        if self.new_points < self.hparams.fit_every_n_points and self.gp is not None:
 
             incremental_fit = self.hparams.incremental_fit
 

@@ -19,4 +19,7 @@ echo "Version updated to $VERSION"
 poetry version "$VERSION"
 
 # Build the package
-poetry build 
+poetry build
+
+# echo instructions how to deploy the package with poetry
+echo "Package built successfully. To deploy the package, run poetry publish"
