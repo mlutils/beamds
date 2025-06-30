@@ -148,6 +148,7 @@ class BayesianBeam(Processor):
         acq_func = self.hparams.get('acquisition_function', 'LogExpectedImprovement')
         acquisition_kwargs = self.hparams.get('acquisition_kwargs', {})
         kwargs = {**acquisition_kwargs, **kwargs}
+
         use_q = self.hparams.batch_size > 1 or q > 1
         if acq_func == 'LogExpectedImprovement':
             if use_q:
@@ -225,14 +226,16 @@ class BayesianBeam(Processor):
 
     def optimize(self, acq, q=1, **kwargs):
 
-        num_restarts = self.hparams.get('num_restarts', 5)
+        num_restarts = self.hparams.get('num_restarts', 200)
         num_restarts = kwargs.pop('num_restarts', num_restarts)
 
         sequential = self.hparams.get('sequential_opt', True)
         sequential = kwargs.pop('sequential_opt', sequential)
 
-        raw_samples = self.hparams.get('raw_samples', 1000)
+        raw_samples = self.hparams.get('raw_samples', 512)
         raw_samples = kwargs.pop('raw_samples', raw_samples)
+
+        acquisition_options = self.hparams.get('aquisition_options', {})
 
         if self.has_categorical():
 
@@ -254,7 +257,7 @@ class BayesianBeam(Processor):
             self._optimizer_acqf = optimizer, kwargs
 
         best_x, acq_val = optimizer(acq, self.x_bounds, q=q, num_restarts=num_restarts, raw_samples=raw_samples,
-                                    **kwargs)
+                                    options=acquisition_options, **kwargs)
 
         return best_x, acq_val
 

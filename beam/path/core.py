@@ -28,7 +28,6 @@ prioritized_extensions = ['.pkl', '.parquet', '.csv', '.fea', '.json', '.ndjson'
                           '.z', '.gz', '.bz2', '.xz', '.lzma', '.safetensors', '.png', '.jpg', '.jpeg', '.gif',
                           '.bmp', '.tiff', '.tif', '.webp']
 
-
 def normalize_host(hostname, port=None, default='localhost'):
     if hostname is None:
         hostname = default
