@@ -203,7 +203,7 @@ class Groupby:
         agg_exprs = {}
         
         # Always include count
-        agg_exprs['count'] = ibis.literal(1).count()
+        agg_exprs['count'] = ibis._.count()
         
         # Add user-defined aggregations
         for alias, agg_info in self.aggregations.items():

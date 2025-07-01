@@ -72,7 +72,18 @@ class BeamIbis(PureBeamPath):
             columns = []
 
         more_fields = self.fragment.split(',') if bool(self.fragment) else []
-        columns = list(set(columns + more_fields))
+        
+        # Flatten columns if it contains nested lists
+        flattened_columns = []
+        for item in columns:
+            if isinstance(item, list):
+                flattened_columns.extend(item)
+            else:
+                flattened_columns.append(item)
+        
+        # Combine and deduplicate
+        all_columns = flattened_columns + more_fields
+        columns = list(dict.fromkeys(all_columns))  # Preserves order while removing duplicates
         self.columns = columns if columns else None
         self.sort_by = sort_by
 
@@ -294,7 +305,7 @@ class BeamIbis(PureBeamPath):
         params = kwargs.pop('params', self.params)
         query = kwargs.pop('query', {})
         columns = kwargs.pop('columns', self.columns)
-        llm = kwargs.pop('llm', self.llm)
+        llm = kwargs.pop('llm', self._llm)
         q = kwargs.pop('q', self._q)
         sort_by = kwargs.pop('sort_by', self.sort_by)
         backend = kwargs.pop('backend', self.backend)
@@ -343,22 +354,23 @@ class BeamIbis(PureBeamPath):
 
     # Query composition (like BeamElastic)
     def __and__(self, other):
-        """Combine queries with AND logic."""
+        """Combine queries with AND logic.""" 
+        # For now, disable composition of BeamIbis instances and suggest alternative API
         if isinstance(other, BeamIbis):
-            other_pred = other._q
+            raise NotImplementedError(
+                "Query composition with & operator is not yet fully implemented. "
+                "Please use chained method calls instead:\n"
+                "Instead of: db.with_filter_term('a', 'field1') & db.with_filter_gte(10, 'field2')\n"
+                "Use: db.with_filter_term('a', 'field1').with_filter_gte(10, 'field2')"
+            )
         else:
-            other_pred = other
-            
-        current_q = self._q or self.table
-        if other_pred is not None:
-            if hasattr(current_q, 'filter'):
-                q = current_q.filter(other_pred)
+            # Handle direct predicate (Ibis expression)
+            current_q = self._q if self._q is not None else self.table
+            if other is not None:
+                q = current_q.filter(other)
             else:
-                q = other_pred
-        else:
-            q = current_q
-            
-        return self.gen(self.path, q=q)
+                q = current_q
+            return self.gen(self.path, q=q)
 
     def __or__(self, other):
         """Combine queries with OR logic."""
@@ -367,7 +379,7 @@ class BeamIbis(PureBeamPath):
         else:
             other_pred = other
             
-        current_q = self._q or self.table
+        current_q = self._q if self._q is not None else self.table
         # For OR operations, we need to combine predicates at the filter level
         # This is more complex in Ibis and may require restructuring the query
         if other_pred is not None and hasattr(current_q, 'filter'):
@@ -599,7 +611,7 @@ class BeamIbis(PureBeamPath):
         field_name = self.parse_column(field_name)
         q = (self.query_table
              .group_by(field_name)
-             .aggregate(count=ibis.literal(1).count())
+             .aggregate(count=ibis._.count())
              .select(field_name, 'count'))
         
         if sort:

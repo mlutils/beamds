@@ -2,6 +2,97 @@ from .core import BeamIbis
 from ..path import BeamURL
 
 
+def _extract_backend_from_scheme(scheme):
+    """
+    Extract backend type from URL scheme.
+    
+    Handles various formats:
+    - ibis-bigquery -> bigquery
+    - ibis-postgresql -> postgresql  
+    - mysql -> mysql
+    - etc.
+    """
+    if not scheme:
+        return scheme
+    
+    # Handle ibis-* prefixed schemes
+    if scheme.startswith('ibis-'):
+        backend_part = scheme.split('-', 1)[1]  # Split only on first dash
+        
+        # Map some common aliases
+        backend_mapping = {
+            'postgres': 'postgresql',
+            'mariadb': 'mysql',  # MariaDB uses MySQL driver in Ibis
+        }
+        
+        return backend_mapping.get(backend_part, backend_part)
+    
+    # Handle direct schemes
+    direct_mapping = {
+        'postgres': 'postgresql',
+        'mariadb': 'mysql',
+    }
+    
+    return direct_mapping.get(scheme, scheme)
+
+
+def _configure_backend_kwargs(backend, hostname, path, backend_kwargs):
+    """
+    Configure backend-specific parameters based on hostname, path, and backend type.
+    
+    This function handles common patterns where hostname or path contains important
+    configuration information for different database backends.
+    
+    Supports both formats:
+    - ibis-bigquery://project-name/dataset/table (hostname-based)
+    - ibis-bigquery:///project-name/dataset/table (path-based)
+    """
+    # Make a copy to avoid modifying the original
+    kwargs = backend_kwargs.copy()
+    
+    # BigQuery: project_id can come from hostname OR first path component
+    if backend == 'bigquery':
+        if 'project_id' not in kwargs:
+            if hostname:
+                # Format: ibis-bigquery://project-name/dataset/table
+                kwargs['project_id'] = hostname
+            elif path:
+                # Format: ibis-bigquery:///project-name/dataset/table
+                path_parts = path.strip('/').split('/') if path.strip('/') else []
+                if path_parts:
+                    kwargs['project_id'] = path_parts[0]
+        
+        # Remove parameters that BigQuery doesn't accept
+        kwargs.pop('host', None)
+        kwargs.pop('hostname', None)
+    
+    # PostgreSQL/MySQL: hostname might contain database info
+    elif backend in ['postgresql', 'mysql', 'mariadb'] and hostname:
+        if 'host' not in kwargs:
+            # If hostname looks like a connection string, use it
+            if '.' in hostname or ':' in hostname:
+                kwargs['host'] = hostname
+    
+    # SQLite: hostname or path might be the database file path
+    elif backend == 'sqlite':
+        if 'database' not in kwargs:
+            if hostname and not hostname.startswith('http'):
+                kwargs['database'] = hostname
+            elif path and not path.startswith('http'):
+                # For path-based SQLite: ibis-sqlite:///path/to/database.db
+                kwargs['database'] = path.lstrip('/')
+    
+    # DuckDB: similar to SQLite
+    elif backend == 'duckdb':
+        if 'database' not in kwargs:
+            if hostname and not hostname.startswith('http'):
+                kwargs['database'] = hostname
+            elif path and not path.startswith('http'):
+                kwargs['database'] = path.lstrip('/')
+    
+    return kwargs
+
+
 def beam_ibis(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
               password=None, scheme=None, backend=None, **kwargs):
     """
@@ -63,24 +154,9 @@ def beam_ibis(path, username=None, hostname=None, port=None, private_key=None, a
     # Determine backend from scheme or explicit parameter
     if backend is None:
         if scheme is not None:
-            if '_' in scheme:
-                backend = scheme.split('_')[1]
-            else:
-                backend = scheme
+            backend = _extract_backend_from_scheme(scheme)
         elif url.scheme:
-            # Extract backend from URL scheme
-            if url.scheme.startswith('bigquery'):
-                backend = 'bigquery'
-            elif url.scheme.startswith('sqlite'):
-                backend = 'sqlite'
-            elif url.scheme.startswith('postgresql') or url.scheme.startswith('postgres'):
-                backend = 'postgresql'
-            elif url.scheme.startswith('mysql'):
-                backend = 'mysql'
-            elif url.scheme.startswith('duckdb'):
-                backend = 'duckdb'
-            else:
-                backend = url.scheme
+            backend = _extract_backend_from_scheme(url.scheme)
 
     # Add authentication parameters to backend_kwargs if provided
     backend_kwargs = kwargs.pop('backend_kwargs', {})
@@ -90,9 +166,23 @@ def beam_ibis(path, username=None, hostname=None, port=None, private_key=None, a
         backend_kwargs['secret_key'] = secret_key
     if private_key is not None:
         backend_kwargs['private_key'] = private_key
+    
+    # Configure backend-specific parameters generically
+    backend_kwargs = _configure_backend_kwargs(backend, hostname, path, backend_kwargs)
+
+    # Adjust path for specific backends
+    adjusted_path = path
+    if backend == 'bigquery' and not hostname and path:
+        # For ibis-bigquery:///project-name/dataset/table format,
+        # remove project-name from the BeamIbis path since it's handled in backend_kwargs
+        path_parts = path.strip('/').split('/') if path.strip('/') else []
+        if path_parts:
+            # Remove the first part (project name) and reconstruct path
+            remaining_parts = path_parts[1:]
+            adjusted_path = '/' + '/'.join(remaining_parts) if remaining_parts else '/'
 
     return BeamIbis(
-        path, 
+        adjusted_path, 
         hostname=hostname, 
         backend=backend, 
         port=port, 

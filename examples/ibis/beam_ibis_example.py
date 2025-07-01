@@ -120,8 +120,8 @@ def demonstrate_querying(db_path):
     high_price = beam_db.with_filter_gte(50, 'price')
     print(f"High price items (>=50): {high_price.count()} rows")
     
-    # Multiple filters (query composition)
-    expensive_electronics = beam_db.with_filter_term('electronics', 'category') & beam_db.with_filter_gte(50, 'price')
+    # Multiple filters (query composition using method chaining)
+    expensive_electronics = beam_db.with_filter_term('electronics', 'category').with_filter_gte(50, 'price')
     print(f"Expensive electronics: {expensive_electronics.count()} rows")
     
     # Time range filtering
@@ -262,7 +262,7 @@ def demonstrate_lazy_execution(db_path):
                      .with_filter_term('electronics', 'category')
                      .with_filter_gte(20, 'price')
                      .order_by('timestamp')
-                     .select(['user_id', 'product', 'price', 'timestamp']))
+                     .select('user_id', 'product', 'price', 'timestamp'))
     
     print(f"Complex query object: {complex_query}")
     print(f"Level: {complex_query.level}")
@@ -333,6 +333,261 @@ def demonstrate_comparison_operators(db_path):
         print("Note: Comparison operators work best with single column selection")
 
 
+def demonstrate_advanced_time_analysis(db_path):
+    """Demonstrate advanced time-based analysis."""
+    
+    print("\n" + "="*60)
+    print("ADVANCED TIME ANALYSIS DEMONSTRATION")
+    print("="*60)
+    
+    beam_db = BeamIbis(f"/{db_path}/sales", backend='sqlite')
+    
+    # Time-based filtering
+    print("Time-based analysis:")
+    
+    # First week of January
+    first_week = beam_db.with_filter_time_range(
+        field='timestamp',
+        start='2024-01-01',
+        end='2024-01-08'
+    )
+    print(f"First week transactions: {first_week.count()} rows")
+    
+    # Revenue by day (using date extraction)
+    print("\nRevenue by day (first 10 days):")
+    try:
+        # This might work if Ibis supports date extraction
+        daily_revenue = beam_db.as_df()
+        daily_revenue['date'] = daily_revenue['timestamp'].dt.date
+        daily_summary = daily_revenue.groupby('date')['revenue'].sum().head(10)
+        print(daily_summary)
+    except Exception as e:
+        print(f"Date extraction not supported: {e}")
+        # Fallback: show first day vs second day
+        day1 = beam_db.with_filter_time_range(
+            field='timestamp', 
+            start='2024-01-01 00:00:00',
+            end='2024-01-02 00:00:00'
+        )
+        day2 = beam_db.with_filter_time_range(
+            field='timestamp',
+            start='2024-01-02 00:00:00', 
+            end='2024-01-03 00:00:00'
+        )
+        print(f"Day 1 revenue: ${day1.sum('revenue'):.2f}")
+        print(f"Day 2 revenue: ${day2.sum('revenue'):.2f}")
+
+
+def demonstrate_calculated_fields(db_path):
+    """Demonstrate calculated fields and data transformations."""
+    
+    print("\n" + "="*60)
+    print("CALCULATED FIELDS DEMONSTRATION")
+    print("="*60)
+    
+    beam_db = BeamIbis(f"/{db_path}/sales", backend='sqlite')
+    
+    # Revenue per quantity (average selling price)
+    print("Revenue analysis:")
+    print(f"Total revenue: ${beam_db.sum('revenue'):.2f}")
+    print(f"Total quantity: {beam_db.sum('quantity')}")
+    print(f"Average revenue per item: ${beam_db.sum('revenue') / beam_db.sum('quantity'):.2f}")
+    
+    # Category performance analysis  
+    print("\nCategory performance analysis:")
+    cat_stats = beam_db.groupby('category').sum('revenue').mean('price').sum('quantity').count()
+    cat_df = cat_stats.as_df()
+    
+    # Calculate revenue per transaction
+    cat_df['revenue_per_transaction'] = cat_df['revenue_sum'] / cat_df['count']
+    print(cat_df[['revenue_sum', 'count', 'revenue_per_transaction']].round(2))
+    
+    # High-value transactions
+    print("\nHigh-value transaction analysis:")
+    high_value = beam_db.with_filter_gte(100, 'revenue')
+    print(f"Transactions >= $100: {high_value.count()} rows")
+    print(f"High-value revenue: ${high_value.sum('revenue'):.2f}")
+    print(f"% of total revenue: {(high_value.sum('revenue') / beam_db.sum('revenue') * 100):.1f}%")
+
+
+def demonstrate_data_quality_analysis(db_path):
+    """Demonstrate data quality and exploratory analysis."""
+    
+    print("\n" + "="*60)
+    print("DATA QUALITY ANALYSIS DEMONSTRATION") 
+    print("="*60)
+    
+    beam_db = BeamIbis(f"/{db_path}/sales", backend='sqlite')
+    
+    # Basic data quality checks
+    print("Data quality overview:")
+    print(f"Total records: {beam_db.count()}")
+    print(f"Unique users: {beam_db.nunique('user_id')}")
+    print(f"Unique products: {beam_db.nunique('product')}")
+    print(f"Date range: {beam_db.min('timestamp')} to {beam_db.max('timestamp')}")
+    
+    # Value distribution analysis
+    print("\nValue distributions:")
+    print("Price distribution:")
+    print(f"  Min price: ${beam_db.min('price'):.2f}")
+    print(f"  Max price: ${beam_db.max('price'):.2f}")
+    print(f"  Avg price: ${beam_db.mean('price'):.2f}")
+    
+    print("Quantity distribution:")
+    print(f"  Min quantity: {beam_db.min('quantity')}")
+    print(f"  Max quantity: {beam_db.max('quantity')}")
+    print(f"  Avg quantity: {beam_db.mean('quantity'):.1f}")
+    
+    # Top performers
+    print("\nTop performers:")
+    top_users = beam_db.groupby('user_id').sum('revenue').count()
+    top_users_df = top_users.as_df().sort_values('revenue_sum', ascending=False)
+    print("Top 5 users by revenue:")
+    print(top_users_df.head(5))
+    
+    # Product performance
+    print("\nProduct performance:")
+    product_performance = beam_db.groupby('product').sum('revenue').count().mean('price')
+    product_df = product_performance.as_df().sort_values('revenue_sum', ascending=False)
+    print("Top 5 products by revenue:")
+    print(product_df.head(5))
+
+
+def demonstrate_advanced_groupby(db_path):
+    """Demonstrate advanced GroupBy operations."""
+    
+    print("\n" + "="*60)
+    print("ADVANCED GROUPBY DEMONSTRATION")
+    print("="*60)
+    
+    beam_db = BeamIbis(f"/{db_path}/sales", backend='sqlite')
+    
+    # Multi-level grouping with comprehensive stats
+    print("Multi-level grouping analysis:")
+    multi_group = beam_db.groupby(['category', 'status']).agg({
+        'revenue': ['sum', 'mean'],
+        'quantity': ['sum', 'mean'],
+        'price': ['min', 'max', 'mean']
+    })
+    
+    multi_df = multi_group.as_df()
+    print("Revenue and quantity by category and status:")
+    print(multi_df.head(10))
+    
+    # Country analysis
+    print("\nCountry performance analysis:")
+    country_stats = beam_db.groupby('country').agg({
+        'revenue': ['sum', 'mean'],
+        'user_id': 'nunique',
+        'product': 'nunique'
+    })
+    
+    country_df = country_stats.as_df()
+    country_df = country_df.sort_values('revenue_sum', ascending=False)
+    print(country_df)
+    
+    # Status distribution by category
+    print("\nOrder status distribution by category:")
+    status_dist = beam_db.groupby(['category', 'status']).count()
+    status_df = status_dist.as_df()
+    print(status_df)
+
+
+def demonstrate_filtering_combinations(db_path):
+    """Demonstrate complex filtering combinations."""
+    
+    print("\n" + "="*60)
+    print("COMPLEX FILTERING DEMONSTRATION")
+    print("="*60)
+    
+    beam_db = BeamIbis(f"/{db_path}/sales", backend='sqlite')
+    
+    # Complex business queries
+    print("Complex business queries:")
+    
+    # High-value electronics in specific countries
+    high_value_electronics = (beam_db
+                             .with_filter_term('electronics', 'category')
+                             .with_filter_gte(40, 'price')
+                             .with_filter_terms(['US', 'UK'], 'country'))
+    print(f"High-value electronics in US/UK: {high_value_electronics.count()} rows")
+    
+    # Completed orders with high quantity
+    bulk_completed = (beam_db
+                      .with_filter_term('completed', 'status')
+                      .with_filter_gte(5, 'quantity'))
+    print(f"Bulk completed orders (qty >= 5): {bulk_completed.count()} rows")
+    
+    # Premium product analysis (top 25% price range)
+    price_threshold = beam_db.mean('price') * 1.2  # 20% above average
+    premium_products = beam_db.with_filter_gte(price_threshold, 'price')
+    print(f"Premium products (>${price_threshold:.2f}+): {premium_products.count()} rows")
+    
+    # Sample of complex filtered data
+    print("\nSample of high-value electronics in US/UK:")
+    sample = high_value_electronics.head(3)
+    print(sample[['user_id', 'product', 'price', 'country', 'revenue']])
+    
+    # Time + category filtering
+    print("\nTime-based category analysis:")
+    recent_books = (beam_db
+                    .with_filter_term('books', 'category')
+                    .with_filter_time_range(
+                        field='timestamp',
+                        start='2024-01-15',
+                        end='2024-01-25'
+                    ))
+    print(f"Books in mid-January: {recent_books.count()} rows")
+
+
+def demonstrate_statistical_analysis(db_path):
+    """Demonstrate statistical operations."""
+    
+    print("\n" + "="*60)
+    print("STATISTICAL ANALYSIS DEMONSTRATION")
+    print("="*60)
+    
+    beam_db = BeamIbis(f"/{db_path}/sales", backend='sqlite')
+    
+    # Comprehensive statistics
+    print("Comprehensive revenue statistics:")
+    print(f"Count: {beam_db.count()}")
+    print(f"Sum: ${beam_db.sum('revenue'):.2f}")
+    print(f"Mean: ${beam_db.mean('revenue'):.2f}")
+    print(f"Min: ${beam_db.min('revenue'):.2f}")
+    print(f"Max: ${beam_db.max('revenue'):.2f}")
+    
+    try:
+        print(f"Std Dev: ${beam_db.std('revenue'):.2f}")
+        print(f"Variance: ${beam_db.var('revenue'):.2f}")
+    except Exception as e:
+        print(f"Advanced stats not available: {e}")
+    
+    # Distribution analysis by category
+    print("\nRevenue distribution by category:")
+    for category in ['electronics', 'books', 'clothing', 'food']:
+        cat_data = beam_db.with_filter_term(category, 'category')
+        print(f"{category.capitalize()}:")
+        print(f"  Count: {cat_data.count()}")
+        print(f"  Avg Revenue: ${cat_data.mean('revenue'):.2f}")
+        print(f"  Min Revenue: ${cat_data.min('revenue'):.2f}")
+        print(f"  Max Revenue: ${cat_data.max('revenue'):.2f}")
+    
+    # Price vs Quantity analysis
+    print("\nPrice vs Quantity correlation analysis:")
+    df = beam_db.as_df()
+    
+    # Calculate correlation manually since we might not have corr() function
+    price_mean = df['price'].mean()
+    quantity_mean = df['quantity'].mean()
+    revenue_mean = df['revenue'].mean()
+    
+    print(f"Average price: ${price_mean:.2f}")
+    print(f"Average quantity: {quantity_mean:.1f}")
+    print(f"Average revenue: ${revenue_mean:.2f}")
+    print(f"Expected revenue (price * qty): ${price_mean * quantity_mean:.2f}")
+
+
 def main():
     """Main demonstration function."""
     
@@ -356,13 +611,21 @@ def main():
         demonstrate_path_like_interface(db_path)
         demonstrate_comparison_operators(db_path)
         
+        # NEW ADVANCED EXAMPLES
+        demonstrate_advanced_time_analysis(db_path)
+        demonstrate_calculated_fields(db_path)
+        demonstrate_data_quality_analysis(db_path)
+        demonstrate_advanced_groupby(db_path)
+        demonstrate_filtering_combinations(db_path)
+        demonstrate_statistical_analysis(db_path)
+        
         print("\n" + "="*60)
         print("DEMONSTRATION COMPLETE")
         print("="*60)
         print("\nKey Features Demonstrated:")
         print("✓ Lazy query execution")
         print("✓ Path-like interface for navigation")
-        print("✓ Query composition with & and | operators")
+        print("✓ Query composition with method chaining")
         print("✓ Multiple filtering methods")
         print("✓ Comprehensive aggregation support")
         print("✓ GroupBy operations similar to pandas")
@@ -370,6 +633,13 @@ def main():
         print("✓ Time range filtering")
         print("✓ Immutable query objects")
         print("✓ Multiple backend support")
+        print("✓ Advanced time-based analysis")
+        print("✓ Calculated fields and transformations")
+        print("✓ Data quality analysis")
+        print("✓ Complex filtering combinations")
+        print("✓ Statistical analysis")
+        print("✓ Multi-level grouping")
+        print("✓ Business intelligence queries")
         
         print("\nSupported Backends:")
         print("- SQLite")

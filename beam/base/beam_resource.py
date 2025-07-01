@@ -14,7 +14,7 @@ resource_names = {
     'embedding': ['emb-openai', 'emb-stt'],
     'elastic': ['elastic', 'elasticsearch', 'es'],
     'airflow': ['airflow', 'flow'],
-    'ibis': ['ibis-sqlite', 'ibis-mysql', 'ibis-mariadb', 'ibis-postgres', 'ibis-pandas',
+    'ibis': ['ibis-sqlite', 'ibis-mysql', 'ibis-mariadb', 'ibis-postgres', 'ibis-postgresql', 'ibis-pandas',
              'ibis-bigquery', 'ibis-impala', 'ibis-dask', 'ibis-impala', 'ibis-spark'],
 }
 
