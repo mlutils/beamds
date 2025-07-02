@@ -171,14 +171,14 @@ class BeamIbis(PureBeamPath):
     @property
     def project(self):
         if self.backend == "bigquery":
-            return self.parts[0] if len(self.parts) > 0 else None
+            return self.parts[1] if len(self.parts) > 0 else None
         return None
 
     @property
     def database(self):
         if self._database is None:
             if self.backend == "bigquery":
-                self._database = self.parts[1] if len(self.parts) > 1 else None
+                self._database = self.parts[2] if len(self.parts) > 2 else None
             elif self.backend == "sqlite":
                 if len(self.parts) > 0:
                     path = BeamPath(*self.parts[:-1]) if len(self.parts) > 1 else BeamPath(self.parts[0])
@@ -189,9 +189,9 @@ class BeamIbis(PureBeamPath):
                         self._database = self.path if self.path != '/' else None
                         self._table_name = None
             elif self.backend in ['postgresql', 'postgres']:
-                self._database = self.parts[0] if len(self.parts) > 0 else None
+                self._database = self.parts[1] if len(self.parts) > 1 else None
             else:
-                self._database = self.parts[0] if len(self.parts) > 0 else None
+                self._database = self.parts[1] if len(self.parts) > 1 else None
 
         return self._database
 
@@ -201,7 +201,7 @@ class BeamIbis(PureBeamPath):
             return self._table_name
 
         if self.backend == "bigquery":
-            return self.parts[2] if len(self.parts) > 2 else None
+            return self.parts[3] if len(self.parts) > 3 else None
         elif self.backend == "sqlite":
             _ = self.database  # force database resolution
             return self._table_name

@@ -16,27 +16,18 @@ def _extract_backend_from_scheme(scheme):
         return scheme
     
     # Handle ibis-* prefixed schemes
-    if scheme.startswith('ibis-'):
-        backend_part = scheme.split('-', 1)[1]  # Split only on first dash
-        
-        # Map some common aliases
-        backend_mapping = {
-            'postgres': 'postgresql',
-            'mariadb': 'mysql',  # MariaDB uses MySQL driver in Ibis
-        }
-        
-        return backend_mapping.get(backend_part, backend_part)
+    scheme = scheme.removeprefix('ibis-')
     
     # Handle direct schemes
-    direct_mapping = {
+    backend_mapping = {
         'postgres': 'postgresql',
         'mariadb': 'mysql',
     }
     
-    return direct_mapping.get(scheme, scheme)
+    return backend_mapping.get(scheme, scheme)
 
 
-def _configure_backend_kwargs(backend, hostname, path, backend_kwargs):
+def _configure_backend_kwargs_and_path(backend, hostname, path, backend_kwargs):
     """
     Configure backend-specific parameters based on hostname, path, and backend type.
     
@@ -55,12 +46,7 @@ def _configure_backend_kwargs(backend, hostname, path, backend_kwargs):
         if 'project_id' not in kwargs:
             if hostname:
                 # Format: ibis-bigquery://project-name/dataset/table
-                kwargs['project_id'] = hostname
-            elif path:
-                # Format: ibis-bigquery:///project-name/dataset/table
-                path_parts = path.strip('/').split('/') if path.strip('/') else []
-                if path_parts:
-                    kwargs['project_id'] = path_parts[0]
+                path = f"/{hostname}/{path.lstrip('/')}"
         
         # Remove parameters that BigQuery doesn't accept
         kwargs.pop('host', None)
@@ -90,7 +76,7 @@ def _configure_backend_kwargs(backend, hostname, path, backend_kwargs):
             elif path and not path.startswith('http'):
                 kwargs['database'] = path.lstrip('/')
     
-    return kwargs
+    return kwargs, path
 
 
 def beam_ibis(path, username=None, hostname=None, port=None, private_key=None, access_key=None, secret_key=None,
@@ -168,21 +154,10 @@ def beam_ibis(path, username=None, hostname=None, port=None, private_key=None, a
         backend_kwargs['private_key'] = private_key
     
     # Configure backend-specific parameters generically
-    backend_kwargs = _configure_backend_kwargs(backend, hostname, path, backend_kwargs)
-
-    # Adjust path for specific backends
-    adjusted_path = path
-    if backend == 'bigquery' and not hostname and path:
-        # For ibis-bigquery:///project-name/dataset/table format,
-        # remove project-name from the BeamIbis path since it's handled in backend_kwargs
-        path_parts = path.strip('/').split('/') if path.strip('/') else []
-        if path_parts:
-            # Remove the first part (project name) and reconstruct path
-            remaining_parts = path_parts[1:]
-            adjusted_path = '/' + '/'.join(remaining_parts) if remaining_parts else '/'
+    backend_kwargs, path = _configure_backend_kwargs_and_path(backend, hostname, path, backend_kwargs)
 
     return BeamIbis(
-        adjusted_path, 
+        path,
         hostname=hostname, 
         backend=backend, 
         port=port, 
