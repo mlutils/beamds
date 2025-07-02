@@ -164,9 +164,9 @@ def test_beamibis_functionality(dataset_id='test_planning'):
         print(f"   Level: {dataset_bi.level}")
         
         # Test table connection
-                table_name = 'sales'
+        table_name = 'sales'
         print(f"\n📊 Connecting to table: {table_name}")
-        table_bi = resource(f'ibis-bigquery:///algo-agents-ai21/{dataset_id}/{table_name}')
+        table_bi = resourKce(f'ibis-bigquery:///algo-agents-ai21/{dataset_id}/{table_name}')
         print(f"✅ Connected to table level")
         print(f"   Level: {table_bi.level}")
         print(f"   Backend: {table_bi.backend}")
