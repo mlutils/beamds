@@ -1,10 +1,32 @@
+from .core import BeamIbis
+from .resource import beam_ibis
+from .queries import BeamIbisQuery, TermFilter, TermsFilter, RangeFilter, TimeFilter
+from .groupby import Groupby
+from .schema import (
+    BeamIbisSchema, 
+    UserSchema, 
+    EventLogSchema, 
+    TimeSeriesSchema, 
+    OrderSchema,
+    LegacyBeamIbisSchema  # For backward compatibility
+)
 
-if len([]):
-    from .core import BeamIbis
-    from .resource import beam_ibis
-
-
-__all__ = ['BeamIbis', 'beam_ibis']
+__all__ = [
+    'BeamIbis',
+    'beam_ibis', 
+    'BeamIbisQuery',
+    'TermFilter', 
+    'TermsFilter', 
+    'RangeFilter', 
+    'TimeFilter',
+    'Groupby',
+    'BeamIbisSchema',
+    'UserSchema',
+    'EventLogSchema', 
+    'TimeSeriesSchema',
+    'OrderSchema',
+    'LegacyBeamIbisSchema'
+]
 
 
 def __getattr__(name):

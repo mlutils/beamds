@@ -133,21 +133,22 @@ class BaseParameters(BaseModel):
         return {name: i for i, (name, _) in enumerate(cls._num_fields_w)}
 
     # ───── encode ─────
-    def encode(self, output_type="torch"):
+    def encode(self, output_type="torch", dtype=torch.float32):
         c = self.__class__
         c._build()
         # numeric
         num_parts = []
+        numpy_dtype = np.float32 if dtype == torch.float32 else np.float64
         for name, width in c._num_fields_w:
             v = getattr(self, name)
             num_parts.append(
-                np.array([v], dtype=np.float64) if width == 1
-                else np.asarray(v, dtype=np.float64)
+                np.array([v], dtype=numpy_dtype) if width == 1
+                else np.asarray(v, dtype=numpy_dtype)
             )
         if output_type == "torch":
-            x_num = torch.tensor(np.concatenate(num_parts) if num_parts else np.empty(0, dtype=np.float64), dtype=torch.float64)
+            x_num = torch.tensor(np.concatenate(num_parts) if num_parts else np.empty(0, dtype=numpy_dtype), dtype=dtype)
         elif output_type == "numpy":
-            x_num = np.concatenate(num_parts) if num_parts else np.empty(0, dtype=np.float64)
+            x_num = np.concatenate(num_parts) if num_parts else np.empty(0, dtype=numpy_dtype)
         else:
             raise ValueError(f"Unsupported output type: {output_type!r}")
         # categorical
@@ -365,10 +366,11 @@ class BaseParameters(BaseModel):
             return list(range(lower, upper + 1)) if lower <= upper else None
 
     @classmethod
-    def encode_batch(cls, x: list[dict], output_type="torch") -> tuple[np.ndarray, np.ndarray] | tuple[torch.Tensor, torch.Tensor]:
+    def encode_batch(cls, x: list[dict], output_type="torch", dtype=torch.float32) -> tuple[np.ndarray, np.ndarray] | tuple[torch.Tensor, torch.Tensor]:
         """
         Encode a batch of parameters into numeric and categorical tensors.
         :param x: list of dicts with parameters
+        :param dtype: dtype for numeric features (default: torch.float32)
         :return: (x_num, x_cat) where x_num is a 2D array of numeric features
                  and x_cat is a 1D array of categorical features.
         """
@@ -377,16 +379,17 @@ class BaseParameters(BaseModel):
         x_cat_parts = []
 
         for item in x:
-            num_part, cat_part = cls(**item).encode(output_type=output_type)
+            num_part, cat_part = cls(**item).encode(output_type=output_type, dtype=dtype)
             x_num_parts.append(num_part)
             x_cat_parts.append(cat_part)
 
         # Concatenate all numeric and categorical parts
+        numpy_dtype = np.float32 if dtype == torch.float32 else np.float64
         if output_type == "torch":
-            x_num = torch.stack(x_num_parts) if x_num_parts else torch.empty((0, cls.x_num_len), dtype=torch.float64)
+            x_num = torch.stack(x_num_parts) if x_num_parts else torch.empty((0, cls.x_num_len), dtype=dtype)
             x_cat = torch.stack(x_cat_parts) if x_cat_parts else torch.empty((0, cls.x_cat_len), dtype=torch.int64)
         elif output_type == "numpy":
-            x_num = np.vstack(x_num_parts) if x_num_parts else np.empty((0, cls.x_num_len), dtype=np.float64)
+            x_num = np.vstack(x_num_parts) if x_num_parts else np.empty((0, cls.x_num_len), dtype=numpy_dtype)
             x_cat = np.vstack(x_cat_parts) if x_cat_parts else np.empty((0, cls.x_cat_len), dtype=np.int64)
         else:
             raise ValueError(f"Unsupported output type: {output_type!r}")

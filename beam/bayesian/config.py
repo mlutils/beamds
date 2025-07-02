@@ -10,7 +10,8 @@ class BayesianConfig(BeamConfig):
         BeamParam(name="buffer_size", type=int, default=int(1e6),
                   help="Size of the buffer to store samples for Bayesian optimization."),
         BeamParam(name="device", type=str, default="cpu",
-                  help="Device to use for Bayesian optimization. Choices: [cpu, cuda]"),
+                  help="Device to use for Bayesian optimization. Choices: [cpu, cuda, mps, 0, 1, 2, ...] "
+                       "where numbers represent GPU indices."),
         BeamParam(name="dtype", type=str, default="float32",
                   help="Data type to use for Bayesian optimization. Choices: [float32, float64]"),
         BeamParam(name="likelihood", type=str, default="GaussianLikelihood",
@@ -47,6 +48,12 @@ class BayesianConfig(BeamConfig):
                          "MaternKernel, RationalQuadraticKernel]"),
         BeamParam(name="continuous_kernel_kwargs", type=dict, default={},
                     help="Additional keyword arguments for the continuous kernel."),
+        BeamParam(name="categorical_optimizer", type=str, default="auto",
+                  help="Optimizer for pure categorical problems. Choices: [auto, grid, random]. "
+                       "Auto uses grid for small spaces (<1000 combinations) and random for larger spaces."),
+        BeamParam(name="initialization_method", type=str, default="sobol",
+                  help="Method for initial sampling when replay buffer is below training minimum. "
+                       "Choices: [uniform, sobol, halton, random]."),
     ]
 
 class BayesianHPOServiceConfig(BayesianConfig):
@@ -55,4 +62,13 @@ class BayesianHPOServiceConfig(BayesianConfig):
                   help="Embedding model to encode text content for Bayesian optimization."),
         BeamParam(name="truncate_dim", type=int, default=32,
                   help="Dimension to truncate the embeddings to for Bayesian optimization."),
+        BeamParam(name="dataset", type=str, default=None,
+                  help="Database URI for logging experiment statistics. Example: 'ibis-sqlite:///experiments.db/hpo_logs' "
+                       "or 'ibis-bigquery:///project/dataset/table'. If None, database logging is disabled."),
+        BeamParam(name="experiment_name", type=str, default="bayesian_optimization",
+                  help="Name for the experiment (used as a column in database logging)."),
+        BeamParam(name="log_suggestions", type=bool, default=True,
+                  help="Whether to log parameter suggestions to the database."),
+        BeamParam(name="log_results", type=bool, default=True,
+                  help="Whether to log experiment results to the database."),
     ]

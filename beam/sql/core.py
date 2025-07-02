@@ -1,13 +1,8 @@
 import datetime as _dt
-import json
-import os as _os
-import re as _re
+import re
 import typing as _t
 from argparse import Namespace
-
 import ibis
-import numpy as np
-import pandas as _pd
 
 from ..path import PureBeamPath, BeamPath, normalize_host
 from ..utils import lazy_property as cached_property, recursive_elementwise
@@ -180,14 +175,28 @@ class BeamIbis(PureBeamPath):
             if self.backend == "bigquery":
                 self._database = self.parts[2] if len(self.parts) > 2 else None
             elif self.backend == "sqlite":
-                if len(self.parts) > 0:
-                    path = BeamPath(*self.parts[:-1]) if len(self.parts) > 1 else BeamPath(self.parts[0])
-                    if path.suffix in [".db", ".sqlite"] or (len(self.parts) == 1 and not self.parts[0].endswith('/')):
-                        self._database = str(path)
-                        self._table_name = self.parts[-1] if len(self.parts) > 1 else None
+                # For SQLite: determine if we have a database file or database + table
+                if len(self.parts) == 0:
+                    self._database = None
+                else:
+                    # Check if the full path or last part looks like a database file
+                    full_path = '/'.join(self.parts)
+                    last_part = self.parts[-1]
+                    
+                    # If the full path ends with .db/.sqlite, it's all database
+                    if full_path.endswith(('.db', '.sqlite', '.sqlite3')):
+                        self._database = full_path
+                    # If last part ends with .db/.sqlite, everything up to and including it is database
+                    elif last_part.endswith(('.db', '.sqlite', '.sqlite3')):
+                        self._database = full_path
+                    # Otherwise, assume last part is table name
                     else:
-                        self._database = self.path if self.path != '/' else None
-                        self._table_name = None
+                        if len(self.parts) == 1:
+                            # Single part without extension - treat as database
+                            self._database = self.parts[0]
+                        else:
+                            # Multiple parts - last is table, rest is database
+                            self._database = '/'.join(self.parts[:-1])
             elif self.backend in ['postgresql', 'postgres']:
                 self._database = self.parts[1] if len(self.parts) > 1 else None
             else:
@@ -203,8 +212,20 @@ class BeamIbis(PureBeamPath):
         if self.backend == "bigquery":
             return self.parts[3] if len(self.parts) > 3 else None
         elif self.backend == "sqlite":
-            _ = self.database  # force database resolution
-            return self._table_name
+            # For SQLite: table is only the last part if it's not a database file
+            if len(self.parts) <= 1:
+                return None
+            
+            full_path = '/'.join(self.parts)
+            last_part = self.parts[-1]
+            
+            # If the full path or last part looks like a database file, no table
+            if (full_path.endswith(('.db', '.sqlite', '.sqlite3')) or 
+                last_part.endswith(('.db', '.sqlite', '.sqlite3'))):
+                return None
+            else:
+                # Last part is table name
+                return last_part
         elif self.backend in ['postgresql', 'postgres']:
             return self.parts[1] if len(self.parts) > 1 else None
         else:
@@ -227,7 +248,10 @@ class BeamIbis(PureBeamPath):
             return ibis.bigquery.connect(**kwargs)
             
         elif self.backend == 'sqlite':
-            return ibis.sqlite.connect(database=self.database, **self.backend_kwargs)
+            # For SQLite, database comes from path parsing only, not backend_kwargs
+            # Remove any 'database' key from backend_kwargs to avoid conflicts
+            sqlite_kwargs = {k: v for k, v in self.backend_kwargs.items() if k != 'database'}
+            return ibis.sqlite.connect(database=self.database, **sqlite_kwargs)
             
         elif self.backend in ['postgresql', 'postgres']:
             kwargs = {
@@ -721,33 +745,416 @@ class BeamIbis(PureBeamPath):
             q = q.limit(n)
         return q.execute()
 
-    # Data writing methods
-    def write(self, data, if_exists="append", **kwargs):
-        """Write data to table."""
-        if self.level != "table":
-            raise ValueError("Write only supported at table level")
+    # Data writing methods - Enhanced version using only BeamIbis API
+    def write_table(self, data, table_name=None, if_exists="append", **kwargs):
+        """
+        Write data to create a new table or append to existing table.
+        
+        Args:
+            data: pandas.DataFrame, pyarrow.Table, or Ibis expression to write
+            table_name: Name of table to create/write to (defaults to self.table_name)
+            if_exists: "replace", "append", or "fail" (default: "append")
+            **kwargs: Additional backend-specific options
             
-        if isinstance(data, _pd.DataFrame):
-            # Use pandas to_sql if available, otherwise convert to records
-            try:
-                if hasattr(self.client, 'raw_sql'):
-                    # For backends that support raw SQL
-                    data.to_sql(self.table_name, self.client, if_exists=if_exists, index=False, **kwargs)
-                else:
-                    # For Ibis backends, we might need to create table first then insert
-                    if if_exists == "replace" or not self.exists():
-                        # Create table from DataFrame
-                        table_expr = ibis.memtable(data, name=self.table_name)
-                        self.client.create_table(self.table_name, table_expr)
-                    else:
-                        # Insert data
-                        records = data.to_dict(orient='records')
-                        # This is backend-specific and might not work for all backends
-                        raise NotImplementedError("Insert operation not implemented for this backend")
-            except Exception as e:
-                raise ValueError(f"Failed to write data: {e}")
+        Returns:
+            BeamIbis: New instance pointing to the written table
+        """
+        if self.level not in ["table", "dataset"]:
+            raise ValueError("write_table only supported at table or dataset level")
+            
+        target_table_name = table_name or self.table_name
+        if not target_table_name:
+            raise ValueError("Must specify table_name or be at table level")
+            
+        # Handle different data types
+        if hasattr(data, 'to_pyarrow'):  # Ibis expression
+            arrow_data = data.to_pyarrow()
+        elif hasattr(data, 'to_pandas'):  # Other dataframe types
+            arrow_data = data.to_pandas()
         else:
-            raise ValueError("Data must be a pandas DataFrame")
+            arrow_data = data
+            
+        # Check if table exists
+        target_path = f"{self.path.parent}/{target_table_name}" if self.level == "table" else f"{self.path}/{target_table_name}"
+        target_beam = self.gen(target_path)
+        table_exists = target_beam.exists()
+        
+        if table_exists and if_exists == "fail":
+            raise ValueError(f"Table {target_table_name} already exists")
+        
+        if not table_exists or if_exists == "replace":
+            # Create new table
+            if hasattr(data, 'schema'):  # Ibis expression
+                schema = data.schema()
+            else:
+                # Infer schema from data
+                import pandas as pd
+                if isinstance(arrow_data, pd.DataFrame):
+                    # Let Ibis handle schema inference by creating a memtable first
+                    schema = None  # Let client.create_table infer the schema
+                else:
+                    schema = None
+                    
+            if if_exists == "replace" and table_exists:
+                target_beam.delete()
+                
+            # Prepare create_table arguments based on backend
+            create_kwargs = {}
+            if self.backend == "bigquery" and self.database:
+                create_kwargs['database'] = self.database
+            create_kwargs.update(kwargs)
+            
+            self.client.create_table(
+                target_table_name,
+                obj=arrow_data,
+                schema=schema,
+                **create_kwargs
+            )
+        else:
+            # Append to existing table
+            # Prepare insert arguments based on backend
+            insert_kwargs = {}
+            if self.backend == "bigquery" and self.database:
+                insert_kwargs['database'] = self.database
+            insert_kwargs.update(kwargs)
+            
+            self.client.insert(
+                target_table_name,
+                obj=arrow_data,
+                **insert_kwargs
+            )
+            
+        return self.gen(target_path)
+    
+    def append_batch(self, data, **kwargs):
+        """
+        Append batch data to this table.
+        
+        Args:
+            data: pandas.DataFrame, pyarrow.Table, or Ibis expression
+            **kwargs: Additional backend-specific options
+            
+        Returns:
+            BeamIbis: Self for method chaining
+        """
+        if self.level != "table":
+            raise ValueError("append_batch only supported at table level")
+            
+        self.write_table(data, if_exists="append", **kwargs)
+        return self
+        
+    def append_row(self, row_data, **kwargs):
+        """
+        Append a single row to this table.
+        
+        Args:
+            row_data: dict with column names as keys
+            **kwargs: Additional backend-specific options
+            
+        Returns:
+            BeamIbis: Self for method chaining
+        """
+        if self.level != "table":
+            raise ValueError("append_row only supported at table level")
+            
+        import pandas as pd
+        
+        # Convert single row to DataFrame
+        df = pd.DataFrame([row_data])
+        self.write_table(df, if_exists="append", **kwargs)
+        return self
+        
+    def create_table_from_data(self, data, table_name, **kwargs):
+        """
+        Create a new table from data.
+        
+        Args:
+            data: pandas.DataFrame, pyarrow.Table, or Ibis expression
+            table_name: Name of the new table
+            **kwargs: Additional backend-specific options
+            
+        Returns:
+            BeamIbis: New instance pointing to the created table
+        """
+        return self.write_table(data, table_name=table_name, if_exists="replace", **kwargs)
+    
+    def create_table_from_schema(self, schema, table_name, **kwargs):
+        """
+        Create an empty table from a schema definition.
+        
+        Args:
+            schema: BeamIbisSchema class, Ibis schema, dict, or legacy schema instance
+            table_name: Name of the new table
+            **kwargs: Additional backend-specific options
+            
+        Returns:
+            BeamIbis: New instance pointing to the created table
+        """
+        if self.level not in ["dataset", "root"]:
+            raise ValueError("create_table_from_schema only supported at dataset/root level")
+            
+        # Handle different schema types
+        if hasattr(schema, 'to_ibis_schema') and callable(schema.to_ibis_schema):
+            # New schema class or legacy schema instance
+            ibis_schema = schema.to_ibis_schema()
+        elif isinstance(schema, dict):
+            ibis_schema = ibis.schema(schema)
+        else:
+            # Assume it's already an Ibis schema
+            ibis_schema = schema
+            
+        target_path = f"{self.path}/{table_name}"
+        
+        # Prepare create_table arguments based on backend
+        create_kwargs = {}
+        if self.backend == "bigquery" and self.database:
+            create_kwargs['database'] = self.database
+        create_kwargs.update(kwargs)
+        
+        self.client.create_table(
+            table_name,
+            schema=ibis_schema,
+            **create_kwargs
+        )
+        
+        return self.gen(target_path)
+
+    # Enhanced write method (main API)
+    def write(self, data, schema=None, if_exists="append", **kwargs):
+        """
+        Smart write method that routes to appropriate operations based on context.
+        
+        This is the main write API that automatically determines the best write strategy:
+        - Routes to create_table_from_data/schema for new tables
+        - Routes to append_batch for multiple rows
+        - Routes to append_row for single rows
+        
+        Args:
+            data: Data to write (DataFrame, list of dicts, single dict, etc.)
+            schema: Optional BeamIbisSchema class or instance to enforce
+            if_exists: "append", "replace", or "fail" (default: "append")
+            **kwargs: Additional backend-specific options
+            
+        Returns:
+            BeamIbis: Instance pointing to the written table
+        """
+        if self.level not in ["table", "dataset"]:
+            raise ValueError("write only supported at table or dataset level")
+        
+        # Check data type using beam type checking
+        data_type = check_type(data)
+        
+        # Determine target table name
+        target_table_name = self.table_name if self.level == "table" else None
+        if not target_table_name:
+            raise ValueError("Must specify table name or be at table level")
+        
+        # Check if table exists
+        table_exists = self.exists() if self.level == "table" else False
+        
+        # Handle different data input types
+        processed_data = self._prepare_data_for_write(data, data_type)
+        is_single_row = self._is_single_row_data(processed_data, data_type)
+        
+        # Route to appropriate method based on context
+        if not table_exists:
+            # Table doesn't exist - create it
+            if schema is not None:
+                # Create from schema first, then insert data
+                if hasattr(schema, 'to_ibis_schema') and callable(schema.to_ibis_schema):
+                    # Schema class or instance - need to create at dataset level
+                    if self.level == "table":
+                        # Navigate to parent dataset level for creation
+                        dataset_level = self.gen(str(self.path.parent))
+                        result = dataset_level._create_table_from_schema_then_insert(schema, target_table_name, processed_data, **kwargs)
+                    else:
+                        result = self._create_table_from_schema_then_insert(schema, target_table_name, processed_data, **kwargs)
+                else:
+                    # Dictionary or Ibis schema
+                    if self.level == "table":
+                        dataset_level = self.gen(str(self.path.parent))
+                        result = dataset_level.create_table_from_schema(schema, target_table_name, **kwargs)
+                        if processed_data is not None:
+                            result.write(processed_data, if_exists="append", **kwargs)
+                    else:
+                        result = self.create_table_from_schema(schema, target_table_name, **kwargs)
+                        if processed_data is not None:
+                            result.write(processed_data, if_exists="append", **kwargs)
+            else:
+                # Create from data
+                if self.level == "table":
+                    dataset_level = self.gen(str(self.path.parent))
+                    result = dataset_level.create_table_from_data(processed_data, target_table_name, **kwargs)
+                else:
+                    result = self.create_table_from_data(processed_data, target_table_name, **kwargs)
+        else:
+            # Table exists - append or replace
+            if if_exists == "fail":
+                raise ValueError(f"Table {target_table_name} already exists")
+            elif if_exists == "replace":
+                # Replace entire table
+                result = self.write_table(processed_data, if_exists="replace", **kwargs)
+            else:
+                # Append data
+                if is_single_row:
+                    result = self.append_row(processed_data, **kwargs)
+                else:
+                    result = self.append_batch(processed_data, **kwargs)
+        
+        return result
+    
+    def _prepare_data_for_write(self, data, data_type):
+        """Prepare data for writing based on its type."""
+        
+        # Handle different input types
+        if data_type.is_dataframe:
+            # pandas, polars, cudf DataFrames
+            return data
+        elif data_type.minor == 'list':
+            # List of dictionaries
+            if len(data) == 0:
+                return None  # Empty list - no data to insert
+            # Convert to DataFrame for consistency
+            import pandas as pd
+            return pd.DataFrame(data)
+        elif data_type.minor == 'dict':
+            # Single dictionary (single row)
+            return data
+        elif hasattr(data, 'to_pandas'):
+            # Other dataframe-like objects
+            return data.to_pandas()
+        else:
+            # Try to handle as-is
+            return data
+    
+    def _is_single_row_data(self, data, data_type):
+        """Determine if data represents a single row."""
+        
+        if data is None:
+            return False
+        
+        if data_type.minor == 'dict':
+            return True
+        elif data_type.is_dataframe and hasattr(data, '__len__'):
+            return len(data) == 1
+        elif data_type.minor == 'list':
+            if hasattr(data, '__len__'):
+                return len(data) == 1
+            else:
+                return False
+        return False
+    
+    def _create_table_from_schema_then_insert(self, schema, table_name, data, **kwargs):
+        """Create table from schema then insert data if provided."""
+        
+        # Create empty table from schema
+        result = self.create_table_from_schema(schema, table_name, **kwargs)
+        
+        # Insert data if provided
+        if data is not None:
+            if self._is_single_row_data(data, check_type(data)):
+                result.append_row(data, **kwargs)
+            else:
+                result.append_batch(data, **kwargs)
+        
+        return result
+    
+    def get_schema(self):
+        """
+        Retrieve the schema of an existing table (like BeamElastic).
+        
+        Returns:
+            dict: Schema dictionary mapping column names to Ibis data types
+        """
+        if self.level != "table":
+            raise ValueError("get_schema only supported at table level")
+        
+        if not self.exists():
+            raise ValueError(f"Table {self.table_name} does not exist")
+        
+        return self.schema
+    
+    def describe_schema(self):
+        """
+        Get a human-readable description of the table schema.
+        
+        Returns:
+            str: Formatted schema description
+        """
+        if self.level != "table":
+            raise ValueError("describe_schema only supported at table level")
+        
+        schema = self.get_schema()
+        
+        lines = [f"Table: {self.table_name}"]
+        lines.append(f"Columns: {len(schema)}")
+        lines.append("Schema:")
+        
+        for col_name, col_type in schema.items():
+            lines.append(f"  {col_name}: {col_type}")
+        
+        return "\n".join(lines)
+    
+    def infer_schema_class(self, class_name=None):
+        """
+        Create a BeamIbisSchema class from an existing table's schema.
+        
+        Args:
+            class_name: Name for the generated schema class
+            
+        Returns:
+            type: BeamIbisSchema subclass representing the table schema
+        """
+        if self.level != "table":
+            raise ValueError("infer_schema_class only supported at table level")
+        
+        from .schema import BeamIbisSchema
+        import ibis.expr.datatypes as dt
+        
+        schema = self.get_schema()
+        
+        if not class_name:
+            class_name = f"{self.table_name.title().replace('_', '')}Schema"
+        
+        # Create class attributes dictionary
+        class_attrs = {}
+        
+        # Map Ibis types back to Python types for annotations
+        type_mapping = {
+            dt.Int64: int,
+            dt.Int32: int,
+            dt.Int16: int,
+            dt.Int8: int,
+            dt.Float64: float,
+            dt.Float32: float,
+            dt.String: str,
+            dt.Boolean: bool,
+            dt.Timestamp: 'datetime',
+            dt.Date: 'date',
+            dt.Time: 'time',
+            dt.JSON: dict,
+            dt.Binary: bytes,
+        }
+        
+        annotations = {}
+        for col_name, col_type in schema.items():
+            # Find the best Python type annotation
+            python_type = str  # default fallback
+            for ibis_type, py_type in type_mapping.items():
+                if isinstance(col_type, ibis_type):
+                    python_type = py_type
+                    break
+            
+            annotations[col_name] = python_type
+        
+        # Create the class dynamically
+        class_attrs['__annotations__'] = annotations
+        class_attrs['__doc__'] = f"Auto-generated schema for table {self.table_name}"
+        
+        # Create the class
+        schema_class = type(class_name, (BeamIbisSchema,), class_attrs)
+        
+        return schema_class
 
     # PureBeamPath API compatibility methods
     def read(self, as_df=False, as_dict=False, as_iter=True, limit=None, add_ids=False, add_score=False,
