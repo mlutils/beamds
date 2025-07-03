@@ -54,6 +54,13 @@ class BayesianConfig(BeamConfig):
         BeamParam(name="initialization_method", type=str, default="sobol",
                   help="Method for initial sampling when replay buffer is below training minimum. "
                        "Choices: [uniform, sobol, halton, random]."),
+        BeamParam(name="constraint_method", type=str, default="penalty",
+                  help="Method for handling output constraints. Choices: [penalty, feasibility]. "
+                       "Penalty applies penalties for violations, feasibility uses constraint-aware acquisition."),
+        BeamParam(name="penalty_weight", type=float, default=10.0,
+                  help="Weight for constraint violation penalties when using penalty method."),
+        BeamParam(name="constraint_tolerance", type=float, default=1e-3,
+                  help="Tolerance for constraint violations when using feasibility method."),
     ]
 
 class BayesianHPOServiceConfig(BayesianConfig):

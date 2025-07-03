@@ -265,7 +265,96 @@ class HPOService(BeamBase):
         except Exception:
             return False
 
-    def register(self, name: str, x_scheme: dict, c_scheme: dict = None, 
+    def _apply_constraint_penalties(self, problem_name: str, solver, y_data: list):
+        """Apply penalty method for constraint violations."""
+        if solver.hparams.constraint_method != "penalty":
+            return y_data
+        
+        constraints_info = getattr(solver, '_constraints_info', {})
+        if not constraints_info:
+            # No constraints defined, return as-is
+            return y_data
+        
+        penalty_weight = solver.hparams.penalty_weight
+        penalized_y_data = []
+        total_penalties_applied = 0
+        
+        logger.debug(f"Applying constraint penalties with weight {penalty_weight}")
+        
+        for i, y_sample in enumerate(y_data):
+            # Calculate total constraint violation
+            total_violation = 0.0
+            violations = []
+            
+            if isinstance(y_sample, dict):
+                # Multi-objective case: check each constraint
+                for constraint_name, constraint_expr in constraints_info.items():
+                    if constraint_name in y_sample:
+                        value = y_sample[constraint_name]
+                        violation = self._calculate_violation(value, constraint_expr)
+                        if violation > 0:
+                            violations.append(f"{constraint_name}={value:.3f} violates {constraint_expr}")
+                            total_violation += violation
+                
+                if total_violation > 0:
+                    # Apply penalty to the first objective found
+                    objectives_info = getattr(solver, '_objectives_info', {})
+                    if objectives_info:
+                        # Find the first objective to penalize
+                        primary_objective = next(iter(objectives_info.keys()))
+                        if primary_objective in y_sample:
+                            original_value = y_sample[primary_objective]
+                            penalty = penalty_weight * total_violation
+                            y_sample_copy = y_sample.copy()
+                            y_sample_copy[primary_objective] = original_value - penalty
+                            
+                            logger.debug(f"Sample {i+1}: {primary_objective} {original_value:.3f} -> {y_sample_copy[primary_objective]:.3f} "
+                                       f"(penalty: {penalty:.3f}, violations: {', '.join(violations)})")
+                            
+                            penalized_y_data.append(y_sample_copy)
+                            total_penalties_applied += 1
+                        else:
+                            penalized_y_data.append(y_sample)
+                    else:
+                        # No objectives found, return as-is
+                        penalized_y_data.append(y_sample)
+                else:
+                    # No violations, return as-is  
+                    penalized_y_data.append(y_sample)
+                    
+            else:
+                # Single-objective case: y_sample is a scalar
+                # Note: For single objective, constraints must be tracked separately
+                # This is a limitation - constraints need to be in y_data dict format
+                penalized_y_data.append(y_sample)
+        
+        if total_penalties_applied > 0:
+            logger.info(f"Applied constraint penalties to {total_penalties_applied}/{len(y_data)} samples")
+        else:
+            logger.debug("No constraint penalties applied - all samples feasible")
+        
+        return penalized_y_data
+
+    def _calculate_violation(self, value: float, constraint_expr: str) -> float:
+        """Calculate the amount of constraint violation."""
+        try:
+            if '<=' in constraint_expr:
+                limit = float(constraint_expr.split('<=')[1].strip())
+                return max(0.0, value - limit)  # Positive if violation
+            elif '>=' in constraint_expr:
+                limit = float(constraint_expr.split('>=')[1].strip())
+                return max(0.0, limit - value)  # Positive if violation
+            elif '==' in constraint_expr:
+                limit = float(constraint_expr.split('==')[1].strip())
+                return abs(value - limit)  # Always positive for equality
+            else:
+                logger.warning(f"Unknown constraint format: {constraint_expr}")
+                return 0.0
+        except (ValueError, IndexError) as e:
+            logger.error(f"Error parsing constraint '{constraint_expr}': {e}")
+            return 0.0
+
+    def register(self, name: str, x_scheme: dict, c_scheme: dict = None,
                  y_scheme: dict = None, config_kwargs: dict = None, **kwargs):
         """
         Register a new HPO problem.
@@ -325,8 +414,11 @@ class HPOService(BeamBase):
         if is_multi_objective and len(objectives_info) > 1:
             current_acq = local_config.get('acquisition_function', 'LogExpectedImprovement')
             if current_acq in ['ExpectedImprovement', 'LogExpectedImprovement']:
-                local_config['acquisition_function'] = 'qEHVI'
-                logger.info(f"Auto-selected qEHVI acquisition function for multi-objective problem (was: {current_acq})")
+                local_config['acquisition_function'] = 'qLogEHVI'
+                logger.info(f"Auto-selected qLogEHVI acquisition function for multi-objective problem (was: {current_acq})")
+            elif current_acq == 'qEHVI':
+                local_config['acquisition_function'] = 'qLogEHVI'
+                logger.info(f"Auto-upgraded to qLogEHVI acquisition function for better numerical stability (was: {current_acq})")
             
             # Set default reference point if not provided
             if 'acquisition_kwargs' not in local_config:
@@ -382,11 +474,11 @@ class HPOService(BeamBase):
         return {
             'name': name, 
             'x_scheme': x_scheme.model_json_schema(),
-            'c_scheme': c_scheme.model_json_schema() if c_scheme is not None else None,
+                'c_scheme': c_scheme.model_json_schema() if c_scheme is not None else None,
             'y_scheme': y_scheme_params.model_json_schema() if y_scheme_params is not None else None,
             'objectives': objectives_info,
             'constraints': constraints_info,
-            'message': f"Problem '{name}' registered successfully.",
+                'message': f"Problem '{name}' registered successfully.",
             'embedding_keys': embedding_keys,
         }
 
@@ -422,12 +514,16 @@ class HPOService(BeamBase):
         elif not isinstance(y, list):
             # Single scalar value
             y = [y]
+
+        # Apply constraint handling if enabled
+        if solver.hparams.constraint_method == "penalty":
+            y = self._apply_constraint_penalties(name, solver, y)
         
         # Validate and process multi-objective data
         if problem_scheme.y_scheme is not None and isinstance(y[0], dict):
             logger.info(f"Processing multi-objective y_data for problem '{name}': {len(y)} samples with keys {list(y[0].keys())}")
             
-            # Validate constraint violations and log warnings
+            # Validate constraint violations and log warnings (after penalty application)
             constraints_info = getattr(solver, '_constraints_info', {})
             if constraints_info:
                 logger.debug(f"Checking {len(constraints_info)} constraints: {list(constraints_info.keys())}")
@@ -468,6 +564,7 @@ class HPOService(BeamBase):
         
         # Process embeddings
         if c is not None:
+            c = copy.deepcopy(c)
             logger.info(f"Converting keys {embedding_keys} to embeddings for problem '{name}'")
             for ci in c:
                 for k in embedding_keys:
@@ -578,6 +675,7 @@ class HPOService(BeamBase):
         
         if isinstance(c, dict):
             c = [c]
+        c = copy.deepcopy(c)
         if c is not None:
             logger.debug(f"Converting {len(embedding_keys)} embedding keys to vectors for problem '{name}'")
             for ci in c:
