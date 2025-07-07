@@ -329,6 +329,12 @@ class BayesianBeam(Processor):
         elif likelihood == 'LaplaceLikelihood':
             from gpytorch.likelihoods import LaplaceLikelihood
             ll = LaplaceLikelihood
+        elif likelihood == 'SoftmaxLikelihood':
+            from gpytorch.likelihoods import SoftmaxLikelihood
+            ll = SoftmaxLikelihood
+        elif likelihood == 'DirichletClassificationLikelihood':
+            from gpytorch.likelihoods import DirichletClassificationLikelihood
+            ll = DirichletClassificationLikelihood
         else:
             raise ValueError(f"Unsupported likelihood: {likelihood}. Supported likelihoods are: "
                              "'GaussianLikelihood', 'BernoulliLikelihood', 'PoissonLikelihood'.")
@@ -442,7 +448,7 @@ class BayesianBeam(Processor):
 
             base_acq = qExpectedHypervolumeImprovement(model, **kwargs)
 
-        elif acq_func == 'qLogEHVI':
+        elif acq_func in ['qLogEHVI', 'qLogExpectedHypervolumeImprovement']:
             from botorch.acquisition.multi_objective import qLogExpectedHypervolumeImprovement
             from botorch.utils.multi_objective.box_decompositions.non_dominated import FastNondominatedPartitioning
 
@@ -562,7 +568,7 @@ class BayesianBeam(Processor):
 
             base_acq = qLogExpectedHypervolumeImprovement(model, **kwargs)
 
-        elif acq_func == 'qNEHVI':
+        elif acq_func in ['qNEHVI', 'qNoisyExpectedHypervolumeImprovement']:
             from botorch.acquisition.multi_objective import qNoisyExpectedHypervolumeImprovement
             logger.debug(f"Building qNEHVI acquisition function with kwargs: {kwargs}")
             base_acq = qNoisyExpectedHypervolumeImprovement(model, **kwargs)
@@ -662,6 +668,8 @@ class BayesianBeam(Processor):
 
                 discrete_dims = list(range(self.len_x_num, self.len_x_num + self.len_x_cat))
                 kwargs['discrete_dims'] = discrete_dims
+
+                # set options for max_discrete_values
             else:
                 from botorch.optim import optimize_acqf_mixed
                 optimizer = optimize_acqf_mixed

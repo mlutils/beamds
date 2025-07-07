@@ -315,8 +315,9 @@ def create_llm_optimization_demo():
         constraint_method="penalty",   # Constraint handling
         penalty_weight=100.0,
         device="cpu",
-        
-        # Fix the reference point for proper qLogEHVI operation
+        n_categorical_features_threshold=2,
+
+    # Fix the reference point for proper qLogEHVI operation
         # NEW: Use named reference points - no more ordering nightmares!
         # Simply specify the worst acceptable value for each objective by name
         acquisition_kwargs={
@@ -493,8 +494,9 @@ def create_llm_optimization_demo():
         context = random.choice(contexts)
         
         try:
-            c = [{'prompt': str(contexts[random.randint(0, len(contexts) - 1)]['prompt'])} for _ in range(5)]
-            sample_result = service.sample(problem_name, c=c, n_samples=5)
+            n_samples = 1
+            c = [{'prompt': str(contexts[random.randint(0, len(contexts) - 1)]['prompt'])} for _ in range(n_samples)]
+            sample_result = service.sample(problem_name, c=c, n_samples=n_samples)
             
             # if sample_result['method'] == 'initialize':
             #     print("   ⚠️  Still in initialization phase")

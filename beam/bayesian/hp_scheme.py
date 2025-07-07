@@ -184,24 +184,29 @@ class BaseParameters(BaseModel):
             metadata = field_info.metadata
             lower = upper = None
 
-            for m in metadata:
-                if isinstance(m, Interval):
-                    # Interval(ge=..., le=...) or similar
-                    lower = m.ge if m.ge is not None else m.gt
-                    upper = m.le if m.le is not None else m.lt
-                    break
-                elif isinstance(m, Le):
-                    # Le(upper=...)
-                    upper = m.le
-                elif isinstance(m, Lt):
-                    # Lt(upper=...)
-                    upper = m.lt
-                elif isinstance(m, Ge):
-                    # Ge(lower=...)
-                    lower = m.ge
-                elif isinstance(m, Gt):
-                    # Gt(lower=...)
-                    lower = m.gt
+            if name in cls._literal_maps:
+                values = list(cls._literal_maps[name]["fwd"].values())
+                lower = min(values)
+                upper = max(values)
+            else:
+                for m in metadata:
+                    if isinstance(m, Interval):
+                        # Interval(ge=..., le=...) or similar
+                        lower = m.ge if m.ge is not None else m.gt
+                        upper = m.le if m.le is not None else m.lt
+                        break
+                    elif isinstance(m, Le):
+                        # Le(upper=...)
+                        upper = m.le
+                    elif isinstance(m, Lt):
+                        # Lt(upper=...)
+                        upper = m.lt
+                    elif isinstance(m, Ge):
+                        # Ge(lower=...)
+                        lower = m.ge
+                    elif isinstance(m, Gt):
+                        # Gt(lower=...)
+                        lower = m.gt
 
             # keep only if *something* is constrained
             if lower is not None or upper is not None:
