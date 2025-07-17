@@ -39,7 +39,7 @@ def parallel_copy_path(src, dst, chunklen=10, **kwargs):
     parallel(jobs, **kwargs)
 
 
-def parallel(tasks: Union[Dict, List], n_workers=0, func=None, method='threading', progressbar='beam', reduce=False, reduce_dim=0,
+def parallel(tasks: Union[Dict, List], n_workers=0, func=None, method=None, progressbar='beam', reduce=False, reduce_dim=0,
              use_dill=False, retries=1, sleep=1, **kwargs):
 
     if func is not None and retries > 1:

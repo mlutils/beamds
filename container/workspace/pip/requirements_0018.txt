@@ -40,3 +40,4 @@ torchpq
 
 ai21
 namegenerator
+pydantic-ai

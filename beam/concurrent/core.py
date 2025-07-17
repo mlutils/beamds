@@ -1,5 +1,8 @@
 from tqdm import tqdm
 import random
+import asyncio
+from typing import List, Any
+import inspect
 
 from ..utils import tqdm_beam
 from ..utils import collate_chunks
@@ -65,7 +68,7 @@ class BeamAsync(BeamName):
 
 class BeamParallel(BeamName):
 
-    def __init__(self, n_workers=0, func=None, method='joblib', progressbar='beam',
+    def __init__(self, n_workers=0, func=None, method='threading', progressbar='beam',
                  reduce=False, reduce_dim=0, name=None, shuffle=False, use_dill=False,
                  **kwargs):
 
@@ -133,6 +136,14 @@ class BeamParallel(BeamName):
 
         self.queue.append(t)
         return t
+
+    def _has_async_tasks(self) -> bool:
+        """Return True if the BeamParallel instance should default to asyncio."""
+        # case 1: a global func=... was supplied
+        if self.func and inspect.iscoroutinefunction(self.func):
+            return True
+            # case 2: look at each BeamTask already in the queue
+        return any(inspect.iscoroutinefunction(t.func) for t in self.queue)
 
     def __enter__(self):
         return self
@@ -356,7 +367,10 @@ class BeamParallel(BeamName):
 
         n_workers = min(n_workers, len(self.queue))
         if method is None:
-            method = self.method
+            if self._has_async_tasks():
+                method = 'asyncio'
+            else:
+                method = self.method
 
         if len(self.queue) == 0:
             logger.info(f"Queue {self.name} is empty, returning empty list.")
@@ -373,6 +387,8 @@ class BeamParallel(BeamName):
                         f" method: {method}")
             if method == 'joblib':
                 results = self._run_joblib(n_workers=n_workers)
+            elif method == 'asyncio':
+                results = self._run_asyncio(max_concurrency=n_workers)
             elif method == 'process_map':
                 results = self._run_process_map(n_workers=n_workers)
             elif method == 'apply_async':
@@ -434,3 +450,84 @@ class BeamParallel(BeamName):
     def _reduce(self, results):
         results = collate_chunks(*results, dim=self.reduce_dim)
         return results
+
+    async def _asyncio_gather(self, max_concurrency: int) -> List[Any]:
+        """
+        Execute all queued BeamTask objects concurrently (≤ max_concurrency).
+        Each slot in the returned list is still *the task itself* so
+        SyncedResults can read .name/.result/.exception.
+        """
+        sem = asyncio.Semaphore(max_concurrency)
+        out: List[Any] = [None] * len(self.queue)
+
+        async def _one(idx: int, task):
+            async with sem:
+                try:
+                    # --- 1️⃣  Run or await the underlying callable -----------
+                    if inspect.iscoroutinefunction(task.func):
+                        value = await task.func(*task.args, **task.kwargs)
+                    else:
+                        # run the synchronous func in a worker thread
+                        value = await asyncio.to_thread(task.func, *task.args, **task.kwargs)
+
+                    # If that *value* is awaitable (sync fn that returned a coro)
+                    if inspect.isawaitable(value):
+                        value = await value
+
+                    task.result = value
+                    task.exception = None
+
+                except Exception as exc:  # capture any error
+                    task.result = None
+                    task.exception = exc
+
+                out[idx] = task  # keep the wrapper
+
+        await asyncio.gather(*(_one(i, t) for i, t in enumerate(self.queue)))
+        return out
+
+    def _run_asyncio(self, max_concurrency: int | None = None):
+        """
+        Synchronous façade that spins up the event loop if needed, so
+        `.run(method='asyncio')` feels the same as the other methods.
+        """
+        if max_concurrency is None:
+            # fall back to constructor value or task count
+            max_concurrency = self.n_workers or len(self.queue) or 1
+
+        async def _runner():
+            return await self._asyncio_gather(max_concurrency)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        # If we’re already inside a running loop (e.g. Jupyter), rely on
+        # nest_asyncio or ask callers to use `await beam.async_run(...)`.
+        if loop and loop.is_running():
+            import nest_asyncio
+            nest_asyncio.apply()
+            return loop.run_until_complete(_runner())
+
+        return asyncio.run(_runner())
+
+    async def async_run(self, *, max_concurrency: int | None = None,
+                        shuffle: bool | None = None):
+        """
+        Pure async variant; ideal when the caller already lives in an event
+        loop and doesn’t want the sync wrapper’s gymnastics.
+        """
+        if shuffle is None:
+            shuffle = self.shuffle
+        if shuffle:
+            random.shuffle(self.queue)
+
+        max_concurrency = (
+            max_concurrency if max_concurrency is not None
+            else self.n_workers or len(self.queue) or 1
+        )
+        return SyncedResults(
+            await self._asyncio_gather(max_concurrency)
+        )
+

@@ -12,12 +12,12 @@ from ..logging import beam_logger as logger
 
 class BeamClient(BeamBase, BeamResource):
 
-    def __init__(self, *args, hostname=None, port=None, username=None, api_key=None, **kwargs):
+    def __init__(self, *args, hostname=None, port=None, username=None, api_key=None, root_path=None, **kwargs):
 
         BeamBase.__init__(self, **kwargs)
         BeamResource.__init__(self, resource_type='client', hostname=hostname, port=port, username=username, **kwargs)
 
-        self.host = normalize_host(hostname, port)
+        self.host = normalize_host(hostname, port, path=root_path)
         self.api_key = api_key
         self.info = self.get_info()
         self._backwards_compatible = None
