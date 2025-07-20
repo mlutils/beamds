@@ -47,10 +47,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
 
     def __init__(self, *args, hostname=None, port=None, username=None, password=None, verify=False,
                  tls=False, client=None, keep_alive=None, sleep=None, document=None, q=None, max_actions=None, retries=None,
-                 fragment=None, maximum_bucket_limit=None, fields=None, sort_by=None, llm=None, timeout=None,
-                 **kwargs):
+                 fragment=None, maximum_bucket_limit=None, fields=None, sort_by=None, llm=None, timeout=None, root_path=None,
+                 access_key=None, headers=None, **kwargs):
         super().__init__(*args, hostname=hostname, port=port, username=username, password=password, tls=tls,
-                         keep_alive=keep_alive, scheme='elastic', max_actions=max_actions, retries=retries,
+                         keep_alive=keep_alive, scheme='elastic', max_actions=max_actions, retries=retries, root_path=root_path,
                          sleep=sleep, fragment=fragment, maximum_bucket_limit=maximum_bucket_limit, **kwargs)
 
         self.verify = verify
@@ -64,13 +64,17 @@ class BeamElastic(PureBeamPath, BeamDoc):
             retries = 3
         self.retries = int(retries)
 
-        self.client = client or self._get_client()
+
         self.keep_alive = keep_alive or '1m'
         self._values = None
         self._metadata = None
+        self.headers = headers
+        self.root_path = root_path
+        self.access_key = access_key
         self._doc_cls: Document | None = document
         self._index: Index | None = None
         self._q: Query | None = self.parse_query(q)
+        self.client = client or self._get_client()
 
         if fields is not None:
             fields = fields if isinstance(fields, list) else [fields]
@@ -269,8 +273,9 @@ class BeamElastic(PureBeamPath, BeamDoc):
         return timestamp.strftime(BeamElastic.timestamp_format)
 
     def _get_client(self):
+
         protocol = 'https' if self.tls else 'http'
-        host = f"{protocol}://{normalize_host(self.hostname, self.port)}"
+        host = f"{protocol}://{normalize_host(self.hostname, self.port, path=self.root_path)}"
 
         if (self.username, self.password) != (None, None):
             auth = (self.username, self.password)
@@ -281,9 +286,10 @@ class BeamElastic(PureBeamPath, BeamDoc):
         if self.timeout is not None:
             kwargs['request_timeout'] = self.timeout
 
+        print(host)
         return Elasticsearch([host], http_auth=auth, verify_certs=self.verify, max_retries=self.retries,  # Number of retries
                              retry_on_status={500, 502, 503, 504},  # Retry on these errors
-                             retry_on_timeout=True)  # Retry when a timeout occurs
+                             retry_on_timeout=True, bearer_auth=self.access_key, headers=self.headers)  # Retry when a timeout occurs
 
     @property
     def index_name(self):
@@ -394,13 +400,16 @@ class BeamElastic(PureBeamPath, BeamDoc):
         sort_by = kwargs.pop('sort_by', self.sort_by)
         llm = kwargs.pop('llm', self.llm)
         q = kwargs.pop('q', self.q)
+        access_key = kwargs.pop('access_key', self.access_key)
+        headers = kwargs.pop('headers', self.headers)
+        root_path = kwargs.pop('root_path', self.root_path)
 
         # must be after extracting all other kwargs
         query = {**query, **kwargs}
         PathType = type(self)
         return PathType(path, client=self.client, hostname=hostname, port=port, username=username, fields=fields,
                         password=password, fragment=fragment, params=params, document=doc_cls, q=q, sort_by=sort_by,
-                        llm=llm, **query)
+                        llm=llm, access_key=access_key, headers=headers, root_path=root_path, **query)
 
     # list of native api methods
     def _index_exists(self, index_name):

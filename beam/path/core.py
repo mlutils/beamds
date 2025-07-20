@@ -37,6 +37,7 @@ def normalize_host(hostname, port=None, default='localhost', path=None):
         host = f"{hostname}:{port}"
 
     if path is not None:
+        path = str(path)
         host = f"{host}/{path.lstrip('/')}"
 
     return host
