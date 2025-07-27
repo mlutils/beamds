@@ -96,8 +96,8 @@ class UniversalDataset(torch.utils.data.Dataset, BeamBase):
         if hasattr(self, 'hparams'):
             if self.hparams.get('accelerate', False) and self.hparams.get('device_placement', False):
                 return None
-            if self.hparams.get('device', None) is not None and self.hparams.get('n_gpus', 1) <= 1:
-                return beam_device(self.hparams.get('device', None))
+            # if self.hparams.get('device', None) is not None and self.hparams.get('n_gpus', 1) <= 1:
+            #     return beam_device(self.hparams.get('device', None))
 
         return None
 

@@ -106,6 +106,40 @@ def as_something_recursively(as_something_func):
 
     return as_func_recursively
 
+def beam_dtype(dtype, brain=False, half=False):
+
+    if isinstance(dtype, torch.dtype):
+        return dtype
+
+    dtype = str(dtype)
+    dtype = dtype.lower()
+    if dtype == 'float':
+        return torch.float32 if not half else (torch.bfloat16 if brain else torch.float16)
+    elif 'complex' in dtype:
+        return torch.complex64 if not half else (torch.complex32 if brain else torch.complex16)
+    if dtype in ['float32', 'f32']:
+        return torch.float32
+    elif dtype in ['float64', 'double', 'f64']:
+        return torch.float64
+    elif dtype in ['float16', 'half', 'f16']:
+        return torch.float16
+    elif dtype == 'int32':
+        return torch.int32
+    elif dtype in ['int64', 'int', 'long']:
+        return torch.int64
+    elif dtype == 'uint8':
+        return torch.uint8
+    elif dtype == 'bool':
+        return torch.bool
+    elif dtype == 'bfloat16':
+        return torch.bfloat16
+    elif dtype in ['complex64', 'c64']:
+        return torch.complex64
+    elif dtype in ['complex128', 'c128']:
+        return torch.complex128
+
+    raise ValueError(f"Unsupported dtype: {dtype} (type: {type(dtype)})")
+
 
 @as_something_recursively
 def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
@@ -123,17 +157,9 @@ def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
     device = beam_device(device)
 
     if dtype is None and hasattr(x, 'dtype'):
-        dtype = str(x.dtype)
-        if 'int' in dtype:
-            dtype = torch.int64
-        elif 'float' in dtype or 'object' in dtype:
-            dtype = (torch.bfloat16 if brain else torch.float16) if half else torch.float32
-        elif 'complex' in dtype:
-            dtype = torch.complex32 if half else torch.complex64
-        elif 'double' in dtype:
-            dtype = torch.float64
-        else:
-            dtype = torch.float32
+        dtype = beam_dtype(x.dtype, brain=brain, half=half)
+    elif dtype is not None:
+        dtype = beam_dtype(dtype, brain=brain, half=half)
 
     if x_type.minor in [Types.pandas, Types.cudf]:
         x = x.values
