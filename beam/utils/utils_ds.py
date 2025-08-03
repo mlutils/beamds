@@ -144,7 +144,7 @@ def beam_dtype(dtype, brain=False, half=False):
 @as_something_recursively
 def as_tensor(x, x_type=None, device=None, dtype=None, brain=False,
               half=False, return_vector=False, convert_to_tensor=True, copy=False,
-              convert_scalar=False, **kwargs) -> torch.Tensor:
+              convert_scalar=False, **kwargs):
 
     if x_type is None:
         x_type = check_type(x, element=False)
